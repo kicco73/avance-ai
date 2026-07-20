@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/bin/pip install *)",
+      "Bash(mkdir -p /Users/enricocarniani/Documents/avance-prototype/backend/providers)",
+      "Bash(timeout 5 .venv/bin/uvicorn main:app --port 8123)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(rm -f /tmp/uvicorn_test.log; rm -rf /Users/enricocarniani/Documents/avance-prototype/backend/__pycache__ /Users/enricocarniani/Documents/avance-prototype/backend/providers/__pycache__)",
+      "Bash(npm run *)",
+      "Bash(.venv/bin/uvicorn main:app --port 8124)",
+      "Bash(jobs -l)",
+      "Read(//tmp/**)",
+      "Bash(kill %2)",
+      "Bash(rm -f /tmp/uvicorn_test2.log)"
+    ],
+    "additionalDirectories": [
+      "/Users/enricocarniani/Documents/avance-prototype/backend",
+      "/private/tmp"
+    ]
+  }
+}

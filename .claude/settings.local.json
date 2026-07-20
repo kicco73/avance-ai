@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/bin/pip show *)",
+      "Bash(.venv/bin/python -c \"import google.genai\")",
+      "WebFetch(domain:ai.google.dev)",
+      "WebFetch(domain:googleapis.github.io)",
+      "WebSearch",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(.venv/bin/pip install *)",
+      "Bash(.venv/bin/python -V)",
+      "Bash(.venv/bin/pip -V)"
+    ]
+  }
+}
