@@ -2,53 +2,39 @@
 from __future__ import annotations
 
 import asyncio
-import time
-import uuid
-from dataclasses import dataclass
+import logging
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 load_dotenv()
 
 from automaton import load_automaton
-from llm_provider import LLMProviderError, LLMProviderUnavailableError
+from llm_provider import LLMProviderError, LLMProviderRateLimitedError, LLMProviderUnavailableError
 from providers.factory import build_provider
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logger = logging.getLogger(__name__)
+
 STATE_MACHINE_PATH = Path(__file__).parent / "state_machine.yml"
-CRISIS_STATE_KEY = "crisis"
 
 # Retry/backoff policy for transient upstream overload (HTTP 503). Owned
-# entirely by the backend: the frontend only polls job status and displays
-# it, it never decides whether/when to retry.
+# entirely by the backend: the frontend only renders the status messages
+# pushed over the websocket, it never decides whether/when to retry.
 MAX_RETRIES = 5
 BASE_DELAY_SECONDS = 1.0
 
-# Fixed general instructions, combined with the current state's contextual_prompt.
-GENERAL_INSTRUCTIONS = (
-    "You are part of a harm-reduction prototype application for alcohol use, "
-    "following the Transtheoretical Model of Change and Relapse Prevention frameworks. "
-    "Always respond in the same language the user writes in. You are not a substitute "
-    "for professional medical, psychological, or psychiatric care. Keep responses "
-    "conversational, warm, and concise (a few sentences, not an essay)."
-)
-
-# PLACEHOLDER — TO BE REPLACED with crisis resources reviewed and validated by a
-# licensed clinical team before any real-world use. These Spanish resources are
-# included only as a plausible example for this prototype and must not be relied
-# upon as accurate, current, or clinically vetted.
-CRISIS_FIXED_MESSAGE = (
-    "Lo que describes suena serio, y quiero asegurarme de que tengas apoyo inmediato.\n\n"
-    "Este prototipo no puede continuar la conversación en este estado: si estás en peligro "
-    "inmediato o pensando en hacerte daño, por favor contacta ahora mismo con:\n\n"
-    "- Emergencias: 112\n"
-    "- Teléfono contra el Suicidio (España): 024\n"
-    "- Teléfono de la Esperanza: 717 003 717\n\n"
-    "[PROTOTYPE PLACEHOLDER — TO BE REPLACED with clinically validated crisis resources "
-    "before any real-world deployment.]"
+# System prompt used for states with a `fixed_message` (e.g. crisis): the
+# model must translate it verbatim, not generate a free-form reply.
+FIXED_MESSAGE_INSTRUCTIONS = (
+    "You must reply with ONLY a translation of the fixed message below into "
+    "the same language the user's last message is written in. Do not answer "
+    "or react to what the user said, do not add or remove anything, and do "
+    "not change its meaning or formatting — output just the translation.\n\n"
+    "Fixed message:\n{fixed_message}"
 )
 
 app = FastAPI(title="Avance State Engine")
@@ -78,89 +64,74 @@ class SessionState:
 session = SessionState(automaton.initial_state)
 
 
-class ChatRequest(BaseModel):
-    message: str
-
-
 class ActionRequest(BaseModel):
     action_name: str
 
 
-@dataclass
-class ChatJob:
-    id: str
-    message: str
-    status: str = "pending"  # pending -> retrying -> done | failed
-    attempt: int = 0
-    retry_at: float | None = None
-    reply: str | None = None
-    state: dict | None = None
-    error: str | None = None
+# Single-user prototype: serializes chat processing across all websocket
+# connections so two concurrent sends can't race on `session`.
+chat_lock = asyncio.Lock()
 
 
-# Single-user prototype: at most one chat job is ever in flight at a time.
-chat_jobs: dict[str, ChatJob] = {}
+async def _process_chat_message(text: str, send) -> None:
+    """Runs one chat turn, pushing status updates via `send` as they occur.
 
-
-def _job_payload(job: ChatJob) -> dict:
-    payload = {
-        "job_id": job.id,
-        "status": job.status,
-        "attempt": job.attempt,
-        "max_attempts": MAX_RETRIES,
-    }
-    if job.status == "retrying" and job.retry_at is not None:
-        payload["retry_in"] = max(0.0, round(job.retry_at - time.time(), 1))
-    if job.status == "done":
-        payload["reply"] = job.reply
-        payload["state"] = job.state
-    if job.status == "failed":
-        payload["error"] = job.error
-    return payload
-
-
-async def _run_chat_job(job: ChatJob) -> None:
-    session.history.append({"role": "user", "content": job.message})
-
-    if session.current_state == CRISIS_STATE_KEY:
-        reply = CRISIS_FIXED_MESSAGE
-        session.history.append({"role": "assistant", "content": reply})
-        job.reply = reply
-        job.state = _state_payload()
-        job.status = "done"
-        return
+    `send` is an async callable taking a JSON-serializable dict (typically
+    a websocket's `send_json`). Retry/backoff timing lives entirely here.
+    """
+    session.history.append({"role": "user", "content": text})
 
     state = automaton.get_state(session.current_state)
-    system_prompt = f"{state.contextual_prompt}\n\n{GENERAL_INSTRUCTIONS}"
+    if state.fixed_message:
+        logger.warning("Translating fixed_message for state '%s'.", state.key)
+        system_prompt = FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message)
+    else:
+        system_prompt = f"{state.contextual_prompt}\n\n{automaton.general_instructions}"
 
     attempt = 0
     while True:
         try:
             reply = await asyncio.to_thread(llm_provider.generate, system_prompt, session.history)
         except LLMProviderUnavailableError as exc:
+            logger.error(
+                "LLM provider temporarily unavailable (attempt %d/%d): %s",
+                attempt + 1,
+                MAX_RETRIES + 1,
+                exc,
+            )
             if attempt >= MAX_RETRIES:
                 session.history.pop()
-                job.status = "failed"
-                job.error = f"Service unavailable after {MAX_RETRIES} retries: {exc}"
+                await send({
+                    "type": "failed",
+                    "error": f"Service unavailable after {MAX_RETRIES} retries: {exc}",
+                })
                 return
             attempt += 1
-            job.attempt = attempt
-            job.status = "retrying"
-            delay = BASE_DELAY_SECONDS * 2 ** (attempt - 1)
-            job.retry_at = time.time() + delay
-            await asyncio.sleep(delay)
+            remaining = BASE_DELAY_SECONDS * 2 ** (attempt - 1)
+            while remaining > 0:
+                await send({
+                    "type": "retrying",
+                    "attempt": attempt,
+                    "max_attempts": MAX_RETRIES,
+                    "retry_in": round(remaining, 1),
+                })
+                step = min(1.0, remaining)
+                await asyncio.sleep(step)
+                remaining -= step
             continue
+        except LLMProviderRateLimitedError as exc:
+            logger.critical("LLM provider rate limit exceeded: %s", exc)
+            session.history.pop()
+            await send({"type": "failed", "error": str(exc)})
+            return
         except LLMProviderError as exc:
             # Not retryable: remove the unanswered user message.
             session.history.pop()
-            job.status = "failed"
-            job.error = str(exc)
+            await send({"type": "failed", "error": str(exc)})
             return
 
         session.history.append({"role": "assistant", "content": reply})
-        job.reply = reply
-        job.state = _state_payload()
-        job.status = "done"
+        await send({"type": "done", "reply": reply, "state": _state_payload()})
         return
 
 
@@ -188,23 +159,25 @@ def get_state():
     return _state_payload()
 
 
-@app.post("/api/chat", status_code=202)
-async def post_chat(req: ChatRequest):
-    if any(job.status in ("pending", "retrying") for job in chat_jobs.values()):
-        raise HTTPException(status_code=409, detail="A chat reply is already being generated.")
-
-    job = ChatJob(id=str(uuid.uuid4()), message=req.message)
-    chat_jobs[job.id] = job
-    asyncio.create_task(_run_chat_job(job))
-    return _job_payload(job)
-
-
-@app.get("/api/chat/{job_id}")
-def get_chat_job(job_id: str):
-    job = chat_jobs.get(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail="Unknown job id.")
-    return _job_payload(job)
+@app.websocket("/ws/chat")
+async def chat_ws(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        while True:
+            data = await websocket.receive_json()
+            text = (data or {}).get("message", "").strip()
+            if not text:
+                continue
+            if chat_lock.locked():
+                await websocket.send_json({
+                    "type": "error",
+                    "error": "A chat reply is already being generated.",
+                })
+                continue
+            async with chat_lock:
+                await _process_chat_message(text, websocket.send_json)
+    except WebSocketDisconnect:
+        pass
 
 
 @app.post("/api/action")
@@ -221,5 +194,4 @@ def post_action(req: ActionRequest):
 @app.post("/api/reset")
 def post_reset():
     session.reset(automaton.initial_state)
-    chat_jobs.clear()
     return _state_payload()

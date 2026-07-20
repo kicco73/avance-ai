@@ -11,7 +11,14 @@
       "Bash(jobs -l)",
       "Read(//tmp/**)",
       "Bash(kill %2)",
-      "Bash(rm -f /tmp/uvicorn_test2.log)"
+      "Bash(rm -f /tmp/uvicorn_test2.log)",
+      "Bash(.venv/bin/python -m py_compile main.py)",
+      "Bash(.venv/bin/python -m py_compile main.py automaton.py)",
+      "Bash(.venv/bin/python -)",
+      "Bash(.venv/bin/python -m py_compile main.py llm_provider.py providers/anthropic_provider.py providers/gemini_provider.py)",
+      "Bash(.venv/bin/python -m py_compile providers/factory.py providers/gemini_provider.py main.py)",
+      "Bash(GEMINI_API_KEY=fake-key-for-test LLM_PROVIDER=gemini-flash-lite .venv/bin/python -)",
+      "Bash(python3 -c ' *)"
     ],
     "additionalDirectories": [
       "/Users/enricocarniani/Documents/avance-prototype/backend",

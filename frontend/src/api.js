@@ -1,4 +1,5 @@
 const BASE_URL = 'http://localhost:8000'
+const WS_URL = 'ws://localhost:8000/ws/chat'
 
 async function handleResponse(res) {
   if (!res.ok) {
@@ -20,12 +21,10 @@ export function getState() {
   return fetch(`${BASE_URL}/api/state`).then(handleResponse)
 }
 
-export function postChat(message) {
-  return fetch(`${BASE_URL}/api/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message })
-  }).then(handleResponse)
+// Chat runs over a websocket: the backend pushes status updates (retrying,
+// done, failed) as they happen instead of the client polling for them.
+export function createChatSocket() {
+  return new WebSocket(WS_URL)
 }
 
 export function postAction(actionName) {

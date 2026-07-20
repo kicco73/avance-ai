@@ -1,12 +1,9 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import ChatWindow from './components/ChatWindow.vue'
 import StateBar from './components/StateBar.vue'
 import ActionButtons from './components/ActionButtons.vue'
-import { getState, postChat, postAction, postReset } from './api.js'
-
-const MAX_RETRIES = 5
-const BASE_DELAY_MS = 1000
+import { getState, createChatSocket, postAction, postReset } from './api.js'
 
 const state = ref(null)
 const messages = ref([])
@@ -16,6 +13,11 @@ const chatStatus = ref('')
 const actionLoading = ref(false)
 const loadError = ref('')
 
+// Plain (non-reactive) connection state: the socket itself and the
+// resolve/reject pair for whichever chat turn is currently in flight.
+let chatSocket = null
+let pendingTurn = null
+
 async function loadState() {
   try {
     state.value = await getState()
@@ -24,36 +26,55 @@ async function loadState() {
   }
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
+// All retry/backoff decisions happen server-side; this only renders
+// whatever the backend pushes ('retrying' ticks, then 'done'/'failed').
+function handleSocketMessage(event) {
+  const data = JSON.parse(event.data)
 
-// Counts down out loud in chatStatus so the "..." prompt reflects the backoff.
-async function waitWithCountdown(attempt, waitMs) {
-  let remainingSeconds = Math.ceil(waitMs / 1000)
-  while (remainingSeconds > 0) {
-    chatStatus.value = `Service unavailable, retrying (${attempt}/${MAX_RETRIES}) in ${remainingSeconds}s...`
-    await sleep(1000)
-    remainingSeconds -= 1
+  if (data.type === 'retrying') {
+    const seconds = Math.max(0, Math.ceil(data.retry_in ?? 0))
+    chatStatus.value = `Service unavailable, retrying (${data.attempt}/${data.max_attempts}) in ${seconds}s...`
+    return
+  }
+
+  if (!pendingTurn) return
+  const { resolve, reject } = pendingTurn
+  pendingTurn = null
+  if (data.type === 'done') {
+    resolve(data)
+  } else {
+    reject(new Error(data.error || 'Chat request failed.'))
   }
 }
 
-// Sends a chat message, retrying with exponential backoff on 503 (upstream
-// model API overloaded). Gives up after MAX_RETRIES retries.
-async function sendWithRetry(text) {
-  let attempt = 0
-  while (true) {
-    try {
-      return await postChat(text)
-    } catch (err) {
-      if (err.status !== 503 || attempt >= MAX_RETRIES) {
-        throw err
-      }
-      attempt += 1
-      const waitMs = BASE_DELAY_MS * 2 ** (attempt - 1)
-      await waitWithCountdown(attempt, waitMs)
+function openChatSocket() {
+  return new Promise((resolve, reject) => {
+    const socket = createChatSocket()
+    socket.onopen = () => resolve(socket)
+    socket.onmessage = handleSocketMessage
+    socket.onerror = () => reject(new Error('Unable to connect to the chat service.'))
+    socket.onclose = () => {
+      if (chatSocket === socket) chatSocket = null
+      pendingTurn?.reject(new Error('Chat connection closed.'))
+      pendingTurn = null
     }
-  }
+    chatSocket = socket
+  })
+}
+
+async function getOpenSocket() {
+  if (chatSocket && chatSocket.readyState === WebSocket.OPEN) return chatSocket
+  return openChatSocket()
+}
+
+// Sends one chat turn over the websocket and waits for the backend's
+// terminal push (done/failed) — no polling involved.
+async function runChatTurn(text) {
+  const socket = await getOpenSocket()
+  return new Promise((resolve, reject) => {
+    pendingTurn = { resolve, reject }
+    socket.send(JSON.stringify({ message: text }))
+  })
 }
 
 async function submitMessage(message) {
@@ -61,15 +82,12 @@ async function submitMessage(message) {
   message.failed = false
   chatLoading.value = true
   try {
-    const res = await sendWithRetry(message.content)
-    messages.value.push({ role: 'assistant', content: res.reply })
-    state.value = res.state
+    const result = await runChatTurn(message.content)
+    messages.value.push({ role: 'assistant', content: result.reply })
+    state.value = result.state
   } catch (err) {
     message.failed = true
-    chatError.value =
-      err.status === 503
-        ? 'Service still unavailable after the maximum number of retries. Tap the icon next to your message to try again.'
-        : err.message
+    chatError.value = err.message
   } finally {
     chatLoading.value = false
     chatStatus.value = ''
@@ -109,6 +127,9 @@ async function handleReset() {
 }
 
 onMounted(loadState)
+onBeforeUnmount(() => {
+  chatSocket?.close()
+})
 </script>
 
 <template>

@@ -39,11 +39,16 @@ requests from this origin).
 ## Usage
 
 1. Open `http://localhost:5173`.
-2. Chat freely in the central window: every message is sent to the backend, which
-   builds the system prompt by combining the current state's `contextual_prompt`
-   (read from `state_machine.yml`) with fixed general instructions, and calls the
-   configured LLM provider (see [Switching LLM provider](#switching-llm-provider))
-   with the full conversation history.
+2. Chat freely in the central window: every message is sent to the backend over a
+   websocket connection, which builds the system prompt by combining the current
+   state's `contextual_prompt` with `general_instructions` (both read from
+   `state_machine.yml`), and calls the configured LLM provider (see
+   [Switching LLM provider](#switching-llm-provider)) with the full conversation
+   history. If the provider reports a transient overload (HTTP 503), the backend
+   retries automatically with exponential backoff (up to 5 retries) and pushes
+   live status over the socket instead of the frontend polling for it; if all
+   retries are exhausted, the failed message gets a resend icon so you can retry
+   it without retyping.
 3. When you judge that the conversation indicates a state change, click the
    corresponding button in the action bar: the transition is applied immediately
    and the state bar at the bottom updates. The chat is **not** touched by this
@@ -63,16 +68,19 @@ To switch provider:
 1. Change `LLM_PROVIDER` in `.env` (`anthropic` or `gemini`).
 2. Make sure the matching pair of variables is set
    (`ANTHROPIC_API_KEY`/`CLAUDE_MODEL` or `GEMINI_API_KEY`/`GEMINI_MODEL` —
-   see `.env.example`).
+   see `.env.example`). To use a lighter/cheaper Gemini model such as
+   `gemini-flash-lite-latest`, just set `GEMINI_MODEL` to it — it's the same
+   API, only the model name changes.
 3. Restart the backend.
 
 No other change is needed: the provider is instantiated exactly once at server
 startup, and if `LLM_PROVIDER` is unset or not a recognized value the server
 fails to start, with an explicit error in the console.
 
-The `crisis` state remains handled outside both providers (see
-[Exception: the `crisis` state](#exception-the-crisis-state) below): in that
-state no model is ever called, regardless of the selected provider.
+The `crisis` state stays non-generative regardless of the selected provider
+(see [Exception: the `crisis` state](#exception-the-crisis-state) below): the
+model is still called, but only to translate a fixed message, never to
+generate free-form content.
 
 For Gemini's free tier, get a free `GEMINI_API_KEY` from
 [Google AI Studio](https://aistudio.google.com/apikey) — no credit card
@@ -96,36 +104,33 @@ No Python code needs to change for these edits.
 
 ### Exception: the `crisis` state
 
-The `crisis` state is **hardcoded as non-generative** for safety reasons: while
-the session is in this state, `POST /api/chat` never calls the model (whichever
-LLM provider is configured) and always returns the same fixed message, defined
-in the `CRISIS_FIXED_MESSAGE` constant in `backend/main.py`.
+The `crisis` state (and any other state you mark the same way) is
+**non-generative** for safety reasons: instead of `contextual_prompt`, its
+YAML entry sets a `fixed_message` field. When the current state has one, the
+backend never lets the model generate free-form content — it only asks it to
+translate `fixed_message` verbatim into whatever language the user is
+writing in, and returns that translation as the reply.
 
-**Important**: the crisis resources included in `CRISIS_FIXED_MESSAGE` are a
-**prototype placeholder** (Spanish emergency numbers used as an example) and are
-explicitly marked in the code as `TO BE REPLACED`. Before any real-world use they
-must be replaced with resources verified, up to date, and validated by a
-qualified clinical team for the app's target territory/country.
-
-If in the future you want to make this behavior generic too (e.g. a
-`non_generative: true` flag in the YAML instead of the hardcoded `"crisis"` key),
-it's a contained change in `backend/main.py`, but it was left explicit and
-hardcoded at this stage specifically to make the safety override easy to spot in
-review.
+**Important**: the crisis resources in `crisis.fixed_message`
+(`backend/state_machine.yml`) are a **prototype placeholder** (Spanish
+emergency numbers used as an example) and are explicitly marked
+`TO BE REPLACED`. Before any real-world use they must be replaced with
+resources verified, up to date, and validated by a qualified clinical team
+for the app's target territory/country.
 
 ## Project structure
 
 ```
 avance-prototype/
 ├── backend/
-│   ├── main.py                        # FastAPI entrypoint + REST endpoints
+│   ├── main.py                        # FastAPI entrypoint: REST endpoints + /ws/chat websocket
 │   ├── automaton.py                   # YAML parsing + DFA logic
 │   ├── llm_provider.py                # abstract interface shared by LLM providers
 │   ├── providers/
 │   │   ├── factory.py                 # selects the provider from LLM_PROVIDER
 │   │   ├── anthropic_provider.py      # Anthropic API (Claude) call wrapper
 │   │   └── gemini_provider.py         # Google Gemini API call wrapper
-│   ├── state_machine.yml              # automaton definition + contextual prompts
+│   ├── state_machine.yml              # automaton definition + general_instructions + contextual/fixed prompts
 │   ├── requirements.txt
 │   └── .env.example
 ├── frontend/
@@ -135,7 +140,7 @@ avance-prototype/
 │   │   │   ├── ChatWindow.vue
 │   │   │   ├── StateBar.vue
 │   │   │   └── ActionButtons.vue
-│   │   └── api.js
+│   │   └── api.js                     # REST calls + /ws/chat websocket client
 │   ├── package.json
 │   └── vite.config.js
 └── README.md
@@ -143,12 +148,24 @@ avance-prototype/
 
 ## API endpoints
 
-| Method | Path          | Description                                                            |
-|--------|---------------|--------------------------------------------------------------------------|
+| Method | Path          | Description                                                             |
+|--------|---------------|-------------------------------------------------------------------------|
 | GET    | `/api/state`  | Current state, label, description, available actions                    |
-| POST   | `/api/chat`   | `{message}` → appends to history, calls the configured LLM provider, returns the reply |
-| POST   | `/api/action` | `{action_name}` → applies the transition if valid for the current state  |
-| POST   | `/api/reset`  | Resets state and history to the initial condition                        |
+| WS     | `/ws/chat`    | Chat channel — see below                                                |
+| POST   | `/api/action` | `{action_name}` → applies the transition if valid for the current state |
+| POST   | `/api/reset`  | Resets state and history to the initial condition                       |
+
+`/ws/chat` replaces a plain request/response: the client sends `{message}`,
+and the backend pushes one or more JSON frames back as the turn progresses —
+
+- `{type: "retrying", attempt, max_attempts, retry_in}` — sent once per second
+  while backing off after a transient (HTTP 503) provider failure; the client
+  only renders these, it never decides whether/when to retry.
+- `{type: "done", reply, state}` — the turn succeeded; `state` is the same
+  shape as `GET /api/state`.
+- `{type: "failed", error}` — non-retryable error, or retries exhausted.
+- `{type: "error", error}` — rejected because a turn is already in flight on
+  this connection (the server processes one message at a time).
 
 ## Known limitations of the prototype
 

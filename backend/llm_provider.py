@@ -20,6 +20,10 @@ class LLMProviderUnavailableError(LLMProviderError):
     """
 
 
+class LLMProviderRateLimitedError(LLMProviderError):
+    """The upstream model API rejected the request for rate limiting (HTTP 429)."""
+
+
 class LLMProvider(ABC):
     @abstractmethod
     def generate(self, system_prompt: str, history: list[dict]) -> str:

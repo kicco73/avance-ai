@@ -5,7 +5,12 @@ import os
 
 import anthropic
 
-from llm_provider import LLMProvider, LLMProviderError, LLMProviderUnavailableError
+from llm_provider import (
+    LLMProvider,
+    LLMProviderError,
+    LLMProviderRateLimitedError,
+    LLMProviderUnavailableError,
+)
 
 CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-5")
 MAX_TOKENS = 1024
@@ -35,6 +40,10 @@ class AnthropicProvider(LLMProvider):
             if exc.status_code == 503:
                 raise LLMProviderUnavailableError(
                     "The Anthropic API is temporarily overloaded (status 503)."
+                ) from exc
+            if exc.status_code == 429:
+                raise LLMProviderRateLimitedError(
+                    "The Anthropic API rate limit was exceeded (status 429)."
                 ) from exc
             raise LLMProviderError(
                 f"Error from the Anthropic API (status {exc.status_code}). Please retry later."

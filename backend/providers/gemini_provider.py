@@ -7,7 +7,12 @@ from google import genai
 from google.genai import errors as genai_errors
 from google.genai import types
 
-from llm_provider import LLMProvider, LLMProviderError, LLMProviderUnavailableError
+from llm_provider import (
+    LLMProvider,
+    LLMProviderError,
+    LLMProviderRateLimitedError,
+    LLMProviderUnavailableError,
+)
 
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
 MAX_OUTPUT_TOKENS = 1024
@@ -44,6 +49,10 @@ class GeminiProvider(LLMProvider):
                 ),
             )
         except genai_errors.ClientError as exc:
+            if exc.code == 429:
+                raise LLMProviderRateLimitedError(
+                    f"The Gemini API rate limit was exceeded (status 429): {exc.message}"
+                ) from exc
             raise LLMProviderError(
                 f"Error from the Gemini API (status {exc.code}): {exc.message}"
             ) from exc

@@ -23,12 +23,16 @@ class State:
     description: str
     contextual_prompt: str
     actions: list[Action] = field(default_factory=list)
+    # If set, the state doesn't generate free-form replies: the caller must
+    # return this message (translated into the user's language) as-is.
+    fixed_message: str | None = None
 
 
 class Automaton:
-    def __init__(self, initial_state: str, states: dict[str, State]):
+    def __init__(self, initial_state: str, states: dict[str, State], general_instructions: str):
         self.initial_state = initial_state
         self.states = states
+        self.general_instructions = general_instructions
 
     def get_state(self, key: str) -> State:
         return self.states[key]
@@ -49,6 +53,7 @@ def load_automaton(path: str | Path) -> Automaton:
         raw = yaml.safe_load(f)
 
     initial_state = raw["initial_state"]
+    general_instructions = raw["general_instructions"].strip()
     raw_states = raw["states"]
 
     states: dict[str, State] = {}
@@ -62,6 +67,7 @@ def load_automaton(path: str | Path) -> Automaton:
             )
             for raw_action in raw_state.get("actions", [])
         ]
+        fixed_message = raw_state.get("fixed_message")
         states[key] = State(
             key=key,
             label=raw_state["label"],
@@ -69,6 +75,7 @@ def load_automaton(path: str | Path) -> Automaton:
             description=raw_state["description"].strip(),
             contextual_prompt=raw_state["contextual_prompt"],
             actions=actions,
+            fixed_message=fixed_message.strip() if fixed_message else None,
         )
 
     if initial_state not in states:
@@ -82,4 +89,4 @@ def load_automaton(path: str | Path) -> Automaton:
                     f"target '{action.target}' is not a valid state"
                 )
 
-    return Automaton(initial_state=initial_state, states=states)
+    return Automaton(initial_state=initial_state, states=states, general_instructions=general_instructions)

@@ -1,5 +1,14 @@
 initial_state: precontemplation
 
+# Fixed instructions appended to every state's contextual_prompt (except
+# fixed_message states, which use a translation-only prompt instead).
+general_instructions: |
+  You are part of a harm-reduction prototype application for alcohol use,
+  following the Transtheoretical Model of Change and Relapse Prevention frameworks.
+  Always respond in the same language the user writes in. You are not a substitute
+  for professional medical, psychological, or psychiatric care. Keep responses
+  conversational, warm, and concise (a few sentences, not an essay).
+
 states:
 
   precontemplation:
@@ -126,8 +135,22 @@ states:
       An acute-risk signal has been detected. Control passes to a fixed,
       non-generative safety protocol.
     contextual_prompt: |
-      SAFETY OVERRIDE: do not generate free-form clinical content in this state.
-      Use only the fixed safety message configured in the backend for the Crisis
-      state, and surface crisis resources. This state is a placeholder in the
-      prototype and must be treated as non-generative by design.
+      SAFETY OVERRIDE: this state is non-generative by design. The backend
+      never uses this prompt to generate free-form content here — it only
+      asks the model to translate `fixed_message` below into the user's
+      language, verbatim in meaning. This field is unused otherwise.
+    # PLACEHOLDER — TO BE REPLACED with crisis resources reviewed and validated
+    # by a licensed clinical team before any real-world use. These Spanish
+    # resources are included only as a plausible example for this prototype
+    # and must not be relied upon as accurate, current, or clinically vetted.
+    fixed_message: |
+      What you're describing sounds serious, and I want to make sure you have immediate support.
+
+      This prototype cannot continue the conversation in this state: if you are in immediate danger or thinking about harming yourself, please contact right now:
+
+      - Emergency services: 112
+      - Suicide Prevention Hotline (Spain): 024
+      - Teléfono de la Esperanza: 717 003 717
+
+      [PROTOTYPE PLACEHOLDER — TO BE REPLACED with clinically validated crisis resources before any real-world deployment.]
     actions: []
