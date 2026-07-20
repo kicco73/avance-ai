@@ -1,12 +1,23 @@
 <script setup>
 import { onMounted, ref } from 'vue'
-import { getSignals } from '../api.js'
+import { getSignals, postTriggersPreview } from '../api.js'
+
+defineProps({
+  state: {
+    type: Object,
+    default: null
+  }
+})
 
 const emit = defineEmits(['close'])
 
 const loading = ref(true)
 const error = ref('')
 const signals = ref([])
+
+const triggersLoading = ref(false)
+const triggersError = ref('')
+const triggers = ref([])
 
 async function load() {
   loading.value = true
@@ -17,6 +28,24 @@ async function load() {
     error.value = err.message
   } finally {
     loading.value = false
+  }
+
+  if (!error.value) await loadTriggers()
+}
+
+// Reuses the signal values already fetched above — never calls the AI again.
+async function loadTriggers() {
+  triggersLoading.value = true
+  triggersError.value = ''
+  try {
+    const signalValues = Object.fromEntries(
+      signals.value.map((s) => [s.name, s.error ? null : s.value])
+    )
+    triggers.value = await postTriggersPreview(signalValues)
+  } catch (err) {
+    triggersError.value = err.message
+  } finally {
+    triggersLoading.value = false
   }
 }
 
@@ -62,6 +91,40 @@ onMounted(load)
           <span class="signal-value" :class="{ 'signal-value-na': !hasValue(signal) }">
             {{ hasValue(signal) ? signal.value : 'n/a' }}
           </span>
+        </div>
+      </div>
+
+      <div v-if="!loading && !error" class="triggers-section">
+        <h3>Next triggerable action</h3>
+        <p class="triggers-subtitle">
+          For state: <strong>{{ state?.label ?? '—' }}</strong>. Read-only — opening this screen never applies a transition.
+        </p>
+
+        <p v-if="triggersLoading" class="signals-status">Evaluating triggers…</p>
+        <p v-else-if="triggersError" class="signals-status signals-error">{{ triggersError }}</p>
+        <p v-else-if="!triggers.length" class="signals-status">
+          No triggerable actions defined for the current state.
+        </p>
+
+        <div v-else class="triggers-list">
+          <div
+            v-for="t in triggers"
+            :key="t.action_name"
+            class="trigger-row"
+            :class="{ 'trigger-row-winner': t.would_fire }"
+          >
+            <div class="trigger-info">
+              <span class="trigger-action-name">
+                {{ t.action_name }}
+                <span v-if="t.would_fire" class="trigger-winner-badge">would fire next</span>
+              </span>
+              <code class="trigger-expression">{{ t.trigger }}</code>
+              <span class="trigger-target">→ {{ t.target }}</span>
+            </div>
+            <span class="trigger-result" :class="t.result ? 'trigger-result-true' : 'trigger-result-false'">
+              {{ t.result ? 'true' : 'false' }}
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -183,5 +246,101 @@ onMounted(load)
 .signal-value-na {
   color: #999;
   font-style: italic;
+}
+
+.triggers-section {
+  max-width: 640px;
+  margin: 2.5rem auto 0;
+  padding-top: 1.5rem;
+  border-top: 1px solid #ddd;
+}
+
+.triggers-section h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.triggers-subtitle {
+  margin: 0 0 1rem;
+  font-size: 0.8rem;
+  color: #777;
+}
+
+.triggers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.trigger-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid #eee;
+  background: #fafafa;
+}
+
+.trigger-row-winner {
+  border-color: #2e7d32;
+  background: #eef7ee;
+}
+
+.trigger-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.trigger-action-name {
+  font-weight: 600;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.trigger-winner-badge {
+  font-weight: 600;
+  font-size: 0.7rem;
+  color: white;
+  background: #2e7d32;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+}
+
+.trigger-expression {
+  font-size: 0.78rem;
+  color: #555;
+  background: #eee;
+  border-radius: 4px;
+  padding: 0.1rem 0.4rem;
+  width: fit-content;
+}
+
+.trigger-target {
+  font-size: 0.75rem;
+  color: #999;
+}
+
+.trigger-result {
+  flex: none;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+}
+
+.trigger-result-true {
+  color: #2e7d32;
+  background: #e3f2e3;
+}
+
+.trigger-result-false {
+  color: #999;
+  background: #eee;
 }
 </style>

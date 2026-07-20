@@ -39,6 +39,26 @@ export function postAction(actionName) {
   }).then(handleResponse)
 }
 
+export function getAutoTracking() {
+  return fetch(`${BASE_URL}/api/autotracking`).then(handleResponse)
+}
+
+export function postAutoTracking(enabled) {
+  return fetch(`${BASE_URL}/api/autotracking`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled })
+  }).then(handleResponse)
+}
+
+export function postTriggersPreview(signals) {
+  return fetch(`${BASE_URL}/api/triggers/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ signals })
+  }).then(handleResponse)
+}
+
 export function postReset() {
   return fetch(`${BASE_URL}/api/reset`, { method: 'POST' }).then(handleResponse)
 }

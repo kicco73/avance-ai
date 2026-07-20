@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 load_dotenv()
 
-from automaton import load_automaton
+from automaton import load_automaton, trigger_signal_names
 from llm_provider import LLMProviderError, LLMProviderRateLimitedError, LLMProviderUnavailableError
 from providers.factory import build_provider
 
@@ -74,10 +74,12 @@ class SessionState:
     def __init__(self, initial_state: str):
         self.current_state: str = initial_state
         self.history: list[dict] = []
+        self.auto_tracking_enabled: bool = False
 
     def reset(self, initial_state: str) -> None:
         self.current_state = initial_state
         self.history = []
+        self.auto_tracking_enabled = False
 
 
 session = SessionState(automaton.initial_state)
@@ -85,6 +87,14 @@ session = SessionState(automaton.initial_state)
 
 class ActionRequest(BaseModel):
     action_name: str
+
+
+class AutoTrackingRequest(BaseModel):
+    enabled: bool
+
+
+class TriggersPreviewRequest(BaseModel):
+    signals: dict[str, int | None]
 
 
 # Single-user prototype: serializes chat processing across all websocket
@@ -103,6 +113,52 @@ def _strip_timestamps(history: list[dict]) -> list[dict]:
     return [{"role": m["role"], "content": m["content"]} for m in history]
 
 
+def _log_transition(
+    from_state: str,
+    to_state: str,
+    action_name: str,
+    trigger_type: str,
+    signal_values: dict | None = None,
+) -> None:
+    """Logs every state transition (manual or auto) at the destination
+    state's configured `transition_log_level` (default WARNING)."""
+    level = getattr(logging, automaton.get_state(to_state).transition_log_level)
+    message = f"State transition: {from_state} -> {to_state} (action={action_name}, trigger={trigger_type})"
+    if signal_values:
+        message += f" signals={signal_values}"
+    logger.log(level, message)
+
+
+async def _run_auto_tracking() -> tuple[bool, str | None, str | None]:
+    """Computes signals and applies the first matching trigger for the
+    current state, if auto-tracking is on. Runs BEFORE the conversational
+    reply is generated, so that reply is produced under the destination
+    state's prompt (e.g. an acute-risk message must get the crisis
+    fixed_message translation, not one more turn of the old state's prompt).
+
+    Returns (state_changed, new_state, triggered_action).
+    """
+    if not session.auto_tracking_enabled:
+        return False, None, None
+
+    signals_list = await _compute_signals()
+    signal_values = {s["name"]: s["value"] for s in signals_list}
+    triggered_action = automaton.evaluate_triggers(session.current_state, signal_values)
+    if triggered_action is None:
+        return False, None, None
+
+    from_state = session.current_state
+    new_state_key = automaton.apply_action(from_state, triggered_action)
+    session.current_state = new_state_key
+    fired_action = next(
+        a for a in automaton.get_state(from_state).actions if a.name == triggered_action
+    )
+    relevant_names = trigger_signal_names(fired_action.trigger)
+    relevant_values = {n: signal_values.get(n) for n in relevant_names}
+    _log_transition(from_state, new_state_key, triggered_action, "auto", relevant_values)
+    return True, new_state_key, triggered_action
+
+
 async def _process_chat_message(text: str, send) -> None:
     """Runs one chat turn, pushing status updates via `send` as they occur.
 
@@ -110,6 +166,8 @@ async def _process_chat_message(text: str, send) -> None:
     a websocket's `send_json`). Retry/backoff timing lives entirely here.
     """
     session.history.append({"role": "user", "content": text, "timestamp": _now_iso()})
+
+    state_changed, new_state_key, triggered_action = await _run_auto_tracking()
 
     state = automaton.get_state(session.current_state)
     if state.fixed_message:
@@ -119,6 +177,11 @@ async def _process_chat_message(text: str, send) -> None:
         system_prompt = f"{state.contextual_prompt}\n\n{automaton.general_instructions}"
 
     chat_history = _strip_timestamps(session.history)
+    transition_fields = {
+        "state_changed": state_changed,
+        "new_state": new_state_key,
+        "triggered_action": triggered_action,
+    }
 
     attempt = 0
     while True:
@@ -136,6 +199,7 @@ async def _process_chat_message(text: str, send) -> None:
                 await send({
                     "type": "failed",
                     "error": f"Service unavailable after {MAX_RETRIES} retries: {exc}",
+                    **transition_fields,
                 })
                 return
             attempt += 1
@@ -154,16 +218,21 @@ async def _process_chat_message(text: str, send) -> None:
         except LLMProviderRateLimitedError as exc:
             logger.critical("LLM provider rate limit exceeded: %s", exc)
             session.history.pop()
-            await send({"type": "failed", "error": str(exc)})
+            await send({"type": "failed", "error": str(exc), **transition_fields})
             return
         except LLMProviderError as exc:
             # Not retryable: remove the unanswered user message.
             session.history.pop()
-            await send({"type": "failed", "error": str(exc)})
+            await send({"type": "failed", "error": str(exc), **transition_fields})
             return
 
         session.history.append({"role": "assistant", "content": reply, "timestamp": _now_iso()})
-        await send({"type": "done", "reply": reply, "state": _state_payload()})
+        await send({
+            "type": "done",
+            "reply": reply,
+            "state": _state_payload(),
+            **transition_fields,
+        })
         return
 
 
@@ -235,8 +304,10 @@ def _validate_signal_value(raw_value: object) -> tuple[int | None, bool]:
     return raw_value, False
 
 
-@app.get("/api/signals")
-async def get_signals():
+async def _compute_signals() -> list[dict]:
+    """Shared by GET /api/signals and the auto-tracking path in
+    _process_chat_message — a single implementation of the signals AI call,
+    never duplicated."""
     if not session.history:
         return _signals_payload(error=False)
 
@@ -264,6 +335,11 @@ async def get_signals():
             "error": error,
         })
     return results
+
+
+@app.get("/api/signals")
+async def get_signals():
+    return await _compute_signals()
 
 
 @app.get("/api/state")
@@ -294,13 +370,34 @@ async def chat_ws(websocket: WebSocket):
 
 @app.post("/api/action")
 def post_action(req: ActionRequest):
+    from_state = session.current_state
     try:
         new_state = automaton.apply_action(session.current_state, req.action_name)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     session.current_state = new_state
+    _log_transition(from_state, new_state, req.action_name, "manual")
     return _state_payload()
+
+
+@app.get("/api/autotracking")
+def get_autotracking():
+    return {"enabled": session.auto_tracking_enabled}
+
+
+@app.post("/api/autotracking")
+def post_autotracking(req: AutoTrackingRequest):
+    session.auto_tracking_enabled = req.enabled
+    return {"enabled": session.auto_tracking_enabled}
+
+
+@app.post("/api/triggers/preview")
+def post_triggers_preview(req: TriggersPreviewRequest):
+    """For SignalsView's 'next triggerable action' panel: evaluates triggers
+    for the current state against signal values the frontend already has
+    (from GET /api/signals) — no AI call, never applies a transition."""
+    return automaton.preview_triggers(session.current_state, req.signals)
 
 
 @app.post("/api/reset")

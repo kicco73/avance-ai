@@ -7,6 +7,10 @@ defineProps({
   disabled: {
     type: Boolean,
     default: false
+  },
+  autoTrackingEnabled: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -19,7 +23,8 @@ const emit = defineEmits(['action'])
       v-for="action in actions"
       :key="action.name"
       class="action-btn"
-      :disabled="disabled"
+      :disabled="disabled || autoTrackingEnabled"
+      :title="autoTrackingEnabled ? 'Disable auto-tracking to trigger manually' : ''"
       @click="emit('action', action.name)"
     >
       {{ action.button_text }}

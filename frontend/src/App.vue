@@ -4,9 +4,18 @@ import ChatWindow from './components/ChatWindow.vue'
 import StateBar from './components/StateBar.vue'
 import ActionButtons from './components/ActionButtons.vue'
 import SignalsView from './components/SignalsView.vue'
-import { getState, createChatSocket, postAction, postReset } from './api.js'
+import {
+  getState,
+  createChatSocket,
+  postAction,
+  getAutoTracking,
+  postAutoTracking,
+  postReset
+} from './api.js'
 
 const showSignals = ref(false)
+const autoTrackingEnabled = ref(false)
+const autoTrackingLoading = ref(false)
 const state = ref(null)
 const messages = ref([])
 const chatLoading = ref(false)
@@ -25,6 +34,27 @@ async function loadState() {
     state.value = await getState()
   } catch (err) {
     loadError.value = `Unable to reach the backend: ${err.message}`
+  }
+}
+
+async function loadAutoTracking() {
+  try {
+    const res = await getAutoTracking()
+    autoTrackingEnabled.value = res.enabled
+  } catch (err) {
+    loadError.value = err.message
+  }
+}
+
+async function toggleAutoTracking() {
+  autoTrackingLoading.value = true
+  try {
+    const res = await postAutoTracking(!autoTrackingEnabled.value)
+    autoTrackingEnabled.value = res.enabled
+  } catch (err) {
+    loadError.value = err.message
+  } finally {
+    autoTrackingLoading.value = false
   }
 }
 
@@ -126,9 +156,11 @@ async function handleReset() {
   chatError.value = ''
   chatStatus.value = ''
   loadError.value = ''
+  autoTrackingEnabled.value = false
 }
 
 onMounted(loadState)
+onMounted(loadAutoTracking)
 onBeforeUnmount(() => {
   chatSocket?.close()
 })
@@ -140,6 +172,14 @@ onBeforeUnmount(() => {
       <h1>Avance — Prototype</h1>
       <div class="topbar-actions">
         <button class="signals-btn" @click="showSignals = true">Signals</button>
+        <button
+          class="autotracking-btn"
+          :class="{ 'autotracking-btn-on': autoTrackingEnabled }"
+          :disabled="autoTrackingLoading"
+          @click="toggleAutoTracking"
+        >
+          Auto-tracking: {{ autoTrackingEnabled ? 'On' : 'Off' }}
+        </button>
         <button class="reset-btn" @click="handleReset">Reset</button>
       </div>
     </header>
@@ -158,12 +198,13 @@ onBeforeUnmount(() => {
     <ActionButtons
       :actions="state?.actions ?? []"
       :disabled="actionLoading"
+      :auto-tracking-enabled="autoTrackingEnabled"
       @action="handleAction"
     />
 
     <StateBar :state="state" />
 
-    <SignalsView v-if="showSignals" @close="showSignals = false" />
+    <SignalsView v-if="showSignals" :state="state" @close="showSignals = false" />
   </div>
 </template>
 
@@ -205,6 +246,34 @@ onBeforeUnmount(() => {
 .signals-btn:hover {
   background: #4a6fa5;
   color: white;
+}
+
+.autotracking-btn {
+  padding: 0.4rem 1rem;
+  border-radius: 6px;
+  border: 1px solid #999;
+  background: white;
+  color: #666;
+  cursor: pointer;
+}
+
+.autotracking-btn:hover:not(:disabled) {
+  background: #f0f0f0;
+}
+
+.autotracking-btn-on {
+  border-color: #2e7d32;
+  background: #2e7d32;
+  color: white;
+}
+
+.autotracking-btn-on:hover:not(:disabled) {
+  background: #256428;
+}
+
+.autotracking-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .reset-btn {
