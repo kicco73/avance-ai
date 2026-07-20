@@ -5,9 +5,10 @@ initial_state: precontemplation
 general_instructions: |
   You are part of a harm-reduction prototype application for alcohol use,
   following the Transtheoretical Model of Change and Relapse Prevention frameworks.
-  Always respond in the same language the user writes in. You are not a substitute
-  for professional medical, psychological, or psychiatric care. Keep responses
-  conversational, warm, and concise (a few sentences, not an essay).
+  Read attachment.
+
+attachments:
+  - general_instructions.txt
 
 # Independent monitoring signals, unrelated to states/actions in this phase:
 # each is a 0-100 value estimated from the conversation via a single AI call
@@ -100,11 +101,9 @@ signals:
       Binary safety signal: presence of an acute risk signal in the most
       recent message.
     ai_prompt: |
-      Look only at the most recent user message. Determine whether it contains
-      any signal consistent with acute risk (for example, self-harm ideation, a
-      crisis in progress, or comparable acute distress). Respond with exactly 0
-      (no acute signal) or 100 (an acute signal is present). Bias toward 100 when
-      uncertain: a false positive here is far less costly than a false negative.
+      Read attachment.
+    attachments:
+      - acute_risk_detection_instructions.txt
     placeholder_builtin: false
 
   - name: daysSinceLastEvent
@@ -131,13 +130,9 @@ states:
       The user does not yet recognize the behavior as a problem, or has no
       current intention to change it within the next six months.
     contextual_prompt: |
-      You are a supportive, non-judgmental conversational agent for a harm-reduction
-      app focused on alcohol use. The user is currently in the PreContemplation stage:
-      they may not see their drinking as a problem, or may minimize it.
-      Do NOT confront, label, or diagnose. Use open, curious questions to gently
-      surface discrepancies between their stated values and their behavior, without
-      pushing them toward a conclusion. Reflect what they say. Avoid clinical language.
-      Your goal is not to make them "admit" anything — it is to keep the door open.
+      Read attachment.
+    attachments:
+      - precontemplation_instructions.txt
     actions:
       - name: raiseAwareness
         label: "User acknowledges a possible problem"

@@ -1,6 +1,7 @@
 """LLM provider backed by the Google Gemini API."""
 from __future__ import annotations
 
+import logging
 import os
 
 from google import genai
@@ -14,11 +15,36 @@ from llm_provider import (
     LLMProviderUnavailableError,
 )
 
+logger = logging.getLogger(__name__)
+
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
 MAX_OUTPUT_TOKENS = 1024
 
 # Gemini uses the roles "user"/"model", not "user"/"assistant".
 _ROLE_MAP = {"user": "user", "assistant": "model"}
+
+
+def _content_to_text(content) -> str:
+    """No prompt caching or `document` content blocks for Gemini in this
+    version — main.py's provider-neutral 'attachment' blocks (see
+    _build_priming_messages) are flattened into plain text instead, a
+    reasonable fallback while every attachment is text. A PDF attachment
+    (source type "base64") can't be represented as text and is skipped here:
+    supporting it would mean building Gemini's `inline_data` parts with the
+    raw base64 bytes, which is out of scope for now."""
+    if isinstance(content, str):
+        return content
+    parts = []
+    for block in content:
+        source = block["source"]
+        if source["type"] == "text":
+            parts.append(f"[Attachment: {block['filename']}]\n{source['data']}")
+        else:
+            logger.warning(
+                "Skipping unsupported binary attachment '%s' for Gemini (no document-block support yet).",
+                block["filename"],
+            )
+    return "\n\n".join(parts)
 
 
 class GeminiProvider(LLMProvider):
@@ -34,7 +60,7 @@ class GeminiProvider(LLMProvider):
         contents = [
             {
                 "role": _ROLE_MAP[message["role"]],
-                "parts": [{"text": message["content"]}],
+                "parts": [{"text": _content_to_text(message["content"])}],
             }
             for message in history
         ]

@@ -16,6 +16,32 @@ CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-5")
 MAX_TOKENS = 1024
 REQUEST_TIMEOUT_SECONDS = 30.0
 
+CACHE_CONTROL = {"type": "ephemeral"}  # default 5-minute TTL is fine for this prototype
+
+
+def _build_messages(history: list[dict]) -> list[dict]:
+    """Translates main.py's provider-neutral history into Anthropic's shape:
+    a plain-string `content` passes through untouched; a list `content`
+    (main.py's _build_priming_messages — attachment blocks) becomes real
+    `document` content blocks, with a cache breakpoint on the last one. At
+    most one such message exists per call (always first), so the breakpoint
+    is naturally scoped to "this call's attachments" — stable turn to turn
+    only as long as the current state's (or signal's) attachment set is."""
+    messages = []
+    for message in history:
+        content = message["content"]
+        if not isinstance(content, list):
+            messages.append({"role": message["role"], "content": content})
+            continue
+
+        blocks = [
+            {"type": "document", "source": block["source"], "title": block["filename"]}
+            for block in content
+        ]
+        blocks[-1] = {**blocks[-1], "cache_control": CACHE_CONTROL}
+        messages.append({"role": message["role"], "content": blocks})
+    return messages
+
 
 class AnthropicProvider(LLMProvider):
     def __init__(self) -> None:
@@ -31,8 +57,8 @@ class AnthropicProvider(LLMProvider):
             response = self._client.messages.create(
                 model=CLAUDE_MODEL,
                 max_tokens=MAX_TOKENS,
-                system=system_prompt,
-                messages=history,
+                system=[{"type": "text", "text": system_prompt, "cache_control": CACHE_CONTROL}],
+                messages=_build_messages(history),
             )
         except anthropic.APITimeoutError as exc:
             raise LLMProviderError("Timeout while calling the model. Please retry.") from exc

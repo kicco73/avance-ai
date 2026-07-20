@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ast
+import base64
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -13,6 +14,31 @@ logger = logging.getLogger(__name__)
 
 # transition_log_level must be one of these (see State.transition_log_level).
 VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+
+ATTACHMENTS_DIR = Path(__file__).parent / "attachments"
+
+# .md/.txt/.csv are sent as Anthropic `document` text sources; .pdf as base64.
+# Not mimetypes.guess_type(): it returns "text/markdown" for .md, which the
+# Anthropic document block API doesn't accept — must be normalized to
+# text/plain. Anything else (.docx, .xlsx, ...) is rejected at boot rather
+# than silently mishandled.
+EXTENSION_TO_MEDIA_TYPE = {
+    ".md": "text/plain",
+    ".txt": "text/plain",
+    ".csv": "text/plain",
+    ".pdf": "application/pdf",
+}
+
+
+@dataclass
+class Attachment:
+    filename: str  # path relative to ATTACHMENTS_DIR, also used as the display title
+    # Anthropic `document` source shape, precomputed at load time:
+    # {"type": "text", "media_type": "text/plain", "data": <str>} or
+    # {"type": "base64", "media_type": "application/pdf", "data": <base64 str>}.
+    # Provider-neutral consumers (main.py, GeminiProvider) only look at
+    # source["type"] ("text" vs "base64") and source["data"].
+    source: dict
 
 
 @dataclass
@@ -40,6 +66,9 @@ class State:
     fixed_message: str | None = None
     # Log level (name) used when logging a transition landing on this state.
     transition_log_level: str = "WARNING"
+    # Attachments for contextual_prompt, sent with chat turns while this is
+    # the current state (see main.py's _build_priming_messages).
+    attachments: list[Attachment] = field(default_factory=list)
 
 
 @dataclass
@@ -52,6 +81,41 @@ class Signal:
     # deterministically by the backend instead of estimated by the AI. Has no
     # effect on behavior yet — every signal is evaluated the same way.
     placeholder_builtin: bool = False
+    # Attachments for this signal's ai_prompt, sent only with the signals
+    # computation call (never with normal chat turns).
+    attachments: list[Attachment] = field(default_factory=list)
+
+
+def _load_attachments(paths: list[str], field_description: str) -> list[Attachment]:
+    """Reads attachment files once at boot (no hot-reload — restart the
+    backend to pick up changes, same as any other part of state_machine.yml).
+    Raises ValueError with an explicit, field-identifying message for an
+    unsupported extension or a missing file — never silently skipped."""
+    attachments = []
+    for rel_path in paths:
+        extension = Path(rel_path).suffix.lower()
+        if extension not in EXTENSION_TO_MEDIA_TYPE:
+            raise ValueError(
+                f"{field_description}: attachment '{rel_path}' has unsupported extension "
+                f"'{extension}'. Supported: {sorted(EXTENSION_TO_MEDIA_TYPE)}"
+            )
+        full_path = ATTACHMENTS_DIR / rel_path
+        if not full_path.is_file():
+            raise ValueError(
+                f"{field_description}: attachment '{rel_path}' not found in {ATTACHMENTS_DIR}"
+            )
+        media_type = EXTENSION_TO_MEDIA_TYPE[extension]
+        if media_type == "text/plain":
+            source = {
+                "type": "text",
+                "media_type": "text/plain",
+                "data": full_path.read_text(encoding="utf-8"),
+            }
+        else:
+            encoded = base64.b64encode(full_path.read_bytes()).decode("ascii")
+            source = {"type": "base64", "media_type": media_type, "data": encoded}
+        attachments.append(Attachment(filename=rel_path, source=source))
+    return attachments
 
 
 def trigger_signal_names(expression: str) -> set[str]:
@@ -81,11 +145,13 @@ class Automaton:
         states: dict[str, State],
         general_instructions: str,
         signals: list[Signal],
+        general_instructions_attachments: list[Attachment],
     ):
         self.initial_state = initial_state
         self.states = states
         self.general_instructions = general_instructions
         self.signals = signals
+        self.general_instructions_attachments = general_instructions_attachments
 
     def get_state(self, key: str) -> State:
         return self.states[key]
@@ -141,6 +207,9 @@ def load_automaton(path: str | Path) -> Automaton:
 
     initial_state = raw["initial_state"]
     general_instructions = raw["general_instructions"].strip()
+    general_instructions_attachments = _load_attachments(
+        raw.get("attachments", []), "general_instructions"
+    )
     raw_states = raw["states"]
 
     states: dict[str, State] = {}
@@ -165,6 +234,7 @@ def load_automaton(path: str | Path) -> Automaton:
             actions=actions,
             fixed_message=fixed_message.strip() if fixed_message else None,
             transition_log_level=raw_state.get("transition_log_level", "WARNING"),
+            attachments=_load_attachments(raw_state.get("attachments", []), f"state '{key}'"),
         )
 
     signals: list[Signal] = []
@@ -181,6 +251,9 @@ def load_automaton(path: str | Path) -> Automaton:
                 description=raw_signal["description"].strip(),
                 ai_prompt=raw_signal["ai_prompt"].strip(),
                 placeholder_builtin=raw_signal.get("placeholder_builtin", False),
+                attachments=_load_attachments(
+                    raw_signal.get("attachments", []), f"signal '{name}'"
+                ),
             )
         )
 
@@ -219,4 +292,5 @@ def load_automaton(path: str | Path) -> Automaton:
         states=states,
         general_instructions=general_instructions,
         signals=signals,
+        general_instructions_attachments=general_instructions_attachments,
     )

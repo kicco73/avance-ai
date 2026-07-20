@@ -25,7 +25,10 @@
       "Bash(.venv/bin/python -m py_compile main.py db.py automaton.py)",
       "Bash(.venv/bin/python /private/tmp/claude-501/-Users-enricocarniani-Documents-avance-prototype/268389f9-538e-45ea-8d84-fa4d8e55a944/scratchpad/test_db_step2.py)",
       "Bash(.venv/bin/python /private/tmp/claude-501/-Users-enricocarniani-Documents-avance-prototype/268389f9-538e-45ea-8d84-fa4d8e55a944/scratchpad/test_db_step3.py)",
-      "Bash(lsof -ti:8000)"
+      "Bash(lsof -ti:8000)",
+      "Bash(.venv/bin/python -m py_compile automaton.py)",
+      "Bash(.venv/bin/python -m py_compile main.py)",
+      "Bash(.venv/bin/python -m py_compile providers/anthropic_provider.py)"
     ],
     "deny": [
       "Read(**/.env)",

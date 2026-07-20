@@ -97,7 +97,7 @@ onMounted(load)
       <div v-if="!loading && !error" class="triggers-section">
         <h3>Next triggerable action</h3>
         <p class="triggers-subtitle">
-          For state: <strong>{{ state?.label ?? '—' }}</strong>. Read-only — opening this screen never applies a transition.
+          For state: <strong>{{ state?.label ?? '—' }}</strong>
         </p>
 
         <p v-if="triggersLoading" class="signals-status">Evaluating triggers…</p>
