@@ -9,6 +9,119 @@ general_instructions: |
   for professional medical, psychological, or psychiatric care. Keep responses
   conversational, warm, and concise (a few sentences, not an essay).
 
+# Independent monitoring signals, unrelated to states/actions in this phase:
+# each is a 0-100 value estimated from the conversation via a single AI call
+# (see GET /api/signals). Not yet wired into state transitions.
+#
+# Every signal uses the same schema, including ones that will eventually be
+# computed deterministically by the backend (e.g. time-based) instead of
+# estimated by the AI: for this prototype they're still defined and evaluated
+# like all the others, with `placeholder_builtin` as a documentation-only flag
+# (it has no effect on behavior yet).
+signals:
+  - name: problemRecognition
+    ui_label: "Problem recognition"
+    description: >
+      How much the user's language has shifted from minimizing to recognizing
+      a possible problem.
+    ai_prompt: |
+      Evaluate the recent conversation turns and estimate, on a scale from 0 to 100,
+      how much the user's language has shifted from minimizing/normalizing their
+      alcohol use toward recognizing it as a possible problem. 0 means pure
+      minimization with no acknowledgment; 100 means clear, repeated acknowledgment
+      of a problem. Base this only on what the user has actually said, not on what
+      you would want them to say. Respond with a single integer between 0 and 100.
+    placeholder_builtin: false
+
+  - name: decisionalBalanceShift
+    ui_label: "Decisional balance"
+    description: >
+      Ratio between reasons to change and reasons not to change expressed by
+      the user.
+    ai_prompt: |
+      Evaluate the recent conversation turns using a change-talk vs. sustain-talk
+      framework (Motivational Interviewing). 0 means the user expresses only
+      reasons against changing; 100 means the user expresses strong, consistent
+      reasons for changing with little ambivalence. Respond with a single integer
+      between 0 and 100.
+    placeholder_builtin: false
+
+  - name: planConcreteness
+    ui_label: "Plan concreteness"
+    description: >
+      How specific and actionable the change plan expressed by the user is.
+    ai_prompt: |
+      Evaluate whether the user has expressed a concrete change plan: a specific
+      date, a defined first step, anticipated obstacles. 0 means no plan at all;
+      100 means a fully specific, actionable plan with a date and anticipated
+      obstacles. Respond with a single integer between 0 and 100.
+    placeholder_builtin: false
+
+  - name: reengagementSignal
+    ui_label: "Re-engagement signal"
+    description: >
+      How substantial the user's response is after a relapse event, versus
+      evasive or absent.
+    ai_prompt: |
+      Evaluate the user's most recent responses after a relapse event. 0 means
+      the user is unresponsive, evasive, or disengaged; 100 means the user is
+      re-engaging substantially with the conversation. Respond with a single
+      integer between 0 and 100.
+    placeholder_builtin: false
+
+  - name: stabilityConfidence
+    ui_label: "Perceived stability"
+    description: >
+      How much the change seems integrated into the person's identity, rather
+      than maintained only through effort.
+    ai_prompt: |
+      Evaluate whether the user's recent language suggests the behavior change has
+      become part of their identity and daily routine, versus something maintained
+      only through active, effortful resistance. 0 means constant effortful
+      resistance; 100 means the change feels stable and identity-integrated.
+      Respond with a single integer between 0 and 100.
+    placeholder_builtin: false
+
+  - name: encounterRisk
+    ui_label: "Risk event encountered"
+    description: >
+      Binary signal: the user describes consumption after a period of
+      abstinence.
+    ai_prompt: |
+      Look only at the most recent user message. Determine whether the user is
+      describing a lapse: consumption after a period of abstinence. Respond with
+      exactly 0 (no lapse described) or 100 (a lapse is described). Do not use any
+      intermediate value.
+    placeholder_builtin: false
+
+  - name: detectRisk
+    ui_label: "Acute risk detected"
+    description: >
+      Binary safety signal: presence of an acute risk signal in the most
+      recent message.
+    ai_prompt: |
+      Look only at the most recent user message. Determine whether it contains
+      any signal consistent with acute risk (for example, self-harm ideation, a
+      crisis in progress, or comparable acute distress). Respond with exactly 0
+      (no acute signal) or 100 (an acute signal is present). Bias toward 100 when
+      uncertain: a false positive here is far less costly than a false negative.
+    placeholder_builtin: false
+
+  - name: daysSinceLastEvent
+    ui_label: "Days since last event (placeholder)"
+    description: >
+      PLACEHOLDER — in the future this will be computed deterministically by
+      the backend from event timestamps, not estimated by the AI.
+    ai_prompt: |
+      PLACEHOLDER SIGNAL. This value should eventually be computed deterministically
+      by the backend from event timestamps, not inferred from conversation text.
+      For this prototype only, give a rough best-effort estimate on a 0-100 scale
+      based on any time references the user has made in the conversation, where
+      0 means "an event happened very recently or just now" and 100 means "a long
+      time has passed since any relapse event". If there is no information to
+      estimate this from, respond with 0.
+    placeholder_builtin: true
+
 states:
 
   precontemplation:

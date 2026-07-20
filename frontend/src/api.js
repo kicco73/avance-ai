@@ -27,6 +27,10 @@ export function createChatSocket() {
   return new WebSocket(WS_URL)
 }
 
+export function getSignals() {
+  return fetch(`${BASE_URL}/api/signals`).then(handleResponse)
+}
+
 export function postAction(actionName) {
   return fetch(`${BASE_URL}/api/action`, {
     method: 'POST',

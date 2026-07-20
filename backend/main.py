@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -35,6 +37,23 @@ FIXED_MESSAGE_INSTRUCTIONS = (
     "or react to what the user said, do not add or remove anything, and do "
     "not change its meaning or formatting — output just the translation.\n\n"
     "Fixed message:\n{fixed_message}"
+)
+
+# How many recent history messages to send the model for GET /api/signals.
+# Kept even so a slice always starts on a "user" turn (history strictly
+# alternates user/assistant, in pairs).
+SIGNALS_HISTORY_WINDOW = 14
+
+SIGNALS_SYSTEM_PROMPT_TEMPLATE = (
+    "You are evaluating a conversation for a set of independent monitoring "
+    "signals. Each conversation message below is prefixed with its ISO 8601 "
+    "timestamp. Evaluate each signal independently and only from what was "
+    "actually said in this excerpt.\n\n"
+    "{signal_definitions}\n\n"
+    "Respond with ONLY a single JSON object mapping each signal name above to "
+    'its integer value from 0 to 100, in this exact form: {{"signal_name": '
+    "value, ...}}. Include every signal listed above, nothing else — no "
+    "explanation, no markdown formatting, just the JSON object."
 )
 
 app = FastAPI(title="Avance State Engine")
@@ -73,13 +92,24 @@ class ActionRequest(BaseModel):
 chat_lock = asyncio.Lock()
 
 
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _strip_timestamps(history: list[dict]) -> list[dict]:
+    """`LLMProvider.generate` only knows {role, content} — timestamps are
+    tracked in `session.history` for /api/signals, not sent to the model
+    during normal chat."""
+    return [{"role": m["role"], "content": m["content"]} for m in history]
+
+
 async def _process_chat_message(text: str, send) -> None:
     """Runs one chat turn, pushing status updates via `send` as they occur.
 
     `send` is an async callable taking a JSON-serializable dict (typically
     a websocket's `send_json`). Retry/backoff timing lives entirely here.
     """
-    session.history.append({"role": "user", "content": text})
+    session.history.append({"role": "user", "content": text, "timestamp": _now_iso()})
 
     state = automaton.get_state(session.current_state)
     if state.fixed_message:
@@ -88,10 +118,12 @@ async def _process_chat_message(text: str, send) -> None:
     else:
         system_prompt = f"{state.contextual_prompt}\n\n{automaton.general_instructions}"
 
+    chat_history = _strip_timestamps(session.history)
+
     attempt = 0
     while True:
         try:
-            reply = await asyncio.to_thread(llm_provider.generate, system_prompt, session.history)
+            reply = await asyncio.to_thread(llm_provider.generate, system_prompt, chat_history)
         except LLMProviderUnavailableError as exc:
             logger.error(
                 "LLM provider temporarily unavailable (attempt %d/%d): %s",
@@ -130,7 +162,7 @@ async def _process_chat_message(text: str, send) -> None:
             await send({"type": "failed", "error": str(exc)})
             return
 
-        session.history.append({"role": "assistant", "content": reply})
+        session.history.append({"role": "assistant", "content": reply, "timestamp": _now_iso()})
         await send({"type": "done", "reply": reply, "state": _state_payload()})
         return
 
@@ -152,6 +184,86 @@ def _state_payload() -> dict:
             for a in state.actions
         ],
     }
+
+
+def _signal_history_window() -> list[dict]:
+    """Recent messages for GET /api/signals, as a single 'evaluate this
+    transcript' user turn rather than multi-turn history: passing the raw
+    conversation invites the model to keep chatting (roleplay another turn)
+    instead of just scoring it. Still just a plain list of {role, content} —
+    the LLMProvider interface itself is unchanged."""
+    recent = session.history[-SIGNALS_HISTORY_WINDOW:]
+    if recent and recent[0]["role"] != "user":
+        recent = recent[1:]
+    transcript = "\n".join(f"[{m['timestamp']}] {m['role']}: {m['content']}" for m in recent)
+    return [{"role": "user", "content": f"Conversation transcript:\n\n{transcript}"}]
+
+
+def _signals_payload(*, error: bool) -> list[dict]:
+    return [
+        {
+            "name": s.name,
+            "ui_label": s.ui_label,
+            "description": s.description,
+            "value": None,
+            "error": error,
+        }
+        for s in automaton.signals
+    ]
+
+
+def _parse_signals_reply(raw_reply: str) -> dict:
+    text = raw_reply.strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        if "\n" in text:
+            first_line, rest = text.split("\n", 1)
+            if first_line.strip().isalpha():
+                text = rest
+        text = text.strip()
+    parsed = json.loads(text)
+    if not isinstance(parsed, dict):
+        raise ValueError("Signals response is not a JSON object.")
+    return parsed
+
+
+def _validate_signal_value(raw_value: object) -> tuple[int | None, bool]:
+    if isinstance(raw_value, bool) or not isinstance(raw_value, int):
+        return None, True
+    if raw_value < 0 or raw_value > 100:
+        return None, True
+    return raw_value, False
+
+
+@app.get("/api/signals")
+async def get_signals():
+    if not session.history:
+        return _signals_payload(error=False)
+
+    signal_definitions = "\n\n".join(
+        f'Signal "{s.name}":\n{s.ai_prompt}' for s in automaton.signals
+    )
+    system_prompt = SIGNALS_SYSTEM_PROMPT_TEMPLATE.format(signal_definitions=signal_definitions)
+    history = _signal_history_window()
+
+    try:
+        raw_reply = await asyncio.to_thread(llm_provider.generate, system_prompt, history)
+        parsed = _parse_signals_reply(raw_reply)
+    except (LLMProviderError, json.JSONDecodeError, ValueError) as exc:
+        logger.error("Failed to compute signals: %s", exc)
+        return _signals_payload(error=True)
+
+    results = []
+    for s in automaton.signals:
+        value, error = _validate_signal_value(parsed.get(s.name))
+        results.append({
+            "name": s.name,
+            "ui_label": s.ui_label,
+            "description": s.description,
+            "value": value,
+            "error": error,
+        })
+    return results
 
 
 @app.get("/api/state")

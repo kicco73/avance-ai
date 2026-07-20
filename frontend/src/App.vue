@@ -3,8 +3,10 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import ChatWindow from './components/ChatWindow.vue'
 import StateBar from './components/StateBar.vue'
 import ActionButtons from './components/ActionButtons.vue'
+import SignalsView from './components/SignalsView.vue'
 import { getState, createChatSocket, postAction, postReset } from './api.js'
 
+const showSignals = ref(false)
 const state = ref(null)
 const messages = ref([])
 const chatLoading = ref(false)
@@ -136,7 +138,10 @@ onBeforeUnmount(() => {
   <div class="app">
     <header class="topbar">
       <h1>Avance — Prototype</h1>
-      <button class="reset-btn" @click="handleReset">Reset</button>
+      <div class="topbar-actions">
+        <button class="signals-btn" @click="showSignals = true">Signals</button>
+        <button class="reset-btn" @click="handleReset">Reset</button>
+      </div>
     </header>
 
     <p class="load-error" v-if="loadError">{{ loadError }}</p>
@@ -157,6 +162,8 @@ onBeforeUnmount(() => {
     />
 
     <StateBar :state="state" />
+
+    <SignalsView v-if="showSignals" @close="showSignals = false" />
   </div>
 </template>
 
@@ -179,6 +186,25 @@ onBeforeUnmount(() => {
 .topbar h1 {
   font-size: 1.1rem;
   margin: 0;
+}
+
+.topbar-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.signals-btn {
+  padding: 0.4rem 1rem;
+  border-radius: 6px;
+  border: 1px solid #4a6fa5;
+  background: white;
+  color: #4a6fa5;
+  cursor: pointer;
+}
+
+.signals-btn:hover {
+  background: #4a6fa5;
+  color: white;
 }
 
 .reset-btn {

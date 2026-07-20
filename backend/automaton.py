@@ -28,11 +28,30 @@ class State:
     fixed_message: str | None = None
 
 
+@dataclass
+class Signal:
+    name: str
+    ui_label: str
+    description: str
+    ai_prompt: str
+    # Documentation-only for now: marks signals meant to eventually be computed
+    # deterministically by the backend instead of estimated by the AI. Has no
+    # effect on behavior yet — every signal is evaluated the same way.
+    placeholder_builtin: bool = False
+
+
 class Automaton:
-    def __init__(self, initial_state: str, states: dict[str, State], general_instructions: str):
+    def __init__(
+        self,
+        initial_state: str,
+        states: dict[str, State],
+        general_instructions: str,
+        signals: list[Signal],
+    ):
         self.initial_state = initial_state
         self.states = states
         self.general_instructions = general_instructions
+        self.signals = signals
 
     def get_state(self, key: str) -> State:
         return self.states[key]
@@ -78,6 +97,23 @@ def load_automaton(path: str | Path) -> Automaton:
             fixed_message=fixed_message.strip() if fixed_message else None,
         )
 
+    signals: list[Signal] = []
+    seen_signal_names: set[str] = set()
+    for raw_signal in raw.get("signals", []):
+        name = raw_signal["name"]
+        if name in seen_signal_names:
+            raise ValueError(f"Duplicate signal name '{name}' in 'signals'")
+        seen_signal_names.add(name)
+        signals.append(
+            Signal(
+                name=name,
+                ui_label=raw_signal["ui_label"],
+                description=raw_signal["description"].strip(),
+                ai_prompt=raw_signal["ai_prompt"].strip(),
+                placeholder_builtin=raw_signal.get("placeholder_builtin", False),
+            )
+        )
+
     if initial_state not in states:
         raise ValueError(f"initial_state '{initial_state}' is not defined among the states")
 
@@ -89,4 +125,9 @@ def load_automaton(path: str | Path) -> Automaton:
                     f"target '{action.target}' is not a valid state"
                 )
 
-    return Automaton(initial_state=initial_state, states=states, general_instructions=general_instructions)
+    return Automaton(
+        initial_state=initial_state,
+        states=states,
+        general_instructions=general_instructions,
+        signals=signals,
+    )

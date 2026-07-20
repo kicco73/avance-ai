@@ -1,27 +1,45 @@
 {
   "permissions": {
     "allow": [
+      // pacchetti e dipendenze
       "Bash(.venv/bin/pip install *)",
-      "Bash(mkdir -p /Users/enricocarniani/Documents/avance-prototype/backend/providers)",
-      "Bash(timeout 5 .venv/bin/uvicorn main:app --port 8123)",
-      "Bash(echo \"exit: $?\")",
-      "Bash(rm -f /tmp/uvicorn_test.log; rm -rf /Users/enricocarniani/Documents/avance-prototype/backend/__pycache__ /Users/enricocarniani/Documents/avance-prototype/backend/providers/__pycache__)",
+      "Bash(npm install *)",
       "Bash(npm run *)",
-      "Bash(.venv/bin/uvicorn main:app --port 8124)",
+
+      // python: copre py_compile, python -c, script, tutto — entro il venv del progetto
+      "Bash(.venv/bin/python *)",
+
+      // uvicorn su qualsiasi porta, non solo 8123/8124
+      "Bash(.venv/bin/uvicorn main:app *)",
+
+      // utility di debug/processo che usavi
       "Bash(jobs -l)",
+      "Bash(kill %*)",
+      "Bash(echo \"exit: $?\")",
+
+      // pulizia scoped: solo dentro il progetto e /tmp, non ovunque
+      "Bash(rm -rf /Users/enricocarniani/Documents/avance-prototype/**/__pycache__)",
+      "Bash(rm -f /tmp/*.log)",
+      "Bash(mkdir -p /Users/enricocarniani/Documents/avance-prototype/**)",
+
+      // lettura file temporanei
       "Read(//tmp/**)",
-      "Bash(kill %2)",
-      "Bash(rm -f /tmp/uvicorn_test2.log)",
-      "Bash(.venv/bin/python -m py_compile main.py)",
-      "Bash(.venv/bin/python -m py_compile main.py automaton.py)",
-      "Bash(.venv/bin/python -)",
-      "Bash(.venv/bin/python -m py_compile main.py llm_provider.py providers/anthropic_provider.py providers/gemini_provider.py)",
-      "Bash(.venv/bin/python -m py_compile providers/factory.py providers/gemini_provider.py main.py)",
-      "Bash(GEMINI_API_KEY=fake-key-for-test LLM_PROVIDER=gemini-flash-lite .venv/bin/python -)",
-      "Bash(python3 -c ' *)"
+
+      // scrittura/lettura del codice del progetto
+      "Write(/Users/enricocarniani/Documents/avance-prototype/backend/**)",
+      "Write(/Users/enricocarniani/Documents/avance-prototype/frontend/**)",
+      "Edit(/Users/enricocarniani/Documents/avance-prototype/backend/**)",
+      "Edit(/Users/enricocarniani/Documents/avance-prototype/frontend/**)",
+      "Read"
+    ],
+    "deny": [
+      "Read(**/.env)",
+      "Write(**/.env)",
+      "Edit(**/.env)"
     ],
     "additionalDirectories": [
       "/Users/enricocarniani/Documents/avance-prototype/backend",
+      "/Users/enricocarniani/Documents/avance-prototype/frontend",
       "/private/tmp"
     ]
   }
