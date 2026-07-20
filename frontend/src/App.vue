@@ -191,6 +191,7 @@ onBeforeUnmount(() => {
       :loading="chatLoading"
       :status="chatStatus"
       :error="chatError"
+      :final-state-reached="state?.final ?? false"
       @send="handleSend"
       @resend="handleResend"
     />

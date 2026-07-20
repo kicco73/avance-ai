@@ -211,7 +211,7 @@ states:
 
   maintenance:
     label: "Maintenance"
-    final: true
+    final: false
     description: >
       The changed behavior has been sustained long enough that relapse risk has
       substantially decreased.

@@ -356,6 +356,15 @@ async def chat_ws(websocket: WebSocket):
             text = (data or {}).get("message", "").strip()
             if not text:
                 continue
+            if automaton.get_state(session.current_state).final:
+                # Final states are terminal by design: no message the client
+                # could have already queued should reach the model, no matter
+                # how the state got here (manual button or auto-tracking).
+                await websocket.send_json({
+                    "type": "failed",
+                    "error": "The conversation has ended in this state.",
+                })
+                continue
             if chat_lock.locked():
                 await websocket.send_json({
                     "type": "error",

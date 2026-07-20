@@ -163,9 +163,18 @@ and the backend pushes one or more JSON frames back as the turn progresses —
   only renders these, it never decides whether/when to retry.
 - `{type: "done", reply, state}` — the turn succeeded; `state` is the same
   shape as `GET /api/state`.
-- `{type: "failed", error}` — non-retryable error, or retries exhausted.
+- `{type: "failed", error}` — non-retryable error, retries exhausted, or the
+  current state is `final: true` (the model is never called for a message
+  sent once the conversation has ended — see below).
 - `{type: "error", error}` — rejected because a turn is already in flight on
   this connection (the server processes one message at a time).
+
+A state with `final: true` is terminal: the frontend disables the chat input
+once there (with an explanation, `Reset` stays available), and the backend
+independently rejects any message that reaches it anyway — regardless of
+whether the state was entered manually or via auto-tracking. Currently only
+`crisis` is final; `maintenance` still has outgoing transitions (`relapse`,
+`crisis`) so the conversation must stay open there.
 
 ## Known limitations of the prototype
 

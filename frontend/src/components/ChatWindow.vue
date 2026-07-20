@@ -17,6 +17,10 @@ const props = defineProps({
   error: {
     type: String,
     default: ''
+  },
+  finalStateReached: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -27,7 +31,7 @@ const scrollEl = ref(null)
 
 function submit() {
   const text = draft.value.trim()
-  if (!text || props.loading) return
+  if (!text || props.loading || props.finalStateReached) return
   emit('send', text)
   draft.value = ''
 }
@@ -80,15 +84,18 @@ watch(
     </div>
 
     <p class="chat-error" v-if="error">{{ error }}</p>
+    <p class="chat-ended-notice" v-if="finalStateReached">
+      Final state reached — the conversation has ended.
+    </p>
 
     <form class="input-row" @submit.prevent="submit">
       <input
         v-model="draft"
         type="text"
         placeholder="Type a message..."
-        :disabled="loading"
+        :disabled="loading || finalStateReached"
       />
-      <button type="submit" :disabled="loading || !draft.trim()">Send</button>
+      <button type="submit" :disabled="loading || finalStateReached || !draft.trim()">Send</button>
     </form>
   </div>
 </template>
@@ -180,6 +187,15 @@ watch(
 .chat-error {
   color: #c62828;
   padding: 0 1rem;
+  font-size: 0.85rem;
+}
+
+.chat-ended-notice {
+  color: #444;
+  background: #f5f5f7;
+  margin: 0 1rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
   font-size: 0.85rem;
 }
 
