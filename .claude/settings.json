@@ -1,36 +1,31 @@
 {
   "permissions": {
     "allow": [
-      // pacchetti e dipendenze
       "Bash(.venv/bin/pip install *)",
       "Bash(npm install *)",
       "Bash(npm run *)",
-
-      // python: copre py_compile, python -c, script, tutto — entro il venv del progetto
       "Bash(.venv/bin/python *)",
-
-      // uvicorn su qualsiasi porta, non solo 8123/8124
       "Bash(.venv/bin/uvicorn main:app *)",
-
-      // utility di debug/processo che usavi
       "Bash(jobs -l)",
       "Bash(kill %*)",
       "Bash(echo \"exit: $?\")",
-
-      // pulizia scoped: solo dentro il progetto e /tmp, non ovunque
       "Bash(rm -rf /Users/enricocarniani/Documents/avance-prototype/**/__pycache__)",
       "Bash(rm -f /tmp/*.log)",
       "Bash(mkdir -p /Users/enricocarniani/Documents/avance-prototype/**)",
-
-      // lettura file temporanei
       "Read(//tmp/**)",
-
-      // scrittura/lettura del codice del progetto
       "Write(/Users/enricocarniani/Documents/avance-prototype/backend/**)",
       "Write(/Users/enricocarniani/Documents/avance-prototype/frontend/**)",
       "Edit(/Users/enricocarniani/Documents/avance-prototype/backend/**)",
       "Edit(/Users/enricocarniani/Documents/avance-prototype/frontend/**)",
-      "Read"
+      "Read",
+      "Bash(.venv/bin/python -c \"import peewee; print\\(peewee.__file__\\); print\\(peewee.VERSION if hasattr\\(peewee, 'VERSION'\\) else 'no VERSION attr'\\)\")",
+      "Bash(.venv/bin/pip show *)",
+      "Bash(.venv/bin/python -c ' *)",
+      "Bash(.venv/bin/python -m py_compile db.py)",
+      "Bash(.venv/bin/python -m py_compile main.py db.py automaton.py)",
+      "Bash(.venv/bin/python /private/tmp/claude-501/-Users-enricocarniani-Documents-avance-prototype/268389f9-538e-45ea-8d84-fa4d8e55a944/scratchpad/test_db_step2.py)",
+      "Bash(.venv/bin/python /private/tmp/claude-501/-Users-enricocarniani-Documents-avance-prototype/268389f9-538e-45ea-8d84-fa4d8e55a944/scratchpad/test_db_step3.py)",
+      "Bash(lsof -ti:8000)"
     ],
     "deny": [
       "Read(**/.env)",

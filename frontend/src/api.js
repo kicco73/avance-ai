@@ -21,6 +21,10 @@ export function getState() {
   return fetch(`${BASE_URL}/api/state`).then(handleResponse)
 }
 
+export function getMessages() {
+  return fetch(`${BASE_URL}/api/messages`).then(handleResponse)
+}
+
 // Chat runs over a websocket: the backend pushes status updates (retrying,
 // done, failed) as they happen instead of the client polling for them.
 export function createChatSocket() {

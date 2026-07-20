@@ -6,6 +6,7 @@ import ActionButtons from './components/ActionButtons.vue'
 import SignalsView from './components/SignalsView.vue'
 import {
   getState,
+  getMessages,
   createChatSocket,
   postAction,
   getAutoTracking,
@@ -14,7 +15,7 @@ import {
 } from './api.js'
 
 const showSignals = ref(false)
-const autoTrackingEnabled = ref(false)
+const autoTrackingEnabled = ref(true)
 const autoTrackingLoading = ref(false)
 const state = ref(null)
 const messages = ref([])
@@ -34,6 +35,18 @@ async function loadState() {
     state.value = await getState()
   } catch (err) {
     loadError.value = `Unable to reach the backend: ${err.message}`
+  }
+}
+
+// Redisplays whatever conversation the backend already persisted (e.g.
+// across a backend restart) — session.history server-side is otherwise only
+// ever used internally to build LLM calls, never pushed to the client.
+async function loadMessages() {
+  try {
+    const history = await getMessages()
+    messages.value = history.map((m) => ({ role: m.role, content: m.content, failed: false }))
+  } catch (err) {
+    loadError.value = err.message
   }
 }
 
@@ -156,10 +169,11 @@ async function handleReset() {
   chatError.value = ''
   chatStatus.value = ''
   loadError.value = ''
-  autoTrackingEnabled.value = false
+  autoTrackingEnabled.value = true
 }
 
 onMounted(loadState)
+onMounted(loadMessages)
 onMounted(loadAutoTracking)
 onBeforeUnmount(() => {
   chatSocket?.close()

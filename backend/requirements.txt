@@ -6,3 +6,4 @@ anthropic>=0.40
 google-genai>=1.0
 python-dotenv>=1.0
 simpleeval>=1.0
+peewee>=3.17

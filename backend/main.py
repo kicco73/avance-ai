@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 load_dotenv()
 
+import db
 from automaton import load_automaton, trigger_signal_names
 from llm_provider import LLMProviderError, LLMProviderRateLimitedError, LLMProviderUnavailableError
 from providers.factory import build_provider
@@ -68,18 +69,24 @@ app.add_middleware(
 
 automaton = load_automaton(STATE_MACHINE_PATH)
 llm_provider = build_provider()
+db.init_db()
 
 
 class SessionState:
+    """In-memory working copy used for the actual per-turn LLM calls — kept
+    for simplicity/speed, but now backed by the database: hydrated from it
+    at startup, and dual-written to it as messages/transitions occur."""
+
     def __init__(self, initial_state: str):
-        self.current_state: str = initial_state
-        self.history: list[dict] = []
-        self.auto_tracking_enabled: bool = False
+        self.current_state: str = db.get_current_state(initial_state)
+        self.history: list[dict] = db.get_all_messages()
+        self.auto_tracking_enabled: bool = True
 
     def reset(self, initial_state: str) -> None:
+        db.reset_all()
         self.current_state = initial_state
         self.history = []
-        self.auto_tracking_enabled = False
+        self.auto_tracking_enabled = True
 
 
 session = SessionState(automaton.initial_state)
@@ -143,6 +150,10 @@ async def _run_auto_tracking() -> tuple[bool, str | None, str | None]:
 
     signals_list = await _compute_signals()
     signal_values = {s["name"]: s["value"] for s in signals_list}
+    # Saved before trigger evaluation so a fired transition can reference
+    # the exact snapshot id that caused it.
+    snapshot_id = db.save_signal_snapshot(signal_values)
+
     triggered_action = automaton.evaluate_triggers(session.current_state, signal_values)
     if triggered_action is None:
         return False, None, None
@@ -156,6 +167,7 @@ async def _run_auto_tracking() -> tuple[bool, str | None, str | None]:
     relevant_names = trigger_signal_names(fired_action.trigger)
     relevant_values = {n: signal_values.get(n) for n in relevant_names}
     _log_transition(from_state, new_state_key, triggered_action, "auto", relevant_values)
+    db.save_transition(from_state, triggered_action, new_state_key, snapshot_id)
     return True, new_state_key, triggered_action
 
 
@@ -227,6 +239,11 @@ async def _process_chat_message(text: str, send) -> None:
             return
 
         session.history.append({"role": "assistant", "content": reply, "timestamp": _now_iso()})
+        # Persisted only once the turn is fully successful, mirroring the
+        # in-memory pop-on-failure above: memory and DB never diverge — a
+        # message pair is either both persisted, or neither.
+        db.save_message("user", text)
+        db.save_message("assistant", reply)
         await send({
             "type": "done",
             "reply": reply,
@@ -305,12 +322,12 @@ def _validate_signal_value(raw_value: object) -> tuple[int | None, bool]:
 
 
 async def _compute_signals() -> list[dict]:
-    """Shared by GET /api/signals and the auto-tracking path in
-    _process_chat_message — a single implementation of the signals AI call,
-    never duplicated."""
-    if not session.history:
-        return _signals_payload(error=False)
-
+    """Calls the AI to (re)compute all signal values from the current
+    conversation. Only ever called from the auto-tracking path in
+    _process_chat_message — never by GET /api/signals, which just reads the
+    latest persisted snapshot instead of recalculating on every UI open.
+    Always called with a non-empty session.history (a user message was just
+    appended before this runs)."""
     signal_definitions = "\n\n".join(
         f'Signal "{s.name}":\n{s.ai_prompt}' for s in automaton.signals
     )
@@ -337,14 +354,49 @@ async def _compute_signals() -> list[dict]:
     return results
 
 
+def _snapshot_to_signals_payload(snapshot: dict | None) -> list[dict]:
+    """Builds the /api/signals response from a persisted snapshot (or None
+    if one has never been computed yet). Values in a real snapshot were
+    already validated by _validate_signal_value at save time; a signal
+    missing from it (or explicitly null) means that specific signal's
+    computation failed — distinct from no snapshot existing at all, which
+    just means auto-tracking hasn't run yet."""
+    results = []
+    for s in automaton.signals:
+        if snapshot is None:
+            value, error = None, False
+        else:
+            value = snapshot.get(s.name)
+            error = value is None
+        results.append({
+            "name": s.name,
+            "ui_label": s.ui_label,
+            "description": s.description,
+            "value": value,
+            "error": error,
+        })
+    return results
+
+
 @app.get("/api/signals")
-async def get_signals():
-    return await _compute_signals()
+def get_signals():
+    """Read-only: never calls the AI. Signals are only (re)computed inside
+    the auto-tracking flow in _process_chat_message; this just reports the
+    latest persisted snapshot."""
+    return _snapshot_to_signals_payload(db.get_latest_signal_snapshot())
 
 
 @app.get("/api/state")
 def get_state():
     return _state_payload()
+
+
+@app.get("/api/messages")
+def get_messages():
+    """Persisted conversation history, for the frontend to redisplay after a
+    reload/backend restart — session.history itself is only ever used
+    internally to build LLM calls, never sent to the client directly."""
+    return db.get_all_messages()
 
 
 @app.websocket("/ws/chat")
@@ -387,6 +439,7 @@ def post_action(req: ActionRequest):
 
     session.current_state = new_state
     _log_transition(from_state, new_state, req.action_name, "manual")
+    db.save_transition(from_state, req.action_name, new_state, None)
     return _state_payload()
 
 
