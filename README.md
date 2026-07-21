@@ -185,3 +185,9 @@ whether the state was entered manually or via auto-tracking. Currently only
   conversation is planned as a later phase, not implemented here.
 - The `crisis` state's resources are placeholders (see above) and are not
   suitable for real-world use as they are.
+
+
+DOCKER COMMANDS
+
+docker build -t avance . ;
+docker run --name avance-ai --env-file backend/.env -p 8080:80 avance
