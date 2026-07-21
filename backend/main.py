@@ -5,24 +5,22 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timezone
-from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 load_dotenv()
 
 import db
-from automaton import load_automaton, trigger_signal_names
+import models_manager
+from automaton import Automaton, trigger_signal_names
 from llm_provider import LLMProviderError, LLMProviderRateLimitedError, LLMProviderUnavailableError
 from providers.factory import build_provider
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
-
-STATE_MACHINE_PATH = Path(__file__).parent / "state_machine.yml"
 
 # Retry/backoff policy for transient upstream overload (HTTP 503). Owned
 # entirely by the backend: the frontend only renders the status messages
@@ -67,7 +65,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-automaton = load_automaton(STATE_MACHINE_PATH)
+models_manager.init_default_model()
 llm_provider = build_provider()
 db.init_db()
 
@@ -89,7 +87,7 @@ class SessionState:
         self.auto_tracking_enabled = True
 
 
-session = SessionState(automaton.initial_state)
+session = SessionState(models_manager.get_active_automaton().initial_state)
 
 
 class ActionRequest(BaseModel):
@@ -152,7 +150,7 @@ def _log_transition(
 ) -> None:
     """Logs every state transition (manual or auto) at the destination
     state's configured `transition_log_level` (default WARNING)."""
-    level = getattr(logging, automaton.get_state(to_state).transition_log_level)
+    level = getattr(logging, models_manager.get_active_automaton().get_state(to_state).transition_log_level)
     message = f"State transition: {from_state} -> {to_state} (action={action_name}, trigger={trigger_type})"
     if signal_values:
         message += f" signals={signal_values}"
@@ -171,6 +169,7 @@ async def _run_auto_tracking() -> tuple[bool, str | None, str | None]:
     if not session.auto_tracking_enabled:
         return False, None, None
 
+    automaton = models_manager.get_active_automaton()
     signals_list = await _compute_signals()
     signal_values = {s["name"]: s["value"] for s in signals_list}
     # Saved before trigger evaluation so a fired transition can reference
@@ -204,6 +203,7 @@ async def _process_chat_message(text: str, send) -> None:
 
     state_changed, new_state_key, triggered_action = await _run_auto_tracking()
 
+    automaton = models_manager.get_active_automaton()
     state = automaton.get_state(session.current_state)
     if state.fixed_message:
         logger.warning("Translating fixed_message for state '%s'.", state.key)
@@ -282,7 +282,7 @@ async def _process_chat_message(text: str, send) -> None:
 
 
 def _state_payload() -> dict:
-    state = automaton.get_state(session.current_state)
+    state = models_manager.get_active_automaton().get_state(session.current_state)
     return {
         "key": state.key,
         "label": state.label,
@@ -322,7 +322,7 @@ def _signals_payload(*, error: bool) -> list[dict]:
             "value": None,
             "error": error,
         }
-        for s in automaton.signals
+        for s in models_manager.get_active_automaton().signals
     ]
 
 
@@ -356,6 +356,7 @@ async def _compute_signals() -> list[dict]:
     latest persisted snapshot instead of recalculating on every UI open.
     Always called with a non-empty session.history (a user message was just
     appended before this runs)."""
+    automaton = models_manager.get_active_automaton()
     signal_definitions = "\n\n".join(
         f'Signal "{s.name}":\n{s.ai_prompt}' for s in automaton.signals
     )
@@ -394,7 +395,7 @@ def _snapshot_to_signals_payload(snapshot: dict | None) -> list[dict]:
     computation failed — distinct from no snapshot existing at all, which
     just means auto-tracking hasn't run yet."""
     results = []
-    for s in automaton.signals:
+    for s in models_manager.get_active_automaton().signals:
         if snapshot is None:
             value, error = None, False
         else:
@@ -440,7 +441,7 @@ async def chat_ws(websocket: WebSocket):
             text = (data or {}).get("message", "").strip()
             if not text:
                 continue
-            if automaton.get_state(session.current_state).final:
+            if models_manager.get_active_automaton().get_state(session.current_state).final:
                 # Final states are terminal by design: no message the client
                 # could have already queued should reach the model, no matter
                 # how the state got here (manual button or auto-tracking).
@@ -465,7 +466,7 @@ async def chat_ws(websocket: WebSocket):
 def post_action(req: ActionRequest):
     from_state = session.current_state
     try:
-        new_state = automaton.apply_action(session.current_state, req.action_name)
+        new_state = models_manager.get_active_automaton().apply_action(session.current_state, req.action_name)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -491,10 +492,83 @@ def post_triggers_preview(req: TriggersPreviewRequest):
     """For SignalsView's 'next triggerable action' panel: evaluates triggers
     for the current state against signal values the frontend already has
     (from GET /api/signals) — no AI call, never applies a transition."""
-    return automaton.preview_triggers(session.current_state, req.signals)
+    return models_manager.get_active_automaton().preview_triggers(session.current_state, req.signals)
 
 
 @app.post("/api/reset")
 def post_reset():
-    session.reset(automaton.initial_state)
+    session.reset(models_manager.get_active_automaton().initial_state)
     return _state_payload()
+
+
+async def _activate_and_reset(new_automaton: Automaton) -> None:
+    """The commit callback passed into every models_manager entry point that
+    activates a new automaton (switch, create-or-replace). models_manager
+    owns *which* automaton is active; this owns resetting *this process's
+    chat session* (DB/history/auto-tracking) to match it, under chat_lock so
+    it can never race an in-flight chat turn. Shared by both
+    POST /api/model/switch and PUT /api/models/{model_name} so that reset
+    logic is never duplicated between them.
+    """
+    async with chat_lock:
+        session.reset(new_automaton.initial_state)
+
+
+@app.get("/api/models")
+def get_models():
+    return {"models": models_manager.list_models()}
+
+
+class ModelSwitchRequest(BaseModel):
+    model_name: str
+
+
+@app.post("/api/model/switch")
+async def post_model_switch(req: ModelSwitchRequest):
+    """Activates an already-present model under models/<model_name>/,
+    validating it with the exact same load_automaton() used at boot and by
+    upload. No filesystem writes are involved — the files are already
+    there — so a failed validation leaves everything untouched."""
+    try:
+        await models_manager.activate_model(req.model_name, _activate_and_reset)
+    except ValueError as exc:
+        return {"success": False, "error": str(exc)}
+    return {"success": True, "model_name": req.model_name}
+
+
+@app.put("/api/models/{model_name}")
+async def put_model(model_name: str, request: Request):
+    """Creates or fully replaces the model named `model_name` from the raw
+    request body — either a lone YAML file or a zip bundle (index.yml +
+    attachments, flat), told apart by Content-Type (with a magic-number
+    fallback; see models_manager._looks_like_zip). Unlike the old filename-
+    based upload, the resource name comes only from the URL, never from
+    anything in the body. Stage -> validate (via the exact same
+    load_automaton() used at boot) -> only on success, commit into
+    `models/<model_name>/` and swap the active automaton, running the exact
+    same reset already used by POST /api/reset. A failed validation leaves
+    the filesystem, the active automaton, and the DB exactly as they were —
+    nothing to roll back because nothing was changed."""
+    content = await request.body()
+    content_type = request.headers.get("content-type")
+    return await models_manager.put_model(model_name, content, content_type, _activate_and_reset)
+
+
+@app.delete("/api/models/{model_name}")
+async def delete_model(model_name: str):
+    """Removes models/<model_name>/ from disk. Any listed model can be
+    deleted, active or not — deleting an unused one has zero effect on the
+    in-memory automaton or the DB. Deleting the currently active model falls
+    back to "default" via the same activate_model()/reset already used by
+    switch and put. The default model itself can never be deleted — enforced
+    in models_manager regardless of what any caller does, not just this
+    endpoint."""
+    try:
+        await models_manager.delete_model(model_name, _activate_and_reset)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {"success": True}

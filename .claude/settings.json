@@ -28,7 +28,16 @@
       "Bash(lsof -ti:8000)",
       "Bash(.venv/bin/python -m py_compile automaton.py)",
       "Bash(.venv/bin/python -m py_compile main.py)",
-      "Bash(.venv/bin/python -m py_compile providers/anthropic_provider.py)"
+      "Bash(.venv/bin/python -m py_compile providers/anthropic_provider.py)",
+      "Bash(.venv/bin/python -c \"import multipart; print\\('already installed:', multipart.__file__\\)\")",
+      "Bash(python3)",
+      "Bash(.venv/bin/python -m py_compile main.py automaton.py)",
+      "Bash(.venv/bin/python /private/tmp/claude-501/-Users-enricocarniani-Documents-avance-prototype/268389f9-538e-45ea-8d84-fa4d8e55a944/scratchpad/test_models_manager.py)",
+      "Bash(git -C /Users/enricocarniani/Documents/avance-prototype status --short backend/models/)",
+      "Bash(.venv/bin/python /private/tmp/claude-501/-Users-enricocarniani-Documents-avance-prototype/268389f9-538e-45ea-8d84-fa4d8e55a944/scratchpad/test_put_model.py)",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\('/Users/enricocarniani/Documents/avance-prototype/backend/main.py'\\).read\\(\\)\\)\")",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\('/Users/enricocarniani/Documents/avance-prototype/backend/models_manager.py'\\).read\\(\\)\\)\")",
+      "Bash(/Users/enricocarniani/Documents/avance-prototype/backend/.venv/bin/python /private/tmp/claude-501/-Users-enricocarniani-Documents-avance-prototype/268389f9-538e-45ea-8d84-fa4d8e55a944/scratchpad/test_delete_model.py)"
     ],
     "deny": [
       "Read(**/.env)",

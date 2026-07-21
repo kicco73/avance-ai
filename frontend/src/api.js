@@ -1,5 +1,5 @@
-const API_URL = '/api'
-const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/chat`
+const API_URL = import.meta.env.VITE_API_URL ?? '/api'
+const WS_URL = import.meta.env.VITE_WS_URL ?? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/chat`
 
 async function handleResponse(res) {
   if (!res.ok) {
@@ -65,4 +65,39 @@ export function postTriggersPreview(signals) {
 
 export function postReset() {
   return fetch(`${API_URL}/reset`, { method: 'POST' }).then(handleResponse)
+}
+
+export function getModels() {
+  return fetch(`${API_URL}/models`).then(handleResponse)
+}
+
+export function postModelSwitch(modelName) {
+  return fetch(`${API_URL}/model/switch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model_name: modelName })
+  }).then(handleResponse)
+}
+
+// Raw request body (not multipart): the model's name is the resource in the
+// URL, decided by the caller — never derived server-side from the file.
+// Content-Type tells the backend the body's format (zip bundle vs. a lone
+// YAML file); it also sniffs the zip magic number as a fallback.
+export function putModel(modelName, file) {
+  const contentType = /\.zip$/i.test(file.name) ? 'application/zip' : 'application/x-yaml'
+  return fetch(`${API_URL}/models/${encodeURIComponent(modelName)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': contentType },
+    body: file
+  }).then(handleResponse)
+}
+
+// Unlike switch/put, failures here (unknown model, attempt to delete
+// "default") surface as a non-2xx status with {detail}, which handleResponse
+// turns into a thrown Error — there's no {success: false, error} shape to
+// check on the resolved value.
+export function deleteModel(modelName) {
+  return fetch(`${API_URL}/models/${encodeURIComponent(modelName)}`, {
+    method: 'DELETE'
+  }).then(handleResponse)
 }

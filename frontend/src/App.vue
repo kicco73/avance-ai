@@ -4,6 +4,7 @@ import ChatWindow from './components/ChatWindow.vue'
 import StateBar from './components/StateBar.vue'
 import ActionButtons from './components/ActionButtons.vue'
 import SignalsView from './components/SignalsView.vue'
+import ModelsMenu from './components/ModelsMenu.vue'
 import {
   getState,
   getMessages,
@@ -11,7 +12,10 @@ import {
   postAction,
   getAutoTracking,
   postAutoTracking,
-  postReset
+  postReset,
+  putModel,
+  postModelSwitch,
+  deleteModel
 } from './api.js'
 
 const showSignals = ref(false)
@@ -24,6 +28,7 @@ const chatError = ref('')
 const chatStatus = ref('')
 const actionLoading = ref(false)
 const loadError = ref('')
+const modelUploadInput = ref(null)
 
 // Plain (non-reactive) connection state: the socket itself and the
 // resolve/reject pair for whichever chat turn is currently in flight.
@@ -172,6 +177,75 @@ async function handleReset() {
   autoTrackingEnabled.value = true
 }
 
+function triggerModelUpload() {
+  modelUploadInput.value?.click()
+}
+
+// On success, behaves exactly like Reset — except the fresh state comes from
+// a separate GET /api/state call, since the PUT response only carries
+// {success, model_name}, not the state payload itself.
+async function handleModelUploadChange(event) {
+  const file = event.target.files?.[0]
+  event.target.value = '' // allow re-selecting the same file afterward
+  if (!file) return
+
+  const modelName = file.name.replace(/\.(zip|ya?ml)$/i, '')
+  try {
+    const result = await putModel(modelName, file)
+    if (!result.success) {
+      loadError.value = result.error
+      return
+    }
+    state.value = await getState()
+    messages.value = []
+    chatError.value = ''
+    chatStatus.value = ''
+    loadError.value = ''
+    autoTrackingEnabled.value = true
+  } catch (err) {
+    loadError.value = err.message
+  }
+}
+
+// Same post-success behavior as upload/Reset: reload state, clear the
+// displayed chat. On failure, show the error via the same loadError banner
+// used for upload failures, without touching anything else.
+async function handleModelSwitch(modelName) {
+  try {
+    const result = await postModelSwitch(modelName)
+    if (!result.success) {
+      loadError.value = result.error
+      return
+    }
+    state.value = await getState()
+    messages.value = []
+    chatError.value = ''
+    chatStatus.value = ''
+    loadError.value = ''
+    autoTrackingEnabled.value = true
+  } catch (err) {
+    loadError.value = err.message
+  }
+}
+
+// Deleting the active model always falls back to "default" backend-side, so
+// this behaves the same as a successful switch/upload — reload state, clear
+// the chat. Unlike switch/upload, failures here surface as a thrown Error
+// (see deleteModel), not a {success: false} value.
+async function handleModelDelete(modelName) {
+  try {
+    await deleteModel(modelName)
+    state.value = await getState()
+    messages.value = []
+    chatError.value = ''
+    chatStatus.value = ''
+    loadError.value = ''
+    autoTrackingEnabled.value = true
+  } catch (err) {
+    loadError.value = err.message
+  }
+}
+
 onMounted(loadState)
 onMounted(loadMessages)
 onMounted(loadAutoTracking)
@@ -194,6 +268,18 @@ onBeforeUnmount(() => {
         >
           Auto-tracking: {{ autoTrackingEnabled ? 'On' : 'Off' }}
         </button>
+        <ModelsMenu
+          @select="handleModelSwitch"
+          @upload="triggerModelUpload"
+          @delete="handleModelDelete"
+        />
+        <input
+          ref="modelUploadInput"
+          type="file"
+          accept=".zip,.yml,.yaml"
+          class="upload-model-input"
+          @change="handleModelUploadChange"
+        />
         <button class="reset-btn" @click="handleReset">Reset</button>
       </div>
     </header>
@@ -289,6 +375,10 @@ onBeforeUnmount(() => {
 .autotracking-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.upload-model-input {
+  display: none;
 }
 
 .reset-btn {

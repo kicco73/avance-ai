@@ -15,8 +15,6 @@ logger = logging.getLogger(__name__)
 # transition_log_level must be one of these (see State.transition_log_level).
 VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 
-ATTACHMENTS_DIR = Path(__file__).parent / "attachments"
-
 # .md/.txt/.csv are sent as Anthropic `document` text sources; .pdf as base64.
 # Not mimetypes.guess_type(): it returns "text/markdown" for .md, which the
 # Anthropic document block API doesn't accept — must be normalized to
@@ -32,7 +30,7 @@ EXTENSION_TO_MEDIA_TYPE = {
 
 @dataclass
 class Attachment:
-    filename: str  # path relative to ATTACHMENTS_DIR, also used as the display title
+    filename: str  # path relative to the model's own directory, also used as the display title
     # Anthropic `document` source shape, precomputed at load time:
     # {"type": "text", "media_type": "text/plain", "data": <str>} or
     # {"type": "base64", "media_type": "application/pdf", "data": <base64 str>}.
@@ -88,10 +86,13 @@ class Signal:
     attachments: list[Attachment] = field(default_factory=list)
 
 
-def _load_attachments(paths: list[str], field_description: str) -> list[Attachment]:
-    """Reads attachment files once at boot (no hot-reload — restart the
-    backend to pick up changes, same as any other part of state_machine.yml).
-    Raises ValueError with an explicit, field-identifying message for an
+def _load_attachments(paths: list[str], field_description: str, base_dir: Path) -> list[Attachment]:
+    """Reads attachment files once per load_automaton() call (at boot, or on
+    a model upload) — not hot-reloaded within an already-loaded automaton's
+    lifetime. Resolved relative to `base_dir` — the directory holding the
+    YAML file currently being parsed, so each model's attachments live
+    alongside its own index.yml rather than in one shared location. Raises
+    ValueError with an explicit, field-identifying message for an
     unsupported extension or a missing file — never silently skipped."""
     attachments = []
     for rel_path in paths:
@@ -101,10 +102,10 @@ def _load_attachments(paths: list[str], field_description: str) -> list[Attachme
                 f"{field_description}: attachment '{rel_path}' has unsupported extension "
                 f"'{extension}'. Supported: {sorted(EXTENSION_TO_MEDIA_TYPE)}"
             )
-        full_path = ATTACHMENTS_DIR / rel_path
+        full_path = base_dir / rel_path
         if not full_path.is_file():
             raise ValueError(
-                f"{field_description}: attachment '{rel_path}' not found in {ATTACHMENTS_DIR}"
+                f"{field_description}: attachment '{rel_path}' not found in {base_dir}"
             )
         media_type = EXTENSION_TO_MEDIA_TYPE[extension]
         if media_type == "text/plain":
@@ -204,13 +205,18 @@ class Automaton:
 
 
 def load_automaton(path: str | Path) -> Automaton:
+    path = Path(path)
     with open(path, "r", encoding="utf-8") as f:
         raw = yaml.safe_load(f)
+
+    # Attachments are resolved relative to wherever this specific YAML file
+    # lives, not a shared fixed directory — each model carries its own.
+    base_dir = path.parent
 
     initial_state = raw["initial_state"]
     general_instructions = raw["general_instructions"].strip()
     general_instructions_attachments = _load_attachments(
-        raw.get("attachments", []), "general_instructions"
+        raw.get("attachments", []), "general_instructions", base_dir
     )
     raw_states = raw["states"]
 
@@ -239,7 +245,7 @@ def load_automaton(path: str | Path) -> Automaton:
             actions=actions,
             fixed_message=fixed_message.strip() if fixed_message else None,
             transition_log_level=raw_state.get("transition_log_level", "WARNING"),
-            attachments=_load_attachments(raw_state.get("attachments", []), f"state '{key}'"),
+            attachments=_load_attachments(raw_state.get("attachments", []), f"state '{key}'", base_dir),
         )
 
     signals: list[Signal] = []
@@ -257,7 +263,7 @@ def load_automaton(path: str | Path) -> Automaton:
                 ai_prompt=raw_signal["ai_prompt"].strip(),
                 placeholder_builtin=raw_signal.get("placeholder_builtin", False),
                 attachments=_load_attachments(
-                    raw_signal.get("attachments", []), f"signal '{name}'"
+                    raw_signal.get("attachments", []), f"signal '{name}'", base_dir
                 ),
             )
         )

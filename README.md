@@ -41,8 +41,9 @@ requests from this origin).
 1. Open `http://localhost:5173`.
 2. Chat freely in the central window: every message is sent to the backend over a
    websocket connection, which builds the system prompt by combining the current
-   state's `contextual_prompt` with `general_instructions` (both read from
-   `state_machine.yml`), and calls the configured LLM provider (see
+   state's `contextual_prompt` with `general_instructions` (both read from the
+   active model YAML — see [Editing the automaton](#editing-the-automaton)),
+   and calls the configured LLM provider (see
    [Switching LLM provider](#switching-llm-provider)) with the full conversation
    history. If the provider reports a transient overload (HTTP 503), the backend
    retries automatically with exponential backoff (up to 5 retries) and pushes
@@ -88,12 +89,17 @@ required.
 
 ## Editing the automaton
 
-`backend/state_machine.yml` is the **single source of truth** for states, actions,
-and contextual prompts. To add or modify a state:
+`backend/models/default/index.yml` is the **single source of truth** for
+states, actions, and contextual prompts — it's always what the backend loads
+at boot, regardless of any model uploaded via the UI in a previous session
+(see below; uploads are never persisted as "the new default"). Attachments
+referenced from it (see `backend/models/README.md`) live alongside it in
+`models/default/`. To add or modify a state:
 
-1. Add/edit an entry under `states:` with `label`, `final`, `description`,
+1. Add/edit an entry under `states:` with `label`, `description`,
    `contextual_prompt`, and the list of `actions` (each with `name`, `label`,
-   `button_text`, `target`).
+   `button_text`, `target`). `final` isn't a field: a state is final
+   automatically when it has no actions.
 2. Make sure every `target` referenced by an action matches an existing state
    key — the backend validates this constraint at startup and won't start if the
    YAML is inconsistent.
@@ -101,6 +107,47 @@ and contextual prompts. To add or modify a state:
    saved).
 
 No Python code needs to change for these edits.
+
+### Switching models at runtime
+
+The **"Models"** menu in the UI lists every model already present under
+`backend/models/` (from `GET /api/models`); clicking one calls
+`POST /api/model/switch` with its name and, on success, makes it the active
+automaton — the app resets (same as clicking "Reset") since a different
+automaton makes prior states/actions/signals meaningless. Nothing on disk is
+touched by a switch — the model was already there — so a failed validation
+(malformed `index.yml`) just reports the error and leaves the active
+automaton untouched.
+
+The menu's last entry, **"Upload..."**, lets you add a new model (or replace
+an existing one) without restarting the backend, via
+`PUT /api/models/{model_name}` — the model's name is decided by the request
+URL, not by anything in the uploaded file. The frontend derives it from the
+picked file's name (without extension); the raw file body is sent directly
+as the request payload, in either of two formats:
+
+- A lone `.yml`/`.yaml` file — becomes `models/<model_name>/index.yml`. It
+  can't carry attachments of its own; if it references `attachments:`, those
+  files must already exist in that directory (e.g. left there by a previous
+  zip upload of the same model).
+- A `.zip` archive containing exactly one `index.yml` at its root, plus zero
+  or more attachment files alongside it (flat, no subdirectories) — becomes
+  `models/<model_name>/` in full. PUTting a zip under an existing model's
+  name fully replaces that directory, unlike the lone-file case.
+
+The body's format is told apart by the request's `Content-Type` header
+(falling back to sniffing the zip file signature if it's missing or
+ambiguous) — this is a separate concern from the model's name, which always
+comes from the URL. Either way, the upload is validated with the exact same
+logic used at boot and by switch (state/action/trigger/signal/attachment
+checks, plus — for zips — path-safety and structure checks before anything
+is extracted). If validation fails, nothing changes — the staged content is
+discarded (and its target directory too, if this upload is what created it)
+— the current automaton and all state stay exactly as they were. If it
+succeeds, it becomes the active automaton and the app resets, exactly like a
+switch. This is in-memory only for the running process — the next backend
+restart always reloads `models/default/index.yml`, never the last active
+model.
 
 ### Exception: the `crisis` state
 
@@ -112,7 +159,7 @@ translate `fixed_message` verbatim into whatever language the user is
 writing in, and returns that translation as the reply.
 
 **Important**: the crisis resources in `crisis.fixed_message`
-(`backend/state_machine.yml`) are a **prototype placeholder** (Spanish
+(`backend/models/default/index.yml`) are a **prototype placeholder** (Spanish
 emergency numbers used as an example) and are explicitly marked
 `TO BE REPLACED`. Before any real-world use they must be replaced with
 resources verified, up to date, and validated by a qualified clinical team
@@ -130,7 +177,10 @@ avance-prototype/
 │   │   ├── factory.py                 # selects the provider from LLM_PROVIDER
 │   │   ├── anthropic_provider.py      # Anthropic API (Claude) call wrapper
 │   │   └── gemini_provider.py         # Google Gemini API call wrapper
-│   ├── state_machine.yml              # automaton definition + general_instructions + contextual/fixed prompts
+│   ├── models/                        # each subdir is a model: index.yml + its own attachments (see models/README.md)
+│   │   └── default/                   # boot default; POST /api/model/upload can add more here at runtime
+│   │       ├── index.yml              # automaton definition + general_instructions + contextual/fixed prompts
+│   │       └── *.txt                  # attachments referenced from index.yml
 │   ├── requirements.txt
 │   └── .env.example
 ├── frontend/
@@ -148,12 +198,15 @@ avance-prototype/
 
 ## API endpoints
 
-| Method | Path          | Description                                                             |
-|--------|---------------|-------------------------------------------------------------------------|
-| GET    | `/api/state`  | Current state, label, description, available actions                    |
-| WS     | `/ws/chat`    | Chat channel — see below                                                |
-| POST   | `/api/action` | `{action_name}` → applies the transition if valid for the current state |
-| POST   | `/api/reset`  | Resets state and history to the initial condition                       |
+| Method | Path                        | Description                                                                                                                               |
+|--------|-----------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| GET    | `/api/state`                | Current state, label, description, available actions                                                                                     |
+| WS     | `/ws/chat`                  | Chat channel — see below                                                                                                                  |
+| POST   | `/api/action`               | `{action_name}` → applies the transition if valid for the current state                                                                  |
+| GET    | `/api/models`               | `{models: [...]}` — names of model directories under `backend/models/` with an `index.yml` present                                       |
+| POST   | `/api/model/switch`         | `{model_name}` → validates and activates an already-present model (see above); resets on success, leaves everything untouched on failure  |
+| PUT    | `/api/models/{model_name}`  | Raw file body (`Content-Type` says the format) → creates/replaces that model, then validates and activates it (see above)                |
+| POST   | `/api/reset`                | Resets state and history to the initial condition                                                                                         |
 
 `/ws/chat` replaces a plain request/response: the client sends `{message}`,
 and the backend pushes one or more JSON frames back as the turn progresses —
