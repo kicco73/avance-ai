@@ -1,5 +1,5 @@
-const BASE_URL = 'http://localhost:8000'
-const WS_URL = 'ws://localhost:8000/ws/chat'
+const API_URL = '/api'
+const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/chat`
 
 async function handleResponse(res) {
   if (!res.ok) {
@@ -18,11 +18,11 @@ async function handleResponse(res) {
 }
 
 export function getState() {
-  return fetch(`${BASE_URL}/api/state`).then(handleResponse)
+  return fetch(`${API_URL}/state`).then(handleResponse)
 }
 
 export function getMessages() {
-  return fetch(`${BASE_URL}/api/messages`).then(handleResponse)
+  return fetch(`${API_URL}/messages`).then(handleResponse)
 }
 
 // Chat runs over a websocket: the backend pushes status updates (retrying,
@@ -32,11 +32,11 @@ export function createChatSocket() {
 }
 
 export function getSignals() {
-  return fetch(`${BASE_URL}/api/signals`).then(handleResponse)
+  return fetch(`${API_URL}/signals`).then(handleResponse)
 }
 
 export function postAction(actionName) {
-  return fetch(`${BASE_URL}/api/action`, {
+  return fetch(`${API_URL}/action`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action_name: actionName })
@@ -44,11 +44,11 @@ export function postAction(actionName) {
 }
 
 export function getAutoTracking() {
-  return fetch(`${BASE_URL}/api/autotracking`).then(handleResponse)
+  return fetch(`${API_URL}/autotracking`).then(handleResponse)
 }
 
 export function postAutoTracking(enabled) {
-  return fetch(`${BASE_URL}/api/autotracking`, {
+  return fetch(`${API_URL}/autotracking`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled })
@@ -56,7 +56,7 @@ export function postAutoTracking(enabled) {
 }
 
 export function postTriggersPreview(signals) {
-  return fetch(`${BASE_URL}/api/triggers/preview`, {
+  return fetch(`${API_URL}/triggers/preview`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ signals })
@@ -64,5 +64,5 @@ export function postTriggersPreview(signals) {
 }
 
 export function postReset() {
-  return fetch(`${BASE_URL}/api/reset`, { method: 'POST' }).then(handleResponse)
+  return fetch(`${API_URL}/reset`, { method: 'POST' }).then(handleResponse)
 }
