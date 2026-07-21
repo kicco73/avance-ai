@@ -125,7 +125,6 @@ states:
 
   precontemplation:
     label: "PreContemplation"
-    final: false
     description: >
       The user does not yet recognize the behavior as a problem, or has no
       current intention to change it within the next six months.
@@ -142,7 +141,6 @@ states:
 
   contemplation:
     label: "Contemplation"
-    final: false
     description: >
       The user is aware a problem may exist and is weighing costs and benefits
       of changing, without commitment to act.
@@ -160,7 +158,6 @@ states:
 
   preparation:
     label: "Preparation"
-    final: false
     description: >
       The user intends to take action in the near term and begins concrete planning.
     contextual_prompt: |
@@ -177,7 +174,6 @@ states:
 
   action:
     label: "Action"
-    final: false
     description: >
       The user is actively modifying the target behavior. Relapse risk is
       clinically highest in this stage.
@@ -206,7 +202,6 @@ states:
 
   maintenance:
     label: "Maintenance"
-    final: false
     description: >
       The changed behavior has been sustained long enough that relapse risk has
       substantially decreased.
@@ -230,7 +225,6 @@ states:
 
   relapse:
     label: "Relapse"
-    final: false
     description: >
       A return to the target behavior following exposure to a high-risk situation
       without an effective coping response. Not treated as failure.
@@ -249,7 +243,6 @@ states:
 
   crisis:
     label: "Crisis"
-    final: true
     transition_log_level: CRITICAL
     description: >
       An acute-risk signal has been detected. Control passes to a fixed,

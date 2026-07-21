@@ -57,6 +57,8 @@ class Action:
 class State:
     key: str
     label: str
+    # Derived at load time as `len(actions) == 0`, not read from YAML —
+    # structurally impossible to desync from the actual actions list.
     final: bool
     description: str
     contextual_prompt: str
@@ -228,7 +230,10 @@ def load_automaton(path: str | Path) -> Automaton:
         states[key] = State(
             key=key,
             label=raw_state["label"],
-            final=raw_state["final"],
+            # Derived, not read from YAML: a state is final iff it has no
+            # outgoing actions. Keeps the flag structurally impossible to
+            # desync from the actual `actions` list.
+            final=len(actions) == 0,
             description=raw_state["description"].strip(),
             contextual_prompt=raw_state["contextual_prompt"],
             actions=actions,

@@ -95,10 +95,12 @@ onMounted(load)
       </div>
 
       <div v-if="!loading && !error" class="triggers-section">
-        <h3>Next triggerable action</h3>
-        <p class="triggers-subtitle">
-          For state: <strong>{{ state?.label ?? '—' }}</strong>
+        <h2 class="state-name-title">{{ state?.label ?? '—' }}</h2>
+        <p v-if="state?.description" class="triggers-state-description">
+          {{ state.description }}
         </p>
+
+        <h3 class="triggers-heading">Next triggerable action</h3>
 
         <p v-if="triggersLoading" class="signals-status">Evaluating triggers…</p>
         <p v-else-if="triggersError" class="signals-status signals-error">{{ triggersError }}</p>
@@ -255,15 +257,22 @@ onMounted(load)
   border-top: 1px solid #ddd;
 }
 
-.triggers-section h3 {
-  margin: 0 0 0.25rem;
-  font-size: 1rem;
+.state-name-title {
+  margin: 0 0 0.4rem;
+  font-size: 1.3rem;
 }
 
-.triggers-subtitle {
-  margin: 0 0 1rem;
-  font-size: 0.8rem;
-  color: #777;
+.triggers-state-description {
+  margin: 0 0 1.75rem;
+  font-size: 0.9rem;
+  color: #555;
+  line-height: 1.45;
+}
+
+.triggers-heading {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+  color: #444;
 }
 
 .triggers-list {

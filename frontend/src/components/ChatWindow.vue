@@ -28,6 +28,7 @@ const emit = defineEmits(['send', 'resend'])
 
 const draft = ref('')
 const scrollEl = ref(null)
+const inputEl = ref(null)
 
 function submit() {
   const text = draft.value.trim()
@@ -48,6 +49,18 @@ watch(
     if (scrollEl.value) {
       scrollEl.value.scrollTop = scrollEl.value.scrollHeight
     }
+  }
+)
+
+// The input gets disabled while a reply is in flight, which drops browser
+// focus — reclaim it once the reply lands so the user isn't forced to click
+// back into the field before every message.
+watch(
+  () => props.loading,
+  async (isLoading, wasLoading) => {
+    if (isLoading || !wasLoading || props.finalStateReached) return
+    await nextTick()
+    inputEl.value?.focus()
   }
 )
 </script>
@@ -90,6 +103,7 @@ watch(
 
     <form class="input-row" @submit.prevent="submit">
       <input
+        ref="inputEl"
         v-model="draft"
         type="text"
         placeholder="Type a message..."
