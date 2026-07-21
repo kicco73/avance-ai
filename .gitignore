@@ -3,4 +3,5 @@ __pycache__/
 .env
 .venv
 frontend/dist/
+frontend/node_modules/
 backend/*.db

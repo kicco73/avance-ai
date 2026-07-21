@@ -186,7 +186,6 @@ whether the state was entered manually or via auto-tracking. Currently only
 - The `crisis` state's resources are placeholders (see above) and are not
   suitable for real-world use as they are.
 
-
 DOCKER COMMANDS
 
 docker build -t avance . ;
