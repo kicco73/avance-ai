@@ -1,421 +1,279 @@
-"""Single point of model-lifecycle management: which automaton is active,
-listing available models, and validating/staging/committing activations,
-uploads, and deletions.
-
-Same principle as db.py's isolation of persistence: one module, one
-responsibility. main.py routes HTTP/WS traffic into these domain functions —
-it doesn't contain this logic itself.
-
-Ownership boundary: this module owns *which automaton definition is active*
-and the on-disk `models/` directory. It deliberately does NOT own the chat
-session (history, current_state, auto-tracking) or the lock serializing chat
-turns — those are main.py's concern and staying there avoids a circular
-import (main.py needs list_models()/activate_model() from here; this module
-would need main.py's `session`/`chat_lock` to reset them). Instead,
-`activate_model()` and `put_model()` accept a `commit` callback, supplied by
-main.py, invoked exactly once on success with the newly active Automaton —
-main.py's callback is what actually resets the session, holding its own
-chat_lock while it does, so a switch/create-or-replace can never race an
-in-flight chat turn. Both call sites pass the *same* callback, so that reset
-logic itself is never duplicated between them.
+"""Which automaton is active, plus validating/staging/committing model
+activations, uploads, and deletions. `ModelsManager` holds that state as
+instance attributes; `models_manager` below is the one shared instance.
 """
 from __future__ import annotations
 
 import io
-import logging
 import shutil
 import uuid
 import zipfile
 from pathlib import Path
 from typing import Awaitable, Callable
 
-import db
-from automaton import Automaton, load_automaton
-from llm_provider import LLMProvider, LLMProviderError, generate_with_retry
-
-logger = logging.getLogger(__name__)
+from automaton import Automaton, AutomatonBuilder
+from db import db
 
 MODELS_DIR = Path(__file__).parent / "models"
 DEFAULT_MODEL_NAME = "default"
-
-# The shape maybe_open_conversation() needs to turn a state's attachments
-# into a priming turn — supplied by main.py (see that function's docstring),
-# the same generic "attachments -> priming messages" helper the chat path
-# itself uses, never reimplemented here.
-BuildPrimingMessages = Callable[[list], list[dict]]
 
 # Called with the newly-active Automaton once activate_model()/put_model()
 # have committed it — see module docstring.
 CommitCallback = Callable[[Automaton], Awaitable[None]]
 
-_active_automaton: Automaton | None = None
-_active_model_name: str | None = None
 
+class ModelsManager(object):
+    def __init__(self) -> None:
+        self._active_automaton: Automaton | None = None
+        self._active_model_name: str | None = None
+        self.__init_model()
 
-def _set_active(model_name: str, automaton: Automaton) -> None:
-    """The one place both pieces of "which model is active" state
-    (the automaton itself and its name) are updated together — every
-    call site that swaps the active automaton (boot, switch, put) goes
-    through this, so the two can never drift apart."""
-    global _active_automaton, _active_model_name
-    _active_automaton = automaton
-    _active_model_name = model_name
-
-
-def init_default_model() -> Automaton:
-    """Call once at startup: loads models/default/index.yml as the initial
-    active automaton, regardless of what was active via a switch/upload in
-    a previous run — there's no persistence of "which model was active"."""
-    automaton = load_automaton(MODELS_DIR / DEFAULT_MODEL_NAME / "index.yml")
-    _set_active(DEFAULT_MODEL_NAME, automaton)
-    return automaton
-
-
-def get_active_automaton() -> Automaton:
-    return _active_automaton
-
-
-def get_active_model_name() -> str | None:
-    return _active_model_name
-
-
-def list_models() -> dict:
-    """For GET /api/models: every subdirectory of models/ containing an
-    index.yml — the content isn't validated here, only its presence; real
-    validation happens at activate/put time. Directories starting with '.'
-    are excluded: those are staging artifacts (e.g. a `.tmp_<uuid>` left by
-    an interrupted put), never models. `active` is reported once at the
-    root, separately from the name list, rather than per-entry."""
-    if not MODELS_DIR.is_dir():
-        names = []
-    else:
-        names = sorted(
-            entry.name
-            for entry in MODELS_DIR.iterdir()
-            if entry.is_dir() and not entry.name.startswith(".") and (entry / "index.yml").is_file()
-        )
-    return {"models": names, "active": _active_model_name}
-
-
-def _is_safe_model_name(model_name: str) -> bool:
-    """No path traversal: must be a single plain path segment — not empty,
-    not '.'/'..', no separators, resolving to itself when treated as a bare
-    filename."""
-    if not model_name or model_name in (".", ".."):
-        return False
-    return Path(model_name).name == model_name
-
-
-def _load_and_validate(model_name: str) -> Automaton:
-    """Path safety, then that `model_name` is an existing model directory,
-    then its index.yml via the exact same load_automaton() used at
-    boot/upload/delete — raising ValueError on any failure. The one place
-    "is this a valid, existing model" is decided; nothing is touched by this
-    alone, it only reads. Shared by activate_model() and its idempotent
-    PUT .../activate wrapper below, so neither duplicates these checks."""
-    if not _is_safe_model_name(model_name):
-        raise ValueError(f"Invalid model name: '{model_name}'.")
-    model_dir = MODELS_DIR / model_name
-    if not model_dir.is_dir():
-        raise ValueError(f"Model '{model_name}' does not exist.")
-    return load_automaton(model_dir / "index.yml")
-
-
-async def activate_model(model_name: str, commit: CommitCallback) -> Automaton:
-    """Validates `model_name` via _load_and_validate(), then unconditionally
-    swaps the active automaton and awaits `commit(new_automaton)` (see
-    module docstring). Used directly by delete_model() to fall back to
-    "default", and by activate_model_idempotent() below whenever the
-    requested model differs from the one already active."""
-    new_automaton = _load_and_validate(model_name)
-
-    _set_active(model_name, new_automaton)
-    await commit(new_automaton)
-    return new_automaton
-
-
-async def activate_model_idempotent(model_name: str, commit: CommitCallback) -> Automaton:
-    """For PUT /api/models/{model_name}/activate: always validates
-    `model_name` first via _load_and_validate() — the exact same checks
-    activate_model() itself runs — even if it's already the active model;
-    idempotency only ever skips the SIDE EFFECTS (swap + the commit()-driven
-    session reset), never the correctness checks. Activating the model
-    that's already active is therefore a true no-op. A different model is
-    activated by delegating to activate_model() itself, reused as-is."""
-    new_automaton = _load_and_validate(model_name)
-    if model_name == _active_model_name:
-        return new_automaton
-    return await activate_model(model_name, commit)
-
-
-async def maybe_open_conversation(
-    llm_provider: LLMProvider,
-    build_priming_messages: BuildPrimingMessages,
-    fixed_message_instructions: str,
-) -> str | None:
-    """If the conversation is currently empty — fresh boot, a Reset, or a
-    freshly activated/uploaded/deleted-with-fallback model with no history
-    of its own yet — generates the opening message and persists it via
-    db.save_message(), exactly like any other assistant turn. A no-op the
-    moment there's already at least one message.
-
-    Builds the system prompt the same way a normal chat turn would for the
-    active automaton's initial state: contextual_prompt + general_prompt
-    (with that state's attachments primed via `build_priming_messages`), or
-    — if that state has a `fixed_message` — the same non-generative
-    translation rule already used for states like `crisis`, via
-    `fixed_message_instructions`. Calls the provider through
-    generate_with_retry(), the same retry/backoff on transient overload a
-    normal chat turn gets — just with no `on_retry` callback, since there's
-    no live client to report progress to during this synchronous path.
-
-    `llm_provider` and `build_priming_messages` are supplied by the caller
-    rather than imported, the same dependency-injection reasons as the
-    `commit` callback elsewhere in this module: the provider is main.py's
-    single shared instance, and priming-message construction is generic
-    chat-turn infrastructure this module doesn't own.
-
-    Entirely synchronous: the caller awaits this before its own operation
-    is considered complete — no background task, no websocket frame. If
-    generation fails even after retries, logs a warning and leaves the
-    conversation empty, exactly as it behaved before this feature existed.
-    """
-    if db.get_all_messages():
-        return
-
-    automaton = get_active_automaton()
-    state = automaton.get_state(automaton.initial_state)
-
-    if state.fixed_message:
-        system_prompt = fixed_message_instructions.format(fixed_message=state.fixed_message)
-        turn_attachments = []
-    else:
-        system_prompt = f"{state.contextual_prompt}\n\n{automaton.general_prompt}"
-        turn_attachments = automaton.general_prompt_attachments + state.attachments
-
-    priming_messages = build_priming_messages(turn_attachments)
-    priming_messages.append({
-            "role": "user",
-            "content": "...",
-    })
-
-    try:
-        reply = await generate_with_retry(llm_provider, system_prompt, priming_messages)
-    except LLMProviderError as exc:
-        logger.warning("Failed to generate the opening message: %s", exc)
-        return
-
-    db.save_message("assistant", reply)
-    return reply
-
-def _looks_like_zip(content_type: str | None, content: bytes) -> bool:
-    """Format is decided by Content-Type first (a PUT's body has no
-    filename to go on). 'zip' anywhere in the media type means zip; 'yaml'/
-    'yml' means the lone-file format. Anything else — missing header, or a
-    generic type like application/octet-stream — falls back to sniffing the
-    zip local-file-header magic number, since that's unambiguous regardless
-    of what the client claims."""
-    if content_type:
-        media_type = content_type.split(";")[0].strip().lower()
-        if "zip" in media_type:
-            return True
-        if "yaml" in media_type or "yml" in media_type:
+    @staticmethod
+    def _is_safe_model_name(model_name: str) -> bool:
+        """No path traversal: must be a single plain path segment — not
+        empty, not '.'/'..', no separators, resolving to itself when
+        treated as a bare filename."""
+        if not model_name or model_name in (".", ".."):
             return False
-    return content[:4] == b"PK\x03\x04"
+        return Path(model_name).name == model_name
 
+    @staticmethod
+    def _load_and_validate(model_name: str) -> Automaton:
+        """Path safety, then that `model_name` exists, then
+        AutomatonBuilder.build() — raising ValueError on any failure.
+        Shared by every method below that needs to load a model."""
+        if not ModelsManager._is_safe_model_name(model_name):
+            raise ValueError(f"Invalid model name: '{model_name}'.")
+        model_dir = MODELS_DIR / model_name
+        if not model_dir.is_dir():
+            raise ValueError(f"Model '{model_name}' does not exist.")
+        return AutomatonBuilder(model_dir / "index.yml").build()
 
-async def _put_yaml_model(model_name: str, content: bytes, commit: CommitCallback) -> dict:
-    """Creates/replaces models/<model_name>/index.yml from a raw YAML body.
-    A temp file is written directly inside the target model directory
-    (created upfront if missing), so attachment paths already resolve
-    correctly during validation. On success only the temp file is renamed to
-    index.yml — any attachments already present in that directory from a
-    previous PUT are left untouched (a lone YAML body can't carry attachments
-    of its own, unlike a zip bundle); on failure, a pre-existing directory is
-    left exactly as it was."""
-    model_dir = MODELS_DIR / model_name
-    dir_preexisted = model_dir.is_dir()
-    model_dir.mkdir(parents=True, exist_ok=True)
+    @staticmethod
+    def _looks_like_zip(content_type: str | None, content: bytes) -> bool:
+        """Content-Type decides first ('zip'/'yaml' in the media type); a
+        missing or generic header falls back to sniffing the zip magic
+        number, unambiguous regardless of what the client claims."""
+        if content_type:
+            media_type = content_type.split(";")[0].strip().lower()
+            if "zip" in media_type:
+                return True
+            if "yaml" in media_type or "yml" in media_type:
+                return False
+        return content[:4] == b"PK\x03\x04"
 
-    temp_path = model_dir / f".tmp_{uuid.uuid4().hex}.yml"
-    temp_path.write_bytes(content)
-    final_path = model_dir / "index.yml"
+    @staticmethod
+    def _extract_zip_safely(content: bytes, staging_dir: Path) -> None:
+        """Validates zip-slip safety, flatness, and exactly one root
+        'index.yml' — all before extracting anything. Raises ValueError or
+        zipfile.BadZipFile on any violation."""
+        with zipfile.ZipFile(io.BytesIO(content)) as zf:
+            names = [entry.replace("\\", "/") for entry in zf.namelist()]
+            staging_resolved = staging_dir.resolve()
 
-    try:
-        new_automaton = load_automaton(temp_path)
-    except Exception as exc:
-        # Broad on purpose: any way this file fails to become a usable
-        # Automaton (bad YAML, wrong shape, failed semantic validation) is
-        # equally "this upload is invalid" from the caller's point of view.
-        temp_path.unlink(missing_ok=True)
-        if not dir_preexisted:
-            try:
-                model_dir.rmdir()
-            except OSError:
-                pass  # not empty (e.g. a concurrent PUT of the same name) — leave it
-        return {"success": False, "error": str(exc)}
+            for name in names:
+                # Zip-slip protection: mandatory before extracting anything.
+                if name.startswith("/") or any(part == ".." for part in Path(name).parts):
+                    raise ValueError(f"Unsafe path inside zip: '{name}'.")
+                resolved = (staging_dir / name).resolve()
+                if resolved != staging_resolved and staging_resolved not in resolved.parents:
+                    raise ValueError(f"Unsafe path inside zip: '{name}'.")
+                # Flat only: a directory entry or a nested file both contain '/'.
+                if "/" in name:
+                    raise ValueError(f"Zip must be flat (no subdirectories): found '{name}'.")
 
-    temp_path.replace(final_path)
+            index_entries = [n for n in names if n == "index.yml"]
+            other_yaml_entries = [
+                n for n in names if n != "index.yml" and n.lower().endswith((".yml", ".yaml"))
+            ]
+            if not index_entries:
+                raise ValueError("Zip must contain an 'index.yml' file at its root.")
+            if len(index_entries) > 1:
+                raise ValueError("Zip contains more than one 'index.yml'.")
+            if other_yaml_entries:
+                raise ValueError(
+                    "Zip must contain only one YAML file (index.yml) at its root; "
+                    f"also found: {', '.join(sorted(other_yaml_entries))}"
+                )
 
-    _set_active(model_name, new_automaton)
-    await commit(new_automaton)
+            zf.extractall(staging_dir)
 
-    return {"success": True, "model_name": model_name}
+    def _set_active(self, model_name: str, automaton: Automaton) -> None:
+        """The one place both pieces of "which model is active" (the
+        automaton and its name) update together — every swap site goes
+        through this, so they can never drift apart."""
+        self._active_automaton = automaton
+        self._active_model_name = model_name
 
+    def __init_model(self) -> Automaton:
+        """Loads whichever model is persisted as active (Settings table,
+        "default" on the very first boot) and restores its current state.
+        On failure, falls back to "default" with a full reset; if that
+        fails too, propagates so the server fails to start."""
+        model_name = db.get_active_model_name()
+        if model_name is None:
+            model_name = DEFAULT_MODEL_NAME
+            db.set_active_model_name(model_name)
 
-def _extract_zip_safely(content: bytes, staging_dir: Path) -> None:
-    """Validates zip-slip safety, flatness (no subdirectories), and that
-    there's exactly one 'index.yml' at the root with no other .yml/.yaml
-    alongside it — ALL before extracting a single file to disk. Raises
-    ValueError (or zipfile.BadZipFile, for a corrupt/non-zip upload) on any
-    violation."""
-    with zipfile.ZipFile(io.BytesIO(content)) as zf:
-        names = [entry.replace("\\", "/") for entry in zf.namelist()]
-        staging_resolved = staging_dir.resolve()
+        try:
+            automaton = self._load_and_validate(model_name)
+        except ValueError:
+            if model_name == DEFAULT_MODEL_NAME:
+                raise
+            model_name = DEFAULT_MODEL_NAME
+            automaton = self._load_and_validate(model_name)
+            db.reset_all()
+            db.set_active_model_name(model_name)
+        else:
+            automaton.set_current_state(db.get_current_state(automaton.initial_state))
 
-        for name in names:
-            # Zip-slip protection: mandatory before extracting anything.
-            if name.startswith("/") or any(part == ".." for part in Path(name).parts):
-                raise ValueError(f"Unsafe path inside zip: '{name}'.")
-            resolved = (staging_dir / name).resolve()
-            if resolved != staging_resolved and staging_resolved not in resolved.parents:
-                raise ValueError(f"Unsafe path inside zip: '{name}'.")
-            # Flat only: a directory entry or a nested file both contain '/'.
-            if "/" in name:
-                raise ValueError(f"Zip must be flat (no subdirectories): found '{name}'.")
+        self._set_active(model_name, automaton)
+        return automaton
 
-        index_entries = [n for n in names if n == "index.yml"]
-        other_yaml_entries = [
-            n for n in names if n != "index.yml" and n.lower().endswith((".yml", ".yaml"))
-        ]
-        if not index_entries:
-            raise ValueError("Zip must contain an 'index.yml' file at its root.")
-        if len(index_entries) > 1:
-            raise ValueError("Zip contains more than one 'index.yml'.")
-        if other_yaml_entries:
-            raise ValueError(
-                "Zip must contain only one YAML file (index.yml) at its root; "
-                f"also found: {', '.join(sorted(other_yaml_entries))}"
+    def get_active_automaton(self) -> Automaton:
+        return self._active_automaton
+
+    def get_active_model_name(self) -> str | None:
+        return self._active_model_name
+
+    def list_models(self) -> dict:
+        """Every subdirectory of models/ with an index.yml (unvalidated —
+        real validation is at activate/put time). '.'-prefixed dirs are
+        staging artifacts, excluded."""
+        if not MODELS_DIR.is_dir():
+            names = []
+        else:
+            names = sorted(
+                entry.name
+                for entry in MODELS_DIR.iterdir()
+                if entry.is_dir() and not entry.name.startswith(".") and (entry / "index.yml").is_file()
             )
+        return {"models": names, "active": self._active_model_name}
 
-        zf.extractall(staging_dir)
+    async def activate_model(self, model_name: str, commit: CommitCallback) -> Automaton:
+        """Validates via _load_and_validate(), then unconditionally swaps
+        the active automaton and awaits `commit(new_automaton)`. Used by
+        delete_model()'s fallback and activate_model_idempotent()."""
+        new_automaton = self._load_and_validate(model_name)
+
+        self._set_active(model_name, new_automaton)
+        await commit(new_automaton)
+        return new_automaton
+
+    async def activate_model_idempotent(self, model_name: str, commit: CommitCallback) -> Automaton:
+        """Always validates `model_name` first, even if already active —
+        idempotency only skips the swap + conversation reset, never the
+        correctness checks. A different model delegates to activate_model()."""
+        new_automaton = self._load_and_validate(model_name)
+        if model_name == self._active_model_name:
+            return new_automaton
+        return await self.activate_model(model_name, commit)
+
+    async def _put_yaml_model(self, model_name: str, content: bytes, commit: CommitCallback) -> dict:
+        """Writes a temp file inside the model dir so attachment paths
+        resolve during validation; renames to index.yml only on success.
+        Failure leaves the directory exactly as it was."""
+        model_dir = MODELS_DIR / model_name
+        dir_preexisted = model_dir.is_dir()
+        model_dir.mkdir(parents=True, exist_ok=True)
+
+        temp_path = model_dir / f".tmp_{uuid.uuid4().hex}.yml"
+        temp_path.write_bytes(content)
+        final_path = model_dir / "index.yml"
+
+        try:
+            new_automaton = AutomatonBuilder(temp_path).build()
+        except Exception as exc:
+            # Broad on purpose: any way this file fails to become a usable
+            # Automaton is equally "this upload is invalid" to the caller.
+            temp_path.unlink(missing_ok=True)
+            if not dir_preexisted:
+                try:
+                    model_dir.rmdir()
+                except OSError:
+                    pass  # not empty (e.g. a concurrent PUT of the same name) — leave it
+            return {"success": False, "error": str(exc)}
+
+        temp_path.replace(final_path)
+
+        self._set_active(model_name, new_automaton)
+        await commit(new_automaton)
+
+        return {"success": True, "model_name": model_name}
+
+    async def _put_zip_model(self, model_name: str, content: bytes, commit: CommitCallback) -> dict:
+        """Extracts into a temp dir (so attachment paths resolve during
+        validation), then promotes it into place with one rename on
+        success, replacing any previous model of that name."""
+        staging_dir = MODELS_DIR / f".tmp_{uuid.uuid4().hex}"
+        staging_dir.mkdir(parents=True)
+
+        try:
+            self._extract_zip_safely(content, staging_dir)
+        except (zipfile.BadZipFile, ValueError) as exc:
+            shutil.rmtree(staging_dir, ignore_errors=True)
+            return {"success": False, "error": str(exc)}
+
+        index_path = staging_dir / "index.yml"
+        final_dir = MODELS_DIR / model_name
+
+        try:
+            new_automaton = AutomatonBuilder(index_path).build()
+        except Exception as exc:
+            shutil.rmtree(staging_dir, ignore_errors=True)
+            return {"success": False, "error": str(exc)}
+
+        if final_dir.exists():
+            shutil.rmtree(final_dir)
+        staging_dir.rename(final_dir)
+
+        self._set_active(model_name, new_automaton)
+        await commit(new_automaton)
+
+        return {"success": True, "model_name": model_name}
+
+    async def put_model(
+        self, model_name: str, content: bytes, content_type: str | None, commit: CommitCallback
+    ) -> dict:
+        """Creates or replaces a model from a raw body (YAML or zip, told
+        apart by _looks_like_zip). Stages -> validates -> only on success
+        commits and swaps the active automaton via `commit`."""
+        if not self._is_safe_model_name(model_name):
+            return {"success": False, "error": f"Invalid model name: '{model_name}'."}
+
+        if self._looks_like_zip(content_type, content):
+            return await self._put_zip_model(model_name, content, commit)
+        return await self._put_yaml_model(model_name, content, commit)
+
+    def export_model_zip(self, model_name: str) -> bytes:
+        """Exports `model_name` as a zip in the exact layout PUT accepts,
+        so it round-trips with no transformation. Not restricted to the
+        active model; raises FileNotFoundError if unknown."""
+        if not self._is_safe_model_name(model_name) or not (MODELS_DIR / model_name).is_dir():
+            raise FileNotFoundError(f"Model '{model_name}' does not exist.")
+
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+            for entry in sorted((MODELS_DIR / model_name).iterdir()):
+                if entry.is_file() and not entry.name.startswith("."):
+                    zf.write(entry, arcname=entry.name)
+        return buffer.getvalue()
+
+    async def delete_model(self, model_name: str, commit: CommitCallback) -> None:
+        """Removes models/<model_name>/ from disk — any model, active or
+        not (except "default", which raises PermissionError). If it was
+        active, reactivates "default" via activate_model()."""
+        if not self._is_safe_model_name(model_name) or not (MODELS_DIR / model_name).is_dir():
+            raise FileNotFoundError(f"Model '{model_name}' does not exist.")
+        if model_name == DEFAULT_MODEL_NAME:
+            raise PermissionError("The default model cannot be deleted.")
+
+        shutil.rmtree(MODELS_DIR / model_name)
+
+        if model_name == self._active_model_name:
+            await self.activate_model(DEFAULT_MODEL_NAME, commit)
 
 
-async def _put_zip_model(model_name: str, content: bytes, commit: CommitCallback) -> dict:
-    """Creates/replaces models/<model_name>/ from a raw zip body: extracted
-    into a fresh temp directory (sibling to the eventual model directory, not
-    yet under its final name) so attachment paths resolve correctly during
-    validation — everything the zip contained is already colocated there. On
-    success the whole directory is promoted into place with a single rename,
-    replacing any previous model of the same name entirely (unlike the
-    lone-YAML PUT, a zip is a complete, self-contained bundle); on failure a
-    pre-existing directory of that name is left exactly as it was."""
-    staging_dir = MODELS_DIR / f".tmp_{uuid.uuid4().hex}"
-    staging_dir.mkdir(parents=True)
-
-    try:
-        _extract_zip_safely(content, staging_dir)
-    except (zipfile.BadZipFile, ValueError) as exc:
-        shutil.rmtree(staging_dir, ignore_errors=True)
-        return {"success": False, "error": str(exc)}
-
-    index_path = staging_dir / "index.yml"
-    final_dir = MODELS_DIR / model_name
-
-    try:
-        new_automaton = load_automaton(index_path)
-    except Exception as exc:
-        shutil.rmtree(staging_dir, ignore_errors=True)
-        return {"success": False, "error": str(exc)}
-
-    if final_dir.exists():
-        shutil.rmtree(final_dir)
-    staging_dir.rename(final_dir)
-
-    _set_active(model_name, new_automaton)
-    await commit(new_automaton)
-
-    return {"success": True, "model_name": model_name}
-
-
-async def put_model(
-    model_name: str, content: bytes, content_type: str | None, commit: CommitCallback
-) -> dict:
-    """For PUT /api/models/{model_name}: creates or fully replaces that
-    model from a raw request body. Unlike the old filename-based upload, the
-    resource's identity (`model_name`) comes only from the URL — never from
-    the body's content or any name embedded in it — so it's validated before
-    any filesystem path is built from it. The body's *format* (single YAML
-    vs. zip bundle) is a separate, unrelated concern, decided from
-    Content-Type with a magic-number fallback (see _looks_like_zip).
-
-    Stages -> validates via load_automaton() (the exact same function used
-    at boot and by activate_model()) -> only on success, commits into
-    models/<model_name>/, swaps the active automaton, and awaits
-    `commit(new_automaton)` — the identical callback activate_model() uses,
-    so the reset logic is never duplicated between switch and this endpoint.
-    A failed validation leaves the filesystem, the active automaton, and
-    (since `commit` is never called) the chat session exactly as they were.
-    """
-    if not _is_safe_model_name(model_name):
-        return {"success": False, "error": f"Invalid model name: '{model_name}'."}
-
-    if _looks_like_zip(content_type, content):
-        return await _put_zip_model(model_name, content, commit)
-    return await _put_yaml_model(model_name, content, commit)
-
-
-def export_model_zip(model_name: str) -> bytes:
-    """For GET /api/models/{model_name}: the read side of the same
-    resource PUT /api/models/{model_name} writes — the zip this returns is
-    always accepted back by that endpoint with no transformation, since it's
-    built with the exact layout upload/put already requires (flat, index.yml
-    at the zip root, attachments alongside it). Always a zip, even for a
-    model with no attachments at all, so there's exactly one export format
-    to round-trip through PUT.
-
-    Raises FileNotFoundError if `model_name` fails path-safety validation or
-    doesn't correspond to an existing model directory — same as
-    delete_model(), and deliberately undistinguished for the same reason.
-    Not restricted to the active model: any listed model can be exported,
-    consistent with DELETE already being general-purpose on this resource.
-    """
-    if not _is_safe_model_name(model_name) or not (MODELS_DIR / model_name).is_dir():
-        raise FileNotFoundError(f"Model '{model_name}' does not exist.")
-
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        for entry in sorted((MODELS_DIR / model_name).iterdir()):
-            if entry.is_file() and not entry.name.startswith("."):
-                zf.write(entry, arcname=entry.name)
-    return buffer.getvalue()
-
-
-async def delete_model(model_name: str, commit: CommitCallback) -> None:
-    """For DELETE /api/models/{model_name}: removes models/<model_name>/
-    from disk. Deliberately generalized beyond "delete the active model" —
-    any listed model can be deleted, active or not, e.g. to clean up a model
-    uploaded in the past without first having to switch to it.
-
-    Raises FileNotFoundError if `model_name` fails path-safety validation or
-    doesn't correspond to an existing model directory — both are "this
-    resource doesn't exist" from the caller's point of view, deliberately
-    undistinguished. Raises PermissionError if `model_name` is the default
-    model: enforced here unconditionally, the same way e.g. final states are
-    enforced server-side in chat_ws rather than trusted to the frontend. Lets
-    any OSError from the actual filesystem removal propagate as-is.
-
-    Only if `model_name` was the active model does this have any further
-    effect: it reactivates "default" via activate_model() (the same function
-    switch/put already use, including its commit()-driven session reset) —
-    deleting an unused model must never touch the in-memory automaton or DB.
-    """
-    if not _is_safe_model_name(model_name) or not (MODELS_DIR / model_name).is_dir():
-        raise FileNotFoundError(f"Model '{model_name}' does not exist.")
-    if model_name == DEFAULT_MODEL_NAME:
-        raise PermissionError("The default model cannot be deleted.")
-
-    shutil.rmtree(MODELS_DIR / model_name)
-
-    if model_name == _active_model_name:
-        await activate_model(DEFAULT_MODEL_NAME, commit)
+# The one shared instance every other module imports (`from models_manager
+# import models_manager`) — see module docstring.
+models_manager = ModelsManager()
