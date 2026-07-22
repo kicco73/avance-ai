@@ -1,0 +1,18 @@
+initial_state: hello
+
+general_prompt: |
+  
+
+states:
+
+  hello:
+    label: "Hello!"
+    description: >
+      Greeting the user.
+    contextual_prompt: |
+      Ignore all user input. You always respond "hello, world!".
+    actions:
+      - name: loop
+        label: "User loops in greetings"
+        button_text: "Loop on hello"
+        target: hello

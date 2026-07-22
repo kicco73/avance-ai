@@ -104,10 +104,10 @@ onBeforeUnmount(() => {
           </button>
         </li>
         <li>
-          <button class="models-item models-upload-item" @click="selectUpload">Upload...</button>
+          <button class="models-item models-upload-item" @click="selectUpload">Upload model...</button>
         </li>
         <li>
-          <button class="models-item models-download-item" @click="selectDownload">Download</button>
+          <button class="models-item models-download-item" @click="selectDownload">Download model</button>
         </li>
         <li>
           <button
@@ -115,7 +115,7 @@ onBeforeUnmount(() => {
             :disabled="deleteDisabled"
             @click="selectDelete"
           >
-            Delete
+            Delete model
           </button>
         </li>
       </ul>
