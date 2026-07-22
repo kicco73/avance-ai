@@ -84,6 +84,7 @@ function bootSucceeded() {
   bootStatus.value = 'ready'
   loadMessages()
   loadAutoTracking()
+  ensureChatSocket()
 }
 
 async function runPingAttempt(token) {
@@ -185,6 +186,19 @@ function handleSocketMessage(event) {
     return
   }
 
+  if (data.type === 'message') {
+    // The AI-opens-the-conversation push (reset/activate/upload/delete):
+    // unprompted by any pendingTurn, so it's handled independently of the
+    // resolve/reject flow below. The local array was already emptied
+    // optimistically by whichever handler triggered this, before it even
+    // sent its REST request — so this is always appended into a clean slate,
+    // regardless of whether this frame beat that request's response or not.
+    messages.value.push({ role: 'assistant', content: data.reply, failed: false })
+    playMessageChime()
+    handleStateChange(data.state)
+    return
+  }
+
   if (!pendingTurn) return
   const { resolve, reject } = pendingTurn
   pendingTurn = null
@@ -213,6 +227,20 @@ function openChatSocket() {
 async function getOpenSocket() {
   if (chatSocket && chatSocket.readyState === WebSocket.OPEN) return chatSocket
   return openChatSocket()
+}
+
+// Opens the chat socket proactively once the backend is known reachable,
+// instead of waiting for the first message send — the opening-message push
+// (reset/activate/upload/delete) can arrive at any time, regardless of
+// which view (chat/Models/Signals) is currently on screen, so the
+// connection has to already be there rather than lazily created on demand.
+function ensureChatSocket() {
+  if (chatSocket && chatSocket.readyState <= WebSocket.OPEN) return // CONNECTING or OPEN
+  openChatSocket().catch(() => {
+    // A failed proactive connect isn't fatal here: getOpenSocket() retries
+    // on the next actual chat turn, and a push missed while disconnected
+    // isn't lost either — the message is already persisted server-side.
+  })
 }
 
 // Sends one chat turn over the websocket and waits for the backend's
@@ -273,13 +301,17 @@ async function handleAction(actionName) {
 
 async function handleReset() {
   if (!window.confirm('Reset the conversation, signals, and transitions? This cannot be undone.')) return
+  // Emptied before the request is even sent, not after the response comes
+  // back: the opening-message push over the websocket can arrive before,
+  // during, or after this REST call resolves, so there's no "clear, then
+  // the push arrives and gets wiped" race — whenever it lands, the array is
+  // already the empty slate it expects to be appended into.
   messages.value = []
   chatError.value = ''
   chatStatus.value = ''
   loadError.value = ''
   autoTrackingEnabled.value = true
   const newState = await postReset()
-  await loadMessages()
   state.value = null
   handleStateChange(newState)
 }
@@ -297,6 +329,14 @@ async function handleModelUploadChange(event) {
   if (!file) return
 
   const modelName = file.name.replace(/\.(zip|ya?ml)$/i, '')
+  // See handleReset: emptied before the request, not after — so an
+  // opening-message push arriving anytime around this call always lands in
+  // an already-empty array.
+  messages.value = []
+  chatError.value = ''
+  chatStatus.value = ''
+  loadError.value = ''
+  autoTrackingEnabled.value = true
   try {
     const result = await putModel(modelName, file)
     if (!result.success) {
@@ -304,13 +344,7 @@ async function handleModelUploadChange(event) {
       return
     }
     const newState = await getState()
-    messages.value = []
-    chatError.value = ''
-    chatStatus.value = ''
-    loadError.value = ''
-    autoTrackingEnabled.value = true
     modelsMenu.value?.refresh()
-    await loadMessages()
     handleStateChange(newState)
   } catch (err) {
     loadError.value = err.message
@@ -323,6 +357,12 @@ async function handleModelUploadChange(event) {
 // idempotent backend-side (re-activating the already-active model is a
 // no-op, no reset) so this handler doesn't need to special-case that itself.
 async function handleModelSwitch(modelName) {
+  // See handleReset: emptied before the request, not after.
+  messages.value = []
+  chatError.value = ''
+  chatStatus.value = ''
+  loadError.value = ''
+  autoTrackingEnabled.value = true
   try {
     const result = await activateModel(modelName)
     if (!result.success) {
@@ -330,13 +370,7 @@ async function handleModelSwitch(modelName) {
       return
     }
     const newState = await getState()
-    messages.value = []
-    chatError.value = ''
-    chatStatus.value = ''
-    loadError.value = ''
-    autoTrackingEnabled.value = true
     modelsMenu.value?.refresh()
-    await loadMessages() 
     handleStateChange(newState)
   } catch (err) {
     loadError.value = err.message
@@ -369,17 +403,17 @@ async function handleModelDownload(modelName) {
 // the chat. Unlike switch/upload, failures here surface as a thrown Error
 // (see deleteModel), not a {success: false} value.
 async function handleModelDelete(modelName) {
+  // See handleReset: emptied before the request, not after.
+  messages.value = []
+  chatError.value = ''
+  chatStatus.value = ''
+  loadError.value = ''
+  autoTrackingEnabled.value = true
   try {
     await deleteModel(modelName)
     const newState = await getState()
-    messages.value = []
-    chatError.value = ''
-    chatStatus.value = ''
-    loadError.value = ''
-    autoTrackingEnabled.value = true
     handleStateChange(newState)
     modelsMenu.value?.refresh()
-    await loadMessages()
   } catch (err) {
     loadError.value = err.message
   }

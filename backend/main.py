@@ -105,6 +105,14 @@ class TriggersPreviewRequest(BaseModel):
 # connections so two concurrent sends can't race on `session`.
 chat_lock = asyncio.Lock()
 
+# Every currently-open /ws/chat connection, so the opening message generated
+# by _open_conversation_if_needed() (triggered by an HTTP request — reset,
+# activate, upload, delete — not by a message received on any one particular
+# socket) can be pushed to whichever connection(s) happen to be open right
+# now, rather than tied to the connection that happened to receive the
+# triggering chat message (there may be none).
+_ws_connections: set[WebSocket] = set()
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -309,6 +317,7 @@ def get_messages():
 @app.websocket("/ws/chat")
 async def chat_ws(websocket: WebSocket):
     await websocket.accept()
+    _ws_connections.add(websocket)
     try:
         while True:
             data = await websocket.receive_json()
@@ -334,6 +343,8 @@ async def chat_ws(websocket: WebSocket):
                 await _process_chat_message(text, websocket.send_json)
     except WebSocketDisconnect:
         pass
+    finally:
+        _ws_connections.discard(websocket)
 
 
 @app.post("/api/action")
@@ -380,6 +391,21 @@ async def post_reset():
     return _state_payload()
 
 
+async def _push_opening_message(reply: str) -> None:
+    """Pushes the just-generated opening message to every currently-open
+    /ws/chat connection as a `message` frame, so the frontend never needs to
+    re-fetch messages after reset/activate/upload/delete — it just waits for
+    this push. If no connection is open (e.g. at server boot, before the
+    frontend has connected), this is a no-op: the message is already
+    persisted, so the next connection finds it via GET /api/messages."""
+    payload = {"type": "message", "reply": reply, "state": _state_payload()}
+    for ws in list(_ws_connections):
+        try:
+            await ws.send_json(payload)
+        except Exception:
+            pass  # a dropped connection is cleaned up by chat_ws's own finally
+
+
 async def _open_conversation_if_needed() -> None:
     """Generates the opening message if the conversation is currently empty
     (see models_manager.maybe_open_conversation() — a no-op otherwise), then
@@ -391,11 +417,17 @@ async def _open_conversation_if_needed() -> None:
     meaning the *next* real chat turn would build its context as if the AI
     had never said anything — the model would have no memory of its own
     opening line. Called from both places that can leave the conversation
-    empty: server boot (via lifespan) and _activate_and_reset below."""
-    await models_manager.maybe_open_conversation(
+    empty: server boot (via lifespan) and _activate_and_reset below.
+
+    If a message was actually generated, pushes it over the open websocket
+    connection(s) via _push_opening_message — the frontend's only way of
+    learning about it, replacing the manual reload it used to do instead."""
+    reply = await models_manager.maybe_open_conversation(
         llm_provider, _build_priming_messages, FIXED_MESSAGE_INSTRUCTIONS
     )
     session.history = db.get_all_messages()
+    if reply is not None:
+        await _push_opening_message(reply)
 
 
 async def _activate_and_reset(new_automaton: Automaton) -> None:
