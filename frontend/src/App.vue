@@ -30,6 +30,7 @@ const chatStatus = ref('')
 const actionLoading = ref(false)
 const loadError = ref('')
 const modelUploadInput = ref(null)
+const modelsMenu = ref(null)
 
 // Plain (non-reactive) connection state: the socket itself and the
 // resolve/reject pair for whichever chat turn is currently in flight.
@@ -170,6 +171,7 @@ async function handleAction(actionName) {
 }
 
 async function handleReset() {
+  if (!window.confirm('Reset the conversation, signals, and transitions? This cannot be undone.')) return
   state.value = await postReset()
   messages.value = []
   chatError.value = ''
@@ -203,6 +205,7 @@ async function handleModelUploadChange(event) {
     chatStatus.value = ''
     loadError.value = ''
     autoTrackingEnabled.value = true
+    modelsMenu.value?.refresh()
   } catch (err) {
     loadError.value = err.message
   }
@@ -226,6 +229,7 @@ async function handleModelSwitch(modelName) {
     chatStatus.value = ''
     loadError.value = ''
     autoTrackingEnabled.value = true
+    modelsMenu.value?.refresh()
   } catch (err) {
     loadError.value = err.message
   }
@@ -265,6 +269,7 @@ async function handleModelDelete(modelName) {
     chatStatus.value = ''
     loadError.value = ''
     autoTrackingEnabled.value = true
+    modelsMenu.value?.refresh()
   } catch (err) {
     loadError.value = err.message
   }
@@ -284,15 +289,8 @@ onBeforeUnmount(() => {
       <h1>Avance — Prototype</h1>
       <div class="topbar-actions">
         <button class="signals-btn" @click="showSignals = true">Signals</button>
-        <button
-          class="autotracking-btn"
-          :class="{ 'autotracking-btn-on': autoTrackingEnabled }"
-          :disabled="autoTrackingLoading"
-          @click="toggleAutoTracking"
-        >
-          Auto-tracking: {{ autoTrackingEnabled ? 'On' : 'Off' }}
-        </button>
         <ModelsMenu
+          ref="modelsMenu"
           @select="handleModelSwitch"
           @upload="triggerModelUpload"
           @download="handleModelDownload"
@@ -330,7 +328,14 @@ onBeforeUnmount(() => {
 
     <StateBar :state="state" />
 
-    <SignalsView v-if="showSignals" :state="state" @close="showSignals = false" />
+    <SignalsView
+      v-if="showSignals"
+      :state="state"
+      :auto-tracking-enabled="autoTrackingEnabled"
+      :auto-tracking-loading="autoTrackingLoading"
+      @close="showSignals = false"
+      @toggle-auto-tracking="toggleAutoTracking"
+    />
   </div>
 </template>
 
@@ -372,34 +377,6 @@ onBeforeUnmount(() => {
 .signals-btn:hover {
   background: #4a6fa5;
   color: white;
-}
-
-.autotracking-btn {
-  padding: 0.4rem 1rem;
-  border-radius: 6px;
-  border: 1px solid #999;
-  background: white;
-  color: #666;
-  cursor: pointer;
-}
-
-.autotracking-btn:hover:not(:disabled) {
-  background: #f0f0f0;
-}
-
-.autotracking-btn-on {
-  border-color: #2e7d32;
-  background: #2e7d32;
-  color: white;
-}
-
-.autotracking-btn-on:hover:not(:disabled) {
-  background: #256428;
-}
-
-.autotracking-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 
 .upload-model-input {

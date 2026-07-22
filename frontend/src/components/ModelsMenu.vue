@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { getModels } from '../api.js'
 
 const DEFAULT_MODEL_NAME = 'default'
@@ -12,17 +12,15 @@ const error = ref('')
 const models = ref([])
 const activeModelName = ref(null)
 const rootEl = ref(null)
-const confirmingDelete = ref(false)
 
 const deleteDisabled = computed(() => activeModelName.value === DEFAULT_MODEL_NAME)
 
-async function toggle() {
-  if (open.value) {
-    open.value = false
-    return
-  }
-  open.value = true
-  confirmingDelete.value = false
+// The single fetch behind both the menu's tick and the button's own label —
+// called on mount (so the button already shows the right name before the
+// menu is ever opened), whenever the dropdown opens, and imperatively via
+// `refresh()` (exposed below) after the parent completes a switch/upload/
+// delete — never a second, separate call just to relabel the button.
+async function loadModels() {
   loading.value = true
   error.value = ''
   try {
@@ -35,6 +33,19 @@ async function toggle() {
     loading.value = false
   }
 }
+
+async function toggle() {
+  if (open.value) {
+    open.value = false
+    return
+  }
+  open.value = true
+  await loadModels()
+}
+
+onMounted(loadModels)
+
+defineExpose({ refresh: loadModels })
 
 function selectModel(name) {
   open.value = false
@@ -52,21 +63,12 @@ function selectDownload() {
   emit('download', activeModelName.value)
 }
 
-// "Delete" doesn't act immediately — it swaps the panel to an inline
-// confirm/cancel step first, since removing a model is destructive and
-// irreversible.
+// Destructive and irreversible, so confirm via the browser's own dialog
+// before emitting — no custom confirm UI to keep in sync.
 function selectDelete() {
   if (deleteDisabled.value || !activeModelName.value) return
-  confirmingDelete.value = true
-}
-
-function cancelDelete() {
-  confirmingDelete.value = false
-}
-
-function confirmDelete() {
   const name = activeModelName.value
-  confirmingDelete.value = false
+  if (!window.confirm(`Delete model "${name}"? This cannot be undone.`)) return
   open.value = false
   emit('delete', name)
 }
@@ -76,7 +78,6 @@ function confirmDelete() {
 function handleClickOutside(event) {
   if (open.value && rootEl.value && !rootEl.value.contains(event.target)) {
     open.value = false
-    confirmingDelete.value = false
   }
 }
 document.addEventListener('click', handleClickOutside, true)
@@ -87,19 +88,13 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="models-menu" ref="rootEl">
-    <button class="models-btn" @click="toggle">Models</button>
+    <button class="models-btn" :title="activeModelName ?? 'Models'" @click="toggle">
+      {{ activeModelName ?? 'Models' }}
+    </button>
 
     <div v-if="open" class="models-panel">
       <p v-if="loading" class="models-status">Loading…</p>
       <p v-else-if="error" class="models-status models-error">{{ error }}</p>
-
-      <div v-else-if="confirmingDelete" class="models-confirm">
-        <p class="models-confirm-text">Delete "{{ activeModelName }}"? This cannot be undone.</p>
-        <div class="models-confirm-actions">
-          <button class="models-confirm-cancel" @click="cancelDelete">Cancel</button>
-          <button class="models-confirm-delete" @click="confirmDelete">Delete</button>
-        </div>
-      </div>
 
       <ul v-else class="models-list">
         <li v-for="name in models" :key="name">
@@ -140,6 +135,10 @@ onBeforeUnmount(() => {
   background: white;
   color: #4a6fa5;
   cursor: pointer;
+  max-width: 160px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .models-btn:hover {
@@ -216,49 +215,5 @@ onBeforeUnmount(() => {
 .models-delete-item:disabled {
   color: #ccc;
   cursor: not-allowed;
-}
-
-.models-confirm {
-  padding: 0.75rem 0.9rem;
-}
-
-.models-confirm-text {
-  margin: 0 0 0.75rem;
-  font-size: 0.85rem;
-  color: #333;
-}
-
-.models-confirm-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-}
-
-.models-confirm-cancel,
-.models-confirm-delete {
-  padding: 0.35rem 0.8rem;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.85rem;
-}
-
-.models-confirm-cancel {
-  border: 1px solid #999;
-  background: white;
-  color: #666;
-}
-
-.models-confirm-cancel:hover {
-  background: #f0f0f0;
-}
-
-.models-confirm-delete {
-  border: 1px solid #c62828;
-  background: #c62828;
-  color: white;
-}
-
-.models-confirm-delete:hover {
-  background: #a51f1f;
 }
 </style>

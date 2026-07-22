@@ -18,13 +18,12 @@ const emit = defineEmits(['action'])
 </script>
 
 <template>
-  <div class="action-buttons" v-if="actions.length">
+  <div class="action-buttons" v-if="actions.length && !autoTrackingEnabled">
     <button
       v-for="action in actions"
       :key="action.name"
       class="action-btn"
-      :disabled="disabled || autoTrackingEnabled"
-      :title="autoTrackingEnabled ? 'Disable auto-tracking to trigger manually' : ''"
+      :disabled="disabled"
       @click="emit('action', action.name)"
     >
       {{ action.button_text }}

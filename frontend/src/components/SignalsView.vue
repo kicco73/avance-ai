@@ -6,10 +6,18 @@ defineProps({
   state: {
     type: Object,
     default: null
+  },
+  autoTrackingEnabled: {
+    type: Boolean,
+    default: false
+  },
+  autoTrackingLoading: {
+    type: Boolean,
+    default: false
   }
 })
 
-const emit = defineEmits(['close'])
+const emit = defineEmits(['close', 'toggle-auto-tracking'])
 
 const loading = ref(true)
 const error = ref('')
@@ -60,7 +68,17 @@ onMounted(load)
   <div class="signals-overlay">
     <div class="signals-header">
       <h2>Signals</h2>
-      <button class="close-btn" @click="emit('close')">Back</button>
+      <div class="signals-header-actions">
+        <button
+          class="autotracking-btn"
+          :class="{ 'autotracking-btn-on': autoTrackingEnabled }"
+          :disabled="autoTrackingLoading"
+          @click="emit('toggle-auto-tracking')"
+        >
+          Auto-tracking: {{ autoTrackingEnabled ? 'On' : 'Off' }}
+        </button>
+        <button class="close-btn" @click="emit('close')">Back</button>
+      </div>
     </div>
 
     <div class="signals-body">
@@ -155,6 +173,40 @@ onMounted(load)
 .signals-header h2 {
   margin: 0;
   font-size: 1.1rem;
+}
+
+.signals-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.autotracking-btn {
+  padding: 0.4rem 1rem;
+  border-radius: 6px;
+  border: 1px solid #999;
+  background: white;
+  color: #666;
+  cursor: pointer;
+}
+
+.autotracking-btn:hover:not(:disabled) {
+  background: #f0f0f0;
+}
+
+.autotracking-btn-on {
+  border-color: #2e7d32;
+  background: #2e7d32;
+  color: white;
+}
+
+.autotracking-btn-on:hover:not(:disabled) {
+  background: #256428;
+}
+
+.autotracking-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .close-btn {
