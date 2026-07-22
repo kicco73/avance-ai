@@ -47,7 +47,7 @@ class ModelsManager(object):
         model_dir = MODELS_DIR / model_name
         if not model_dir.is_dir():
             raise ValueError(f"Model '{model_name}' does not exist.")
-        return AutomatonBuilder(model_dir / "index.yml").build()
+        return AutomatonBuilder().build(model_dir / "index.yml")
 
     @staticmethod
     def _looks_like_zip(content_type: str | None, content: bytes) -> bool:
@@ -182,7 +182,7 @@ class ModelsManager(object):
         final_path = model_dir / "index.yml"
 
         try:
-            new_automaton = AutomatonBuilder(temp_path).build()
+            new_automaton = AutomatonBuilder().build(temp_path)
         except Exception as exc:
             # Broad on purpose: any way this file fails to become a usable
             # Automaton is equally "this upload is invalid" to the caller.
@@ -218,7 +218,7 @@ class ModelsManager(object):
         final_dir = MODELS_DIR / model_name
 
         try:
-            new_automaton = AutomatonBuilder(index_path).build()
+            new_automaton = AutomatonBuilder().build(index_path)
         except Exception as exc:
             shutil.rmtree(staging_dir, ignore_errors=True)
             return {"success": False, "error": str(exc)}

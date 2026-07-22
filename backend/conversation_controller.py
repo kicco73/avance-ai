@@ -21,7 +21,7 @@ from llm_provider import (
     MAX_RETRIES,
     generate_with_retry,
 )
-from signals import signals
+from signals import Signals
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +53,9 @@ class ConversationController(object):
     ) -> None:
         self._llm_provider = llm_provider
         self._get_active_automaton = get_active_automaton
+        # Owned here, not imported as a shared singleton: constructed with
+        # this same get_active_automaton, the only thing it needs.
+        self.signals = Signals(get_active_automaton=get_active_automaton)
         # On/off switch for _run_auto_tracking, read/written directly by
         # main.py's GET/POST /api/autotracking — never used outside a chat
         # turn, so it lives on the controller rather than a separate object.
@@ -111,7 +114,7 @@ class ConversationController(object):
         if not self.auto_tracking_enabled:
             return False, None, None
 
-        signals_list = await signals.compute_signals(
+        signals_list = await self.signals.compute(
             self._llm_provider, self.build_priming_messages, pending_message
         )
         signal_values = {s["name"]: s["value"] for s in signals_list}

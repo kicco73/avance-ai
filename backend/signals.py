@@ -1,8 +1,6 @@
 """Computes and reports the monitoring signals defined in the active
-model's YAML. `Signals` holds no real state — it's a class so
-get_active_automaton is constructor-injected rather than imported;
-`signals` below is the one shared instance.
-"""
+model's YAML. `Signals` holds no real state — get_active_automaton is
+constructor-injected. Instantiated as ConversationController's `signals`."""
 from __future__ import annotations
 
 import asyncio
@@ -13,7 +11,6 @@ from typing import Callable
 from automaton import Automaton
 from db import db
 from llm_provider import LLMProvider, LLMProviderError
-from models_manager import models_manager
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +43,10 @@ GetActiveAutomaton = Callable[[], Automaton]
 class Signals(object):
     def __init__(self, get_active_automaton: GetActiveAutomaton) -> None:
         self._get_active_automaton = get_active_automaton
+
+    @property
+    def automaton(self) -> Automaton:
+        return self._get_active_automaton()
 
     @staticmethod
     def _signal_history_window(pending_message: dict | None) -> list[dict]:
@@ -93,10 +94,10 @@ class Signals(object):
                 "value": None,
                 "error": error,
             }
-            for s in self._get_active_automaton().signals
+            for s in self.automaton.signals
         ]
 
-    async def compute_signals(
+    async def compute(
         self,
         llm_provider: LLMProvider,
         build_priming_messages: BuildPrimingMessages,
@@ -105,7 +106,7 @@ class Signals(object):
         """Calls the AI to (re)compute signal values from the persisted
         conversation plus `pending_message` (evaluated even though not yet
         persisted). Only called from the auto-tracking flow."""
-        automaton = self._get_active_automaton()
+        automaton = self.automaton
         signal_definitions = "\n\n".join(
             f'Signal "{s.name}":\n{s.ai_prompt}' for s in automaton.signals
         )
@@ -140,7 +141,7 @@ class Signals(object):
         (or None). A missing/null value means that signal's computation
         failed — distinct from no snapshot at all (auto-tracking hasn't run)."""
         results = []
-        for s in self._get_active_automaton().signals:
+        for s in self.automaton.signals:
             if snapshot is None:
                 value, error = None, False
             else:
@@ -160,8 +161,3 @@ class Signals(object):
         persisted through db.py. Signals are only (re)computed via
         compute_signals(), from the auto-tracking flow."""
         return self._snapshot_to_signals_payload(db.get_latest_signal_snapshot())
-
-
-# The one shared instance every other module imports (`from signals import
-# signals`) — see module docstring.
-signals = Signals(get_active_automaton=models_manager.get_active_automaton)

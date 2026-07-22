@@ -214,9 +214,6 @@ class AutomatonBuilder(object):
     resolves attachments, validates the result, and constructs the
     Automaton — the one place that shape is decided."""
 
-    def __init__(self, path: str | Path) -> None:
-        self._path = Path(path)
-
     @staticmethod
     def _load_attachments(paths: list[str], field_description: str, base_dir: Path) -> list[Attachment]:
         """Reads attachment files once per build() call, resolved relative
@@ -248,13 +245,14 @@ class AutomatonBuilder(object):
             attachments.append(Attachment(filename=rel_path, source=source))
         return attachments
 
-    def build(self) -> Automaton:
-        with open(self._path, "r", encoding="utf-8") as f:
+    def build(self, path: str | Path) -> Automaton:
+        path = Path(path)
+        with open(path, "r", encoding="utf-8") as f:
             raw = yaml.safe_load(f)
 
         # Attachments are resolved relative to wherever this specific YAML file
         # lives, not a shared fixed directory — each model carries its own.
-        base_dir = self._path.parent
+        base_dir = path.parent
 
         initial_state = raw["initial_state"]
         general_prompt = raw["general_prompt"].strip()

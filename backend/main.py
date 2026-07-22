@@ -16,7 +16,6 @@ from conversation_controller import ConversationController
 from db import db
 from models_manager import models_manager
 from providers.factory import build_provider
-from signals import signals
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -71,9 +70,9 @@ conversation_controller = ConversationController(
 @app.get("/api/signals")
 def get_signals():
     """Read-only: never calls the AI. Signals are only (re)computed inside
-    the auto-tracking flow (see ConversationController._run_auto_tracking,
-    signals.py); this just reports the latest persisted snapshot."""
-    return signals.get_latest_signals()
+    the auto-tracking flow (see ConversationController._run_auto_tracking);
+    this just reports the latest persisted snapshot."""
+    return conversation_controller.signals.get_latest_signals()
 
 
 @app.get("/api/state")
