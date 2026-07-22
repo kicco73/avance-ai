@@ -258,12 +258,13 @@ async function handleAction(actionName) {
 
 async function handleReset() {
   if (!window.confirm('Reset the conversation, signals, and transitions? This cannot be undone.')) return
-  state.value = await postReset()
-  messages.value = []
+  messages.value = 
   chatError.value = ''
   chatStatus.value = ''
   loadError.value = ''
   autoTrackingEnabled.value = true
+  state.value = await postReset()
+  await loadMessages() 
 }
 
 function triggerModelUpload() {
@@ -316,6 +317,7 @@ async function handleModelSwitch(modelName) {
     loadError.value = ''
     autoTrackingEnabled.value = true
     modelsMenu.value?.refresh()
+    await loadMessages() 
   } catch (err) {
     loadError.value = err.message
   }

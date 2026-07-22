@@ -5,7 +5,12 @@ or `google.genai` directly.
 """
 from __future__ import annotations
 
+import asyncio
+import logging
 from abc import ABC, abstractmethod
+from typing import Awaitable, Callable
+
+logger = logging.getLogger(__name__)
 
 
 class LLMProviderError(Exception):
@@ -35,3 +40,55 @@ class LLMProvider(ABC):
         (missing key, timeout, API error), without propagating unhandled exceptions.
         """
         raise NotImplementedError
+
+
+# Retry/backoff policy for transient upstream overload (HTTP 503). Lives here
+# rather than in any one caller since generate_with_retry() below is shared
+# by every caller that needs it (interactive chat turns, the opening-message
+# generation) — a policy belonging to "how do we call a provider", not to
+# any particular feature.
+MAX_RETRIES = 5
+BASE_DELAY_SECONDS = 1.0
+
+# Awaited before each backoff sleep with (attempt, max_attempts, remaining_
+# seconds) — e.g. to push a live "retrying" status frame to a websocket
+# client. Optional: a caller with no one to report progress to (like a
+# synchronous opening-message generation with no client watching) just omits
+# it.
+OnRetry = Callable[[int, int, float], Awaitable[None]]
+
+
+async def generate_with_retry(
+    provider: LLMProvider,
+    system_prompt: str,
+    history: list[dict],
+    on_retry: OnRetry | None = None,
+) -> str:
+    """Calls provider.generate() (off the event loop, since providers make
+    blocking HTTP calls), retrying on a transient overload
+    (LLMProviderUnavailableError) with exponential backoff up to
+    MAX_RETRIES. Any other LLMProviderError (rate-limited, or a permanent
+    failure) is not retried — it propagates immediately, exactly like a
+    retry-exhausted LLMProviderUnavailableError does, for the caller to
+    handle however is appropriate for it."""
+    attempt = 0
+    while True:
+        try:
+            return await asyncio.to_thread(provider.generate, system_prompt, history)
+        except LLMProviderUnavailableError as exc:
+            logger.error(
+                "LLM provider temporarily unavailable (attempt %d/%d): %s",
+                attempt + 1,
+                MAX_RETRIES + 1,
+                exc,
+            )
+            if attempt >= MAX_RETRIES:
+                raise
+            attempt += 1
+            remaining = BASE_DELAY_SECONDS * 2 ** (attempt - 1)
+            while remaining > 0:
+                if on_retry:
+                    await on_retry(attempt, MAX_RETRIES, round(remaining, 1))
+                step = min(1.0, remaining)
+                await asyncio.sleep(step)
+                remaining -= step

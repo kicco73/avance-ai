@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
@@ -16,20 +17,22 @@ import db
 import models_manager
 import signals
 from automaton import Automaton, trigger_signal_names
-from llm_provider import LLMProviderError, LLMProviderRateLimitedError, LLMProviderUnavailableError
+from llm_provider import (
+    LLMProviderError,
+    LLMProviderRateLimitedError,
+    LLMProviderUnavailableError,
+    MAX_RETRIES,
+    generate_with_retry,
+)
 from providers.factory import build_provider
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-# Retry/backoff policy for transient upstream overload (HTTP 503). Owned
-# entirely by the backend: the frontend only renders the status messages
-# pushed over the websocket, it never decides whether/when to retry.
-MAX_RETRIES = 5
-BASE_DELAY_SECONDS = 1.0
-
 # System prompt used for states with a `fixed_message` (e.g. crisis): the
-# model must translate it verbatim, not generate a free-form reply.
+# model must translate it verbatim, not generate a free-form reply. Also
+# used by models_manager.maybe_open_conversation() for an opening turn on a
+# fixed_message initial state — passed in rather than duplicated there.
 FIXED_MESSAGE_INSTRUCTIONS = (
     "You must reply with ONLY a translation of the fixed message below into "
     "the same language the user's last message is written in. Do not answer "
@@ -38,7 +41,20 @@ FIXED_MESSAGE_INSTRUCTIONS = (
     "Fixed message:\n{fixed_message}"
 )
 
-app = FastAPI(title="Avance State Engine")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Covers the very first server boot: if history hydrated from the DB
+    # (see SessionState below) is already empty, generate the opening
+    # message before the app starts serving. Every other scenario that can
+    # empty the conversation goes through _activate_and_reset() instead
+    # (see there) — this is the one path that isn't triggered by an HTTP
+    # request.
+    await _open_conversation_if_needed()
+    yield
+
+
+app = FastAPI(title="Avance State Engine", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -206,62 +222,47 @@ async def _process_chat_message(text: str, send) -> None:
         "triggered_action": triggered_action,
     }
 
-    attempt = 0
-    while True:
-        try:
-            reply = await asyncio.to_thread(llm_provider.generate, system_prompt, chat_history)
-        except LLMProviderUnavailableError as exc:
-            logger.error(
-                "LLM provider temporarily unavailable (attempt %d/%d): %s",
-                attempt + 1,
-                MAX_RETRIES + 1,
-                exc,
-            )
-            if attempt >= MAX_RETRIES:
-                session.history.pop()
-                await send({
-                    "type": "failed",
-                    "error": f"Service unavailable after {MAX_RETRIES} retries: {exc}",
-                    **transition_fields,
-                })
-                return
-            attempt += 1
-            remaining = BASE_DELAY_SECONDS * 2 ** (attempt - 1)
-            while remaining > 0:
-                await send({
-                    "type": "retrying",
-                    "attempt": attempt,
-                    "max_attempts": MAX_RETRIES,
-                    "retry_in": round(remaining, 1),
-                })
-                step = min(1.0, remaining)
-                await asyncio.sleep(step)
-                remaining -= step
-            continue
-        except LLMProviderRateLimitedError as exc:
-            logger.critical("LLM provider rate limit exceeded: %s", exc)
-            session.history.pop()
-            await send({"type": "failed", "error": str(exc), **transition_fields})
-            return
-        except LLMProviderError as exc:
-            # Not retryable: remove the unanswered user message.
-            session.history.pop()
-            await send({"type": "failed", "error": str(exc), **transition_fields})
-            return
-
-        session.history.append({"role": "assistant", "content": reply, "timestamp": _now_iso()})
-        # Persisted only once the turn is fully successful, mirroring the
-        # in-memory pop-on-failure above: memory and DB never diverge — a
-        # message pair is either both persisted, or neither.
-        db.save_message("user", text)
-        db.save_message("assistant", reply)
+    async def _push_retrying(attempt: int, max_attempts: int, retry_in: float) -> None:
         await send({
-            "type": "done",
-            "reply": reply,
-            "state": _state_payload(),
+            "type": "retrying",
+            "attempt": attempt,
+            "max_attempts": max_attempts,
+            "retry_in": retry_in,
+        })
+
+    try:
+        reply = await generate_with_retry(llm_provider, system_prompt, chat_history, on_retry=_push_retrying)
+    except LLMProviderUnavailableError as exc:
+        session.history.pop()
+        await send({
+            "type": "failed",
+            "error": f"Service unavailable after {MAX_RETRIES} retries: {exc}",
             **transition_fields,
         })
         return
+    except LLMProviderRateLimitedError as exc:
+        logger.critical("LLM provider rate limit exceeded: %s", exc)
+        session.history.pop()
+        await send({"type": "failed", "error": str(exc), **transition_fields})
+        return
+    except LLMProviderError as exc:
+        # Not retryable: remove the unanswered user message.
+        session.history.pop()
+        await send({"type": "failed", "error": str(exc), **transition_fields})
+        return
+
+    session.history.append({"role": "assistant", "content": reply, "timestamp": _now_iso()})
+    # Persisted only once the turn is fully successful, mirroring the
+    # in-memory pop-on-failure above: memory and DB never diverge — a
+    # message pair is either both persisted, or neither.
+    db.save_message("user", text)
+    db.save_message("assistant", reply)
+    await send({
+        "type": "done",
+        "reply": reply,
+        "state": _state_payload(),
+        **transition_fields,
+    })
 
 
 def _state_payload() -> dict:
@@ -368,24 +369,50 @@ def post_triggers_preview(req: TriggersPreviewRequest):
 
 
 @app.post("/api/reset")
-def post_reset():
-    session.reset(models_manager.get_active_automaton().initial_state)
+async def post_reset():
+    # Routed through the exact same commit callback every model-lifecycle
+    # operation uses (see _activate_and_reset) — Reset doesn't change which
+    # model is active, but it's still the same underlying event ("the
+    # session is now empty"), so it gets the same opening-message behavior
+    # for free rather than a separate, parallel reset path.
+    await _activate_and_reset(models_manager.get_active_automaton())
     return _state_payload()
+
+
+async def _open_conversation_if_needed() -> None:
+    """Generates the opening message if the conversation is currently empty
+    (see models_manager.maybe_open_conversation() — a no-op otherwise), then
+    re-syncs session.history from the DB. maybe_open_conversation() persists
+    straight through db.py without knowing session.history exists (it's
+    main.py-owned, deliberately out of models_manager's reach) — so without
+    this resync, a freshly generated opening message would sit in the DB
+    (visible to GET /api/messages) while session.history stayed empty,
+    meaning the *next* real chat turn would build its context as if the AI
+    had never said anything — the model would have no memory of its own
+    opening line. Called from both places that can leave the conversation
+    empty: server boot (via lifespan) and _activate_and_reset below."""
+    await models_manager.maybe_open_conversation(
+        llm_provider, _build_priming_messages, FIXED_MESSAGE_INSTRUCTIONS
+    )
+    session.history = db.get_all_messages()
 
 
 async def _activate_and_reset(new_automaton: Automaton) -> None:
     """The commit callback passed into every models_manager entry point that
-    activates a new automaton (activate, create-or-replace). models_manager
-    owns *which* automaton is active; this owns resetting *this process's
-    chat session* (DB/history/auto-tracking) to match it, under chat_lock so
-    it can never race an in-flight chat turn. Shared by both
-    PUT /api/models/{model_name}/activate and PUT /api/models/{model_name}
-    so that reset logic is never duplicated between them — and, since it's
-    only ever called when the active model actually changes, activating the
-    same model twice in a row never repeats this reset either.
+    activates a new automaton (activate, create-or-replace, delete-fallback)
+    — and, via POST /api/reset above, the plain "clear the session" case
+    too. models_manager owns *which* automaton is active; this owns
+    resetting *this process's chat session* (DB/history/auto-tracking) to
+    match it, under chat_lock so it can never race an in-flight chat turn —
+    and, once that reset leaves the conversation empty, generating its
+    opening message (see _open_conversation_if_needed), still under the same
+    lock so it can't race a chat turn either. Shared by every one of
+    models_manager's activation paths, so neither the reset logic nor the
+    opening-message trigger is ever duplicated between them.
     """
     async with chat_lock:
         session.reset(new_automaton.initial_state)
+        await _open_conversation_if_needed()
 
 
 @app.get("/api/models")

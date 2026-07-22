@@ -22,16 +22,27 @@ logic itself is never duplicated between them.
 from __future__ import annotations
 
 import io
+import logging
 import shutil
 import uuid
 import zipfile
 from pathlib import Path
 from typing import Awaitable, Callable
 
+import db
 from automaton import Automaton, load_automaton
+from llm_provider import LLMProvider, LLMProviderError, generate_with_retry
+
+logger = logging.getLogger(__name__)
 
 MODELS_DIR = Path(__file__).parent / "models"
 DEFAULT_MODEL_NAME = "default"
+
+# The shape maybe_open_conversation() needs to turn a state's attachments
+# into a priming turn — supplied by main.py (see that function's docstring),
+# the same generic "attachments -> priming messages" helper the chat path
+# itself uses, never reimplemented here.
+BuildPrimingMessages = Callable[[list], list[dict]]
 
 # Called with the newly-active Automaton once activate_model()/put_model()
 # have committed it — see module docstring.
@@ -136,6 +147,66 @@ async def activate_model_idempotent(model_name: str, commit: CommitCallback) -> 
         return new_automaton
     return await activate_model(model_name, commit)
 
+
+async def maybe_open_conversation(
+    llm_provider: LLMProvider,
+    build_priming_messages: BuildPrimingMessages,
+    fixed_message_instructions: str,
+) -> str | None:
+    """If the conversation is currently empty — fresh boot, a Reset, or a
+    freshly activated/uploaded/deleted-with-fallback model with no history
+    of its own yet — generates the opening message and persists it via
+    db.save_message(), exactly like any other assistant turn. A no-op the
+    moment there's already at least one message.
+
+    Builds the system prompt the same way a normal chat turn would for the
+    active automaton's initial state: contextual_prompt + general_prompt
+    (with that state's attachments primed via `build_priming_messages`), or
+    — if that state has a `fixed_message` — the same non-generative
+    translation rule already used for states like `crisis`, via
+    `fixed_message_instructions`. Calls the provider through
+    generate_with_retry(), the same retry/backoff on transient overload a
+    normal chat turn gets — just with no `on_retry` callback, since there's
+    no live client to report progress to during this synchronous path.
+
+    `llm_provider` and `build_priming_messages` are supplied by the caller
+    rather than imported, the same dependency-injection reasons as the
+    `commit` callback elsewhere in this module: the provider is main.py's
+    single shared instance, and priming-message construction is generic
+    chat-turn infrastructure this module doesn't own.
+
+    Entirely synchronous: the caller awaits this before its own operation
+    is considered complete — no background task, no websocket frame. If
+    generation fails even after retries, logs a warning and leaves the
+    conversation empty, exactly as it behaved before this feature existed.
+    """
+    if db.get_all_messages():
+        return
+
+    automaton = get_active_automaton()
+    state = automaton.get_state(automaton.initial_state)
+
+    if state.fixed_message:
+        system_prompt = fixed_message_instructions.format(fixed_message=state.fixed_message)
+        turn_attachments = []
+    else:
+        system_prompt = f"{state.contextual_prompt}\n\n{automaton.general_prompt}"
+        turn_attachments = automaton.general_prompt_attachments + state.attachments
+
+    priming_messages = build_priming_messages(turn_attachments)
+    priming_messages.append({
+            "role": "user",
+            "content": "...",
+    })
+
+    try:
+        reply = await generate_with_retry(llm_provider, system_prompt, priming_messages)
+    except LLMProviderError as exc:
+        logger.warning("Failed to generate the opening message: %s", exc)
+        return
+
+    db.save_message("assistant", reply)
+    return reply
 
 def _looks_like_zip(content_type: str | None, content: bytes) -> bool:
     """Format is decided by Content-Type first (a PUT's body has no
