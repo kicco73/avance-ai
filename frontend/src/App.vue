@@ -14,8 +14,9 @@ import {
   postAutoTracking,
   postReset,
   putModel,
-  postModelSwitch,
-  deleteModel
+  activateModel,
+  deleteModel,
+  downloadModel
 } from './api.js'
 
 const showSignals = ref(false)
@@ -209,10 +210,12 @@ async function handleModelUploadChange(event) {
 
 // Same post-success behavior as upload/Reset: reload state, clear the
 // displayed chat. On failure, show the error via the same loadError banner
-// used for upload failures, without touching anything else.
+// used for upload failures, without touching anything else. Activation is
+// idempotent backend-side (re-activating the already-active model is a
+// no-op, no reset) so this handler doesn't need to special-case that itself.
 async function handleModelSwitch(modelName) {
   try {
-    const result = await postModelSwitch(modelName)
+    const result = await activateModel(modelName)
     if (!result.success) {
       loadError.value = result.error
       return
@@ -223,6 +226,27 @@ async function handleModelSwitch(modelName) {
     chatStatus.value = ''
     loadError.value = ''
     autoTrackingEnabled.value = true
+  } catch (err) {
+    loadError.value = err.message
+  }
+}
+
+// Triggers a browser download from the zip blob — standard synthetic-<a>
+// pattern, since fetch() has no way to hand a response straight to the
+// browser's own download UI. No UI state changes at all on success: unlike
+// switch/upload/delete, downloading doesn't touch the active model or the
+// session. On failure, show the error the same way as the rest of the menu.
+async function handleModelDownload(modelName) {
+  try {
+    const blob = await downloadModel(modelName)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${modelName}.zip`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
   } catch (err) {
     loadError.value = err.message
   }
@@ -271,6 +295,7 @@ onBeforeUnmount(() => {
         <ModelsMenu
           @select="handleModelSwitch"
           @upload="triggerModelUpload"
+          @download="handleModelDownload"
           @delete="handleModelDelete"
         />
         <input

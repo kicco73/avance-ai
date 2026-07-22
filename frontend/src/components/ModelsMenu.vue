@@ -4,16 +4,16 @@ import { getModels } from '../api.js'
 
 const DEFAULT_MODEL_NAME = 'default'
 
-const emit = defineEmits(['select', 'upload', 'delete'])
+const emit = defineEmits(['select', 'upload', 'download', 'delete'])
 
 const open = ref(false)
 const loading = ref(false)
 const error = ref('')
 const models = ref([])
+const activeModelName = ref(null)
 const rootEl = ref(null)
 const confirmingDelete = ref(false)
 
-const activeModelName = computed(() => models.value.find((m) => m.active)?.name ?? null)
 const deleteDisabled = computed(() => activeModelName.value === DEFAULT_MODEL_NAME)
 
 async function toggle() {
@@ -28,6 +28,7 @@ async function toggle() {
   try {
     const res = await getModels()
     models.value = res.models
+    activeModelName.value = res.active
   } catch (err) {
     error.value = err.message
   } finally {
@@ -43,6 +44,12 @@ function selectModel(name) {
 function selectUpload() {
   open.value = false
   emit('upload')
+}
+
+function selectDownload() {
+  if (!activeModelName.value) return
+  open.value = false
+  emit('download', activeModelName.value)
 }
 
 // "Delete" doesn't act immediately — it swaps the panel to an inline
@@ -95,14 +102,17 @@ onBeforeUnmount(() => {
       </div>
 
       <ul v-else class="models-list">
-        <li v-for="model in models" :key="model.name">
-          <button class="models-item" @click="selectModel(model.name)">
-            <span class="models-item-check">{{ model.active ? '✓' : '' }}</span>
-            {{ model.name }}
+        <li v-for="name in models" :key="name">
+          <button class="models-item" @click="selectModel(name)">
+            <span class="models-item-check">{{ name === activeModelName ? '✓' : '' }}</span>
+            {{ name }}
           </button>
         </li>
         <li>
           <button class="models-item models-upload-item" @click="selectUpload">Upload...</button>
+        </li>
+        <li>
+          <button class="models-item models-download-item" @click="selectDownload">Download</button>
         </li>
         <li>
           <button
@@ -192,6 +202,10 @@ onBeforeUnmount(() => {
 
 .models-upload-item {
   border-top: 1px solid #eee;
+  color: #4a6fa5;
+}
+
+.models-download-item {
   color: #4a6fa5;
 }
 

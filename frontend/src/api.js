@@ -1,19 +1,21 @@
 const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 const WS_URL = import.meta.env.VITE_WS_URL ?? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/chat`
 
-async function handleResponse(res) {
-  if (!res.ok) {
-    let detail = `Error ${res.status}`
-    try {
-      const body = await res.json()
-      if (body.detail) detail = body.detail
-    } catch {
-      // ignore non-JSON body
-    }
-    const err = new Error(detail)
-    err.status = res.status
-    throw err
+async function throwForResponse(res) {
+  let detail = `Error ${res.status}`
+  try {
+    const body = await res.json()
+    if (body.detail) detail = body.detail
+  } catch {
+    // ignore non-JSON body
   }
+  const err = new Error(detail)
+  err.status = res.status
+  throw err
+}
+
+async function handleResponse(res) {
+  if (!res.ok) return throwForResponse(res)
   return res.json()
 }
 
@@ -71,11 +73,12 @@ export function getModels() {
   return fetch(`${API_URL}/models`).then(handleResponse)
 }
 
-export function postModelSwitch(modelName) {
-  return fetch(`${API_URL}/model/switch`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model_name: modelName })
+// Idempotent: activating the model that's already active still succeeds,
+// but the backend skips the session reset entirely — no need for the
+// frontend to special-case "already active" before calling this.
+export function activateModel(modelName) {
+  return fetch(`${API_URL}/models/${encodeURIComponent(modelName)}/activate`, {
+    method: 'PUT'
   }).then(handleResponse)
 }
 
@@ -92,7 +95,7 @@ export function putModel(modelName, file) {
   }).then(handleResponse)
 }
 
-// Unlike switch/put, failures here (unknown model, attempt to delete
+// Unlike activate/put, failures here (unknown model, attempt to delete
 // "default") surface as a non-2xx status with {detail}, which handleResponse
 // turns into a thrown Error — there's no {success: false, error} shape to
 // check on the resolved value.
@@ -100,4 +103,15 @@ export function deleteModel(modelName) {
   return fetch(`${API_URL}/models/${encodeURIComponent(modelName)}`, {
     method: 'DELETE'
   }).then(handleResponse)
+}
+
+// The read side of the same resource putModel() writes: the returned blob
+// is always a zip, byte-for-byte what putModel() accepts back with no
+// transformation. Not JSON on success, so this can't go through
+// handleResponse (which assumes a JSON body) — only its error path is
+// reused, via throwForResponse.
+export async function downloadModel(modelName) {
+  const res = await fetch(`${API_URL}/models/${encodeURIComponent(modelName)}`)
+  if (!res.ok) return throwForResponse(res)
+  return res.blob()
 }

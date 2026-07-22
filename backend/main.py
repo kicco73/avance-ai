@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -503,12 +503,14 @@ def post_reset():
 
 async def _activate_and_reset(new_automaton: Automaton) -> None:
     """The commit callback passed into every models_manager entry point that
-    activates a new automaton (switch, create-or-replace). models_manager
+    activates a new automaton (activate, create-or-replace). models_manager
     owns *which* automaton is active; this owns resetting *this process's
     chat session* (DB/history/auto-tracking) to match it, under chat_lock so
     it can never race an in-flight chat turn. Shared by both
-    POST /api/model/switch and PUT /api/models/{model_name} so that reset
-    logic is never duplicated between them.
+    PUT /api/models/{model_name}/activate and PUT /api/models/{model_name}
+    so that reset logic is never duplicated between them — and, since it's
+    only ever called when the active model actually changes, activating the
+    same model twice in a row never repeats this reset either.
     """
     async with chat_lock:
         session.reset(new_automaton.initial_state)
@@ -516,24 +518,42 @@ async def _activate_and_reset(new_automaton: Automaton) -> None:
 
 @app.get("/api/models")
 def get_models():
-    return {"models": models_manager.list_models()}
+    return models_manager.list_models()
 
 
-class ModelSwitchRequest(BaseModel):
-    model_name: str
-
-
-@app.post("/api/model/switch")
-async def post_model_switch(req: ModelSwitchRequest):
+@app.put("/api/models/{model_name}/activate")
+async def activate_model(model_name: str):
     """Activates an already-present model under models/<model_name>/,
-    validating it with the exact same load_automaton() used at boot and by
-    upload. No filesystem writes are involved — the files are already
-    there — so a failed validation leaves everything untouched."""
+    validating it with the exact same load_automaton() used at boot/upload/
+    delete. No filesystem writes are involved — the files are already there
+    — so a failed validation leaves everything untouched. Idempotent:
+    activating the model that's already active still validates it, but
+    skips the swap and the session reset entirely (see
+    models_manager.activate_model_idempotent)."""
     try:
-        await models_manager.activate_model(req.model_name, _activate_and_reset)
+        await models_manager.activate_model_idempotent(model_name, _activate_and_reset)
     except ValueError as exc:
         return {"success": False, "error": str(exc)}
-    return {"success": True, "model_name": req.model_name}
+    return {"success": True, "model_name": model_name}
+
+
+@app.get("/api/models/{model_name}")
+def get_model(model_name: str):
+    """Downloads `model_name` as a zip — the read side of the same resource
+    PUT /api/models/{model_name} writes. Always a zip (even for a model with
+    no attachments), built with the exact flat layout PUT already requires,
+    so the file this returns is accepted back by PUT with no transformation
+    at all. Not restricted to the active model, consistent with DELETE
+    already being general-purpose on this resource."""
+    try:
+        content = models_manager.export_model_zip(model_name)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return Response(
+        content=content,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{model_name}.zip"'},
+    )
 
 
 @app.put("/api/models/{model_name}")
@@ -560,7 +580,7 @@ async def delete_model(model_name: str):
     deleted, active or not — deleting an unused one has zero effect on the
     in-memory automaton or the DB. Deleting the currently active model falls
     back to "default" via the same activate_model()/reset already used by
-    switch and put. The default model itself can never be deleted — enforced
+    the activate and put endpoints. The default model itself can never be deleted — enforced
     in models_manager regardless of what any caller does, not just this
     endpoint."""
     try:

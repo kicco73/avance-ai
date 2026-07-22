@@ -111,16 +111,18 @@ No Python code needs to change for these edits.
 ### Switching models at runtime
 
 The **"Models"** menu in the UI lists every model already present under
-`backend/models/` (from `GET /api/models`); clicking one calls
-`POST /api/model/switch` with its name and, on success, makes it the active
+`backend/models/` (from `GET /api/models`, which also reports the active
+one — a ✓ marks it in the menu); clicking one calls
+`PUT /api/models/{model_name}/activate` and, on success, makes it the active
 automaton — the app resets (same as clicking "Reset") since a different
 automaton makes prior states/actions/signals meaningless. Nothing on disk is
-touched by a switch — the model was already there — so a failed validation
-(malformed `index.yml`) just reports the error and leaves the active
-automaton untouched.
+touched by activating a model — it was already there — so a failed
+validation (malformed `index.yml`) just reports the error and leaves the
+active automaton untouched. Activating the model that's *already* active is
+idempotent: it's still validated, but doesn't repeat the reset.
 
-The menu's last entry, **"Upload..."**, lets you add a new model (or replace
-an existing one) without restarting the backend, via
+The menu also has **"Upload..."**, which adds a new model (or replaces an
+existing one) without restarting the backend, via
 `PUT /api/models/{model_name}` — the model's name is decided by the request
 URL, not by anything in the uploaded file. The frontend derives it from the
 picked file's name (without extension); the raw file body is sent directly
@@ -139,15 +141,31 @@ The body's format is told apart by the request's `Content-Type` header
 (falling back to sniffing the zip file signature if it's missing or
 ambiguous) — this is a separate concern from the model's name, which always
 comes from the URL. Either way, the upload is validated with the exact same
-logic used at boot and by switch (state/action/trigger/signal/attachment
+logic used at boot and by activate (state/action/trigger/signal/attachment
 checks, plus — for zips — path-safety and structure checks before anything
 is extracted). If validation fails, nothing changes — the staged content is
 discarded (and its target directory too, if this upload is what created it)
 — the current automaton and all state stay exactly as they were. If it
-succeeds, it becomes the active automaton and the app resets, exactly like a
-switch. This is in-memory only for the running process — the next backend
-restart always reloads `models/default/index.yml`, never the last active
-model.
+succeeds, it becomes the active automaton and the app resets, exactly like
+activating it. This is in-memory only for the running process — the next
+backend restart always reloads `models/default/index.yml`, never the last
+active model.
+
+**"Download"** fetches the *currently active* model back as a zip via
+`GET /api/models/{model_name}` — the read side of the same resource `PUT`
+writes to, in the exact same flat layout (`index.yml` plus attachments,
+no subdirectories) that `PUT` already requires, so a downloaded zip is
+accepted back by `PUT` with zero transformation either way. Always a zip,
+even for a model with no attachments, so there's exactly one export format.
+
+Finally, **"Delete"** (with an inline confirm step) removes the *currently
+active* model via `DELETE /api/models/{model_name}`. Both `GET` and `DELETE`
+on this path are general-purpose — they work for any listed model, not just
+the active one, even though the menu only ever calls them on the active
+model; deleting (or downloading) one that isn't active has no effect on the
+running session at all. Deleting the active model falls back to `default`
+and resets, the same as activating it. `default` itself can never be deleted
+(enforced server-side, not just by the menu graying the option out).
 
 ### Exception: the `crisis` state
 
@@ -178,7 +196,7 @@ avance-prototype/
 │   │   ├── anthropic_provider.py      # Anthropic API (Claude) call wrapper
 │   │   └── gemini_provider.py         # Google Gemini API call wrapper
 │   ├── models/                        # each subdir is a model: index.yml + its own attachments (see models/README.md)
-│   │   └── default/                   # boot default; POST /api/model/upload can add more here at runtime
+│   │   └── default/                   # boot default; PUT /api/models/{model_name} can add more here at runtime
 │   │       ├── index.yml              # automaton definition + general_prompt + contextual/fixed prompts
 │   │       └── *.txt                  # attachments referenced from index.yml
 │   ├── requirements.txt
@@ -198,15 +216,17 @@ avance-prototype/
 
 ## API endpoints
 
-| Method | Path                        | Description                                                                                                                               |
-|--------|-----------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
-| GET    | `/api/state`                | Current state, label, description, available actions                                                                                     |
-| WS     | `/ws/chat`                  | Chat channel — see below                                                                                                                  |
-| POST   | `/api/action`               | `{action_name}` → applies the transition if valid for the current state                                                                  |
-| GET    | `/api/models`               | `{models: [...]}` — names of model directories under `backend/models/` with an `index.yml` present                                       |
-| POST   | `/api/model/switch`         | `{model_name}` → validates and activates an already-present model (see above); resets on success, leaves everything untouched on failure  |
-| PUT    | `/api/models/{model_name}`  | Raw file body (`Content-Type` says the format) → creates/replaces that model, then validates and activates it (see above)                |
-| POST   | `/api/reset`                | Resets state and history to the initial condition                                                                                         |
+| Method | Path                                 | Description                                                                                                                        |
+|--------|--------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|
+| GET    | `/api/state`                         | Current state, label, description, available actions                                                                             |
+| WS     | `/ws/chat`                           | Chat channel — see below                                                                                                          |
+| POST   | `/api/action`                        | `{action_name}` → applies the transition if valid for the current state                                                           |
+| GET    | `/api/models`                        | `{models: [...], active: "..."}` — model directory names under `backend/models/` with an `index.yml` present, plus the active one |
+| PUT    | `/api/models/{model_name}/activate`  | Validates and activates an already-present model (see above); idempotent — resets only if it's a different model, still validates either way |
+| GET    | `/api/models/{model_name}`           | Downloads that model as a zip (flat, `index.yml` + attachments) — round-trips with the PUT below with no transformation           |
+| PUT    | `/api/models/{model_name}`           | Raw file body (`Content-Type` says the format) → creates/replaces that model, then validates and activates it (see above)         |
+| DELETE | `/api/models/{model_name}`           | Removes that model from disk; falls back to `default` (and resets) only if it was the active one; `default` itself can't be deleted |
+| POST   | `/api/reset`                         | Resets state and history to the initial condition                                                                                 |
 
 `/ws/chat` replaces a plain request/response: the client sends `{message}`,
 and the backend pushes one or more JSON frames back as the turn progresses —

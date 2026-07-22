@@ -1,5 +1,6 @@
 """Single point of model-lifecycle management: which automaton is active,
-listing available models, and validating/staging/committing uploads/switches.
+listing available models, and validating/staging/committing activations,
+uploads, and deletions.
 
 Same principle as db.py's isolation of persistence: one module, one
 responsibility. main.py routes HTTP/WS traffic into these domain functions —
@@ -67,21 +68,22 @@ def get_active_model_name() -> str | None:
     return _active_model_name
 
 
-def list_models() -> list[dict]:
-    """Every subdirectory of models/ containing an index.yml — the content
-    isn't validated here, only its presence; real validation happens at
-    switch/upload time. Directories starting with '.' are excluded: those
-    are staging artifacts (e.g. a `.tmp_<uuid>` left by an interrupted
-    upload), never models. Each entry reports whether it's the currently
-    active model, for the frontend's Models menu to mark it."""
+def list_models() -> dict:
+    """For GET /api/models: every subdirectory of models/ containing an
+    index.yml — the content isn't validated here, only its presence; real
+    validation happens at activate/put time. Directories starting with '.'
+    are excluded: those are staging artifacts (e.g. a `.tmp_<uuid>` left by
+    an interrupted put), never models. `active` is reported once at the
+    root, separately from the name list, rather than per-entry."""
     if not MODELS_DIR.is_dir():
-        return []
-    names = sorted(
-        entry.name
-        for entry in MODELS_DIR.iterdir()
-        if entry.is_dir() and not entry.name.startswith(".") and (entry / "index.yml").is_file()
-    )
-    return [{"name": name, "active": name == _active_model_name} for name in names]
+        names = []
+    else:
+        names = sorted(
+            entry.name
+            for entry in MODELS_DIR.iterdir()
+            if entry.is_dir() and not entry.name.startswith(".") and (entry / "index.yml").is_file()
+        )
+    return {"models": names, "active": _active_model_name}
 
 
 def _is_safe_model_name(model_name: str) -> bool:
@@ -93,24 +95,46 @@ def _is_safe_model_name(model_name: str) -> bool:
     return Path(model_name).name == model_name
 
 
-async def activate_model(model_name: str, commit: CommitCallback) -> Automaton:
-    """For POST /api/model/switch: validates `model_name` (path safety,
-    then that it's an existing model directory) and its index.yml — the
-    exact same load_automaton() used at boot and by upload — raising
-    ValueError on either failure. Nothing is touched on failure: the files
-    were already there, this only reads them. On success, swaps the active
-    automaton and awaits `commit(new_automaton)` (see module docstring)."""
+def _load_and_validate(model_name: str) -> Automaton:
+    """Path safety, then that `model_name` is an existing model directory,
+    then its index.yml via the exact same load_automaton() used at
+    boot/upload/delete — raising ValueError on any failure. The one place
+    "is this a valid, existing model" is decided; nothing is touched by this
+    alone, it only reads. Shared by activate_model() and its idempotent
+    PUT .../activate wrapper below, so neither duplicates these checks."""
     if not _is_safe_model_name(model_name):
         raise ValueError(f"Invalid model name: '{model_name}'.")
     model_dir = MODELS_DIR / model_name
     if not model_dir.is_dir():
         raise ValueError(f"Model '{model_name}' does not exist.")
+    return load_automaton(model_dir / "index.yml")
 
-    new_automaton = load_automaton(model_dir / "index.yml")
+
+async def activate_model(model_name: str, commit: CommitCallback) -> Automaton:
+    """Validates `model_name` via _load_and_validate(), then unconditionally
+    swaps the active automaton and awaits `commit(new_automaton)` (see
+    module docstring). Used directly by delete_model() to fall back to
+    "default", and by activate_model_idempotent() below whenever the
+    requested model differs from the one already active."""
+    new_automaton = _load_and_validate(model_name)
 
     _set_active(model_name, new_automaton)
     await commit(new_automaton)
     return new_automaton
+
+
+async def activate_model_idempotent(model_name: str, commit: CommitCallback) -> Automaton:
+    """For PUT /api/models/{model_name}/activate: always validates
+    `model_name` first via _load_and_validate() — the exact same checks
+    activate_model() itself runs — even if it's already the active model;
+    idempotency only ever skips the SIDE EFFECTS (swap + the commit()-driven
+    session reset), never the correctness checks. Activating the model
+    that's already active is therefore a true no-op. A different model is
+    activated by delegating to activate_model() itself, reused as-is."""
+    new_automaton = _load_and_validate(model_name)
+    if model_name == _active_model_name:
+        return new_automaton
+    return await activate_model(model_name, commit)
 
 
 def _looks_like_zip(content_type: str | None, content: bytes) -> bool:
@@ -268,6 +292,32 @@ async def put_model(
     if _looks_like_zip(content_type, content):
         return await _put_zip_model(model_name, content, commit)
     return await _put_yaml_model(model_name, content, commit)
+
+
+def export_model_zip(model_name: str) -> bytes:
+    """For GET /api/models/{model_name}: the read side of the same
+    resource PUT /api/models/{model_name} writes — the zip this returns is
+    always accepted back by that endpoint with no transformation, since it's
+    built with the exact layout upload/put already requires (flat, index.yml
+    at the zip root, attachments alongside it). Always a zip, even for a
+    model with no attachments at all, so there's exactly one export format
+    to round-trip through PUT.
+
+    Raises FileNotFoundError if `model_name` fails path-safety validation or
+    doesn't correspond to an existing model directory — same as
+    delete_model(), and deliberately undistinguished for the same reason.
+    Not restricted to the active model: any listed model can be exported,
+    consistent with DELETE already being general-purpose on this resource.
+    """
+    if not _is_safe_model_name(model_name) or not (MODELS_DIR / model_name).is_dir():
+        raise FileNotFoundError(f"Model '{model_name}' does not exist.")
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for entry in sorted((MODELS_DIR / model_name).iterdir()):
+            if entry.is_file() and not entry.name.startswith("."):
+                zf.write(entry, arcname=entry.name)
+    return buffer.getvalue()
 
 
 async def delete_model(model_name: str, commit: CommitCallback) -> None:
