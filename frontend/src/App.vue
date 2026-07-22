@@ -293,6 +293,7 @@ async function handleModelUploadChange(event) {
     loadError.value = ''
     autoTrackingEnabled.value = true
     modelsMenu.value?.refresh()
+    await loadMessages()
   } catch (err) {
     loadError.value = err.message
   }
@@ -358,6 +359,7 @@ async function handleModelDelete(modelName) {
     loadError.value = ''
     autoTrackingEnabled.value = true
     modelsMenu.value?.refresh()
+    await loadMessages()
   } catch (err) {
     loadError.value = err.message
   }
