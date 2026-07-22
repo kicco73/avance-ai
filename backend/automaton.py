@@ -69,6 +69,7 @@ class State:
     # Attachments for contextual_prompt, sent with chat turns while this is
     # the current state (see main.py's _build_priming_messages).
     attachments: list[Attachment] = field(default_factory=list)
+    on_enter: str | None = None
 
 
 @dataclass
@@ -241,6 +242,7 @@ def load_automaton(path: str | Path) -> Automaton:
             # desync from the actual `actions` list.
             final=len(actions) == 0,
             description=raw_state["description"].strip(),
+            on_enter=raw_state["on_enter"] if "on_enter" in raw_state else None,
             contextual_prompt=raw_state["contextual_prompt"],
             actions=actions,
             fixed_message=fixed_message.strip() if fixed_message else None,

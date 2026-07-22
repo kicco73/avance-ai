@@ -182,6 +182,8 @@ states:
       self-efficacy, acknowledge effort, and help them build concrete coping skills
       for high-risk situations. Watch for signs of an unfolding high-risk situation
       or an acute risk signal in what they write.
+    on_enter: celebrate
+
     actions:
       # order matters: safety-critical actions are evaluated first (FIFO priority)
       - name: detectRisk

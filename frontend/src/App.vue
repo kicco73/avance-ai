@@ -20,6 +20,7 @@ import {
   downloadModel
 } from './api.js'
 import { playMessageChime } from './audio.js'
+import { celebrate } from './confetti.js'
 
 const showSignals = ref(false)
 const autoTrackingEnabled = ref(true)
@@ -69,7 +70,8 @@ async function pingBackend() {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), PING_TIMEOUT_MS)
   try {
-    state.value = await getState(controller.signal)
+    const newState = await getState(controller.signal)
+    handleStateChange(newState)
     return true
   } catch {
     return false
@@ -113,6 +115,18 @@ function startBootSequence() {
   }
   bootStatus.value = 'checking'
   runPingAttempt(bootSequenceToken)
+}
+
+function handleStateChange(newState) {
+  const changed = state.value?.key !== newState.key
+  state.value = newState
+  // Only on an actual transition into the state, never on a redundant
+  // re-fetch of the one we're already in (e.g. the boot ping, or any other
+  // GET /api/state call that happens to return the same state) — otherwise
+  // celebrate() would refire every time this runs.
+  if (changed && newState?.on_enter === 'celebrate') {
+    celebrate()
+  }
 }
 
 // Redisplays whatever conversation the backend already persisted (e.g.
@@ -218,11 +232,11 @@ async function submitMessage(message) {
   try {
     const result = await runChatTurn(message.content)
     messages.value.push({ role: 'assistant', content: result.reply })
-    state.value = result.state
     // Only for a freshly arrived AI reply — never for the user's own sent
     // message, and never for history loaded at boot/reset (this only ever
     // runs from a live chat turn just completing).
     playMessageChime()
+    handleStateChange(result.state)
   } catch (err) {
     message.failed = true
     chatError.value = err.message
@@ -248,7 +262,8 @@ async function handleResend(index) {
 async function handleAction(actionName) {
   actionLoading.value = true
   try {
-    state.value = await postAction(actionName)
+    const newState = await postAction(actionName)
+    handleStateChange(newState)
   } catch (err) {
     loadError.value = err.message
   } finally {
@@ -258,13 +273,15 @@ async function handleAction(actionName) {
 
 async function handleReset() {
   if (!window.confirm('Reset the conversation, signals, and transitions? This cannot be undone.')) return
-  messages.value = 
+  messages.value = []
   chatError.value = ''
   chatStatus.value = ''
   loadError.value = ''
   autoTrackingEnabled.value = true
-  state.value = await postReset()
-  await loadMessages() 
+  const newState = await postReset()
+  await loadMessages()
+  state.value = null
+  handleStateChange(newState)
 }
 
 function triggerModelUpload() {
@@ -286,7 +303,7 @@ async function handleModelUploadChange(event) {
       loadError.value = result.error
       return
     }
-    state.value = await getState()
+    const newState = await getState()
     messages.value = []
     chatError.value = ''
     chatStatus.value = ''
@@ -294,6 +311,7 @@ async function handleModelUploadChange(event) {
     autoTrackingEnabled.value = true
     modelsMenu.value?.refresh()
     await loadMessages()
+    handleStateChange(newState)
   } catch (err) {
     loadError.value = err.message
   }
@@ -311,7 +329,7 @@ async function handleModelSwitch(modelName) {
       loadError.value = result.error
       return
     }
-    state.value = await getState()
+    const newState = await getState()
     messages.value = []
     chatError.value = ''
     chatStatus.value = ''
@@ -319,6 +337,7 @@ async function handleModelSwitch(modelName) {
     autoTrackingEnabled.value = true
     modelsMenu.value?.refresh()
     await loadMessages() 
+    handleStateChange(newState)
   } catch (err) {
     loadError.value = err.message
   }
@@ -352,12 +371,13 @@ async function handleModelDownload(modelName) {
 async function handleModelDelete(modelName) {
   try {
     await deleteModel(modelName)
-    state.value = await getState()
+    const newState = await getState()
     messages.value = []
     chatError.value = ''
     chatStatus.value = ''
     loadError.value = ''
     autoTrackingEnabled.value = true
+    handleStateChange(newState)
     modelsMenu.value?.refresh()
     await loadMessages()
   } catch (err) {

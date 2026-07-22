@@ -272,6 +272,7 @@ def _state_payload() -> dict:
         "label": state.label,
         "description": state.description,
         "final": state.final,
+        "on_enter": state.on_enter,
         "actions": [
             {
                 "name": a.name,
