@@ -1,5 +1,5 @@
 <script setup>
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import ChatWindow from './components/ChatWindow.vue'
 import StateBar from './components/StateBar.vue'
 import ActionButtons from './components/ActionButtons.vue'
@@ -18,12 +18,14 @@ import {
   deleteModel,
   downloadModel
 } from './api.js'
+import { playMessageChime } from './audio.js'
 
 const showSignals = ref(false)
 const autoTrackingEnabled = ref(true)
 const autoTrackingLoading = ref(false)
 const state = ref(null)
 const messages = ref([])
+const historyLoaded = ref(false)
 const chatLoading = ref(false)
 const chatError = ref('')
 const chatStatus = ref('')
@@ -54,6 +56,18 @@ async function loadMessages() {
     messages.value = history.map((m) => ({ role: m.role, content: m.content, failed: false }))
   } catch (err) {
     loadError.value = err.message
+  } finally {
+    // Gates ChatWindow's bump-in animation (see its historyLoaded prop):
+    // this hydration is async, so it lands well after ChatWindow has
+    // already mounted — without this flag every history row would still
+    // read as "just added" the moment it arrives. Setting `messages` and
+    // `historyLoaded` in the very same tick isn't enough on its own: Vue
+    // batches both changes into one render, so TransitionGroup would see
+    // the *new* name already in effect for the very update that adds the
+    // history rows. Waiting a tick lets that first render (still gated by
+    // the old, unstyled name) flush before the flag flips.
+    await nextTick()
+    historyLoaded.value = true
   }
 }
 
@@ -137,6 +151,10 @@ async function submitMessage(message) {
     const result = await runChatTurn(message.content)
     messages.value.push({ role: 'assistant', content: result.reply })
     state.value = result.state
+    // Only for a freshly arrived AI reply — never for the user's own sent
+    // message, and never for history loaded at boot/reset (this only ever
+    // runs from a live chat turn just completing).
+    playMessageChime()
   } catch (err) {
     message.failed = true
     chatError.value = err.message
@@ -315,6 +333,7 @@ onBeforeUnmount(() => {
       :status="chatStatus"
       :error="chatError"
       :final-state-reached="state?.final ?? false"
+      :history-loaded="historyLoaded"
       @send="handleSend"
       @resend="handleResend"
     />

@@ -21,6 +21,17 @@ const props = defineProps({
   finalStateReached: {
     type: Boolean,
     default: false
+  },
+  // True once the initial GET /api/messages hydration has settled (success
+  // or failure). Gates the bump-in animation's CSS name: history arrives
+  // asynchronously after this component has already mounted, so a bare
+  // <TransitionGroup> without `appear` isn't enough on its own here — every
+  // hydrated row would still read as "just added" the moment the fetch
+  // resolves. Before that point the group uses Vue's unstyled default
+  // transition name ('v'), which is a no-op with no matching CSS.
+  historyLoaded: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -68,31 +79,33 @@ watch(
 <template>
   <div class="chat-window">
     <div class="messages" ref="scrollEl">
-      <div
-        v-for="(msg, i) in messages"
-        :key="i"
-        class="message-row"
-        :class="msg.role === 'user' ? 'message-row-user' : 'message-row-assistant'"
-      >
-        <button
-          v-if="msg.role === 'user' && msg.failed"
-          type="button"
-          class="resend-icon"
-          title="Message not sent. Tap to retry."
-          @click="resend(i)"
-        >
-          &#33;
-        </button>
+      <TransitionGroup :name="historyLoaded ? 'message-bubble' : 'v'">
         <div
-          class="bubble"
-          :class="[
-            msg.role === 'user' ? 'bubble-user' : 'bubble-assistant',
-            msg.failed ? 'bubble-failed' : ''
-          ]"
+          v-for="(msg, i) in messages"
+          :key="i"
+          class="message-row"
+          :class="msg.role === 'user' ? 'message-row-user' : 'message-row-assistant'"
         >
-          {{ msg.content }}
+          <button
+            v-if="msg.role === 'user' && msg.failed"
+            type="button"
+            class="resend-icon"
+            title="Message not sent. Tap to retry."
+            @click="resend(i)"
+          >
+            &#33;
+          </button>
+          <div
+            class="bubble"
+            :class="[
+              msg.role === 'user' ? 'bubble-user' : 'bubble-assistant',
+              msg.failed ? 'bubble-failed' : ''
+            ]"
+          >
+            {{ msg.content }}
+          </div>
         </div>
-      </div>
+      </TransitionGroup>
       <div v-if="loading" class="bubble bubble-assistant bubble-loading">{{ status || '...' }}</div>
     </div>
 
@@ -129,6 +142,24 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+}
+
+/* Fade-in + slight scale overshoot ("bump") for newly added message rows
+   only — TransitionGroup applies this solely to rows entering after the
+   initial mount, never to ones already present at mount time. */
+@keyframes message-bubble-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.message-bubble-enter-active {
+  animation: message-bubble-in 220ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
 .message-row {
