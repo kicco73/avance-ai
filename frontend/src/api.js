@@ -19,8 +19,11 @@ async function handleResponse(res) {
   return res.json()
 }
 
-export function getState() {
-  return fetch(`${API_URL}/state`).then(handleResponse)
+// Also used as the initial-boot ping (see App.vue): `signal` lets that
+// caller bound each attempt with a timeout, since a plain fetch() never
+// times out on its own against a hung connection.
+export function getState(signal) {
+  return fetch(`${API_URL}/state`, { signal }).then(handleResponse)
 }
 
 export function getMessages() {

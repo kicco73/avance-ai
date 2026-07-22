@@ -5,6 +5,7 @@ import StateBar from './components/StateBar.vue'
 import ActionButtons from './components/ActionButtons.vue'
 import SignalsView from './components/SignalsView.vue'
 import ModelsMenu from './components/ModelsMenu.vue'
+import SplashScreen from './components/SplashScreen.vue'
 import {
   getState,
   getMessages,
@@ -34,17 +35,84 @@ const loadError = ref('')
 const modelUploadInput = ref(null)
 const modelsMenu = ref(null)
 
+// Initial-boot backend readiness gate — entirely separate from loadError
+// (which is for runtime errors on an already-running app). 'checking': the
+// very first, invisible ping attempt (no splash yet, so a backend that's
+// already up never flashes one). 'waiting': the first attempt failed,
+// retrying on an interval with the splash visible. 'ready': normal app UI.
+// 'failed': retry budget exhausted, explicit error + manual "Retry".
+const bootStatus = ref('checking')
+
+const PING_INTERVAL_MS = 800
+const PING_TIMEOUT_MS = 3000
+const MAX_PING_ATTEMPTS = 30
+
 // Plain (non-reactive) connection state: the socket itself and the
 // resolve/reject pair for whichever chat turn is currently in flight.
 let chatSocket = null
 let pendingTurn = null
 
-async function loadState() {
+// Boot-ping bookkeeping. `bootSequenceToken` is bumped by startBootSequence()
+// so a stale scheduled retry from a previous sequence (e.g. right after the
+// user clicks "Retry") can recognize it's been superseded and no-op instead
+// of racing the fresh one.
+let pingAttempts = 0
+let pingTimeoutHandle = null
+let bootSequenceToken = 0
+
+// One ping attempt, bounded by an explicit timeout — plain fetch() never
+// times out on its own against a hung connection, and "timeout" is one of
+// the failure modes this boot check needs to treat the same as "not ready
+// yet". On success, reuses the result directly as the app's current state
+// (GET /api/state IS the readiness check — nothing else to fetch for it).
+async function pingBackend() {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), PING_TIMEOUT_MS)
   try {
-    state.value = await getState()
-  } catch (err) {
-    loadError.value = `Unable to reach the backend: ${err.message}`
+    state.value = await getState(controller.signal)
+    return true
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timeout)
   }
+}
+
+function bootSucceeded() {
+  bootStatus.value = 'ready'
+  loadMessages()
+  loadAutoTracking()
+}
+
+async function runPingAttempt(token) {
+  if (token !== bootSequenceToken) return // superseded by a newer sequence
+  pingAttempts++
+  const ok = await pingBackend()
+  if (token !== bootSequenceToken) return
+  if (ok) {
+    bootSucceeded()
+    return
+  }
+  if (pingAttempts >= MAX_PING_ATTEMPTS) {
+    bootStatus.value = 'failed'
+    return
+  }
+  bootStatus.value = 'waiting'
+  pingTimeoutHandle = setTimeout(() => runPingAttempt(token), PING_INTERVAL_MS)
+}
+
+// Entry point for both the initial mount and the splash's manual "Retry" —
+// restarts the exact same cycle: one immediate, invisible attempt, then
+// (only if that one fails) the visible retry loop.
+function startBootSequence() {
+  bootSequenceToken++
+  pingAttempts = 0
+  if (pingTimeoutHandle) {
+    clearTimeout(pingTimeoutHandle)
+    pingTimeoutHandle = null
+  }
+  bootStatus.value = 'checking'
+  runPingAttempt(bootSequenceToken)
 }
 
 // Redisplays whatever conversation the backend already persisted (e.g.
@@ -293,16 +361,21 @@ async function handleModelDelete(modelName) {
   }
 }
 
-onMounted(loadState)
-onMounted(loadMessages)
-onMounted(loadAutoTracking)
+onMounted(startBootSequence)
 onBeforeUnmount(() => {
   chatSocket?.close()
+  if (pingTimeoutHandle) clearTimeout(pingTimeoutHandle)
 })
 </script>
 
 <template>
-  <div class="app">
+  <!-- 'checking' (the invisible first ping) renders neither branch, on
+       purpose: nothing should flash before we know whether the backend was
+       already up. -->
+  <SplashScreen v-if="bootStatus === 'waiting'" />
+  <SplashScreen v-else-if="bootStatus === 'failed'" failed @retry="startBootSequence" />
+
+  <div v-else-if="bootStatus === 'ready'" class="app">
     <header class="topbar">
       <h1>Avance — Prototype</h1>
       <div class="topbar-actions">
