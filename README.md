@@ -41,7 +41,7 @@ requests from this origin).
 1. Open `http://localhost:5173`.
 2. Chat freely in the central window: every message is sent to the backend over a
    websocket connection, which builds the system prompt by combining the current
-   state's `contextual_prompt` with `general_instructions` (both read from the
+   state's `contextual_prompt` with `general_prompt` (both read from the
    active model YAML — see [Editing the automaton](#editing-the-automaton)),
    and calls the configured LLM provider (see
    [Switching LLM provider](#switching-llm-provider)) with the full conversation
@@ -179,7 +179,7 @@ avance-prototype/
 │   │   └── gemini_provider.py         # Google Gemini API call wrapper
 │   ├── models/                        # each subdir is a model: index.yml + its own attachments (see models/README.md)
 │   │   └── default/                   # boot default; POST /api/model/upload can add more here at runtime
-│   │       ├── index.yml              # automaton definition + general_instructions + contextual/fixed prompts
+│   │       ├── index.yml              # automaton definition + general_prompt + contextual/fixed prompts
 │   │       └── *.txt                  # attachments referenced from index.yml
 │   ├── requirements.txt
 │   └── .env.example

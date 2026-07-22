@@ -146,15 +146,15 @@ class Automaton:
         self,
         initial_state: str,
         states: dict[str, State],
-        general_instructions: str,
+        general_prompt: str,
         signals: list[Signal],
-        general_instructions_attachments: list[Attachment],
+        general_prompt_attachments: list[Attachment],
     ):
         self.initial_state = initial_state
         self.states = states
-        self.general_instructions = general_instructions
+        self.general_prompt = general_prompt
         self.signals = signals
-        self.general_instructions_attachments = general_instructions_attachments
+        self.general_prompt_attachments = general_prompt_attachments
 
     def get_state(self, key: str) -> State:
         return self.states[key]
@@ -214,9 +214,9 @@ def load_automaton(path: str | Path) -> Automaton:
     base_dir = path.parent
 
     initial_state = raw["initial_state"]
-    general_instructions = raw["general_instructions"].strip()
-    general_instructions_attachments = _load_attachments(
-        raw.get("attachments", []), "general_instructions", base_dir
+    general_prompt = raw["general_prompt"].strip()
+    general_prompt_attachments = _load_attachments(
+        raw.get("attachments", []), "general_prompt", base_dir
     )
     raw_states = raw["states"]
 
@@ -301,7 +301,7 @@ def load_automaton(path: str | Path) -> Automaton:
     return Automaton(
         initial_state=initial_state,
         states=states,
-        general_instructions=general_instructions,
+        general_prompt=general_prompt,
         signals=signals,
-        general_instructions_attachments=general_instructions_attachments,
+        general_prompt_attachments=general_prompt_attachments,
     )

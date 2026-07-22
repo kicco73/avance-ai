@@ -122,7 +122,7 @@ def _build_priming_messages(attachments: list) -> list[dict]:
     """The (never persisted — neither in memory nor in the DB) turn carrying
     this call's attachments as provider-neutral 'attachment' content blocks.
     Rebuilt fresh on every single call from whatever's in scope right now
-    (general_instructions + current state for chat, per-signal for signals
+    (general_prompt + current state for chat, per-signal for signals
     computation) — never reused across calls, so a state change is reflected
     immediately. Each LLMProvider renders these its own way: AnthropicProvider
     turns them into real `document` blocks with a cache breakpoint;
@@ -212,8 +212,8 @@ async def _process_chat_message(text: str, send) -> None:
         # doesn't carry the attachments meant for it either.
         turn_attachments = []
     else:
-        system_prompt = f"{state.contextual_prompt}\n\n{automaton.general_instructions}"
-        turn_attachments = automaton.general_instructions_attachments + state.attachments
+        system_prompt = f"{state.contextual_prompt}\n\n{automaton.general_prompt}"
+        turn_attachments = automaton.general_prompt_attachments + state.attachments
 
     priming_messages = _build_priming_messages(turn_attachments)
     chat_history = priming_messages + _strip_timestamps(session.history)
@@ -362,7 +362,7 @@ async def _compute_signals() -> list[dict]:
     )
     system_prompt = SIGNALS_SYSTEM_PROMPT_TEMPLATE.format(signal_definitions=signal_definitions)
     # Each signal brings only its own attachments into this shared call —
-    # never a state's or general_instructions' (different scope entirely).
+    # never a state's or general_prompt' (different scope entirely).
     signal_attachments = [a for s in automaton.signals for a in s.attachments]
     priming_messages = _build_priming_messages(signal_attachments)
     history = priming_messages + _signal_history_window()

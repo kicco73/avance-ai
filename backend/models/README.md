@@ -23,7 +23,7 @@ directory name either way:
 models/
 └── default/
     ├── index.yml
-    ├── general_instructions.txt
+    ├── general_prompt.txt
     ├── precontemplation_instructions.txt
     └── acute_risk_detection_instructions.txt
 ```
@@ -31,11 +31,11 @@ models/
 ## Attachments
 
 Files referenced by `attachments:` lists in a model's `index.yml` — under
-`general_instructions`, any state (attached to its `contextual_prompt`), or
+`general_prompt`, any state (attached to its `contextual_prompt`), or
 any signal (attached to its `ai_prompt`).
 
 ```yaml
-general_instructions: |
+general_prompt: |
   ...
 attachments:
   - clinical_tone_guidelines.md
@@ -62,7 +62,7 @@ states:
   `POST /api/model/upload`) and kept in memory for that automaton's
   lifetime: editing a file here doesn't take effect until the model is
   reloaded — restart the backend, or re-upload a model referencing it.
-- Scoping is strict: a chat turn only ever sees `general_instructions`'
+- Scoping is strict: a chat turn only ever sees `general_prompt`'
   attachments plus the *current* state's — never another state's or a
   signal's. The signals computation call only ever sees signals'
-  attachments — never a state's or `general_instructions`'.
+  attachments — never a state's or `general_prompt`'.

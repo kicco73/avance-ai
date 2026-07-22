@@ -1,6 +1,6 @@
 initial_state: hello
 
-general_instructions: |
+general_prompt: |
   
 
 states:
