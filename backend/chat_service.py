@@ -14,10 +14,6 @@ from automaton.automaton import Automaton, trigger_signal_names
 from db import Db
 from ai.llm_provider import (
     LLMProvider,
-    LLMProviderError,
-    LLMProviderRateLimitedError,
-    LLMProviderUnavailableError,
-    MAX_RETRIES,
     OnRetry,
     generate_with_retry,
 )
@@ -114,8 +110,6 @@ class ChatService(object):
         ]
 
     def get_messages(self, last_n: int | None = None) -> list[dict]:
-        """For main.py's GET /api/messages — the view only ever talks to
-        the service, never reaches into db.py directly."""
         return self._db.get_messages(self._active_model_name, last_n=last_n)
 
     @staticmethod
@@ -207,25 +201,13 @@ class ChatService(object):
             self._db.get_messages(model_name) + [pending_message]
         )
 
-        try:
-            reply = await generate_with_retry(
-                self._llm_provider, system_prompt, chat_history, on_retry=on_retry
-            )
-        except LLMProviderUnavailableError as exc:
-            raise ChatServiceError(
-                f"Service unavailable after {MAX_RETRIES} retries.", str(exc), status_code=500
-            ) from exc
-        except LLMProviderRateLimitedError as exc:
-            logger.critical("LLM provider rate limit exceeded: %s", exc)
-            raise ChatServiceError("The AI service rate limit was exceeded.", str(exc), status_code=500) from exc
-        except LLMProviderError as exc:
-            raise ChatServiceError("The AI service returned an error.", str(exc), status_code=500) from exc
+        reply = await generate_with_retry(
+            self._llm_provider, system_prompt, chat_history, on_retry=on_retry
 
-        # Persisted only once the turn is fully successful — a failed
-        # attempt above raises without ever calling save_message, so a
-        # message pair is either both persisted, or neither.
+        )
         self._db.save_message("user", text, model_name)
         self._db.save_message("assistant", reply, model_name)
+
         return ChatTurnResult(
             reply=reply,
             state=self._current_state_payload(automaton),
@@ -234,7 +216,7 @@ class ChatService(object):
             triggered_action=triggered_action,
         )
 
-    async def open_if_needed(self) -> dict | None:
+    async def open_if_needed(self) -> None:
         """If the conversation is empty, generates and persists the opening
         message (same prompt-building as a normal chat turn). No-op if
         already non-empty.
@@ -257,20 +239,5 @@ class ChatService(object):
         priming_messages = self.build_priming_messages(turn_attachments)
         priming_messages.append({"role": "user", "content": "..."})
 
-        try:
-            reply = await generate_with_retry(self._llm_provider, system_prompt, priming_messages)
-        except LLMProviderUnavailableError as exc:
-            logger.warning("Failed to generate the opening message: %s", exc)
-            return {"message": f"Service unavailable after {MAX_RETRIES} retries.", "detail": str(exc)}
-        except LLMProviderRateLimitedError as exc:
-            logger.warning("Failed to generate the opening message: %s", exc)
-            return {"message": "The AI service rate limit was exceeded.", "detail": str(exc)}
-        except LLMProviderError as exc:
-            logger.warning("Failed to generate the opening message: %s", exc)
-            return {"message": "The AI service returned an error.", "detail": str(exc)}
-        except Exception as exc:
-            logger.warning("Failed to generate the opening message: %s", exc)
-            return {"message": "The AI service raised an unhandled exception.", "detail": str(exc)}
-
+        reply = await generate_with_retry(self._llm_provider, system_prompt, priming_messages)
         self._db.save_message("assistant", reply, model_name)
-        return None

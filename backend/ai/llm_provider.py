@@ -12,10 +12,21 @@ from typing import Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
+# Retry/backoff policy for transient upstream overload (HTTP 503). Lives here
+# rather than in any one caller since generate_with_retry() below is shared
+# by every caller that needs it (interactive chat turns, the opening-message
+# generation) — a policy belonging to "how do we call a provider", not to
+# any particular feature.
+MAX_RETRIES = 5
+BASE_DELAY_SECONDS = 1.0
 
 class LLMProviderError(Exception):
     """Readable error to show on the frontend, without crashing the server."""
-
+    message = f"AI service error."
+    status_code = 503
+    detail = None
+    def __init__(self, message: str) -> None:
+        self.detail = message
 
 class LLMProviderUnavailableError(LLMProviderError):
     """The upstream model API is temporarily overloaded/unavailable (HTTP 503).
@@ -23,10 +34,14 @@ class LLMProviderUnavailableError(LLMProviderError):
     Kept distinct from LLMProviderError so callers can tell a transient,
     worth-retrying failure apart from a permanent one.
     """
+    message = f"AI service unavailable after {MAX_RETRIES} retries."
+    status_code = 503
 
 
 class LLMProviderRateLimitedError(LLMProviderError):
     """The upstream model API rejected the request for rate limiting (HTTP 429)."""
+    message = "The AI service rate limit was exceeded."
+    status_code = 429
 
 
 class LLMProvider(ABC):
@@ -40,15 +55,6 @@ class LLMProvider(ABC):
         (missing key, timeout, API error), without propagating unhandled exceptions.
         """
         raise NotImplementedError
-
-
-# Retry/backoff policy for transient upstream overload (HTTP 503). Lives here
-# rather than in any one caller since generate_with_retry() below is shared
-# by every caller that needs it (interactive chat turns, the opening-message
-# generation) — a policy belonging to "how do we call a provider", not to
-# any particular feature.
-MAX_RETRIES = 5
-BASE_DELAY_SECONDS = 1.0
 
 # Awaited before each backoff sleep with (attempt, max_attempts, remaining_
 # seconds) — e.g. to push a live "retrying" status frame to a websocket
