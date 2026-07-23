@@ -5,7 +5,7 @@ import os
 
 import anthropic
 
-from llm_provider import (
+from ai.llm_provider import (
     LLMProvider,
     LLMProviderError,
     LLMProviderRateLimitedError,

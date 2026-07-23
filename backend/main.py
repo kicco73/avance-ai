@@ -18,7 +18,7 @@ from chat_service import ChatService, ChatServiceError
 from chat_ws_adapter import ChatWsAdapter
 from db import db
 from models_manager import ModelsManager
-from providers import provider_factory
+from ai import provider_factory
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)

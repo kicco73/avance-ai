@@ -8,7 +8,7 @@ from google import genai
 from google.genai import errors as genai_errors
 from google.genai import types
 
-from llm_provider import (
+from ai.llm_provider import (
     LLMProvider,
     LLMProviderError,
     LLMProviderRateLimitedError,

@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 
 from automaton.automaton import Automaton, trigger_signal_names
 from db import db
-from llm_provider import (
+from ai.llm_provider import (
     LLMProvider,
     LLMProviderError,
     LLMProviderRateLimitedError,

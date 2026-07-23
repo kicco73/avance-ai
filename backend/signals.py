@@ -10,7 +10,7 @@ from typing import Callable
 
 from automaton.automaton import Automaton
 from db import db
-from llm_provider import LLMProvider, LLMProviderError
+from ai.llm_provider import LLMProvider, LLMProviderError
 
 logger = logging.getLogger(__name__)
 
