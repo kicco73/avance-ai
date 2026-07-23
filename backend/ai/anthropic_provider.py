@@ -1,8 +1,6 @@
 """LLM provider backed by the Anthropic API (Claude)."""
 from __future__ import annotations
 
-import os
-
 import anthropic
 
 from ai.llm_provider import (
@@ -12,7 +10,7 @@ from ai.llm_provider import (
     LLMProviderUnavailableError,
 )
 
-CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-5")
+CLAUDE_DEFAULT_MODEL = "claude-sonnet-5"
 MAX_TOKENS = 1024
 REQUEST_TIMEOUT_SECONDS = 30.0
 
@@ -44,18 +42,14 @@ def _build_messages(history: list[dict]) -> list[dict]:
 
 
 class AnthropicProvider(LLMProvider):
-    def __init__(self) -> None:
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise LLMProviderError(
-                "ANTHROPIC_API_KEY not configured. Copy .env.example to .env and enter your API key."
-            )
+    def __init__(self, api_key: str, model: str) -> None:
+        self._claude_model = model or CLAUDE_DEFAULT_MODEL
         self._client = anthropic.Anthropic(api_key=api_key, timeout=REQUEST_TIMEOUT_SECONDS)
 
     def generate(self, system_prompt: str, history: list[dict]) -> str:
         try:
             response = self._client.messages.create(
-                model=CLAUDE_MODEL,
+                model=self._claude_model,
                 max_tokens=MAX_TOKENS,
                 system=[{"type": "text", "text": system_prompt, "cache_control": CACHE_CONTROL}],
                 messages=_build_messages(history),

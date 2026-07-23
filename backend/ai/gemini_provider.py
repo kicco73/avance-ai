@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import os
 
 from google import genai
 from google.genai import errors as genai_errors
@@ -17,7 +16,6 @@ from ai.llm_provider import (
 
 logger = logging.getLogger(__name__)
 
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
 MAX_OUTPUT_TOKENS = 1024
 
 # Gemini uses the roles "user"/"model", not "user"/"assistant".
@@ -48,13 +46,9 @@ def _content_to_text(content) -> str:
 
 
 class GeminiProvider(LLMProvider):
-    def __init__(self) -> None:
-        api_key = os.environ.get("GEMINI_API_KEY")
-        if not api_key:
-            raise LLMProviderError(
-                "GEMINI_API_KEY not configured. Copy .env.example to .env and enter your API key."
-            )
+    def __init__(self, api_key: str, model: str) -> None:
         self._client = genai.Client(api_key=api_key)
+        self._model = model
 
     def generate(self, system_prompt: str, history: list[dict]) -> str:
         contents = [
@@ -67,7 +61,7 @@ class GeminiProvider(LLMProvider):
 
         try:
             response = self._client.models.generate_content(
-                model=GEMINI_MODEL,
+                model=self._model,
                 contents=contents,
                 config=types.GenerateContentConfig(
                     system_instruction=system_prompt,

@@ -1,19 +1,14 @@
-from __future__ import annotations
 from ai.llm_provider import LLMProvider
+from ai.anthropic_provider import AnthropicProvider
+from ai.gemini_provider import GeminiProvider
 
-_PROVIDERS = ("anthropic", "gemini")
+_PROVIDERS = {
+     "anthropic": AnthropicProvider,
+     "gemini": GeminiProvider
+}
 
-def make(provider_name: str) -> LLMProvider:
+def make(provider_name: str, api_key: str, model: str) -> LLMProvider:
+    if provider_name not in _PROVIDERS:
+        raise ValueError(f"Invalid provider name: {provider_name}. Must be one of: {', '.join(_PROVIDERS.keys())}")
 
-    if provider_name == "anthropic":
-        from ai.anthropic_provider import AnthropicProvider
-
-        return AnthropicProvider()
-    if provider_name == "gemini":
-        from ai.gemini_provider import GeminiProvider
-
-        return GeminiProvider()
-
-    raise RuntimeError(
-        f"LLM_PROVIDER={provider_name!r} is not valid. Allowed values: {', '.join(_PROVIDERS)}. "
-    )
+    return _PROVIDERS[provider_name](api_key=api_key, model=model)

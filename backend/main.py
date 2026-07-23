@@ -73,8 +73,11 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     logger.exception("Unhandled error on %s %s", request.method, request.url.path)
     return JSONResponse(status_code=500, content=_error_body("Internal server error.", str(exc)))
 
-provider_name = os.environ.get("LLM_PROVIDER", "").strip().lower()
-llm_provider = provider_factory.make(provider_name)
+llm_provider = os.environ.get("LLM_PROVIDER", "gemini").strip().lower()
+llm_api_key = os.environ.get("LLM_API_KEY", "").strip()
+llm_name = os.environ.get("LLM_NAME", "gemini-flash-lite-latest").strip()
+
+llm_provider = provider_factory.make(llm_provider, api_key=llm_api_key, model=llm_name)
 models_manager = ModelsManager()
 class ActionRequest(BaseModel):
     action_name: str
