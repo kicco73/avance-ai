@@ -1,6 +1,6 @@
 """Computes and reports the monitoring signals defined in the active
-model's YAML. `Signals` holds no real state — get_active_automaton is
-constructor-injected. Instantiated as ConversationController's `signals`."""
+model's YAML. get_active_automaton and db are constructor-injected.
+Instantiated as ChatService's `signals`."""
 from __future__ import annotations
 
 import asyncio
@@ -9,7 +9,6 @@ import logging
 from typing import Callable
 
 from automaton.automaton import Automaton
-from db import db
 from ai.llm_provider import LLMProvider, LLMProviderError
 
 logger = logging.getLogger(__name__)
@@ -41,26 +40,25 @@ GetActiveAutomaton = Callable[[], Automaton]
 
 
 class Signals(object):
-    def __init__(self, get_active_automaton: GetActiveAutomaton) -> None:
+    def __init__(self, get_active_automaton: GetActiveAutomaton, db) -> None:
         self._get_active_automaton = get_active_automaton
+        self._db = db
 
     @property
     def automaton(self) -> Automaton:
         return self._get_active_automaton()
 
-    @staticmethod
-    def _active_model_name() -> str:
+    def _active_model_name(self) -> str:
         """Settings-persisted pointer, not models_manager's in-memory
         tracker — this module doesn't depend on models_manager, by design."""
-        return db.get_active_model_name()
+        return self._db.get_active_model_name()
 
-    @staticmethod
-    def _signal_history_window(pending_message: dict | None) -> list[dict]:
+    def _signal_history_window(self, pending_message: dict | None) -> list[dict]:
         """Recent messages as a single 'evaluate this transcript' turn —
         not multi-turn history, which invites the model to keep chatting.
         `pending_message` is appended locally, unpersisted."""
         fetch_n = SIGNALS_HISTORY_WINDOW - 1 if pending_message is not None else SIGNALS_HISTORY_WINDOW
-        recent = db.get_messages(Signals._active_model_name(), last_n=fetch_n)
+        recent = self._db.get_messages(self._active_model_name(), last_n=fetch_n)
         if pending_message is not None:
             recent = recent + [pending_message]
         if recent and recent[0]["role"] != "user":
@@ -166,4 +164,4 @@ class Signals(object):
         """Read-only, never calls the AI — reports the latest snapshot
         persisted through db.py. Signals are only (re)computed via
         compute_signals(), from the auto-tracking flow."""
-        return self._snapshot_to_signals_payload(db.get_latest_signal_snapshot(self._active_model_name()))
+        return self._snapshot_to_signals_payload(self._db.get_latest_signal_snapshot(self._active_model_name()))

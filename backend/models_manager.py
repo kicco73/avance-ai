@@ -1,6 +1,7 @@
 """Which automaton is active, plus validating/staging/committing model
 activations, uploads, and deletions. `ModelsManager` holds that state as
-instance attributes; `models_manager` below is the one shared instance.
+instance attributes; constructed once, in main.py, with the shared `Db`
+instance passed in explicitly.
 """
 from __future__ import annotations
 
@@ -14,7 +15,6 @@ from typing import Awaitable, Callable
 
 from automaton.automaton import Automaton
 from automaton.automaton_builder import AutomatonBuilder
-from db import db
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,8 @@ CommitCallback = Callable[[Automaton], Awaitable[None]]
 
 
 class ModelsManager(object):
-    def __init__(self) -> None:
+    def __init__(self, db) -> None:
+        self._db = db
         self._active_automaton: Automaton | None = None
         self._active_model_name: str | None = None
         self.__init_model()
@@ -115,10 +116,10 @@ class ModelsManager(object):
         On failure, falls back to "default", restoring its own history the
         same way — never wiping anyone's data; if "default" fails too,
         propagates so the server fails to start."""
-        model_name = db.get_active_model_name()
+        model_name = self._db.get_active_model_name()
         if model_name is None:
             model_name = DEFAULT_MODEL_NAME
-            db.set_active_model_name(model_name)
+            self._db.set_active_model_name(model_name)
 
         try:
             automaton = self._load_and_validate(model_name)
@@ -128,9 +129,9 @@ class ModelsManager(object):
                 raise
             model_name = DEFAULT_MODEL_NAME
             automaton = self._load_and_validate(model_name)
-            db.set_active_model_name(model_name)
+            self._db.set_active_model_name(model_name)
 
-        automaton.set_current_state(db.get_current_state(automaton.initial_state, model_name))
+        automaton.set_current_state(self._db.get_current_state(automaton.initial_state, model_name))
         self._set_active(model_name, automaton)
         return automaton
 
@@ -275,7 +276,7 @@ class ModelsManager(object):
             raise PermissionError("The default model cannot be deleted.")
 
         shutil.rmtree(MODELS_DIR / model_name)
-        db.reset_model(model_name)
+        self._db.reset_model(model_name)
 
         if model_name == self._active_model_name:
             await self.activate_model(DEFAULT_MODEL_NAME, commit)

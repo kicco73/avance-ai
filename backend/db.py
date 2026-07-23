@@ -1,18 +1,21 @@
 """Single point of database access: only this module imports peewee/
-playhouse or builds a query. `db` below is the one shared instance,
-already initialized (tables created) the moment this module is imported."""
+playhouse or builds a query. No shared instance here — main.py reads
+DATABASE_URL from the environment and constructs the one `Db(database_url)`
+instance, passed explicitly to whatever needs it."""
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime
 
-from peewee import CharField, DateTimeField, ForeignKeyField, Model, TextField
+from peewee import CharField, DateTimeField, ForeignKeyField, Model, Proxy, TextField
 from playhouse.db_url import connect
 from playhouse.migrate import SqliteMigrator, migrate
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///avance.db")
-database = connect(DATABASE_URL)
+# Model classes below bind to this at class-definition time, since Peewee
+# needs a Meta.database then — the real connection only exists once Db()
+# is constructed (in main.py, with the URL it reads from the environment),
+# at which point Db.__init__ calls database.initialize(...) to bind it.
+database = Proxy()
 
 
 class BaseModel(Model):
@@ -65,10 +68,11 @@ _MODEL_SCOPED_TABLES = (Message, SignalSnapshot, Transition)
 
 
 class Db(object):
-    def __init__(self) -> None:
-        """Opens the connection and creates tables that don't exist yet,
-        without touching existing data. Runs once, at import time — no
-        other module needs to call anything to set this up."""
+    def __init__(self, database_url: str) -> None:
+        """Binds the module's database Proxy to `database_url`, opens the
+        connection, and creates tables that don't exist yet, without
+        touching existing data. Constructed once, in main.py."""
+        database.initialize(connect(database_url))
         database.connect(reuse_if_open=True)
         database.create_tables([Message, SignalSnapshot, Settings, Transition], safe=True)
         self._migrate_add_model_name()
@@ -192,7 +196,3 @@ class Db(object):
         Transition.delete().execute()
         SignalSnapshot.delete().execute()
         Message.delete().execute()
-
-
-# The one shared instance every other module imports (`from db import db`).
-db = Db()

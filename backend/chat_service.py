@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from automaton.automaton import Automaton, trigger_signal_names
-from db import db
+from db import Db
 from ai.llm_provider import (
     LLMProvider,
     LLMProviderError,
@@ -63,10 +63,12 @@ class ChatService(object):
         self,
         llm_provider: LLMProvider,
         models_manager: ModelsManager,
+        db: Db,
     ) -> None:
         self._llm_provider = llm_provider
         self._models_manager = models_manager
-        self.signals = Signals(get_active_automaton=models_manager.get_active_automaton)
+        self._db = db
+        self.signals = Signals(get_active_automaton=models_manager.get_active_automaton, db=db)
         self.auto_tracking_enabled = True
 
         # Single-user prototype: serializes chat-turn processing across
@@ -114,17 +116,22 @@ class ChatService(object):
     def get_messages(self, last_n: int | None = None) -> list[dict]:
         """For main.py's GET /api/messages — the view only ever talks to
         the service, never reaches into db.py directly."""
-        return db.get_messages(self._active_model_name, last_n=last_n)
+        return self._db.get_messages(self._active_model_name, last_n=last_n)
 
-    def _current_state_payload(self) -> dict:
-        return self._automaton.get_current_state_payload()
+    @staticmethod
+    def _current_state_payload(automaton: Automaton) -> dict:
+        return automaton.get_current_state_payload()
 
     async def _run_auto_tracking(
-        self, pending_message: dict, model_name: str
+        self, pending_message: dict, model_name: str, automaton: Automaton
     ) -> tuple[bool, str | None, str | None]:
         """Computes signals and applies the first matching trigger, if
         auto-tracking is on — before the reply, so it's produced under the
-        destination state's prompt. Returns (state_changed, new_state, triggered_action)."""
+        destination state's prompt. Returns (state_changed, new_state, triggered_action).
+
+        `automaton` is the caller's own snapshot, taken once before this
+        call — never re-read from models_manager here, since a concurrent
+        switch could swap it out from under us across the `await` below."""
         if not self.auto_tracking_enabled:
             return False, None, None
 
@@ -134,19 +141,19 @@ class ChatService(object):
         signal_values = {s["name"]: s["value"] for s in signals_list}
         # Saved before trigger evaluation so a fired transition can reference
         # the exact snapshot id that caused it.
-        snapshot_id = db.save_signal_snapshot(signal_values, model_name)
+        snapshot_id = self._db.save_signal_snapshot(signal_values, model_name)
 
-        from_state_key = self._automaton.get_current_state().key
-        triggered_action = self._automaton.evaluate_triggers(signal_values)
+        from_state_key = automaton.get_current_state().key
+        triggered_action = automaton.evaluate_triggers(signal_values)
 
         if triggered_action is None:
             return False, None, None
 
-        action = self._automaton.apply_action(triggered_action)
+        action = automaton.apply_action(triggered_action)
         relevant_names = trigger_signal_names(action.trigger)
         relevant_values = {n: signal_values.get(n) for n in relevant_names}
-        self._automaton.log_transition(from_state_key, action.target, action.name, "auto", relevant_values)
-        db.save_transition(from_state_key, triggered_action, action.target, model_name, snapshot_id)
+        automaton.log_transition(from_state_key, action.target, action.name, "auto", relevant_values)
+        self._db.save_transition(from_state_key, triggered_action, action.target, model_name, snapshot_id)
 
         return True, action.target, triggered_action
 
@@ -166,20 +173,25 @@ class ChatService(object):
             return await self._process_turn_locked(text, on_retry)
 
     async def _process_turn_locked(self, text: str, on_retry: OnRetry | None) -> ChatTurnResult:
-        if self._automaton.get_current_state().final:
+        # Snapshotted once and threaded through explicitly: these are live
+        # properties on models_manager, which a concurrent switch/upload/
+        # delete could change mid-turn if re-read after an `await` below.
+        automaton = self._automaton
+        model_name = self._active_model_name
+
+        if automaton.get_current_state().final:
             # Final states are terminal by design: no message the client
             # could have already queued should reach the model, no matter
             # how the state got here (manual button or auto-tracking).
             raise ChatServiceError("The conversation has ended in this state.", status_code=409)
 
-        model_name = self._active_model_name
         pending_message = {"role": "user", "content": text, "timestamp": self._now_iso()}
 
         state_changed, new_state_key, triggered_action = await self._run_auto_tracking(
-            pending_message, model_name
+            pending_message, model_name, automaton
         )
 
-        state = self._automaton.get_current_state()
+        state = automaton.get_current_state()
         if state.fixed_message:
             logger.warning("Translating fixed_message for state '%s'.", state.key)
             system_prompt = FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message)
@@ -187,12 +199,12 @@ class ChatService(object):
             # doesn't carry the attachments meant for it either.
             turn_attachments = []
         else:
-            system_prompt = f"{state.contextual_prompt}\n\n{self._automaton.general_prompt}"
-            turn_attachments = self._automaton.general_prompt_attachments + state.attachments
+            system_prompt = f"{state.contextual_prompt}\n\n{automaton.general_prompt}"
+            turn_attachments = automaton.general_prompt_attachments + state.attachments
 
         priming_messages = self.build_priming_messages(turn_attachments)
         chat_history = priming_messages + self._strip_timestamps(
-            db.get_messages(model_name) + [pending_message]
+            self._db.get_messages(model_name) + [pending_message]
         )
 
         try:
@@ -212,11 +224,11 @@ class ChatService(object):
         # Persisted only once the turn is fully successful — a failed
         # attempt above raises without ever calling save_message, so a
         # message pair is either both persisted, or neither.
-        db.save_message("user", text, model_name)
-        db.save_message("assistant", reply, model_name)
+        self._db.save_message("user", text, model_name)
+        self._db.save_message("assistant", reply, model_name)
         return ChatTurnResult(
             reply=reply,
-            state=self._current_state_payload(),
+            state=self._current_state_payload(automaton),
             state_changed=state_changed,
             new_state=new_state_key,
             triggered_action=triggered_action,
@@ -232,17 +244,23 @@ class ChatService(object):
         whatever REST call triggered this), never a transport push — so it
         reaches the client the same way regardless of whether a chat
         websocket happens to be connected."""
-        if not db.is_empty(self._active_model_name):
+        # Snapshotted once, same reasoning as _process_turn_locked: a
+        # concurrent switch/upload/delete could otherwise change which
+        # model this call means partway through, across the `await` below.
+        automaton = self._automaton
+        model_name = self._active_model_name
+
+        if not self._db.is_empty(model_name):
             return
 
-        state = self._automaton.get_current_state()
+        state = automaton.get_current_state()
 
         if state.fixed_message:
             system_prompt = FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message)
             turn_attachments = []
         else:
-            system_prompt = f"{state.contextual_prompt}\n\n{self._automaton.general_prompt}"
-            turn_attachments = self._automaton.general_prompt_attachments + state.attachments
+            system_prompt = f"{state.contextual_prompt}\n\n{automaton.general_prompt}"
+            turn_attachments = automaton.general_prompt_attachments + state.attachments
 
         priming_messages = self.build_priming_messages(turn_attachments)
         priming_messages.append({"role": "user", "content": "..."})
@@ -253,4 +271,4 @@ class ChatService(object):
             logger.warning("Failed to generate the opening message: %s", exc)
             return
 
-        db.save_message("assistant", reply, self._active_model_name)
+        self._db.save_message("assistant", reply, model_name)
