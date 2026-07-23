@@ -20,38 +20,36 @@ defineProps({
 const emit = defineEmits(['close', 'toggle-auto-tracking'])
 
 const loading = ref(true)
-const error = ref('')
 const signals = ref([])
 
 const triggersLoading = ref(false)
-const triggersError = ref('')
 const triggers = ref([])
 
 async function load() {
   loading.value = true
-  error.value = ''
+  let signalsOk = true
   try {
     signals.value = await getSignals()
-  } catch (err) {
-    error.value = err.message
+  } catch {
+    // already surfaced via apiFetch
+    signalsOk = false
   } finally {
     loading.value = false
   }
 
-  if (!error.value) await loadTriggers()
+  if (signalsOk) await loadTriggers()
 }
 
 // Reuses the signal values already fetched above — never calls the AI again.
 async function loadTriggers() {
   triggersLoading.value = true
-  triggersError.value = ''
   try {
     const signalValues = Object.fromEntries(
       signals.value.map((s) => [s.name, s.error ? null : s.value])
     )
     triggers.value = await postTriggersPreview(signalValues)
-  } catch (err) {
-    triggersError.value = err.message
+  } catch {
+    // already surfaced via apiFetch
   } finally {
     triggersLoading.value = false
   }
@@ -83,7 +81,6 @@ onMounted(load)
 
     <div class="signals-body">
       <p v-if="loading" class="signals-status">Loading signals…</p>
-      <p v-else-if="error" class="signals-status signals-error">{{ error }}</p>
 
       <div v-else class="signals-chart">
         <div
@@ -112,7 +109,7 @@ onMounted(load)
         </div>
       </div>
 
-      <div v-if="!loading && !error" class="triggers-section">
+      <div v-if="!loading" class="triggers-section">
         <h2 class="state-name-title">{{ state?.label ?? '—' }}</h2>
         <p v-if="state?.description" class="triggers-state-description">
           {{ state.description }}
@@ -121,7 +118,6 @@ onMounted(load)
         <h3 class="triggers-heading">Next triggerable action</h3>
 
         <p v-if="triggersLoading" class="signals-status">Evaluating triggers…</p>
-        <p v-else-if="triggersError" class="signals-status signals-error">{{ triggersError }}</p>
         <p v-else-if="!triggers.length" class="signals-status">
           No triggerable actions defined for the current state.
         </p>
@@ -231,10 +227,6 @@ onMounted(load)
 
 .signals-status {
   color: #444;
-}
-
-.signals-error {
-  color: #c62828;
 }
 
 .signals-chart {

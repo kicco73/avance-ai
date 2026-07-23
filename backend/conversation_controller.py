@@ -39,6 +39,14 @@ FIXED_MESSAGE_INSTRUCTIONS = (
 
 Send = Callable[[dict], Awaitable[None]]
 
+
+def _error_frame(message: str, detail: str | None = None, **extra) -> dict:
+    """Every websocket failure — busy-turn rejection, terminal turn failure,
+    LLM-provider error — is equally just 'an error arrived from the
+    websocket' to the frontend: one frame type, one {message, detail} shape,
+    same contract as REST error bodies."""
+    return {"type": "error", "error": {"message": message, "detail": detail}, **extra}
+
 # Supplies the currently-active Automaton (models_manager.get_active_automaton)
 # — passed in rather than imported: this module doesn't own which model is
 # active, the same reason models_manager.py itself doesn't import main.py.
@@ -150,10 +158,9 @@ class ConversationController(object):
                 if not text:
                     continue
                 if self.lock.locked():
-                    await websocket.send_json({
-                        "type": "error",
-                        "error": "A chat reply is already being generated.",
-                    })
+                    await websocket.send_json(
+                        _error_frame("A chat reply is already being generated.")
+                    )
                     continue
                 async with self.lock:
                     await self.process_message(text, websocket.send_json)
@@ -183,7 +190,7 @@ class ConversationController(object):
             # Final states are terminal by design: no message the client
             # could have already queued should reach the model, no matter
             # how the state got here (manual button or auto-tracking).
-            await send({"type": "failed", "error": "The conversation has ended in this state."})
+            await send(_error_frame("The conversation has ended in this state."))
             return
 
         pending_message = {"role": "user", "content": text, "timestamp": self._now_iso()}
@@ -224,18 +231,16 @@ class ConversationController(object):
                 self._llm_provider, system_prompt, chat_history, on_retry=_push_retrying
             )
         except LLMProviderUnavailableError as exc:
-            await send({
-                "type": "failed",
-                "error": f"Service unavailable after {MAX_RETRIES} retries: {exc}",
-                **transition_fields,
-            })
+            await send(_error_frame(
+                f"Service unavailable after {MAX_RETRIES} retries.", str(exc), **transition_fields
+            ))
             return
         except LLMProviderRateLimitedError as exc:
             logger.critical("LLM provider rate limit exceeded: %s", exc)
-            await send({"type": "failed", "error": str(exc), **transition_fields})
+            await send(_error_frame("The AI service rate limit was exceeded.", str(exc), **transition_fields))
             return
         except LLMProviderError as exc:
-            await send({"type": "failed", "error": str(exc), **transition_fields})
+            await send(_error_frame("The AI service returned an error.", str(exc), **transition_fields))
             return
 
         # Persisted only once the turn is fully successful — a failed

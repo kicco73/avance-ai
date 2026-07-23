@@ -8,7 +8,6 @@ const emit = defineEmits(['select', 'upload', 'download', 'delete'])
 
 const open = ref(false)
 const loading = ref(false)
-const error = ref('')
 const models = ref([])
 const activeModelName = ref(null)
 const rootEl = ref(null)
@@ -22,13 +21,12 @@ const deleteDisabled = computed(() => activeModelName.value === DEFAULT_MODEL_NA
 // delete — never a second, separate call just to relabel the button.
 async function loadModels() {
   loading.value = true
-  error.value = ''
   try {
     const res = await getModels()
     models.value = res.models
     activeModelName.value = res.active
-  } catch (err) {
-    error.value = err.message
+  } catch {
+    // already surfaced via apiFetch
   } finally {
     loading.value = false
   }
@@ -94,7 +92,6 @@ onBeforeUnmount(() => {
 
     <div v-if="open" class="models-panel">
       <p v-if="loading" class="models-status">Loading…</p>
-      <p v-else-if="error" class="models-status models-error">{{ error }}</p>
 
       <ul v-else class="models-list">
         <li v-for="name in models" :key="name">
@@ -164,10 +161,6 @@ onBeforeUnmount(() => {
   padding: 0.6rem 0.9rem;
   font-size: 0.85rem;
   color: #444;
-}
-
-.models-error {
-  color: #c62828;
 }
 
 .models-list {

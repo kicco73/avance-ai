@@ -21,6 +21,7 @@ import {
 } from './api.js'
 import { playMessageChime } from './audio.js'
 import { celebrate } from './confetti.js'
+import { clearApiError, errorDetail, errorMessage, setApiError } from './errorStore.js'
 
 const showSignals = ref(false)
 const autoTrackingEnabled = ref(true)
@@ -29,15 +30,13 @@ const state = ref(null)
 const messages = ref([])
 const historyLoaded = ref(false)
 const chatLoading = ref(false)
-const chatError = ref('')
 const chatStatus = ref('')
 const actionLoading = ref(false)
-const loadError = ref('')
 const modelUploadInput = ref(null)
 const modelsMenu = ref(null)
 
-// Initial-boot backend readiness gate — entirely separate from loadError
-// (which is for runtime errors on an already-running app). 'checking': the
+// Initial-boot backend readiness gate — entirely separate from the shared
+// error store (which is for runtime errors on an already-running app). 'checking': the
 // very first, invisible ping attempt (no splash yet, so a backend that's
 // already up never flashes one). 'waiting': the first attempt failed,
 // retrying on an interval with the splash visible. 'ready': normal app UI.
@@ -52,6 +51,14 @@ const MAX_PING_ATTEMPTS = 30
 // resolve/reject pair for whichever chat turn is currently in flight.
 let chatSocket = null
 let pendingTurn = null
+
+// Stable id assigned to every user message at creation, so its status can
+// be found and updated by identity later — never by mutating whatever
+// object reference the caller happened to capture (see submitMessage: a
+// direct mutation on that captured reference bypasses Vue's reactive
+// array proxy entirely, so the UI doesn't update until some unrelated
+// change happens to force a re-render).
+let nextMessageId = 0
 
 // Boot-ping bookkeeping. `bootSequenceToken` is bumped by startBootSequence()
 // so a stale scheduled retry from a previous sequence (e.g. right after the
@@ -82,6 +89,11 @@ async function pingBackend() {
 
 function bootSucceeded() {
   bootStatus.value = 'ready'
+  // Clears any error left over from a failed boot-ping retry — that
+  // retry loop is invisible UI (see pingBackend), but it goes through the
+  // same apiFetch as everything else, so a stale message could otherwise
+  // still be sitting in the shared store the moment the chat UI mounts.
+  clearApiError()
   loadMessages()
   loadAutoTracking()
   ensureChatSocket()
@@ -137,8 +149,8 @@ async function loadMessages() {
   try {
     const history = await getMessages()
     messages.value = history.map((m) => ({ role: m.role, content: m.content, failed: false }))
-  } catch (err) {
-    loadError.value = err.message
+  } catch {
+    // already surfaced via apiFetch
   } finally {
     // Gates ChatWindow's bump-in animation (see its historyLoaded prop):
     // this hydration is async, so it lands well after ChatWindow has
@@ -158,8 +170,8 @@ async function loadAutoTracking() {
   try {
     const res = await getAutoTracking()
     autoTrackingEnabled.value = res.enabled
-  } catch (err) {
-    loadError.value = err.message
+  } catch {
+    // already surfaced via apiFetch
   }
 }
 
@@ -168,15 +180,15 @@ async function toggleAutoTracking() {
   try {
     const res = await postAutoTracking(!autoTrackingEnabled.value)
     autoTrackingEnabled.value = res.enabled
-  } catch (err) {
-    loadError.value = err.message
+  } catch {
+    // already surfaced via apiFetch
   } finally {
     autoTrackingLoading.value = false
   }
 }
 
 // All retry/backoff decisions happen server-side; this only renders
-// whatever the backend pushes ('retrying' ticks, then 'done'/'failed').
+// whatever the backend pushes ('retrying' ticks, then 'done'/'error').
 function handleSocketMessage(event) {
   const data = JSON.parse(event.data)
 
@@ -199,14 +211,17 @@ function handleSocketMessage(event) {
     return
   }
 
-  if (!pendingTurn) return
-  const { resolve, reject } = pendingTurn
-  pendingTurn = null
-  if (data.type === 'done') {
-    resolve(data)
-  } else {
-    reject(new Error(data.error || 'Chat request failed.'))
+  if (data.type === 'error') {
+    setApiError(data.error.message, data.error.detail)
+    pendingTurn?.reject(new Error(data.error.message))
+    pendingTurn = null
+    return
   }
+
+  if (!pendingTurn) return
+  const { resolve } = pendingTurn
+  pendingTurn = null
+  resolve(data) // data.type === 'done'
 }
 
 function openChatSocket() {
@@ -214,11 +229,19 @@ function openChatSocket() {
     const socket = createChatSocket()
     socket.onopen = () => resolve(socket)
     socket.onmessage = handleSocketMessage
-    socket.onerror = () => reject(new Error('Unable to connect to the chat service.'))
+    socket.onerror = () => {
+      const err = new Error('Unable to connect to the chat service.')
+      setApiError(err.message)
+      reject(err)
+    }
     socket.onclose = () => {
       if (chatSocket === socket) chatSocket = null
-      pendingTurn?.reject(new Error('Chat connection closed.'))
-      pendingTurn = null
+      if (pendingTurn) {
+        const err = new Error('Chat connection closed.')
+        setApiError(err.message)
+        pendingTurn.reject(err)
+        pendingTurn = null
+      }
     }
     chatSocket = socket
   })
@@ -253,9 +276,18 @@ async function runChatTurn(text) {
   })
 }
 
+// Looks the message back up by id through the reactive `messages` array
+// (rather than mutating whatever reference the caller passed in) so the
+// assignment goes through Vue's reactive proxy and updates the UI
+// immediately — see the note by `nextMessageId` above.
+function setMessageFailed(id, failed) {
+  const target = messages.value.find((m) => m.id === id)
+  if (target) target.failed = failed
+}
+
 async function submitMessage(message) {
-  chatError.value = ''
-  message.failed = false
+  clearApiError()
+  setMessageFailed(message.id, false)
   chatLoading.value = true
   try {
     const result = await runChatTurn(message.content)
@@ -265,9 +297,11 @@ async function submitMessage(message) {
     // runs from a live chat turn just completing).
     playMessageChime()
     handleStateChange(result.state)
-  } catch (err) {
-    message.failed = true
-    chatError.value = err.message
+  } catch {
+    // Already surfaced via the websocket handler (or apiFetch, if chat
+    // ever moves to a synchronous REST call) — this only has to update
+    // this specific message's own status, synchronously with the outcome.
+    setMessageFailed(message.id, true)
   } finally {
     chatLoading.value = false
     chatStatus.value = ''
@@ -275,7 +309,7 @@ async function submitMessage(message) {
 }
 
 async function handleSend(text) {
-  const message = { role: 'user', content: text, failed: false }
+  const message = { id: ++nextMessageId, role: 'user', content: text, failed: false }
   messages.value.push(message)
   await submitMessage(message)
 }
@@ -292,8 +326,8 @@ async function handleAction(actionName) {
   try {
     const newState = await postAction(actionName)
     handleStateChange(newState)
-  } catch (err) {
-    loadError.value = err.message
+  } catch {
+    // already surfaced via apiFetch
   } finally {
     actionLoading.value = false
   }
@@ -307,13 +341,16 @@ async function handleReset() {
   // the push arrives and gets wiped" race — whenever it lands, the array is
   // already the empty slate it expects to be appended into.
   messages.value = []
-  chatError.value = ''
+  clearApiError()
   chatStatus.value = ''
-  loadError.value = ''
   autoTrackingEnabled.value = true
-  const newState = await postReset()
-  state.value = null
-  handleStateChange(newState)
+  try {
+    const newState = await postReset()
+    state.value = null
+    handleStateChange(newState)
+  } catch {
+    // already surfaced via apiFetch
+  }
 }
 
 function triggerModelUpload() {
@@ -333,47 +370,36 @@ async function handleModelUploadChange(event) {
   // opening-message push arriving anytime around this call always lands in
   // an already-empty array.
   messages.value = []
-  chatError.value = ''
+  clearApiError()
   chatStatus.value = ''
-  loadError.value = ''
   autoTrackingEnabled.value = true
   try {
-    const result = await putModel(modelName, file)
-    if (!result.success) {
-      loadError.value = result.error
-      return
-    }
+    await putModel(modelName, file)
     const newState = await getState()
     modelsMenu.value?.refresh()
     handleStateChange(newState)
-  } catch (err) {
-    loadError.value = err.message
+  } catch {
+    // already surfaced via apiFetch
   }
 }
 
 // Same post-success behavior as upload/Reset: reload state, clear the
-// displayed chat. On failure, show the error via the same loadError banner
-// used for upload failures, without touching anything else. Activation is
-// idempotent backend-side (re-activating the already-active model is a
-// no-op, no reset) so this handler doesn't need to special-case that itself.
+// displayed chat. Activation is idempotent backend-side (re-activating the
+// already-active model is a no-op, no reset) so this handler doesn't need
+// to special-case that itself.
 async function handleModelSwitch(modelName) {
   // See handleReset: emptied before the request, not after.
   messages.value = []
-  chatError.value = ''
+  clearApiError()
   chatStatus.value = ''
-  loadError.value = ''
   autoTrackingEnabled.value = true
   try {
-    const result = await activateModel(modelName)
-    if (!result.success) {
-      loadError.value = result.error
-      return
-    }
+    await activateModel(modelName)
     const newState = await getState()
     modelsMenu.value?.refresh()
     handleStateChange(newState)
-  } catch (err) {
-    loadError.value = err.message
+  } catch {
+    // already surfaced via apiFetch
   }
 }
 
@@ -393,29 +419,27 @@ async function handleModelDownload(modelName) {
     link.click()
     link.remove()
     URL.revokeObjectURL(url)
-  } catch (err) {
-    loadError.value = err.message
+  } catch {
+    // already surfaced via apiFetch
   }
 }
 
 // Deleting the active model always falls back to "default" backend-side, so
 // this behaves the same as a successful switch/upload — reload state, clear
-// the chat. Unlike switch/upload, failures here surface as a thrown Error
-// (see deleteModel), not a {success: false} value.
+// the chat.
 async function handleModelDelete(modelName) {
   // See handleReset: emptied before the request, not after.
   messages.value = []
-  chatError.value = ''
+  clearApiError()
   chatStatus.value = ''
-  loadError.value = ''
   autoTrackingEnabled.value = true
   try {
     await deleteModel(modelName)
     const newState = await getState()
     handleStateChange(newState)
     modelsMenu.value?.refresh()
-  } catch (err) {
-    loadError.value = err.message
+  } catch {
+    // already surfaced via apiFetch
   }
 }
 
@@ -456,13 +480,12 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
-    <p class="load-error" v-if="loadError">{{ loadError }}</p>
-
     <ChatWindow
       :messages="messages"
       :loading="chatLoading"
       :status="chatStatus"
-      :error="chatError"
+      :error-message="errorMessage"
+      :error-detail="errorDetail"
       :final-state-reached="state?.final ?? false"
       :history-loaded="historyLoaded"
       @send="handleSend"
@@ -545,11 +568,5 @@ onBeforeUnmount(() => {
 .reset-btn:hover {
   background: #c62828;
   color: white;
-}
-
-.load-error {
-  color: #c62828;
-  padding: 0.5rem 1rem;
-  margin: 0;
 }
 </style>

@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 load_dotenv()
@@ -39,6 +40,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _error_body(message: str, detail: str | None = None) -> dict:
+    return {"error": {"message": message, "detail": detail}}
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    return JSONResponse(status_code=exc.status_code, content=_error_body(str(exc.detail)))
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500, content=_error_body("Internal server error.", str(exc)))
 
 llm_provider = build_provider()
 
@@ -162,7 +178,7 @@ async def activate_model(model_name: str):
     try:
         await models_manager.activate_model_idempotent(model_name, _activate_and_reset)
     except ValueError as exc:
-        return {"success": False, "error": str(exc)}
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"success": True, "model_name": model_name}
 
 
@@ -189,7 +205,10 @@ async def put_model(model_name: str, request: Request):
     commit and swap, running the same reset as POST /api/reset."""
     content = await request.body()
     content_type = request.headers.get("content-type")
-    return await models_manager.put_model(model_name, content, content_type, _activate_and_reset)
+    try:
+        return await models_manager.put_model(model_name, content, content_type, _activate_and_reset)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.delete("/api/models/{model_name}")

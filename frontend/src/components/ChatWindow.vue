@@ -14,7 +14,11 @@ const props = defineProps({
     type: String,
     default: ''
   },
-  error: {
+  errorMessage: {
+    type: String,
+    default: ''
+  },
+  errorDetail: {
     type: String,
     default: ''
   },
@@ -40,6 +44,16 @@ const emit = defineEmits(['send', 'resend'])
 const draft = ref('')
 const scrollEl = ref(null)
 const inputEl = ref(null)
+const showErrorDetail = ref(false)
+
+// Collapse the detail disclosure whenever a new/different error replaces
+// the previous one, so it doesn't stay stuck open showing stale detail.
+watch(
+  () => props.errorMessage,
+  () => {
+    showErrorDetail.value = false
+  }
+)
 
 function submit() {
   const text = draft.value.trim()
@@ -109,7 +123,18 @@ watch(
       <div v-if="loading" class="bubble bubble-assistant bubble-loading">{{ status || '...' }}</div>
     </div>
 
-    <p class="chat-error" v-if="error">{{ error }}</p>
+    <div class="chat-error-row" v-if="errorMessage">
+      <p class="chat-error">{{ errorMessage }}</p>
+      <button
+        v-if="errorDetail"
+        type="button"
+        class="chat-error-details-btn"
+        @click="showErrorDetail = !showErrorDetail"
+      >
+        {{ showErrorDetail ? 'Hide details' : 'Details' }}
+      </button>
+    </div>
+    <pre v-if="errorMessage && errorDetail && showErrorDetail" class="chat-error-detail">{{ errorDetail }}</pre>
     <p class="chat-ended-notice" v-if="finalStateReached">
       Final state reached — the conversation has ended.
     </p>
@@ -229,10 +254,39 @@ watch(
   background: #a02020;
 }
 
+.chat-error-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0 1rem;
+}
+
 .chat-error {
   color: #c62828;
-  padding: 0 1rem;
   font-size: 0.85rem;
+  margin: 0;
+}
+
+.chat-error-details-btn {
+  flex: none;
+  border: none;
+  background: none;
+  color: #4a6fa5;
+  font-size: 0.8rem;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+
+.chat-error-detail {
+  margin: 0.3rem 1rem 0;
+  padding: 0.5rem 0.75rem;
+  background: #fdecea;
+  color: #7a1f1f;
+  font-size: 0.78rem;
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .chat-ended-notice {

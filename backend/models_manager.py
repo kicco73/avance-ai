@@ -192,7 +192,7 @@ class ModelsManager(object):
                     model_dir.rmdir()
                 except OSError:
                     pass  # not empty (e.g. a concurrent PUT of the same name) — leave it
-            return {"success": False, "error": str(exc)}
+            raise ValueError(f"Invalid model definition: {exc}") from exc
 
         temp_path.replace(final_path)
 
@@ -212,7 +212,7 @@ class ModelsManager(object):
             self._extract_zip_safely(content, staging_dir)
         except (zipfile.BadZipFile, ValueError) as exc:
             shutil.rmtree(staging_dir, ignore_errors=True)
-            return {"success": False, "error": str(exc)}
+            raise ValueError(str(exc)) from exc
 
         index_path = staging_dir / "index.yml"
         final_dir = MODELS_DIR / model_name
@@ -221,7 +221,7 @@ class ModelsManager(object):
             new_automaton = AutomatonBuilder().build(index_path)
         except Exception as exc:
             shutil.rmtree(staging_dir, ignore_errors=True)
-            return {"success": False, "error": str(exc)}
+            raise ValueError(f"Invalid model definition: {exc}") from exc
 
         if final_dir.exists():
             shutil.rmtree(final_dir)
@@ -239,7 +239,7 @@ class ModelsManager(object):
         apart by _looks_like_zip). Stages -> validates -> only on success
         commits and swaps the active automaton via `commit`."""
         if not self._is_safe_model_name(model_name):
-            return {"success": False, "error": f"Invalid model name: '{model_name}'."}
+            raise ValueError(f"Invalid model name: '{model_name}'.")
 
         if self._looks_like_zip(content_type, content):
             return await self._put_zip_model(model_name, content, commit)
