@@ -5,6 +5,7 @@ instance attributes; `models_manager` below is the one shared instance.
 from __future__ import annotations
 
 import io
+import logging
 import shutil
 import uuid
 import zipfile
@@ -13,6 +14,8 @@ from typing import Awaitable, Callable
 
 from automaton import Automaton, AutomatonBuilder
 from db import db
+
+logger = logging.getLogger(__name__)
 
 MODELS_DIR = Path(__file__).parent / "models"
 DEFAULT_MODEL_NAME = "default"
@@ -108,8 +111,9 @@ class ModelsManager(object):
     def __init_model(self) -> Automaton:
         """Loads whichever model is persisted as active (Settings table,
         "default" on the very first boot) and restores its current state.
-        On failure, falls back to "default" with a full reset; if that
-        fails too, propagates so the server fails to start."""
+        On failure, falls back to "default", restoring its own history the
+        same way — never wiping anyone's data; if "default" fails too,
+        propagates so the server fails to start."""
         model_name = db.get_active_model_name()
         if model_name is None:
             model_name = DEFAULT_MODEL_NAME
@@ -118,15 +122,14 @@ class ModelsManager(object):
         try:
             automaton = self._load_and_validate(model_name)
         except ValueError:
+            logger.warning("Active model '%s' failed to load; falling back to '%s'.", model_name, DEFAULT_MODEL_NAME)
             if model_name == DEFAULT_MODEL_NAME:
                 raise
             model_name = DEFAULT_MODEL_NAME
             automaton = self._load_and_validate(model_name)
-            db.reset_all()
             db.set_active_model_name(model_name)
-        else:
-            automaton.set_current_state(db.get_current_state(automaton.initial_state))
 
+        automaton.set_current_state(db.get_current_state(automaton.initial_state, model_name))
         self._set_active(model_name, automaton)
         return automaton
 
@@ -162,8 +165,8 @@ class ModelsManager(object):
 
     async def activate_model_idempotent(self, model_name: str, commit: CommitCallback) -> Automaton:
         """Always validates `model_name` first, even if already active —
-        idempotency only skips the swap + conversation reset, never the
-        correctness checks. A different model delegates to activate_model()."""
+        idempotency only skips the swap + commit, never the correctness
+        checks. A different model delegates to activate_model()."""
         new_automaton = self._load_and_validate(model_name)
         if model_name == self._active_model_name:
             return new_automaton
@@ -260,15 +263,18 @@ class ModelsManager(object):
         return buffer.getvalue()
 
     async def delete_model(self, model_name: str, commit: CommitCallback) -> None:
-        """Removes models/<model_name>/ from disk — any model, active or
-        not (except "default", which raises PermissionError). If it was
-        active, reactivates "default" via activate_model()."""
+        """Removes models/<model_name>/ from disk plus its conversation
+        data — any model, active or not (except "default", which raises
+        PermissionError). If it was active, reactivates "default" via
+        activate_model() — which now restores its own history rather than
+        starting empty."""
         if not self._is_safe_model_name(model_name) or not (MODELS_DIR / model_name).is_dir():
             raise FileNotFoundError(f"Model '{model_name}' does not exist.")
         if model_name == DEFAULT_MODEL_NAME:
             raise PermissionError("The default model cannot be deleted.")
 
         shutil.rmtree(MODELS_DIR / model_name)
+        db.reset_model(model_name)
 
         if model_name == self._active_model_name:
             await self.activate_model(DEFAULT_MODEL_NAME, commit)

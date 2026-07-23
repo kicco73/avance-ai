@@ -62,8 +62,6 @@ class State:
     fixed_message: str | None = None
     # Log level (name) used when logging a transition landing on this state.
     transition_log_level: str = "WARNING"
-    # Attachments for contextual_prompt, sent with chat turns while this is
-    # the current state (see conversation_controller.py's build_priming_messages).
     attachments: list[Attachment] = field(default_factory=list)
     on_enter: str | None = None
 

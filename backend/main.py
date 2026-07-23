@@ -15,7 +15,7 @@ load_dotenv()
 
 from automaton import Automaton
 from chat_service import ChatService, ChatServiceError
-from conversation_controller import ConversationController
+from chat_ws_adapter import ChatWsAdapter
 from db import db
 from models_manager import models_manager
 from providers.factory import build_provider
@@ -35,11 +35,7 @@ if CHAT_TRANSPORT not in _CHAT_TRANSPORTS:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Covers the very first server boot: generate the opening message
-    # before serving, if the conversation is already empty. Every other
-    # empty-conversation case goes through _activate_and_reset() instead.
-    # Always chat_service directly (never conversation_controller, which
-    # may not even exist under CHAT_TRANSPORT=rest) — generating and
-    # persisting the opening message doesn't depend on any transport.
+    # before serving, if the conversation is already empty. 
     await chat_service.open_if_needed()
     yield
 
@@ -98,16 +94,7 @@ class ChatMessageRequest(BaseModel):
 def _state_payload() -> dict:
     return models_manager.get_active_automaton().get_current_state_payload()
 
-
-# The transport-agnostic chat-turn logic (see chat_service.py) — shared by
-# both /ws/chat and POST /api/messages, always constructed regardless of
-# CHAT_TRANSPORT: POST /api/messages is always mounted, and open_if_needed()
-# (lifespan, above) always needs it too.
-chat_service = ChatService(
-    llm_provider,
-    models_manager.get_active_automaton,
-)
-
+chat_service = ChatService(llm_provider, models_manager)
 
 @app.get("/api/signals")
 def get_signals():
@@ -159,11 +146,11 @@ async def post_message(req: ChatMessageRequest):
 # — under CHAT_TRANSPORT=rest, a connection attempt gets FastAPI's natural
 # 404 for a route that was never mounted, no custom rejection logic needed.
 if CHAT_TRANSPORT == "websocket":
-    conversation_controller = ConversationController(chat_service)
+    chat_ws_adapter = ChatWsAdapter(chat_service)
 
     @app.websocket("/ws/chat")
     async def chat_ws(websocket: WebSocket):
-        await conversation_controller.chat_loop(websocket)
+        await chat_ws_adapter.chat_loop(websocket)
 
 
 @app.post("/api/action")
@@ -176,7 +163,7 @@ def post_action(req: ActionRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     automaton.log_transition(from_state, new_state, req.action_name, "manual")
-    db.save_transition(from_state, req.action_name, new_state, None)
+    db.save_transition(from_state, req.action_name, new_state, models_manager.get_active_model_name())
     return _state_payload()
 
 
@@ -201,25 +188,33 @@ def post_triggers_preview(req: TriggersPreviewRequest):
 
 @app.post("/api/reset")
 async def post_reset():
-    # Routed through the same commit callback every model-lifecycle
-    # operation uses — Reset doesn't change the active model, but gets the
-    # same opening-message behavior for free rather than a separate path.
-    await _activate_and_reset(models_manager.get_active_automaton())
+    """Manual reset — scoped to whichever model is currently active only:
+    clears its own messages/signals/transitions, never other models'.
+    State returns to that model's initial_state, not a blank slate shared
+    across models."""
+    async with chat_service.lock:
+        model_name = models_manager.get_active_model_name()
+        db.reset_model(model_name)
+        automaton = models_manager.get_active_automaton()
+        automaton.set_current_state(automaton.initial_state)
+        chat_service.auto_tracking_enabled = True
+        await chat_service.open_if_needed()
     return _state_payload()
 
 
-async def _activate_and_reset(new_automaton: Automaton) -> None:
-    """The commit callback for every model-lifecycle activation (and POST
-    /api/reset's plain conversation-clear). Resets DB/automaton state/
-    auto-tracking and persists the active model name, under chat_service.lock
-    (shared with both chat transports)."""
+async def _activate_model(new_automaton: Automaton) -> None:
+    """The commit callback for every model-lifecycle activation (switch/
+    upload/delete-fallback) — no longer clears any data (see db.reset_model
+    for that, used by DELETE and POST /api/reset instead). Restores
+    whichever state the target model's own history last left it in, under
+    chat_service.lock (shared with both chat transports)."""
     async with chat_service.lock:
-        db.reset_all()
-        new_automaton.set_current_state(new_automaton.initial_state)
-        # models_manager already swapped _active_model_name for this commit
-        # (or left it unchanged for POST /api/reset) — either way this is
-        # the current active model, persisted for the next boot.
-        db.set_active_model_name(models_manager.get_active_model_name())
+        # models_manager already swapped _active_model_name for this
+        # commit — set here, so it's current before open_if_needed()
+        # (below) resolves "the active model" for its own is_empty() check.
+        model_name = models_manager.get_active_model_name()
+        db.set_active_model_name(model_name)
+        new_automaton.set_current_state(db.get_current_state(new_automaton.initial_state, model_name))
         chat_service.auto_tracking_enabled = True
         await chat_service.open_if_needed()
 
@@ -233,9 +228,9 @@ def get_models():
 async def activate_model(model_name: str):
     """Activates an already-present model, validated via the same
     AutomatonBuilder as boot/upload/delete. Idempotent: re-activating the
-    active model still validates, but skips the swap + conversation reset."""
+    active model still validates, but skips the swap + commit."""
     try:
-        await models_manager.activate_model_idempotent(model_name, _activate_and_reset)
+        await models_manager.activate_model_idempotent(model_name, _activate_model)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"success": True, "model_name": model_name}
@@ -261,22 +256,22 @@ def get_model(model_name: str):
 async def put_model(model_name: str, request: Request):
     """Creates or replaces `model_name` from a raw body (YAML or zip, see
     models_manager._looks_like_zip). Stage -> validate -> only on success
-    commit and swap, running the same reset as POST /api/reset."""
+    commit and swap, restoring `model_name`'s own history if it has one."""
     content = await request.body()
     content_type = request.headers.get("content-type")
     try:
-        return await models_manager.put_model(model_name, content, content_type, _activate_and_reset)
+        return await models_manager.put_model(model_name, content, content_type, _activate_model)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.delete("/api/models/{model_name}")
 async def delete_model(model_name: str):
-    """Removes models/<model_name>/ from disk — any model except "default"
-    (PermissionError). If it was the active model, falls back to "default"
-    via activate_model()."""
+    """Removes models/<model_name>/ from disk plus its conversation data —
+    any model except "default" (PermissionError). If it was the active
+    model, falls back to "default" via activate_model()."""
     try:
-        await models_manager.delete_model(model_name, _activate_and_reset)
+        await models_manager.delete_model(model_name, _activate_model)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionError as exc:

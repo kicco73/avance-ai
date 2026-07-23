@@ -9,8 +9,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 from chat_service import ChatService, ChatServiceError
 
-
-class ConversationController(object):
+class ChatWsAdapter(object):
     def __init__(self, chat_service: ChatService) -> None:
         self._chat_service = chat_service
 

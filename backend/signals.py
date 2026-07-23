@@ -49,12 +49,18 @@ class Signals(object):
         return self._get_active_automaton()
 
     @staticmethod
+    def _active_model_name() -> str:
+        """Settings-persisted pointer, not models_manager's in-memory
+        tracker — this module doesn't depend on models_manager, by design."""
+        return db.get_active_model_name()
+
+    @staticmethod
     def _signal_history_window(pending_message: dict | None) -> list[dict]:
         """Recent messages as a single 'evaluate this transcript' turn —
         not multi-turn history, which invites the model to keep chatting.
         `pending_message` is appended locally, unpersisted."""
         fetch_n = SIGNALS_HISTORY_WINDOW - 1 if pending_message is not None else SIGNALS_HISTORY_WINDOW
-        recent = db.get_messages(last_n=fetch_n)
+        recent = db.get_messages(Signals._active_model_name(), last_n=fetch_n)
         if pending_message is not None:
             recent = recent + [pending_message]
         if recent and recent[0]["role"] != "user":
@@ -160,4 +166,4 @@ class Signals(object):
         """Read-only, never calls the AI — reports the latest snapshot
         persisted through db.py. Signals are only (re)computed via
         compute_signals(), from the auto-tracking flow."""
-        return self._snapshot_to_signals_payload(db.get_latest_signal_snapshot())
+        return self._snapshot_to_signals_payload(db.get_latest_signal_snapshot(self._active_model_name()))
