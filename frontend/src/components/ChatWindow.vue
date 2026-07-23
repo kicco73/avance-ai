@@ -136,7 +136,7 @@ watch(
     </div>
     <pre v-if="errorMessage && errorDetail && showErrorDetail" class="chat-error-detail">{{ errorDetail }}</pre>
     <p class="chat-ended-notice" v-if="finalStateReached">
-      Final state reached — the conversation has ended.
+      The conversation has ended.
     </p>
 
     <form class="input-row" @submit.prevent="submit">

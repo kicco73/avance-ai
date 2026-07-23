@@ -1,7 +1,4 @@
 """Abstract interface shared by all LLM providers.
-
-`main.py` depends only on this module: it must never import `anthropic`
-or `google.genai` directly.
 """
 from __future__ import annotations
 
