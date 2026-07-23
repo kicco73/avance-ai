@@ -279,8 +279,3 @@ class ModelsManager(object):
 
         if model_name == self._active_model_name:
             await self.activate_model(DEFAULT_MODEL_NAME, commit)
-
-
-# The one shared instance every other module imports (`from models_manager
-# import models_manager`) — see module docstring.
-models_manager = ModelsManager()

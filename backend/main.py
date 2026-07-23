@@ -17,8 +17,8 @@ from automaton.automaton import Automaton
 from chat_service import ChatService, ChatServiceError
 from chat_ws_adapter import ChatWsAdapter
 from db import db
-from models_manager import models_manager
-from providers.factory import build_provider
+from models_manager import ModelsManager
+from providers import provider_factory
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -73,8 +73,9 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     logger.exception("Unhandled error on %s %s", request.method, request.url.path)
     return JSONResponse(status_code=500, content=_error_body("Internal server error.", str(exc)))
 
-llm_provider = build_provider()
-
+provider_name = os.environ.get("LLM_PROVIDER", "").strip().lower()
+llm_provider = provider_factory.make(provider_name)
+models_manager = ModelsManager()
 class ActionRequest(BaseModel):
     action_name: str
 
@@ -89,7 +90,6 @@ class TriggersPreviewRequest(BaseModel):
 
 class ChatMessageRequest(BaseModel):
     message: str
-
 
 def _state_payload() -> dict:
     return models_manager.get_active_automaton().get_current_state_payload()
