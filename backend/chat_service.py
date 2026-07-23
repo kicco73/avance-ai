@@ -234,24 +234,16 @@ class ChatService(object):
             triggered_action=triggered_action,
         )
 
-    async def open_if_needed(self) -> None:
+    async def open_if_needed(self) -> dict | None:
         """If the conversation is empty, generates and persists the opening
         message (same prompt-building as a normal chat turn). No-op if
-        already non-empty or generation fails.
-
-        Purely a persistence step: delivering it to the client is always
-        GET /api/messages's job (called by the frontend right after
-        whatever REST call triggered this), never a transport push — so it
-        reaches the client the same way regardless of whether a chat
-        websocket happens to be connected."""
-        # Snapshotted once, same reasoning as _process_turn_locked: a
-        # concurrent switch/upload/delete could otherwise change which
-        # model this call means partway through, across the `await` below.
+        already non-empty.
+        """
         automaton = self._automaton
         model_name = self._active_model_name
 
         if not self._db.is_empty(model_name):
-            return
+            return None
 
         state = automaton.get_current_state()
 
@@ -267,8 +259,15 @@ class ChatService(object):
 
         try:
             reply = await generate_with_retry(self._llm_provider, system_prompt, priming_messages)
+        except LLMProviderUnavailableError as exc:
+            logger.warning("Failed to generate the opening message: %s", exc)
+            return {"message": f"Service unavailable after {MAX_RETRIES} retries.", "detail": str(exc)}
+        except LLMProviderRateLimitedError as exc:
+            logger.warning("Failed to generate the opening message: %s", exc)
+            return {"message": "The AI service rate limit was exceeded.", "detail": str(exc)}
         except LLMProviderError as exc:
             logger.warning("Failed to generate the opening message: %s", exc)
-            return
+            return {"message": "The AI service returned an error.", "detail": str(exc)}
 
         self._db.save_message("assistant", reply, model_name)
+        return None

@@ -44,8 +44,9 @@ chat_service = ChatService(llm_provider, models_manager, db)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Covers the very first server boot: generate the opening message
-    # before serving, if the conversation is already empty.
+    # Covers the very first server boot. Known gap: a failure here has no
+    # REST response to attach the error to, so it's only logged — rare
+    # enough (first-ever boot with an empty database) to accept for now.
     await chat_service.open_if_needed()
     yield
 

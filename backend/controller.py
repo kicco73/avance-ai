@@ -47,6 +47,10 @@ class AvanceController(object):
         self.chat_service = chat_service
         self.models_manager = models_manager
         self.db = db
+        # Set by _activate_model when it runs; each endpoint that might
+        # trigger it resets this to None first, since the callback is
+        # conditional (idempotent activation, delete of a non-active model).
+        self._last_opening_message_error = None
 
         self.router = APIRouter()
         for _, member in inspect.getmembers(self, predicate=inspect.ismethod):
@@ -133,15 +137,16 @@ class AvanceController(object):
         """Manual reset — scoped to whichever model is currently active only:
         clears its own messages/signals/transitions, never other models'.
         State returns to that model's initial_state, not a blank slate shared
-        across models."""
+        across models. `opening_message_error` is set if the opening message
+        (regenerated below) failed — the reset itself still succeeds either way."""
         async with self.chat_service.lock:
             model_name = self.models_manager.get_active_model_name()
             self.db.reset_model(model_name)
             automaton = self.models_manager.get_active_automaton()
             automaton.set_current_state(automaton.initial_state)
             self.chat_service.auto_tracking_enabled = True
-            await self.chat_service.open_if_needed()
-        return self._state_payload()
+            opening_message_error = await self.chat_service.open_if_needed()
+        return {**self._state_payload(), "opening_message_error": opening_message_error}
 
     @get("/api/models")
     def get_models(self):
@@ -151,12 +156,18 @@ class AvanceController(object):
     async def activate_model(self, model_name: str):
         """Activates an already-present model, validated via the same
         AutomatonBuilder as boot/upload/delete. Idempotent: re-activating the
-        active model still validates, but skips the swap + commit."""
+        active model still validates, but skips the swap + commit — so
+        opening_message_error stays None in that case, correctly."""
+        self._last_opening_message_error = None
         try:
             await self.models_manager.activate_model_idempotent(model_name, self._activate_model)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return {"success": True, "model_name": model_name}
+        return {
+            "success": True,
+            "model_name": model_name,
+            "opening_message_error": self._last_opening_message_error,
+        }
 
     @get("/api/models/{model_name}")
     def get_model(self, model_name: str):
@@ -180,16 +191,20 @@ class AvanceController(object):
         commit and swap, restoring `model_name`'s own history if it has one."""
         content = await request.body()
         content_type = request.headers.get("content-type")
+        self._last_opening_message_error = None
         try:
-            return await self.models_manager.put_model(model_name, content, content_type, self._activate_model)
+            result = await self.models_manager.put_model(model_name, content, content_type, self._activate_model)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {**result, "opening_message_error": self._last_opening_message_error}
 
     @delete("/api/models/{model_name}")
     async def delete_model(self, model_name: str):
         """Removes models/<model_name>/ from disk plus its conversation data —
         any model except "default" (PermissionError). If it was the active
-        model, falls back to "default" via activate_model()."""
+        model, falls back to "default" via activate_model() — otherwise
+        _activate_model never runs and opening_message_error stays None."""
+        self._last_opening_message_error = None
         try:
             await self.models_manager.delete_model(model_name, self._activate_model)
         except FileNotFoundError as exc:
@@ -198,7 +213,7 @@ class AvanceController(object):
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         except OSError as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
-        return {"success": True}
+        return {"success": True, "opening_message_error": self._last_opening_message_error}
 
     def _state_payload(self) -> dict:
         return self.models_manager.get_active_automaton().get_current_state_payload()
@@ -217,4 +232,4 @@ class AvanceController(object):
             self.db.set_active_model_name(model_name)
             new_automaton.set_current_state(self.db.get_current_state(new_automaton.initial_state, model_name))
             self.chat_service.auto_tracking_enabled = True
-            await self.chat_service.open_if_needed()
+            self._last_opening_message_error = await self.chat_service.open_if_needed()
