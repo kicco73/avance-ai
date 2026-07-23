@@ -9,7 +9,6 @@ import SplashScreen from './components/SplashScreen.vue'
 import {
   getState,
   getMessages,
-  createChatSocket,
   postAction,
   getAutoTracking,
   postAutoTracking,
@@ -19,9 +18,10 @@ import {
   deleteModel,
   downloadModel
 } from './api.js'
+import { disconnect as disconnectChat, sendMessage } from './chatClient.js'
 import { playMessageChime } from './audio.js'
 import { celebrate } from './confetti.js'
-import { clearApiError, errorDetail, errorMessage, setApiError } from './errorStore.js'
+import { clearApiError, errorDetail, errorMessage } from './errorStore.js'
 
 const showSignals = ref(false)
 const autoTrackingEnabled = ref(true)
@@ -46,11 +46,6 @@ const bootStatus = ref('checking')
 const PING_INTERVAL_MS = 800
 const PING_TIMEOUT_MS = 3000
 const MAX_PING_ATTEMPTS = 30
-
-// Plain (non-reactive) connection state: the socket itself and the
-// resolve/reject pair for whichever chat turn is currently in flight.
-let chatSocket = null
-let pendingTurn = null
 
 // Stable id assigned to every user message at creation, so its status can
 // be found and updated by identity later — never by mutating whatever
@@ -96,7 +91,10 @@ function bootSucceeded() {
   clearApiError()
   loadMessages()
   loadAutoTracking()
-  ensureChatSocket()
+  // No proactive chat-socket connect here: chatClient.js connects lazily
+  // on the first sendMessage() call, and the opening message (if any) is
+  // already covered by loadMessages() above — it's persisted server-side
+  // by the time the backend finishes booting, regardless of transport.
 }
 
 async function runPingAttempt(token) {
@@ -187,95 +185,6 @@ async function toggleAutoTracking() {
   }
 }
 
-// All retry/backoff decisions happen server-side; this only renders
-// whatever the backend pushes ('retrying' ticks, then 'done'/'error').
-function handleSocketMessage(event) {
-  const data = JSON.parse(event.data)
-
-  if (data.type === 'retrying') {
-    const seconds = Math.max(0, Math.ceil(data.retry_in ?? 0))
-    chatStatus.value = `Service unavailable, retrying (${data.attempt}/${data.max_attempts}) in ${seconds}s...`
-    return
-  }
-
-  if (data.type === 'message') {
-    // The AI-opens-the-conversation push (reset/activate/upload/delete):
-    // unprompted by any pendingTurn, so it's handled independently of the
-    // resolve/reject flow below. The local array was already emptied
-    // optimistically by whichever handler triggered this, before it even
-    // sent its REST request — so this is always appended into a clean slate,
-    // regardless of whether this frame beat that request's response or not.
-    messages.value.push({ role: 'assistant', content: data.reply, failed: false })
-    playMessageChime()
-    handleStateChange(data.state)
-    return
-  }
-
-  if (data.type === 'error') {
-    setApiError(data.error.message, data.error.detail)
-    pendingTurn?.reject(new Error(data.error.message))
-    pendingTurn = null
-    return
-  }
-
-  if (!pendingTurn) return
-  const { resolve } = pendingTurn
-  pendingTurn = null
-  resolve(data) // data.type === 'done'
-}
-
-function openChatSocket() {
-  return new Promise((resolve, reject) => {
-    const socket = createChatSocket()
-    socket.onopen = () => resolve(socket)
-    socket.onmessage = handleSocketMessage
-    socket.onerror = () => {
-      const err = new Error('Unable to connect to the chat service.')
-      setApiError(err.message)
-      reject(err)
-    }
-    socket.onclose = () => {
-      if (chatSocket === socket) chatSocket = null
-      if (pendingTurn) {
-        const err = new Error('Chat connection closed.')
-        setApiError(err.message)
-        pendingTurn.reject(err)
-        pendingTurn = null
-      }
-    }
-    chatSocket = socket
-  })
-}
-
-async function getOpenSocket() {
-  if (chatSocket && chatSocket.readyState === WebSocket.OPEN) return chatSocket
-  return openChatSocket()
-}
-
-// Opens the chat socket proactively once the backend is known reachable,
-// instead of waiting for the first message send — the opening-message push
-// (reset/activate/upload/delete) can arrive at any time, regardless of
-// which view (chat/Models/Signals) is currently on screen, so the
-// connection has to already be there rather than lazily created on demand.
-function ensureChatSocket() {
-  if (chatSocket && chatSocket.readyState <= WebSocket.OPEN) return // CONNECTING or OPEN
-  openChatSocket().catch(() => {
-    // A failed proactive connect isn't fatal here: getOpenSocket() retries
-    // on the next actual chat turn, and a push missed while disconnected
-    // isn't lost either — the message is already persisted server-side.
-  })
-}
-
-// Sends one chat turn over the websocket and waits for the backend's
-// terminal push (done/failed) — no polling involved.
-async function runChatTurn(text) {
-  const socket = await getOpenSocket()
-  return new Promise((resolve, reject) => {
-    pendingTurn = { resolve, reject }
-    socket.send(JSON.stringify({ message: text }))
-  })
-}
-
 // Looks the message back up by id through the reactive `messages` array
 // (rather than mutating whatever reference the caller passed in) so the
 // assignment goes through Vue's reactive proxy and updates the UI
@@ -290,7 +199,11 @@ async function submitMessage(message) {
   setMessageFailed(message.id, false)
   chatLoading.value = true
   try {
-    const result = await runChatTurn(message.content)
+    // sendMessage() (chatClient.js) tries the websocket first and falls
+    // back to REST transparently — this code never knows which one ran.
+    const result = await sendMessage(message.content, {
+      onStatus: (text) => { chatStatus.value = text }
+    })
     messages.value.push({ role: 'assistant', content: result.reply })
     // Only for a freshly arrived AI reply — never for the user's own sent
     // message, and never for history loaded at boot/reset (this only ever
@@ -298,9 +211,9 @@ async function submitMessage(message) {
     playMessageChime()
     handleStateChange(result.state)
   } catch {
-    // Already surfaced via the websocket handler (or apiFetch, if chat
-    // ever moves to a synchronous REST call) — this only has to update
-    // this specific message's own status, synchronously with the outcome.
+    // Already surfaced via the websocket handler or apiFetch (see
+    // chatClient.js) — this only has to update this specific message's
+    // own status, synchronously with the outcome.
     setMessageFailed(message.id, true)
   } finally {
     chatLoading.value = false
@@ -335,11 +248,6 @@ async function handleAction(actionName) {
 
 async function handleReset() {
   if (!window.confirm('Reset the conversation, signals, and transitions? This cannot be undone.')) return
-  // Emptied before the request is even sent, not after the response comes
-  // back: the opening-message push over the websocket can arrive before,
-  // during, or after this REST call resolves, so there's no "clear, then
-  // the push arrives and gets wiped" race — whenever it lands, the array is
-  // already the empty slate it expects to be appended into.
   messages.value = []
   clearApiError()
   chatStatus.value = ''
@@ -348,6 +256,11 @@ async function handleReset() {
     const newState = await postReset()
     state.value = null
     handleStateChange(newState)
+    // The backend generates + persists the opening message synchronously
+    // as part of postReset() above (see chat_service.open_if_needed) —
+    // reloading history here picks it up via REST, regardless of whether
+    // a chat websocket is even connected.
+    await loadMessages()
   } catch {
     // already surfaced via apiFetch
   }
@@ -366,9 +279,6 @@ async function handleModelUploadChange(event) {
   if (!file) return
 
   const modelName = file.name.replace(/\.(zip|ya?ml)$/i, '')
-  // See handleReset: emptied before the request, not after — so an
-  // opening-message push arriving anytime around this call always lands in
-  // an already-empty array.
   messages.value = []
   clearApiError()
   chatStatus.value = ''
@@ -378,6 +288,9 @@ async function handleModelUploadChange(event) {
     const newState = await getState()
     modelsMenu.value?.refresh()
     handleStateChange(newState)
+    // See handleReset: picks up the opening message via REST, regardless
+    // of chat transport.
+    await loadMessages()
   } catch {
     // already surfaced via apiFetch
   }
@@ -388,7 +301,6 @@ async function handleModelUploadChange(event) {
 // already-active model is a no-op, no reset) so this handler doesn't need
 // to special-case that itself.
 async function handleModelSwitch(modelName) {
-  // See handleReset: emptied before the request, not after.
   messages.value = []
   clearApiError()
   chatStatus.value = ''
@@ -398,6 +310,9 @@ async function handleModelSwitch(modelName) {
     const newState = await getState()
     modelsMenu.value?.refresh()
     handleStateChange(newState)
+    // See handleReset: picks up the opening message via REST, regardless
+    // of chat transport.
+    await loadMessages()
   } catch {
     // already surfaced via apiFetch
   }
@@ -428,7 +343,6 @@ async function handleModelDownload(modelName) {
 // this behaves the same as a successful switch/upload — reload state, clear
 // the chat.
 async function handleModelDelete(modelName) {
-  // See handleReset: emptied before the request, not after.
   messages.value = []
   clearApiError()
   chatStatus.value = ''
@@ -438,6 +352,9 @@ async function handleModelDelete(modelName) {
     const newState = await getState()
     handleStateChange(newState)
     modelsMenu.value?.refresh()
+    // See handleReset: picks up the opening message via REST, regardless
+    // of chat transport.
+    await loadMessages()
   } catch {
     // already surfaced via apiFetch
   }
@@ -445,7 +362,7 @@ async function handleModelDelete(modelName) {
 
 onMounted(startBootSequence)
 onBeforeUnmount(() => {
-  chatSocket?.close()
+  disconnectChat()
   if (pingTimeoutHandle) clearTimeout(pingTimeoutHandle)
 })
 </script>

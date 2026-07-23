@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
@@ -13,6 +14,7 @@ from pydantic import BaseModel
 load_dotenv()
 
 from automaton import Automaton
+from chat_service import ChatService, ChatServiceError
 from conversation_controller import ConversationController
 from db import db
 from models_manager import models_manager
@@ -21,13 +23,24 @@ from providers.factory import build_provider
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
+_CHAT_TRANSPORTS = ("websocket", "rest")
+CHAT_TRANSPORT = os.environ.get("CHAT_TRANSPORT", "websocket").strip().lower()
+if CHAT_TRANSPORT not in _CHAT_TRANSPORTS:
+    raise RuntimeError(
+        f"CHAT_TRANSPORT={CHAT_TRANSPORT!r} is not valid. Allowed values: {', '.join(_CHAT_TRANSPORTS)}. "
+        "Set it in .env."
+    )
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Covers the very first server boot: generate the opening message
     # before serving, if the conversation is already empty. Every other
     # empty-conversation case goes through _activate_and_reset() instead.
-    await conversation_controller.open_if_needed()
+    # Always chat_service directly (never conversation_controller, which
+    # may not even exist under CHAT_TRANSPORT=rest) — generating and
+    # persisting the opening message doesn't depend on any transport.
+    await chat_service.open_if_needed()
     yield
 
 
@@ -48,6 +61,14 @@ def _error_body(message: str, detail: str | None = None) -> dict:
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    # Most routes raise HTTPException(detail=str(...)) — a single readable
+    # string with no separate technical detail. ChatServiceError (see POST
+    # /api/messages below) has both, so its route packs them into a dict
+    # detail instead, recognized here rather than string-only everywhere.
+    if isinstance(exc.detail, dict) and "message" in exc.detail:
+        return JSONResponse(
+            status_code=exc.status_code, content=_error_body(exc.detail["message"], exc.detail.get("detail"))
+        )
     return JSONResponse(status_code=exc.status_code, content=_error_body(str(exc.detail)))
 
 
@@ -70,14 +91,19 @@ class TriggersPreviewRequest(BaseModel):
     signals: dict[str, int | None]
 
 
+class ChatMessageRequest(BaseModel):
+    message: str
+
+
 def _state_payload() -> dict:
     return models_manager.get_active_automaton().get_current_state_payload()
 
 
-# Owns the /ws/chat connection, chat turns (including auto-tracking), and
-# opening the conversation when empty — see conversation_controller.py.
-# Which automaton is active is injected here as a callable.
-conversation_controller = ConversationController(
+# The transport-agnostic chat-turn logic (see chat_service.py) — shared by
+# both /ws/chat and POST /api/messages, always constructed regardless of
+# CHAT_TRANSPORT: POST /api/messages is always mounted, and open_if_needed()
+# (lifespan, above) always needs it too.
+chat_service = ChatService(
     llm_provider,
     models_manager.get_active_automaton,
 )
@@ -86,9 +112,9 @@ conversation_controller = ConversationController(
 @app.get("/api/signals")
 def get_signals():
     """Read-only: never calls the AI. Signals are only (re)computed inside
-    the auto-tracking flow (see ConversationController._run_auto_tracking);
-    this just reports the latest persisted snapshot."""
-    return conversation_controller.signals.get_latest_signals()
+    the auto-tracking flow (see ChatService._run_auto_tracking); this just
+    reports the latest persisted snapshot."""
+    return chat_service.signals.get_latest_signals()
 
 
 @app.get("/api/state")
@@ -99,13 +125,45 @@ def get_state():
 @app.get("/api/messages")
 def get_messages():
     """Persisted conversation history, for the frontend to redisplay after a
-    reload/backend restart."""
-    return conversation_controller.get_messages()
+    reload/backend restart — including the opening message, regardless of
+    which chat transport (if any) is available for turns."""
+    return chat_service.get_messages()
 
 
-@app.websocket("/ws/chat")
-async def chat_ws(websocket: WebSocket):
-    await conversation_controller.chat_loop(websocket)
+@app.post("/api/messages")
+async def post_message(req: ChatMessageRequest):
+    """Synchronous REST alternative to /ws/chat, always mounted regardless
+    of CHAT_TRANSPORT — the frontend's always-available fallback once it's
+    determined the websocket isn't. No retrying-progress notifications
+    (see ChatService.process_turn's on_retry): retries still happen
+    server-side, just silently from this transport's point of view."""
+    text = req.message.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+    try:
+        result = await chat_service.process_turn(text)
+    except ChatServiceError as exc:
+        raise HTTPException(
+            status_code=exc.status_code, detail={"message": exc.message, "detail": exc.detail}
+        ) from exc
+    return {
+        "reply": result.reply,
+        "state": result.state,
+        "state_changed": result.state_changed,
+        "new_state": result.new_state,
+        "triggered_action": result.triggered_action,
+    }
+
+
+# /ws/chat is only registered when the websocket transport isn't excluded
+# — under CHAT_TRANSPORT=rest, a connection attempt gets FastAPI's natural
+# 404 for a route that was never mounted, no custom rejection logic needed.
+if CHAT_TRANSPORT == "websocket":
+    conversation_controller = ConversationController(chat_service)
+
+    @app.websocket("/ws/chat")
+    async def chat_ws(websocket: WebSocket):
+        await conversation_controller.chat_loop(websocket)
 
 
 @app.post("/api/action")
@@ -124,13 +182,13 @@ def post_action(req: ActionRequest):
 
 @app.get("/api/autotracking")
 def get_autotracking():
-    return {"enabled": conversation_controller.auto_tracking_enabled}
+    return {"enabled": chat_service.auto_tracking_enabled}
 
 
 @app.post("/api/autotracking")
 def post_autotracking(req: AutoTrackingRequest):
-    conversation_controller.auto_tracking_enabled = req.enabled
-    return {"enabled": conversation_controller.auto_tracking_enabled}
+    chat_service.auto_tracking_enabled = req.enabled
+    return {"enabled": chat_service.auto_tracking_enabled}
 
 
 @app.post("/api/triggers/preview")
@@ -153,16 +211,17 @@ async def post_reset():
 async def _activate_and_reset(new_automaton: Automaton) -> None:
     """The commit callback for every model-lifecycle activation (and POST
     /api/reset's plain conversation-clear). Resets DB/automaton state/
-    auto-tracking and persists the active model name, under conversation_controller.lock."""
-    async with conversation_controller.lock:
+    auto-tracking and persists the active model name, under chat_service.lock
+    (shared with both chat transports)."""
+    async with chat_service.lock:
         db.reset_all()
         new_automaton.set_current_state(new_automaton.initial_state)
         # models_manager already swapped _active_model_name for this commit
         # (or left it unchanged for POST /api/reset) — either way this is
         # the current active model, persisted for the next boot.
         db.set_active_model_name(models_manager.get_active_model_name())
-        conversation_controller.auto_tracking_enabled = True
-        await conversation_controller.open_if_needed()
+        chat_service.auto_tracking_enabled = True
+        await chat_service.open_if_needed()
 
 
 @app.get("/api/models")

@@ -51,10 +51,23 @@ export function getMessages() {
   return apiFetch(`${API_URL}/messages`)
 }
 
-// Chat runs over a websocket: the backend pushes status updates (retrying,
-// done, error) as they happen instead of the client polling for them.
+// Chat normally runs over a websocket: the backend pushes status updates
+// (retrying, done, error) as they happen instead of the client polling for
+// them. See chatClient.js for the transport choice + fallback.
 export function createChatSocket() {
   return new WebSocket(WS_URL)
+}
+
+// Synchronous REST alternative to the websocket, for one chat turn — used
+// by chatClient.js once the websocket is confirmed unavailable. No
+// intermediate "retrying" notifications: the backend still retries
+// server-side, just silently from this transport's point of view.
+export function postChatMessage(text) {
+  return apiFetch(`${API_URL}/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: text })
+  })
 }
 
 export function getSignals() {
