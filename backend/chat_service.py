@@ -9,9 +9,8 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Callable
 
-from automaton import Automaton, trigger_signal_names
+from automaton.automaton import Automaton, trigger_signal_names
 from db import db
 from llm_provider import (
     LLMProvider,

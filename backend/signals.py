@@ -8,7 +8,7 @@ import json
 import logging
 from typing import Callable
 
-from automaton import Automaton
+from automaton.automaton import Automaton
 from db import db
 from llm_provider import LLMProvider, LLMProviderError
 

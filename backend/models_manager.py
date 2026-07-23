@@ -12,7 +12,8 @@ import zipfile
 from pathlib import Path
 from typing import Awaitable, Callable
 
-from automaton import Automaton, AutomatonBuilder
+from automaton.automaton import Automaton
+from automaton.automaton_builder import AutomatonBuilder
 from db import db
 
 logger = logging.getLogger(__name__)

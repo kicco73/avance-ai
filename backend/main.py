@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 load_dotenv()
 
-from automaton import Automaton
+from automaton.automaton import Automaton
 from chat_service import ChatService, ChatServiceError
 from chat_ws_adapter import ChatWsAdapter
 from db import db
