@@ -268,6 +268,9 @@ class ChatService(object):
         except LLMProviderError as exc:
             logger.warning("Failed to generate the opening message: %s", exc)
             return {"message": "The AI service returned an error.", "detail": str(exc)}
+        except Exception as exc:
+            logger.warning("Failed to generate the opening message: %s", exc)
+            return {"message": "The AI service raised an unhandled exception.", "detail": str(exc)}
 
         self._db.save_message("assistant", reply, model_name)
         return None

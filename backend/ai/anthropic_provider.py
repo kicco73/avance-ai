@@ -61,7 +61,7 @@ class AnthropicProvider(LLMProvider):
                 raise LLMProviderUnavailableError(
                     "The Anthropic API is temporarily overloaded (status 503)."
                 ) from exc
-            if exc.status_code == 429:
+            if exc.status_code in [400, 429]:
                 raise LLMProviderRateLimitedError(
                     "The Anthropic API rate limit was exceeded (status 429)."
                 ) from exc
@@ -74,6 +74,8 @@ class AnthropicProvider(LLMProvider):
             ) from exc
         except anthropic.APIError as exc:
             raise LLMProviderError(f"Unexpected error from the Anthropic API: {exc}") from exc
+        except Exception as exc:
+            raise LLMProviderError(f"Unhandled exception from the Anthropic API: {exc}") from exc
 
         text_parts = [block.text for block in response.content if block.type == "text"]
         return "".join(text_parts)
