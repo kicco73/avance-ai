@@ -48,17 +48,21 @@ class ModelsManager(object):
             return False
         return Path(model_name).name == model_name
 
-    @staticmethod
-    def _load_and_validate(model_name: str) -> Automaton:
+    def _load_and_validate(self, model_name: str) -> Automaton:
         """Path safety, then that `model_name` exists, then
         AutomatonBuilder.build() — raising ValueError on any failure.
         Shared by every method below that needs to load a model."""
         if not ModelsManager._is_safe_model_name(model_name):
             raise ValueError(f"Invalid model name: '{model_name}'.")
+        cached = self._automaton_cache.get(model_name)
+        if cached is not None:
+            return cached
         model_dir = MODELS_DIR / model_name
         if not model_dir.is_dir():
             raise ValueError(f"Model '{model_name}' does not exist.")
-        return AutomatonBuilder().build(model_dir / "index.yml")
+        automaton = AutomatonBuilder().build(model_dir / "index.yml")
+        self._automaton_cache[model_name] = automaton
+        return automaton
 
     @staticmethod
     def _looks_like_zip(content_type: str | None, content: bytes) -> bool:
@@ -207,6 +211,10 @@ class ModelsManager(object):
 
         temp_path.replace(final_path)
 
+        # New content is new content by definition — always built fresh
+        # above (never served from cache), but the cache entry for this
+        # name is now stale and must point at this new instance.
+        self._automaton_cache[model_name] = new_automaton
         self._set_active(model_name, new_automaton)
         await commit(new_automaton)
 
@@ -238,6 +246,9 @@ class ModelsManager(object):
             shutil.rmtree(final_dir)
         staging_dir.rename(final_dir)
 
+        # Same as _put_yaml_model: fresh content, fresh build above — the
+        # cache entry for this name just needs to catch up to it.
+        self._automaton_cache[model_name] = new_automaton
         self._set_active(model_name, new_automaton)
         await commit(new_automaton)
 
@@ -283,6 +294,8 @@ class ModelsManager(object):
 
         shutil.rmtree(MODELS_DIR / model_name)
         self._db.reset_model(model_name)
+        # No orphaned Automaton for a model that no longer exists.
+        self._automaton_cache.pop(model_name, None)
 
         if model_name == self._active_model_name:
             await self.activate_model(DEFAULT_MODEL_NAME, commit)
