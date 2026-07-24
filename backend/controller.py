@@ -99,7 +99,7 @@ class AvanceController(object):
     def post_action(self, req: ActionRequest):
         automaton = self.models_manager.get_active_automaton()
         model_name = self.models_manager.get_active_model_name()
-        from_state = self.db.get_current_state(model_name) or automaton.initial_state
+        from_state = self.models_manager.get_active_state_key()
         try:
             new_state = automaton.apply_action(from_state, req.action_name).target
         except ValueError as exc:
@@ -129,8 +129,7 @@ class AvanceController(object):
         for the current state against signal values the frontend already has
         (from GET /api/signals) — no AI call, never applies a transition."""
         automaton = self.models_manager.get_active_automaton()
-        model_name = self.models_manager.get_active_model_name()
-        state_key = self.db.get_current_state(model_name) or automaton.initial_state
+        state_key = self.models_manager.get_active_state_key()
         return automaton.preview_triggers(state_key, req.signals)
 
     @post("/api/reset")
@@ -138,8 +137,9 @@ class AvanceController(object):
         async with self.chat_service.lock:
             model_name = self.models_manager.get_active_model_name()
             # No explicit state reset needed: reset_model() clears every
-            # Transition row for this model, so get_current_state() below
-            # naturally falls back to initial_state on its own.
+            # Transition row for this model, so _state_payload() below
+            # (via models_manager.get_active_state_key()) naturally falls
+            # back to initial_state on its own.
             self.db.reset_model(model_name)
             self.chat_service.auto_tracking_enabled = True
         return self._state_payload()
@@ -202,8 +202,7 @@ class AvanceController(object):
 
     def _state_payload(self) -> dict:
         automaton = self.models_manager.get_active_automaton()
-        model_name = self.models_manager.get_active_model_name()
-        state_key = self.db.get_current_state(model_name) or automaton.initial_state
+        state_key = self.models_manager.get_active_state_key()
         return automaton.get_state_payload(state_key)
 
     async def _activate_model(self, new_automaton: Automaton) -> None:
@@ -216,9 +215,11 @@ class AvanceController(object):
         for that, used by DELETE and POST /api/reset instead). Automaton is
         stateless, so there's no state to restore here: the target model's
         own history (if any) is simply whatever db.get_current_state() finds
-        the next time something reads it. Runs under chat_service.lock
-        (shared with both chat transports)."""
+        the next time something reads it. Persisting "this model is now
+        active" is ModelsManager's own job now too — it's stateless itself,
+        so it writes that straight to the DB (keyed by Session().user)
+        before this callback even runs, rather than round-tripping through
+        it. The only side effect left here is resetting auto-tracking, done
+        under chat_service.lock (shared with both chat transports)."""
         async with self.chat_service.lock:
-            model_name = self.models_manager.get_active_model_name()
-            self.db.set_active_model_name(model_name)
             self.chat_service.auto_tracking_enabled = True

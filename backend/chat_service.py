@@ -183,7 +183,7 @@ class ChatService(object):
         # The turn's current state, as of right now — Automaton no longer
         # tracks it, so it's read once here and threaded through explicitly,
         # updated below if auto-tracking transitions it mid-turn.
-        state_key = self._db.get_current_state(model_name) or automaton.initial_state
+        state_key = self._models_manager.get_active_state_key()
 
         if automaton.get_state(state_key).final:
             # Final states are terminal by design: no message the client
@@ -244,7 +244,7 @@ class ChatService(object):
         if not self._db.is_empty(model_name):
             return None
 
-        state_key = self._db.get_current_state(model_name) or automaton.initial_state
+        state_key = self._models_manager.get_active_state_key()
         state = automaton.get_state(state_key)
 
         if state.fixed_message:
