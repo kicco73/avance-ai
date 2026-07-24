@@ -1,12 +1,7 @@
 """Validating/staging/committing model activations, uploads, and
-deletions. `ModelsManager` is stateless: which model is active is a
-per-user fact that lives in the DB (Settings table, via db.py's
-get_active_model_name/set_active_model_name) — the source of truth —
-keyed by whichever user Session() currently reports. The only thing
-this class keeps on `self` is a pure build cache (see _load_and_validate),
-which isn't "active" state — it's memoization of a deterministic build,
-safe only because Automaton itself is stateless. Constructed once, in
-main.py, with the shared `Db` instance passed in explicitly.
+deletions — plus every db.py access tied to "which model/state is
+active", encapsulated here so other layers never reach into db.py
+themselves for that.
 """
 from __future__ import annotations
 
@@ -28,26 +23,17 @@ MODELS_DIR = Path(__file__).parent / "models"
 DEFAULT_MODEL_NAME = "default"
 
 # Called with the newly-active Automaton once activate_model()/put_model()
-# have committed it — see module docstring.
+# have committed it.
 CommitCallback = Callable[[Automaton], Awaitable[None]]
 
 
-class ModelsManager(object):
+class ModelService(object):
     def __init__(self, db) -> None:
         self._db = db
-        # Built-Automaton cache, keyed by model name — in-memory only, not
-        # persisted, cleared naturally on restart. Populated/served by
-        # _load_and_validate() (the activation path); the upload path
-        # (_put_yaml_model/_put_zip_model) always builds fresh and just
-        # overwrites whatever entry was here; delete_model() evicts. This
-        # is the only thing ModelsManager keeps on `self` — see the module
-        # docstring for why that's still "stateless".
+        # Pure build cache, not "active" state — see _load_and_validate.
         self._automaton_cache: dict[str, Automaton] = {}
-        # Boot-time sanity check only, same safety net as before (fail
-        # fast if even "default" can't load) — nothing from this call is
-        # kept. get_active_automaton() re-derives from the DB and Session
-        # on every call, exactly like every other caller does.
-        self.get_active_automaton()
+        # Fail fast at boot if the active model can't load.
+        self.get_active_automaton_and_state()
 
     @staticmethod
     def _is_safe_model_name(model_name: str) -> bool:
@@ -58,15 +44,14 @@ class ModelsManager(object):
             return False
         return Path(model_name).name == model_name
 
-    def _load_and_validate(self, model_name: str) -> Automaton:
-        """Path safety, then that `model_name` exists, then
-        AutomatonBuilder.build() — raising ValueError on any failure.
-        Shared by every method below that needs to load a model."""
-        if not ModelsManager._is_safe_model_name(model_name):
-            raise ValueError(f"Invalid model name: '{model_name}'.")
+    def _load_model(self, model_name: str) -> Automaton:
         cached = self._automaton_cache.get(model_name)
         if cached is not None:
             return cached
+
+        if not ModelService._is_safe_model_name(model_name):
+            raise ValueError(f"Invalid model name: '{model_name}'.")
+
         model_dir = MODELS_DIR / model_name
         if not model_dir.is_dir():
             raise ValueError(f"Model '{model_name}' does not exist.")
@@ -124,10 +109,8 @@ class ModelsManager(object):
             zf.extractall(staging_dir)
 
     def get_active_model_name(self) -> str:
-        """The current session user's active model name (Settings table),
-        read fresh every time — nothing about "which model is active" is
-        cached on `self`; the DB is the source of truth, scoped by
-        `Session().user`. Defaults to (and persists) "default" the first
+        """The current session user's active model name, read fresh from
+        the DB every time. Defaults to (and persists) "default" the first
         time this user has no Settings row yet."""
         user = Session().user
         model_name = self._db.get_active_model_name(user)
@@ -136,33 +119,35 @@ class ModelsManager(object):
             self._db.set_active_model_name(model_name, user)
         return model_name
 
-    def get_active_automaton(self) -> Automaton:
-        """Builds (or serves from `_automaton_cache`) the Automaton for
-        whichever model get_active_model_name() currently reports for this
-        user. Falls back to "default" if that model fails to load — never
-        wiping anyone's data; if "default" fails too, propagates (this is
-        the same safety net __init__ relies on for its boot-time check)."""
+    def get_active_automaton_and_state(self) -> tuple[Automaton, str]:
+        """The active Automaton paired with the state key it's currently
+        in (or initial_state, if none persisted yet). Raises ValueError
+        if the active model itself fails to load — no silent fallback."""
         model_name = self.get_active_model_name()
-        try:
-            return self._load_and_validate(model_name)
-        except ValueError:
-            logger.warning("Active model '%s' failed to load; falling back to '%s'.", model_name, DEFAULT_MODEL_NAME)
-            if model_name == DEFAULT_MODEL_NAME:
-                raise
-            self._db.set_active_model_name(DEFAULT_MODEL_NAME, Session().user)
-            return self._load_and_validate(DEFAULT_MODEL_NAME)
+        automaton = self._load_model(model_name)
+        state_key = self._db.get_current_state(model_name) or automaton.initial_state
+        return automaton, state_key
 
-    def get_active_state_key(self) -> str:
-        """The state key the active automaton is currently in — DB is the
-        source of truth (db.get_current_state), falling back to the
-        automaton's own initial_state when there's no persisted transition
-        yet for this model. The one place this lookup happens: callers
-        that already come to ModelsManager for "which model/automaton is
-        active" get "which state it's in" the same way, instead of
-        reaching past it into db.py themselves."""
-        automaton = self.get_active_automaton()
-        model_name = self.get_active_model_name()
-        return self._db.get_current_state(model_name) or automaton.initial_state
+    def apply_manual_action(self, action_name: str) -> dict:
+        """Applies a manual (button) action on the active automaton,
+        persists the transition, and returns the resulting state payload."""
+        automaton, from_state = self.get_active_automaton_and_state()
+        new_state = automaton.move(from_state, action_name).target
+        self._db.save_transition(
+            from_state,
+            action_name,
+            new_state,
+            self.get_active_model_name(),
+            transition_log_level=automaton.get_state(new_state).transition_log_level,
+        )
+        return automaton.get_state_payload(new_state)
+
+    def get_active_state_payload(self) -> dict:
+        automaton, state_key = self.get_active_automaton_and_state()
+        return automaton.get_state_payload(state_key)
+
+    def reset_active_model(self) -> None:
+        self._db.reset_model(self.get_active_model_name())
 
     def list_models(self) -> dict:
         """Every subdirectory of models/ with an index.yml (unvalidated —
@@ -180,12 +165,8 @@ class ModelsManager(object):
 
     async def activate_model(self, model_name: str, commit: CommitCallback) -> Automaton:
         """Validates via _load_and_validate(), persists `model_name` as
-        active for the current session user (DB is the source of truth —
-        ModelsManager itself keeps nothing), then awaits
-        `commit(new_automaton)`. Used by delete_model()'s fallback and
-        activate_model_idempotent()."""
-        new_automaton = self._load_and_validate(model_name)
-
+        active, then awaits `commit(new_automaton)`."""
+        new_automaton = self._load_model(model_name)
         self._db.set_active_model_name(model_name, Session().user)
         await commit(new_automaton)
         return new_automaton
@@ -194,7 +175,7 @@ class ModelsManager(object):
         """Always validates `model_name` first, even if already active —
         idempotency only skips the swap + commit, never the correctness
         checks. A different model delegates to activate_model()."""
-        new_automaton = self._load_and_validate(model_name)
+        new_automaton = self._load_model(model_name)
         if model_name == self.get_active_model_name():
             return new_automaton
         return await self.activate_model(model_name, commit)
@@ -214,8 +195,8 @@ class ModelsManager(object):
         try:
             new_automaton = AutomatonBuilder().build(temp_path)
         except Exception as exc:
-            # Broad on purpose: any way this file fails to become a usable
-            # Automaton is equally "this upload is invalid" to the caller.
+            # Any way this file fails to become a usable Automaton is
+            # equally "this upload is invalid" to the caller.
             temp_path.unlink(missing_ok=True)
             if not dir_preexisted:
                 try:
@@ -226,9 +207,7 @@ class ModelsManager(object):
 
         temp_path.replace(final_path)
 
-        # New content is new content by definition — always built fresh
-        # above (never served from cache), but the cache entry for this
-        # name is now stale and must point at this new instance.
+        # Always built fresh above — refresh the cache entry too.
         self._automaton_cache[model_name] = new_automaton
         self._db.set_active_model_name(model_name, Session().user)
         await commit(new_automaton)
@@ -261,8 +240,7 @@ class ModelsManager(object):
             shutil.rmtree(final_dir)
         staging_dir.rename(final_dir)
 
-        # Same as _put_yaml_model: fresh content, fresh build above — the
-        # cache entry for this name just needs to catch up to it.
+        # Always built fresh above — refresh the cache entry too.
         self._automaton_cache[model_name] = new_automaton
         self._db.set_active_model_name(model_name, Session().user)
         await commit(new_automaton)
@@ -298,10 +276,8 @@ class ModelsManager(object):
 
     async def delete_model(self, model_name: str, commit: CommitCallback) -> None:
         """Removes models/<model_name>/ from disk plus its conversation
-        data — any model, active or not (except "default", which raises
-        PermissionError). If it was active, reactivates "default" via
-        activate_model() — which now restores its own history rather than
-        starting empty."""
+        data. Any model, active or not, except "default" (raises
+        PermissionError). Reactivates "default" if it was active."""
         if not self._is_safe_model_name(model_name) or not (MODELS_DIR / model_name).is_dir():
             raise FileNotFoundError(f"Model '{model_name}' does not exist.")
         if model_name == DEFAULT_MODEL_NAME:

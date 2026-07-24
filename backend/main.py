@@ -17,7 +17,7 @@ from chat_ws_adapter import ChatWsAdapter
 from controller import AvanceController
 from db import Db
 from error_handlers import register_error_handlers
-from models_manager import ModelsManager
+from model_service import ModelService
 from ai import provider_factory
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -38,7 +38,7 @@ database_url = os.environ.get("DATABASE_URL", "sqlite:///avance.db")
 
 llm_provider = provider_factory.make(llm_provider, api_key=llm_api_key, model=llm_name)
 db = Db(database_url)
-models_manager = ModelsManager(db)
+models_manager = ModelService(db)
 chat_service = ChatService(llm_provider, models_manager, db)
 
 app = FastAPI(title="Avance State Engine")
@@ -53,7 +53,7 @@ app.add_middleware(
 
 register_error_handlers(app)
 
-controller = AvanceController(chat_service, models_manager, db)
+controller = AvanceController(chat_service, models_manager)
 app.include_router(controller.router)
 
 if CHAT_TRANSPORT == "websocket":

@@ -1,7 +1,6 @@
 """Transport-agnostic chat-turn logic. Building the
 system prompt, running auto-tracking, calling the LLM provider with
-retry, and persisting the result all live here exactly once; each
-transport only knows how it receives a message and reports the outcome.
+retry, and persisting the result all live here exactly once.
 """
 from __future__ import annotations
 
@@ -18,7 +17,7 @@ from ai.llm_provider import (
     generate_with_retry,
 )
 from signals import Signals
-from models_manager import ModelsManager
+from model_service import ModelService
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +32,6 @@ FIXED_MESSAGE_INSTRUCTIONS = (
     "Fixed message:\n{fixed_message}"
 )
 class ChatServiceError(Exception):
-    """The one error shape both transports translate from: a short
-    readable `message`, an optional technical `detail`, and the HTTP
-    status a REST caller should use — the same {message, detail} contract
-    already uniform across the rest of the app. Websocket wraps this into
-    an 'error' frame; REST into the standard JSON error body."""
 
     def __init__(self, message: str, detail: str | None = None, *, status_code: int = 500) -> None:
         super().__init__(message)
@@ -58,23 +52,21 @@ class ChatService(object):
     def __init__(
         self,
         llm_provider: LLMProvider,
-        models_manager: ModelsManager,
+        models_manager: ModelService,
         db: Db,
     ) -> None:
         self._llm_provider = llm_provider
         self._models_manager = models_manager
         self._db = db
-        self.signals = Signals(get_active_automaton=models_manager.get_active_automaton, db=db)
+        self.signals = Signals(
+            get_active_automaton=lambda: models_manager.get_active_automaton_and_state()[0], db=db
+        )
         self.auto_tracking_enabled = True
 
         # Single-user prototype: serializes chat-turn processing across
         # both transports and against a concurrent reset/activate/upload/
         # delete (main.py's _activate_and_reset awaits this same lock).
         self.lock = asyncio.Lock()
-
-    @property
-    def _automaton(self) -> Automaton:
-        return self._models_manager.get_active_automaton()
 
     @property
     def _active_model_name(self) -> str:
@@ -119,15 +111,6 @@ class ChatService(object):
     async def _run_auto_tracking(
         self, pending_message: dict, model_name: str, automaton: Automaton, state_key: str
     ) -> tuple[bool, str | None, str | None]:
-        """Computes signals and applies the first matching trigger, if
-        auto-tracking is on — before the reply, so it's produced under the
-        destination state's prompt. Returns (state_changed, new_state, triggered_action).
-
-        `automaton` is the caller's own snapshot, taken once before this
-        call — never re-read from models_manager here, since a concurrent
-        switch could swap it out from under us across the `await` below.
-        `state_key` is likewise the turn's current state as read by the
-        caller before this runs — Automaton itself no longer tracks it."""
         if not self.auto_tracking_enabled:
             return False, None, None
 
@@ -144,7 +127,7 @@ class ChatService(object):
         if triggered_action is None:
             return False, None, None
 
-        action = automaton.apply_action(state_key, triggered_action)
+        action = automaton.move(state_key, triggered_action)
         relevant_names = trigger_signal_names(action.trigger)
         relevant_values = {n: signal_values.get(n) for n in relevant_names}
         self._db.save_transition(
@@ -160,15 +143,6 @@ class ChatService(object):
         return True, action.target, triggered_action
 
     async def process_turn(self, text: str, on_retry: OnRetry | None = None) -> ChatTurnResult:
-        """Runs one chat turn end to end: auto-tracking, prompt building,
-        the LLM call (with retry/backoff), and persistence — identical
-        regardless of which transport called it. `on_retry`, if given, is
-        awaited on each backoff tick (see llm_provider.generate_with_retry);
-        a transport with no one to report progress to (a synchronous REST
-        call) just omits it — retries still happen server-side, silently.
-
-        Raises ChatServiceError (never blocks/queues) if another turn is
-        already in progress — the caller decides how to report that."""
         if self.lock.locked():
             raise ChatServiceError("A chat reply is already being generated.", status_code=409)
         async with self.lock:
@@ -178,17 +152,12 @@ class ChatService(object):
         # Snapshotted once and threaded through explicitly: these are live
         # properties on models_manager, which a concurrent switch/upload/
         # delete could change mid-turn if re-read after an `await` below.
-        automaton = self._automaton
+        # State is read once here and threaded through explicitly, updated
+        # below if auto-tracking transitions it mid-turn.
+        automaton, state_key = self._models_manager.get_active_automaton_and_state()
         model_name = self._active_model_name
-        # The turn's current state, as of right now — Automaton no longer
-        # tracks it, so it's read once here and threaded through explicitly,
-        # updated below if auto-tracking transitions it mid-turn.
-        state_key = self._models_manager.get_active_state_key()
 
         if automaton.get_state(state_key).final:
-            # Final states are terminal by design: no message the client
-            # could have already queued should reach the model, no matter
-            # how the state got here (manual button or auto-tracking).
             raise ChatServiceError("The conversation has ended in this state.", status_code=409)
 
         pending_message = {"role": "user", "content": text, "timestamp": self._now_iso()}
@@ -197,9 +166,6 @@ class ChatService(object):
             pending_message, model_name, automaton, state_key
         )
         if state_changed:
-            # The rest of this turn — in particular the reply below — must
-            # be generated under the destination state's prompt, not the
-            # one the turn started in.
             state_key = new_state_key
 
         state = automaton.get_state(state_key)
@@ -238,13 +204,12 @@ class ChatService(object):
         message (same prompt-building as a normal chat turn). No-op if
         already non-empty.
         """
-        automaton = self._automaton
         model_name = self._active_model_name
 
         if not self._db.is_empty(model_name):
             return None
 
-        state_key = self._models_manager.get_active_state_key()
+        automaton, state_key = self._models_manager.get_active_automaton_and_state()
         state = automaton.get_state(state_key)
 
         if state.fixed_message:

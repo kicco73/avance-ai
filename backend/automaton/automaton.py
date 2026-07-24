@@ -119,7 +119,7 @@ class Automaton(object):
             ],
         }
 
-    def apply_action(self, state_key: str, action_name: str) -> Action:
+    def move(self, state_key: str, action_name: str) -> Action:
         state = self.states[state_key]
         for action in state.actions:
             if action.name == action_name:
