@@ -113,11 +113,11 @@ class ChatService(object):
         return self._db.get_messages(self._active_model_name, last_n=last_n)
 
     @staticmethod
-    def _current_state_payload(automaton: Automaton) -> dict:
-        return automaton.get_current_state_payload()
+    def _current_state_payload(automaton: Automaton, state_key: str) -> dict:
+        return automaton.get_state_payload(state_key)
 
     async def _run_auto_tracking(
-        self, pending_message: dict, model_name: str, automaton: Automaton
+        self, pending_message: dict, model_name: str, automaton: Automaton, state_key: str
     ) -> tuple[bool, str | None, str | None]:
         """Computes signals and applies the first matching trigger, if
         auto-tracking is on — before the reply, so it's produced under the
@@ -125,7 +125,9 @@ class ChatService(object):
 
         `automaton` is the caller's own snapshot, taken once before this
         call — never re-read from models_manager here, since a concurrent
-        switch could swap it out from under us across the `await` below."""
+        switch could swap it out from under us across the `await` below.
+        `state_key` is likewise the turn's current state as read by the
+        caller before this runs — Automaton itself no longer tracks it."""
         if not self.auto_tracking_enabled:
             return False, None, None
 
@@ -137,17 +139,23 @@ class ChatService(object):
         # the exact snapshot id that caused it.
         snapshot_id = self._db.save_signal_snapshot(signal_values, model_name)
 
-        from_state_key = automaton.get_current_state().key
-        triggered_action = automaton.evaluate_triggers(signal_values)
+        triggered_action = automaton.evaluate_triggers(state_key, signal_values)
 
         if triggered_action is None:
             return False, None, None
 
-        action = automaton.apply_action(triggered_action)
+        action = automaton.apply_action(state_key, triggered_action)
         relevant_names = trigger_signal_names(action.trigger)
         relevant_values = {n: signal_values.get(n) for n in relevant_names}
-        automaton.log_transition(from_state_key, action.target, action.name, "auto", relevant_values)
-        self._db.save_transition(from_state_key, triggered_action, action.target, model_name, snapshot_id)
+        self._db.save_transition(
+            state_key,
+            triggered_action,
+            action.target,
+            model_name,
+            transition_log_level=automaton.get_state(action.target).transition_log_level,
+            signal_snapshot_id=snapshot_id,
+            signal_values=relevant_values,
+        )
 
         return True, action.target, triggered_action
 
@@ -172,8 +180,12 @@ class ChatService(object):
         # delete could change mid-turn if re-read after an `await` below.
         automaton = self._automaton
         model_name = self._active_model_name
+        # The turn's current state, as of right now — Automaton no longer
+        # tracks it, so it's read once here and threaded through explicitly,
+        # updated below if auto-tracking transitions it mid-turn.
+        state_key = self._db.get_current_state(model_name) or automaton.initial_state
 
-        if automaton.get_current_state().final:
+        if automaton.get_state(state_key).final:
             # Final states are terminal by design: no message the client
             # could have already queued should reach the model, no matter
             # how the state got here (manual button or auto-tracking).
@@ -182,10 +194,15 @@ class ChatService(object):
         pending_message = {"role": "user", "content": text, "timestamp": self._now_iso()}
 
         state_changed, new_state_key, triggered_action = await self._run_auto_tracking(
-            pending_message, model_name, automaton
+            pending_message, model_name, automaton, state_key
         )
+        if state_changed:
+            # The rest of this turn — in particular the reply below — must
+            # be generated under the destination state's prompt, not the
+            # one the turn started in.
+            state_key = new_state_key
 
-        state = automaton.get_current_state()
+        state = automaton.get_state(state_key)
         if state.fixed_message:
             logger.warning("Translating fixed_message for state '%s'.", state.key)
             system_prompt = FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message)
@@ -210,7 +227,7 @@ class ChatService(object):
 
         return ChatTurnResult(
             reply=reply,
-            state=self._current_state_payload(automaton),
+            state=self._current_state_payload(automaton, state_key),
             state_changed=state_changed,
             new_state=new_state_key,
             triggered_action=triggered_action,
@@ -227,7 +244,8 @@ class ChatService(object):
         if not self._db.is_empty(model_name):
             return None
 
-        state = automaton.get_current_state()
+        state_key = self._db.get_current_state(model_name) or automaton.initial_state
+        state = automaton.get_state(state_key)
 
         if state.fixed_message:
             system_prompt = FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message)

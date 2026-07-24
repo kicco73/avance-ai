@@ -5,11 +5,14 @@ instance, passed explicitly to whatever needs it."""
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 
 from peewee import CharField, DateTimeField, ForeignKeyField, Model, Proxy, TextField
 from playhouse.db_url import connect
 from playhouse.migrate import SqliteMigrator, migrate
+
+logger = logging.getLogger(__name__)
 
 # Model classes below bind to this at class-definition time, since Peewee
 # needs a Meta.database then — the real connection only exists once Db()
@@ -144,8 +147,18 @@ class Db(object):
         action: str,
         new_state: str,
         model_name: str,
+        transition_log_level: str,
         signal_snapshot_id: int | None = None,
+        signal_values: dict | None = None,
     ) -> None:
+        """Persists the transition row and logs it at
+        `transition_log_level` (the destination state's own configured
+        level, e.g. from Automaton.get_state(new_state).transition_log_level)
+        — the one place both happen, so they can't drift apart. Whether
+        `signal_snapshot_id` is given (not just its value) decides "auto"
+        vs "manual" in the log line, matching the column's own null
+        semantics. `signal_values` is log-only detail (the full snapshot
+        is already the persisted signal_snapshot row)."""
         Transition.create(
             old_state=old_state,
             action=action,
@@ -157,7 +170,18 @@ class Db(object):
             user=DEFAULT_USER,
         )
 
-    def get_current_state(self, initial_state: str, model_name: str) -> str:
+        trigger_type = "auto" if signal_snapshot_id is not None else "manual"
+        level = getattr(logging, transition_log_level)
+        message = f"State transition: {old_state} -> {new_state} (action={action}, trigger={trigger_type})"
+        if signal_values:
+            message += f" signals={signal_values}"
+        logger.log(level, message)
+
+    def get_current_state(self, model_name: str) -> str | None:
+        """The state `model_name`'s latest Transition left it in, or None
+        if there isn't one yet — callers fall back to the automaton's own
+        initial_state themselves (`db.get_current_state(...) or
+        automaton.initial_state`), since this module doesn't know it."""
         transition = (
             Transition.select()
             .where(Transition.model_name == model_name)
@@ -165,7 +189,7 @@ class Db(object):
             .first()
         )
         if transition is None:
-            return initial_state
+            return None
         return transition.new_state
 
     def get_active_model_name(self, user: str = DEFAULT_USER) -> str | None:

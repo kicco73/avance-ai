@@ -31,6 +31,12 @@ class ModelsManager(object):
         self._db = db
         self._active_automaton: Automaton | None = None
         self._active_model_name: str | None = None
+        # Built-Automaton cache, keyed by model name — in-memory only, not
+        # persisted, cleared naturally on restart. Populated/served by
+        # _load_and_validate() (the activation path); the upload path
+        # (_put_yaml_model/_put_zip_model) always builds fresh and just
+        # overwrites whatever entry was here; delete_model() evicts.
+        self._automaton_cache: dict[str, Automaton] = {}
         self.__init_model()
 
     @staticmethod
@@ -112,10 +118,11 @@ class ModelsManager(object):
 
     def __init_model(self) -> Automaton:
         """Loads whichever model is persisted as active (Settings table,
-        "default" on the very first boot) and restores its current state.
-        On failure, falls back to "default", restoring its own history the
-        same way — never wiping anyone's data; if "default" fails too,
-        propagates so the server fails to start."""
+        "default" on the very first boot). Its current state isn't hydrated
+        here — Automaton is stateless, so callers read it fresh from the DB
+        wherever they need it. On failure, falls back to "default" — never
+        wiping anyone's data; if "default" fails too, propagates so the
+        server fails to start."""
         model_name = self._db.get_active_model_name()
         if model_name is None:
             model_name = DEFAULT_MODEL_NAME
@@ -131,7 +138,6 @@ class ModelsManager(object):
             automaton = self._load_and_validate(model_name)
             self._db.set_active_model_name(model_name)
 
-        automaton.set_current_state(self._db.get_current_state(automaton.initial_state, model_name))
         self._set_active(model_name, automaton)
         return automaton
 

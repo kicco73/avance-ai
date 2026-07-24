@@ -73,6 +73,13 @@ def trigger_signal_names(expression: str) -> set[str]:
 
 
 class Automaton(object):
+    """Stateless DFA definition: states, actions, prompts, signals — loaded
+    once from YAML and never mutated afterward. It holds no notion of
+    "current state"; every method that needs one takes it as an explicit
+    `state_key` argument. The actual current state lives in the database
+    (see db.get_current_state/save_transition) — callers read it from
+    there and thread it through explicitly."""
+
     def __init__(
         self,
         initial_state: str,
@@ -82,20 +89,19 @@ class Automaton(object):
         general_prompt_attachments: list[Attachment],
     ):
         self.initial_state = initial_state
-        self.state = states[initial_state]
         self.states = states
         self.general_prompt = general_prompt
         self.signals = signals
         self.general_prompt_attachments = general_prompt_attachments
 
-    def get_current_state(self) -> State:
-        return self.state
+    def get_state(self, state_key: str) -> State:
+        return self.states[state_key]
 
-    def get_current_state_payload(self) -> dict:
-        """Serializes the current State into the plain-dict shape every
+    def get_state_payload(self, state_key: str) -> dict:
+        """Serializes `state_key`'s State into the plain-dict shape every
         state-reporting endpoint sends to the frontend — the one place
         this shape is built, so it can't drift between call sites."""
-        state = self.state
+        state = self.states[state_key]
         return {
             "key": state.key,
             "label": state.label,
@@ -113,54 +119,30 @@ class Automaton(object):
             ],
         }
 
-    def log_transition(
-        self,
-        from_state: str,
-        to_state: str,
-        action_name: str,
-        trigger_type: str,
-        signal_values: dict | None = None,
-    ) -> None:
-        """Logs every state transition (manual or auto) at the destination
-        state's `transition_log_level` (default WARNING) — the one place
-        this is done, called by every part of the backend that transitions."""
-        level = getattr(logging, self.states[to_state].transition_log_level)
-        message = f"State transition: {from_state} -> {to_state} (action={action_name}, trigger={trigger_type})"
-        if signal_values:
-            message += f" signals={signal_values}"
-        logger.log(level, message)
-
-    def apply_action(self, action_name: str) -> Action:
-        state = self.state
+    def apply_action(self, state_key: str, action_name: str) -> Action:
+        state = self.states[state_key]
         for action in state.actions:
             if action.name == action_name:
-                self.state = self.states[action.target]
                 return action
         raise ValueError(
             f"Action '{action_name}' not available in state '{state.key}'"
         )
 
-    def set_current_state(self, key: str) -> None:
-        """Hydrates current state from an external source of truth:
-        db.get_current_state() at boot, or initial_state on reset. The
-        only way to move state besides apply_action()."""
-        self.state = self.states[key]
-
-    def evaluate_triggers(self, signals: dict) -> str | None:
+    def evaluate_triggers(self, state_key: str, signals: dict) -> str | None:
         """Returns the first action (YAML order) whose trigger evaluates
         true — FIFO priority — or None. Actions without `trigger` stay
         manual-only, never returned here."""
-        state = self.state
+        state = self.states[state_key]
         for action in state.actions:
             if action.trigger and self._eval_trigger(action.trigger, signals):
                 return action.name
         return None
 
-    def preview_triggers(self, signals: dict) -> list[dict]:
-        """Every triggerable action in the current state with its expression
-        and evaluation result, in FIFO priority order — for UI display only,
+    def preview_triggers(self, state_key: str, signals: dict) -> list[dict]:
+        """Every triggerable action in `state_key` with its expression and
+        evaluation result, in FIFO priority order — for UI display only,
         never applies a transition."""
-        state = self.state
+        state = self.states[state_key]
         results = []
         winner_found = False
         for action in state.actions:
