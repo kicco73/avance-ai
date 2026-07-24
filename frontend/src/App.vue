@@ -22,7 +22,18 @@ import { disconnect as disconnectChat, sendMessage } from './chatClient.js'
 import { playMessageChime } from './audio.js'
 import { celebrate } from './confetti.js'
 import { clearApiError, errorDetail, errorMessage, setApiError } from './errorStore.js'
+import MarkdownIt from 'markdown-it'
+import DOMPurify from 'dompurify'
 
+const md = new MarkdownIt({
+  breaks: true,    // invio = <br>
+  linkify: true,   // URL cliccabili
+  typographer: true
+})
+
+function renderMarkdown(text) {
+  return DOMPurify.sanitize(md.render(text ?? ''))
+}
 const showSignals = ref(false)
 const autoTrackingEnabled = ref(true)
 const autoTrackingLoading = ref(false)

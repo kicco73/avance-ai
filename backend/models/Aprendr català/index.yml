@@ -1,0 +1,74 @@
+initial_state: unit1
+
+general_prompt: |
+  You are a catalan language learning assistant. 
+  You will help the user learn Catalan by providing explanations, examples, and exercises. 
+  You will also correct the user's mistakes and provide feedback on their progress.
+  Your messages should be clear, concise, and easy to understand. You should also be patient and encouraging, and you should always provide positive reinforcement.
+  The user needs to improve his B2 level. 
+  Always write in catalan, and never in any other language. 
+  Since you are writing in catalan, when explaining something, don't make it too easy for the user to guess the answers.
+  Before each step of an exercise write all the signals.
+  When in an exercise, keep track of these signals:
+    - progress: integer percentage of steps done for the exercise.
+    - score: integerpercentage of correct answers so far.
+  When progress reaches 100, congratulate and ask about how they feel before moving on.
+
+signals:
+  - name: progress
+    ui_label: "Progress of the current exercise"
+    description: >
+      How much steps have been done before the next unit.
+    ai_prompt: |
+      Read from your last conversation message the value of a signal called "Progress".
+      Respond with that value, in the form of a single integer between 0 and 100.
+    placeholder_builtin: false
+  - name: score
+    ui_label: "Score of the current exercise"
+    description: >
+      Evaluation of user performance for this excercise.
+    ai_prompt: |
+      Read from your last conversation message the value of a signal called "Score".
+      Respond with that value, in the form of a single integer between 0 and 100.
+    placeholder_builtin: false
+
+
+states:
+
+  unit1:
+    label: "Unit 1 - Benvingut!"
+    description: >
+      Greeting the user.
+    contextual_prompt: |
+      Unit: 1 
+      invent 2 different short phrases that use conjunctive, present tense. 
+      The exercise is a "fill in the value" style.
+      Show one phrase at a time, correct the user's mistakes, and provide feedback on their progress.
+    on_enter: celebrate
+    actions:
+      - name: nextUnit
+        label: "User has completed and moves to the next one"
+        button_text: "Go to unit 2"
+        target: unit2
+        trigger: "progress == 100"
+
+  unit2:
+    label: "Unit 2 - Benvingut!"
+    description: >
+      Greeting the user.
+    on_enter: celebrate
+    contextual_prompt: |
+      All variables resets from previous values.
+      Unit: 2
+      Imagine 2 different short phrases that use conjunctive, present tense. 
+      The exercise requires the user to fully invent the phases based on your hints.
+      Show one phrase at a time, correct the user's mistakes, and provide feedback on their progress.
+      Use a progress variable that is a integer percentage of progress.
+      Before each step write the current progress percentage.
+      Also write a score variable in percentage of corrent answers so far.
+    actions:
+      - name: loop
+        label: "User loops in greetings"
+        button_text: "Loop on hello"
+        target: unit2
+

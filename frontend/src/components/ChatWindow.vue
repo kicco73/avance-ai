@@ -1,5 +1,18 @@
 <script setup>
 import { nextTick, ref, watch } from 'vue'
+import MarkdownIt from 'markdown-it'
+import DOMPurify from 'dompurify'
+
+const md = new MarkdownIt({
+  breaks: true,
+  linkify: true,
+  typographer: true,
+  html: false
+})
+
+function renderMarkdown(text) {
+  return DOMPurify.sanitize(md.render(text ?? ''))
+}
 
 const props = defineProps({
   messages: {
@@ -26,13 +39,6 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
-  // True once the initial GET /api/messages hydration has settled (success
-  // or failure). Gates the bump-in animation's CSS name: history arrives
-  // asynchronously after this component has already mounted, so a bare
-  // <TransitionGroup> without `appear` isn't enough on its own here — every
-  // hydrated row would still read as "just added" the moment the fetch
-  // resolves. Before that point the group uses Vue's unstyled default
-  // transition name ('v'), which is a no-op with no matching CSS.
   historyLoaded: {
     type: Boolean,
     default: false
@@ -46,8 +52,6 @@ const scrollEl = ref(null)
 const inputEl = ref(null)
 const showErrorDetail = ref(false)
 
-// Collapse the detail disclosure whenever a new/different error replaces
-// the previous one, so it doesn't stay stuck open showing stale detail.
 watch(
   () => props.errorMessage,
   () => {
@@ -71,19 +75,18 @@ watch(
   () => props.messages.length,
   async () => {
     await nextTick()
+
     if (scrollEl.value) {
       scrollEl.value.scrollTop = scrollEl.value.scrollHeight
     }
   }
 )
 
-// The input gets disabled while a reply is in flight, which drops browser
-// focus — reclaim it once the reply lands so the user isn't forced to click
-// back into the field before every message.
 watch(
   () => props.loading,
   async (isLoading, wasLoading) => {
     if (isLoading || !wasLoading || props.finalStateReached) return
+
     await nextTick()
     inputEl.value?.focus()
   }
@@ -109,22 +112,34 @@ watch(
           >
             &#33;
           </button>
+
           <div
             class="bubble"
             :class="[
               msg.role === 'user' ? 'bubble-user' : 'bubble-assistant',
               msg.failed ? 'bubble-failed' : ''
             ]"
-          >
-            {{ msg.content }}
-          </div>
+            v-html="renderMarkdown(msg.content)"
+          />
         </div>
       </TransitionGroup>
-      <div v-if="loading" class="bubble bubble-assistant bubble-loading">{{ status || '...' }}</div>
+
+      <div
+        v-if="loading"
+        class="bubble bubble-assistant bubble-loading"
+      >
+        {{ status || '...' }}
+      </div>
     </div>
 
-    <div class="chat-error-row" v-if="errorMessage">
-      <p class="chat-error">{{ errorMessage }}</p>
+    <div
+      v-if="errorMessage"
+      class="chat-error-row"
+    >
+      <p class="chat-error">
+        {{ errorMessage }}
+      </p>
+
       <button
         v-if="errorDetail"
         type="button"
@@ -134,12 +149,23 @@ watch(
         {{ showErrorDetail ? 'Hide details' : 'Details' }}
       </button>
     </div>
-    <pre v-if="errorMessage && errorDetail && showErrorDetail" class="chat-error-detail">{{ errorDetail }}</pre>
-    <p class="chat-ended-notice" v-if="finalStateReached">
+
+    <pre
+      v-if="errorMessage && errorDetail && showErrorDetail"
+      class="chat-error-detail"
+    >{{ errorDetail }}</pre>
+
+    <p
+      v-if="finalStateReached"
+      class="chat-ended-notice"
+    >
       The conversation has ended.
     </p>
 
-    <form class="input-row" @submit.prevent="submit">
+    <form
+      class="input-row"
+      @submit.prevent="submit"
+    >
       <input
         ref="inputEl"
         v-model="draft"
@@ -147,7 +173,13 @@ watch(
         placeholder="Type a message..."
         :disabled="loading || finalStateReached"
       />
-      <button type="submit" :disabled="loading || finalStateReached || !draft.trim()">Send</button>
+
+      <button
+        type="submit"
+        :disabled="loading || finalStateReached || !draft.trim()"
+      >
+        Send
+      </button>
     </form>
   </div>
 </template>
@@ -169,14 +201,12 @@ watch(
   gap: 0.5rem;
 }
 
-/* Fade-in + slight scale overshoot ("bump") for newly added message rows
-   only — TransitionGroup applies this solely to rows entering after the
-   initial mount, never to ones already present at mount time. */
 @keyframes message-bubble-in {
   from {
     opacity: 0;
     transform: scale(0.92);
   }
+
   to {
     opacity: 1;
     transform: scale(1);
@@ -184,7 +214,8 @@ watch(
 }
 
 .message-bubble-enter-active {
-  animation: message-bubble-in 220ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation: message-bubble-in 220ms
+    cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
 .message-row {
@@ -207,8 +238,8 @@ watch(
   max-width: 100%;
   padding: 0.6rem 0.9rem;
   border-radius: 12px;
-  line-height: 1.4;
-  white-space: pre-wrap;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .bubble-user {
@@ -325,5 +356,125 @@ watch(
 .input-row button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* ---------------- Markdown ---------------- */
+
+.bubble :deep(p) {
+  margin: 0 0 0.8rem;
+}
+
+.bubble :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.bubble :deep(h1),
+.bubble :deep(h2),
+.bubble :deep(h3),
+.bubble :deep(h4),
+.bubble :deep(h5),
+.bubble :deep(h6) {
+  margin: 0.8rem 0 0.5rem;
+  line-height: 1.3;
+}
+
+.bubble :deep(h1:first-child),
+.bubble :deep(h2:first-child),
+.bubble :deep(h3:first-child),
+.bubble :deep(h4:first-child) {
+  margin-top: 0;
+}
+
+.bubble :deep(ul),
+.bubble :deep(ol) {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.bubble :deep(li) {
+  margin: 0.25rem 0;
+}
+
+.bubble :deep(blockquote) {
+  margin: 0.75rem 0;
+  padding: 0.2rem 0 0.2rem 1rem;
+  border-left: 4px solid #bbb;
+  color: #666;
+}
+
+.bubble :deep(hr) {
+  border: none;
+  border-top: 1px solid #ccc;
+  margin: 1rem 0;
+}
+
+.bubble :deep(pre) {
+  overflow-x: auto;
+  margin: 0.75rem 0;
+  padding: 0.9rem;
+  border-radius: 8px;
+  background: #1e1e1e;
+  color: #f8f8f2;
+}
+
+.bubble :deep(pre code) {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  border-radius: 0;
+}
+
+.bubble :deep(code) {
+  font-family: Consolas, Monaco, Menlo, monospace;
+  font-size: 0.9em;
+}
+
+.bubble :deep(:not(pre) > code) {
+  background: rgba(0, 0, 0, 0.08);
+  padding: 0.12rem 0.35rem;
+  border-radius: 4px;
+}
+
+.bubble-user :deep(:not(pre) > code) {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.bubble :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+}
+
+.bubble :deep(th),
+.bubble :deep(td) {
+  border: 1px solid #ccc;
+  padding: 0.45rem 0.6rem;
+  text-align: left;
+}
+
+.bubble :deep(th) {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.bubble-user :deep(th) {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.bubble :deep(img) {
+  max-width: 100%;
+  border-radius: 6px;
+}
+
+.bubble :deep(a) {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.bubble :deep(strong) {
+  font-weight: 600;
+}
+
+.bubble :deep(em) {
+  font-style: italic;
 }
 </style>
