@@ -1,5 +1,5 @@
 <script setup>
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
 
@@ -39,6 +39,14 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  // Whether the CURRENT state accepts chat turns (see backend State.chat)
+  // — when it doesn't, the backend rejects them too (see
+  // ChatService._process_turn_locked). Independent of auto-tracking: see
+  // ActionButtons' own stateAutotracking prop for that.
+  stateChat: {
+    type: Boolean,
+    default: true
+  },
   historyLoaded: {
     type: Boolean,
     default: false
@@ -52,6 +60,12 @@ const scrollEl = ref(null)
 const inputEl = ref(null)
 const showErrorDetail = ref(false)
 
+// Either reason blocks ordinary chat turns — kept as two separate props
+// (rather than one pre-combined boolean) so the notice below can still
+// tell a genuinely-ended conversation apart from a state that's advanced
+// via an action instead.
+const chatDisabled = computed(() => props.finalStateReached || !props.stateChat)
+
 watch(
   () => props.errorMessage,
   () => {
@@ -61,7 +75,7 @@ watch(
 
 function submit() {
   const text = draft.value.trim()
-  if (!text || props.loading || props.finalStateReached) return
+  if (!text || props.loading || chatDisabled.value) return
   emit('send', text)
   draft.value = ''
 }
@@ -85,7 +99,7 @@ watch(
 watch(
   () => props.loading,
   async (isLoading, wasLoading) => {
-    if (isLoading || !wasLoading || props.finalStateReached) return
+    if (isLoading || !wasLoading || chatDisabled.value) return
 
     await nextTick()
     inputEl.value?.focus()
@@ -161,6 +175,14 @@ watch(
     >
       The conversation has ended.
     </p>
+    <p
+      v-else-if="!stateChat"
+      class="chat-ended-notice"
+    >
+      Please select:
+    </p>
+
+    <slot name="actions" />
 
     <form
       class="input-row"
@@ -171,12 +193,12 @@ watch(
         v-model="draft"
         type="text"
         placeholder="Type a message..."
-        :disabled="loading || finalStateReached"
+        :disabled="loading || chatDisabled"
       />
 
       <button
         type="submit"
-        :disabled="loading || finalStateReached || !draft.trim()"
+        :disabled="loading || chatDisabled || !draft.trim()"
       >
         Send
       </button>
@@ -323,9 +345,8 @@ watch(
 .chat-ended-notice {
   color: #444;
   background: #f5f5f7;
-  margin: 0 1rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
+  margin: 0;
+  padding: 0.5rem 1rem;
   font-size: 0.85rem;
 }
 

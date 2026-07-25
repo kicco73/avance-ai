@@ -38,7 +38,10 @@ class State:
     # structurally impossible to desync from the actual actions list.
     final: bool
     description: str
-    contextual_prompt: str
+    # Required unless fixed_message is set — the two are mutually exclusive
+    # (see AutomatonBuilder.build): a fixed_message state never generates
+    # free-form content, so it has no use for one.
+    contextual_prompt: str | None = None
     actions: list[Action] = field(default_factory=list)
     # If set, the state doesn't generate free-form replies: the caller must
     # return this message (translated into the user's language) as-is.
@@ -50,6 +53,15 @@ class State:
     # If true, messages from before the transition into this state are kept
     # out of both the AI reply and auto-tracking's signal evaluation.
     clear_context: bool = False
+    # If false, auto-tracking never runs while this is the current state —
+    # no signal evaluation, no automatic transition — until a manual action
+    # (see ChatService.apply_manual_action) leaves it. Independent of chat
+    # below: does not itself affect whether chat turns are accepted.
+    autotracking: bool = True
+    # If false, chat turns are rejected while this is the current state
+    # (see ChatService._process_turn_locked) — independent of autotracking
+    # above and of fixed_message/clear_context: none of them imply this.
+    chat: bool = True
 
 
 @dataclass
@@ -109,6 +121,8 @@ class Automaton(object):
             "description": state.description,
             "final": state.final,
             "on_enter": state.on_enter,
+            "autotracking": state.autotracking,
+            "chat": state.chat,
             "actions": [
                 {
                     "name": a.name,

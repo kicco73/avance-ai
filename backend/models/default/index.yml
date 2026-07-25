@@ -248,12 +248,10 @@ states:
     transition_log_level: CRITICAL
     description: >
       An acute-risk signal has been detected. Control passes to a fixed,
-      non-generative safety protocol.
-    contextual_prompt: |
-      SAFETY OVERRIDE: this state is non-generative by design. The backend
-      never uses this prompt to generate free-form content here — it only
-      asks the model to translate `fixed_message` below into the user's
-      language, verbatim in meaning. This field is unused otherwise.
+      non-generative safety protocol: this state has no contextual_prompt —
+      the two are mutually exclusive (see AutomatonBuilder.build) — since
+      the backend never generates free-form content here, only translates
+      `fixed_message` below into the user's language, verbatim in meaning.
     # PLACEHOLDER — TO BE REPLACED with crisis resources reviewed and validated
     # by a licensed clinical team before any real-world use. These Spanish
     # resources are included only as a plausible example for this prototype

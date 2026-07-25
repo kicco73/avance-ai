@@ -72,9 +72,9 @@ class AvanceController(object):
         return await self.chat_service.process_turn(text)
 
     @post("/api/action")
-    def post_action(self, req: ActionRequest):
+    async def post_action(self, req: ActionRequest):
         try:
-            return self.model_service.apply_manual_action(req.action_name)
+            return await self.chat_service.apply_manual_action(req.action_name)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

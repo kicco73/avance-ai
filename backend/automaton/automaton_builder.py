@@ -69,9 +69,19 @@ class AutomatonBuilder(object):
         autotracking_on_user_message = raw.get("signal_tracking_on_user_message", True)
         autotracking_on_ai_message = raw.get("signal_tracking_on_ai_message", False)
         raw_states = raw["states"]
+        if not isinstance(raw_states, dict):
+            raise ValueError(f"'states' must be a mapping of state name -> fields, got {type(raw_states).__name__}.")
 
         states: dict[str, State] = {}
         for key, raw_state in raw_states.items():
+            if not isinstance(raw_state, dict):
+                raise ValueError(
+                    f"State '{key}': expected a mapping of fields (label, description, "
+                    f"actions, ...), got {type(raw_state).__name__} instead. This usually "
+                    "means a field meant to belong to a state (e.g. 'actions') was "
+                    "indented as a sibling of the state's key rather than nested under it, "
+                    "so YAML parsed it as its own separate state."
+                )
             actions = [
                 Action(
                     name=raw_action["name"],
@@ -83,6 +93,16 @@ class AutomatonBuilder(object):
                 for raw_action in raw_state.get("actions", [])
             ]
             fixed_message = raw_state.get("fixed_message")
+            contextual_prompt = raw_state.get("contextual_prompt")
+            if fixed_message and contextual_prompt is not None:
+                raise ValueError(
+                    f"State '{key}': 'fixed_message' and 'contextual_prompt' are mutually "
+                    "exclusive — a fixed_message state never generates free-form content, "
+                    "so it has no use for a contextual_prompt."
+                )
+            if not fixed_message and contextual_prompt is None:
+                raise ValueError(f"State '{key}': 'contextual_prompt' is required unless 'fixed_message' is set.")
+
             states[key] = State(
                 key=key,
                 label=raw_state["label"],
@@ -92,12 +112,14 @@ class AutomatonBuilder(object):
                 final=len(actions) == 0,
                 description=raw_state["description"].strip(),
                 on_enter=raw_state["on_enter"] if "on_enter" in raw_state else None,
-                contextual_prompt=raw_state["contextual_prompt"],
+                contextual_prompt=contextual_prompt.strip() if contextual_prompt else None,
                 actions=actions,
                 fixed_message=fixed_message.strip() if fixed_message else None,
                 transition_log_level=raw_state.get("transition_log_level", "WARNING"),
                 attachments=self._load_attachments(raw_state.get("attachments", []), f"state '{key}'", base_dir),
                 clear_context=raw_state.get("clear_context", False),
+                autotracking=raw_state.get("autotracking", True),
+                chat=raw_state.get("chat", True),
             )
 
         signals: list[Signal] = []

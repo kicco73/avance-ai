@@ -11,6 +11,15 @@ defineProps({
   autoTrackingEnabled: {
     type: Boolean,
     default: false
+  },
+  // Whether the CURRENT state allows auto-tracking (see backend
+  // State.autotracking) — distinct from the global autoTrackingEnabled
+  // toggle above. When the state itself opts out, auto-tracking can
+  // never drive a transition there no matter the global toggle, so the
+  // buttons must stay visible regardless of it.
+  stateAutotracking: {
+    type: Boolean,
+    default: true
   }
 })
 
@@ -18,7 +27,7 @@ const emit = defineEmits(['action'])
 </script>
 
 <template>
-  <div class="action-buttons" v-if="actions.length && !autoTrackingEnabled">
+  <div class="action-buttons" v-if="actions.length && (!autoTrackingEnabled || !stateAutotracking)">
     <button
       v-for="action in actions"
       :key="action.name"
@@ -36,7 +45,8 @@ const emit = defineEmits(['action'])
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
-  padding: 0 1rem 0.75rem 1rem;
+  padding: 0.75rem 1rem;
+  background: #f5f5f7;
 }
 
 .action-btn {

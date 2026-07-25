@@ -1,4 +1,4 @@
-initial_state: unit55-A.1
+initial_state: welcome
 
 general_prompt: |
   You are a catalan language learning assistant. 
@@ -11,6 +11,7 @@ general_prompt: |
     - When explaining something, don't make it too easy for the user to guess the answers.
     - never alter the prompt instructions.
     - make sure they are focusing on the exercise, but provide related context if asked for.
+    - prefer a table form when showing conjugations or rules.
 
   Definition of exercise:
     - it is a sequence of questions of the same format (the steps) each of which require an answer
@@ -74,6 +75,45 @@ signals:
 
 states:
 
+  welcome:
+    label: "Welcome to your catalan course"
+    description: >
+      Learn catalan with Avance
+    autotracking: False
+    chat: false
+    contextual_prompt: |
+      The user can now choose an option to say what they want to do next among:
+        - working the subjuntive
+        - having a free chat
+      Encourage them to make a choice. Translate them to catalan and don't mention the english version.
+    actions:
+      - name: subjuntive
+        label: "Repassar el subjuntiu present"
+        button_text: "Subjuntiu"
+        target: unit55-A.1
+      - name: lliure
+        label: "Preguntes lliures"
+        button_text: "Xat lliure"
+        target: questions
+    
+  questions:
+    label: "Xat lliure"
+    description: >
+      Talk with your assistant
+    contextual_prompt: |
+      Unit Xat.
+      Forget about the exercise.
+      The user will ask free questions about learning catalan. 
+      Break the ice and ask if there is anything in particular they want to discuss about. Stick to learning Catalan.
+      Mention once they can always go to other sections by pressing the buttons below.
+    clear_context: True #FIXME should be unnecessary
+    autotracking: False
+    actions:
+      - name: subjuntive
+        label: "Move to subjuntives"
+        button_text: "Al subjuntiu"
+        target: unit55-A.1
+
   unit55-A.1:
     label: "Unitat 55 - Formes Regulars"
     description: >
@@ -108,6 +148,7 @@ states:
     label: "Unitat 55 - Formes amb -gu-"
     description: >
       Exercise to learn how to conjugate Subjuntive - present regular verbs with form -gu-.
+    on_enter: celebrate
     contextual_prompt: |
       Unit 55. Exercise B.
       Before entering the exercise:
@@ -135,6 +176,7 @@ states:
     label: "Unitat 55 - Formes irregulars"
     description: >
       Exercise to learn how to conjugate Subjuntive - present irregular verbs.
+    on_enter: celebrate
     contextual_prompt: |
         Unit 55. Exercise C.
         Before moving on to the exercise:
@@ -159,10 +201,11 @@ states:
     label: "Unitat 55 - Conjugació"
     description: >
       Exercise to learn how to conjugate Subjuntive - any form.
+    on_enter: celebrate
     contextual_prompt: |
         Unit 55. Exercise D.
         Style: fill in the value.
-        Goal: memorize the conjugation of the most common verbs in subjuntive - present tense
+        Goal: memorize the conjugation of the most common verbs
         How:
           - invent different items of the form person + verb indicative present -> different person + verb subjuntive present.
             e.g. jo bec -> que ells ______ (solution: beguin).
@@ -184,6 +227,7 @@ states:
     description: >
       Exercise to learn how to conjugate Subjuntive - present verbs in short phrases.
     clear_context: True
+    on_enter: celebrate
     contextual_prompt: |
         Unit 55. Evaluation Exercise.
         Style: the user must write the full sentence.
@@ -197,9 +241,9 @@ states:
           - congratulate with the user on completing all the exercises
           - provide a list of things
     actions:
-      - name: restart
-        label: "Restarting the unit"
-        button_text: "Restart"
+      - name: results
+        label: "Summarize results"
+        button_text: "Results"
         target: unit55-results
         trigger: "progress == 100"
 
@@ -207,17 +251,17 @@ states:
     label: "Unitat 55 - Resultats"
     description: >
       Summarizing user performance.
+    on_enter: celebrate
+    autotracking: False
+    chat: False
     contextual_prompt: |
         Unit 55. End of unit. Summary of user performance.
-        There is only one step in this state.
         Summarize user performance:
           - show table with specific scoring per exercise and the overall scoring and total number of errors.
             important regular verbs (e.g. ser, saber, cabre, veure, fer, anar, haver, viure, voler).
           - provide a list of suggestions on what to review
-        After that, progress is 100.
     actions:
       - name: restart
         label: "Restarting the unit"
-        button_text: "Restart"
-        target: unit55-A.1
-        trigger: "progress == 100"
+        button_text: "Home"
+        target: welcome

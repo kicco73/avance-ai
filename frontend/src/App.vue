@@ -254,8 +254,15 @@ async function handleResend(index) {
 async function handleAction(actionName) {
   actionLoading.value = true
   try {
-    const newState = await postAction(actionName)
-    handleStateChange(newState)
+    // {state, reply}: reply is the destination state's own opening
+    // message, same array shape as a normal turn's (see submitMessage) —
+    // empty if it already had something to say since its own cutoff.
+    const result = await postAction(actionName)
+    for (const content of result.reply) {
+      messages.value.push({ role: 'assistant', content })
+    }
+    if (result.reply.length) playMessageChime()
+    handleStateChange(result.state)
   } catch {
     // already surfaced via apiFetch
   } finally {
@@ -401,7 +408,7 @@ onBeforeUnmount(() => {
 
   <div v-else-if="bootStatus === 'ready'" class="app">
     <header class="topbar">
-      <h1>Avance — Prototype</h1>
+      <StateBar :state="state" />
       <div class="topbar-actions">
         <button class="signals-btn" @click="showSignals = true">Signals</button>
         <ModelsMenu
@@ -429,19 +436,21 @@ onBeforeUnmount(() => {
       :error-message="errorMessage"
       :error-detail="errorDetail"
       :final-state-reached="state?.final ?? false"
+      :state-chat="state?.chat ?? true"
       :history-loaded="historyLoaded"
       @send="handleSend"
       @resend="handleResend"
-    />
-
-    <ActionButtons
-      :actions="state?.actions ?? []"
-      :disabled="actionLoading"
-      :auto-tracking-enabled="autoTrackingEnabled"
-      @action="handleAction"
-    />
-
-    <StateBar :state="state" />
+    >
+      <template #actions>
+        <ActionButtons
+          :actions="state?.actions ?? []"
+          :disabled="actionLoading"
+          :auto-tracking-enabled="autoTrackingEnabled"
+          :state-autotracking="state?.autotracking ?? true"
+          @action="handleAction"
+        />
+      </template>
+    </ChatWindow>
 
     <SignalsView
       v-if="showSignals"
@@ -467,12 +476,8 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   padding: 0.75rem 1rem;
+  background: #f5f5f7;
   border-bottom: 1px solid #ddd;
-}
-
-.topbar h1 {
-  font-size: 1.1rem;
-  margin: 0;
 }
 
 .topbar-actions {

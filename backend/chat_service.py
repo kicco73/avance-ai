@@ -129,24 +129,19 @@ class ChatService(object):
     async def _generate_opening_message_if_needed(
         self, model_name: str, automaton: Automaton, state: State
     ) -> str | None:
-        """Generates and persists `state`'s unprompted opening message if
-        there's no message yet since its context began — that's
-        `_history_cutoff(model_name, state)`: None (no clear_context) means
-        "since the start of the conversation", generalizing the old
-        is_empty()-gated open_if_needed() to also cover a state just
-        entered mid-conversation via clear_context. Returns the generated
-        text, or None if nothing was needed. Called both for the currently
-        active state (open_if_needed) and, mid-turn, for whatever state an
-        auto-tracking transition just landed on (_run_auto_tracking)."""
-        since = self._history_cutoff(model_name, state)
-        if self._db.has_messages_since(model_name, since):
+        content_since = self._history_cutoff(model_name, state)
+        gate_since = self._db.get_last_transition_timestamp(model_name) if state.final else content_since
+        if self._db.has_messages_since(model_name, gate_since):
             return None
 
         system_prompt, turn_attachments = self._build_turn_prompt(automaton, state)
-        priming_messages = self.build_priming_messages(turn_attachments)
-        priming_messages.append({"role": "user", "content": "..."})
+        chat_history = (
+            self.build_priming_messages(turn_attachments)
+            + self._strip_timestamps(self._db.get_messages(model_name, since=content_since))
+            + [{"role": "user", "content": "..."}]
+        )
 
-        reply = await generate_with_retry(self._llm_provider, system_prompt, priming_messages)
+        reply = await generate_with_retry(self._llm_provider, system_prompt, chat_history)
         self._db.save_message("assistant", reply, model_name)
         return reply
 
@@ -158,7 +153,10 @@ class ChatService(object):
         # action.target themselves. Third element: a proactive opening
         # message for the destination state, if a transition fired and
         # landed on a state with nothing since its own cutoff yet.
-        if not self.auto_tracking_enabled:
+        # Skipped when auto-tracking is off globally, or `state` itself
+        # opts out via its own `autotracking: false` — independent of
+        # fixed_message/clear_context, and never affects the chat itself.
+        if not self.auto_tracking_enabled or not state.autotracking:
             return None, state, None
 
         since = self._history_cutoff(model_name, state)
@@ -191,6 +189,26 @@ class ChatService(object):
         proactive_message = await self._generate_opening_message_if_needed(model_name, automaton, new_state)
         return action, new_state, proactive_message
 
+    async def apply_manual_action(self, action_name: str) -> dict:
+        """Applies a manual (button) action and, same as an auto-tracking
+        transition, generates the destination state's opening message
+        right away if it hasn't said anything yet — ModelService's own
+        apply_manual_action() only performs the transition; it has no way
+        to call the LLM. Without this, a state entered via a button
+        (rather than an auto-tracking transition) would never get to
+        speak at all, since no future turn re-lands on it either."""
+        if self.lock.locked():
+            raise ChatServiceError("A chat reply is already being generated.", status_code=409)
+        async with self.lock:
+            state_payload = self._models_manager.apply_manual_action(action_name)
+            model_name = self._active_model_name
+            automaton, state = self._models_manager.get_active_automaton_and_state()
+            proactive_message = await self._generate_opening_message_if_needed(model_name, automaton, state)
+            return {
+                "state": state_payload,
+                "reply": [proactive_message] if proactive_message is not None else [],
+            }
+
     async def process_turn(self, text: str, on_retry: OnRetry | None = None) -> dict:
         if self.lock.locked():
             raise ChatServiceError("A chat reply is already being generated.", status_code=409)
@@ -202,6 +220,10 @@ class ChatService(object):
 
         if state.final:
             raise ChatServiceError("The conversation has ended in this state.", status_code=409)
+        if not state.chat:
+            raise ChatServiceError(
+                "This state doesn't accept messages; use an action instead.", status_code=409
+            )
 
         pending_message = {"role": "user", "content": text, "timestamp": self._now_iso()}
 
