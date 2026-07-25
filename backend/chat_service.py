@@ -130,7 +130,8 @@ class ChatService(object):
         self, model_name: str, automaton: Automaton, state: State
     ) -> str | None:
         content_since = self._history_cutoff(model_name, state)
-        gate_since = self._db.get_last_transition_timestamp(model_name) if state.final else content_since
+        chat_blocked = state.final or not state.chat
+        gate_since = self._db.get_last_transition_timestamp(model_name) if chat_blocked else content_since
         if self._db.has_messages_since(model_name, gate_since):
             return None
 

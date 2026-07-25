@@ -79,7 +79,6 @@ states:
     label: "Welcome to your catalan course"
     description: >
       Learn catalan with Avance
-    autotracking: False
     chat: false
     contextual_prompt: |
       The user can now choose an option to say what they want to do next among:
@@ -94,9 +93,9 @@ states:
       - name: lliure
         label: "Preguntes lliures"
         button_text: "Xat lliure"
-        target: questions
+        target: chat
     
-  questions:
+  chat:
     label: "Xat lliure"
     description: >
       Talk with your assistant
@@ -107,7 +106,6 @@ states:
       Break the ice and ask if there is anything in particular they want to discuss about. Stick to learning Catalan.
       Mention once they can always go to other sections by pressing the buttons below.
     clear_context: True #FIXME should be unnecessary
-    autotracking: False
     actions:
       - name: subjuntive
         label: "Move to subjuntives"
@@ -143,6 +141,10 @@ states:
         button_text: "Go to next exercise"
         target: unit55-B
         trigger: "progress == 100"
+      - name: results
+        label: "Jump to results"
+        button_text: "Resultats Ja"
+        target: unit55-results
 
   unit55-B:
     label: "Unitat 55 - Formes amb -gu-"
@@ -252,7 +254,6 @@ states:
     description: >
       Summarizing user performance.
     on_enter: celebrate
-    autotracking: False
     chat: False
     contextual_prompt: |
         Unit 55. End of unit. Summary of user performance.

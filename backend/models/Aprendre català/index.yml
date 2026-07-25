@@ -173,7 +173,10 @@ states:
         button_text: "Go to next exercise"
         target: unit55-C
         trigger: "progress == 100"
-
+      - name: results
+        label: "Jump to results"
+        button_text: "Resultats Ja"
+        target: unit55-results
   unit55-C:
     label: "Unitat 55 - Formes irregulars"
     description: >
@@ -198,6 +201,10 @@ states:
         button_text: "Go to next exercise"
         target: unit55-D
         trigger: "progress == 100"
+      - name: results
+        label: "Jump to results"
+        button_text: "Resultats Ja"
+        target: unit55-results
 
   unit55-D:
     label: "Unitat 55 - Conjugació"
@@ -223,6 +230,10 @@ states:
         button_text: "Go to next exercise"
         target: unit55-evaluation
         trigger: "progress == 100"
+      - name: results
+        label: "Jump to results"
+        button_text: "Resultats Ja"
+        target: unit55-results
 
   unit55-evaluation:
     label: "Unitat 55 - Avaluació"
@@ -248,7 +259,11 @@ states:
         button_text: "Results"
         target: unit55-results
         trigger: "progress == 100"
-
+      - name: results
+        label: "Jump to results"
+        button_text: "Resultats Ja"
+        target: unit55-results
+        
   unit55-results:
     label: "Unitat 55 - Resultats"
     description: >
