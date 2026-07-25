@@ -118,7 +118,6 @@ class AutomatonBuilder(object):
                 transition_log_level=raw_state.get("transition_log_level", "WARNING"),
                 attachments=self._load_attachments(raw_state.get("attachments", []), f"state '{key}'", base_dir),
                 clear_context=raw_state.get("clear_context", False),
-                autotracking=raw_state.get("autotracking", True),
                 chat=raw_state.get("chat", True),
             )
 

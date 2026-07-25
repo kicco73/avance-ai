@@ -53,15 +53,20 @@ class State:
     # If true, messages from before the transition into this state are kept
     # out of both the AI reply and auto-tracking's signal evaluation.
     clear_context: bool = False
-    # If false, auto-tracking never runs while this is the current state —
-    # no signal evaluation, no automatic transition — until a manual action
-    # (see ChatService.apply_manual_action) leaves it. Independent of chat
-    # below: does not itself affect whether chat turns are accepted.
-    autotracking: bool = True
     # If false, chat turns are rejected while this is the current state
-    # (see ChatService._process_turn_locked) — independent of autotracking
-    # above and of fixed_message/clear_context: none of them imply this.
+    # (see ChatService._process_turn_locked) — independent of
+    # fixed_message/clear_context: neither implies this.
     chat: bool = True
+
+    @property
+    def has_triggerable_actions(self) -> bool:
+        """Whether any action leaving this state has a trigger — the one
+        place that's decided, reused both to skip auto-tracking outright
+        when there's nothing it could evaluate (see
+        ChatService._run_auto_tracking) and, per action, for the
+        "has_trigger" field get_state_payload sends the frontend (same
+        `a.trigger is not None` check, just per-action instead of any())."""
+        return any(a.trigger is not None for a in self.actions)
 
 
 @dataclass
@@ -121,7 +126,6 @@ class Automaton(object):
             "description": state.description,
             "final": state.final,
             "on_enter": state.on_enter,
-            "autotracking": state.autotracking,
             "chat": state.chat,
             "actions": [
                 {
@@ -129,6 +133,11 @@ class Automaton(object):
                     "label": a.label,
                     "button_text": a.button_text,
                     "target": a.target,
+                    # Not the trigger expression itself, just whether one is
+                    # set — the frontend uses this to decide button
+                    # visibility (see ActionButtons.vue), never to evaluate
+                    # anything itself.
+                    "has_trigger": a.trigger is not None,
                 }
                 for a in state.actions
             ],

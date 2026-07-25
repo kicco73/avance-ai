@@ -41,8 +41,7 @@ const props = defineProps({
   },
   // Whether the CURRENT state accepts chat turns (see backend State.chat)
   // — when it doesn't, the backend rejects them too (see
-  // ChatService._process_turn_locked). Independent of auto-tracking: see
-  // ActionButtons' own stateAutotracking prop for that.
+  // ChatService._process_turn_locked).
   stateChat: {
     type: Boolean,
     default: true

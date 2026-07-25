@@ -446,7 +446,6 @@ onBeforeUnmount(() => {
           :actions="state?.actions ?? []"
           :disabled="actionLoading"
           :auto-tracking-enabled="autoTrackingEnabled"
-          :state-autotracking="state?.autotracking ?? true"
           @action="handleAction"
         />
       </template>

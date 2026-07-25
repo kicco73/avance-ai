@@ -1,5 +1,7 @@
 <script setup>
-defineProps({
+import { computed } from 'vue'
+
+const props = defineProps({
   actions: {
     type: Array,
     default: () => []
@@ -11,25 +13,24 @@ defineProps({
   autoTrackingEnabled: {
     type: Boolean,
     default: false
-  },
-  // Whether the CURRENT state allows auto-tracking (see backend
-  // State.autotracking) — distinct from the global autoTrackingEnabled
-  // toggle above. When the state itself opts out, auto-tracking can
-  // never drive a transition there no matter the global toggle, so the
-  // buttons must stay visible regardless of it.
-  stateAutotracking: {
-    type: Boolean,
-    default: true
   }
 })
 
 const emit = defineEmits(['action'])
+
+// An action without a trigger is manual-only — always offered as a
+// button. One with a trigger is handled by auto-tracking whenever that's
+// on, so offering it as a button too would be redundant; it only
+// reappears once auto-tracking is off and nothing else can fire it.
+const visibleActions = computed(() =>
+  props.actions.filter((action) => !action.has_trigger || !props.autoTrackingEnabled)
+)
 </script>
 
 <template>
-  <div class="action-buttons" v-if="actions.length && (!autoTrackingEnabled || !stateAutotracking)">
+  <div class="action-buttons" v-if="visibleActions.length">
     <button
-      v-for="action in actions"
+      v-for="action in visibleActions"
       :key="action.name"
       class="action-btn"
       :disabled="disabled"

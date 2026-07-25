@@ -153,10 +153,12 @@ class ChatService(object):
         # action.target themselves. Third element: a proactive opening
         # message for the destination state, if a transition fired and
         # landed on a state with nothing since its own cutoff yet.
-        # Skipped when auto-tracking is off globally, or `state` itself
-        # opts out via its own `autotracking: false` — independent of
-        # fixed_message/clear_context, and never affects the chat itself.
-        if not self.auto_tracking_enabled or not state.autotracking:
+        # Skipped when auto-tracking is off globally, or when `state` has
+        # no triggerable action at all — nothing an auto-tracking pass
+        # could ever act on, so skip the signals call outright regardless
+        # of the global flag (manual-only actions are unaffected either
+        # way: they're never evaluated here, only via apply_manual_action).
+        if not self.auto_tracking_enabled or not state.has_triggerable_actions:
             return None, state, None
 
         since = self._history_cutoff(model_name, state)
