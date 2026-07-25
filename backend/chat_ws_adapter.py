@@ -17,12 +17,17 @@ logger = logging.getLogger(__name__)
 class ChatWsAdapter(object):
     def __init__(self, chat_service: ChatService) -> None:
         self._chat_service = chat_service
+        # Single-user prototype: at most one connection matters, so a lone
+        # reference is enough for push_model_updated() to reach it — see
+        # model_watcher.py, the only caller of that method.
+        self._active_socket: WebSocket | None = None
 
     async def chat_loop(self, websocket: WebSocket) -> None:
         """Accepts the /ws/chat connection and dispatches every non-empty
         frame to ChatService.process_turn(), one at a time (the loop only
         calls receive_json() again once the previous turn is fully done)."""
         await websocket.accept()
+        self._active_socket = websocket
         try:
             while True:
                 data = await websocket.receive_json()
@@ -73,3 +78,20 @@ class ChatWsAdapter(object):
                 })
         except WebSocketDisconnect:
             pass
+        finally:
+            if self._active_socket is websocket:
+                self._active_socket = None
+
+    async def push_model_updated(self, model_name: str) -> None:
+        """Unsolicited push for a reset the file watcher caused, not a
+        request this connection made (see model_watcher.py) — only sent
+        when `model_name` was the active model and a client is currently
+        connected. No-op otherwise; there's no queueing/retry for a
+        client that isn't there right now."""
+        websocket = self._active_socket
+        if websocket is None:
+            return
+        try:
+            await websocket.send_json({"type": "model_updated", "model_name": model_name})
+        except Exception:
+            logger.warning("Failed to push model_updated for '%s' to the connected client.", model_name)

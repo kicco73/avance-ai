@@ -14,6 +14,17 @@ let websocketUnavailable = false
 let socket = null
 let pendingTurn = null // { resolve, reject, onStatus } for the in-flight turn, if any
 
+// Set via onModelUpdated() — called for an unsolicited 'model_updated'
+// push (see model_watcher.py), unrelated to any pendingTurn.
+let modelUpdatedListener = null
+
+// Registers the callback invoked when a 'model_updated' frame arrives
+// (the file watcher reset the currently active model out-of-band). Only
+// one listener at a time — App.vue registers it once, on mount.
+export function onModelUpdated(listener) {
+  modelUpdatedListener = listener
+}
+
 function normalizeResult(data) {
   return {
     reply: data.reply,
@@ -37,6 +48,11 @@ function handleSocketMessage(event) {
     setApiError(data.error.message, data.error.detail)
     pendingTurn?.reject(new Error(data.error.message))
     pendingTurn = null
+    return
+  }
+
+  if (data.type === 'model_updated') {
+    modelUpdatedListener?.(data.model_name)
     return
   }
 

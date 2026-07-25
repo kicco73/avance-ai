@@ -18,7 +18,7 @@ import {
   deleteModel,
   downloadModel
 } from './api.js'
-import { disconnect as disconnectChat, sendMessage } from './chatClient.js'
+import { disconnect as disconnectChat, onModelUpdated, sendMessage } from './chatClient.js'
 import { playMessageChime } from './audio.js'
 import { celebrate } from './confetti.js'
 import { clearApiError, errorDetail, errorMessage, setApiError } from './errorStore.js'
@@ -277,49 +277,68 @@ function triggerModelUpload() {
   modelUploadInput.value?.click()
 }
 
-// On success, behaves exactly like Reset — except the fresh state comes from
-// a separate GET /api/state call, since the PUT response only carries
-// {success, model_name}, not the state payload itself.
+// Optimistic UI clear shared by every path that's about to leave the
+// backend with a freshly reset active model — upload, switch, delete, and
+// an unsolicited 'model_updated' push from the file watcher (see
+// handleExternalModelReset below). Cleared immediately, before the
+// triggering request even resolves, same as it always was inline here.
+function clearChatUi() {
+  messages.value = []
+  clearApiError()
+  chatStatus.value = ''
+  autoTrackingEnabled.value = true
+}
+
+// The fetch-fresh-state-and-redisplay half of that same shared flow: the
+// fresh state comes from a separate GET /api/state call (none of
+// putModel/activateModel/deleteModel's responses carry the state payload
+// itself), same as handleReset picks up the opening message via REST,
+// regardless of chat transport.
+async function refreshStateAndModels() {
+  const newState = await getState()
+  modelsMenu.value?.refresh()
+  handleStateChange(newState)
+  await loadMessages()
+}
+
 async function handleModelUploadChange(event) {
   const file = event.target.files?.[0]
   event.target.value = '' // allow re-selecting the same file afterward
   if (!file) return
 
   const modelName = file.name.replace(/\.(zip|ya?ml)$/i, '')
-  messages.value = []
-  clearApiError()
-  chatStatus.value = ''
-  autoTrackingEnabled.value = true
+  clearChatUi()
   try {
-    const result = await putModel(modelName, file)
-    const newState = await getState()
-    modelsMenu.value?.refresh()
-    handleStateChange(newState)
-    // See handleReset: picks up the opening message via REST, regardless
-    // of chat transport.
-    await loadMessages()
+    await putModel(modelName, file)
+    await refreshStateAndModels()
   } catch {
     // already surfaced via apiFetch
   }
 }
 
-// Same post-success behavior as upload/Reset: reload state, clear the
-// displayed chat. Activation is idempotent backend-side (re-activating the
-// already-active model is a no-op, no reset) so this handler doesn't need
-// to special-case that itself.
+// Activation is idempotent backend-side (re-activating the already-active
+// model is a no-op, no reset) so this handler doesn't need to
+// special-case that itself.
 async function handleModelSwitch(modelName) {
-  messages.value = []
-  clearApiError()
-  chatStatus.value = ''
-  autoTrackingEnabled.value = true
+  clearChatUi()
   try {
-    const result = await activateModel(modelName)
-    const newState = await getState()
-    modelsMenu.value?.refresh()
-    handleStateChange(newState)
-    // See handleReset: picks up the opening message via REST, regardless
-    // of chat transport.
-    await loadMessages()
+    await activateModel(modelName)
+    await refreshStateAndModels()
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+// Reacts to an unsolicited 'model_updated' websocket push (see
+// chatClient.js / backend/model_watcher.py): the file watcher just reset
+// the active model because someone edited it directly on disk, not from
+// anything this client asked for — same UI refresh as after our own
+// upload/switch/delete, just triggered by the incoming frame instead of
+// one of our own requests resolving.
+async function handleExternalModelReset() {
+  clearChatUi()
+  try {
+    await refreshStateAndModels()
   } catch {
     // already surfaced via apiFetch
   }
@@ -350,24 +369,17 @@ async function handleModelDownload(modelName) {
 // this behaves the same as a successful switch/upload — reload state, clear
 // the chat.
 async function handleModelDelete(modelName) {
-  messages.value = []
-  clearApiError()
-  chatStatus.value = ''
-  autoTrackingEnabled.value = true
+  clearChatUi()
   try {
-    const result = await deleteModel(modelName)
-    const newState = await getState()
-    handleStateChange(newState)
-    modelsMenu.value?.refresh()
-    // See handleReset: picks up the opening message via REST, regardless
-    // of chat transport.
-    await loadMessages()
+    await deleteModel(modelName)
+    await refreshStateAndModels()
   } catch {
     // already surfaced via apiFetch
   }
 }
 
 onMounted(startBootSequence)
+onMounted(() => onModelUpdated(handleExternalModelReset))
 onBeforeUnmount(() => {
   disconnectChat()
   if (pingTimeoutHandle) clearTimeout(pingTimeoutHandle)

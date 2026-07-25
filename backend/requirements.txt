@@ -8,3 +8,4 @@ python-dotenv>=1.0
 simpleeval>=1.0
 peewee>=3.17
 python-multipart>=0.0.9
+watchdog>=4.0
