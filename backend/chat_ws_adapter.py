@@ -68,14 +68,7 @@ class ChatWsAdapter(object):
                     })
                     continue
 
-                await websocket.send_json({
-                    "type": "done",
-                    "reply": result.reply,
-                    "state": result.state,
-                    "state_changed": result.state_changed,
-                    "new_state": result.new_state,
-                    "triggered_action": result.triggered_action,
-                })
+                await websocket.send_json({"type": "done", **result})
         except WebSocketDisconnect:
             pass
         finally:

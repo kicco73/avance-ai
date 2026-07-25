@@ -126,10 +126,18 @@ class Db(object):
             for m in rows
         ]
 
-    def is_empty(self, model_name: str) -> bool:
-        """Cheap existence check: SQL EXISTS via Peewee's .exists(), rather
-        than counting or fetching rows just to see if there are any."""
-        return not Message.select().where(Message.model_name == model_name).exists()
+    def has_messages_since(self, model_name: str, since: datetime | None) -> bool:
+        """Whether `model_name` has any message strictly after `since`, or
+        any message at all if `since` is None — cheap SQL EXISTS via
+        Peewee's .exists(), rather than counting or fetching rows just to
+        see if there are any. Powers ChatService's opening-message check:
+        None behaves exactly like the old is_empty(model_name) it
+        replaces; a real timestamp generalizes that to "empty since this
+        state's clear_context cutoff", not just "empty overall"."""
+        query = Message.select().where(Message.model_name == model_name)
+        if since is not None:
+            query = query.where(Message.timestamp > since)
+        return query.exists()
 
     def save_signal_snapshot(self, values: dict, model_name: str) -> int:
         snapshot = SignalSnapshot.create(values=json.dumps(values), model_name=model_name)

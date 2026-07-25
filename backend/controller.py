@@ -62,22 +62,14 @@ class AvanceController(object):
 
     @get("/api/messages")
     async def get_messages(self):
-        await self.chat_service.open_if_needed()
-        return self.chat_service.get_messages()
+        return await self.chat_service.get_messages()
 
     @post("/api/messages")
     async def post_message(self, req: ChatMessageRequest):
         text = req.message.strip()
         if not text:
             raise HTTPException(status_code=400, detail="Message cannot be empty.")
-        result = await self.chat_service.process_turn(text)
-        return {
-            "reply": result.reply,
-            "state": result.state,
-            "state_changed": result.state_changed,
-            "new_state": result.new_state,
-            "triggered_action": result.triggered_action,
-        }
+        return await self.chat_service.process_turn(text)
 
     @post("/api/action")
     def post_action(self, req: ActionRequest):

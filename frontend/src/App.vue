@@ -215,7 +215,13 @@ async function submitMessage(message) {
     const result = await sendMessage(message.content, {
       onStatus: (text) => { chatStatus.value = text }
     })
-    messages.value.push({ role: 'assistant', content: result.reply })
+    // result.reply is an array: normally one bubble, but a mid-turn
+    // auto-tracking transition into a fresh state can prepend/append that
+    // state's own opening message alongside the turn's own reply — one
+    // bubble per element, in the order the backend produced them.
+    for (const content of result.reply) {
+      messages.value.push({ role: 'assistant', content })
+    }
     // Only for a freshly arrived AI reply — never for the user's own sent
     // message, and never for history loaded at boot/reset (this only ever
     // runs from a live chat turn just completing).

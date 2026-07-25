@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from automaton.automaton import Action, Automaton, State, trigger_signal_names
@@ -38,15 +37,6 @@ class ChatServiceError(Exception):
         self.message = message
         self.detail = detail
         self.status_code = status_code
-
-@dataclass
-class ChatTurnResult:
-    reply: str
-    state: dict
-    state_changed: bool
-    new_state: str | None
-    triggered_action: str | None
-
 
 class ChatService(object):
     def __init__(
@@ -101,8 +91,16 @@ class ChatService(object):
             {"role": "assistant", "content": "Understood."},
         ]
 
-    def get_messages(self, last_n: int | None = None) -> list[dict]:
+    async def get_messages(self, last_n: int | None = None) -> list[dict]:
+        await self.open_if_needed()
         return self._db.get_messages(self._active_model_name, last_n=last_n)
+
+    async def open_if_needed(self) -> None:
+        # Generates the model's unprompted opening message if the current
+        # state has had none yet — see _generate_opening_message_if_needed.
+        model_name = self._active_model_name
+        automaton, state = self._models_manager.get_active_automaton_and_state()
+        await self._generate_opening_message_if_needed(model_name, automaton, state)
 
     @staticmethod
     def _current_state_payload(automaton: Automaton, state: State) -> dict:
@@ -128,14 +126,40 @@ class ChatService(object):
         system_prompt = f"{state.contextual_prompt}\n\n{automaton.general_prompt}"
         return system_prompt, automaton.general_prompt_attachments + state.attachments
 
+    async def _generate_opening_message_if_needed(
+        self, model_name: str, automaton: Automaton, state: State
+    ) -> str | None:
+        """Generates and persists `state`'s unprompted opening message if
+        there's no message yet since its context began — that's
+        `_history_cutoff(model_name, state)`: None (no clear_context) means
+        "since the start of the conversation", generalizing the old
+        is_empty()-gated open_if_needed() to also cover a state just
+        entered mid-conversation via clear_context. Returns the generated
+        text, or None if nothing was needed. Called both for the currently
+        active state (open_if_needed) and, mid-turn, for whatever state an
+        auto-tracking transition just landed on (_run_auto_tracking)."""
+        since = self._history_cutoff(model_name, state)
+        if self._db.has_messages_since(model_name, since):
+            return None
+
+        system_prompt, turn_attachments = self._build_turn_prompt(automaton, state)
+        priming_messages = self.build_priming_messages(turn_attachments)
+        priming_messages.append({"role": "user", "content": "..."})
+
+        reply = await generate_with_retry(self._llm_provider, system_prompt, priming_messages)
+        self._db.save_message("assistant", reply, model_name)
+        return reply
+
     async def _run_auto_tracking(
         self, pending_message: dict | None, model_name: str, automaton: Automaton, state: State
-    ) -> tuple[Action | None, State]:
+    ) -> tuple[Action | None, State, str | None]:
         # Always returns the resulting state alongside the Action that fired
         # (None if nothing did) — callers never need to re-derive it via
-        # action.target themselves.
+        # action.target themselves. Third element: a proactive opening
+        # message for the destination state, if a transition fired and
+        # landed on a state with nothing since its own cutoff yet.
         if not self.auto_tracking_enabled:
-            return None, state
+            return None, state, None
 
         since = self._history_cutoff(model_name, state)
         signals_list = await self.signals.compute(
@@ -148,7 +172,7 @@ class ChatService(object):
 
         triggered_action = automaton.evaluate_triggers(state.key, signal_values)
         if triggered_action is None:
-            return None, state
+            return None, state, None
 
         action = automaton.move(state.key, triggered_action)
         relevant_names = trigger_signal_names(action.trigger)
@@ -163,15 +187,17 @@ class ChatService(object):
             signal_values=relevant_values,
         )
 
-        return action, automaton.get_state(action.target)
+        new_state = automaton.get_state(action.target)
+        proactive_message = await self._generate_opening_message_if_needed(model_name, automaton, new_state)
+        return action, new_state, proactive_message
 
-    async def process_turn(self, text: str, on_retry: OnRetry | None = None) -> ChatTurnResult:
+    async def process_turn(self, text: str, on_retry: OnRetry | None = None) -> dict:
         if self.lock.locked():
             raise ChatServiceError("A chat reply is already being generated.", status_code=409)
         async with self.lock:
             return await self._process_turn_locked(text, on_retry)
 
-    async def _process_turn_locked(self, text: str, on_retry: OnRetry | None) -> ChatTurnResult:
+    async def _process_turn_locked(self, text: str, on_retry: OnRetry | None) -> dict:
         automaton, state = self._models_manager.get_active_automaton_and_state()
 
         if state.final:
@@ -180,15 +206,23 @@ class ChatService(object):
         pending_message = {"role": "user", "content": text, "timestamp": self._now_iso()}
 
         # Only the LAST transition that fires this turn is reported back,
-        # even if both auto-tracking phases below cause one.
+        # even if both auto-tracking phases below cause one. `messages`
+        # collects every bubble this turn produces, in order: a phase-1
+        # proactive opening message (if any), then the turn's own reply,
+        # then a phase-2 one (if any) — see the returned dict's "reply".
         action: Action | None = None
         model_name = self._active_model_name
+        messages: list[str] = []
 
         # Phase 1: on the user's message, before the reply is generated —
         # so the reply is produced under the destination state's prompt.
         # Gated by the automaton (model-wide), not the current state.
         if automaton.autotracking_on_user_message:
-            action, state = await self._run_auto_tracking(pending_message, model_name, automaton, state)
+            action, state, proactive_message = await self._run_auto_tracking(
+                pending_message, model_name, automaton, state
+            )
+            if proactive_message is not None:
+                messages.append(proactive_message)
 
         system_prompt, turn_attachments = self._build_turn_prompt(automaton, state)
 
@@ -203,37 +237,23 @@ class ChatService(object):
         )
         self._db.save_message("user", text, model_name)
         self._db.save_message("assistant", reply, model_name)
+        messages.append(reply)
 
         # Phase 2: on the now-persisted user+assistant messages, under
         # whichever state phase 1 left us in — no pending_message, the
         # turn's messages are already in the DB. Also gated by the
         # automaton, not the current state.
         if automaton.autotracking_on_ai_message:
-            last_action, state = await self._run_auto_tracking(None, model_name, automaton, state)
+            last_action, state, proactive_message = await self._run_auto_tracking(None, model_name, automaton, state)
             if last_action:
                 action = last_action
+            if proactive_message is not None:
+                messages.append(proactive_message)
 
-        return ChatTurnResult(
-            reply=reply,
-            state=self._current_state_payload(automaton, state),
-            state_changed=action is not None,
-            new_state=action.target if action else None,
-            triggered_action=action.name if action else None,
-        )
-
-    async def open_if_needed(self) -> None:
-        # No-op if the conversation isn't empty. Never runs auto-tracking,
-        # regardless of the landing state's autotracking_on_* flags.
-        model_name = self._active_model_name
-
-        if not self._db.is_empty(model_name):
-            return None
-
-        automaton, state = self._models_manager.get_active_automaton_and_state()
-        system_prompt, turn_attachments = self._build_turn_prompt(automaton, state)
-
-        priming_messages = self.build_priming_messages(turn_attachments)
-        priming_messages.append({"role": "user", "content": "..."})
-
-        reply = await generate_with_retry(self._llm_provider, system_prompt, priming_messages)
-        self._db.save_message("assistant", reply, model_name)
+        return {
+            "reply": messages,
+            "state": self._current_state_payload(automaton, state),
+            "state_changed": action is not None,
+            "new_state": action.target if action else None,
+            "triggered_action": action.name if action else None,
+        }
