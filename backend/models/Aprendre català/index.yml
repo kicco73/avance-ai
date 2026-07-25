@@ -93,9 +93,13 @@ states:
       - name: lliure
         label: "Preguntes lliures"
         button_text: "Xat lliure"
-        target: chat
-    
-  chat:
+        target: questions
+      - name: results
+        label: "Jump to results"
+        button_text: "Resultats"
+        target: unit55-results
+
+  questions:
     label: "Xat lliure"
     description: >
       Talk with your assistant
@@ -141,6 +145,10 @@ states:
         button_text: "Go to next exercise"
         target: unit55-B
         trigger: "progress == 100"
+      - name: irregulars
+        label: "Jump to irregular verbs"
+        button_text: "Salta a irregulars"
+        target: unit55-irregulars
       - name: results
         label: "Jump to results"
         button_text: "Resultats Ja"
@@ -170,14 +178,15 @@ states:
     actions:
       - name: next
         label: "User has completed the exercise and moves to the next one"
-        button_text: "Go to next exercise"
-        target: unit55-C
+        button_text: "Proper exercici"
+        target: unit55-irregulars
         trigger: "progress == 100"
       - name: results
         label: "Jump to results"
         button_text: "Resultats Ja"
         target: unit55-results
-  unit55-C:
+
+  unit55-irregulars:
     label: "Unitat 55 - Formes irregulars"
     description: >
       Exercise to learn how to conjugate Subjuntive - present irregular verbs.
@@ -259,10 +268,6 @@ states:
         button_text: "Results"
         target: unit55-results
         trigger: "progress == 100"
-      - name: results
-        label: "Jump to results"
-        button_text: "Resultats Ja"
-        target: unit55-results
 
   unit55-results:
     label: "Unitat 55 - Resultats"
