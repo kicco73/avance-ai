@@ -66,6 +66,8 @@ class AutomatonBuilder(object):
         general_prompt_attachments = self._load_attachments(
             raw.get("attachments", []), "general_prompt", base_dir
         )
+        autotracking_on_user_message = raw.get("signal_tracking_on_user_message", True)
+        autotracking_on_ai_message = raw.get("signal_tracking_on_ai_message", False)
         raw_states = raw["states"]
 
         states: dict[str, State] = {}
@@ -95,6 +97,7 @@ class AutomatonBuilder(object):
                 fixed_message=fixed_message.strip() if fixed_message else None,
                 transition_log_level=raw_state.get("transition_log_level", "WARNING"),
                 attachments=self._load_attachments(raw_state.get("attachments", []), f"state '{key}'", base_dir),
+                clear_context=raw_state.get("clear_context", False),
             )
 
         signals: list[Signal] = []
@@ -153,4 +156,6 @@ class AutomatonBuilder(object):
             general_prompt=general_prompt,
             signals=signals,
             general_prompt_attachments=general_prompt_attachments,
+            autotracking_on_user_message=autotracking_on_user_message,
+            autotracking_on_ai_message=autotracking_on_ai_message,
         )

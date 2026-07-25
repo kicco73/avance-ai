@@ -13,7 +13,7 @@ import zipfile
 from pathlib import Path
 from typing import Awaitable, Callable
 
-from automaton.automaton import Automaton
+from automaton.automaton import Automaton, State
 from automaton.automaton_builder import AutomatonBuilder
 from session import Session
 
@@ -119,32 +119,32 @@ class ModelService(object):
             self._db.set_active_model_name(model_name, user)
         return model_name
 
-    def get_active_automaton_and_state(self) -> tuple[Automaton, str]:
-        """The active Automaton paired with the state key it's currently
-        in (or initial_state, if none persisted yet). Raises ValueError
-        if the active model itself fails to load — no silent fallback."""
+    def get_active_automaton_and_state(self) -> tuple[Automaton, State]:
+        """The active Automaton paired with the State it's currently in
+        (or initial_state, if none persisted yet). Raises ValueError if
+        the active model itself fails to load — no silent fallback."""
         model_name = self.get_active_model_name()
         automaton = self._load_model(model_name)
         state_key = self._db.get_current_state(model_name) or automaton.initial_state
-        return automaton, state_key
+        return automaton, automaton.get_state(state_key)
 
     def apply_manual_action(self, action_name: str) -> dict:
         """Applies a manual (button) action on the active automaton,
         persists the transition, and returns the resulting state payload."""
-        automaton, from_state = self.get_active_automaton_and_state()
-        new_state = automaton.move(from_state, action_name).target
+        automaton, state = self.get_active_automaton_and_state()
+        new_state = automaton.get_state(automaton.move(state.key, action_name).target)
         self._db.save_transition(
-            from_state,
+            state.key,
             action_name,
-            new_state,
+            new_state.key,
             self.get_active_model_name(),
-            transition_log_level=automaton.get_state(new_state).transition_log_level,
+            transition_log_level=new_state.transition_log_level,
         )
         return automaton.get_state_payload(new_state)
 
     def get_active_state_payload(self) -> dict:
-        automaton, state_key = self.get_active_automaton_and_state()
-        return automaton.get_state_payload(state_key)
+        automaton, state = self.get_active_automaton_and_state()
+        return automaton.get_state_payload(state)
 
     def reset_active_model(self) -> None:
         self._db.reset_model(self.get_active_model_name())
@@ -182,8 +182,8 @@ class ModelService(object):
 
     async def _put_yaml_model(self, model_name: str, content: bytes, commit: CommitCallback) -> dict:
         """Writes a temp file inside the model dir so attachment paths
-        resolve during validation; renames to index.yml only on success.
-        Failure leaves the directory exactly as it was."""
+        resolve during validation; renames to index.yml only on success,
+        wiping any conversation data `model_name` already had."""
         model_dir = MODELS_DIR / model_name
         dir_preexisted = model_dir.is_dir()
         model_dir.mkdir(parents=True, exist_ok=True)
@@ -209,6 +209,7 @@ class ModelService(object):
 
         # Always built fresh above — refresh the cache entry too.
         self._automaton_cache[model_name] = new_automaton
+        self._db.reset_model(model_name)
         self._db.set_active_model_name(model_name, Session().user)
         await commit(new_automaton)
 
@@ -217,7 +218,7 @@ class ModelService(object):
     async def _put_zip_model(self, model_name: str, content: bytes, commit: CommitCallback) -> dict:
         """Extracts into a temp dir (so attachment paths resolve during
         validation), then promotes it into place with one rename on
-        success, replacing any previous model of that name."""
+        success, wiping any conversation data `model_name` already had."""
         staging_dir = MODELS_DIR / f".tmp_{uuid.uuid4().hex}"
         staging_dir.mkdir(parents=True)
 
@@ -242,6 +243,7 @@ class ModelService(object):
 
         # Always built fresh above — refresh the cache entry too.
         self._automaton_cache[model_name] = new_automaton
+        self._db.reset_model(model_name)
         self._db.set_active_model_name(model_name, Session().user)
         await commit(new_automaton)
 

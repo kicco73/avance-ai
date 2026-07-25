@@ -9,7 +9,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from automaton.automaton import Automaton, trigger_signal_names
+from automaton.automaton import Action, Automaton, State, trigger_signal_names
 from db import Db
 from ai.llm_provider import (
     LLMProvider,
@@ -105,33 +105,56 @@ class ChatService(object):
         return self._db.get_messages(self._active_model_name, last_n=last_n)
 
     @staticmethod
-    def _current_state_payload(automaton: Automaton, state_key: str) -> dict:
-        return automaton.get_state_payload(state_key)
+    def _current_state_payload(automaton: Automaton, state: State) -> dict:
+        return automaton.get_state_payload(state)
+
+    def _history_cutoff(self, model_name: str, state: State) -> datetime | None:
+        """Messages at or before this timestamp must be excluded from both
+        the AI reply and auto-tracking's signal evaluation, per `state`'s
+        clear_context. None means "no cutoff, use the full history"."""
+        if not state.clear_context:
+            return None
+        return self._db.get_last_transition_timestamp(model_name)
+
+    @staticmethod
+    def _build_turn_prompt(automaton: Automaton, state) -> tuple[str, list]:
+        # Shared by a normal chat turn and open_if_needed: system prompt +
+        # attachments for a turn landing on `state`.
+        if state.fixed_message:
+            logger.warning("Translating fixed_message for state '%s'.", state.key)
+            # A pure translation task doesn't use contextual_prompt, so it
+            # doesn't carry the attachments meant for it either.
+            return FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message), []
+        system_prompt = f"{state.contextual_prompt}\n\n{automaton.general_prompt}"
+        return system_prompt, automaton.general_prompt_attachments + state.attachments
 
     async def _run_auto_tracking(
-        self, pending_message: dict, model_name: str, automaton: Automaton, state_key: str
-    ) -> tuple[bool, str | None, str | None]:
+        self, pending_message: dict | None, model_name: str, automaton: Automaton, state: State
+    ) -> tuple[Action | None, State]:
+        # Always returns the resulting state alongside the Action that fired
+        # (None if nothing did) — callers never need to re-derive it via
+        # action.target themselves.
         if not self.auto_tracking_enabled:
-            return False, None, None
+            return None, state
 
+        since = self._history_cutoff(model_name, state)
         signals_list = await self.signals.compute(
-            self._llm_provider, self.build_priming_messages, pending_message
+            self._llm_provider, self.build_priming_messages, pending_message, since=since
         )
         signal_values = {s["name"]: s["value"] for s in signals_list}
         # Saved before trigger evaluation so a fired transition can reference
         # the exact snapshot id that caused it.
         snapshot_id = self._db.save_signal_snapshot(signal_values, model_name)
 
-        triggered_action = automaton.evaluate_triggers(state_key, signal_values)
-
+        triggered_action = automaton.evaluate_triggers(state.key, signal_values)
         if triggered_action is None:
-            return False, None, None
+            return None, state
 
-        action = automaton.move(state_key, triggered_action)
+        action = automaton.move(state.key, triggered_action)
         relevant_names = trigger_signal_names(action.trigger)
         relevant_values = {n: signal_values.get(n) for n in relevant_names}
         self._db.save_transition(
-            state_key,
+            state.key,
             triggered_action,
             action.target,
             model_name,
@@ -140,7 +163,7 @@ class ChatService(object):
             signal_values=relevant_values,
         )
 
-        return True, action.target, triggered_action
+        return action, automaton.get_state(action.target)
 
     async def process_turn(self, text: str, on_retry: OnRetry | None = None) -> ChatTurnResult:
         if self.lock.locked():
@@ -149,75 +172,65 @@ class ChatService(object):
             return await self._process_turn_locked(text, on_retry)
 
     async def _process_turn_locked(self, text: str, on_retry: OnRetry | None) -> ChatTurnResult:
-        # Snapshotted once and threaded through explicitly: these are live
-        # properties on models_manager, which a concurrent switch/upload/
-        # delete could change mid-turn if re-read after an `await` below.
-        # State is read once here and threaded through explicitly, updated
-        # below if auto-tracking transitions it mid-turn.
-        automaton, state_key = self._models_manager.get_active_automaton_and_state()
-        model_name = self._active_model_name
+        automaton, state = self._models_manager.get_active_automaton_and_state()
 
-        if automaton.get_state(state_key).final:
+        if state.final:
             raise ChatServiceError("The conversation has ended in this state.", status_code=409)
 
         pending_message = {"role": "user", "content": text, "timestamp": self._now_iso()}
 
-        state_changed, new_state_key, triggered_action = await self._run_auto_tracking(
-            pending_message, model_name, automaton, state_key
-        )
-        if state_changed:
-            state_key = new_state_key
+        # Only the LAST transition that fires this turn is reported back,
+        # even if both auto-tracking phases below cause one.
+        action: Action | None = None
+        model_name = self._active_model_name
 
-        state = automaton.get_state(state_key)
-        if state.fixed_message:
-            logger.warning("Translating fixed_message for state '%s'.", state.key)
-            system_prompt = FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message)
-            # A pure translation task doesn't use contextual_prompt, so it
-            # doesn't carry the attachments meant for it either.
-            turn_attachments = []
-        else:
-            system_prompt = f"{state.contextual_prompt}\n\n{automaton.general_prompt}"
-            turn_attachments = automaton.general_prompt_attachments + state.attachments
+        # Phase 1: on the user's message, before the reply is generated —
+        # so the reply is produced under the destination state's prompt.
+        # Gated by the automaton (model-wide), not the current state.
+        if automaton.autotracking_on_user_message:
+            action, state = await self._run_auto_tracking(pending_message, model_name, automaton, state)
+
+        system_prompt, turn_attachments = self._build_turn_prompt(automaton, state)
 
         priming_messages = self.build_priming_messages(turn_attachments)
+        since = self._history_cutoff(model_name, state)
         chat_history = priming_messages + self._strip_timestamps(
-            self._db.get_messages(model_name) + [pending_message]
+            self._db.get_messages(model_name, since=since) + [pending_message]
         )
 
         reply = await generate_with_retry(
             self._llm_provider, system_prompt, chat_history, on_retry=on_retry
-
         )
         self._db.save_message("user", text, model_name)
         self._db.save_message("assistant", reply, model_name)
 
+        # Phase 2: on the now-persisted user+assistant messages, under
+        # whichever state phase 1 left us in — no pending_message, the
+        # turn's messages are already in the DB. Also gated by the
+        # automaton, not the current state.
+        if automaton.autotracking_on_ai_message:
+            last_action, state = await self._run_auto_tracking(None, model_name, automaton, state)
+            if last_action:
+                action = last_action
+
         return ChatTurnResult(
             reply=reply,
-            state=self._current_state_payload(automaton, state_key),
-            state_changed=state_changed,
-            new_state=new_state_key,
-            triggered_action=triggered_action,
+            state=self._current_state_payload(automaton, state),
+            state_changed=action is not None,
+            new_state=action.target if action else None,
+            triggered_action=action.name if action else None,
         )
 
     async def open_if_needed(self) -> None:
-        """If the conversation is empty, generates and persists the opening
-        message (same prompt-building as a normal chat turn). No-op if
-        already non-empty.
-        """
+        # No-op if the conversation isn't empty. Never runs auto-tracking,
+        # regardless of the landing state's autotracking_on_* flags.
         model_name = self._active_model_name
 
         if not self._db.is_empty(model_name):
             return None
 
-        automaton, state_key = self._models_manager.get_active_automaton_and_state()
-        state = automaton.get_state(state_key)
-
-        if state.fixed_message:
-            system_prompt = FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message)
-            turn_attachments = []
-        else:
-            system_prompt = f"{state.contextual_prompt}\n\n{automaton.general_prompt}"
-            turn_attachments = automaton.general_prompt_attachments + state.attachments
+        automaton, state = self._models_manager.get_active_automaton_and_state()
+        system_prompt, turn_attachments = self._build_turn_prompt(automaton, state)
 
         priming_messages = self.build_priming_messages(turn_attachments)
         priming_messages.append({"role": "user", "content": "..."})

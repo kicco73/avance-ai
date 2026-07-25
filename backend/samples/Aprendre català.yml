@@ -8,11 +8,21 @@ general_prompt: |
   The user needs to improve his B2 level. 
   Always write in catalan, and never in any other language. 
   Since you are writing in catalan, when explaining something, don't make it too easy for the user to guess the answers.
-  Before each step of an exercise write all the signals.
-  When in an exercise, keep track of these signals:
-    - progress: integer percentage of steps done for the exercise.
-    - score: integerpercentage of correct answers so far.
-  When progress reaches 100, congratulate and ask about how they feel before moving on.
+
+  When entering Unit 1, give a warm welcome and explain what unit 1 is about.
+  For all other units, don't welcome, just congratulate the user at the start for reaching the level and briefly explain what it is about.
+
+  When in an exercise, keep track of these signals without saying it to the user:
+    - progress: integer percentage of steps done for the current exercise.
+    - score: integer percentage of correct answers since the start of the current exercise.
+
+  When in an exercise, be as much concise as possible.
+  When the exercise finishes, you must provide a summary of the user's performance, including the number of correct answers. 
+  You must also provide feedback on how to improve in the future. 
+  Don't ask the user about anything.
+
+signal_tracking_on_user_message: false
+signal_tracking_on_ai_message: true
 
 signals:
   - name: progress
@@ -20,31 +30,33 @@ signals:
     description: >
       How much steps have been done before the next unit.
     ai_prompt: |
-      Read from your last conversation message the value of a signal called "Progress".
-      Respond with that value, in the form of a single integer between 0 and 100.
+      Desume from the conversation the number of steps done for the current exercise with respect to the total number of stes.
+      Respond with that value, in the form of a single integer normalised between 0 and 100.
     placeholder_builtin: false
   - name: score
     ui_label: "Score of the current exercise"
     description: >
       Evaluation of user performance for this excercise.
     ai_prompt: |
-      Read from your last conversation message the value of a signal called "Score".
-      Respond with that value, in the form of a single integer between 0 and 100.
+      Desume from the conversation how many correct answers the user has given so far.
+      Respond with that value, in the form of a single integer normalised between 0 and 100.
     placeholder_builtin: false
 
 
 states:
 
   unit1:
-    label: "Unit 1 - Benvingut!"
+    label: "Unitat 1 - Verbs Regulars"
     description: >
-      Greeting the user.
+      Exercise to learn how to conjugate Subjuntive - present regular verbs.
     contextual_prompt: |
-      Unit: 1 
-      invent 2 different short phrases that use conjunctive, present tense. 
+      Unit 1.
+      Invent 2 different short phrases that use conjunctive, present tense. Practice regular verbs only.
       The exercise is a "fill in the value" style.
       Show one phrase at a time, correct the user's mistakes, and provide feedback on their progress.
+      When finished, show a table of the rules to conjugate regular verbs.
     on_enter: celebrate
+    clear_context: True
     actions:
       - name: nextUnit
         label: "User has completed and moves to the next one"
@@ -53,22 +65,39 @@ states:
         trigger: "progress == 100"
 
   unit2:
-    label: "Unit 2 - Benvingut!"
+    label: "Unitat 2 - Verbs irregulars"
     description: >
-      Greeting the user.
-    on_enter: celebrate
+      Exercise to learn how to conjugate Subjuntive - present irregular verbs.
     contextual_prompt: |
-      All variables resets from previous values.
-      Unit: 2
-      Imagine 2 different short phrases that use conjunctive, present tense. 
-      The exercise requires the user to fully invent the phases based on your hints.
+      Unit 2.
+      invent 2 different short phrases that use conjunctive, present tense. Practice irregular verbs only.
+      The exercise is a "fill in the value" style.
       Show one phrase at a time, correct the user's mistakes, and provide feedback on their progress.
-      Use a progress variable that is a integer percentage of progress.
-      Before each step write the current progress percentage.
-      Also write a score variable in percentage of corrent answers so far.
+      When finished, show the conjugation for most used irregular verbs.
+    on_enter: celebrate
+    clear_context: True
+    actions:
+      - name: nextUnit
+        label: "User has completed and moves to the next one"
+        button_text: "Go to unit 3"
+        target: unit3
+        trigger: "progress == 100"
+
+  unit3:
+    label: "Unitat 3 - Exercici lliure"
+    description: >
+      Exercise to learn how to conjugate Subjuntive - present verbs in short phrases.
+    on_enter: celebrate
+    clear_context: True
+    contextual_prompt: |
+      Unit 3.
+      The user must create 2 different full phrases that use conjunctive, present tense. 
+      You must suggest a verb to use and the form of the phrase you expect.
+      Ask one phrase at a time, correct the user's mistakes, and provide feedback on their progress.
     actions:
       - name: loop
         label: "User loops in greetings"
-        button_text: "Loop on hello"
-        target: unit2
+        button_text: "Go to unit 1"
+        target: unit1
+        trigger: "progress == 100"
 

@@ -47,6 +47,9 @@ class State:
     transition_log_level: str = "WARNING"
     attachments: list[Attachment] = field(default_factory=list)
     on_enter: str | None = None
+    # If true, messages from before the transition into this state are kept
+    # out of both the AI reply and auto-tracking's signal evaluation.
+    clear_context: bool = False
 
 
 @dataclass
@@ -73,12 +76,6 @@ def trigger_signal_names(expression: str) -> set[str]:
 
 
 class Automaton(object):
-    """Stateless DFA definition: states, actions, prompts, signals — loaded
-    once from YAML and never mutated afterward. It holds no notion of
-    "current state"; every method that needs one takes it as an explicit
-    `state_key` argument. The actual current state lives in the database
-    (see db.get_current_state/save_transition) — callers read it from
-    there and thread it through explicitly."""
 
     def __init__(
         self,
@@ -87,21 +84,25 @@ class Automaton(object):
         general_prompt: str,
         signals: list[Signal],
         general_prompt_attachments: list[Attachment],
+        autotracking_on_user_message: bool,
+        autotracking_on_ai_message: bool,
     ):
         self.initial_state = initial_state
         self.states = states
         self.general_prompt = general_prompt
         self.signals = signals
         self.general_prompt_attachments = general_prompt_attachments
+        self.autotracking_on_user_message = autotracking_on_user_message
+        self.autotracking_on_ai_message = autotracking_on_ai_message
 
     def get_state(self, state_key: str) -> State:
         return self.states[state_key]
 
-    def get_state_payload(self, state_key: str) -> dict:
-        """Serializes `state_key`'s State into the plain-dict shape every
+    @staticmethod
+    def get_state_payload(state: State) -> dict:
+        """Serializes `state` into the plain-dict shape every
         state-reporting endpoint sends to the frontend — the one place
         this shape is built, so it can't drift between call sites."""
-        state = self.states[state_key]
         return {
             "key": state.key,
             "label": state.label,

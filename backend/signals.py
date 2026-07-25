@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from datetime import datetime
 from typing import Callable
 
 from automaton.automaton import Automaton
@@ -53,12 +54,14 @@ class Signals(object):
         tracker — this module doesn't depend on models_manager, by design."""
         return self._db.get_active_model_name()
 
-    def _signal_history_window(self, pending_message: dict | None) -> list[dict]:
+    def _signal_history_window(
+        self, pending_message: dict | None, since: datetime | None
+    ) -> list[dict]:
         """Recent messages as a single 'evaluate this transcript' turn —
         not multi-turn history, which invites the model to keep chatting.
         `pending_message` is appended locally, unpersisted."""
         fetch_n = SIGNALS_HISTORY_WINDOW - 1 if pending_message is not None else SIGNALS_HISTORY_WINDOW
-        recent = self._db.get_messages(self._active_model_name(), last_n=fetch_n)
+        recent = self._db.get_messages(self._active_model_name(), last_n=fetch_n, since=since)
         if pending_message is not None:
             recent = recent + [pending_message]
         if recent and recent[0]["role"] != "user":
@@ -106,10 +109,12 @@ class Signals(object):
         llm_provider: LLMProvider,
         build_priming_messages: BuildPrimingMessages,
         pending_message: dict | None = None,
+        since: datetime | None = None,
     ) -> list[dict]:
         """Calls the AI to (re)compute signal values from the persisted
         conversation plus `pending_message` (evaluated even though not yet
-        persisted). Only called from the auto-tracking flow."""
+        persisted). `since` excludes messages from before a clear_context
+        state's entry. Only called from the auto-tracking flow."""
         automaton = self.automaton
         signal_definitions = "\n\n".join(
             f'Signal "{s.name}":\n{s.ai_prompt}' for s in automaton.signals
@@ -119,7 +124,7 @@ class Signals(object):
         # never a state's or general_prompt's (different scope entirely).
         signal_attachments = [a for s in automaton.signals for a in s.attachments]
         priming_messages = build_priming_messages(signal_attachments)
-        call_history = priming_messages + self._signal_history_window(pending_message)
+        call_history = priming_messages + self._signal_history_window(pending_message, since)
 
         try:
             raw_reply = await asyncio.to_thread(llm_provider.generate, system_prompt, call_history)

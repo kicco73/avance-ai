@@ -97,8 +97,8 @@ class AvanceController(object):
 
     @post("/api/triggers/preview")
     def post_triggers_preview(self, req: TriggersPreviewRequest):
-        automaton, state_key = self.model_service.get_active_automaton_and_state()
-        return automaton.preview_triggers(state_key, req.signals)
+        automaton, state = self.model_service.get_active_automaton_and_state()
+        return automaton.preview_triggers(state.key, req.signals)
 
     @post("/api/reset")
     async def post_reset(self):
@@ -141,7 +141,7 @@ class AvanceController(object):
     async def put_model(self, model_name: str, request: Request):
         """Creates or replaces `model_name` from a raw body (YAML or zip, see
         models_manager._looks_like_zip). Stage -> validate -> only on success
-        commit and swap, restoring `model_name`'s own history if it has one."""
+        commit, swap, and wipe `model_name`'s prior conversation data."""
         content = await request.body()
         content_type = request.headers.get("content-type")
 

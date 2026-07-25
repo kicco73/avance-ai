@@ -103,15 +103,20 @@ class Db(object):
         message = Message.create(role=role, content=content, model_name=model_name)
         return message.id
 
-    def get_messages(self, model_name: str, last_n: int | None = None) -> list[dict]:
+    def get_messages(
+        self, model_name: str, last_n: int | None = None, since: datetime | None = None
+    ) -> list[dict]:
         """Fetch `model_name`'s messages in chronological order. `last_n`
         limits at the SQL level (descending fetch + reverse) rather than
-        slicing a full in-memory list."""
+        slicing a full in-memory list. `since` excludes messages at or
+        before that timestamp (a clear_context state's entry point)."""
         query = (
             Message.select()
             .where(Message.model_name == model_name)
             .order_by(Message.timestamp.desc())
         )
+        if since is not None:
+            query = query.where(Message.timestamp > since)
         if last_n is not None:
             query = query.limit(last_n)
         rows = list(query)
@@ -177,20 +182,27 @@ class Db(object):
             message += f" signals={signal_values}"
         logger.log(level, message)
 
-    def get_current_state(self, model_name: str) -> str | None:
-        """The state `model_name`'s latest Transition left it in, or None
-        if there isn't one yet — callers fall back to the automaton's own
-        initial_state themselves (`db.get_current_state(...) or
-        automaton.initial_state`), since this module doesn't know it."""
-        transition = (
+    def _latest_transition(self, model_name: str) -> Transition | None:
+        return (
             Transition.select()
             .where(Transition.model_name == model_name)
             .order_by(Transition.timestamp.desc())
             .first()
         )
-        if transition is None:
-            return None
-        return transition.new_state
+
+    def get_current_state(self, model_name: str) -> str | None:
+        """The state `model_name`'s latest Transition left it in, or None
+        if there isn't one yet — callers fall back to the automaton's own
+        initial_state themselves (`db.get_current_state(...) or
+        automaton.initial_state`), since this module doesn't know it."""
+        transition = self._latest_transition(model_name)
+        return transition.new_state if transition else None
+
+    def get_last_transition_timestamp(self, model_name: str) -> datetime | None:
+        """When `model_name` entered its current state (get_current_state),
+        or None if it's still in initial_state with no Transition yet."""
+        transition = self._latest_transition(model_name)
+        return transition.timestamp if transition else None
 
     def get_active_model_name(self, user: str = DEFAULT_USER) -> str | None:
         """The model name persisted for `user`, or None if Settings has no
