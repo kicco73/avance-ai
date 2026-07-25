@@ -108,6 +108,7 @@ states:
     label: "Unitat 55 - Formes amb -gu-"
     description: >
       Exercise to learn how to conjugate Subjuntive - present regular verbs with form -gu-.
+    on_enter: celebrate
     contextual_prompt: |
       Unit 55. Exercise B.
       Before entering the exercise:
@@ -135,6 +136,7 @@ states:
     label: "Unitat 55 - Formes irregulars"
     description: >
       Exercise to learn how to conjugate Subjuntive - present irregular verbs.
+    on_enter: celebrate
     contextual_prompt: |
         Unit 55. Exercise C.
         Before moving on to the exercise:
@@ -159,6 +161,7 @@ states:
     label: "Unitat 55 - Conjugació"
     description: >
       Exercise to learn how to conjugate Subjuntive - any form.
+    on_enter: celebrate
     contextual_prompt: |
         Unit 55. Exercise D.
         Style: fill in the value.
@@ -184,6 +187,7 @@ states:
     description: >
       Exercise to learn how to conjugate Subjuntive - present verbs in short phrases.
     clear_context: True
+    on_enter: celebrate
     contextual_prompt: |
         Unit 55. Evaluation Exercise.
         Style: the user must write the full sentence.
@@ -207,6 +211,7 @@ states:
     label: "Unitat 55 - Resultats"
     description: >
       Summarizing user performance.
+    on_enter: celebrate
     contextual_prompt: |
         Unit 55. End of unit. Summary of user performance.
         There is only one step in this state.
