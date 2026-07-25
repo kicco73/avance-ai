@@ -263,7 +263,7 @@ states:
         label: "Jump to results"
         button_text: "Resultats Ja"
         target: unit55-results
-        
+
   unit55-results:
     label: "Unitat 55 - Resultats"
     description: >
@@ -279,5 +279,5 @@ states:
     actions:
       - name: restart
         label: "Restarting the unit"
-        button_text: "Home"
+        button_text: "Inici"
         target: welcome
