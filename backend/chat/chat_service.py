@@ -11,11 +11,8 @@ from datetime import datetime, timezone
 from http import HTTPStatus
 
 from automaton.automaton import Action, Automaton, State, trigger_signal_names
-from audio_format import DEFAULT_PCM_SAMPLE_RATE, pcm_to_wav, streaming_wav_header
-from audio_store import AudioStore, LiveAudioGeneration
 from db import Db
 from ai.ai_service import AiService, OnRetry
-from audio.audio_service import AudioService
 from chat.signals import Signals
 from model_service import ModelService
 
@@ -67,35 +64,16 @@ class ChatService(object):
     def __init__(
         self,
         ai_service: AiService,
-        audio_service: AudioService,
         model_service: ModelService,
         db: Db,
-        audio_store: AudioStore,
     ) -> None:
         self._ai_service = ai_service
-        self._audio_service = audio_service
         self._model_service = model_service
         self._db = db
-        self._audio_store = audio_store
         self.signals = Signals(
             get_active_automaton=lambda: model_service.get_active_automaton_and_state()[0], db=db
         )
         self.auto_tracking_enabled = True
-        # Persisted (see db.py's Settings.audio_enabled) — the backend is
-        # the source of truth, not a plain in-memory flag the frontend
-        # could get out of sync with across a restart. Loaded once here;
-        # the audio_enabled property below writes every change straight
-        # back through to db, so it never has to be reloaded afterward.
-        # When on, the LAST message of every turn gets its audio generated
-        # in the background (see _start_audio_generation) — never awaited
-        # by the turn/action itself — silently skipped for any provider
-        # that doesn't support it.
-        self._audio_enabled = db.get_audio_enabled()
-        # Keeps a strong reference to every in-flight background audio
-        # task until it's done — asyncio.create_task() only holds a weak
-        # one otherwise, so an unreferenced task can be garbage-collected
-        # mid-flight.
-        self._background_audio_tasks: set[asyncio.Task] = set()
 
         # Single-user prototype: serializes chat-turn processing across
         # both transports and against a concurrent reset/activate/upload/
@@ -106,14 +84,8 @@ class ChatService(object):
     def _active_model_name(self) -> str:
         return self._model_service.get_active_model_name()
 
-    @property
-    def audio_enabled(self) -> bool:
-        return self._audio_enabled
-
-    @audio_enabled.setter
-    def audio_enabled(self, value: bool) -> None:
-        self._audio_enabled = value
-        self._db.set_audio_enabled(value)
+    def get_message_audio_text(self, message_id: int) -> str | None:
+        return self._db.get_message_audio_text(message_id)
 
     @staticmethod
     def _now_iso() -> str:
@@ -181,12 +153,12 @@ class ChatService(object):
 
     async def _generate_opening_message_if_needed(
         self, model_name: str, automaton: Automaton, state: State
-    ) -> tuple[dict | None, str | None]:
+    ) -> dict | None:
         content_since = self._history_cutoff(model_name, state)
         chat_blocked = state.final or not state.chat
         gate_since = self._db.get_last_transition_timestamp(model_name) if chat_blocked else content_since
         if self._db.has_messages_since(model_name, gate_since):
-            return None, None
+            return None
 
         system_prompt, turn_attachments = self._build_turn_prompt(automaton, state)
         chat_history = (
@@ -197,25 +169,24 @@ class ChatService(object):
 
         reply = await self._ai_service.generate(system_prompt, chat_history)
         visible_text, audio_text = _extract_audio_tag(reply)
-        message_id = self._db.save_message("assistant", visible_text, model_name)
-        return {"id": message_id, "content": visible_text}, audio_text
+        message_id = self._db.save_message("assistant", visible_text, model_name, audio_text=audio_text)
+        return {"id": message_id, "content": visible_text}
 
     async def _run_auto_tracking(
         self, pending_message: dict | None, model_name: str, automaton: Automaton, state: State
-    ) -> tuple[Action | None, State, dict | None, str | None]:
+    ) -> tuple[Action | None, State, dict | None]:
         # Always returns the resulting state alongside the Action that fired
         # (None if nothing did) — callers never need to re-derive it via
-        # action.target themselves. Third/fourth elements: a proactive
-        # opening message for the destination state (and its audio_text,
-        # see _extract_audio_tag), if a transition fired and landed on a
-        # state with nothing since its own cutoff yet.
+        # action.target themselves. Third element: a proactive opening
+        # message for the destination state, if a transition fired and
+        # landed on a state with nothing since its own cutoff yet.
         # Skipped when auto-tracking is off globally, or when `state` has
         # no triggerable action at all — nothing an auto-tracking pass
         # could ever act on, so skip the signals call outright regardless
         # of the global flag (manual-only actions are unaffected either
         # way: they're never evaluated here, only via apply_manual_action).
         if not self.auto_tracking_enabled or not state.has_triggerable_actions:
-            return None, state, None, None
+            return None, state, None
 
         since = self._history_cutoff(model_name, state)
         signals_list = await self.signals.compute(
@@ -228,7 +199,7 @@ class ChatService(object):
 
         triggered_action = automaton.evaluate_triggers(state.key, signal_values)
         if triggered_action is None:
-            return None, state, None, None
+            return None, state, None
 
         action = automaton.move(state.key, triggered_action)
         relevant_names = trigger_signal_names(action.trigger)
@@ -244,84 +215,8 @@ class ChatService(object):
         )
 
         new_state = automaton.get_state(action.target)
-        proactive_message, audio_text = await self._generate_opening_message_if_needed(model_name, automaton, new_state)
-        return action, new_state, proactive_message, audio_text
-
-    def _start_audio_generation(self, model_name: str, message: dict, audio_text: str | None) -> None:
-        """Kicks off audio generation for `message` — the last one of a
-        turn, see callers — as a background task, if the audio toggle is
-        on AND the model actually included an [audio]...[/audio] tag (see
-        _extract_audio_tag); does nothing otherwise, same as if the
-        provider didn't support audio at all. Never awaited by the
-        caller: a turn's/action's own response must never wait on audio
-        (it's a supplementary feature, and the frontend already retrieves
-        it separately — see GET /api/chat/messages/{id}/audio). The
-        LiveAudioGeneration is registered synchronously, here, before the
-        background task is even scheduled — so a GET arriving the instant
-        after this turn's response reaches the client can always find it;
-        there's no "registered too late" race to worry about."""
-        if not self.audio_enabled or not audio_text:
-            return
-        logger.warning("Converting text to audio: '%s'.", audio_text)
-
-        live = self._audio_store.start_live_generation(message["id"])
-        task = asyncio.create_task(self._run_audio_generation(model_name, message, audio_text, live))
-        self._background_audio_tasks.add(task)
-        task.add_done_callback(self._background_audio_tasks.discard)
-
-    async def _run_audio_generation(
-        self, model_name: str, message: dict, audio_text: str, live: LiveAudioGeneration
-    ) -> None:
-        """The actual generation work: AudioService.generate_audio()
-        already does its own off-event-loop work (and its own
-        provider-cascade retries) internally, so by the time it returns
-        here we're back on the event loop with the complete set of
-        chunks — no thread-hop needed on this side. Every chunk is both
-        pushed to `live` (so a GET already streaming this message id gets
-        it immediately — see AudioStore.LiveAudioGeneration) and
-        accumulated for the final on-disk WAV file, written once
-        generation completes exactly as before (same 10-file-per-model
-        window, unaffected by any of this). Silently does nothing beyond
-        that if every configured audio provider failed (generate_audio
-        returns None then) — audio is never worth failing the turn over,
-        and this runs well after the turn has already returned."""
-        pcm_chunks: list[bytes] = []
-        sample_rate = DEFAULT_PCM_SAMPLE_RATE
-
-        try:
-            stream = await self._audio_service.generate_audio(audio_text)
-            if stream is not None:
-                header_sent = False
-                for pcm_chunk, chunk_sample_rate in stream:
-                    sample_rate = chunk_sample_rate
-                    pcm_chunks.append(pcm_chunk)
-                    if not header_sent:
-                        header_sent = True
-                        live.push(streaming_wav_header(sample_rate))
-                    live.push(pcm_chunk)
-        except Exception:
-            logger.exception("Audio generation raised for message %s.", message["id"])
-        finally:
-            live.finish()
-            if pcm_chunks:
-                self._audio_store.save(model_name, message["id"], pcm_to_wav(b"".join(pcm_chunks), sample_rate))
-            self._audio_store.finish_live_generation(message["id"])
-
-    def get_live_audio_generation(self, message_id: int) -> LiveAudioGeneration | None:
-        """Whether message_id's audio is still being generated right now
-        — see GET /api/chat/messages/{id}/audio, which streams from this
-        instead of reading the (not yet complete) file on disk."""
-        return self._audio_store.get_live_generation(message_id)
-
-    def get_message_audio(self, message_id: int) -> bytes | None:
-        """Bytes for message_id's previously-generated audio, or None if
-        there isn't any (never generated, wrong provider/toggle at the
-        time, or already purged — see AudioStore.read_and_purge_older,
-        which this also triggers on a hit)."""
-        model_name = self._db.get_message_model_name(message_id)
-        if model_name is None:
-            return None
-        return self._audio_store.read_and_purge_older(model_name, message_id)
+        proactive_message = await self._generate_opening_message_if_needed(model_name, automaton, new_state)
+        return action, new_state, proactive_message
 
     async def apply_manual_action(self, action_name: str) -> dict:
         """Applies a manual (button) action and, same as an auto-tracking
@@ -337,10 +232,8 @@ class ChatService(object):
             state_payload = self._model_service.apply_manual_action(action_name)
             model_name = self._active_model_name
             automaton, state = self._model_service.get_active_automaton_and_state()
-            proactive_message, audio_text = await self._generate_opening_message_if_needed(model_name, automaton, state)
+            proactive_message = await self._generate_opening_message_if_needed(model_name, automaton, state)
             reply = [proactive_message] if proactive_message is not None else []
-            if reply:
-                self._start_audio_generation(model_name, reply[-1], audio_text)
             return {
                 "state": state_payload,
                 "reply": reply,
@@ -374,16 +267,12 @@ class ChatService(object):
         action: Action | None = None
         model_name = self._active_model_name
         messages: list[dict] = []
-        # audio_text for whichever message ends up messages[-1] — reset on
-        # every append below, so it always tracks the last one, exactly
-        # like the "only the last bubble gets audio" rule it feeds.
-        audio_text: str | None = None
 
         # Phase 1: on the user's message, before the reply is generated —
         # so the reply is produced under the destination state's prompt.
         # Gated by the automaton (model-wide), not the current state.
         if automaton.autotracking_on_user_message:
-            action, state, proactive_message, audio_text = await self._run_auto_tracking(
+            action, state, proactive_message = await self._run_auto_tracking(
                 pending_message, model_name, automaton, state
             )
             if proactive_message is not None:
@@ -400,7 +289,7 @@ class ChatService(object):
         reply = await self._ai_service.generate(system_prompt, chat_history, on_retry=on_retry)
         visible_reply, audio_text = _extract_audio_tag(reply)
         self._db.save_message("user", text, model_name)
-        assistant_id = self._db.save_message("assistant", visible_reply, model_name)
+        assistant_id = self._db.save_message("assistant", visible_reply, model_name, audio_text=audio_text)
         messages.append({"id": assistant_id, "content": visible_reply})
 
         # Phase 2: on the now-persisted user+assistant messages, under
@@ -408,17 +297,13 @@ class ChatService(object):
         # turn's messages are already in the DB. Also gated by the
         # automaton, not the current state.
         if automaton.autotracking_on_ai_message:
-            last_action, state, proactive_message, last_audio_text = await self._run_auto_tracking(
+            last_action, state, proactive_message = await self._run_auto_tracking(
                 None, model_name, automaton, state
             )
             if last_action:
                 action = last_action
             if proactive_message is not None:
                 messages.append(proactive_message)
-                audio_text = last_audio_text
-
-        if messages:
-            self._start_audio_generation(model_name, messages[-1], audio_text)
 
         return {
             "reply": messages,

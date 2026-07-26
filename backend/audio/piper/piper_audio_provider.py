@@ -10,7 +10,8 @@ from typing import Iterator
 
 from piper import PiperVoice
 
-from audio.audio_provider import StreamingAudioProvider, AudioProviderError
+from audio.audio_provider import StreamingAudioProvider
+from cascade import ProviderError
 
 
 class PiperAudioProvider(StreamingAudioProvider):
@@ -33,9 +34,9 @@ class PiperAudioProvider(StreamingAudioProvider):
             )
         self._voice = PiperVoice.load(model_path, config_path=config_path)
 
-    def generate_audio(self, text: str) -> Iterator[tuple[bytes, int]]:
+    def _synthesize(self, text: str) -> Iterator[tuple[bytes, int]]:
         try:
             for chunk in self._voice.synthesize(text):
                 yield chunk.audio_int16_bytes, chunk.sample_rate
         except Exception as exc:
-            raise AudioProviderError(f"Piper synthesis failed: {exc}") from exc
+            raise ProviderError(f"Piper synthesis failed: {exc}") from exc

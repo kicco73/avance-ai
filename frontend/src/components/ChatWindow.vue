@@ -10,8 +10,20 @@ const md = new MarkdownIt({
   html: false
 })
 
+// The model sometimes emits a data:image URI directly in the reply text
+// instead of wrapping it in markdown image syntax — with no `![]()` around
+// it, markdown-it has nothing to recognize as an image and just renders it
+// as a wall of base64 text. Wrap any such bare URI before rendering; one
+// already inside `![]( ... )` is skipped (the negative lookbehind), so a
+// well-behaved reply is untouched.
+const BARE_DATA_IMAGE_RE = /(?<!\]\()(data:image\/[a-zA-Z0-9+.-]+;base64,[A-Za-z0-9+/=]+)/g
+
+function autoWrapBareImages(text) {
+  return text.replace(BARE_DATA_IMAGE_RE, '![]($1)')
+}
+
 function renderMarkdown(text) {
-  return DOMPurify.sanitize(md.render(text ?? ''))
+  return DOMPurify.sanitize(md.render(autoWrapBareImages(text ?? '')))
 }
 
 const props = defineProps({
@@ -51,10 +63,6 @@ const props = defineProps({
     default: false
   },
   audioEnabled: {
-    type: Boolean,
-    default: false
-  },
-  audioLoading: {
     type: Boolean,
     default: false
   }
@@ -207,7 +215,6 @@ watch(
         type="button"
         class="audio-btn"
         :class="{ 'audio-btn-on': audioEnabled }"
-        :disabled="audioLoading"
         :title="audioEnabled ? 'Audio: On' : 'Audio: Off'"
         @click="emit('toggle-audio')"
       >

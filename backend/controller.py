@@ -7,11 +7,11 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 
 from automaton.automaton import Automaton
+from audio.audio_service import AudioService
 from chat.chat_service import ChatService, ChatServiceError
 from model_service import ModelService
 from schemas import (
     ActionRequest,
-    AudioEnabledRequest,
     AutoTrackingRequest,
     ChatMessageRequest,
     TriggersPreviewRequest,
@@ -46,9 +46,11 @@ class AvanceController(object):
         self,
         chat_service: ChatService,
         model_service: ModelService,
+        audio_service: AudioService,
     ) -> None:
         self.chat_service = chat_service
         self.model_service = model_service
+        self.audio_service = audio_service
 
         self.router = APIRouter()
         for _, member in inspect.getmembers(self, predicate=inspect.ismethod):
@@ -95,34 +97,16 @@ class AvanceController(object):
         self.chat_service.auto_tracking_enabled = req.enabled
         return {"enabled": self.chat_service.auto_tracking_enabled}
 
-    @get("/api/chat/audio")
-    def get_audio_enabled(self):
-        return {"enabled": self.chat_service.audio_enabled}
-
-    @post("/api/chat/audio")
-    def post_audio_enabled(self, req: AudioEnabledRequest):
-        self.chat_service.audio_enabled = req.enabled
-        return {"enabled": self.chat_service.audio_enabled}
-
     @get("/api/chat/messages/{message_id}/audio")
     def get_message_audio(self, message_id: int):
-        """If generation for message_id is still in flight right now,
-        streams it chunk by chunk as ChatService's background task
-        produces them (see AudioStore.LiveAudioGeneration) instead of
-        waiting for the complete file — lower latency for a client that
-        happens to arrive while it's still running. Otherwise, exactly as
-        before: the completed file from disk, or 404 if there isn't one
-        (never generated, wrong provider/toggle at the time, or already
-        purged). The frontend treats a 404 here as "no audio available",
-        not a failure to surface (see api.js's messageAudioUrl)."""
-        live = self.chat_service.get_live_audio_generation(message_id)
-        if live is not None:
-            return StreamingResponse(live.stream_from(0), media_type="audio/wav")
-
-        audio = self.chat_service.get_message_audio(message_id)
-        if audio is None:
+        """Generates (or replays a cached/in-flight) audio for message_id,
+        streaming-compatible. 404 if the message had no [audio] tag — the
+        frontend treats that as "no audio available", not a failure (see
+        api.js's messageAudioUrl)."""
+        audio_text = self.chat_service.get_message_audio_text(message_id)
+        if not audio_text:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="No audio available for this message.")
-        return Response(content=audio, media_type="audio/wav")
+        return StreamingResponse(self.audio_service.generate(audio_text), media_type="audio/wav")
 
     @post("/api/triggers/preview")
     def post_triggers_preview(self, req: TriggersPreviewRequest):

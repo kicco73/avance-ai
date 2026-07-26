@@ -8,13 +8,9 @@ from google import genai
 from google.genai import errors as genai_errors
 from google.genai import types
 
-from audio_format import pcm_sample_rate
-from audio.audio_provider import (
-    BufferedAudioProvider,
-    AudioProviderError,
-    AudioProviderRateLimitedError,
-    AudioProviderUnavailableError,
-)
+from audio.audio_format import pcm_sample_rate
+from audio.audio_provider import BufferedAudioProvider
+from cascade import ProviderError, ProviderRateLimitedError, ProviderUnavailableError
 
 TTS_VOICE = "kore"
 
@@ -35,11 +31,10 @@ class GeminiAudioProvider(BufferedAudioProvider):
         self._client = genai.Client(api_key=api_key)
         self._model = model
 
-    def generate_audio(self, text: str) -> Iterator[tuple[bytes, int]]:
+    def _synthesize(self, text: str) -> Iterator[tuple[bytes, int]]:
         """A plain, single-voice generate_content_stream call with
         response_modalities=["AUDIO"]. Yields raw PCM chunks as Gemini
-        produces them, each paired with its sample rate (constant in
-        practice, but read off every chunk rather than assumed)."""
+        produces them, each paired with its sample rate."""
         try:
             stream = self._client.models.generate_content_stream(
                 model=self._model,
@@ -55,19 +50,19 @@ class GeminiAudioProvider(BufferedAudioProvider):
                 yield inline_data.data, pcm_sample_rate(inline_data.mime_type or "")
         except genai_errors.ClientError as exc:
             if exc.code == HTTPStatus.TOO_MANY_REQUESTS:
-                raise AudioProviderRateLimitedError(
+                raise ProviderRateLimitedError(
                     f"The Gemini TTS API rate limit was exceeded (status 429): {exc.message}"
                 ) from exc
-            raise AudioProviderError(
+            raise ProviderError(
                 f"Error from the Gemini TTS API (status {exc.code}): {exc.message}"
             ) from exc
         except genai_errors.ServerError as exc:
             if exc.code == HTTPStatus.SERVICE_UNAVAILABLE:
-                raise AudioProviderUnavailableError(
+                raise ProviderUnavailableError(
                     "The Gemini TTS API is temporarily overloaded (status 503)."
                 ) from exc
-            raise AudioProviderError(
+            raise ProviderError(
                 f"Error from the Gemini TTS API (status {exc.code}). Please retry later."
             ) from exc
         except genai_errors.APIError as exc:
-            raise AudioProviderError(f"Unexpected error from the Gemini TTS API: {exc}") from exc
+            raise ProviderError(f"Unexpected error from the Gemini TTS API: {exc}") from exc

@@ -8,7 +8,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 
-from audio_store import AudioStore
 from automaton.automaton import Automaton
 from chat.chat_service import ChatService
 from chat.ws_adapter import WsAdapter
@@ -30,8 +29,7 @@ ai_service = AiService(config.ai_services)
 audio_service = AudioService(config.audio_services)
 db = Db(config.database_url)
 model_service = ModelService(db)
-audio_store = AudioStore()
-chat_service = ChatService(ai_service, audio_service, model_service, db, audio_store)
+chat_service = ChatService(ai_service, model_service, db)
 
 chat_ws_adapter = WsAdapter(chat_service) if config.chat_transport == "websocket" else None
 
@@ -69,7 +67,7 @@ app.add_middleware(
 
 register_error_handlers(app)
 
-controller = AvanceController(chat_service, model_service)
+controller = AvanceController(chat_service, model_service, audio_service)
 app.include_router(controller.router)
 
 if chat_ws_adapter is not None:

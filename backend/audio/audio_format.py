@@ -1,9 +1,10 @@
-"""Raw-PCM <-> WAV helpers. Gemini's TTS output (see ai/gemini_provider.py)
-is always raw 16-bit mono PCM, never a self-describing container — these
-are the one place that gets turned into something a browser can actually
-play, shared by the batch path (a complete, correctly-sized WAV) and
-ChatService's live streaming path (an upfront header for a not-yet-known
-final size, sent once, before the raw PCM chunks that follow it).
+"""Raw-PCM <-> WAV helpers. Gemini's TTS output (see
+audio/gemini_audio_provider.py) is always raw 16-bit mono PCM, never a
+self-describing container — these are the one place that gets turned
+into something a browser can actually play, shared by the cached path (a
+complete, correctly-sized WAV) and AudioService's live streaming path
+(an upfront header for a not-yet-known final size, sent once, before the
+raw PCM chunks that follow it).
 """
 from __future__ import annotations
 
@@ -44,8 +45,8 @@ def streaming_wav_header(sample_rate: int) -> bytes:
     "streaming, more to come" that lets a client reading it via chunked
     transfer start playing progressively instead of waiting for (or
     rejecting) a fully-formed file. Sent once, as the first chunk of a
-    live generation — see ChatService._run_audio_generation — followed by
-    raw PCM chunks with no further framing."""
+    live generation — see AudioService.generate — followed by raw PCM
+    chunks with no further framing."""
     channels = 1
     bits_per_sample = 16
     byte_rate = sample_rate * channels * bits_per_sample // 8

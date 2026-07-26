@@ -1,8 +1,3 @@
-// A single short sine-wave "pop" for an arriving AI reply — synthesized via
-// Web Audio API rather than an audio asset, so there's no file to license or
-// ship. Deliberately quiet and un-notification-like: this is a clinical
-// harm-reduction app, not a social/gaming product, so the chime must never
-// read as gamified engagement bait.
 export function playMessageChime() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)()
@@ -23,14 +18,31 @@ export function playMessageChime() {
   }
 }
 
+// Tracks whichever narration is currently playing, if any, so a new one
+// never overlaps a still-running previous one.
+let currentAudio = null
+
+function stopCurrentAudio() {
+  if (!currentAudio) return
+  currentAudio.pause()
+  currentAudio.removeAttribute('src')
+  currentAudio.load()
+  currentAudio = null
+}
+
 // Fetches and plays a message's generated narration, if any. A missing
-// audio (404 — never generated, wrong provider, or already purged; see
-// backend/audio_store.py) must fail silently: no visible error, this is a
-// best-effort nicety layered on top of the text that's already shown.
+// audio (404 — no [audio] tag on this message; see backend/audio/audio_service.py)
+// must fail silently: no visible error, a best-effort nicety on top of the
+// text that's already shown.
 export function playMessageAudio(url) {
   try {
+    stopCurrentAudio()
     const audio = new Audio(url)
+    currentAudio = audio
     audio.addEventListener('error', () => {}) // swallow a 404/decode failure quietly
+    audio.addEventListener('ended', () => {
+      if (currentAudio === audio) currentAudio = null
+    })
     audio.play().catch(() => {}) // autoplay can also be blocked by the browser itself
   } catch {
     // same tolerance as playMessageChime above

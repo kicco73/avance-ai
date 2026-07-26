@@ -94,18 +94,6 @@ export function postAutoTracking(enabled) {
   })
 }
 
-export function getAudioEnabled() {
-  return apiFetch(`${API_URL}/chat/audio`)
-}
-
-export function postAudioEnabled(enabled) {
-  return apiFetch(`${API_URL}/chat/audio`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ enabled })
-  })
-}
-
 // Not fetched through apiFetch: a missing audio (404, e.g. purged or never
 // generated) must be silent, not routed through the shared error store —
 // see audio.js's playMessageAudio, which just points a plain <audio>-style

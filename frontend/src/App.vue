@@ -12,8 +12,6 @@ import {
   postAction,
   getAutoTracking,
   postAutoTracking,
-  getAudioEnabled,
-  postAudioEnabled,
   messageAudioUrl,
   postReset,
   putModel,
@@ -40,8 +38,9 @@ function renderMarkdown(text) {
 const showSignals = ref(false)
 const autoTrackingEnabled = ref(true)
 const autoTrackingLoading = ref(false)
+// Pure frontend state — the backend generates audio on demand whenever
+// this is on, no persisted toggle server-side (see maybeAutoPlayAudio).
 const audioEnabled = ref(false)
-const audioLoading = ref(false)
 const state = ref(null)
 const messages = ref([])
 const historyLoaded = ref(false)
@@ -107,7 +106,6 @@ function bootSucceeded() {
   clearApiError()
   loadMessages()
   loadAutoTracking()
-  loadAudioEnabled()
   // No proactive chat-socket connect here: chatClient.js connects lazily
   // on the first sendMessage() call, and the opening message (if any) is
   // already covered by loadMessages() above — it's persisted server-side
@@ -202,25 +200,8 @@ async function toggleAutoTracking() {
   }
 }
 
-async function loadAudioEnabled() {
-  try {
-    const res = await getAudioEnabled()
-    audioEnabled.value = res.enabled
-  } catch {
-    // already surfaced via apiFetch
-  }
-}
-
-async function toggleAudio() {
-  audioLoading.value = true
-  try {
-    const res = await postAudioEnabled(!audioEnabled.value)
-    audioEnabled.value = res.enabled
-  } catch {
-    // already surfaced via apiFetch
-  } finally {
-    audioLoading.value = false
-  }
+function toggleAudio() {
+  audioEnabled.value = !audioEnabled.value
 }
 
 // Fires the automatic narration for the last message a turn produced —
@@ -263,9 +244,8 @@ async function submitMessage(message) {
     // message, and never for history loaded at boot/reset (this only ever
     // runs from a live chat turn just completing).
     playMessageChime()
-    // Narrates only the LAST bubble of the turn — see backend
-    // ChatService._maybe_generate_audio, which only ever generates audio
-    // for that one.
+    // Narrates only the LAST bubble of the turn — only that one can have
+    // an [audio] tag (see backend/chat/chat_service.py's _extract_audio_tag).
     if (result.reply.length) maybeAutoPlayAudio(result.reply[result.reply.length - 1].id)
     handleStateChange(result.state)
   } catch {
@@ -484,7 +464,6 @@ onBeforeUnmount(() => {
       :state-chat="state?.chat ?? true"
       :history-loaded="historyLoaded"
       :audio-enabled="audioEnabled"
-      :audio-loading="audioLoading"
       @send="handleSend"
       @resend="handleResend"
       @toggle-audio="toggleAudio"

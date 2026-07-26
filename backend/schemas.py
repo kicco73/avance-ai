@@ -12,10 +12,6 @@ class AutoTrackingRequest(BaseModel):
     enabled: bool
 
 
-class AudioEnabledRequest(BaseModel):
-    enabled: bool
-
-
 class TriggersPreviewRequest(BaseModel):
     signals: dict[str, int | None]
 
