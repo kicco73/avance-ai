@@ -151,15 +151,26 @@ class ChatService(object):
         system_prompt = f"{state.contextual_prompt}\n\n{automaton.general_prompt}"
         return system_prompt, automaton.general_prompt_attachments + state.attachments
 
-    async def _generate_opening_message_if_needed(
-        self, model_name: str, automaton: Automaton, state: State
-    ) -> dict | None:
+    def _should_generate_opening_message(self, model_name: str, state: State) -> bool:
+        # Evaluated BEFORE any message this same transition adds is
+        # persisted (see _messages_for_transition) — an action_prompt
+        # message must never make this gate think `state` already spoke.
         content_since = self._history_cutoff(model_name, state)
         chat_blocked = state.final or not state.chat
         gate_since = self._db.get_last_transition_timestamp(model_name) if chat_blocked else content_since
-        if self._db.has_messages_since(model_name, gate_since):
-            return None
+        return not self._db.has_messages_since(model_name, gate_since)
 
+    async def _generate_opening_message_if_needed(
+        self, model_name: str, automaton: Automaton, state: State
+    ) -> dict | None:
+        if not self._should_generate_opening_message(model_name, state):
+            return None
+        return await self._generate_opening_message_body(model_name, automaton, state)
+
+    async def _generate_opening_message_body(
+        self, model_name: str, automaton: Automaton, state: State
+    ) -> dict:
+        content_since = self._history_cutoff(model_name, state)
         system_prompt, turn_attachments = self._build_turn_prompt(automaton, state)
         chat_history = (
             self.build_priming_messages(turn_attachments)
@@ -172,21 +183,68 @@ class ChatService(object):
         message_id = self._db.save_message("assistant", visible_text, model_name, audio_text=audio_text)
         return {"id": message_id, "content": visible_text}
 
+    async def _generate_action_prompt_message(
+        self, action_prompt: str, model_name: str, automaton: Automaton, state: State
+    ) -> dict:
+        # Unconditional (no has_messages_since gate like the opening
+        # message): tied to this specific action firing, not to whether
+        # `state` has spoken before. Deliberately excludes the destination
+        # state's own contextual_prompt — only general_prompt plus
+        # action_prompt itself.
+        system_prompt = f"{automaton.general_prompt}\n\n{action_prompt}"
+        turn_attachments = automaton.general_prompt_attachments + state.attachments
+
+        since = self._history_cutoff(model_name, state)
+        chat_history = (
+            self.build_priming_messages(turn_attachments)
+            + self._strip_timestamps(self._db.get_messages(model_name, since=since))
+            + [{"role": "user", "content": "..."}]
+        )
+
+        reply = await self._ai_service.generate(system_prompt, chat_history)
+        visible_text, _ = _extract_audio_tag(reply)
+        # Deliberately not persisted: shown for this turn only, never part
+        # of future history/signals. No id, so no per-message audio either.
+        return {"id": None, "content": visible_text}
+
+    async def _messages_for_transition(
+        self, action: Action, model_name: str, automaton: Automaton, new_state: State, *, is_self_loop: bool
+    ) -> list[dict]:
+        # Shared by the auto-tracking and manual-action paths: action_prompt
+        # (if set) always generates first, then the destination state's own
+        # opening/fixed_message (existing, gated mechanism) — independent of
+        # each other, so both can land for the same transition. Eligibility
+        # for the opening message is decided BEFORE action_prompt's message
+        # is persisted, so it never sees that message as "already spoken".
+        # A self-loop (action.target == the state it fired from) must have
+        # no side effect beyond action_prompt — it re-enters a state that
+        # was never really left, not a genuine new entry to open.
+        should_open = not is_self_loop and self._should_generate_opening_message(model_name, new_state)
+
+        messages = []
+        if action.action_prompt:
+            messages.append(
+                await self._generate_action_prompt_message(action.action_prompt, model_name, automaton, new_state)
+            )
+        if should_open:
+            messages.append(await self._generate_opening_message_body(model_name, automaton, new_state))
+        return messages
+
     async def _run_auto_tracking(
         self, pending_message: dict | None, model_name: str, automaton: Automaton, state: State
-    ) -> tuple[Action | None, State, dict | None]:
+    ) -> tuple[Action | None, State, list[dict]]:
         # Always returns the resulting state alongside the Action that fired
         # (None if nothing did) — callers never need to re-derive it via
-        # action.target themselves. Third element: a proactive opening
-        # message for the destination state, if a transition fired and
-        # landed on a state with nothing since its own cutoff yet.
+        # action.target themselves. Third element: every message generated
+        # for this transition (action_prompt's, the destination state's own
+        # opening message, both, or neither) — see _messages_for_transition.
         # Skipped when auto-tracking is off globally, or when `state` has
         # no triggerable action at all — nothing an auto-tracking pass
         # could ever act on, so skip the signals call outright regardless
         # of the global flag (manual-only actions are unaffected either
         # way: they're never evaluated here, only via apply_manual_action).
         if not self.auto_tracking_enabled or not state.has_triggerable_actions:
-            return None, state, None
+            return None, state, []
 
         since = self._history_cutoff(model_name, state)
         signals_list = await self.signals.compute(
@@ -199,41 +257,46 @@ class ChatService(object):
 
         triggered_action = automaton.evaluate_triggers(state.key, signal_values)
         if triggered_action is None:
-            return None, state, None
+            return None, state, []
 
         action = automaton.move(state.key, triggered_action)
         relevant_names = trigger_signal_names(action.trigger)
         relevant_values = {n: signal_values.get(n) for n in relevant_names}
-        self._db.save_transition(
-            state.key,
-            triggered_action,
-            action.target,
-            model_name,
-            transition_log_level=automaton.get_state(action.target).transition_log_level,
-            signal_snapshot_id=snapshot_id,
-            signal_values=relevant_values,
-        )
+        # A self-loop isn't a real transition — skip persisting it (see
+        # ModelService.apply_manual_action for why: it would otherwise
+        # bump the clear_context cutoff for no actual state change).
+        if action.target != state.key:
+            self._db.save_transition(
+                state.key,
+                triggered_action,
+                action.target,
+                model_name,
+                transition_log_level=automaton.get_state(action.target).transition_log_level,
+                signal_snapshot_id=snapshot_id,
+                signal_values=relevant_values,
+            )
 
         new_state = automaton.get_state(action.target)
-        proactive_message = await self._generate_opening_message_if_needed(model_name, automaton, new_state)
-        return action, new_state, proactive_message
+        messages = await self._messages_for_transition(
+            action, model_name, automaton, new_state, is_self_loop=(action.target == state.key)
+        )
+        return action, new_state, messages
 
     async def apply_manual_action(self, action_name: str) -> dict:
         """Applies a manual (button) action and, same as an auto-tracking
-        transition, generates the destination state's opening message
-        right away if it hasn't said anything yet — ModelService's own
-        apply_manual_action() only performs the transition; it has no way
-        to call the LLM. Without this, a state entered via a button
-        (rather than an auto-tracking transition) would never get to
-        speak at all, since no future turn re-lands on it either."""
+        transition, generates its action_prompt message (if any) and the
+        destination state's opening message if it hasn't spoken yet —
+        ModelService's own apply_manual_action() only performs the
+        transition; it has no way to call the LLM."""
         if self.lock.locked():
             raise ChatServiceError("A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT)
         async with self.lock:
-            state_payload = self._model_service.apply_manual_action(action_name)
+            state_payload, action, source_state_key = self._model_service.apply_manual_action(action_name)
             model_name = self._active_model_name
             automaton, state = self._model_service.get_active_automaton_and_state()
-            proactive_message = await self._generate_opening_message_if_needed(model_name, automaton, state)
-            reply = [proactive_message] if proactive_message is not None else []
+            reply = await self._messages_for_transition(
+                action, model_name, automaton, state, is_self_loop=(action.target == source_state_key)
+            )
             return {
                 "state": state_payload,
                 "reply": reply,
@@ -272,11 +335,10 @@ class ChatService(object):
         # so the reply is produced under the destination state's prompt.
         # Gated by the automaton (model-wide), not the current state.
         if automaton.autotracking_on_user_message:
-            action, state, proactive_message = await self._run_auto_tracking(
+            action, state, transition_messages = await self._run_auto_tracking(
                 pending_message, model_name, automaton, state
             )
-            if proactive_message is not None:
-                messages.append(proactive_message)
+            messages.extend(transition_messages)
 
         system_prompt, turn_attachments = self._build_turn_prompt(automaton, state)
 
@@ -297,13 +359,12 @@ class ChatService(object):
         # turn's messages are already in the DB. Also gated by the
         # automaton, not the current state.
         if automaton.autotracking_on_ai_message:
-            last_action, state, proactive_message = await self._run_auto_tracking(
+            last_action, state, transition_messages = await self._run_auto_tracking(
                 None, model_name, automaton, state
             )
             if last_action:
                 action = last_action
-            if proactive_message is not None:
-                messages.append(proactive_message)
+            messages.extend(transition_messages)
 
         return {
             "reply": messages,

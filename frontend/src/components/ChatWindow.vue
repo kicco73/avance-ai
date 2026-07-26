@@ -120,6 +120,17 @@ watch(
     inputEl.value?.focus()
   }
 )
+
+// Exposed for App.vue: an action button click disables itself immediately
+// (see ActionButtons' :disabled), which blurs it since it had focus — this
+// lets the caller send focus back to the chat input once the action's
+// response has landed.
+function focusInput() {
+  if (chatDisabled.value) return
+  inputEl.value?.focus()
+}
+
+defineExpose({ focusInput })
 </script>
 
 <template>

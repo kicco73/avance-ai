@@ -89,6 +89,7 @@ class AutomatonBuilder(object):
                     button_text=raw_action["button_text"],
                     target=raw_action["target"],
                     trigger=raw_action.get("trigger"),
+                    action_prompt=raw_action["action_prompt"].strip() if raw_action.get("action_prompt") else None,
                 )
                 for raw_action in raw_state.get("actions", [])
             ]

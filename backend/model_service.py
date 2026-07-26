@@ -14,7 +14,7 @@ import zipfile
 from pathlib import Path
 from typing import Awaitable, Callable
 
-from automaton.automaton import Automaton, State
+from automaton.automaton import Action, Automaton, State
 from automaton.automaton_builder import AutomatonBuilder
 from session import Session
 
@@ -193,27 +193,41 @@ class ModelService(object):
         return model_name
 
     def get_active_automaton_and_state(self) -> tuple[Automaton, State]:
-        """The active Automaton paired with the State it's currently in
-        (or initial_state, if none persisted yet). Raises ValueError if
-        the active model itself fails to load — no silent fallback."""
+        """The active Automaton paired with its current State — falls back
+        to initial_state if none is persisted yet, or the persisted one
+        was renamed/removed on disk since."""
         model_name = self.get_active_model_name()
         automaton = self._load_model(model_name)
-        state_key = self._db.get_current_state(model_name) or automaton.initial_state
+        state_key = self._db.get_current_state(model_name)
+        if state_key is None or state_key not in automaton.states:
+            if state_key is not None:
+                logger.warning(
+                    "Model '%s': persisted state '%s' no longer exists (renamed/removed on "
+                    "disk?) — falling back to initial_state '%s'.",
+                    model_name, state_key, automaton.initial_state,
+                )
+            state_key = automaton.initial_state
         return automaton, automaton.get_state(state_key)
 
-    def apply_manual_action(self, action_name: str) -> dict:
-        """Applies a manual (button) action on the active automaton,
-        persists the transition, and returns the resulting state payload."""
+    def apply_manual_action(self, action_name: str) -> tuple[dict, Action, str]:
+        """Applies a manual (button) action and returns the destination
+        state's payload, the Action that fired, and the source state's
+        key (e.g. to detect a self-loop)."""
         automaton, state = self.get_active_automaton_and_state()
-        new_state = automaton.get_state(automaton.move(state.key, action_name).target)
-        self._db.save_transition(
-            state.key,
-            action_name,
-            new_state.key,
-            self.get_active_model_name(),
-            transition_log_level=new_state.transition_log_level,
-        )
-        return automaton.get_state_payload(new_state)
+        action = automaton.move(state.key, action_name)
+        new_state = automaton.get_state(action.target)
+        # A self-loop isn't a real transition — nothing left to persist,
+        # and doing so anyway would bump get_last_transition_timestamp,
+        # wiping clear_context's history cutoff for no actual state change.
+        if new_state.key != state.key:
+            self._db.save_transition(
+                state.key,
+                action_name,
+                new_state.key,
+                self.get_active_model_name(),
+                transition_log_level=new_state.transition_log_level,
+            )
+        return automaton.get_state_payload(new_state), action, state.key
 
     def get_active_state_payload(self) -> dict:
         automaton, state = self.get_active_automaton_and_state()

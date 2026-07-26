@@ -49,6 +49,7 @@ const chatStatus = ref('')
 const actionLoading = ref(false)
 const modelUploadInput = ref(null)
 const modelsMenu = ref(null)
+const chatWindow = ref(null)
 
 // Initial-boot backend readiness gate — entirely separate from the shared
 // error store (which is for runtime errors on an already-running app). 'checking': the
@@ -292,6 +293,10 @@ async function handleAction(actionName) {
     // already surfaced via apiFetch
   } finally {
     actionLoading.value = false
+    // The button that was clicked disables itself immediately (see
+    // ActionButtons), which blurs it — send focus back to the chat input.
+    await nextTick()
+    chatWindow.value?.focusInput()
   }
 }
 
@@ -455,6 +460,7 @@ onBeforeUnmount(() => {
     </header>
 
     <ChatWindow
+      ref="chatWindow"
       :messages="messages"
       :loading="chatLoading"
       :status="chatStatus"

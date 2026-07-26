@@ -28,6 +28,10 @@ class Action:
     # evaluate_triggers()/preview_triggers() for auto-tracking. None means the
     # action is only ever triggered manually.
     trigger: str | None = None
+    # Extra generation instruction for this specific transition, on top of
+    # the destination state's own context — see ChatService._generate_
+    # action_prompt_message. None means no extra message for this action.
+    action_prompt: str | None = None
 
 
 @dataclass
