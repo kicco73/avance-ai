@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from http import HTTPStatus
 from typing import Awaitable, Callable, Generic, NamedTuple, TypeVar
 
 logger = logging.getLogger(__name__)
@@ -13,6 +14,28 @@ logger = logging.getLogger(__name__)
 # Retry/backoff policy before giving up on a transiently unavailable provider.
 MAX_RETRIES = 5
 BASE_DELAY_SECONDS = 1.0
+
+
+class ProviderError(Exception):
+    """Shared transient/permanent taxonomy for AiService and AudioService
+    — defined once so neither duplicates the other's classification."""
+    message = "Provider service error."
+    status_code = HTTPStatus.SERVICE_UNAVAILABLE
+    detail = None
+    def __init__(self, message: str) -> None:
+        self.detail = message
+
+
+class ProviderUnavailableError(ProviderError):
+    """Transient overload (e.g. HTTP 503) — retried with backoff."""
+    message = "Service unavailable after every retry."
+    status_code = HTTPStatus.SERVICE_UNAVAILABLE
+
+
+class ProviderRateLimitedError(ProviderError):
+    """Rate limit/quota (e.g. HTTP 429) — never retried, cascades immediately."""
+    message = "The service rate limit was exceeded."
+    status_code = HTTPStatus.TOO_MANY_REQUESTS
 
 # Awaited before each backoff sleep with (attempt, max_attempts, remaining
 # seconds) — e.g. to push a "retrying" status to a client. Optional.
