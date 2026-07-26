@@ -98,7 +98,7 @@ class AvanceController(object):
         return {"enabled": self.chat_service.auto_tracking_enabled}
 
     @get("/api/chat/messages/{message_id}/audio")
-    def get_message_audio(self, message_id: int):
+    def get_message_audio(self, message_id: int, request: Request):
         """Generates (or replays a cached/in-flight) audio for message_id,
         streaming-compatible. 404 if the message had no [audio] tag — the
         frontend treats that as "no audio available", not a failure (see
@@ -106,7 +106,23 @@ class AvanceController(object):
         audio_text = self.chat_service.get_message_audio_text(message_id)
         if not audio_text:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="No audio available for this message.")
-        return StreamingResponse(self.audio_service.generate(audio_text), media_type="audio/wav")
+        return StreamingResponse(
+            self._stream_audio_until_disconnected(request, audio_text), media_type="audio/wav"
+        )
+
+    async def _stream_audio_until_disconnected(self, request: Request, audio_text: str):
+        # A dropped/aborted fetch (see audio.js's stopCurrentAudio) doesn't
+        # reliably surface as a send() failure — Starlette can keep writing
+        # into a closed socket for a while. Polling is_disconnected() stops
+        # the provider's work immediately instead of wasting a full synthesis.
+        generation = self.audio_service.generate(audio_text)
+        try:
+            async for chunk in generation:
+                if await request.is_disconnected():
+                    break
+                yield chunk
+        finally:
+            await generation.aclose()
 
     @post("/api/triggers/preview")
     def post_triggers_preview(self, req: TriggersPreviewRequest):

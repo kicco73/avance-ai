@@ -184,21 +184,23 @@ class ChatService(object):
         return {"id": message_id, "content": visible_text}
 
     async def _generate_action_prompt_message(
-        self, action_prompt: str, model_name: str, automaton: Automaton, state: State
+        self, action: Action, model_name: str, automaton: Automaton, state: State
     ) -> dict:
+        logger.warning("Executing action_prompt for action '%s'.", action.name)
         # Unconditional (no has_messages_since gate like the opening
         # message): tied to this specific action firing, not to whether
         # `state` has spoken before. Deliberately excludes the destination
-        # state's own contextual_prompt — only general_prompt plus
-        # action_prompt itself.
-        system_prompt = f"{automaton.general_prompt}\n\n{action_prompt}"
+        # state's own contextual_prompt — only general_prompt, same as any
+        # ordinary turn; action_prompt itself is sent as the user's own
+        # message, not folded into the system prompt (see below).
+        system_prompt = automaton.general_prompt
         turn_attachments = automaton.general_prompt_attachments + state.attachments
 
         since = self._history_cutoff(model_name, state)
         chat_history = (
             self.build_priming_messages(turn_attachments)
             + self._strip_timestamps(self._db.get_messages(model_name, since=since))
-            + [{"role": "user", "content": "..."}]
+            + [{"role": "user", "content": action.action_prompt}]
         )
 
         reply = await self._ai_service.generate(system_prompt, chat_history)
@@ -224,7 +226,7 @@ class ChatService(object):
         messages = []
         if action.action_prompt:
             messages.append(
-                await self._generate_action_prompt_message(action.action_prompt, model_name, automaton, new_state)
+                await self._generate_action_prompt_message(action, model_name, automaton, new_state)
             )
         if should_open:
             messages.append(await self._generate_opening_message_body(model_name, automaton, new_state))

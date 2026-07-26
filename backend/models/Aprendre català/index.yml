@@ -51,7 +51,7 @@ general_prompt: |
     - if the user asks for clarifications on the exercise, or the grammar, that does not count as an attempt.
     - be as much concise as possible and double check you respect the rules of the exercise
     - ask only for the missed/remaining answers
-    - double check if the answer from the user is correct. Don't accept incorrect answers or answers close to the correct one.
+    - accept only answers that are literally correct, including accents, orthography and plurals vs. singulars.
     - if you are giving hints after the user has failed, ensure you are not suggesting the answer.
     - when there are no more attempts lefts for a step, always show what the solution for the step is.
     - starting from the second step, just put the required line and don't add extra comments.
@@ -99,6 +99,7 @@ states:
     description: >
       Learn catalan with Avance
     chat: false
+    clear_context: true
     contextual_prompt: |
       The user can now choose an option to say what they want to do next among:
         - working the subjuntive
@@ -134,6 +135,10 @@ states:
         label: "Move to subjuntives"
         button_text: "Al subjuntiu"
         target: unit55-regulars
+      - name: restart
+        label: "Restarting the unit"
+        button_text: "Inici"
+        target: welcome
 
   unit55-regulars:
     label: "Unitat 55 - Formes Regulars"
@@ -144,9 +149,8 @@ states:
       Unit 55 - Exercise on regular verbs.
       Give a warm welcome.
       Show a short introduction explaining when to use the subjuntive - present tense.
-      Exercise A.
       Style: fill in the value
-      Goal: practise only regular verbs that are not of the form with -gu 
+      Goal: practise only regular verbs that are not of the form -gu 
       How: 
         - pick different random regular verbs from the list: parlar, treballar, mirar, ajudar, esperar, buscar, caminar, comprar, rentar, portar, saltar, cantar, ballar, entrar, deixar, visitar, dibuixar, cuinar, preparar, estudiar, copiar, continuar, actuar, crear, canviar, odiar, practicar, premiar, variar, iniciar, anunciar, reservar, reparar, celebrar, acceptar, explicar, imaginar, recordar, necessitar, convidar, ordenar, organitzar, separar, superar, utilitzar, evitar, limitar, acabar, baixar, pujar, tornar, passar, quedar, trobar, perdre, viure, dividir, compartir, repetir, omplir, patir, sofrir, unir, dormir, sortir, obrir, cobrir, descobrir, oferir, sentir, vestir, competir, existir, assistir, insistir, resistir, consistir, discutir, definir, construir, destruir, reduir, conduir, produir, introduir, traduir, influir, atribuir, distribuir, contribuir, substituir, fugir, llegir, riure, somriure, plorar, menjar, netejar, pintar, fotografiar, escoltar, observar, viatjar, descansar, ensenyar, millorar, empitjorar, parar, avançar, retrocedir, oblidar, pensar, desitjar, estimar, agradar, interessar, importar, preocupar, intentar, provar, rebutjar, planificar, comparar, inventar, arreglar, tallar, enganxar, girar, empènyer, estirar, enviar, rebre, somiar
         - invent different short phrases with picked verbs
@@ -154,7 +158,6 @@ states:
         - when providing audio, don't ever put the answer in the audio text
       When finished:
         - provide feedback on their progress
-        - show a table of the rules to conjugate regular verbs if not shown before.
     on_enter: celebrate
     clear_context: True
     actions:
@@ -178,8 +181,10 @@ states:
         action_prompt: |
           Show a table with the rules to conjugate regular verbs in this mode and tense.
           Show all the verbs: parlar, prometre, tenir, llegir.
-          Strictly limit your output to show the table only.
-          Don't adding anything related to the current task.
+      - name: restart
+        label: "Restarting the unit"
+        button_text: "Inici"
+        target: welcome
 
   unit55-regulars-amb-gu:
     label: "Unitat 55 - Formes amb -gu-"
@@ -191,12 +196,14 @@ states:
       Before entering the exercise:
         - explain when the ortographic change happens.
         - explain the trick: all verbs that end in -c (like creure, jo crec -> cregui) in the first person indicative present tense, will need the ortographic change in -gu. Also show an example of this.
-      Style: fill in the value.
+      Style: fill in the value. 
       Goal: practice regular verbs with forms -gu- only (e.g. 'aprengui'). 
       How:
         - for every step pick only a verb in this list: abstenir-se, aprendre, atenir-se, avenir-se, beure, caure, cloure, concloure, comprendre, contenir, convenir, coure, creure, descriure, detenir, distreure, emprendre, entretenir, entreveure, escriure, excloure, extreure, fondre, incloure, intervenir, mantenir, malvenir, moldre, moure, obtenir, plaure, pondre, prendre, prevenir, promoure, provenir, recloure, remoure, reprendre, resoldre, retenir, riure, seure, soldre, sorprendre, subvenir, suspendre, tenir, treure, valer, vendre, venir, voler
         - invent different short phrases with picked verbs
+        - use the fixed format: first_part (subject) ______ last_part (verb)
         - show one phrase at a time, and correct the user's mistakes
+        - never mention the expected answer in the audio
       
       When finished:
         - provide feedback on their progress
@@ -215,6 +222,10 @@ states:
         action_prompt: |
           - explain the trick: all verbs that end in -c (like creure, jo crec -> cregui) in the first person indicative present tense, will need the ortographic change in -gu.
           - Show the a table of the rules to conjugate this kind regular verbs, with also an example of this.
+      - name: restart
+        label: "Restarting the unit"
+        button_text: "Inici"
+        target: welcome
 
   unit55-irregulars:
     label: "Unitat 55 - Formes irregulars"
@@ -247,6 +258,10 @@ states:
         target: unit55-irregulars
         action_prompt: |
           - show quick table with conjugations for some important random irregular verbs of the subjuntive - present tense.
+      - name: restart
+        label: "Restarting the unit"
+        button_text: "Inici"
+        target: welcome
 
   unit55-D:
     label: "Unitat 55 - Conjugació"
@@ -276,6 +291,10 @@ states:
         label: "Jump to results"
         button_text: "Resultats Ja"
         target: unit55-results
+      - name: restart
+        label: "Restarting the unit"
+        button_text: "Inici"
+        target: welcome
 
   unit55-evaluation:
     label: "Unitat 55 - Avaluació"
