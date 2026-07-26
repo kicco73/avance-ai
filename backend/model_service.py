@@ -85,13 +85,9 @@ class ModelService(object):
     async def _finalize_model_update(
         self, model_name: str, model_dir: Path, automaton: Automaton, commit: CommitCallback
     ) -> bool:
-        """Refreshes the cache entry (automaton + content hash) for
-        `model_name` and, only if it is currently the active model, wipes
-        its conversation data and awaits `commit` — the one place this
-        happens, shared by the upload path (_put_yaml_model/_put_zip_model)
-        and the file watcher (refresh_model_from_disk, called from
-        model_watcher.py). Returns whether `model_name` was the active
-        model (and so got reset)."""
+        """Used by the upload path (_put_yaml_model/_put_zip_model): a
+        deliberate replace, so it wipes `model_name`'s conversation data
+        if it's currently active, before awaiting `commit`."""
         self._automaton_cache[model_name] = automaton
         self._model_hashes[model_name] = self._compute_content_hash(model_dir)
         if model_name == self.get_active_model_name():
@@ -99,6 +95,38 @@ class ModelService(object):
             await commit(automaton)
             return True
         return False
+
+    async def _finalize_hot_reload(
+        self, model_name: str, model_dir: Path, automaton: Automaton, commit: CommitCallback
+    ) -> bool:
+        """Used by the file watcher only: refreshes the cache and, if
+        `model_name` is active, awaits `commit` — but never wipes
+        conversation data (a live edit isn't a deliberate replace). If the
+        persisted current state no longer exists (renamed/removed), fixes
+        it to initial_state via one corrective transition instead."""
+        self._automaton_cache[model_name] = automaton
+        self._model_hashes[model_name] = self._compute_content_hash(model_dir)
+        if model_name != self.get_active_model_name():
+            return False
+
+        current_state_key = self._db.get_current_state(model_name)
+        if current_state_key is not None and current_state_key not in automaton.states:
+            initial_state = automaton.get_state(automaton.initial_state)
+            logger.warning(
+                "Model '%s': persisted state '%s' no longer exists after reload — "
+                "resetting to initial_state '%s' (conversation history kept).",
+                model_name, current_state_key, automaton.initial_state,
+            )
+            self._db.save_transition(
+                current_state_key,
+                "model-reloaded",
+                automaton.initial_state,
+                model_name,
+                transition_log_level=initial_state.transition_log_level,
+            )
+
+        await commit(automaton)
+        return True
 
     async def refresh_model_from_disk(self, model_name: str, commit: CommitCallback) -> bool | None:
         """For the file watcher only (model_watcher.py): compares
@@ -109,7 +137,7 @@ class ModelService(object):
         suppression anywhere else). Only a genuine mismatch rebuilds and
         refreshes the cache. Returns None if nothing happened (no change,
         or the model/content turned out invalid), else whether
-        `model_name` was the active model (and so got reset)."""
+        `model_name` was the active model (see _finalize_hot_reload)."""
         if not self._is_safe_model_name(model_name):
             return None
         model_dir = MODELS_DIR / model_name
@@ -130,7 +158,7 @@ class ModelService(object):
             logger.error("Model watcher: '%s' failed to reload after a file change: %s", model_name, exc)
             return None
 
-        return await self._finalize_model_update(model_name, model_dir, automaton, commit)
+        return await self._finalize_hot_reload(model_name, model_dir, automaton, commit)
 
     @staticmethod
     def _looks_like_zip(content_type: str | None, content: bytes) -> bool:

@@ -1,4 +1,4 @@
-initial_state: welcome
+initial_state: unit55-subjuntive
 
 general_prompt: |
   You are a catalan language learning assistant. 
@@ -35,8 +35,8 @@ general_prompt: |
     - the unit is intended to practice subjuntive present tense.
 
   For all exercises unless said otherwise later in this prompt:
+    - as the first line, put a bold title in the form "Unitat x - Exercici y". Stick strictly to the information given in the exercise.
     - never welcome.
-    - put a bold title in the form "Unit: x - Exercise y".
     - just briefly explain what the exercise is about.
     - write how many steps the exercise is compound of and how many attempts will be allowed for each step.
     - remember the user that if they don't know the meaning of some words, they can ask.
@@ -101,15 +101,57 @@ states:
     chat: false
     clear_context: true
     contextual_prompt: |
-      The user can now choose an option to say what they want to do next among:
-        - working the subjuntive
-        - having a free chat
-      Encourage them to make a choice. Translate them to catalan and don't mention the english version.
+      Give a warm welcome, put it in bold as a title.
+      The user can now choose a grammar topic they see on the screen (that you don't see) to deepen.
+      Encourage them to make a choice. 
     actions:
       - name: subjuntive
         label: "Repassar el subjuntiu present"
-        button_text: "Subjuntiu"
+        button_text: "El subjuntiu present"
+        target: unit55-subjuntive
+      - name: results
+        label: "Jump to results"
+        button_text: "Resultats"
+        target: unit55-results
+
+#=======================================================================
+
+  unit55-subjuntive:
+    label: "Unitat 55 - Index"
+    description: >
+      Index of all exercises in this unit.
+    contextual_prompt: |
+      Show in bold: "Unitat 55: subjuntiu"
+      Show a short introduction explaining the cases where subjuntive - present tense is used. Use tables.
+      Ask the user to pick an exercise among the choices the application is showing (that you don't see). Strictly don't invent anything.
+      on_enter: celebrate
+    clear_context: true
+    chat: false
+    actions:
+      - name: regulars
+        label: "Jump to regular verbs"
+        button_text: "Verbs regulars"
         target: unit55-regulars
+      - name: alteracions
+        label: "Jump to regular verbs with alterations"
+        button_text: "Regulars amb alteracions"
+        target: unit55-regulars-amb-alteracions
+      - name: alteracions-amb-gu
+        label: "Jump to regular verbs with alterations"
+        button_text: "Regulars amb canvi a -gu"
+        target: unit55-regulars-amb-gu
+      - name: irregulars
+        label: "Jump to irregular verbs"
+        button_text: "Irregulars"
+        target: unit55-irregulars
+      - name: freetyping
+        label: "Free typing"
+        button_text: "Composició llibre"
+        target: unit55-D
+      - name: evaluation
+        label: "Evaluation"
+        button_text: "Avaluació"
+        target: unit55-evaluation
       - name: lliure
         label: "Preguntes lliures"
         button_text: "Xat lliure"
@@ -118,27 +160,12 @@ states:
         label: "Jump to results"
         button_text: "Resultats"
         target: unit55-results
-
-  chat:
-    label: "Xat lliure"
-    description: >
-      Talk with your assistant
-    contextual_prompt: |
-      Unit Xat. 
-      Forget about the exercise.
-      The user will ask free questions about learning catalan and can set the topic and goal. 
-      Break the ice and ask if there is anything in particular they want to discuss about. Stick to learning Catalan.
-      Mention only once they can always go to other sections by pressing the buttons below.
-    clear_context: True #FIXME should be unnecessary
-    actions:
-      - name: subjuntive
-        label: "Move to subjuntives"
-        button_text: "Al subjuntiu"
-        target: unit55-regulars
       - name: restart
         label: "Restarting the unit"
         button_text: "Inici"
         target: welcome
+
+#=======================================================================
 
   unit55-regulars:
     label: "Unitat 55 - Formes Regulars"
@@ -146,14 +173,14 @@ states:
       Exercise to learn how to conjugate Subjuntive - present regular verbs.
       Canti, cantis, canti.
     contextual_prompt: |
-      Unit 55 - Exercise on regular verbs.
+      Unit 55 - Exercise 1.
       Give a warm welcome.
       Show a short introduction explaining when to use the subjuntive - present tense.
       Style: fill in the value
       Goal: practise only regular verbs that are not of the form -gu 
       How: 
-        - pick different random regular verbs from the list: parlar, treballar, mirar, ajudar, esperar, buscar, caminar, comprar, rentar, portar, saltar, cantar, ballar, entrar, deixar, visitar, dibuixar, cuinar, preparar, estudiar, copiar, continuar, actuar, crear, canviar, odiar, practicar, premiar, variar, iniciar, anunciar, reservar, reparar, celebrar, acceptar, explicar, imaginar, recordar, necessitar, convidar, ordenar, organitzar, separar, superar, utilitzar, evitar, limitar, acabar, baixar, pujar, tornar, passar, quedar, trobar, perdre, viure, dividir, compartir, repetir, omplir, patir, sofrir, unir, dormir, sortir, obrir, cobrir, descobrir, oferir, sentir, vestir, competir, existir, assistir, insistir, resistir, consistir, discutir, definir, construir, destruir, reduir, conduir, produir, introduir, traduir, influir, atribuir, distribuir, contribuir, substituir, fugir, llegir, riure, somriure, plorar, menjar, netejar, pintar, fotografiar, escoltar, observar, viatjar, descansar, ensenyar, millorar, empitjorar, parar, avançar, retrocedir, oblidar, pensar, desitjar, estimar, agradar, interessar, importar, preocupar, intentar, provar, rebutjar, planificar, comparar, inventar, arreglar, tallar, enganxar, girar, empènyer, estirar, enviar, rebre, somiar
-        - invent different short phrases with picked verbs
+        - pick different random regular verbs exclusively from this list: parlar, treballar, mirar, ajudar, esperar, buscar, caminar, comprar, rentar, portar, saltar, cantar, ballar, entrar, deixar, visitar, dibuixar, cuinar, preparar, estudiar, copiar, continuar, actuar, crear, canviar, odiar, premiar, variar, iniciar, anunciar, reservar, reparar, celebrar, acceptar, imaginar, recordar, necessitar, convidar, ordenar, organitzar, separar, superar, utilitzar, evitar, limitar, acabar, baixar, pujar, tornar, passar, quedar, trobar, perdre, viure, dividir, compartir, repetir, omplir, patir, sofrir, unir, dormir, sortir, obrir, cobrir, descobrir, oferir, sentir, vestir, competir, existir, assistir, insistir, resistir, consistir, discutir, definir, construir, destruir, reduir, conduir, produir, introduir, traduir, influir, atribuir, distribuir, contribuir, substituir, fugir, llegir, riure, somriure, plorar, menjar, netejar, pintar, fotografiar, escoltar, observar, descansar, ensenyar, millorar, empitjorar, parar, avançar, retrocedir, oblidar, pensar, estimar, agradar, interessar, importar, preocupar, intentar, provar, planificar, comparar, inventar, arreglar, tallar, empènyer, estirar, enviar, rebre, somiar
+        - invent different short phrases with the verbs you picked from the list above
         - show one phrase at a time, and correct the user's mistakes
         - when providing audio, don't ever put the answer in the audio text
       When finished:
@@ -161,22 +188,14 @@ states:
     on_enter: celebrate
     clear_context: True
     actions:
-      - name: next
+      - name: end
         label: "User has completed the exercise and moves to the next one"
-        button_text: "Go to next exercise"
-        target: unit55-results #unit55-B
+        button_text: "Resultats"
+        target: unit55-results
         trigger: "progress == 100"
-      - name: regulars-gu
-        label: "Jump to regular verbs with -gu"
-        button_text: "Regulars amb -gu-"
-        target: unit55-regulars-amb-gu
-      - name: irregulars
-        label: "Jump to irregular verbs"
-        button_text: "Irregulars"
-        target: unit55-irregulars
-      - name: conjugation
-        label: "Show conjugation table"
-        button_text: "Conjugació"
+      - name: grammar
+        label: "Show grammar"
+        button_text: "Gramàtica"
         target: unit55-regulars
         action_prompt: |
           Show a table with the rules to conjugate regular verbs in this mode and tense.
@@ -184,7 +203,56 @@ states:
       - name: restart
         label: "Restarting the unit"
         button_text: "Inici"
-        target: welcome
+        target: unit55-subjuntive
+
+#=======================================================================
+
+  unit55-regulars-amb-alteracions:
+    label: "Unitat 55 - Formes amb alteracions"
+    description: >
+      Exercise to learn how to conjugate Subjuntive - present regular verbs with form -qu-.
+    on_enter: celebrate
+    contextual_prompt: |
+      Unit 55. Exercise 2.
+      Before entering the exercise:
+        - explain that hortographic change happens for the verbs whose infinitive form ends like this:
+          - -jar -> jo -gi (e.g. menjar -> jo mengi)
+          - -car -> jo -qui (e.g. practicar -> jo practiqui)
+          - -çar -> jo -ci
+          - -gar -> jo gui
+          show some examples, also in other pronouns.
+      Style: fill in the value. 
+      Goal: practice regular verbs with forms -gu- only (e.g. 'aprengui'). 
+      How:
+        - for every step strictly pick a verb from this closed list: viatjar, desitjar, rebutjar, pujar, passejar, netejar, bloquejar, bombejar, plantejar, festejar, hostatjar, envejar, varejar, buscar, practicar, explicar, tocar, atacar, provocar, convocar, invocar, fabricar, publicar, aplicar, implicar, duplicar, multiplicar, comunicar, educar, dedicar, indicar, equivocar, començar, abraçar, alçar, caçar, llançar, amenaçar, reemplaçar, traçar, pagar, jugar, navegar, carregar, obligar, allargar, plegar, afogar, negar, pregar, rogar
+        - invent different short phrases with picked verbs
+        - use the fixed format: first_part (subject) ______ last_part (verb)
+        - show one phrase at a time, and correct the user's mistakes
+        - strictly never mention the answer you expect from the user in the audio
+      
+      When finished:
+        - provide feedback on their progress
+        - show a table of the rules to conjugate regular verbs
+    clear_context: True
+    actions:
+      - name: end
+        label: "User has completed the exercise"
+        button_text: "Resultats"
+        target: unit55-results
+        trigger: "progress == 100"
+      - name: grammar
+        label: "Show grammar"
+        button_text: "Gramàtica"
+        target: unit55-regulars-amb-alteracions
+        action_prompt: |
+          - explain the trick: all verbs whose infinitive ends in -jar , -car, -çar, -gar have hortographic alterations
+          - Show the a table of the rules to conjugate this kind regular verbs, with also some example of this.
+      - name: restart
+        label: "Restarting the unit"
+        button_text: "Inici"
+        target: unit55-subjuntive
+
+#=======================================================================
 
   unit55-regulars-amb-gu:
     label: "Unitat 55 - Formes amb -gu-"
@@ -192,14 +260,14 @@ states:
       Exercise to learn how to conjugate Subjuntive - present regular verbs with form -gu-.
     on_enter: celebrate
     contextual_prompt: |
-      Unit 55. Exercise on regular verbs with -gu- forms.
+      Unit 55. Exercise 3.
       Before entering the exercise:
         - explain when the ortographic change happens.
         - explain the trick: all verbs that end in -c (like creure, jo crec -> cregui) in the first person indicative present tense, will need the ortographic change in -gu. Also show an example of this.
       Style: fill in the value. 
       Goal: practice regular verbs with forms -gu- only (e.g. 'aprengui'). 
       How:
-        - for every step pick only a verb in this list: abstenir-se, aprendre, atenir-se, avenir-se, beure, caure, cloure, concloure, comprendre, contenir, convenir, coure, creure, descriure, detenir, distreure, emprendre, entretenir, entreveure, escriure, excloure, extreure, fondre, incloure, intervenir, mantenir, malvenir, moldre, moure, obtenir, plaure, pondre, prendre, prevenir, promoure, provenir, recloure, remoure, reprendre, resoldre, retenir, riure, seure, soldre, sorprendre, subvenir, suspendre, tenir, treure, valer, vendre, venir, voler
+        - for every step strictly pick a verb from this closed list: abstenir-se, aprendre, atenir-se, avenir-se, beure, caure, cloure, concloure, comprendre, contenir, convenir, coure, creure, descriure, detenir, distreure, emprendre, entretenir, entreveure, escriure, excloure, extreure, fondre, incloure, intervenir, mantenir, malvenir, moldre, moure, obtenir, plaure, pondre, prendre, prevenir, promoure, provenir, recloure, remoure, reprendre, resoldre, retenir, riure, seure, soldre, sorprendre, subvenir, suspendre, tenir, treure, valer, vendre, venir, voler
         - invent different short phrases with picked verbs
         - use the fixed format: first_part (subject) ______ last_part (verb)
         - show one phrase at a time, and correct the user's mistakes
@@ -210,14 +278,14 @@ states:
         - show a table of the rules to conjugate regular verbs
     clear_context: True
     actions:
-      - name: next
-        label: "User has completed the exercise and moves to the next one"
-        button_text: "Proper exercici"
-        target: unit55-irregulars
+      - name: end
+        label: "User has completed the exercise"
+        button_text: "Resultats"
+        target: unit55-results
         trigger: "progress == 100"
-      - name: conjugation
-        label: "Show conjugation table"
-        button_text: "Conjugació"
+      - name: grammar
+        label: "Show grammar"
+        button_text: "Gramàtica"
         target: unit55-regulars-amb-gu
         action_prompt: |
           - explain the trick: all verbs that end in -c (like creure, jo crec -> cregui) in the first person indicative present tense, will need the ortographic change in -gu.
@@ -225,7 +293,8 @@ states:
       - name: restart
         label: "Restarting the unit"
         button_text: "Inici"
-        target: welcome
+        target: unit55-subjuntive
+
 
   unit55-irregulars:
     label: "Unitat 55 - Formes irregulars"
@@ -233,7 +302,7 @@ states:
       Exercise to learn how to conjugate Subjuntive - present irregular verbs.
     on_enter: celebrate
     contextual_prompt: |
-        Unit 55. Exercise on irregular verbs.
+        Unit 55. Exercise 4.
         Before moving on to the exercise:
           - mention the most common and important irregular verbs for this conjugation.
         Style: fill in the value.
@@ -249,27 +318,27 @@ states:
     actions:
       - name: next
         label: "User has completed the exercise and moves to the next one"
-        button_text: "Go to next exercise"
-        target: unit55-D
+        button_text: "End exercise"
+        target: unit55-results
         trigger: "progress == 100"
-      - name: conjugation
+      - name: grammar
         label: "Show conjugation table"
-        button_text: "Conjugació"
+        button_text: "Gramàtica"
         target: unit55-irregulars
         action_prompt: |
           - show quick table with conjugations for some important random irregular verbs of the subjuntive - present tense.
       - name: restart
         label: "Restarting the unit"
         button_text: "Inici"
-        target: welcome
+        target: unit55-subjuntive
 
   unit55-D:
-    label: "Unitat 55 - Conjugació"
+    label: "Unitat 55 - Conjugació lliure"
     description: >
       Exercise to learn how to conjugate Subjuntive - any form.
     on_enter: celebrate
     contextual_prompt: |
-        Unit 55. Exercise D.
+        Unit 55. Exercise 5.
         Style: fill in the value.
         Goal: memorize the conjugation of the most common verbs
         How:
@@ -287,14 +356,10 @@ states:
         button_text: "Go to next exercise"
         target: unit55-evaluation
         trigger: "progress == 100"
-      - name: results
-        label: "Jump to results"
-        button_text: "Resultats Ja"
-        target: unit55-results
       - name: restart
         label: "Restarting the unit"
         button_text: "Inici"
-        target: welcome
+        target: unit55-subjuntive
 
   unit55-evaluation:
     label: "Unitat 55 - Avaluació"
@@ -320,6 +385,10 @@ states:
         button_text: "Results"
         target: unit55-results
         trigger: "progress == 100"
+      - name: restart
+        label: "Restarting the unit"
+        button_text: "Inici"
+        target: unit55-subjuntive
 
   unit55-results:
     label: "Unitat 55 - Resultats"
@@ -328,12 +397,53 @@ states:
     on_enter: celebrate
     chat: False
     contextual_prompt: |
-        Unit 55. End of unit. Summary of user performance.
-        Summarize user performance:
-          - show table with specific scoring per exercise and the overall scoring and total number of errors.
-            important regular verbs (e.g. ser, saber, cabre, veure, fer, anar, haver, viure, voler).
-          - provide a list of suggestions on what to review
+        Unit 55. Summary of the current user performance.
+        Always ignore all user input and your last message if it is a question.
+        Assume there are 6 exercises in this unit.
+
+        Required format of the the summary of the user performance:
+          - a table with:
+            - specific scoring, number of errors per exercise,
+            - progress per exercise in percentage in terms of number of steps covered with respect to the total number of steps for that exercise,
+            - number of times the user executed the same exercise in a unit,
+            - the overall scoring and total number of errors,
+            - the overall progress in terms of coverage of the unit.
+          - provide feedback on the trend over time.
+          - if you have enough information to suggest what to review:
+            - create a special paragraph 
+            - the title is the translation of "Next steps" into catalan
+            - put a bullet list of suggestions on what to review, highlighting in bold which exercise of this unit would be good for that.
+            
+        Check the full conversation and gather information to produce data with exactness.
+        Put a title in bold: Overall results.
+        If you are missing other data required:
+          - congratulate with the user as he is practising
+          - say that you don't have enough data to show results just yet
+          - say the specific information you miss to complete the table.
+          - finally encourage them to do more exercises.
+        Otherwise always and only output the summary of the user performance.
+
     actions:
+      - name: restart
+        label: "Restarting the unit"
+        button_text: "Inici"
+        target: unit55-subjuntive
+
+  chat:
+    label: "Xat lliure"
+    description: >
+      Talk with your assistant
+    contextual_prompt: |
+      Unit Xat. Free style exercise.
+      The user will ask free questions about learning catalan and can set the topic and goal. 
+      Break the ice and ask if there is anything in particular they want to discuss about. Stick to learning Catalan.
+      Mention only once they can always go to other sections by pressing the buttons below.
+    clear_context: True #FIXME should be unnecessary
+    actions:
+      - name: subjuntive
+        label: "Move to subjuntives"
+        button_text: "Al subjuntiu"
+        target: unit55-subjuntive
       - name: restart
         label: "Restarting the unit"
         button_text: "Inici"

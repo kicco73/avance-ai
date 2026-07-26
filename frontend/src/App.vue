@@ -203,6 +203,10 @@ async function toggleAutoTracking() {
 
 function toggleAudio() {
   audioEnabled.value = !audioEnabled.value
+  if (audioEnabled.value) {
+    const lastAssistant = [...messages.value].reverse().find((m) => m.role === 'assistant' && m.messageId != null)
+    if (lastAssistant) playMessageAudio(messageAudioUrl(lastAssistant.messageId))
+  }
 }
 
 // Fires the automatic narration for the last message a turn produced —
