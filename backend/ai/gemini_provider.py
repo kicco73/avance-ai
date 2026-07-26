@@ -27,7 +27,7 @@ _ROLE_MAP = {"user": "user", "assistant": "model"}
 # via LLM_NAME (e.g. a fast/cheap model for ordinary replies) generally
 # isn't itself audio-capable. Fixed here rather than configurable: this
 # prototype only ever needs one voice, for one purpose.
-TTS_MODEL = "gemini-2.5-flash-preview-tts"
+TTS_MODEL = "gemini-2.5-flash-lite-preview-tts" #"gemini-2.5-flash-preview-tts"
 TTS_VOICE = "kore"
 
 
