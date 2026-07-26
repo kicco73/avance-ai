@@ -4,6 +4,7 @@ failures share — registered once, in main.py, via register_error_handlers().
 from __future__ import annotations
 
 import logging
+from http import HTTPStatus
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -32,7 +33,9 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
 
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     logger.exception("Unhandled error on %s %s", request.method, request.url.path)
-    return JSONResponse(status_code=500, content=_error_body("Internal server error.", str(exc)))
+    return JSONResponse(
+        status_code=HTTPStatus.INTERNAL_SERVER_ERROR, content=_error_body("Internal server error.", str(exc))
+    )
 
 
 async def ai_service_error_handler(request: Request, exc: AIServiceError) -> JSONResponse:

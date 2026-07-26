@@ -31,7 +31,7 @@ class AppConfig:
     VALID_TRANSPORTS = ("websocket", "rest")
     CONFIG_PATHS = [
         Path(__file__).resolve().parent / ".config.yml",
-        Path('/etc/secrets').resolve() / "avance.yml",
+        Path('/etc/secrets') / "avance.yml",
     ]
 
     @classmethod

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from http import HTTPStatus
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
@@ -75,7 +76,7 @@ class AvanceController(object):
     async def post_message(self, req: ChatMessageRequest):
         text = req.message.strip()
         if not text:
-            raise HTTPException(status_code=400, detail="Message cannot be empty.")
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Message cannot be empty.")
         return await self.chat_service.process_turn(text)
 
     @post("/api/action")
@@ -83,7 +84,7 @@ class AvanceController(object):
         try:
             return await self.chat_service.apply_manual_action(req.action_name)
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
     @get("/api/chat/autotracking")
     def get_autotracking(self):
@@ -120,7 +121,7 @@ class AvanceController(object):
 
         audio = self.chat_service.get_message_audio(message_id)
         if audio is None:
-            raise HTTPException(status_code=404, detail="No audio available for this message.")
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="No audio available for this message.")
         return Response(content=audio, media_type="audio/wav")
 
     @post("/api/triggers/preview")
@@ -144,7 +145,7 @@ class AvanceController(object):
         try:
             await self.model_service.activate_model_idempotent(model_name, self._activate_model)
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {
             "success": True,
             "model_name": model_name,
@@ -158,7 +159,7 @@ class AvanceController(object):
         try:
             content = self.model_service.export_model_zip(model_name)
         except FileNotFoundError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         return Response(
             content=content,
             media_type="application/zip",
@@ -176,7 +177,7 @@ class AvanceController(object):
         try:
             result = await self.model_service.put_model(model_name, content, content_type, self._activate_model)
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
     @delete("/api/models/{model_name}")
     async def delete_model(self, model_name: str):
@@ -184,11 +185,11 @@ class AvanceController(object):
         try:
             await self.model_service.delete_model(model_name, self._activate_model)
         except FileNotFoundError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except PermissionError as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
+            raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail=str(exc)) from exc
         except OSError as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
+            raise HTTPException(status_code=HTTPStatus.INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
         return {"success": True}
 
     async def _activate_model(self, new_automaton: Automaton) -> None:

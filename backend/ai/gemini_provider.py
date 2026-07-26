@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from http import HTTPStatus
 
 from google import genai
 from google.genai import errors as genai_errors
@@ -23,13 +24,9 @@ _ROLE_MAP = {"user": "user", "assistant": "model"}
 
 
 def _content_to_text(content) -> str:
-    """No prompt caching or `document` content blocks for Gemini in this
-    version — main.py's provider-neutral 'attachment' blocks (see
-    _build_priming_messages) are flattened into plain text instead, a
-    reasonable fallback while every attachment is text. A PDF attachment
-    (source type "base64") can't be represented as text and is skipped here:
-    supporting it would mean building Gemini's `inline_data` parts with the
-    raw base64 bytes, which is out of scope for now."""
+    """Flattens provider-neutral attachment blocks to plain text (no
+    `document` blocks for Gemini yet). Binary (base64) attachments are
+    skipped, not supported here."""
     if isinstance(content, str):
         return content
     parts = []
@@ -69,7 +66,7 @@ class GeminiProvider(LLMProvider):
                 ),
             )
         except genai_errors.ClientError as exc:
-            if exc.code == 429:
+            if exc.code == HTTPStatus.TOO_MANY_REQUESTS:
                 raise AIServiceProviderRateLimitedError(
                     f"The Gemini API rate limit was exceeded (status 429): {exc.message}"
                 ) from exc
@@ -77,7 +74,7 @@ class GeminiProvider(LLMProvider):
                 f"Error from the Gemini API (status {exc.code}): {exc.message}"
             ) from exc
         except genai_errors.ServerError as exc:
-            if exc.code == 503:
+            if exc.code == HTTPStatus.SERVICE_UNAVAILABLE:
                 raise AIServiceProviderUnavailableError(
                     "The Gemini API is temporarily overloaded (status 503)."
                 ) from exc

@@ -1,6 +1,8 @@
 """LLM provider backed by the Anthropic API (Claude)."""
 from __future__ import annotations
 
+from http import HTTPStatus
+
 import anthropic
 
 from ai.llm_provider import (
@@ -18,13 +20,9 @@ CACHE_CONTROL = {"type": "ephemeral"}  # default 5-minute TTL is fine for this p
 
 
 def _build_messages(history: list[dict]) -> list[dict]:
-    """Translates main.py's provider-neutral history into Anthropic's shape:
-    a plain-string `content` passes through untouched; a list `content`
-    (main.py's _build_priming_messages — attachment blocks) becomes real
-    `document` content blocks, with a cache breakpoint on the last one. At
-    most one such message exists per call (always first), so the breakpoint
-    is naturally scoped to "this call's attachments" — stable turn to turn
-    only as long as the current state's (or signal's) attachment set is."""
+    """Translates provider-neutral history into Anthropic's shape: a list
+    `content` (attachment blocks) becomes `document` blocks with a cache
+    breakpoint on the last one; a plain string passes through untouched."""
     messages = []
     for message in history:
         content = message["content"]
@@ -57,11 +55,11 @@ class AnthropicProvider(LLMProvider):
         except anthropic.APITimeoutError as exc:
             raise AIServiceError("Timeout while calling the model. Please retry.") from exc
         except anthropic.APIStatusError as exc:
-            if exc.status_code == 503:
+            if exc.status_code == HTTPStatus.SERVICE_UNAVAILABLE:
                 raise AIServiceProviderUnavailableError(
                     "The Anthropic API is temporarily overloaded (status 503)."
                 ) from exc
-            if exc.status_code in [400, 429]:
+            if exc.status_code in (HTTPStatus.BAD_REQUEST, HTTPStatus.TOO_MANY_REQUESTS):
                 raise AIServiceProviderRateLimitedError(
                     "The Anthropic API rate limit was exceeded (status 429)."
                 ) from exc

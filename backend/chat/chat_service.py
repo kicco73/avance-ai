@@ -8,6 +8,7 @@ import asyncio
 import logging
 import re
 from datetime import datetime, timezone
+from http import HTTPStatus
 
 from automaton.automaton import Action, Automaton, State, trigger_signal_names
 from audio_format import DEFAULT_PCM_SAMPLE_RATE, pcm_to_wav, streaming_wav_header
@@ -54,7 +55,9 @@ def _extract_audio_tag(text: str) -> tuple[str, str | None]:
 
 class ChatServiceError(Exception):
 
-    def __init__(self, message: str, detail: str | None = None, *, status_code: int = 500) -> None:
+    def __init__(
+        self, message: str, detail: str | None = None, *, status_code: int = HTTPStatus.INTERNAL_SERVER_ERROR
+    ) -> None:
         super().__init__(message)
         self.message = message
         self.detail = detail
@@ -329,7 +332,7 @@ class ChatService(object):
         (rather than an auto-tracking transition) would never get to
         speak at all, since no future turn re-lands on it either."""
         if self.lock.locked():
-            raise ChatServiceError("A chat reply is already being generated.", status_code=409)
+            raise ChatServiceError("A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT)
         async with self.lock:
             state_payload = self._model_service.apply_manual_action(action_name)
             model_name = self._active_model_name
@@ -345,7 +348,7 @@ class ChatService(object):
 
     async def process_turn(self, text: str, on_retry: OnRetry | None = None) -> dict:
         if self.lock.locked():
-            raise ChatServiceError("A chat reply is already being generated.", status_code=409)
+            raise ChatServiceError("A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT)
         async with self.lock:
             return await self._process_turn_locked(text, on_retry)
 
@@ -353,10 +356,10 @@ class ChatService(object):
         automaton, state = self._model_service.get_active_automaton_and_state()
 
         if state.final:
-            raise ChatServiceError("The conversation has ended in this state.", status_code=409)
+            raise ChatServiceError("The conversation has ended in this state.", status_code=HTTPStatus.CONFLICT)
         if not state.chat:
             raise ChatServiceError(
-                "This state doesn't accept messages; use an action instead.", status_code=409
+                "This state doesn't accept messages; use an action instead.", status_code=HTTPStatus.CONFLICT
             )
 
         pending_message = {"role": "user", "content": text, "timestamp": self._now_iso()}

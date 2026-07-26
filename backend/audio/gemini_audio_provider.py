@@ -1,6 +1,7 @@
 """Audio provider backed by Google Gemini's text-to-speech API."""
 from __future__ import annotations
 
+from http import HTTPStatus
 from typing import Iterator
 
 from google import genai
@@ -9,7 +10,7 @@ from google.genai import types
 
 from audio_format import pcm_sample_rate
 from audio.audio_provider import (
-    AudioProvider,
+    BufferedAudioProvider,
     AudioProviderError,
     AudioProviderRateLimitedError,
     AudioProviderUnavailableError,
@@ -29,7 +30,7 @@ def _audio_config() -> types.GenerateContentConfig:
     )
 
 
-class GeminiAudioProvider(AudioProvider):
+class GeminiAudioProvider(BufferedAudioProvider):
     def __init__(self, api_key: str, model: str) -> None:
         self._client = genai.Client(api_key=api_key)
         self._model = model
@@ -53,7 +54,7 @@ class GeminiAudioProvider(AudioProvider):
                     continue
                 yield inline_data.data, pcm_sample_rate(inline_data.mime_type or "")
         except genai_errors.ClientError as exc:
-            if exc.code == 429:
+            if exc.code == HTTPStatus.TOO_MANY_REQUESTS:
                 raise AudioProviderRateLimitedError(
                     f"The Gemini TTS API rate limit was exceeded (status 429): {exc.message}"
                 ) from exc
@@ -61,7 +62,7 @@ class GeminiAudioProvider(AudioProvider):
                 f"Error from the Gemini TTS API (status {exc.code}): {exc.message}"
             ) from exc
         except genai_errors.ServerError as exc:
-            if exc.code == 503:
+            if exc.code == HTTPStatus.SERVICE_UNAVAILABLE:
                 raise AudioProviderUnavailableError(
                     "The Gemini TTS API is temporarily overloaded (status 503)."
                 ) from exc

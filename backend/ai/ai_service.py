@@ -1,10 +1,6 @@
-"""The AI layer as a single service, same style as ModelService/ChatService:
-constructed once in main.py from AppConfig.ai_services and passed
-explicitly to whatever needs it. Exposes the old LLMProvider interface
-(generate()) over every configured provider at once, cascading between
-them via cascade.ProviderCascade (see AiService.generate()) — every
-caller (ChatService, Signals) talks to this one object and never sees
-LLMProvider, individual provider classes, or the cascade itself.
+"""The AI layer as a single service, same style as ModelService/ChatService.
+Cascades text generation across every configured provider (see cascade.py)
+— callers never see LLMProvider or individual provider classes.
 """
 from __future__ import annotations
 
@@ -47,10 +43,8 @@ class AiService(object):
         history: list[dict],
         on_retry: OnRetry | None = None,
     ) -> str:
-        """Generates the assistant's reply given the conversation history,
-        cascading across providers (see cascade.ProviderCascade). `history`
-        is a list of {"role": "user"|"assistant", "content": str}. Raises
-        AIServiceError if every provider in one full pass has failed."""
+        """Reply text for `history` (list of {role, content}), cascading
+        across providers. Raises AIServiceError if all of them fail."""
         return await self._cascade.call_with_retry(
             lambda provider: provider.generate(system_prompt, history),
             unavailable=AIServiceProviderUnavailableError,
