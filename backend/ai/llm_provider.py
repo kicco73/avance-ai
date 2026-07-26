@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Iterator
 
 
 class AIServiceError(Exception):
@@ -41,25 +40,3 @@ class LLMProvider(ABC):
         (missing key, timeout, API error), without propagating unhandled exceptions.
         """
         raise NotImplementedError
-
-    def generate_audio_stream(self, text: str) -> Iterator[tuple[bytes, int]] | None:
-        """Generates spoken audio for `text` if this provider supports
-        native audio output, yielding (raw_pcm_chunk, sample_rate) tuples
-        as they're produced — or returning None outright if this provider
-        doesn't support audio at all. Never raises: audio is a
-        supplementary feature (see ChatService), not worth failing a chat
-        turn over — a failure partway through just ends the iteration
-        early, same tolerance as returning None up front. Base
-        implementation: no provider supports this unless it overrides the
-        method (e.g. GeminiProvider) — Anthropic and any future
-        non-audio-capable provider get this no-op for free.
-
-        Note this is a plain function, not a generator (no `yield`
-        anywhere in this base body) — calling it therefore really does
-        return None immediately, rather than a generator object that
-        would raise StopIteration on first use. A subclass overriding it
-        with an actual generator (`yield`ing chunks) is never confused
-        with "unsupported": the two are distinguished by identity (is the
-        return value None, or an iterator), not by both trying to look
-        like empty iterators."""
-        return None

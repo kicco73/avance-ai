@@ -14,6 +14,7 @@ from audio_format import DEFAULT_PCM_SAMPLE_RATE, pcm_to_wav, streaming_wav_head
 from audio_store import AudioStore, LiveAudioGeneration
 from db import Db
 from ai.ai_service import AiService, OnRetry
+from audio.audio_service import AudioService
 from chat.signals import Signals
 from model_service import ModelService
 
@@ -63,11 +64,13 @@ class ChatService(object):
     def __init__(
         self,
         ai_service: AiService,
+        audio_service: AudioService,
         model_service: ModelService,
         db: Db,
         audio_store: AudioStore,
     ) -> None:
         self._ai_service = ai_service
+        self._audio_service = audio_service
         self._model_service = model_service
         self._db = db
         self._audio_store = audio_store
@@ -266,43 +269,36 @@ class ChatService(object):
     async def _run_audio_generation(
         self, model_name: str, message: dict, audio_text: str, live: LiveAudioGeneration
     ) -> None:
-        """The actual generation work — streamed from the provider chunk
-        by chunk (off the event loop; see asyncio.to_thread below, since
-        the provider call is a blocking network call). Every chunk is
-        both pushed to `live` (so a GET already streaming this message id
-        gets it immediately — see AudioStore.LiveAudioGeneration) and
+        """The actual generation work: AudioService.generate_audio()
+        already does its own off-event-loop work (and its own
+        provider-cascade retries) internally, so by the time it returns
+        here we're back on the event loop with the complete set of
+        chunks — no thread-hop needed on this side. Every chunk is both
+        pushed to `live` (so a GET already streaming this message id gets
+        it immediately — see AudioStore.LiveAudioGeneration) and
         accumulated for the final on-disk WAV file, written once
         generation completes exactly as before (same 10-file-per-model
         window, unaffected by any of this). Silently does nothing beyond
-        that if the provider doesn't support audio at all
-        (generate_audio_stream returns None then) or the attempt fails
-        partway through — audio is never worth failing the turn over,
+        that if every configured audio provider failed (generate_audio
+        returns None then) — audio is never worth failing the turn over,
         and this runs well after the turn has already returned."""
         pcm_chunks: list[bytes] = []
         sample_rate = DEFAULT_PCM_SAMPLE_RATE
-        header_sent = False
-        loop = asyncio.get_running_loop()
-
-        def _produce() -> None:
-            nonlocal sample_rate, header_sent
-            stream = self._ai_service.generate_audio_stream(audio_text)
-            if stream is None:
-                return
-            for pcm_chunk, chunk_sample_rate in stream:
-                sample_rate = chunk_sample_rate
-                pcm_chunks.append(pcm_chunk)
-                if not header_sent:
-                    header_sent = True
-                    loop.call_soon_threadsafe(live.push, streaming_wav_header(sample_rate))
-                loop.call_soon_threadsafe(live.push, pcm_chunk)
 
         try:
-            await asyncio.to_thread(_produce)
+            stream = await self._audio_service.generate_audio(audio_text)
+            if stream is not None:
+                header_sent = False
+                for pcm_chunk, chunk_sample_rate in stream:
+                    sample_rate = chunk_sample_rate
+                    pcm_chunks.append(pcm_chunk)
+                    if not header_sent:
+                        header_sent = True
+                        live.push(streaming_wav_header(sample_rate))
+                    live.push(pcm_chunk)
         except Exception:
             logger.exception("Audio generation raised for message %s.", message["id"])
         finally:
-            # Already on the event loop here (the thread only ran
-            # _produce) — no call_soon_threadsafe needed for these.
             live.finish()
             if pcm_chunks:
                 self._audio_store.save(model_name, message["id"], pcm_to_wav(b"".join(pcm_chunks), sample_rate))

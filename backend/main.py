@@ -19,6 +19,7 @@ from error_handlers import register_error_handlers
 from model_service import ModelService
 from model_watcher import ModelWatcher
 from ai.ai_service import AiService
+from audio.audio_service import AudioService
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -26,10 +27,11 @@ logger = logging.getLogger(__name__)
 config = AppConfig()
 
 ai_service = AiService(config.ai_services)
+audio_service = AudioService(config.audio_services)
 db = Db(config.database_url)
 model_service = ModelService(db)
 audio_store = AudioStore()
-chat_service = ChatService(ai_service, model_service, db, audio_store)
+chat_service = ChatService(ai_service, audio_service, model_service, db, audio_store)
 
 chat_ws_adapter = WsAdapter(chat_service) if config.chat_transport == "websocket" else None
 

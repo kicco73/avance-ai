@@ -13,12 +13,22 @@ chat-service:
   transport: websocket
 
 ai-service:
-  # Always a list, even with a single entry. Only the first entry is
-  # instantiated as the active provider today; further entries are still
-  # parsed and validated but not yet used (reserved for a future
-  # provider-fallback cascade).
+  # Always a list, even with a single entry. Cascades in order (see
+  # ai/ai_service.py's AiService): the first provider is tried first,
+  # later ones are only used as a fallback if an earlier one becomes
+  # unavailable (rate limit/quota, or an outage that outlasts retries).
   - name: gemini
     model: gemini-flash-lite-latest
+    key: <your-gemini-api-key>
+
+audio-service:
+  # Same shape/cascade as ai-service, but a fully independent provider
+  # roster and fallback pointer (see audio/audio_service.py's
+  # AudioService) — even when it happens to reuse the same key as
+  # ai-service, as here. `key` is optional: a future local provider
+  # (e.g. Piper) won't need one.
+  - name: gemini
+    model: gemini-2.5-flash-preview-tts
     key: <your-gemini-api-key>
 
 model-service:
