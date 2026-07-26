@@ -12,6 +12,9 @@ import {
   postAction,
   getAutoTracking,
   postAutoTracking,
+  getAudioEnabled,
+  postAudioEnabled,
+  messageAudioUrl,
   postReset,
   putModel,
   activateModel,
@@ -19,7 +22,7 @@ import {
   downloadModel
 } from './api.js'
 import { disconnect as disconnectChat, onModelUpdated, sendMessage } from './chatClient.js'
-import { playMessageChime } from './audio.js'
+import { playMessageChime, playMessageAudio } from './audio.js'
 import { celebrate } from './confetti.js'
 import { clearApiError, errorDetail, errorMessage, setApiError } from './errorStore.js'
 import MarkdownIt from 'markdown-it'
@@ -37,6 +40,8 @@ function renderMarkdown(text) {
 const showSignals = ref(false)
 const autoTrackingEnabled = ref(true)
 const autoTrackingLoading = ref(false)
+const audioEnabled = ref(false)
+const audioLoading = ref(false)
 const state = ref(null)
 const messages = ref([])
 const historyLoaded = ref(false)
@@ -102,6 +107,7 @@ function bootSucceeded() {
   clearApiError()
   loadMessages()
   loadAutoTracking()
+  loadAudioEnabled()
   // No proactive chat-socket connect here: chatClient.js connects lazily
   // on the first sendMessage() call, and the opening message (if any) is
   // already covered by loadMessages() above — it's persisted server-side
@@ -157,7 +163,7 @@ function handleStateChange(newState) {
 async function loadMessages() {
   try {
     const history = await getMessages()
-    messages.value = history.map((m) => ({ role: m.role, content: m.content, failed: false }))
+    messages.value = history.map((m) => ({ role: m.role, content: m.content, failed: false, messageId: m.id }))
   } catch {
     // already surfaced via apiFetch
   } finally {
@@ -196,6 +202,36 @@ async function toggleAutoTracking() {
   }
 }
 
+async function loadAudioEnabled() {
+  try {
+    const res = await getAudioEnabled()
+    audioEnabled.value = res.enabled
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+async function toggleAudio() {
+  audioLoading.value = true
+  try {
+    const res = await postAudioEnabled(!audioEnabled.value)
+    audioEnabled.value = res.enabled
+  } catch {
+    // already surfaced via apiFetch
+  } finally {
+    audioLoading.value = false
+  }
+}
+
+// Fires the automatic narration for the last message a turn produced —
+// same call regardless of which transport delivered it (see submitMessage
+// / handleAction, the only two places a live message ever arrives) and a
+// no-op if the toggle is off or the message has no id to look up.
+function maybeAutoPlayAudio(messageId) {
+  if (!audioEnabled.value || messageId == null) return
+  playMessageAudio(messageAudioUrl(messageId))
+}
+
 // Looks the message back up by id through the reactive `messages` array
 // (rather than mutating whatever reference the caller passed in) so the
 // assignment goes through Vue's reactive proxy and updates the UI
@@ -215,17 +251,22 @@ async function submitMessage(message) {
     const result = await sendMessage(message.content, {
       onStatus: (text) => { chatStatus.value = text }
     })
-    // result.reply is an array: normally one bubble, but a mid-turn
-    // auto-tracking transition into a fresh state can prepend/append that
-    // state's own opening message alongside the turn's own reply — one
-    // bubble per element, in the order the backend produced them.
-    for (const content of result.reply) {
-      messages.value.push({ role: 'assistant', content })
+    // result.reply is an array of {id, content}: normally one bubble, but
+    // a mid-turn auto-tracking transition into a fresh state can
+    // prepend/append that state's own opening message alongside the
+    // turn's own reply — one bubble per element, in the order the
+    // backend produced them.
+    for (const { id, content } of result.reply) {
+      messages.value.push({ role: 'assistant', content, messageId: id })
     }
     // Only for a freshly arrived AI reply — never for the user's own sent
     // message, and never for history loaded at boot/reset (this only ever
     // runs from a live chat turn just completing).
     playMessageChime()
+    // Narrates only the LAST bubble of the turn — see backend
+    // ChatService._maybe_generate_audio, which only ever generates audio
+    // for that one.
+    if (result.reply.length) maybeAutoPlayAudio(result.reply[result.reply.length - 1].id)
     handleStateChange(result.state)
   } catch {
     // Already surfaced via the websocket handler or apiFetch (see
@@ -255,13 +296,17 @@ async function handleAction(actionName) {
   actionLoading.value = true
   try {
     // {state, reply}: reply is the destination state's own opening
-    // message, same array shape as a normal turn's (see submitMessage) —
-    // empty if it already had something to say since its own cutoff.
+    // message, same {id, content} array shape as a normal turn's (see
+    // submitMessage) — empty if it already had something to say since
+    // its own cutoff.
     const result = await postAction(actionName)
-    for (const content of result.reply) {
-      messages.value.push({ role: 'assistant', content })
+    for (const { id, content } of result.reply) {
+      messages.value.push({ role: 'assistant', content, messageId: id })
     }
-    if (result.reply.length) playMessageChime()
+    if (result.reply.length) {
+      playMessageChime()
+      maybeAutoPlayAudio(result.reply[result.reply.length - 1].id)
+    }
     handleStateChange(result.state)
   } catch {
     // already surfaced via apiFetch
@@ -438,8 +483,11 @@ onBeforeUnmount(() => {
       :final-state-reached="state?.final ?? false"
       :state-chat="state?.chat ?? true"
       :history-loaded="historyLoaded"
+      :audio-enabled="audioEnabled"
+      :audio-loading="audioLoading"
       @send="handleSend"
       @resend="handleResend"
+      @toggle-audio="toggleAudio"
     >
       <template #actions>
         <ActionButtons

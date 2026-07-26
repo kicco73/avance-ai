@@ -22,3 +22,17 @@ export function playMessageChime() {
     // AudioContext (e.g. no prior user interaction) must not break chat.
   }
 }
+
+// Fetches and plays a message's generated narration, if any. A missing
+// audio (404 — never generated, wrong provider, or already purged; see
+// backend/audio_store.py) must fail silently: no visible error, this is a
+// best-effort nicety layered on top of the text that's already shown.
+export function playMessageAudio(url) {
+  try {
+    const audio = new Audio(url)
+    audio.addEventListener('error', () => {}) // swallow a 404/decode failure quietly
+    audio.play().catch(() => {}) // autoplay can also be blocked by the browser itself
+  } catch {
+    // same tolerance as playMessageChime above
+  }
+}

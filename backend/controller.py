@@ -3,11 +3,18 @@ from __future__ import annotations
 import inspect
 
 from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
 
 from automaton.automaton import Automaton
 from chat_service import ChatService, ChatServiceError
 from model_service import ModelService
-from schemas import ActionRequest, AutoTrackingRequest, ChatMessageRequest, TriggersPreviewRequest
+from schemas import (
+    ActionRequest,
+    AudioEnabledRequest,
+    AutoTrackingRequest,
+    ChatMessageRequest,
+    TriggersPreviewRequest,
+)
 
 
 def route(method: str, path: str, **kwargs):
@@ -49,7 +56,7 @@ class AvanceController(object):
                 method, path, kwargs = info
                 self.router.add_api_route(path, member, methods=[method], **kwargs)
 
-    @get("/api/signals")
+    @get("/api/chat/signals")
     def get_signals(self):
         """Read-only: never calls the AI. Signals are only (re)computed inside
         the auto-tracking flow (see ChatService._run_auto_tracking); this just
@@ -60,11 +67,11 @@ class AvanceController(object):
     def get_state(self):
         return self.model_service.get_active_state_payload()
 
-    @get("/api/messages")
+    @get("/api/chat/messages")
     async def get_messages(self):
         return await self.chat_service.get_messages()
 
-    @post("/api/messages")
+    @post("/api/chat/messages")
     async def post_message(self, req: ChatMessageRequest):
         text = req.message.strip()
         if not text:
@@ -78,21 +85,50 @@ class AvanceController(object):
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    @get("/api/autotracking")
+    @get("/api/chat/autotracking")
     def get_autotracking(self):
         return {"enabled": self.chat_service.auto_tracking_enabled}
 
-    @post("/api/autotracking")
+    @post("/api/chat/autotracking")
     def post_autotracking(self, req: AutoTrackingRequest):
         self.chat_service.auto_tracking_enabled = req.enabled
         return {"enabled": self.chat_service.auto_tracking_enabled}
+
+    @get("/api/chat/audio")
+    def get_audio_enabled(self):
+        return {"enabled": self.chat_service.audio_enabled}
+
+    @post("/api/chat/audio")
+    def post_audio_enabled(self, req: AudioEnabledRequest):
+        self.chat_service.audio_enabled = req.enabled
+        return {"enabled": self.chat_service.audio_enabled}
+
+    @get("/api/chat/messages/{message_id}/audio")
+    def get_message_audio(self, message_id: int):
+        """If generation for message_id is still in flight right now,
+        streams it chunk by chunk as ChatService's background task
+        produces them (see AudioStore.LiveAudioGeneration) instead of
+        waiting for the complete file — lower latency for a client that
+        happens to arrive while it's still running. Otherwise, exactly as
+        before: the completed file from disk, or 404 if there isn't one
+        (never generated, wrong provider/toggle at the time, or already
+        purged). The frontend treats a 404 here as "no audio available",
+        not a failure to surface (see api.js's messageAudioUrl)."""
+        live = self.chat_service.get_live_audio_generation(message_id)
+        if live is not None:
+            return StreamingResponse(live.stream_from(0), media_type="audio/wav")
+
+        audio = self.chat_service.get_message_audio(message_id)
+        if audio is None:
+            raise HTTPException(status_code=404, detail="No audio available for this message.")
+        return Response(content=audio, media_type="audio/wav")
 
     @post("/api/triggers/preview")
     def post_triggers_preview(self, req: TriggersPreviewRequest):
         automaton, state = self.model_service.get_active_automaton_and_state()
         return automaton.preview_triggers(state.key, req.signals)
 
-    @post("/api/reset")
+    @post("/api/chat/reset")
     async def post_reset(self):
         async with self.chat_service.lock:
             self.model_service.reset_active_model()

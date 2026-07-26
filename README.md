@@ -15,9 +15,9 @@ cd backend
 python3 -m venv .venv
 source .venv/bin/activate        # on Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env
+cp .config.example.yml .config.yml
 
-# open .env: choose LLM_PROVIDER (anthropic or gemini) and enter the matching API key
+# open .config.yml: set ai-service[0].name (anthropic or gemini) and its matching model/key
 uvicorn main:app --reload
 ```
 
@@ -66,16 +66,16 @@ The backend abstracts the model call behind a common interface
 
 To switch provider:
 
-1. Change `LLM_PROVIDER` in `.env` (`anthropic` or `gemini`).
-2. Make sure the matching pair of variables is set
-   (`ANTHROPIC_API_KEY`/`CLAUDE_MODEL` or `GEMINI_API_KEY`/`GEMINI_MODEL` —
-   see `.env.example`). To use a lighter/cheaper Gemini model such as
-   `gemini-flash-lite-latest`, just set `GEMINI_MODEL` to it — it's the same
-   API, only the model name changes.
-3. Restart the backend.
+1. In `backend/.config.yml`, edit the first entry of the `ai-service` list:
+   set `name` (`anthropic` or `gemini`), `model`, and `key` to match.
+   `ai-service` is a list to support a future provider-fallback cascade, but
+   today only the first entry is used. See `.config.example.yml`. To use a
+   lighter/cheaper Gemini model such as `gemini-flash-lite-latest`, just set
+   `model` to it — it's the same API, only the model name changes.
+2. Restart the backend.
 
 No other change is needed: the provider is instantiated exactly once at server
-startup, and if `LLM_PROVIDER` is unset or not a recognized value the server
+startup, and if `ai-service[0].name` is not a recognized value the server
 fails to start, with an explicit error in the console.
 
 The `crisis` state stays non-generative regardless of the selected provider
@@ -83,7 +83,7 @@ The `crisis` state stays non-generative regardless of the selected provider
 model is still called, but only to translate a fixed message, never to
 generate free-form content.
 
-For Gemini's free tier, get a free `GEMINI_API_KEY` from
+For Gemini's free tier, get a free API key from
 [Google AI Studio](https://aistudio.google.com/apikey) — no credit card
 required.
 
@@ -200,7 +200,7 @@ avance-prototype/
 │   │       ├── index.yml              # automaton definition + general_prompt + contextual/fixed prompts
 │   │       └── *.txt                  # attachments referenced from index.yml
 │   ├── requirements.txt
-│   └── .env.example
+│   └── .config.example.yml
 ├── frontend/
 │   ├── src/
 │   │   ├── App.vue
@@ -262,4 +262,4 @@ whether the state was entered manually or via auto-tracking. Currently only
 DOCKER COMMANDS
 
 docker build -t avance . ;
-docker run --name avance-ai --env-file backend/.env -p 8080:80 avance
+docker run --name avance-ai -v $(pwd)/backend/.config.yml:/app/backend/.config.yml -p 8080:80 avance

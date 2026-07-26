@@ -48,7 +48,7 @@ export function getState(signal) {
 }
 
 export function getMessages() {
-  return apiFetch(`${API_URL}/messages`)
+  return apiFetch(`${API_URL}/chat/messages`)
 }
 
 // Chat normally runs over a websocket: the backend pushes status updates
@@ -63,7 +63,7 @@ export function createChatSocket() {
 // intermediate "retrying" notifications: the backend still retries
 // server-side, just silently from this transport's point of view.
 export function postChatMessage(text) {
-  return apiFetch(`${API_URL}/messages`, {
+  return apiFetch(`${API_URL}/chat/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message: text })
@@ -71,7 +71,7 @@ export function postChatMessage(text) {
 }
 
 export function getSignals() {
-  return apiFetch(`${API_URL}/signals`)
+  return apiFetch(`${API_URL}/chat/signals`)
 }
 
 export function postAction(actionName) {
@@ -83,15 +83,35 @@ export function postAction(actionName) {
 }
 
 export function getAutoTracking() {
-  return apiFetch(`${API_URL}/autotracking`)
+  return apiFetch(`${API_URL}/chat/autotracking`)
 }
 
 export function postAutoTracking(enabled) {
-  return apiFetch(`${API_URL}/autotracking`, {
+  return apiFetch(`${API_URL}/chat/autotracking`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled })
   })
+}
+
+export function getAudioEnabled() {
+  return apiFetch(`${API_URL}/chat/audio`)
+}
+
+export function postAudioEnabled(enabled) {
+  return apiFetch(`${API_URL}/chat/audio`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled })
+  })
+}
+
+// Not fetched through apiFetch: a missing audio (404, e.g. purged or never
+// generated) must be silent, not routed through the shared error store —
+// see audio.js's playMessageAudio, which just points a plain <audio>-style
+// element at this URL and lets a 404 fail quietly on its own.
+export function messageAudioUrl(messageId) {
+  return `${API_URL}/chat/messages/${messageId}/audio`
 }
 
 export function postTriggersPreview(signals) {
@@ -103,7 +123,7 @@ export function postTriggersPreview(signals) {
 }
 
 export function postReset() {
-  return apiFetch(`${API_URL}/reset`, { method: 'POST' })
+  return apiFetch(`${API_URL}/chat/reset`, { method: 'POST' })
 }
 
 export function getModels() {

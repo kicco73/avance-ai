@@ -3,14 +3,14 @@ model's YAML. get_active_automaton and db are constructor-injected.
 Instantiated as ChatService's `signals`."""
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from datetime import datetime
 from typing import Callable
 
 from automaton.automaton import Automaton
-from ai.llm_provider import LLMProvider, LLMProviderError
+from ai.ai_service import AiService
+from ai.llm_provider import AIServiceError
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +106,7 @@ class Signals(object):
 
     async def compute(
         self,
-        llm_provider: LLMProvider,
+        ai_service: AiService,
         build_priming_messages: BuildPrimingMessages,
         pending_message: dict | None = None,
         since: datetime | None = None,
@@ -127,9 +127,9 @@ class Signals(object):
         call_history = priming_messages + self._signal_history_window(pending_message, since)
 
         try:
-            raw_reply = await asyncio.to_thread(llm_provider.generate, system_prompt, call_history)
+            raw_reply = await ai_service.generate(system_prompt, call_history)
             parsed = self._parse_signals_reply(raw_reply)
-        except (LLMProviderError, json.JSONDecodeError, ValueError) as exc:
+        except (AIServiceError, json.JSONDecodeError, ValueError) as exc:
             logger.error("Failed to compute signals: %s", exc)
             return self._signals_payload(error=True)
 

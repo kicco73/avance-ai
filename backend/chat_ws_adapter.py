@@ -9,7 +9,7 @@ import logging
 
 from fastapi import WebSocket, WebSocketDisconnect
 
-from ai.llm_provider import LLMProviderError
+from ai.llm_provider import AIServiceError
 from chat_service import ChatService, ChatServiceError
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ class ChatWsAdapter(object):
 
                 try:
                     result = await self._chat_service.process_turn(text, on_retry=_push_retrying)
-                except (ChatServiceError, LLMProviderError) as exc:
+                except (ChatServiceError, AIServiceError) as exc:
                     # ChatServiceError never reaches FastAPI's global exception
                     # handlers here (those only apply to HTTP requests, not
                     # websocket scope), so LLMProviderError needs the same

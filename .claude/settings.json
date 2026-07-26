@@ -42,7 +42,10 @@
     "deny": [
       "Read(**/.env)",
       "Write(**/.env)",
-      "Edit(**/.env)"
+      "Edit(**/.env)",
+      "Read(**/.config.yml)",
+      "Write(**/.config.yml)",
+      "Edit(**/.config.yml)"
     ],
     "additionalDirectories": [
       "/Users/enricocarniani/Documents/avance-prototype/backend",

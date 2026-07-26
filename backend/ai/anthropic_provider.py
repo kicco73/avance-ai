@@ -5,9 +5,9 @@ import anthropic
 
 from ai.llm_provider import (
     LLMProvider,
-    LLMProviderError,
-    LLMProviderRateLimitedError,
-    LLMProviderUnavailableError,
+    AIServiceError,
+    AIServiceProviderRateLimitedError,
+    AIServiceProviderUnavailableError,
 )
 
 CLAUDE_DEFAULT_MODEL = "claude-sonnet-5"
@@ -55,27 +55,27 @@ class AnthropicProvider(LLMProvider):
                 messages=_build_messages(history),
             )
         except anthropic.APITimeoutError as exc:
-            raise LLMProviderError("Timeout while calling the model. Please retry.") from exc
+            raise AIServiceError("Timeout while calling the model. Please retry.") from exc
         except anthropic.APIStatusError as exc:
             if exc.status_code == 503:
-                raise LLMProviderUnavailableError(
+                raise AIServiceProviderUnavailableError(
                     "The Anthropic API is temporarily overloaded (status 503)."
                 ) from exc
             if exc.status_code in [400, 429]:
-                raise LLMProviderRateLimitedError(
+                raise AIServiceProviderRateLimitedError(
                     "The Anthropic API rate limit was exceeded (status 429)."
                 ) from exc
-            raise LLMProviderError(
+            raise AIServiceError(
                 f"Error from the Anthropic API (status {exc.status_code}). Please retry later."
             ) from exc
         except anthropic.APIConnectionError as exc:
-            raise LLMProviderError(
+            raise AIServiceError(
                 "Unable to reach the Anthropic API. Check your network connection."
             ) from exc
         except anthropic.APIError as exc:
-            raise LLMProviderError(f"Unexpected error from the Anthropic API: {exc}") from exc
+            raise AIServiceError(f"Unexpected error from the Anthropic API: {exc}") from exc
         except Exception as exc:
-            raise LLMProviderError(f"Unhandled exception from the Anthropic API: {exc}") from exc
+            raise AIServiceError(f"Unhandled exception from the Anthropic API: {exc}") from exc
 
         text_parts = [block.text for block in response.content if block.type == "text"]
         return "".join(text_parts)

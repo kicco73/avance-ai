@@ -8,7 +8,7 @@ import json
 import logging
 from datetime import datetime
 
-from peewee import CharField, DateTimeField, ForeignKeyField, Model, Proxy, TextField
+from peewee import BooleanField, CharField, DateTimeField, ForeignKeyField, Model, Proxy, TextField
 from playhouse.db_url import connect
 from playhouse.migrate import SqliteMigrator, migrate
 
@@ -46,10 +46,17 @@ DEFAULT_USER = "user"
 
 
 class Settings(BaseModel):
-    """One row per user (today: always exactly one, DEFAULT_USER), upserted
-    via set_active_model_name() — a current-value pointer, not a log."""
+    """One row per user (today: always exactly one, DEFAULT_USER) — a
+    current-value pointer, not a log. `model` is the active-model name
+    (see set_active_model_name); `audio_enabled` is the persisted
+    audio-on/off toggle (see set_audio_enabled) — the backend is the
+    source of truth for it, not the frontend, so it survives a restart
+    instead of resetting to a hardcoded default. Both setters update only
+    their own column (never a blind REPLACE of the whole row), so toggling
+    one never clobbers the other."""
     user = CharField(primary_key=True)
     model = CharField()
+    audio_enabled = BooleanField(default=False)
 
 
 class Transition(BaseModel):
@@ -79,6 +86,16 @@ class Db(object):
         database.connect(reuse_if_open=True)
         database.create_tables([Message, SignalSnapshot, Settings, Transition], safe=True)
         self._migrate_add_model_name()
+        self._migrate_add_audio_enabled()
+
+    def _migrate_add_audio_enabled(self) -> None:
+        """One-time, idempotent ALTER TABLE for databases created before
+        audio_enabled existed — adds the column (default False) to
+        Settings if it's missing."""
+        migrator = SqliteMigrator(database)
+        columns = {c.name for c in database.get_columns(Settings._meta.table_name)}
+        if "audio_enabled" not in columns:
+            migrate(migrator.add_column(Settings._meta.table_name, "audio_enabled", BooleanField(default=False)))
 
     def _migrate_add_model_name(self) -> None:
         """One-time, idempotent ALTER TABLE for databases created before
@@ -122,9 +139,16 @@ class Db(object):
         rows = list(query)
         rows.reverse()
         return [
-            {"role": m.role, "content": m.content, "timestamp": m.timestamp.isoformat()}
+            {"id": m.id, "role": m.role, "content": m.content, "timestamp": m.timestamp.isoformat()}
             for m in rows
         ]
+
+    def get_message_model_name(self, message_id: int) -> str | None:
+        """Which model `message_id` belongs to — None if there's no such
+        message. Used to locate its audio file (see AudioStore), which is
+        stored per model, not by a global path keyed on the id alone."""
+        message = Message.get_or_none(Message.id == message_id)
+        return message.model_name if message is not None else None
 
     def has_messages_since(self, model_name: str, since: datetime | None) -> bool:
         """Whether `model_name` has any message strictly after `since`, or
@@ -219,13 +243,35 @@ class Db(object):
         return row.model if row is not None else None
 
     def set_active_model_name(self, model_name: str, user: str = DEFAULT_USER) -> None:
-        """Upserts `user`'s active-model pointer — REPLACE, not INSERT, so
-        there's always at most one row per user rather than a history."""
-        Settings.replace(user=user, model=model_name).execute()
+        """Upserts `user`'s active-model pointer — insert on first use,
+        update-in-place afterward, always exactly one row per user rather
+        than a history. Only the `model` column is written: unlike a blind
+        REPLACE, this never touches `audio_enabled` (see
+        set_audio_enabled), an independent per-user setting living on the
+        same row."""
+        Settings.insert(user=user, model=model_name).on_conflict(
+            conflict_target=[Settings.user],
+            update={Settings.model: model_name},
+        ).execute()
+
+    def get_audio_enabled(self, user: str = DEFAULT_USER) -> bool:
+        """The audio-on/off toggle persisted for `user`, or False if
+        Settings has no row for them yet — same default ChatService.
+        audio_enabled always had in-memory, now durable across restarts
+        instead of resetting to it every time."""
+        row = Settings.get_or_none(Settings.user == user)
+        return row.audio_enabled if row is not None else False
+
+    def set_audio_enabled(self, enabled: bool, user: str = DEFAULT_USER) -> None:
+        """Persists `user`'s audio toggle. Plain UPDATE, not an upsert:
+        by the time this can be called, ModelService's own boot-time
+        get_active_model_name() has already guaranteed a Settings row
+        exists for `user` (see set_active_model_name)."""
+        Settings.update(audio_enabled=enabled).where(Settings.user == user).execute()
 
     def reset_model(self, model_name: str) -> None:
         """Empties Message/SignalSnapshot/Transition rows for `model_name`
-        only (filtered DELETE, not DROP) — used by POST /api/reset and
+        only (filtered DELETE, not DROP) — used by POST /api/chat/reset and
         DELETE /api/models/{model_name}, never touching other models'
         data. Settings is untouched, same as reset_all()."""
         Transition.delete().where(Transition.model_name == model_name).execute()

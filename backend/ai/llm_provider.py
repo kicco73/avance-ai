@@ -2,22 +2,11 @@
 """
 from __future__ import annotations
 
-import asyncio
-import logging
 from abc import ABC, abstractmethod
-from typing import Awaitable, Callable
+from typing import Iterator
 
-logger = logging.getLogger(__name__)
 
-# Retry/backoff policy for transient upstream overload (HTTP 503). Lives here
-# rather than in any one caller since generate_with_retry() below is shared
-# by every caller that needs it (interactive chat turns, the opening-message
-# generation) — a policy belonging to "how do we call a provider", not to
-# any particular feature.
-MAX_RETRIES = 5
-BASE_DELAY_SECONDS = 1.0
-
-class LLMProviderError(Exception):
+class AIServiceError(Exception):
     """Readable error to show on the frontend, without crashing the server."""
     message = f"AI service error."
     status_code = 503
@@ -25,17 +14,17 @@ class LLMProviderError(Exception):
     def __init__(self, message: str) -> None:
         self.detail = message
 
-class LLMProviderUnavailableError(LLMProviderError):
+class AIServiceProviderUnavailableError(AIServiceError):
     """The upstream model API is temporarily overloaded/unavailable (HTTP 503).
 
     Kept distinct from LLMProviderError so callers can tell a transient,
     worth-retrying failure apart from a permanent one.
     """
-    message = f"AI service unavailable after {MAX_RETRIES} retries."
+    message = "AI service unavailable after every retry."
     status_code = 503
 
 
-class LLMProviderRateLimitedError(LLMProviderError):
+class AIServiceProviderRateLimitedError(AIServiceError):
     """The upstream model API rejected the request for rate limiting (HTTP 429)."""
     message = "The AI service rate limit was exceeded."
     status_code = 429
@@ -53,45 +42,24 @@ class LLMProvider(ABC):
         """
         raise NotImplementedError
 
-# Awaited before each backoff sleep with (attempt, max_attempts, remaining_
-# seconds) — e.g. to push a live "retrying" status frame to a websocket
-# client. Optional: a caller with no one to report progress to (like a
-# synchronous opening-message generation with no client watching) just omits
-# it.
-OnRetry = Callable[[int, int, float], Awaitable[None]]
+    def generate_audio_stream(self, text: str) -> Iterator[tuple[bytes, int]] | None:
+        """Generates spoken audio for `text` if this provider supports
+        native audio output, yielding (raw_pcm_chunk, sample_rate) tuples
+        as they're produced — or returning None outright if this provider
+        doesn't support audio at all. Never raises: audio is a
+        supplementary feature (see ChatService), not worth failing a chat
+        turn over — a failure partway through just ends the iteration
+        early, same tolerance as returning None up front. Base
+        implementation: no provider supports this unless it overrides the
+        method (e.g. GeminiProvider) — Anthropic and any future
+        non-audio-capable provider get this no-op for free.
 
-
-async def generate_with_retry(
-    provider: LLMProvider,
-    system_prompt: str,
-    history: list[dict],
-    on_retry: OnRetry | None = None,
-) -> str:
-    """Calls provider.generate() (off the event loop, since providers make
-    blocking HTTP calls), retrying on a transient overload
-    (LLMProviderUnavailableError) with exponential backoff up to
-    MAX_RETRIES. Any other LLMProviderError (rate-limited, or a permanent
-    failure) is not retried — it propagates immediately, exactly like a
-    retry-exhausted LLMProviderUnavailableError does, for the caller to
-    handle however is appropriate for it."""
-    attempt = 0
-    while True:
-        try:
-            return await asyncio.to_thread(provider.generate, system_prompt, history)
-        except LLMProviderUnavailableError as exc:
-            logger.error(
-                "LLM provider temporarily unavailable (attempt %d/%d): %s",
-                attempt + 1,
-                MAX_RETRIES + 1,
-                exc,
-            )
-            if attempt >= MAX_RETRIES:
-                raise
-            attempt += 1
-            remaining = BASE_DELAY_SECONDS * 2 ** (attempt - 1)
-            while remaining > 0:
-                if on_retry:
-                    await on_retry(attempt, MAX_RETRIES, round(remaining, 1))
-                step = min(1.0, remaining)
-                await asyncio.sleep(step)
-                remaining -= step
+        Note this is a plain function, not a generator (no `yield`
+        anywhere in this base body) — calling it therefore really does
+        return None immediately, rather than a generator object that
+        would raise StopIteration on first use. A subclass overriding it
+        with an actual generator (`yield`ing chunks) is never confused
+        with "unsupported": the two are distinguished by identity (is the
+        return value None, or an iterator), not by both trying to look
+        like empty iterators."""
+        return None
