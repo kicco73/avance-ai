@@ -40,7 +40,7 @@ general_prompt: |
     - just briefly explain what the exercise is about.
     - write how many steps the exercise is compound of and how many attempts will be allowed for each step.
     - remember the user that if they don't know the meaning of some words, they can ask.
-    - provide hints before starting, in order to help the user memorize rules and execute the exercise.
+    - unless explicitly forbidden later in this prompt, provide hints before starting, in order to help the user memorize rules and execute the exercise.
     - some verbs in subjuntive - present tense do coincide with the same form of the indicative - present tense. 
       Always check both conjugations before deciding if the user's answer is correct. 
       In the case there exist both forms, always underline that, once the step is finished.
@@ -130,27 +130,27 @@ states:
     actions:
       - name: regulars
         label: "Jump to regular verbs"
-        button_text: "Verbs regulars"
+        button_text: "1. Verbs regulars"
         target: unit55-regulars
       - name: alteracions
         label: "Jump to regular verbs with alterations"
-        button_text: "Regulars amb alteracions"
+        button_text: "2. Regulars amb alteracions"
         target: unit55-regulars-amb-alteracions
       - name: alteracions-amb-gu
         label: "Jump to regular verbs with alterations"
-        button_text: "Regulars amb canvi a -gu"
+        button_text: "3. Regulars amb canvi a -gu"
         target: unit55-regulars-amb-gu
       - name: irregulars
         label: "Jump to irregular verbs"
-        button_text: "Irregulars"
+        button_text: "4. Verbs irregulars"
         target: unit55-irregulars
       - name: freetyping
         label: "Free typing"
-        button_text: "Composició llibre"
+        button_text: "5. Composició llibre"
         target: unit55-D
       - name: evaluation
         label: "Evaluation"
-        button_text: "Avaluació"
+        button_text: "6. Avaluació"
         target: unit55-evaluation
       - name: lliure
         label: "Preguntes lliures"
@@ -352,10 +352,16 @@ states:
     clear_context: True
     actions:
       - name: next
-        label: "User has completed the exercise and moves to the next one"
-        button_text: "Go to next exercise"
-        target: unit55-evaluation
+        label: "User has completed the exercise"
+        button_text: "End exercise"
+        target: unit55-results
         trigger: "progress == 100"
+      - name: help
+        label: "Show help"
+        button_text: "Ajuda'm"
+        target: unit55-D
+        action_prompt: |
+          Given the current question, give some hint to the user, without revealing the answer.
       - name: restart
         label: "Restarting the unit"
         button_text: "Inici"
@@ -368,23 +374,27 @@ states:
     clear_context: True
     on_enter: celebrate
     contextual_prompt: |
-        Unit 55. Evaluation Exercise.
+        Unit 55. Exercise 6.
+        The user has only 2 attemps per step. There are 5 steps.
+        Go straight to step 1 without providing any hints or help before starting.
         Style: the user must write the full sentence.
         Goal: practice verbs by writing a full simple sentence.
         How:
-          - invent different short phrases
-          - You must say the verb to use in conjuntive and the form of the phrase you expect the user to follow.
-        When finished:
-          - provide feedback on their progress
-          - provide general advice on what to review
-          - congratulate with the user on completing all the exercises
-          - provide a list of things
+          - Choose as many different random verbs as the number of steps
+          - Choose random subject and pronoun for each step
+          - Show one sentence per step, specifying the subjuntive structure you expect the user to answer (e.g. with Cal que, Dubto que)
     actions:
       - name: results
         label: "Summarize results"
         button_text: "Results"
         target: unit55-results
         trigger: "progress == 100"
+      - name: help
+        label: "Show help"
+        button_text: "Ajuda'm"
+        target: unit55-evaluation
+        action_prompt: |
+          Given the current question, give some hint to the user, without revealing the answer.
       - name: restart
         label: "Restarting the unit"
         button_text: "Inici"
@@ -411,7 +421,7 @@ states:
           - provide feedback on the trend over time.
           - if you have enough information to suggest what to review:
             - create a special paragraph 
-            - the title is the translation of "Next steps" into catalan
+            - the title is "Propers passos"
             - put a bullet list of suggestions on what to review, highlighting in bold which exercise of this unit would be good for that.
             
         Check the full conversation and gather information to produce data with exactness.
