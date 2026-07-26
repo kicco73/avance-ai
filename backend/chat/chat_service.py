@@ -14,7 +14,7 @@ from audio_format import DEFAULT_PCM_SAMPLE_RATE, pcm_to_wav, streaming_wav_head
 from audio_store import AudioStore, LiveAudioGeneration
 from db import Db
 from ai.ai_service import AiService, OnRetry
-from signals import Signals
+from chat.signals import Signals
 from model_service import ModelService
 
 logger = logging.getLogger(__name__)
@@ -63,16 +63,16 @@ class ChatService(object):
     def __init__(
         self,
         ai_service: AiService,
-        models_manager: ModelService,
+        model_service: ModelService,
         db: Db,
         audio_store: AudioStore,
     ) -> None:
         self._ai_service = ai_service
-        self._models_manager = models_manager
+        self._model_service = model_service
         self._db = db
         self._audio_store = audio_store
         self.signals = Signals(
-            get_active_automaton=lambda: models_manager.get_active_automaton_and_state()[0], db=db
+            get_active_automaton=lambda: model_service.get_active_automaton_and_state()[0], db=db
         )
         self.auto_tracking_enabled = True
         # Persisted (see db.py's Settings.audio_enabled) — the backend is
@@ -98,7 +98,7 @@ class ChatService(object):
 
     @property
     def _active_model_name(self) -> str:
-        return self._models_manager.get_active_model_name()
+        return self._model_service.get_active_model_name()
 
     @property
     def audio_enabled(self) -> bool:
@@ -146,7 +146,7 @@ class ChatService(object):
         # Generates the model's unprompted opening message if the current
         # state has had none yet — see _generate_opening_message_if_needed.
         model_name = self._active_model_name
-        automaton, state = self._models_manager.get_active_automaton_and_state()
+        automaton, state = self._model_service.get_active_automaton_and_state()
         await self._generate_opening_message_if_needed(model_name, automaton, state)
 
     @staticmethod
@@ -335,9 +335,9 @@ class ChatService(object):
         if self.lock.locked():
             raise ChatServiceError("A chat reply is already being generated.", status_code=409)
         async with self.lock:
-            state_payload = self._models_manager.apply_manual_action(action_name)
+            state_payload = self._model_service.apply_manual_action(action_name)
             model_name = self._active_model_name
-            automaton, state = self._models_manager.get_active_automaton_and_state()
+            automaton, state = self._model_service.get_active_automaton_and_state()
             proactive_message, audio_text = await self._generate_opening_message_if_needed(model_name, automaton, state)
             reply = [proactive_message] if proactive_message is not None else []
             if reply:
@@ -354,7 +354,7 @@ class ChatService(object):
             return await self._process_turn_locked(text, on_retry)
 
     async def _process_turn_locked(self, text: str, on_retry: OnRetry | None) -> dict:
-        automaton, state = self._models_manager.get_active_automaton_and_state()
+        automaton, state = self._model_service.get_active_automaton_and_state()
 
         if state.final:
             raise ChatServiceError("The conversation has ended in this state.", status_code=409)

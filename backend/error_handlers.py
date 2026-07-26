@@ -8,7 +8,7 @@ import logging
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from chat_service import ChatServiceError
+from chat.chat_service import ChatServiceError
 from ai.llm_provider import AIServiceError
 
 logger = logging.getLogger(__name__)

@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 
 from automaton.automaton import Automaton
-from chat_service import ChatService, ChatServiceError
+from chat.chat_service import ChatService, ChatServiceError
 from model_service import ModelService
 from schemas import (
     ActionRequest,

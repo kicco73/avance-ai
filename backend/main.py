@@ -10,8 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from audio_store import AudioStore
 from automaton.automaton import Automaton
-from chat_service import ChatService
-from chat_ws_adapter import ChatWsAdapter
+from chat.chat_service import ChatService
+from chat.ws_adapter import WsAdapter
 from config import AppConfig
 from controller import AvanceController
 from db import Db
@@ -31,7 +31,7 @@ model_service = ModelService(db)
 audio_store = AudioStore()
 chat_service = ChatService(ai_service, model_service, db, audio_store)
 
-chat_ws_adapter = ChatWsAdapter(chat_service) if config.chat_transport == "websocket" else None
+chat_ws_adapter = WsAdapter(chat_service) if config.chat_transport == "websocket" else None
 
 model_watcher: ModelWatcher | None = None
 if config.model_file_watch_enabled:

@@ -10,11 +10,11 @@ import logging
 from fastapi import WebSocket, WebSocketDisconnect
 
 from ai.llm_provider import AIServiceError
-from chat_service import ChatService, ChatServiceError
+from chat.chat_service import ChatService, ChatServiceError
 
 logger = logging.getLogger(__name__)
 
-class ChatWsAdapter(object):
+class WsAdapter(object):
     def __init__(self, chat_service: ChatService) -> None:
         self._chat_service = chat_service
         # Single-user prototype: at most one connection matters, so a lone
