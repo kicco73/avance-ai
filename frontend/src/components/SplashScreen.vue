@@ -1,4 +1,6 @@
 <script setup>
+import { errorDetail, errorMessage } from '../errorStore.js'
+
 defineProps({
   failed: {
     type: Boolean,
@@ -21,8 +23,9 @@ const emit = defineEmits(['retry'])
 
       <template v-else>
         <p class="splash-error">
-          Unable to reach the backend — check that it's running.
+          {{ errorMessage || "Unable to reach the backend — check that it's running." }}
         </p>
+        <pre v-if="errorDetail" class="splash-error-detail">{{ errorDetail }}</pre>
         <button class="splash-retry" @click="emit('retry')">Retry</button>
       </template>
     </div>
@@ -92,6 +95,19 @@ const emit = defineEmits(['retry'])
   max-width: 320px;
   font-size: 0.9rem;
   color: #c62828;
+}
+
+.splash-error-detail {
+  margin: 0;
+  max-width: 320px;
+  padding: 0.5rem 0.75rem;
+  background: #fdecea;
+  color: #7a1f1f;
+  font-size: 0.78rem;
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-align: left;
 }
 
 .splash-retry {

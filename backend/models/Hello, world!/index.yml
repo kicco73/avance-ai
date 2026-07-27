@@ -1,4 +1,5 @@
-initial_state: hello
+init_action:
+  target: hello
 
 general_prompt: |
   

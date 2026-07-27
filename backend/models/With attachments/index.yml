@@ -1,4 +1,5 @@
-initial_state: precontemplation
+init_action:
+  target: precontemplation
 
 # Fixed instructions appended to every state's contextual_prompt (except
 # fixed_message states, which use a translation-only prompt instead).

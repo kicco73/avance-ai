@@ -49,6 +49,10 @@ const audioEnabled = ref(false)
 // response that doesn't carry these fields at all.
 const talkAvailable = ref(true)
 const micAvailable = ref(true)
+// When on, assistant bubbles show audio_text (the short narrated phrase,
+// see backend's [audio] tag) instead of the full reply — purely a display
+// switch, no playback triggered (see toggleSpokenText).
+const spokenTextEnabled = ref(false)
 const state = ref(null)
 const messages = ref([])
 const historyLoaded = ref(false)
@@ -172,7 +176,13 @@ function handleStateChange(newState) {
 async function loadMessages() {
   try {
     const history = await getMessages()
-    messages.value = history.map((m) => ({ role: m.role, content: m.content, failed: false, messageId: m.id }))
+    messages.value = history.map((m) => ({
+      role: m.role,
+      content: m.content,
+      audioText: m.audio_text,
+      failed: false,
+      messageId: m.id
+    }))
   } catch {
     // already surfaced via apiFetch
   } finally {
@@ -219,6 +229,13 @@ function toggleAudio() {
   }
 }
 
+// Purely a display switch — flipping it doesn't touch playback, only
+// which text ChatWindow renders for assistant bubbles (see its
+// spokenTextEnabled prop); reactivity alone re-renders every bubble.
+function toggleSpokenText() {
+  spokenTextEnabled.value = !spokenTextEnabled.value
+}
+
 // Fires the automatic narration for the last message a turn produced —
 // same call regardless of which transport delivered it (see submitMessage
 // / handleAction, the only two places a live message ever arrives) and a
@@ -252,8 +269,8 @@ async function submitMessage(message) {
     // prepend/append that state's own opening message alongside the
     // turn's own reply — one bubble per element, in the order the
     // backend produced them.
-    for (const { id, content } of result.reply) {
-      messages.value.push({ role: 'assistant', content, messageId: id })
+    for (const { id, content, audio_text } of result.reply) {
+      messages.value.push({ role: 'assistant', content, audioText: audio_text, messageId: id })
     }
     // Only for a freshly arrived AI reply — never for the user's own sent
     // message, and never for history loaded at boot/reset (this only ever
@@ -331,8 +348,8 @@ async function handleAction(actionName) {
     // submitMessage) — empty if it already had something to say since
     // its own cutoff.
     const result = await postAction(actionName)
-    for (const { id, content } of result.reply) {
-      messages.value.push({ role: 'assistant', content, messageId: id })
+    for (const { id, content, audio_text } of result.reply) {
+      messages.value.push({ role: 'assistant', content, audioText: audio_text, messageId: id })
     }
     if (result.reply.length) {
       playMessageChime()
@@ -522,10 +539,12 @@ onBeforeUnmount(() => {
       :audio-enabled="audioEnabled"
       :talk-available="talkAvailable"
       :mic-available="micAvailable"
+      :spoken-text-enabled="spokenTextEnabled"
       @send="handleSend"
       @resend="handleResend"
       @toggle-audio="toggleAudio"
       @voice-message="handleVoiceMessage"
+      @toggle-spoken-text="toggleSpokenText"
     >
       <template #actions>
         <ActionButtons

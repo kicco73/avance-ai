@@ -103,7 +103,7 @@ class ModelService(object):
         `model_name` is active, awaits `commit` — but never wipes
         conversation data (a live edit isn't a deliberate replace). If the
         persisted current state no longer exists (renamed/removed), fixes
-        it to initial_state via one corrective transition instead."""
+        it to init_action.target via one corrective transition instead."""
         self._automaton_cache[model_name] = automaton
         self._model_hashes[model_name] = self._compute_content_hash(model_dir)
         if model_name != self.get_active_model_name():
@@ -111,18 +111,18 @@ class ModelService(object):
 
         current_state_key = self._db.get_current_state(model_name)
         if current_state_key is not None and current_state_key not in automaton.states:
-            initial_state = automaton.get_state(automaton.initial_state)
+            target_state = automaton.get_state(automaton.init_action.target)
             logger.warning(
                 "Model '%s': persisted state '%s' no longer exists after reload — "
-                "resetting to initial_state '%s' (conversation history kept).",
-                model_name, current_state_key, automaton.initial_state,
+                "resetting to init_action.target '%s' (conversation history kept).",
+                model_name, current_state_key, automaton.init_action.target,
             )
             self._db.save_transition(
                 current_state_key,
                 "model-reloaded",
-                automaton.initial_state,
+                automaton.init_action.target,
                 model_name,
-                transition_log_level=initial_state.transition_log_level,
+                transition_log_level=target_state.transition_log_level,
             )
 
         await commit(automaton)
@@ -222,8 +222,12 @@ class ModelService(object):
 
     def get_active_automaton_and_state(self) -> tuple[Automaton, State]:
         """The active Automaton paired with its current State — falls back
-        to initial_state if none is persisted yet, or the persisted one
-        was renamed/removed on disk since."""
+        to init_action.target if none is persisted yet, or the persisted
+        one was renamed/removed on disk since. A pure read, no side
+        effect: never returns the reserved implicit state ("") itself, so
+        every caller of this (not just ChatService.open_if_needed) always
+        sees a real state, whether or not init_action has actually been
+        resolved/persisted yet."""
         model_name = self.get_active_model_name()
         automaton = self._load_model(model_name)
         state_key = self._db.get_current_state(model_name)
@@ -231,10 +235,10 @@ class ModelService(object):
             if state_key is not None:
                 logger.warning(
                     "Model '%s': persisted state '%s' no longer exists (renamed/removed on "
-                    "disk?) — falling back to initial_state '%s'.",
-                    model_name, state_key, automaton.initial_state,
+                    "disk?) — falling back to init_action.target '%s'.",
+                    model_name, state_key, automaton.init_action.target,
                 )
-            state_key = automaton.initial_state
+            state_key = automaton.init_action.target
         return automaton, automaton.get_state(state_key)
 
     def apply_manual_action(self, action_name: str) -> tuple[dict, Action, str]:

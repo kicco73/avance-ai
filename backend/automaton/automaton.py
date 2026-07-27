@@ -100,7 +100,7 @@ class Automaton(object):
 
     def __init__(
         self,
-        initial_state: str,
+        init_action: Action,
         states: dict[str, State],
         general_prompt: str,
         signals: list[Signal],
@@ -108,7 +108,11 @@ class Automaton(object):
         autotracking_on_user_message: bool,
         autotracking_on_ai_message: bool,
     ):
-        self.initial_state = initial_state
+        # Replaces the old bare `initial_state: str` field: same
+        # information (its .target), but as a real action so it can carry
+        # an action_prompt too — see ChatService.open_if_needed, the one
+        # place that ever executes it.
+        self.init_action = init_action
         self.states = states
         self.general_prompt = general_prompt
         self.signals = signals
@@ -123,7 +127,11 @@ class Automaton(object):
     def get_state_payload(state: State) -> dict:
         """Serializes `state` into the plain-dict shape every
         state-reporting endpoint sends to the frontend — the one place
-        this shape is built, so it can't drift between call sites."""
+        this shape is built, so it can't drift between call sites.
+        Safety barrier: the reserved implicit state ("") must never reach
+        a caller outside ChatService.open_if_needed — see its docstring."""
+        if state.key == "":
+            raise RuntimeError("Refusing to serialize the implicit initial state ('').")
         return {
             "key": state.key,
             "label": state.label,

@@ -61,7 +61,6 @@ class AutomatonBuilder(object):
         # lives, not a shared fixed directory — each model carries its own.
         base_dir = path.parent
 
-        initial_state = raw["initial_state"]
         general_prompt = raw["general_prompt"].strip()
         general_prompt_attachments = self._load_attachments(
             raw.get("attachments", []), "general_prompt", base_dir
@@ -71,6 +70,25 @@ class AutomatonBuilder(object):
         raw_states = raw["states"]
         if not isinstance(raw_states, dict):
             raise ValueError(f"'states' must be a mapping of state name -> fields, got {type(raw_states).__name__}.")
+        if "" in raw_states:
+            raise ValueError(
+                "State '' is reserved for the implicit initial state (see init_action) "
+                "and cannot be declared in 'states'."
+            )
+
+        raw_init_action = raw.get("init_action")
+        if not isinstance(raw_init_action, dict) or not raw_init_action.get("target"):
+            raise ValueError(
+                "'init_action' is required and must be a mapping with at least a 'target' "
+                "field — the model's real starting state."
+            )
+        init_action = Action(
+            name="init_action",
+            label="init_action",
+            button_text="",
+            target=raw_init_action["target"],
+            action_prompt=raw_init_action["action_prompt"].strip() if raw_init_action.get("action_prompt") else None,
+        )
 
         states: dict[str, State] = {}
         for key, raw_state in raw_states.items():
@@ -87,7 +105,9 @@ class AutomatonBuilder(object):
                     name=raw_action["name"],
                     label=raw_action["label"],
                     button_text=raw_action["button_text"],
-                    target=raw_action["target"],
+                    # Missing 'target' means a self-loop: the action stays
+                    # on the state it fired from.
+                    target=raw_action.get("target", key),
                     trigger=raw_action.get("trigger"),
                     action_prompt=raw_action["action_prompt"].strip() if raw_action.get("action_prompt") else None,
                 )
@@ -142,8 +162,10 @@ class AutomatonBuilder(object):
                 )
             )
 
-        if initial_state not in states:
-            raise ValueError(f"initial_state '{initial_state}' is not defined among the states")
+        # Minimal, never declared in YAML — see the reserved-key check
+        # above. Not a real conversational state: ChatService.open_if_needed
+        # is the only place that ever resolves out of it, via init_action.
+        states[""] = State(key="", label="", final=False, description="")
 
         for state in states.values():
             if state.transition_log_level not in VALID_LOG_LEVELS:
@@ -151,29 +173,35 @@ class AutomatonBuilder(object):
                     f"State '{state.key}': transition_log_level "
                     f"'{state.transition_log_level}' must be one of {sorted(VALID_LOG_LEVELS)}"
                 )
-            for action in state.actions:
-                if action.target not in states:
+
+        # init_action validated the same way as every other action's target/
+        # trigger, just with a synthetic ("", init_action) entry alongside
+        # every real state's own actions rather than a separate check.
+        actions_by_state = [(state.key, action) for state in states.values() for action in state.actions]
+        actions_by_state.append(("", init_action))
+        for state_key, action in actions_by_state:
+            if action.target not in states:
+                raise ValueError(
+                    f"State '{state_key}', action '{action.name}': "
+                    f"target '{action.target}' is not a valid state"
+                )
+            if action.trigger:
+                try:
+                    referenced_names = trigger_signal_names(action.trigger)
+                except SyntaxError as exc:
                     raise ValueError(
-                        f"State '{state.key}', action '{action.name}': "
-                        f"target '{action.target}' is not a valid state"
+                        f"State '{state_key}', action '{action.name}': "
+                        f"trigger '{action.trigger}' is not a valid expression: {exc}"
+                    ) from exc
+                unknown_names = referenced_names - seen_signal_names
+                if unknown_names:
+                    raise ValueError(
+                        f"State '{state_key}', action '{action.name}': "
+                        f"trigger references undefined signal(s): {', '.join(sorted(unknown_names))}"
                     )
-                if action.trigger:
-                    try:
-                        referenced_names = trigger_signal_names(action.trigger)
-                    except SyntaxError as exc:
-                        raise ValueError(
-                            f"State '{state.key}', action '{action.name}': "
-                            f"trigger '{action.trigger}' is not a valid expression: {exc}"
-                        ) from exc
-                    unknown_names = referenced_names - seen_signal_names
-                    if unknown_names:
-                        raise ValueError(
-                            f"State '{state.key}', action '{action.name}': "
-                            f"trigger references undefined signal(s): {', '.join(sorted(unknown_names))}"
-                        )
 
         return Automaton(
-            initial_state=initial_state,
+            init_action=init_action,
             states=states,
             general_prompt=general_prompt,
             signals=signals,

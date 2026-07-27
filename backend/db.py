@@ -141,7 +141,13 @@ class Db(object):
         rows = list(query)
         rows.reverse()
         return [
-            {"id": m.id, "role": m.role, "content": m.content, "timestamp": m.timestamp.isoformat()}
+            {
+                "id": m.id,
+                "role": m.role,
+                "content": m.content,
+                "audio_text": m.audio_text,
+                "timestamp": m.timestamp.isoformat(),
+            }
             for m in rows
         ]
 
@@ -219,15 +225,14 @@ class Db(object):
 
     def get_current_state(self, model_name: str) -> str | None:
         """The state `model_name`'s latest Transition left it in, or None
-        if there isn't one yet — callers fall back to the automaton's own
-        initial_state themselves (`db.get_current_state(...) or
-        automaton.initial_state`), since this module doesn't know it."""
+        if there isn't one yet — also ChatService.open_if_needed's own
+        signal for whether init_action still needs resolving."""
         transition = self._latest_transition(model_name)
         return transition.new_state if transition else None
 
     def get_last_transition_timestamp(self, model_name: str) -> datetime | None:
         """When `model_name` entered its current state (get_current_state),
-        or None if it's still in initial_state with no Transition yet."""
+        or None if init_action hasn't been resolved yet (no Transition)."""
         transition = self._latest_transition(model_name)
         return transition.timestamp if transition else None
 

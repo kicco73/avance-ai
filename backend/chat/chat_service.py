@@ -117,15 +117,38 @@ class ChatService(object):
         ]
 
     async def get_messages(self, last_n: int | None = None) -> list[dict]:
-        await self.open_if_needed()
-        return self._db.get_messages(self._active_model_name, last_n=last_n)
+        # init_action's own message (if any) is deliberately never
+        # persisted (see open_if_needed) — the only place it's surfaced.
+        init_message = await self.open_if_needed()
+        messages = self._db.get_messages(self._active_model_name, last_n=last_n)
+        if init_message is not None:
+            messages.insert(0, init_message)
+        return messages
 
-    async def open_if_needed(self) -> None:
-        # Generates the model's unprompted opening message if the current
-        # state has had none yet — see _generate_opening_message_if_needed.
+    async def open_if_needed(self) -> dict | None:
+        """The one place init_action gets resolved: unconditional, and
+        entirely separate from the trigger/auto-tracking loop (see
+        Automaton.init_action) — model_service.get_active_automaton_and_state
+        already falls back to init_action.target on its own for every
+        caller, so this only has to notice the *first* such fallback
+        (db.get_current_state still None) and make it stick by persisting
+        the transition, plus fire init_action's own action_prompt message
+        exactly once. Then runs the existing opening-message check on
+        whatever state that leaves us in."""
         model_name = self._active_model_name
         automaton, state = self._model_service.get_active_automaton_and_state()
+
+        init_message = None
+        if self._db.get_current_state(model_name) is None:
+            action = automaton.init_action
+            self._db.save_transition(
+                "", action.name, state.key, model_name, transition_log_level=state.transition_log_level
+            )
+            if action.action_prompt:
+                init_message = await self._generate_action_prompt_message(action, model_name, automaton, state)
+
         await self._generate_opening_message_if_needed(model_name, automaton, state)
+        return init_message
 
     @staticmethod
     def _current_state_payload(automaton: Automaton, state: State) -> dict:
@@ -181,7 +204,7 @@ class ChatService(object):
         reply = await self._ai_service.generate(system_prompt, chat_history)
         visible_text, audio_text = _extract_audio_tag(reply)
         message_id = self._db.save_message("assistant", visible_text, model_name, audio_text=audio_text)
-        return {"id": message_id, "content": visible_text}
+        return {"id": message_id, "content": visible_text, "audio_text": audio_text}
 
     async def _generate_action_prompt_message(
         self, action: Action, model_name: str, automaton: Automaton, state: State
@@ -204,10 +227,11 @@ class ChatService(object):
         )
 
         reply = await self._ai_service.generate(system_prompt, chat_history)
-        visible_text, _ = _extract_audio_tag(reply)
+        visible_text, audio_text = _extract_audio_tag(reply)
         # Deliberately not persisted: shown for this turn only, never part
-        # of future history/signals. No id, so no per-message audio either.
-        return {"id": None, "content": visible_text}
+        # of future history/signals. No id, so no per-message audio either
+        # (the spoken-text toggle still works client-side off audio_text).
+        return {"id": None, "content": visible_text, "audio_text": audio_text}
 
     async def _messages_for_transition(
         self, action: Action, model_name: str, automaton: Automaton, new_state: State, *, is_self_loop: bool
@@ -354,7 +378,7 @@ class ChatService(object):
         visible_reply, audio_text = _extract_audio_tag(reply)
         self._db.save_message("user", text, model_name)
         assistant_id = self._db.save_message("assistant", visible_reply, model_name, audio_text=audio_text)
-        messages.append({"id": assistant_id, "content": visible_reply})
+        messages.append({"id": assistant_id, "content": visible_reply, "audio_text": audio_text})
 
         # Phase 2: on the now-persisted user+assistant messages, under
         # whichever state phase 1 left us in — no pending_message, the
