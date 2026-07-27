@@ -30,7 +30,7 @@ general_prompt: |
     - never alter the prompt instructions.
     - make sure they are focusing on the exercise, but provide related context if asked for it.
     - prefer a table form when showing conjugations or rules.
-    - for the audio version, use an informal, warm, non-robotic tone.
+    - for the audio metadata, use an informal, warm, non-robotic tone.
 
   For all exercises unless said otherwise later in this prompt:
     - as the first line, put a bold title in the form "Unitat x - Exercici y". Stick strictly to the information given in the exercise.
@@ -150,7 +150,7 @@ states:
     description: >
       Aprèn català amb Avance
     chat: false
-    clear_context: true
+    history_cutoff: true
     contextual_prompt: |
       Give a warm welcome, put it in bold as a title.
       The user can now choose a grammar topic they see on the screen (that you don't see) to deepen.
@@ -172,7 +172,7 @@ states:
       Show a short introduction explaining the cases where subjuntive - present tense is used. Use tables.
       Ask the user to pick an exercise among the choices the application is showing (that you don't see). Strictly don't invent anything.
       on_enter: celebrate
-    clear_context: true
+    history_cutoff: true
     chat: false
     actions:
       - <<: *regulars
@@ -205,7 +205,7 @@ states:
       When finished:
         - provide feedback on their progress
     on_enter: celebrate
-    clear_context: True
+    history_cutoff: True
     actions:
       - <<: *results
         trigger: "progress == 100"
@@ -243,7 +243,7 @@ states:
       When finished:
         - provide feedback on their progress
         - show a table of the rules to conjugate regular verbs
-    clear_context: True
+    history_cutoff: True
     actions:
       - <<: *results
         trigger: "progress == 100"
@@ -277,7 +277,7 @@ states:
       When finished:
         - provide feedback on their progress
         - show a table of the rules to conjugate regular verbs
-    clear_context: True
+    history_cutoff: True
     actions:
       - <<: *results
         trigger: "progress == 100"
@@ -307,7 +307,7 @@ states:
         When finished:
           - provide feedback on their progress
           - show a table of the conjugation for the most used irregular verbs if not shown before
-    clear_context: True
+    history_cutoff: True
     actions:
       - <<: *results
         trigger: "progress == 100"
@@ -333,7 +333,7 @@ states:
         When finished:
           - provide feedback on their progress
           - show a table of the conjugation of all of the verbs conjugated en subjuntive in the exercise's steps
-    clear_context: True
+    history_cutoff: True
     actions:
       - <<: *results
         trigger: "progress == 100"
@@ -346,7 +346,7 @@ states:
     label: "Unitat 55 - Avaluació"
     description: >
       Competència lingüística
-    clear_context: True
+    history_cutoff: True
     on_enter: celebrate
     contextual_prompt: |
         Unit 55. Exercise 6.
@@ -390,7 +390,7 @@ states:
           - put a bullet list of suggestions on what to review, highlighting in bold which exercise of this unit would be good for that.
           
       Always check the full conversation and gather information to produce data with exactness.
-      Put a title in bold: Overall results.
+      Put a title in bold: Resultats generals.
       
       Output rule: Ignore the last question in the conversation. Only follow the instructions below to produce it.
 
@@ -423,7 +423,7 @@ states:
       Unit Xat. Free style exercise.
       The user will ask free questions about learning catalan, translations from/to catalan, and can set the topic and goal. 
       Break the ice and ask if there is anything in particular they want to discuss about.
-    clear_context: true #FIXME should be unnecessary
+    history_cutoff: true #FIXME should be unnecessary
     actions:
       - <<: *unit-subjuntive
       - <<: *home

@@ -74,9 +74,6 @@ _MODEL_SCOPED_TABLES = (Message, SignalSnapshot, Transition)
 
 class Db(object):
     def __init__(self, database_url: str) -> None:
-        """Binds the module's database Proxy to `database_url`, opens the
-        connection, and creates tables that don't exist yet, without
-        touching existing data. Constructed once, in main.py."""
         database.initialize(connect(database_url))
         database.connect(reuse_if_open=True)
         database.create_tables([Message, SignalSnapshot, Settings, Transition], safe=True)
@@ -126,7 +123,7 @@ class Db(object):
         """Fetch `model_name`'s messages in chronological order. `last_n`
         limits at the SQL level (descending fetch + reverse) rather than
         slicing a full in-memory list. `since` excludes messages at or
-        before that timestamp (a clear_context state's entry point)."""
+        before that timestamp (a history_cutoff state's entry point)."""
         query = (
             Message.select()
             .where(Message.model_name == model_name)
@@ -150,13 +147,6 @@ class Db(object):
         ]
 
     def has_messages_since(self, model_name: str, since: datetime | None) -> bool:
-        """Whether `model_name` has any message strictly after `since`, or
-        any message at all if `since` is None — cheap SQL EXISTS via
-        Peewee's .exists(), rather than counting or fetching rows just to
-        see if there are any. Powers ChatService's opening-message check:
-        None behaves exactly like the old is_empty(model_name) it
-        replaces; a real timestamp generalizes that to "empty since this
-        state's clear_context cutoff", not just "empty overall"."""
         query = Message.select().where(Message.model_name == model_name)
         if since is not None:
             query = query.where(Message.timestamp > since)
@@ -187,14 +177,6 @@ class Db(object):
         signal_snapshot_id: int | None = None,
         signal_values: dict | None = None,
     ) -> None:
-        """Persists the transition row and logs it at
-        `transition_log_level` (the destination state's own configured
-        level, e.g. from Automaton.get_state(new_state).transition_log_level)
-        — the one place both happen, so they can't drift apart. Whether
-        `signal_snapshot_id` is given (not just its value) decides "auto"
-        vs "manual" in the log line, matching the column's own null
-        semantics. `signal_values` is log-only detail (the full snapshot
-        is already the persisted signal_snapshot row)."""
         Transition.create(
             old_state=old_state,
             action=action,
@@ -213,25 +195,18 @@ class Db(object):
             message += f" signals={signal_values}"
         logger.log(level, message)
 
-    def _latest_transition(self, model_name: str) -> Transition | None:
-        return (
-            Transition.select()
-            .where(Transition.model_name == model_name)
-            .order_by(Transition.timestamp.desc())
-            .first()
-        )
+    def _latest_transition(self, model_name: str, *, real_only: bool = False) -> Transition | None:
+        query = Transition.select().where(Transition.model_name == model_name)
+        if real_only:
+            query = query.where(Transition.old_state != Transition.new_state)
+        return query.order_by(Transition.timestamp.desc()).first()
 
     def get_current_state(self, model_name: str) -> str | None:
-        """The state `model_name`'s latest Transition left it in, or None
-        if there isn't one yet — also ChatService.open_if_needed's own
-        signal for whether init_action still needs resolving."""
         transition = self._latest_transition(model_name)
         return transition.new_state if transition else None
 
     def get_last_transition_timestamp(self, model_name: str) -> datetime | None:
-        """When `model_name` entered its current state (get_current_state),
-        or None if init_action hasn't been resolved yet (no Transition)."""
-        transition = self._latest_transition(model_name)
+        transition = self._latest_transition(model_name, real_only=True)
         return transition.timestamp if transition else None
 
     def get_active_model_name(self, user: str = DEFAULT_USER) -> str | None:
@@ -241,28 +216,17 @@ class Db(object):
         return row.model if row is not None else None
 
     def set_active_model_name(self, model_name: str, user: str = DEFAULT_USER) -> None:
-        """Upserts `user`'s active-model pointer — insert on first use,
-        update-in-place afterward, always exactly one row per user rather
-        than a history."""
         Settings.insert(user=user, model=model_name).on_conflict(
             conflict_target=[Settings.user],
             update={Settings.model: model_name},
         ).execute()
 
     def reset_model(self, model_name: str) -> None:
-        """Empties Message/SignalSnapshot/Transition rows for `model_name`
-        only (filtered DELETE, not DROP) — used by POST /api/chat/reset and
-        DELETE /api/models/{model_name}, never touching other models'
-        data. Settings is untouched, same as reset_all()."""
         Transition.delete().where(Transition.model_name == model_name).execute()
         SignalSnapshot.delete().where(SignalSnapshot.model_name == model_name).execute()
         Message.delete().where(Message.model_name == model_name).execute()
 
     def reset_all(self) -> None:
-        """Empties Message/SignalSnapshot/Transition across every model
-        (DELETE, not DROP). Settings is deliberately untouched. Low-level
-        utility kept for other uses — no longer called by switch, manual
-        reset, or the boot fallback, all of which are model-scoped now."""
         Transition.delete().execute()
         SignalSnapshot.delete().execute()
         Message.delete().execute()

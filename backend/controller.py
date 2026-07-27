@@ -10,7 +10,7 @@ from automaton.automaton import Automaton
 from talk.talk_service import TalkService, TalkServiceNotAvailableError
 from listen.listen_service import ListenService, ListenServiceError, ListenServiceNotAvailableError
 from chat.chat_service import ChatService, ChatServiceError
-from model_service import ModelService
+from model.model_service import ModelService
 from schemas import (
     ActionRequest,
     AutoTrackingRequest,

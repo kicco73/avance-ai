@@ -56,10 +56,10 @@ class State:
     on_enter: str | None = None
     # If true, messages from before the transition into this state are kept
     # out of both the AI reply and auto-tracking's signal evaluation.
-    clear_context: bool = False
+    history_cutoff: bool = False
     # If false, chat turns are rejected while this is the current state
     # (see ChatService._process_turn_locked) — independent of
-    # fixed_message/clear_context: neither implies this.
+    # fixed_message/history_cutoff: neither implies this.
     chat: bool = True
 
     @property

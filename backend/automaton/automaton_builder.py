@@ -138,7 +138,7 @@ class AutomatonBuilder(object):
                 fixed_message=fixed_message.strip() if fixed_message else None,
                 transition_log_level=raw_state.get("transition_log_level", "WARNING"),
                 attachments=self._load_attachments(raw_state.get("attachments", []), f"state '{key}'", base_dir),
-                clear_context=raw_state.get("clear_context", False),
+                history_cutoff=raw_state.get("history_cutoff", False),
                 chat=raw_state.get("chat", True),
             )
 

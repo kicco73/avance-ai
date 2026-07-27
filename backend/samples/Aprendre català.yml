@@ -98,7 +98,7 @@ states:
     description: >
       Learn catalan with Avance
     chat: false
-    clear_context: true
+    history_cutoff: true
     contextual_prompt: |
       Give a warm welcome, put it in bold as a title.
       The user can now choose a grammar topic they see on the screen (that you don't see) to deepen.
@@ -124,7 +124,7 @@ states:
       Show a short introduction explaining the cases where subjuntive - present tense is used. Use tables.
       Ask the user to pick an exercise among the choices the application is showing (that you don't see). Strictly don't invent anything.
       on_enter: celebrate
-    clear_context: true
+    history_cutoff: true
     chat: false
     actions:
       - name: regulars
@@ -185,7 +185,7 @@ states:
       When finished:
         - provide feedback on their progress
     on_enter: celebrate
-    clear_context: True
+    history_cutoff: True
     actions:
       - name: end
         label: "User has completed the exercise and moves to the next one"
@@ -232,7 +232,7 @@ states:
       When finished:
         - provide feedback on their progress
         - show a table of the rules to conjugate regular verbs
-    clear_context: True
+    history_cutoff: True
     actions:
       - name: end
         label: "User has completed the exercise"
@@ -275,7 +275,7 @@ states:
       When finished:
         - provide feedback on their progress
         - show a table of the rules to conjugate regular verbs
-    clear_context: True
+    history_cutoff: True
     actions:
       - name: end
         label: "User has completed the exercise"
@@ -313,7 +313,7 @@ states:
         When finished:
           - provide feedback on their progress
           - show a table of the conjugation for the most used irregular verbs if not shown before
-    clear_context: True
+    history_cutoff: True
     actions:
       - name: next
         label: "User has completed the exercise and moves to the next one"
@@ -348,7 +348,7 @@ states:
         When finished:
           - provide feedback on their progress
           - show a table of the conjugation of all of the verbs conjugated en subjuntive in the exercise's steps
-    clear_context: True
+    history_cutoff: True
     actions:
       - name: next
         label: "User has completed the exercise"
@@ -370,7 +370,7 @@ states:
     label: "Unitat 55 - Avaluació"
     description: >
       Exercise to learn how to conjugate Subjuntive - present verbs in short phrases.
-    clear_context: True
+    history_cutoff: True
     on_enter: celebrate
     contextual_prompt: |
         Unit 55. Exercise 6.
@@ -448,7 +448,7 @@ states:
       The user will ask free questions about learning catalan and can set the topic and goal. 
       Break the ice and ask if there is anything in particular they want to discuss about. Stick to learning Catalan.
       Mention only once they can always go to other sections by pressing the buttons below.
-    clear_context: True #FIXME should be unnecessary
+    history_cutoff: True #FIXME should be unnecessary
     actions:
       - name: subjuntive
         label: "Move to subjuntives"

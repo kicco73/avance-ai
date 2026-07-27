@@ -248,17 +248,16 @@ class ModelService(object):
         automaton, state = self.get_active_automaton_and_state()
         action = automaton.move(state.key, action_name)
         new_state = automaton.get_state(action.target)
-        # A self-loop isn't a real transition — nothing left to persist,
-        # and doing so anyway would bump get_last_transition_timestamp,
-        # wiping clear_context's history cutoff for no actual state change.
-        if new_state.key != state.key:
-            self._db.save_transition(
-                state.key,
-                action_name,
-                new_state.key,
-                self.get_active_model_name(),
-                transition_log_level=new_state.transition_log_level,
-            )
+        # Always saved, self-loop or not — a real history entry either
+        # way. A self-loop just never counts toward history_cutoff's
+        # cutoff (see db.get_last_transition_timestamp).
+        self._db.save_transition(
+            state.key,
+            action_name,
+            new_state.key,
+            self.get_active_model_name(),
+            transition_log_level=new_state.transition_log_level,
+        )
         return automaton.get_state_payload(new_state), action, state.key
 
     def get_active_state_payload(self) -> dict:

@@ -17,8 +17,8 @@ from config import AppConfig
 from controller import AvanceController
 from db import Db
 from error_handlers import register_error_handlers
-from model_service import ModelService
-from model_watcher import ModelWatcher
+from model.model_service import ModelService
+from model.model_watcher import ModelWatcher
 from ai.ai_service import AiService
 from talk.talk_service import TalkService
 from listen.listen_service import ListenService
@@ -106,8 +106,5 @@ try:
             await chat_ws_adapter.chat_loop(websocket)
 
 except Exception as exc:
-    # Deliberately broad: this is the one place a startup failure (bad
-    # .config.yml, an unreachable database, ...) must not crash the whole
-    # process — uvicorn still serves `app`, just the fallback one above.
     logger.exception("Backend failed to start — serving a fallback error app instead of crashing.")
     app = _build_fallback_app(exc)

@@ -115,10 +115,10 @@ class Signals(object):
         build_priming_messages: BuildPrimingMessages,
         pending_message: dict | None = None,
         since: datetime | None = None,
-    ) -> list[dict]:
+    ) -> dict:
         """Calls the AI to (re)compute signal values from the persisted
         conversation plus `pending_message` (evaluated even though not yet
-        persisted). `since` excludes messages from before a clear_context
+        persisted). `since` excludes messages from before a history_cutoff
         state's entry. Only called from the auto-tracking flow."""
         automaton = self.automaton
         signal_definitions = self.get_definition()
@@ -146,7 +146,8 @@ class Signals(object):
                 "value": value,
                 "error": error,
             })
-        return results
+        signal_values = {s["name"]: s["value"] for s in results}
+        return signal_values
 
     def _snapshot_to_signals_payload(self, snapshot: dict | None) -> list[dict]:
         """Builds the GET /api/signals response from a persisted snapshot

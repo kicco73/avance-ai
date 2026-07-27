@@ -11,25 +11,16 @@ import re
 from datetime import datetime, timezone
 from http import HTTPStatus
 
-from automaton.automaton import Action, Automaton, State, trigger_signal_names
+from automaton.automaton import Action, Automaton, State
 from db import Db
 from ai.ai_service import AiService, OnRetry
+from chat.auto_tracker import AutoTracker
+from chat.metadata_handler import MetadataHandler
+from chat.priming import build_priming_messages
 from chat.signals import Signals
-from model_service import ModelService
+from model.model_service import ModelService
 
 logger = logging.getLogger(__name__)
-
-EMBED_METADATA_PROMPT = """
-Always add a [avance]...[/avance] tag at the end of every response.
-    - Write the content inside it as a dictionary in JSON format.
-        - put the audio string, using "audio" as the key and its value as the value.
-            - the content of the audio value must be designed for text-to-speech, not for reading.
-            - Assume the user cannot see the screen at all.
-            - Never refer to anything written on screen.
-            - Keep the audio always concise (ideally under 5 seconds), but never omit information required to solve the task.
-        - put a key "signals" as a dictionary
-            - put all of the using their name as the key and their value as the value.
-"""
 
 # System prompt for states with a `fixed_message` (e.g. crisis): the model
 # must translate it verbatim, not generate a free-form reply. Used for both
@@ -88,6 +79,8 @@ class ChatService(object):
         self.signals = Signals(
             get_active_automaton=lambda: model_service.get_active_automaton_and_state()[0], db=db
         )
+        self._metadata_handler = MetadataHandler()
+        self._auto_tracker = AutoTracker(db, ai_service, self.signals)
         self.auto_tracking_enabled = True
 
         # Single-user prototype: serializes chat-turn processing across
@@ -113,24 +106,6 @@ class ChatService(object):
         model during normal chat."""
         return [{"role": m["role"], "content": m["content"]} for m in history]
 
-    @staticmethod
-    def build_priming_messages(attachments: list) -> list[dict]:
-        """Never-persisted turn carrying attachments as provider-neutral
-        'attachment' blocks, rebuilt fresh on every call. Public: also
-        passed into signals.py's compute_signals() as a callback."""
-        if not attachments:
-            return []
-        return [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "attachment", "filename": a.filename, "source": a.source}
-                    for a in attachments
-                ],
-            },
-            {"role": "assistant", "content": "Understood."},
-        ]
-
     async def get_messages(self, last_n: int | None = None) -> list[dict]:
         # init_action's own message (if any) is deliberately never
         # persisted (see open_if_needed) — the only place it's surfaced.
@@ -141,15 +116,6 @@ class ChatService(object):
         return messages
 
     async def open_if_needed(self) -> dict | None:
-        """The one place init_action gets resolved: unconditional, and
-        entirely separate from the trigger/auto-tracking loop (see
-        Automaton.init_action) — model_service.get_active_automaton_and_state
-        already falls back to init_action.target on its own for every
-        caller, so this only has to notice the *first* such fallback
-        (db.get_current_state still None) and make it stick by persisting
-        the transition, plus fire init_action's own action_prompt message
-        exactly once. Then runs the existing opening-message check on
-        whatever state that leaves us in."""
         model_name = self._active_model_name
         automaton, state = self._model_service.get_active_automaton_and_state()
 
@@ -172,8 +138,8 @@ class ChatService(object):
     def _history_cutoff(self, model_name: str, state: State) -> datetime | None:
         """Messages at or before this timestamp must be excluded from both
         the AI reply and auto-tracking's signal evaluation, per `state`'s
-        clear_context. None means "no cutoff, use the full history"."""
-        if not state.clear_context:
+        history_cutoff. None means "no cutoff, use the full history"."""
+        if not state.history_cutoff:
             return None
         return self._db.get_last_transition_timestamp(model_name)
 
@@ -186,7 +152,7 @@ class ChatService(object):
             # doesn't carry the attachments meant for it either.
             return FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message), []
 
-        metadata_prompt = self.signals.get_definition() + '\n' + EMBED_METADATA_PROMPT
+        metadata_prompt = self._metadata_handler.build_prompt(self.signals.get_definition())
         system_prompt = f"{state.contextual_prompt}\n\n{automaton.general_prompt}\n\n{metadata_prompt}"
         return system_prompt, automaton.general_prompt_attachments + state.attachments
 
@@ -212,14 +178,14 @@ class ChatService(object):
         content_since = self._history_cutoff(model_name, state)
         system_prompt, turn_attachments = self._build_turn_prompt(automaton, state)
         chat_history = (
-            self.build_priming_messages(turn_attachments)
+            build_priming_messages(turn_attachments)
             + self._strip_timestamps(self._db.get_messages(model_name, since=content_since))
             + [{"role": "user", "content": "..."}]
         )
 
         reply = await self._ai_service.generate(system_prompt, chat_history)
         visible_text, metadata = _extract_visible_text_and_metadata(reply)
-        audio_text = metadata.get('audio')
+        audio_text = self._metadata_handler.audio_text(metadata)
         message_id = self._db.save_message("assistant", visible_text, model_name, audio_text=audio_text)
         return {"id": message_id, "content": visible_text, "audio_text": audio_text}
 
@@ -233,14 +199,17 @@ class ChatService(object):
 
         since = self._history_cutoff(model_name, state)
         chat_history = (
-            self.build_priming_messages(turn_attachments)
+            build_priming_messages(turn_attachments)
             + self._strip_timestamps(self._db.get_messages(model_name, since=since))
             + [{"role": "user", "content": action.action_prompt}]
         )
 
         reply = await self._ai_service.generate(system_prompt, chat_history)
-        visible_text, avance_tag_content = _extract_visible_text_and_metadata(reply)
-        return {"id": None, "content": visible_text, "metadata": avance_tag_content}
+        visible_text, metadata = _extract_visible_text_and_metadata(reply)
+        # Deliberately not persisted: shown for this turn only, never part
+        # of future history/signals. No id, so no per-message audio either
+        # (the spoken-text toggle still works client-side off audio_text).
+        return {"id": None, "content": visible_text, "audio_text": self._metadata_handler.audio_text(metadata)}
 
     async def _messages_for_transition(
         self, action: Action, model_name: str, automaton: Automaton, new_state: State, *, is_self_loop: bool
@@ -266,45 +235,19 @@ class ChatService(object):
         return messages
 
     async def _run_auto_tracking(
-        self, pending_message: dict | None, model_name: str, automaton: Automaton, state: State, signal_values: list[str] | None
+        self, pending_message: dict | None, model_name: str, automaton: Automaton, state: State, signal_values: dict | None
     ) -> tuple[Action | None, State, list[dict]]:
-        if not self.auto_tracking_enabled or not state.has_triggerable_actions:
+        # Whether to run auto-tracking at all is ChatService's own toggle
+        # (see POST /api/chat/autotracking) — everything past that point
+        # (signal computation/fallback, trigger evaluation, applying the
+        # transition) is AutoTracker's job, not this method's.
+        if not self.auto_tracking_enabled:
             return None, state, []
 
-        if not signal_values: 
-            # fallback, we need to call AI to compute values
-            logger.warning(f'_run_auto_tracking(): signals not found in metadata, falling back to AI')
-            since = self._history_cutoff(model_name, state)
-            signals_list = await self.signals.compute(
-                self._ai_service, self.build_priming_messages, pending_message, since=since
-            )
-            signal_values = {s["name"]: s["value"] for s in signals_list}
-        # Saved before trigger evaluation so a fired transition can reference
-        # the exact snapshot id that caused it.
-        snapshot_id = self._db.save_signal_snapshot(signal_values, model_name)
-
-        triggered_action = automaton.evaluate_triggers(state.key, signal_values)
-        if triggered_action is None:
+        action, new_state = await self._auto_tracker.run(pending_message, model_name, automaton, state, signal_values)
+        if action is None:
             return None, state, []
 
-        action = automaton.move(state.key, triggered_action)
-        relevant_names = trigger_signal_names(action.trigger)
-        relevant_values = {n: signal_values.get(n) for n in relevant_names}
-        # A self-loop isn't a real transition — skip persisting it (see
-        # ModelService.apply_manual_action for why: it would otherwise
-        # bump the clear_context cutoff for no actual state change).
-        if action.target != state.key:
-            self._db.save_transition(
-                state.key,
-                triggered_action,
-                action.target,
-                model_name,
-                transition_log_level=automaton.get_state(action.target).transition_log_level,
-                signal_snapshot_id=snapshot_id,
-                signal_values=relevant_values,
-            )
-
-        new_state = automaton.get_state(action.target)
         messages = await self._messages_for_transition(
             action, model_name, automaton, new_state, is_self_loop=(action.target == state.key)
         )
@@ -358,28 +301,33 @@ class ChatService(object):
             )
             messages.extend(transition_messages)
 
-        system_prompt, turn_attachments = self._build_turn_prompt(automaton, state)
-
-        priming_messages = self.build_priming_messages(turn_attachments)
-        since = self._history_cutoff(model_name, state)
-        chat_history = priming_messages + self._strip_timestamps(
-            self._db.get_messages(model_name, since=since) + [pending_message]
-        )
-
-        reply = await self._ai_service.generate(system_prompt, chat_history, on_retry=on_retry)
-        visible_reply, metadata = _extract_visible_text_and_metadata(reply)
-        audio_text = metadata.get('audio')
         self._db.save_message("user", text, model_name)
-        assistant_id = self._db.save_message("assistant", visible_reply, model_name, audio_text=audio_text)
-        messages.append({"id": assistant_id, "content": visible_reply, "audio_text": audio_text})
 
-        if automaton.autotracking_on_ai_message:
-            last_action, state, transition_messages = await self._run_auto_tracking(
-                None, model_name, automaton, state, metadata.get('signals')
-            )
-            if last_action:
-                action = last_action
-            messages.extend(transition_messages)
+        # Phase 1's auto-tracking may have landed us on a state that never
+        # generates a free-form reply (final, or chat: false — typically a
+        # fixed_message state): its own opening/fixed message is already in
+        # `messages` above (see _messages_for_transition) — generating a
+        # second "normal" reply here would show the same content twice.
+        if not state.final and state.chat:
+            system_prompt, turn_attachments = self._build_turn_prompt(automaton, state)
+
+            priming_messages = build_priming_messages(turn_attachments)
+            since = self._history_cutoff(model_name, state)
+            chat_history = priming_messages + self._strip_timestamps(self._db.get_messages(model_name, since=since))
+
+            reply = await self._ai_service.generate(system_prompt, chat_history, on_retry=on_retry)
+            visible_reply, metadata = _extract_visible_text_and_metadata(reply)
+            audio_text = self._metadata_handler.audio_text(metadata)
+            assistant_id = self._db.save_message("assistant", visible_reply, model_name, audio_text=audio_text)
+            messages.append({"id": assistant_id, "content": visible_reply, "audio_text": audio_text})
+
+            if automaton.autotracking_on_ai_message:
+                last_action, state, transition_messages = await self._run_auto_tracking(
+                    None, model_name, automaton, state, self._metadata_handler.signal_values(metadata)
+                )
+                if last_action:
+                    action = last_action
+                messages.extend(transition_messages)
 
         return {
             "reply": messages,

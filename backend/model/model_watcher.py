@@ -16,7 +16,7 @@ from typing import Awaitable, Callable
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-from model_service import MODELS_DIR, CommitCallback, ModelService
+from model.model_service import MODELS_DIR, CommitCallback, ModelService
 
 logger = logging.getLogger(__name__)
 
