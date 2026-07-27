@@ -55,8 +55,9 @@ states:
     contextual_prompt: |
       Selecciona una pregunta a caso. Haz la pregunta seleccionada al usuario.
 
-    attachments:
-      cuestionario.txt
+    attachments: 
+      - cuestionario.txt
+
 
     actions:
       - name: usuario_niega_el_problema
