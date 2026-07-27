@@ -21,7 +21,7 @@ import {
   deleteModel,
   downloadModel
 } from './api.js'
-import { disconnect as disconnectChat, onModelUpdated, sendMessage } from './chatClient.js'
+import { disconnect as disconnectChat, sendMessage } from './chatClient.js'
 import { playMessageChime, playMessageAudio } from './audio.js'
 import { celebrate } from './confetti.js'
 import { clearApiError, errorDetail, errorMessage, setApiError } from './errorStore.js'
@@ -65,6 +65,48 @@ const actionLoading = ref(false)
 const modelUploadInput = ref(null)
 const modelsMenu = ref(null)
 const chatWindow = ref(null)
+const signalsView = ref(null)
+
+// Signals only ever change server-side as a result of auto-tracking inside
+// a chat turn/action, or wholesale when the active model itself changes
+// (reset/switch/upload/delete) — called from every one of those spots so
+// the docked inspector (see SignalsView) tracks the backend live instead
+// of only refreshing when reopened. A no-op while the panel is closed.
+function refreshSignalsIfOpen() {
+  if (showSignals.value) signalsView.value?.refresh()
+}
+
+// Draggable split between the chat and the docked Signals panel (see
+// SignalsView's own >=900px breakpoint — the resizer itself is hidden
+// below that width via the same media query, so this only ever matters
+// in docked mode). Width persists across reloads; a fresh session with no
+// saved width falls back to the panel's own default (400px, in its CSS).
+const SIGNALS_MIN_WIDTH = 280
+const SIGNALS_MAX_WIDTH = 720
+const CHAT_MIN_WIDTH = 320
+const appBody = ref(null)
+const resizingSignals = ref(false)
+const signalsPanelWidth = ref(Number(localStorage.getItem('signalsPanelWidth')) || 400)
+
+function startSignalsResize(event) {
+  resizingSignals.value = true
+  event.target.setPointerCapture(event.pointerId)
+}
+
+function onSignalsResizeMove(event) {
+  if (!resizingSignals.value || !appBody.value) return
+  const rect = appBody.value.getBoundingClientRect()
+  const maxWidth = Math.min(SIGNALS_MAX_WIDTH, rect.width - CHAT_MIN_WIDTH)
+  const newWidth = rect.right - event.clientX
+  signalsPanelWidth.value = Math.min(maxWidth, Math.max(SIGNALS_MIN_WIDTH, newWidth))
+}
+
+function stopSignalsResize(event) {
+  if (!resizingSignals.value) return
+  resizingSignals.value = false
+  event.target.releasePointerCapture(event.pointerId)
+  localStorage.setItem('signalsPanelWidth', String(signalsPanelWidth.value))
+}
 
 // Initial-boot backend readiness gate — entirely separate from the shared
 // error store (which is for runtime errors on an already-running app). 'checking': the
@@ -283,6 +325,7 @@ async function submitMessage(message) {
     // an [audio] tag (see backend/chat/chat_service.py's _extract_audio_tag).
     if (result.reply.length) maybeAutoPlayAudio(result.reply[result.reply.length - 1].id)
     handleStateChange(result.state)
+    refreshSignalsIfOpen()
   } catch {
     // Already surfaced via the websocket handler or apiFetch (see
     // chatClient.js) — this only has to update this specific message's
@@ -359,6 +402,7 @@ async function handleAction(actionName) {
       maybeAutoPlayAudio(result.reply[result.reply.length - 1].id)
     }
     handleStateChange(result.state)
+    refreshSignalsIfOpen()
   } catch {
     // already surfaced via apiFetch
   } finally {
@@ -381,6 +425,7 @@ async function handleReset() {
     state.value = null
     handleStateChange(newState)
     await loadMessages()
+    refreshSignalsIfOpen()
   } catch {
     // already surfaced via apiFetch
   }
@@ -391,10 +436,9 @@ function triggerModelUpload() {
 }
 
 // Optimistic UI clear shared by every path that's about to leave the
-// backend with a freshly reset active model — upload, switch, delete, and
-// an unsolicited 'model_updated' push from the file watcher (see
-// handleExternalModelReset below). Cleared immediately, before the
-// triggering request even resolves, same as it always was inline here.
+// backend with a freshly reset active model — upload, switch, delete.
+// Cleared immediately, before the triggering request even resolves, same
+// as it always was inline here.
 function clearChatUi() {
   messages.value = []
   clearApiError()
@@ -412,6 +456,7 @@ async function refreshStateAndModels() {
   modelsMenu.value?.refresh()
   handleStateChange(newState)
   await loadMessages()
+  refreshSignalsIfOpen()
 }
 
 async function handleModelUploadChange(event) {
@@ -458,21 +503,6 @@ async function handleModelSwitch(modelName) {
   }
 }
 
-// Reacts to an unsolicited 'model_updated' websocket push (see
-// chatClient.js / backend/model_watcher.py): the file watcher just reset
-// the active model because someone edited it directly on disk, not from
-// anything this client asked for — same UI refresh as after our own
-// upload/switch/delete, just triggered by the incoming frame instead of
-// one of our own requests resolving.
-async function handleExternalModelReset() {
-  clearChatUi()
-  try {
-    await refreshStateAndModels()
-  } catch {
-    // already surfaced via apiFetch
-  }
-}
-
 // Triggers a browser download from the zip blob — standard synthetic-<a>
 // pattern, since fetch() has no way to hand a response straight to the
 // browser's own download UI. No UI state changes at all on success: unlike
@@ -508,7 +538,6 @@ async function handleModelDelete(modelName) {
 }
 
 onMounted(startBootSequence)
-onMounted(() => onModelUpdated(handleExternalModelReset))
 onBeforeUnmount(() => {
   disconnectChat()
   if (pingTimeoutHandle) clearTimeout(pingTimeoutHandle)
@@ -526,7 +555,13 @@ onBeforeUnmount(() => {
     <header class="topbar">
       <StateBar :state="state" />
       <div class="topbar-actions">
-        <button class="signals-btn" @click="showSignals = true">Signals</button>
+        <button
+          class="signals-btn"
+          :class="{ 'signals-btn-on': showSignals }"
+          @click="showSignals = !showSignals"
+        >
+          Signals
+        </button>
         <ModelsMenu
           ref="modelsMenu"
           @select="handleModelSwitch"
@@ -546,44 +581,63 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
-    <ChatWindow
-      ref="chatWindow"
-      :messages="messages"
-      :loading="chatLoading"
-      :status="chatStatus"
-      :error-message="errorMessage"
-      :error-detail="errorDetail"
-      :final-state-reached="state?.final ?? false"
-      :state-chat="state?.chat ?? true"
-      :history-loaded="historyLoaded"
-      :audio-enabled="audioEnabled"
-      :talk-available="talkAvailable"
-      :mic-available="micAvailable"
-      :spoken-text-enabled="spokenTextEnabled"
-      @send="handleSend"
-      @resend="handleResend"
-      @toggle-audio="toggleAudio"
-      @voice-message="handleVoiceMessage"
-      @toggle-spoken-text="toggleSpokenText"
-    >
-      <template #actions>
-        <ActionButtons
-          :actions="state?.actions ?? []"
-          :disabled="actionLoading"
-          :auto-tracking-enabled="autoTrackingEnabled"
-          @action="handleAction"
-        />
-      </template>
-    </ChatWindow>
+    <div class="app-body" ref="appBody" :class="{ 'app-body-resizing': resizingSignals }">
+      <ChatWindow
+        ref="chatWindow"
+        :messages="messages"
+        :loading="chatLoading"
+        :status="chatStatus"
+        :error-message="errorMessage"
+        :error-detail="errorDetail"
+        :final-state-reached="state?.final ?? false"
+        :state-chat="state?.chat ?? true"
+        :history-loaded="historyLoaded"
+        :audio-enabled="audioEnabled"
+        :talk-available="talkAvailable"
+        :mic-available="micAvailable"
+        :spoken-text-enabled="spokenTextEnabled"
+        @send="handleSend"
+        @resend="handleResend"
+        @toggle-audio="toggleAudio"
+        @voice-message="handleVoiceMessage"
+        @toggle-spoken-text="toggleSpokenText"
+      >
+        <template #actions>
+          <ActionButtons
+            :actions="state?.actions ?? []"
+            :disabled="actionLoading"
+            :auto-tracking-enabled="autoTrackingEnabled"
+            @action="handleAction"
+          />
+        </template>
+      </ChatWindow>
 
-    <SignalsView
-      v-if="showSignals"
-      :state="state"
-      :auto-tracking-enabled="autoTrackingEnabled"
-      :auto-tracking-loading="autoTrackingLoading"
-      @close="showSignals = false"
-      @toggle-auto-tracking="toggleAutoTracking"
-    />
+      <!-- Draggable split, docked mode only (hidden below the same
+           >=900px breakpoint SignalsView docks at — see its own CSS). -->
+      <div
+        v-if="showSignals"
+        class="signals-resizer"
+        @pointerdown="startSignalsResize"
+        @pointermove="onSignalsResizeMove"
+        @pointerup="stopSignalsResize"
+        @pointercancel="stopSignalsResize"
+      ></div>
+
+      <!-- Wide screens: docked inspector beside the chat, stays open across
+           turns and live-refreshes (see refreshSignalsIfOpen). Narrow
+           screens: SignalsView's own CSS falls back to a full-screen modal
+           (the inline width below is harmless there — inset:0 wins). -->
+      <SignalsView
+        v-if="showSignals"
+        ref="signalsView"
+        :style="{ width: signalsPanelWidth + 'px' }"
+        :state="state"
+        :auto-tracking-enabled="autoTrackingEnabled"
+        :auto-tracking-loading="autoTrackingLoading"
+        @close="showSignals = false"
+        @toggle-auto-tracking="toggleAutoTracking"
+      />
+    </div>
 
     <EditModelView
       v-if="showEditModel"
@@ -611,6 +665,58 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid #ddd;
 }
 
+.app-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* While dragging, the pointer can slide over the chat/panel iframe-less
+   content faster than it moves — force the resize cursor and kill text
+   selection everywhere so the drag doesn't feel like it "catches" on
+   message bubbles. */
+.app-body-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.app-body-resizing :deep(*) {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+.signals-resizer {
+  display: none;
+  flex: none;
+  width: 6px;
+  margin: 0 -3px;
+  cursor: col-resize;
+  touch-action: none;
+  position: relative;
+  z-index: 1;
+}
+
+.signals-resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  right: 2px;
+  border-radius: 2px;
+}
+
+.signals-resizer:hover::after {
+  background: #4a6fa5;
+}
+
+@media (min-width: 900px) {
+  .signals-resizer {
+    display: block;
+  }
+}
+
 .topbar-actions {
   display: flex;
   gap: 0.5rem;
@@ -626,6 +732,11 @@ onBeforeUnmount(() => {
 }
 
 .signals-btn:hover {
+  background: #4a6fa5;
+  color: white;
+}
+
+.signals-btn-on {
   background: #4a6fa5;
   color: white;
 }

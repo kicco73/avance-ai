@@ -188,12 +188,4 @@ class AppConfig:
         self.talk_services = self._parse_talk_services(raw, path)
         self.listen_services = self._parse_listen_services(raw, path)
 
-        model_service = raw.get("model-service")
-        if not isinstance(model_service, dict):
-            raise ConfigError(f"{path}: 'model-service' section is missing or not a mapping.")
-        file_watch_enabled = model_service.get("file-watch-enabled")
-        if not isinstance(file_watch_enabled, bool):
-            raise ConfigError(f"{path}: 'model-service.file-watch-enabled' must be a boolean.")
-        self.model_file_watch_enabled = file_watch_enabled
-
 

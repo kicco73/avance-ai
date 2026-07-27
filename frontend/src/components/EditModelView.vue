@@ -1,5 +1,5 @@
 <script setup>
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Compartment, EditorState } from '@codemirror/state'
 import { EditorView, basicSetup } from 'codemirror'
 import { yaml } from '@codemirror/lang-yaml'
@@ -24,6 +24,10 @@ const editorHost = ref(null)
 // mounted — this ref only mirrors it (via the updateListener below) so
 // save() has something to send without querying the view directly.
 const content = ref('')
+// What was last loaded/saved — compared against `content` to decide
+// whether closing needs a confirmation (see handleClose).
+const originalContent = ref('')
+const isDirty = computed(() => content.value !== originalContent.value)
 
 let view = null
 const editableCompartment = new Compartment()
@@ -49,6 +53,7 @@ async function load() {
   clearApiError()
   try {
     content.value = await getModelFile(props.modelName)
+    originalContent.value = content.value
   } catch {
     // already surfaced via apiFetch
     loading.value = false
@@ -76,6 +81,13 @@ async function save() {
   }
 }
 
+// Only prompts when there's actually something to lose — a clean editor
+// (nothing typed, or already saved) closes straight away.
+function handleClose() {
+  if (isDirty.value && !window.confirm('Discard unsaved changes to this model?')) return
+  emit('close')
+}
+
 watch(saving, (isSaving) => {
   view?.dispatch({ effects: editableCompartment.reconfigure(EditorView.editable.of(!isSaving)) })
 })
@@ -92,7 +104,7 @@ onBeforeUnmount(() => view?.destroy())
         <button class="save-btn" :disabled="loading || saving" @click="save">
           {{ saving ? 'Saving…' : 'Save' }}
         </button>
-        <button class="close-btn" @click="emit('close')">Back</button>
+        <button class="close-btn" @click="handleClose">Back</button>
       </div>
     </div>
 

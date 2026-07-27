@@ -20,6 +20,3 @@ ai-service:
   - name: gemini
     model: gemini-flash-lite-latest
     key: <your-gemini-api-key>
-
-model-service:
-  file-watch-enabled: true

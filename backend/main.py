@@ -3,14 +3,12 @@ only. Every endpoint lives on AvanceController (see controller.py)."""
 from __future__ import annotations
 
 import logging
-from contextlib import asynccontextmanager
 from http import HTTPStatus
 
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from automaton.automaton import Automaton
 from chat.chat_service import ChatService
 from chat.ws_adapter import WsAdapter
 from config import AppConfig
@@ -18,7 +16,6 @@ from controller import AvanceController
 from db import Db
 from error_handlers import register_error_handlers
 from model.model_service import ModelService
-from model.model_watcher import ModelWatcher
 from ai.ai_service import AiService
 from talk.talk_service import TalkService
 from listen.listen_service import ListenService
@@ -65,27 +62,7 @@ try:
 
     chat_ws_adapter = WsAdapter(chat_service) if config.chat_transport == "websocket" else None
 
-    model_watcher: ModelWatcher | None = None
-    if config.model_file_watch_enabled:
-        async def _on_watcher_commit(new_automaton: Automaton) -> None:
-            # Unused: kept only to match ModelService's CommitCallback shape,
-            # same as AvanceController._activate_model — re-enables
-            # auto-tracking for whichever model this reset was for.
-            async with chat_service.lock:
-                chat_service.auto_tracking_enabled = True
-
-        _on_active_model_reset = chat_ws_adapter.push_model_updated if chat_ws_adapter else None
-        model_watcher = ModelWatcher(model_service, _on_watcher_commit, _on_active_model_reset)
-
-    @asynccontextmanager
-    async def lifespan(_app: FastAPI):
-        if model_watcher is not None:
-            model_watcher.start()
-        yield
-        if model_watcher is not None:
-            model_watcher.stop()
-
-    app = FastAPI(title="Avance State Engine", lifespan=lifespan)
+    app = FastAPI(title="Avance State Engine")
 
     app.add_middleware(
         CORSMiddleware,

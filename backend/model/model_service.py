@@ -5,7 +5,6 @@ themselves for that.
 """
 from __future__ import annotations
 
-import hashlib
 import io
 import logging
 import shutil
@@ -33,11 +32,6 @@ class ModelService(object):
         self._db = db
         # Pure build cache, not "active" state — see _load_and_validate.
         self._automaton_cache: dict[str, Automaton] = {}
-        # model_name -> content hash it was last built from (see
-        # _compute_content_hash), kept alongside the automaton cache so
-        # the file watcher (model_watcher.py) can tell a genuine on-disk
-        # change apart from an event echoing its own upload.
-        self._model_hashes: dict[str, str] = {}
         # Fail fast at boot if the active model can't load.
         self.get_active_automaton_and_state()
 
@@ -63,102 +57,21 @@ class ModelService(object):
             raise ValueError(f"Model '{model_name}' does not exist.")
         automaton = AutomatonBuilder().build(model_dir / "index.yml")
         self._automaton_cache[model_name] = automaton
-        self._model_hashes[model_name] = self._compute_content_hash(model_dir)
         return automaton
 
-    @staticmethod
-    def _compute_content_hash(model_dir: Path) -> str:
-        """Deterministic hash of every non-hidden file under `model_dir`
-        (index.yml plus any attachments) — same tree, same hash,
-        regardless of filesystem traversal order. Hidden files are
-        excluded so the upload path's own temp files/staging dirs never
-        affect it."""
-        digest = hashlib.sha256()
-        files = sorted(p for p in model_dir.rglob("*") if p.is_file() and not p.name.startswith("."))
-        for file_path in files:
-            digest.update(file_path.relative_to(model_dir).as_posix().encode("utf-8"))
-            digest.update(b"\0")
-            digest.update(file_path.read_bytes())
-            digest.update(b"\0")
-        return digest.hexdigest()
-
     async def _finalize_model_update(
-        self, model_name: str, model_dir: Path, automaton: Automaton, commit: CommitCallback
+        self, model_name: str, automaton: Automaton, commit: CommitCallback
     ) -> bool:
-        """Used by the upload path (_put_yaml_model/_put_zip_model): a
-        deliberate replace, so it wipes `model_name`'s conversation data
-        if it's currently active, before awaiting `commit`."""
+        """Used by the upload path (_put_yaml_model/_put_zip_model/
+        put_model_file): a deliberate replace, so it wipes `model_name`'s
+        conversation data if it's currently active, before awaiting
+        `commit`."""
         self._automaton_cache[model_name] = automaton
-        self._model_hashes[model_name] = self._compute_content_hash(model_dir)
         if model_name == self.get_active_model_name():
             self._db.reset_model(model_name)
             await commit(automaton)
             return True
         return False
-
-    async def _finalize_hot_reload(
-        self, model_name: str, model_dir: Path, automaton: Automaton, commit: CommitCallback
-    ) -> bool:
-        """Used by the file watcher only: refreshes the cache and, if
-        `model_name` is active, awaits `commit` — but never wipes
-        conversation data (a live edit isn't a deliberate replace). If the
-        persisted current state no longer exists (renamed/removed), fixes
-        it to init_action.target via one corrective transition instead."""
-        self._automaton_cache[model_name] = automaton
-        self._model_hashes[model_name] = self._compute_content_hash(model_dir)
-        if model_name != self.get_active_model_name():
-            return False
-
-        current_state_key = self._db.get_current_state(model_name)
-        if current_state_key is not None and current_state_key not in automaton.states:
-            target_state = automaton.get_state(automaton.init_action.target)
-            logger.warning(
-                "Model '%s': persisted state '%s' no longer exists after reload — "
-                "resetting to init_action.target '%s' (conversation history kept).",
-                model_name, current_state_key, automaton.init_action.target,
-            )
-            self._db.save_transition(
-                current_state_key,
-                "model-reloaded",
-                automaton.init_action.target,
-                model_name,
-                transition_log_level=target_state.transition_log_level,
-            )
-
-        await commit(automaton)
-        return True
-
-    async def refresh_model_from_disk(self, model_name: str, commit: CommitCallback) -> bool | None:
-        """For the file watcher only (model_watcher.py): compares
-        `model_name`'s current on-disk content hash against the cache
-        before doing anything else — this is what tells a genuine external
-        edit apart from an event echoing the upload path's own write, or a
-        duplicate event for the same logical change (no time-window
-        suppression anywhere else). Only a genuine mismatch rebuilds and
-        refreshes the cache. Returns None if nothing happened (no change,
-        or the model/content turned out invalid), else whether
-        `model_name` was the active model (see _finalize_hot_reload)."""
-        if not self._is_safe_model_name(model_name):
-            return None
-        model_dir = MODELS_DIR / model_name
-        if not model_dir.is_dir():
-            return None
-
-        try:
-            current_hash = self._compute_content_hash(model_dir)
-        except OSError:
-            return None  # file mid-write; a later event will retry
-
-        if current_hash == self._model_hashes.get(model_name):
-            return None
-
-        try:
-            automaton = AutomatonBuilder().build(model_dir / "index.yml")
-        except Exception as exc:
-            logger.error("Model watcher: '%s' failed to reload after a file change: %s", model_name, exc)
-            return None
-
-        return await self._finalize_hot_reload(model_name, model_dir, automaton, commit)
 
     @staticmethod
     def _looks_like_zip(content_type: str | None, content: bytes) -> bool:
@@ -326,7 +239,7 @@ class ModelService(object):
         temp_path.replace(final_path)
 
         self._db.set_active_model_name(model_name, Session().user)
-        await self._finalize_model_update(model_name, model_dir, new_automaton, commit)
+        await self._finalize_model_update(model_name, new_automaton, commit)
 
         return {"success": True, "model_name": model_name}
 
@@ -357,7 +270,7 @@ class ModelService(object):
         staging_dir.rename(final_dir)
 
         self._db.set_active_model_name(model_name, Session().user)
-        await self._finalize_model_update(model_name, final_dir, new_automaton, commit)
+        await self._finalize_model_update(model_name, new_automaton, commit)
 
         return {"success": True, "model_name": model_name}
 
@@ -434,7 +347,7 @@ class ModelService(object):
         shutil.rmtree(model_dir)
         staging_dir.rename(model_dir)
 
-        await self._finalize_model_update(model_name, model_dir, new_automaton, commit)
+        await self._finalize_model_update(model_name, new_automaton, commit)
 
         return {"success": True, "model_name": model_name}
 
@@ -449,9 +362,8 @@ class ModelService(object):
 
         shutil.rmtree(MODELS_DIR / model_name)
         self._db.reset_model(model_name)
-        # No orphaned Automaton (or hash) for a model that no longer exists.
+        # No orphaned Automaton for a model that no longer exists.
         self._automaton_cache.pop(model_name, None)
-        self._model_hashes.pop(model_name, None)
 
         if model_name == self.get_active_model_name():
             await self.activate_model(DEFAULT_MODEL_NAME, commit)

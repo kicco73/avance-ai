@@ -50,6 +50,3 @@ listen-service:
     - name: faster-whisper
       model: small
       language: ca
-
-model-service:
-  file-watch-enabled: true

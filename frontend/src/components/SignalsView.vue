@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { getSignals, postTriggersPreview } from '../api.js'
 
 defineProps({
@@ -25,20 +25,58 @@ const signals = ref([])
 const triggersLoading = ref(false)
 const triggers = ref([])
 
-async function load() {
-  loading.value = true
+// Names of signals whose value just changed on the latest refresh — driven
+// by markChangedSignals() below, drives the bars' brief flash animation
+// (see .signal-bar-changed) so a live update reads as "this one moved"
+// instead of silently jumping. Reassigned wholesale (never mutated in
+// place) so Vue's reactivity picks up each change.
+const recentlyChanged = ref(new Set())
+let flashResetHandle = null
+const SIGNAL_FLASH_MS = 900
+
+// Compares `nextSignals` against the signals currently on screen — must
+// run BEFORE `signals.value` is overwritten, since that's the only "old"
+// copy available. A signal with no prior value (first load, or was in
+// error) never flashes: there's nothing to visibly change from.
+function markChangedSignals(nextSignals) {
+  const changed = new Set()
+  for (const next of nextSignals) {
+    const prev = signals.value.find((s) => s.name === next.name)
+    if (prev && !prev.error && !next.error && prev.value !== next.value) {
+      changed.add(next.name)
+    }
+  }
+  if (!changed.size) return
+  recentlyChanged.value = changed
+  clearTimeout(flashResetHandle)
+  flashResetHandle = setTimeout(() => { recentlyChanged.value = new Set() }, SIGNAL_FLASH_MS)
+}
+
+async function fetchSignalsAndTriggers() {
   let signalsOk = true
   try {
-    signals.value = await getSignals()
+    const nextSignals = await getSignals()
+    markChangedSignals(nextSignals)
+    signals.value = nextSignals
   } catch {
     // already surfaced via apiFetch
     signalsOk = false
-  } finally {
-    loading.value = false
   }
-
   if (signalsOk) await loadTriggers()
 }
+
+async function load() {
+  loading.value = true
+  await fetchSignalsAndTriggers()
+  loading.value = false
+}
+
+// Exposed for App.vue: called after every chat turn/action/model change so
+// the panel — now a docked inspector that stays open across turns — tracks
+// the backend's signal values live. No `loading` flip here: unlike the
+// initial load, a background refresh must update the numbers in place,
+// not blank the chart out from under the user.
+defineExpose({ refresh: fetchSignalsAndTriggers })
 
 // Reuses the signal values already fetched above — never calls the AI again.
 async function loadTriggers() {
@@ -60,6 +98,7 @@ function hasValue(signal) {
 }
 
 onMounted(load)
+onBeforeUnmount(() => clearTimeout(flashResetHandle))
 </script>
 
 <template>
@@ -75,7 +114,7 @@ onMounted(load)
         >
           Auto-tracking: {{ autoTrackingEnabled ? 'On' : 'Off' }}
         </button>
-        <button class="close-btn" @click="emit('close')">Back</button>
+        <button class="close-btn" @click="emit('close')">Close</button>
       </div>
     </div>
 
@@ -98,9 +137,14 @@ onMounted(load)
             <div
               v-if="hasValue(signal)"
               class="signal-bar-fill"
+              :class="{ 'signal-bar-changed': recentlyChanged.has(signal.name) }"
               :style="{ width: signal.value + '%' }"
             ></div>
-            <div v-else class="signal-bar-fill signal-bar-na"></div>
+            <div
+              v-else
+              class="signal-bar-fill signal-bar-na"
+              :class="{ 'signal-bar-changed': recentlyChanged.has(signal.name) }"
+            ></div>
           </div>
 
           <span class="signal-value" :class="{ 'signal-value-na': !hasValue(signal) }">
@@ -149,6 +193,8 @@ onMounted(load)
 
 <style scoped>
 .signals-overlay {
+  /* Narrow screens: a full-screen modal, same as before — there isn't
+     room to dock it beside the chat and keep both usable. */
   position: fixed;
   inset: 0;
   background: white;
@@ -156,6 +202,20 @@ onMounted(load)
   display: flex;
   flex-direction: column;
   font-family: system-ui, -apple-system, sans-serif;
+}
+
+@media (min-width: 900px) {
+  .signals-overlay {
+    /* Wide screens: an inspector-style panel docked beside the chat,
+       both visible and usable at once — see App.vue's .app-body. */
+    position: static;
+    inset: auto;
+    z-index: auto;
+    flex: none;
+    width: 400px;
+    height: 100%;
+    border-left: 1px solid #ddd;
+  }
 }
 
 .signals-header {
@@ -280,6 +340,26 @@ onMounted(load)
 .signal-bar-na {
   width: 100%;
   background: repeating-linear-gradient(45deg, #ccc, #ccc 6px, #ddd 6px, #ddd 12px);
+}
+
+@keyframes signal-bar-flash {
+  0% {
+    box-shadow: 0 0 0 0 rgba(74, 111, 165, 0.7);
+    filter: brightness(1.35);
+  }
+
+  70% {
+    box-shadow: 0 0 0 5px rgba(74, 111, 165, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(74, 111, 165, 0);
+    filter: brightness(1);
+  }
+}
+
+.signal-bar-changed {
+  animation: signal-bar-flash 0.9s ease-out;
 }
 
 .signal-value {
