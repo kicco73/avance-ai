@@ -65,74 +65,108 @@ class AppConfig:
         return value.strip()
 
     @staticmethod
-    def _parse_talk_services(raw: dict, path: Path) -> list[TalkServiceConfig]:
-        entries = raw.get("talk-service")
+    def _get_section(raw: dict, section: str, path: Path) -> dict:
+        sub = raw.get(section)
+        if not isinstance(sub, dict):
+            raise ConfigError(f"{path}: '{section}' section is missing or not a mapping.")
+        return sub
+
+    @classmethod
+    def _get_providers(cls, raw: dict, section: str, path: Path) -> list:
+        sub = cls._get_section(raw, section, path)
+        entries = sub.get("providers")
         if not isinstance(entries, list) or not entries:
-            raise ConfigError(f"{path}: 'talk-service' must be a non-empty list.")
+            raise ConfigError(f"{path}: '{section}.providers' must be a non-empty list.")
+        return entries
+
+    @classmethod
+    def _get_optional_providers(cls, raw: dict, section: str, path: Path) -> list | None:
+        """None if the whole section is absent, or `section.enabled` is
+        absent/false — the caller skips the service entirely, off by
+        default. Otherwise the same non-empty providers list as
+        _get_providers."""
+        sub = raw.get(section)
+        if sub is None:
+            return None
+        if not isinstance(sub, dict):
+            raise ConfigError(f"{path}: '{section}' section is not a mapping.")
+        enabled = sub.get("enabled", False)
+        if not isinstance(enabled, bool):
+            raise ConfigError(f"{path}: '{section}.enabled' must be a boolean.")
+        if not enabled:
+            return None
+        entries = sub.get("providers")
+        if not isinstance(entries, list) or not entries:
+            raise ConfigError(f"{path}: '{section}.providers' must be a non-empty list.")
+        return entries
+
+    @classmethod
+    def _parse_talk_services(cls, raw: dict, path: Path) -> list[TalkServiceConfig] | None:
+        entries = cls._get_optional_providers(raw, "talk-service", path)
+        if entries is None:
+            return None
 
         services = []
         for i, entry in enumerate(entries):
             if not isinstance(entry, dict):
-                raise ConfigError(f"{path}: 'talk-service[{i}]' must be a mapping.")
+                raise ConfigError(f"{path}: 'talk-service.providers[{i}]' must be a mapping.")
             name = entry.get("name")
             model = entry.get("model")
             key = entry.get("key")
             if not isinstance(name, str) or not name.strip():
-                raise ConfigError(f"{path}: 'talk-service[{i}].name' is missing or empty.")
+                raise ConfigError(f"{path}: 'talk-service.providers[{i}].name' is missing or empty.")
             if not isinstance(model, str) or not model.strip():
-                raise ConfigError(f"{path}: 'talk-service[{i}].model' is missing or empty.")
+                raise ConfigError(f"{path}: 'talk-service.providers[{i}].model' is missing or empty.")
             if key is not None and not isinstance(key, str):
-                raise ConfigError(f"{path}: 'talk-service[{i}].key' must be a string if present.")
+                raise ConfigError(f"{path}: 'talk-service.providers[{i}].key' must be a string if present.")
             services.append(TalkServiceConfig(name=name.strip(), model=model.strip(), key=key))
         return services
 
-    @staticmethod
-    def _parse_listen_services(raw: dict, path: Path) -> list[ListenServiceConfig]:
-        entries = raw.get("listen-service")
-        if not isinstance(entries, list) or not entries:
-            raise ConfigError(f"{path}: 'listen-service' must be a non-empty list.")
+    @classmethod
+    def _parse_listen_services(cls, raw: dict, path: Path) -> list[ListenServiceConfig] | None:
+        entries = cls._get_optional_providers(raw, "listen-service", path)
+        if entries is None:
+            return None
 
         services = []
         for i, entry in enumerate(entries):
             if not isinstance(entry, dict):
-                raise ConfigError(f"{path}: 'listen-service[{i}]' must be a mapping.")
+                raise ConfigError(f"{path}: 'listen-service.providers[{i}]' must be a mapping.")
             name = entry.get("name")
             model = entry.get("model")
             key = entry.get("key")
             language = entry.get("language")
             if not isinstance(name, str) or not name.strip():
-                raise ConfigError(f"{path}: 'listen-service[{i}].name' is missing or empty.")
+                raise ConfigError(f"{path}: 'listen-service.providers[{i}].name' is missing or empty.")
             if not isinstance(model, str) or not model.strip():
-                raise ConfigError(f"{path}: 'listen-service[{i}].model' is missing or empty.")
+                raise ConfigError(f"{path}: 'listen-service.providers[{i}].model' is missing or empty.")
             if key is not None and not isinstance(key, str):
-                raise ConfigError(f"{path}: 'listen-service[{i}].key' must be a string if present.")
+                raise ConfigError(f"{path}: 'listen-service.providers[{i}].key' must be a string if present.")
             if language is not None and not isinstance(language, str):
-                raise ConfigError(f"{path}: 'listen-service[{i}].language' must be a string if present.")
+                raise ConfigError(f"{path}: 'listen-service.providers[{i}].language' must be a string if present.")
             services.append(ListenServiceConfig(
                 name=name.strip(), model=model.strip(), key=key,
                 language=language.strip() if language else None,
             ))
         return services
 
-    @staticmethod
-    def _parse_ai_services(raw: dict, path: Path) -> list[AiServiceConfig]:
-        entries = raw.get("ai-service")
-        if not isinstance(entries, list) or not entries:
-            raise ConfigError(f"{path}: 'ai-service' must be a non-empty list.")
+    @classmethod
+    def _parse_ai_services(cls, raw: dict, path: Path) -> list[AiServiceConfig]:
+        entries = cls._get_providers(raw, "ai-service", path)
 
         services = []
         for i, entry in enumerate(entries):
             if not isinstance(entry, dict):
-                raise ConfigError(f"{path}: 'ai-service[{i}]' must be a mapping.")
+                raise ConfigError(f"{path}: 'ai-service.providers[{i}]' must be a mapping.")
             name = entry.get("name")
             model = entry.get("model")
             key = entry.get("key")
             if not isinstance(name, str) or not name.strip():
-                raise ConfigError(f"{path}: 'ai-service[{i}].name' is missing or empty.")
+                raise ConfigError(f"{path}: 'ai-service.providers[{i}].name' is missing or empty.")
             if not isinstance(model, str) or not model.strip():
-                raise ConfigError(f"{path}: 'ai-service[{i}].model' is missing or empty.")
+                raise ConfigError(f"{path}: 'ai-service.providers[{i}].model' is missing or empty.")
             if not isinstance(key, str):
-                raise ConfigError(f"{path}: 'ai-service[{i}].key' must be a string.")
+                raise ConfigError(f"{path}: 'ai-service.providers[{i}].key' must be a string.")
             services.append(AiServiceConfig(name=name.strip(), model=model.strip(), key=key))
         return services
 

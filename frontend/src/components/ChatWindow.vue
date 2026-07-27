@@ -67,6 +67,18 @@ const props = defineProps({
   audioEnabled: {
     type: Boolean,
     default: false
+  },
+  // Whether the server actually has talk-service/listen-service
+  // configured (see App.vue's boot ping) — false hides the corresponding
+  // button entirely rather than disabling it, so the text input widens
+  // into the freed space instead of showing a dead control.
+  talkAvailable: {
+    type: Boolean,
+    default: true
+  },
+  micAvailable: {
+    type: Boolean,
+    default: true
   }
 })
 
@@ -184,11 +196,11 @@ defineExpose({ focusInput })
           <div
             class="bubble"
             :class="[
-              msg.transcribing ? 'bubble-assistant bubble-loading' : (msg.role === 'user' ? 'bubble-user' : 'bubble-assistant'),
+              msg.role === 'user' ? 'bubble-user' : 'bubble-assistant',
               msg.failed ? 'bubble-failed' : ''
             ]"
           >
-            <span v-if="msg.transcribing">Transcribing…</span>
+            <span v-if="msg.transcribing">...</span>
             <span v-else v-html="renderMarkdown(msg.content)" />
           </div>
         </div>
@@ -253,6 +265,7 @@ defineExpose({ focusInput })
       />
 
       <button
+        v-if="micAvailable"
         type="button"
         class="mic-btn"
         :class="{ 'mic-btn-recording': recording }"
@@ -271,6 +284,7 @@ defineExpose({ focusInput })
       </button>
 
       <button
+        v-if="talkAvailable"
         type="button"
         class="audio-btn"
         :class="{ 'audio-btn-on': audioEnabled }"

@@ -28,6 +28,14 @@ class TalkServiceError(Exception):
     last provider-specific error as __cause__, never leaks it directly."""
 
 
+class TalkServiceNotAvailableError(Exception):
+    """Raised by the controller when talk-service.enabled is false in
+    .config.yml — there is no TalkService instance to call at all."""
+
+    def __init__(self, message: str = "Audio generation is not enabled on this server.") -> None:
+        super().__init__(message)
+
+
 class TalkService(TalkProvider):
     _PROVIDER_CLASSES = {
         "gemini": GeminiTalkProvider,

@@ -7,8 +7,8 @@ from fastapi import APIRouter, HTTPException, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
 
 from automaton.automaton import Automaton
-from talk.talk_service import TalkService
-from listen.listen_service import ListenService, ListenServiceError
+from talk.talk_service import TalkService, TalkServiceNotAvailableError
+from listen.listen_service import ListenService, ListenServiceError, ListenServiceNotAvailableError
 from chat.chat_service import ChatService, ChatServiceError
 from model_service import ModelService
 from schemas import (
@@ -47,8 +47,8 @@ class AvanceController(object):
         self,
         chat_service: ChatService,
         model_service: ModelService,
-        talk_service: TalkService,
-        listen_service: ListenService,
+        talk_service: TalkService | None,
+        listen_service: ListenService | None,
     ) -> None:
         self.chat_service = chat_service
         self.model_service = model_service
@@ -71,7 +71,14 @@ class AvanceController(object):
 
     @get("/api/state")
     def get_state(self):
-        return self.model_service.get_active_state_payload()
+        """Also the frontend's boot/readiness ping (see App.vue's
+        pingBackend) — piggybacks talk_enabled/listen_enabled here so it
+        stays the one call needed to know both "is the server up" and
+        "which voice features does it actually have configured"."""
+        payload = self.model_service.get_active_state_payload()
+        payload["talk_enabled"] = self.talk_service is not None
+        payload["listen_enabled"] = self.listen_service is not None
+        return payload
 
     @get("/api/chat/messages")
     async def get_messages(self):
@@ -106,6 +113,10 @@ class AvanceController(object):
         streaming-compatible. 404 if the message had no [audio] tag — the
         frontend treats that as "no audio available", not a failure (see
         api.js's messageAudioUrl)."""
+        if self.talk_service is None:
+            raise HTTPException(
+                status_code=HTTPStatus.SERVICE_UNAVAILABLE, detail=str(TalkServiceNotAvailableError())
+            )
         audio_text = self.chat_service.get_message_audio_text(message_id)
         if not audio_text:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="No audio available for this message.")
@@ -131,6 +142,10 @@ class AvanceController(object):
     async def post_listen_transcribe(self, file: UploadFile):
         """Isolated verification endpoint: not wired into process_turn or
         the chat frontend yet — just confirms ListenService end-to-end."""
+        if self.listen_service is None:
+            raise HTTPException(
+                status_code=HTTPStatus.SERVICE_UNAVAILABLE, detail=str(ListenServiceNotAvailableError())
+            )
         audio_bytes = await file.read()
         try:
             text = await self.listen_service.transcribe(audio_bytes)

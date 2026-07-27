@@ -13,32 +13,43 @@ chat-service:
   transport: websocket
 
 ai-service:
-  # Always a list, even with a single entry. Cascades in order (see
-  # ai/ai_service.py's AiService): the first provider is tried first,
-  # later ones are only used as a fallback if an earlier one becomes
-  # unavailable (rate limit/quota, or an outage that outlasts retries).
-  - name: gemini
-    model: gemini-flash-lite-latest
-    key: <your-gemini-api-key>
+  providers:
+    # Always a list, even with a single entry. Cascades in order (see
+    # ai/ai_service.py's AiService): the first provider is tried first,
+    # later ones are only used as a fallback if an earlier one becomes
+    # unavailable (rate limit/quota, or an outage that outlasts retries).
+    - name: gemini
+      model: gemini-flash-lite-latest
+      key: <your-gemini-api-key>
 
 talk-service:
-  # Same shape/cascade as ai-service, but a fully independent provider
-  # roster and fallback pointer (see talk/talk_service.py's
-  # TalkService) — even when it happens to reuse the same key as
-  # ai-service, as here. `key` is optional: a future local provider
-  # (e.g. Piper) won't need one.
-  - name: gemini
-    model: gemini-2.5-flash-preview-tts
-    key: <your-gemini-api-key>
+  # Optional, defaults to false (and the whole section can be omitted
+  # entirely). If not true, no TalkService is built: audio endpoints
+  # respond with TalkServiceNotAvailableError (see controller.py) instead
+  # of failing to boot for lack of a TTS provider. `providers` is only
+  # required when true.
+  enabled: true
+  providers:
+    # Same shape/cascade as ai-service, but a fully independent provider
+    # roster and fallback pointer (see talk/talk_service.py's
+    # TalkService) — even when it happens to reuse the same key as
+    # ai-service, as here. `key` is optional: a future local provider
+    # (e.g. Piper) won't need one.
+    - name: gemini
+      model: gemini-2.5-flash-preview-tts
+      key: <your-gemini-api-key>
 
 listen-service:
-  # Same shape/cascade as ai-service/talk-service. faster-whisper is
-  # fully local (no key needed) and downloads/caches its own model on
-  # first use — nothing to place by hand. `language` is optional: if
-  # given, skips faster-whisper's own autodetect.
-  - name: faster-whisper
-    model: small
-    language: ca
+  # Same optional, default-off shape as talk-service.enabled — see above.
+  enabled: true
+  providers:
+    # Same shape/cascade as ai-service/talk-service. faster-whisper is
+    # fully local (no key needed) and downloads/caches its own model on
+    # first use — nothing to place by hand. `language` is optional: if
+    # given, skips faster-whisper's own autodetect.
+    - name: faster-whisper
+      model: small
+      language: ca
 
 model-service:
   file-watch-enabled: true

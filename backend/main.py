@@ -27,8 +27,8 @@ logger = logging.getLogger(__name__)
 config = AppConfig()
 
 ai_service = AiService(config.ai_services)
-talk_service = TalkService(config.talk_services)
-listen_service = ListenService(config.listen_services)
+talk_service = TalkService(config.talk_services) if config.talk_services is not None else None
+listen_service = ListenService(config.listen_services) if config.listen_services is not None else None
 db = Db(config.database_url)
 model_service = ModelService(db)
 chat_service = ChatService(ai_service, model_service, db)

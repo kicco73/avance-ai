@@ -16,6 +16,14 @@ class ListenServiceError(Exception):
     the last provider-specific error as __cause__, never leaks it directly."""
 
 
+class ListenServiceNotAvailableError(Exception):
+    """Raised by the controller when listen-service.enabled is false in
+    .config.yml — there is no ListenService instance to call at all."""
+
+    def __init__(self, message: str = "Speech-to-text is not enabled on this server.") -> None:
+        super().__init__(message)
+
+
 class ListenService(ListenProvider):
     _PROVIDER_CLASSES = {
         "faster-whisper": FasterWhisperProvider,

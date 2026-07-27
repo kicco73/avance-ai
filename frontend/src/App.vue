@@ -42,6 +42,13 @@ const autoTrackingLoading = ref(false)
 // Pure frontend state — the backend generates audio on demand whenever
 // this is on, no persisted toggle server-side (see maybeAutoPlayAudio).
 const audioEnabled = ref(false)
+// Whether the server actually has talk-service/listen-service configured
+// (see backend/.config.yml's `enabled`) — set once from the boot ping
+// (see pingBackend) and never touched again: unlike `state`, this isn't
+// per-turn data, so it must not be overwritten by a later chat/action
+// response that doesn't carry these fields at all.
+const talkAvailable = ref(true)
+const micAvailable = ref(true)
 const state = ref(null)
 const messages = ref([])
 const historyLoaded = ref(false)
@@ -90,6 +97,8 @@ async function pingBackend() {
   const timeout = setTimeout(() => controller.abort(), PING_TIMEOUT_MS)
   try {
     const newState = await getState(controller.signal)
+    talkAvailable.value = newState.talk_enabled ?? true
+    micAvailable.value = newState.listen_enabled ?? true
     handleStateChange(newState)
     return true
   } catch {
@@ -511,6 +520,8 @@ onBeforeUnmount(() => {
       :state-chat="state?.chat ?? true"
       :history-loaded="historyLoaded"
       :audio-enabled="audioEnabled"
+      :talk-available="talkAvailable"
+      :mic-available="micAvailable"
       @send="handleSend"
       @resend="handleResend"
       @toggle-audio="toggleAudio"
