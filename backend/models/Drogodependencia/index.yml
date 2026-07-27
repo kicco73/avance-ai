@@ -15,7 +15,7 @@ attachments:
 signals:
 # ----------------------------------------------------------------------------
 
-  - name: malestar_emocional
+  malestar_emocional:
     ui_label: "Malestar Emocional"
     description: >
       Forma parte de Autoeficacia Situacional.
@@ -25,16 +25,16 @@ signals:
     attachments:
       - malestar_emocional.txt
 
-  - name: presion_social
+  presion_social:
     ui_label: "Presión social"
     description: >
       Forma parte de Autoeficacia Situacional.
     definition: |
       un entero de 0 a 100.
-      Influencia/expectativa de otros que impulsa o facilita el consumo 
+      Influencia/expectativa de otros que impulsa o facilita el consumo
       (0=nula, 100=presión extrema/irresistible).
 
-  - name: abstinencia_parcial
+  abstinencia_parcial:
     ui_label: "Abstinencia parcial"
     description: >
       Forma parte de Autoeficacia Situacional.

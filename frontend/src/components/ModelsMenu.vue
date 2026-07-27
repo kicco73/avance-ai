@@ -4,7 +4,7 @@ import { getModels } from '../api.js'
 
 const DEFAULT_MODEL_NAME = 'default'
 
-const emit = defineEmits(['select', 'upload', 'download', 'delete'])
+const emit = defineEmits(['select', 'edit', 'upload', 'download', 'delete'])
 
 const open = ref(false)
 const loading = ref(false)
@@ -48,6 +48,14 @@ defineExpose({ refresh: loadModels })
 function selectModel(name) {
   open.value = false
   emit('select', name)
+}
+
+// Edits the active model, same target as selectDownload() — there's no
+// other model selected in this menu to edit instead.
+function selectEdit() {
+  if (!activeModelName.value) return
+  open.value = false
+  emit('edit', activeModelName.value)
 }
 
 function selectUpload() {
@@ -99,6 +107,9 @@ onBeforeUnmount(() => {
             <span class="models-item-check">{{ name === activeModelName ? '✓' : '' }}</span>
             {{ name }}
           </button>
+        </li>
+        <li>
+          <button class="models-item models-edit-item" @click="selectEdit">Edit model</button>
         </li>
         <li>
           <button class="models-item models-upload-item" @click="selectUpload">Upload model...</button>
@@ -192,8 +203,12 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 
-.models-upload-item {
+.models-edit-item {
   border-top: 1px solid #eee;
+  color: #4a6fa5;
+}
+
+.models-upload-item {
   color: #4a6fa5;
 }
 

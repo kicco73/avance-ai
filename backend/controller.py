@@ -208,6 +208,34 @@ class AvanceController(object):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
+    @get("/api/models/{model_name}/{file_name}")
+    def get_model_file(self, model_name: str, file_name: str):
+        """Raw text content of one of `model_name`'s files, for the "Edit
+        model" view — only 'index.yml' is supported for now (see
+        ModelService.get_model_file)."""
+        try:
+            content = self.model_service.get_model_file(model_name, file_name)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return Response(content=content, media_type="text/plain; charset=utf-8")
+
+    @put("/api/models/{model_name}/{file_name}")
+    async def put_model_file(self, model_name: str, file_name: str, request: Request):
+        """Edits one of `model_name`'s files in place (only 'index.yml' for
+        now) — stage a copy of the whole model dir, validate, and only on
+        success replace the real one. Unlike PUT /api/models/{model_name},
+        this never creates a new model."""
+        content = await request.body()
+        try:
+            result = await self.model_service.put_model_file(model_name, file_name, content, self._activate_model)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return result
+
     @delete("/api/models/{model_name}")
     async def delete_model(self, model_name: str):
 

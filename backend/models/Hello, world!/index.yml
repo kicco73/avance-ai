@@ -6,7 +6,7 @@ general_prompt: |
 
 
 signals:
-  - name: se_que_ha_saludado
+  se_que_ha_saludado:
     ui_label: "lo que quieras"
     description: >
       Lo que quieres.

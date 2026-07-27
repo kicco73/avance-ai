@@ -20,7 +20,7 @@ attachments:
 # estimated by the AI: for this prototype they're still defined and evaluated
 # like all the others (see daysSinceLastEvent below).
 signals:
-  - name: problemRecognition
+  problemRecognition:
     ui_label: "Problem recognition"
     description: >
       How much the user's language has shifted from minimizing to recognizing
@@ -33,7 +33,7 @@ signals:
       of a problem. Base this only on what the user has actually said, not on what
       you would want them to say. Respond with a single integer between 0 and 100.
 
-  - name: decisionalBalanceShift
+  decisionalBalanceShift:
     ui_label: "Decisional balance"
     description: >
       Ratio between reasons to change and reasons not to change expressed by
@@ -45,7 +45,7 @@ signals:
       reasons for changing with little ambivalence. Respond with a single integer
       between 0 and 100.
 
-  - name: planConcreteness
+  planConcreteness:
     ui_label: "Plan concreteness"
     description: >
       How specific and actionable the change plan expressed by the user is.
@@ -55,7 +55,7 @@ signals:
       100 means a fully specific, actionable plan with a date and anticipated
       obstacles. Respond with a single integer between 0 and 100.
 
-  - name: reengagementSignal
+  reengagementSignal:
     ui_label: "Re-engagement signal"
     description: >
       How substantial the user's response is after a relapse event, versus
@@ -66,7 +66,7 @@ signals:
       re-engaging substantially with the conversation. Respond with a single
       integer between 0 and 100.
 
-  - name: stabilityConfidence
+  stabilityConfidence:
     ui_label: "Perceived stability"
     description: >
       How much the change seems integrated into the person's identity, rather
@@ -78,7 +78,7 @@ signals:
       resistance; 100 means the change feels stable and identity-integrated.
       Respond with a single integer between 0 and 100.
 
-  - name: encounterRisk
+  encounterRisk:
     ui_label: "Risk event encountered"
     description: >
       Binary signal: the user describes consumption after a period of
@@ -89,7 +89,7 @@ signals:
       exactly 0 (no lapse described) or 100 (a lapse is described). Do not use any
       intermediate value.
 
-  - name: detectRisk
+  detectRisk:
     ui_label: "Acute risk detected"
     description: >
       Binary safety signal: presence of an acute risk signal in the most
@@ -99,7 +99,7 @@ signals:
     attachments:
       - acute_risk_detection_instructions.txt
 
-  - name: daysSinceLastEvent
+  daysSinceLastEvent:
     ui_label: "Days since last event (placeholder)"
     description: >
       PLACEHOLDER — in the future this will be computed deterministically by

@@ -63,13 +63,13 @@ signal_tracking_on_user_message: false
 signal_tracking_on_ai_message: true
 
 signals:
-  - name: progress
+  progress:
     ui_label: "Progress of the current exercise"
     description: >
       How many steps of the current exercise have been completed.
     definition: |
       The integer percentage of steps done with respect to the total number of steps that will be presented in the current exercise.
-  - name: score
+  score:
     ui_label: "Score of the current exercise"
     description: >
       Evaluation of user performance for this excercise.

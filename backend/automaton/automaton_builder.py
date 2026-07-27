@@ -37,7 +37,7 @@ class AutomatonBuilder(object):
             full_path = base_dir / rel_path
             if not full_path.is_file():
                 raise ValueError(
-                    f"{field_description}: attachment '{rel_path}' not found in {base_dir}"
+                    f"{field_description}: attachment '{rel_path}' not found in {base_dir.name}"
                 )
             media_type = EXTENSION_TO_MEDIA_TYPE[extension]
             if media_type == "text/plain":
@@ -142,12 +142,13 @@ class AutomatonBuilder(object):
                 chat=raw_state.get("chat", True),
             )
 
+        raw_signals = raw.get("signals", {})
+        if not isinstance(raw_signals, dict):
+            raise ValueError(f"'signals' must be a mapping of signal name -> fields, got {type(raw_signals).__name__}.")
+
         signals: list[Signal] = []
         seen_signal_names: set[str] = set()
-        for raw_signal in raw.get("signals", []):
-            name = raw_signal["name"]
-            if name in seen_signal_names:
-                raise ValueError(f"Duplicate signal name '{name}' in 'signals'")
+        for name, raw_signal in raw_signals.items():
             seen_signal_names.add(name)
             signals.append(
                 Signal(

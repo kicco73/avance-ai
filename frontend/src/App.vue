@@ -4,6 +4,7 @@ import ChatWindow from './components/ChatWindow.vue'
 import StateBar from './components/StateBar.vue'
 import ActionButtons from './components/ActionButtons.vue'
 import SignalsView from './components/SignalsView.vue'
+import EditModelView from './components/EditModelView.vue'
 import ModelsMenu from './components/ModelsMenu.vue'
 import SplashScreen from './components/SplashScreen.vue'
 import {
@@ -37,6 +38,8 @@ function renderMarkdown(text) {
   return DOMPurify.sanitize(md.render(text ?? ''))
 }
 const showSignals = ref(false)
+const showEditModel = ref(false)
+const editModelName = ref(null)
 const autoTrackingEnabled = ref(true)
 const autoTrackingLoading = ref(false)
 // Pure frontend state — the backend generates audio on demand whenever
@@ -426,6 +429,22 @@ async function handleModelUploadChange(event) {
   }
 }
 
+function handleModelEdit(modelName) {
+  editModelName.value = modelName
+  showEditModel.value = true
+}
+
+// The edited model is always the active one (see ModelsMenu's selectEdit),
+// so a successful save always needs the same refresh as upload/switch/delete.
+async function handleModelEditSaved() {
+  clearChatUi()
+  try {
+    await refreshStateAndModels()
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
 // Activation is idempotent backend-side (re-activating the already-active
 // model is a no-op, no reset) so this handler doesn't need to
 // special-case that itself.
@@ -511,6 +530,7 @@ onBeforeUnmount(() => {
         <ModelsMenu
           ref="modelsMenu"
           @select="handleModelSwitch"
+          @edit="handleModelEdit"
           @upload="triggerModelUpload"
           @download="handleModelDownload"
           @delete="handleModelDelete"
@@ -563,6 +583,13 @@ onBeforeUnmount(() => {
       :auto-tracking-loading="autoTrackingLoading"
       @close="showSignals = false"
       @toggle-auto-tracking="toggleAutoTracking"
+    />
+
+    <EditModelView
+      v-if="showEditModel"
+      :model-name="editModelName"
+      @close="showEditModel = false"
+      @saved="handleModelEditSaved"
     />
   </div>
 </template>

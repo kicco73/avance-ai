@@ -388,6 +388,56 @@ class ModelService(object):
                     zf.write(entry, arcname=entry.name)
         return buffer.getvalue()
 
+    @staticmethod
+    def _check_editable_file_name(file_name: str) -> None:
+        """The only file this endpoint pair (get_model_file/put_model_file)
+        will ever read or write — everything else in a model's directory
+        (attachments) is out of scope for now."""
+        if file_name != "index.yml":
+            raise ValueError(f"Unsupported file '{file_name}': only 'index.yml' can be read/edited via this endpoint.")
+
+    def get_model_file(self, model_name: str, file_name: str) -> str:
+        """Raw text content of `file_name` (only 'index.yml' for now)
+        inside `model_name`'s directory — the read side of
+        put_model_file(), round-tripping with no transformation."""
+        self._check_editable_file_name(file_name)
+        if not self._is_safe_model_name(model_name) or not (MODELS_DIR / model_name).is_dir():
+            raise FileNotFoundError(f"Model '{model_name}' does not exist.")
+        return (MODELS_DIR / model_name / file_name).read_text(encoding="utf-8")
+
+    async def put_model_file(
+        self, model_name: str, file_name: str, content: bytes, commit: CommitCallback
+    ) -> dict:
+        """Edits `file_name` (only 'index.yml' for now) of an existing
+        model in place: stages a full copy of the model's directory
+        (attachments included), swaps in the new content, and validates it
+        with the same AutomatonBuilder used by every other load path.
+        Unlike put_model(), this never creates a new model — 404 if
+        `model_name` doesn't already exist — and never force-activates it;
+        if it's already active it's refreshed via `commit`, same as
+        _finalize_model_update's other callers."""
+        self._check_editable_file_name(file_name)
+        if not self._is_safe_model_name(model_name) or not (MODELS_DIR / model_name).is_dir():
+            raise FileNotFoundError(f"Model '{model_name}' does not exist.")
+        model_dir = MODELS_DIR / model_name
+
+        staging_dir = MODELS_DIR / f".tmp_{uuid.uuid4().hex}"
+        shutil.copytree(model_dir, staging_dir)
+        (staging_dir / file_name).write_bytes(content)
+
+        try:
+            new_automaton = AutomatonBuilder().build(staging_dir / file_name)
+        except Exception as exc:
+            shutil.rmtree(staging_dir, ignore_errors=True)
+            raise ValueError(f"Invalid model definition: {exc}") from exc
+
+        shutil.rmtree(model_dir)
+        staging_dir.rename(model_dir)
+
+        await self._finalize_model_update(model_name, model_dir, new_automaton, commit)
+
+        return {"success": True, "model_name": model_name}
+
     async def delete_model(self, model_name: str, commit: CommitCallback) -> None:
         """Removes models/<model_name>/ from disk plus its conversation
         data. Any model, active or not, except "default" (raises

@@ -37,7 +37,9 @@ async function apiFetch(url, options, { parse = 'json' } = {}) {
     throw err
   }
 
-  return parse === 'blob' ? res.blob() : res.json()
+  if (parse === 'blob') return res.blob()
+  if (parse === 'text') return res.text()
+  return res.json()
 }
 
 // Also used as the initial-boot ping (see App.vue): `signal` lets that
@@ -150,6 +152,23 @@ export function putModel(modelName, file) {
     method: 'PUT',
     headers: { 'Content-Type': contentType },
     body: file
+  })
+}
+
+// The read side of putModelFile(): round-trips with no transformation.
+// Only 'index.yml' is supported server-side for now.
+export function getModelFile(modelName) {
+  return apiFetch(`${API_URL}/models/${encodeURIComponent(modelName)}/index.yml`, {}, { parse: 'text' })
+}
+
+// Raw text body (not JSON/multipart): edits `model_name`'s index.yml in
+// place. Unlike putModel(), this never creates a new model — the backend
+// 404s if it doesn't already exist.
+export function putModelFile(modelName, content) {
+  return apiFetch(`${API_URL}/models/${encodeURIComponent(modelName)}/index.yml`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    body: content
   })
 }
 
