@@ -143,6 +143,10 @@ export function putProject(projectName, file) {
   })
 }
 
+export function getProjectGraph(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/graph`)
+}
+
 export function getProjectSignals(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/signals`)
 }

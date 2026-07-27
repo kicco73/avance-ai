@@ -208,6 +208,16 @@ class AvanceController(object):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
+    @get("/api/projects/{project_name}/graph")
+    def get_project_graph(self, project_name: str):
+        """The project's state machine (states as nodes, actions as edges)
+        of `project_name`'s last saved index.yml, for the "Edit project"
+        view's Inspect panel graph — not restricted to the active project."""
+        try:
+            return self.project_service.get_project_graph(project_name)
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
     @get("/api/projects/{project_name}/signals")
     def get_project_signals(self, project_name: str):
         """Signal definitions (name/ui_label/description) of `project_name`'s

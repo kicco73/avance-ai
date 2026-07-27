@@ -186,19 +186,67 @@ class ProjectService(object):
         self._db.reset_project(self.get_active_project_name())
 
     def get_project_signals(self, project_name: str) -> list[dict]:
-        """Signal definitions (name/ui_label/description) of `project_name`'s
-        last successfully saved index.yml — the source for the "Edit
-        project" view's Inspect panel. Reads through _load_project's cache,
-        which every mutating path (put_project/put_project_file/
-        delete_project_file, via _finalize_project_update) keeps fresh as of
-        its own last successful save, regardless of which project is
-        currently active — so this never reflects an in-progress unsaved
-        edit."""
+        """Signal definitions (name/ui_label/description/attachments) of
+        `project_name`'s last successfully saved index.yml — the source for
+        the "Edit project" view's Inspect panel. Reads through
+        _load_project's cache, which every mutating path (put_project/
+        put_project_file/delete_project_file, via _finalize_project_update)
+        keeps fresh as of its own last successful save, regardless of which
+        project is currently active — so this never reflects an
+        in-progress unsaved edit."""
         automaton = self._load_project(project_name)
         return [
-            {"name": signal.name, "ui_label": signal.ui_label, "description": signal.description}
+            {
+                "name": signal.name,
+                "ui_label": signal.ui_label,
+                "description": signal.description,
+                "attachments": [a.filename for a in signal.attachments],
+            }
             for signal in automaton.signals
         ]
+
+    def get_project_graph(self, project_name: str) -> dict:
+        """The project's state machine as nodes (states) and edges
+        (actions) — the source for the "Edit project" view's Inspect panel
+        graph (rendered client-side with Cytoscape). Reads through the same
+        _load_project cache as get_project_signals, so it reflects the last
+        successfully saved index.yml, not any in-progress unsaved edit. The
+        reserved implicit state ("", see AutomatonBuilder.build) is never a
+        real state and is excluded; its target (automaton.init_action.target)
+        is exposed as each node's `is_start` flag instead of a synthetic
+        edge from nowhere."""
+        automaton = self._load_project(project_name)
+        real_states = [state for state in automaton.states.values() if state.key != ""]
+        nodes = [
+            {
+                "key": state.key,
+                "label": state.label,
+                "description": state.description,
+                "final": state.final,
+                "is_start": state.key == automaton.init_action.target,
+                "chat": state.chat,
+                "on_enter": state.on_enter,
+                "history_cutoff": state.history_cutoff,
+                "transition_log_level": state.transition_log_level,
+                "attachments": [a.filename for a in state.attachments],
+            }
+            for state in real_states
+        ]
+        edges = [
+            {
+                "source": state.key,
+                "target": action.target,
+                "action_name": action.name,
+                "label": action.label,
+                "button_text": action.button_text,
+                "trigger": action.trigger,
+                "has_trigger": action.trigger is not None,
+                "action_prompt": action.action_prompt,
+            }
+            for state in real_states
+            for action in state.actions
+        ]
+        return {"nodes": nodes, "edges": edges}
 
     def list_projects(self) -> dict:
         """Every subdirectory of projects/ with an index.yml (unvalidated —
