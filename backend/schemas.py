@@ -13,7 +13,7 @@ class AutoTrackingRequest(BaseModel):
 
 
 class TriggersPreviewRequest(BaseModel):
-    signals: dict[str, int | None]
+    signals: dict[str, int | float | None]
 
 
 class ChatMessageRequest(BaseModel):

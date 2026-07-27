@@ -131,7 +131,7 @@ class AutomatonBuilder(object):
                 # outgoing actions. Keeps the flag structurally impossible to
                 # desync from the actual `actions` list.
                 final=len(actions) == 0,
-                description=raw_state["description"].strip(),
+                description=raw_state["description"].strip() if raw_state.get("description") else None,
                 on_enter=raw_state["on_enter"] if "on_enter" in raw_state else None,
                 contextual_prompt=contextual_prompt.strip() if contextual_prompt else None,
                 actions=actions,
@@ -153,7 +153,7 @@ class AutomatonBuilder(object):
                 Signal(
                     name=name,
                     ui_label=raw_signal["ui_label"],
-                    description=raw_signal["description"].strip(),
+                    description=raw_signal["description"].strip() if raw_signal.get("description") else None,
                     definition=raw_signal["definition"].strip(),
                     attachments=self._load_attachments(
                         raw_signal.get("attachments", []), f"signal '{name}'", base_dir

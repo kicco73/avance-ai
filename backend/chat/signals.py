@@ -26,7 +26,7 @@ SIGNALS_SYSTEM_PROMPT_TEMPLATE = (
     "actually said in this excerpt.\n\n"
     "{signal_definitions}\n\n"
     "Respond with ONLY a single JSON object mapping each signal name above to "
-    'its integer value from 0 to 100, in this exact form: {{"signal_name": '
+    'its json value, in this exact form: {{"signal_name": '
     "value, ...}}. Include every signal listed above, nothing else — no "
     "explanation, no markdown formatting, just the JSON object."
 )
@@ -85,10 +85,11 @@ class Signals(object):
         return parsed
 
     @staticmethod
-    def _validate_signal_value(raw_value: object) -> tuple[int | None, bool]:
-        if isinstance(raw_value, bool) or not isinstance(raw_value, int):
-            return None, True
-        if raw_value < 0 or raw_value > 100:
+    def _validate_signal_value(raw_value: object) -> tuple[int | float | None, bool]:
+        # Signals are unconstrained numbers, int or float: no fixed range
+        # (a model's own `definition` prompt is free to ask for e.g. 0-100,
+        # but the software itself doesn't enforce it).
+        if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
             return None, True
         return raw_value, False
 

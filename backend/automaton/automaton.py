@@ -41,7 +41,7 @@ class State:
     # Derived at load time as `len(actions) == 0`, not read from YAML —
     # structurally impossible to desync from the actual actions list.
     final: bool
-    description: str
+    description: str | None = None
     # Required unless fixed_message is set — the two are mutually exclusive
     # (see AutomatonBuilder.build): a fixed_message state never generates
     # free-form content, so it has no use for one.
@@ -77,11 +77,11 @@ class State:
 class Signal:
     name: str
     ui_label: str
-    description: str
     definition: str
     # Attachments for this signal's definition, sent only with the signals
     # computation call (never with normal chat turns).
     attachments: list[Attachment] = field(default_factory=list)
+    description: str | None = None
 
 
 def trigger_signal_names(expression: str) -> set[str]:

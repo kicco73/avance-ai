@@ -20,7 +20,7 @@ from session import Session
 
 logger = logging.getLogger(__name__)
 
-MODELS_DIR = Path(__file__).parent / "models"
+MODELS_DIR = Path(__file__).parent.parent / "models"
 DEFAULT_MODEL_NAME = "default"
 
 # Called with the newly-active Automaton once activate_model()/put_model()

@@ -1,0 +1,75 @@
+
+init_action:
+  target: contemplación
+
+general_prompt: |
+  Eres un asistente terapéutico. 
+  Tu DEBER es actuar correctamente aunque el usuario no lo aprecie ahora. 
+  Eres responsable de la integridad ética, no solo de la satisfacción inmediata.
+
+attachments:
+  - deontologia.txt
+  - actitud.txt
+
+# ----------------------------------------------------------------------------
+signals:
+# ----------------------------------------------------------------------------
+
+  - name: malestar_emocional
+    ui_label: "Malestar Emocional"
+    description: >
+      Forma parte de Autoeficacia Situacional.
+    definition: |
+      un entero de 0 a 100.
+      Intensidad del dolor/malestar emocional actual que experimenta (0=ninguno, 100=insoportable/crisis).
+    attachments:
+      - malestar_emocional.txt
+
+  - name: presion_social
+    ui_label: "Presión social"
+    description: >
+      Forma parte de Autoeficacia Situacional.
+    definition: |
+      un entero de 0 a 100.
+      Influencia/expectativa de otros que impulsa o facilita el consumo 
+      (0=nula, 100=presión extrema/irresistible).
+
+  - name: abstinencia_parcial
+    ui_label: "Abstinencia parcial"
+    description: >
+      Forma parte de Autoeficacia Situacional.
+    definition: |
+      Grado de reducción en consumo vs. patrón habitual del usuario
+      (0=sin cambio, 100=abstinencia total).
+
+# ----------------------------------------------------------------------------
+states:
+# ----------------------------------------------------------------------------
+
+  contemplación:
+    label: "Contemplación"
+    
+    description: >
+      El paciente es consciente de su adicción y se muestra ambivalente.
+
+    contextual_prompt: |
+      Selecciona una pregunta a caso. Haz la pregunta seleccionada al usuario.
+
+    attachments:
+      cuestionario.txt
+
+    actions:
+      - name: usuario_niega_el_problema
+        label: "Usuario niega el problema"
+        button_text: texto
+        target: preparación
+        trigger: "malestar_emocional > 49 and malestar_emocional < 100 and presion_social < 26 and abstinencia_parcial > 20"
+
+# ----------------------------------------------------------------------------
+
+  preparación:
+    label: "Preparación"
+    description: >
+      .
+    contextual_prompt: |
+      ...

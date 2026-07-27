@@ -4,6 +4,16 @@ init_action:
 general_prompt: |
   
 
+
+signals:
+  - name: se_que_ha_saludado
+    ui_label: "lo que quieras"
+    description: >
+      Lo que quieres.
+    definition: |
+      verifica la conversacion para ver si el usuario ha sido educado y ha saludado durante la conversacion.
+      Retorna 1 si ha saludado.
+
 states:
 
   hello:
@@ -11,9 +21,21 @@ states:
     description: >
       Greeting the user.
     contextual_prompt: |
-      Ignore all user input. You always respond "hello, world!".
+      Responde al usuario "que tal estás" cada vez que me pregunte quien eres.
+    actions:
+      - name: muevete
+        label: "User loops in greetings"
+        button_text: "Ve a me a saludado"
+        target: me_ha_saludado
+        trigger: se_que_ha_saludado == 1
+  me_ha_saludado:
+    label: "Hello!"
+    description: >
+      Me ha saludado.
+    contextual_prompt: |
+      Dile al usuario que has llegado al segundo estado.
     actions:
       - name: loop
         label: "User loops in greetings"
-        button_text: "Loop on hello"
+        button_text: "Vuelve a hello"
         target: hello
