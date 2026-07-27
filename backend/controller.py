@@ -208,11 +208,30 @@ class AvanceController(object):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_name}/{file_name}")
+    @get("/api/projects/{project_name}/signals")
+    def get_project_signals(self, project_name: str):
+        """Signal definitions (name/ui_label/description) of `project_name`'s
+        last saved index.yml, for the "Edit project" view's Inspect panel —
+        not restricted to the active project."""
+        try:
+            return {"signals": self.project_service.get_project_signals(project_name)}
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @get("/api/projects/{project_name}/files")
+    def get_project_files(self, project_name: str):
+        """Text-editable files inside `project_name`'s directory (index.yml
+        plus any text attachments), for the "Edit project" view's file
+        explorer panel."""
+        try:
+            return {"files": self.project_service.list_project_files(project_name)}
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+
+    @get("/api/projects/{project_name}/files/{file_name}")
     def get_project_file(self, project_name: str, file_name: str):
         """Raw text content of one of `project_name`'s files, for the "Edit
-        project" view — only 'index.yml' is supported for now (see
-        ProjectService.get_project_file)."""
+        project" view (see ProjectService.get_project_file)."""
         try:
             content = self.project_service.get_project_file(project_name, file_name)
         except FileNotFoundError as exc:
@@ -221,12 +240,12 @@ class AvanceController(object):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return Response(content=content, media_type="text/plain; charset=utf-8")
 
-    @put("/api/projects/{project_name}/{file_name}")
+    @put("/api/projects/{project_name}/files/{file_name}")
     async def put_project_file(self, project_name: str, file_name: str, request: Request):
-        """Edits one of `project_name`'s files in place (only 'index.yml' for
-        now) — stage a copy of the whole project dir, validate, and only on
-        success replace the real one. Unlike PUT /api/projects/{project_name},
-        this never creates a new project."""
+        """Creates or edits one of `project_name`'s files in place — stage a
+        copy of the whole project dir, validate, and only on success replace
+        the real one. Unlike PUT /api/projects/{project_name}, this never
+        creates a new project."""
         content = await request.body()
         try:
             result = await self.project_service.put_project_file(project_name, file_name, content, self._activate_project)
@@ -235,6 +254,20 @@ class AvanceController(object):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return result
+
+    @delete("/api/projects/{project_name}/files/{file_name}")
+    async def delete_project_file(self, project_name: str, file_name: str):
+        """Deletes one text attachment from `project_name`'s directory —
+        index.yml itself is rejected (see ProjectService.delete_project_file)."""
+        try:
+            await self.project_service.delete_project_file(project_name, file_name, self._activate_project)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except PermissionError as exc:
+            raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return {"success": True}
 
     @delete("/api/projects/{project_name}")
     async def delete_project(self, project_name: str):

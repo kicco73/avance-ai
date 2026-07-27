@@ -143,15 +143,33 @@ export function putProject(projectName, file) {
   })
 }
 
-export function getProjectFile(projectName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/index.yml`, {}, { parse: 'text' })
+export function getProjectSignals(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/signals`)
 }
 
-export function putProjectFile(projectName, content) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/index.yml`, {
+export function getProjectFiles(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/files`)
+}
+
+export function getProjectFile(projectName, fileName) {
+  return apiFetch(
+    `${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}`,
+    {},
+    { parse: 'text' }
+  )
+}
+
+export function putProjectFile(projectName, fileName, content) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'text/plain; charset=utf-8' },
     body: content
+  })
+}
+
+export function deleteProjectFile(projectName, fileName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}`, {
+    method: 'DELETE'
   })
 }
 

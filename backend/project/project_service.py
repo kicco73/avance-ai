@@ -21,6 +21,11 @@ logger = logging.getLogger(__name__)
 
 PROJECTS_DIR = Path(__file__).parent.parent / "projects"
 DEFAULT_PROJECT_NAME = "default"
+# What the file explorer/editor endpoints will read, write, list, or delete —
+# index.yml plus the text/plain attachment extensions from
+# AutomatonBuilder.EXTENSION_TO_MEDIA_TYPE (binary attachments like .pdf stay
+# out of scope for now).
+TEXT_EDITABLE_EXTENSIONS = {".yml", ".yaml", ".txt", ".md", ".csv"}
 
 # Called with the newly-active Automaton once activate_project()/put_project()
 # have committed it.
@@ -180,6 +185,21 @@ class ProjectService(object):
     def reset_active_project(self) -> None:
         self._db.reset_project(self.get_active_project_name())
 
+    def get_project_signals(self, project_name: str) -> list[dict]:
+        """Signal definitions (name/ui_label/description) of `project_name`'s
+        last successfully saved index.yml — the source for the "Edit
+        project" view's Inspect panel. Reads through _load_project's cache,
+        which every mutating path (put_project/put_project_file/
+        delete_project_file, via _finalize_project_update) keeps fresh as of
+        its own last successful save, regardless of which project is
+        currently active — so this never reflects an in-progress unsaved
+        edit."""
+        automaton = self._load_project(project_name)
+        return [
+            {"name": signal.name, "ui_label": signal.ui_label, "description": signal.description}
+            for signal in automaton.signals
+        ]
+
     def list_projects(self) -> dict:
         """Every subdirectory of projects/ with an index.yml (unvalidated —
         real validation is at activate/put time). '.'-prefixed dirs are
@@ -303,28 +323,60 @@ class ProjectService(object):
 
     @staticmethod
     def _check_editable_file_name(file_name: str) -> None:
-        """The only file this endpoint pair (get_project_file/put_project_file)
-        will ever read or write — everything else in a project's directory
-        (attachments) is out of scope for now."""
-        if file_name != "index.yml":
-            raise ValueError(f"Unsupported file '{file_name}': only 'index.yml' can be read/edited via this endpoint.")
+        """Everything the file explorer/editor endpoints (list_project_files/
+        get_project_file/put_project_file/delete_project_file) will read,
+        write, or delete: a flat, non-hidden file name (no path traversal)
+        with one of TEXT_EDITABLE_EXTENSIONS — index.yml plus its text
+        attachments. Binary attachments and anything else in a project's
+        directory stay out of scope."""
+        if not file_name or file_name in (".", "..") or Path(file_name).name != file_name:
+            raise ValueError(f"Invalid file name: '{file_name}'.")
+        if file_name.startswith("."):
+            raise ValueError(f"Invalid file name: '{file_name}'.")
+        extension = Path(file_name).suffix.lower()
+        if extension not in TEXT_EDITABLE_EXTENSIONS:
+            raise ValueError(
+                f"Unsupported file '{file_name}': only {sorted(TEXT_EDITABLE_EXTENSIONS)} "
+                "files can be read/edited via this endpoint."
+            )
+
+    def list_project_files(self, project_name: str) -> list[str]:
+        """Every text-editable file directly inside `project_name`'s
+        directory (index.yml plus any text attachments) — the source list
+        for the "Edit project" view's file explorer panel. index.yml sorts
+        first, then the rest alphabetically."""
+        if not self._is_safe_project_name(project_name) or not (PROJECTS_DIR / project_name).is_dir():
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+        names = [
+            entry.name
+            for entry in (PROJECTS_DIR / project_name).iterdir()
+            if entry.is_file() and not entry.name.startswith(".") and entry.suffix.lower() in TEXT_EDITABLE_EXTENSIONS
+        ]
+        names.sort(key=lambda name: (name != "index.yml", name))
+        return names
 
     def get_project_file(self, project_name: str, file_name: str) -> str:
-        """Raw text content of `file_name` (only 'index.yml' for now)
+        """Raw text content of `file_name` (index.yml or a text attachment)
         inside `project_name`'s directory — the read side of
         put_project_file(), round-tripping with no transformation."""
         self._check_editable_file_name(file_name)
         if not self._is_safe_project_name(project_name) or not (PROJECTS_DIR / project_name).is_dir():
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
-        return (PROJECTS_DIR / project_name / file_name).read_text(encoding="utf-8")
+        full_path = PROJECTS_DIR / project_name / file_name
+        if not full_path.is_file():
+            raise FileNotFoundError(f"File '{file_name}' does not exist in project '{project_name}'.")
+        return full_path.read_text(encoding="utf-8")
 
     async def put_project_file(
         self, project_name: str, file_name: str, content: bytes, commit: CommitCallback
     ) -> dict:
-        """Edits `file_name` (only 'index.yml' for now) of an existing
-        project in place: stages a full copy of the project's directory
-        (attachments included), swaps in the new content, and validates it
-        with the same AutomatonBuilder used by every other load path.
+        """Creates or edits `file_name` (index.yml or a text attachment) of
+        an existing project in place: stages a full copy of the project's
+        directory, swaps in the new content, and validates the result by
+        rebuilding from the staged index.yml (the definition file — always
+        that one, even when `file_name` is an attachment, since editing an
+        attachment can only be validated through the yaml that references
+        it) with the same AutomatonBuilder used by every other load path.
         Unlike put_project(), this never creates a new project — 404 if
         `project_name` doesn't already exist — and never force-activates it;
         if it's already active it's refreshed via `commit`, same as
@@ -339,7 +391,7 @@ class ProjectService(object):
         (staging_dir / file_name).write_bytes(content)
 
         try:
-            new_automaton = AutomatonBuilder().build(staging_dir / file_name)
+            new_automaton = AutomatonBuilder().build(staging_dir / "index.yml")
         except Exception as exc:
             shutil.rmtree(staging_dir, ignore_errors=True)
             raise ValueError(f"Invalid project definition: {exc}") from exc
@@ -350,6 +402,38 @@ class ProjectService(object):
         await self._finalize_project_update(project_name, new_automaton, commit)
 
         return {"success": True, "project_name": project_name}
+
+    async def delete_project_file(
+        self, project_name: str, file_name: str, commit: CommitCallback
+    ) -> None:
+        """Deletes one text attachment from `project_name`'s directory —
+        never index.yml itself (raises PermissionError). Stages a copy,
+        removes the file, and re-validates via AutomatonBuilder before
+        committing, so deleting a file still referenced as an attachment is
+        rejected instead of silently breaking the project."""
+        self._check_editable_file_name(file_name)
+        if file_name == "index.yml":
+            raise PermissionError("index.yml cannot be deleted.")
+        if not self._is_safe_project_name(project_name) or not (PROJECTS_DIR / project_name).is_dir():
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+        project_dir = PROJECTS_DIR / project_name
+        if not (project_dir / file_name).is_file():
+            raise FileNotFoundError(f"File '{file_name}' does not exist in project '{project_name}'.")
+
+        staging_dir = PROJECTS_DIR / f".tmp_{uuid.uuid4().hex}"
+        shutil.copytree(project_dir, staging_dir)
+        (staging_dir / file_name).unlink()
+
+        try:
+            new_automaton = AutomatonBuilder().build(staging_dir / "index.yml")
+        except Exception as exc:
+            shutil.rmtree(staging_dir, ignore_errors=True)
+            raise ValueError(f"Invalid project definition: {exc}") from exc
+
+        shutil.rmtree(project_dir)
+        staging_dir.rename(project_dir)
+
+        await self._finalize_project_update(project_name, new_automaton, commit)
 
     async def delete_project(self, project_name: str, commit: CommitCallback) -> None:
         """Removes projects/<project_name>/ from disk plus its conversation
