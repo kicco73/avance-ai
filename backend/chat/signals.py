@@ -117,7 +117,7 @@ class Signals(object):
         state's entry. Only called from the auto-tracking flow."""
         automaton = self.automaton
         signal_definitions = "\n\n".join(
-            f'Signal "{s.name}":\n{s.ai_prompt}' for s in automaton.signals
+            f'Signal "{s.name}":\n{s.definition}' for s in automaton.signals
         )
         system_prompt = SIGNALS_SYSTEM_PROMPT_TEMPLATE.format(signal_definitions=signal_definitions)
         # Each signal brings only its own attachments into this shared call —

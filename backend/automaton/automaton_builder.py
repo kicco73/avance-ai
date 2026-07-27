@@ -154,8 +154,7 @@ class AutomatonBuilder(object):
                     name=name,
                     ui_label=raw_signal["ui_label"],
                     description=raw_signal["description"].strip(),
-                    ai_prompt=raw_signal["ai_prompt"].strip(),
-                    placeholder_builtin=raw_signal.get("placeholder_builtin", False),
+                    definition=raw_signal["definition"].strip(),
                     attachments=self._load_attachments(
                         raw_signal.get("attachments", []), f"signal '{name}'", base_dir
                     ),

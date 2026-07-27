@@ -84,24 +84,16 @@ signals:
     ui_label: "Progress of the current exercise"
     description: >
       How many steps of the current exercise have been completed.
-    ai_prompt: |
-      Desume from the conversation 
-        - the total number of steps that will be presented.
-        - the number of steps done.
-      A step is done when either the user responded correctly within the number of allowed attempts to guess it.
-      If you don't know the number of allowed attempts, don't consider the step done yet.
-      Calculate the number of steps doone with respect to the total number of steps that will be presented in the current exercise.
-      If you haven't desumed with certainty the number of total steps that will be presented, progress is 0. 
-      Respond with that value, in the form of a single integer normalised between 0 and 100.
-    placeholder_builtin: false
+    definition: |
+      progress is the integer percentage of steps done with respect to the total number of steps that will be presented in the current exercise.
+      Respond with the value of the progress signal.
   - name: score
     ui_label: "Score of the current exercise"
     description: >
       Evaluation of user performance for this excercise.
-    ai_prompt: |
-      Desume from the conversation how many correct answers the user has given so far with respect to the number of intents.
-      Respond with that value, in the form of a single integer normalised between 0 and 100.
-    placeholder_builtin: false
+    definition: |
+      score is the integer percentage of steps answered correctly by the user so far over the number of attempts, both regardless the exercise they refer to.
+      Respond with the value of the score signal.
 
 #=======================================================================
 

@@ -78,12 +78,8 @@ class Signal:
     name: str
     ui_label: str
     description: str
-    ai_prompt: str
-    # Documentation-only for now: marks signals meant to eventually be computed
-    # deterministically by the backend instead of estimated by the AI. Has no
-    # effect on behavior yet — every signal is evaluated the same way.
-    placeholder_builtin: bool = False
-    # Attachments for this signal's ai_prompt, sent only with the signals
+    definition: str
+    # Attachments for this signal's definition, sent only with the signals
     # computation call (never with normal chat turns).
     attachments: list[Attachment] = field(default_factory=list)
 
