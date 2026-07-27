@@ -1,6 +1,6 @@
 """Generic fallback cascade: ordered providers behind a "current" pointer,
-retry-then-cascade on failure. Shared by AiService and AudioService, each
-with their own independent instance.
+retry-then-cascade on failure. Shared by AiService, TalkService and
+ListenService, each with their own independent instance.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ BASE_DELAY_SECONDS = 1.0
 
 
 class ProviderError(Exception):
-    """Shared transient/permanent taxonomy for AiService and AudioService
+    """Shared transient/permanent taxonomy for AiService and TalkService
     — defined once so neither duplicates the other's classification."""
     message = "Provider service error."
     status_code = HTTPStatus.SERVICE_UNAVAILABLE

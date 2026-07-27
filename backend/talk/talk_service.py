@@ -1,9 +1,9 @@
 """The audio (TTS) layer as a single, independent service — same shape
-as ai/ai_service.py's AiService, but AudioService also IS an
-AudioProvider: from a caller's point of view, calling generate() looks
+as ai/ai_service.py's AiService, but TalkService also IS a
+TalkProvider: from a caller's point of view, calling generate() looks
 exactly like calling a single provider, retry/cascading, caching and
 live-generation dedup all hidden inside. Owns the on-disk cache (see
-audio_store.py/audio_format.py) — audio-subsystem internals, not
+talk_store.py/talk_format.py) — audio-subsystem internals, not
 chat_service's concern.
 """
 from __future__ import annotations
@@ -12,41 +12,41 @@ import hashlib
 import logging
 from typing import AsyncIterator
 
-from config import AudioServiceConfig
+from config import TalkServiceConfig
 from cascade import ProviderCascade, ProviderError, ProviderRateLimitedError, ProviderUnavailableError
-from audio.audio_provider import AudioProvider
-from audio.gemini_audio_provider import GeminiAudioProvider
-from audio.piper.piper_audio_provider import PiperAudioProvider
-from audio.audio_store import AudioStore
-from audio.audio_format import DEFAULT_PCM_SAMPLE_RATE, pcm_to_wav, streaming_wav_header
+from talk.talk_provider import TalkProvider
+from talk.gemini_talk_provider import GeminiTalkProvider
+from talk.piper.piper_talk_provider import PiperTalkProvider
+from talk.talk_store import TalkStore
+from talk.talk_format import DEFAULT_PCM_SAMPLE_RATE, pcm_to_wav, streaming_wav_header
 
 logger = logging.getLogger(__name__)
 
 
-class AudioServiceError(Exception):
+class TalkServiceError(Exception):
     """Raised once every configured provider has failed — carries the
     last provider-specific error as __cause__, never leaks it directly."""
 
 
-class AudioService(AudioProvider):
+class TalkService(TalkProvider):
     _PROVIDER_CLASSES = {
-        "gemini": GeminiAudioProvider,
-        "piper": PiperAudioProvider,  # local, no `key` needed
+        "gemini": GeminiTalkProvider,
+        "piper": PiperTalkProvider,  # local, no `key` needed
     }
 
-    def __init__(self, audio_service_config: list[AudioServiceConfig]) -> None:
+    def __init__(self, talk_service_config: list[TalkServiceConfig]) -> None:
         providers = [
             (f"{service.name}/{service.model}", self._build_provider(service))
-            for service in audio_service_config
+            for service in talk_service_config
         ]
-        self._cascade: ProviderCascade[AudioProvider] = ProviderCascade(providers, kind="audio")
-        self._store = AudioStore()
+        self._cascade: ProviderCascade[TalkProvider] = ProviderCascade(providers, kind="talk")
+        self._store = TalkStore()
 
     @classmethod
-    def _build_provider(cls, service: AudioServiceConfig) -> AudioProvider:
+    def _build_provider(cls, service: TalkServiceConfig) -> TalkProvider:
         if service.name not in cls._PROVIDER_CLASSES:
             raise ValueError(
-                f"Invalid audio provider name: {service.name!r}. Must be one of: "
+                f"Invalid talk provider name: {service.name!r}. Must be one of: "
                 f"{', '.join(cls._PROVIDER_CLASSES.keys())}"
             )
         return cls._PROVIDER_CLASSES[service.name](api_key=service.key, model=service.model)
@@ -85,7 +85,7 @@ class AudioService(AudioProvider):
                     yield header
                 live.push(pcm_chunk)
                 yield pcm_chunk
-        except AudioServiceError as exc:
+        except TalkServiceError as exc:
             logger.warning("Audio generation failed for %s: %s", key, exc)
         finally:
             live.finish()
@@ -98,7 +98,7 @@ class AudioService(AudioProvider):
         every configured provider. Reuses ProviderCascade.call_with_retry
         unchanged for the initial call; once a provider has already
         yielded some chunks, a failure can only cascade, not retry (see
-        StreamingAudioProvider)."""
+        StreamingTalkProvider)."""
         last_error: BaseException | None = None
         for _ in range(len(self._cascade)):
             try:
@@ -108,7 +108,7 @@ class AudioService(AudioProvider):
                     rate_limited=ProviderRateLimitedError,
                 )
             except (ProviderUnavailableError, ProviderRateLimitedError) as exc:
-                raise AudioServiceError("Every configured audio provider failed.") from exc
+                raise TalkServiceError("Every configured audio provider failed.") from exc
 
             try:
                 for chunk in result:
@@ -119,4 +119,4 @@ class AudioService(AudioProvider):
                 last_error = exc
                 self._cascade.advance()
 
-        raise AudioServiceError("Every configured audio provider failed.") from last_error
+        raise TalkServiceError("Every configured audio provider failed.") from last_error

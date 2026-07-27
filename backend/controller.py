@@ -3,11 +3,12 @@ from __future__ import annotations
 import inspect
 from http import HTTPStatus
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
 
 from automaton.automaton import Automaton
-from audio.audio_service import AudioService
+from talk.talk_service import TalkService
+from listen.listen_service import ListenService, ListenServiceError
 from chat.chat_service import ChatService, ChatServiceError
 from model_service import ModelService
 from schemas import (
@@ -46,11 +47,13 @@ class AvanceController(object):
         self,
         chat_service: ChatService,
         model_service: ModelService,
-        audio_service: AudioService,
+        talk_service: TalkService,
+        listen_service: ListenService,
     ) -> None:
         self.chat_service = chat_service
         self.model_service = model_service
-        self.audio_service = audio_service
+        self.talk_service = talk_service
+        self.listen_service = listen_service
 
         self.router = APIRouter()
         for _, member in inspect.getmembers(self, predicate=inspect.ismethod):
@@ -115,7 +118,7 @@ class AvanceController(object):
         # reliably surface as a send() failure — Starlette can keep writing
         # into a closed socket for a while. Polling is_disconnected() stops
         # the provider's work immediately instead of wasting a full synthesis.
-        generation = self.audio_service.generate(audio_text)
+        generation = self.talk_service.generate(audio_text)
         try:
             async for chunk in generation:
                 if await request.is_disconnected():
@@ -123,6 +126,17 @@ class AvanceController(object):
                 yield chunk
         finally:
             await generation.aclose()
+
+    @post("/api/listen/transcribe")
+    async def post_listen_transcribe(self, file: UploadFile):
+        """Isolated verification endpoint: not wired into process_turn or
+        the chat frontend yet — just confirms ListenService end-to-end."""
+        audio_bytes = await file.read()
+        try:
+            text = await self.listen_service.transcribe(audio_bytes)
+        except ListenServiceError as exc:
+            raise HTTPException(status_code=HTTPStatus.SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+        return {"text": text}
 
     @post("/api/triggers/preview")
     def post_triggers_preview(self, req: TriggersPreviewRequest):

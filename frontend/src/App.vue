@@ -13,6 +13,7 @@ import {
   getAutoTracking,
   postAutoTracking,
   messageAudioUrl,
+  postListenTranscribe,
   postReset,
   putModel,
   activateModel,
@@ -270,6 +271,42 @@ async function handleSend(text) {
   await submitMessage(message)
 }
 
+// Removes the placeholder bubble outright (rather than marking it
+// failed): with no transcribed text there's nothing a resend could
+// retry, so the existing failed/resend affordance doesn't fit here.
+function dropVoicePlaceholder(id) {
+  const idx = messages.value.findIndex((m) => m.id === id)
+  if (idx !== -1) messages.value.splice(idx, 1)
+}
+
+// The mic button's whole point: the transcribed text is never staged in
+// `draft` for review — a user-side placeholder (same waiting style as the
+// assistant's own, see ChatWindow's bubble-loading) stands in for it while
+// transcription runs, then becomes the real sent message in place, same
+// id and same failed/resend lifecycle as a typed one (see submitMessage).
+async function handleVoiceMessage(audioBlob) {
+  const message = { id: ++nextMessageId, role: 'user', content: '', failed: false, transcribing: true }
+  messages.value.push(message)
+
+  let text
+  try {
+    const result = await postListenTranscribe(audioBlob)
+    text = result.text?.trim()
+  } catch {
+    // Already surfaced via apiFetch.
+    dropVoicePlaceholder(message.id)
+    return
+  }
+  if (!text) {
+    dropVoicePlaceholder(message.id)
+    return
+  }
+
+  message.content = text
+  message.transcribing = false
+  await submitMessage(message)
+}
+
 async function handleResend(index) {
   if (chatLoading.value) return
   const message = messages.value[index]
@@ -477,6 +514,7 @@ onBeforeUnmount(() => {
       @send="handleSend"
       @resend="handleResend"
       @toggle-audio="toggleAudio"
+      @voice-message="handleVoiceMessage"
     >
       <template #actions>
         <ActionButtons

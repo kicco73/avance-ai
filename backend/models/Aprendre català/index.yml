@@ -1,7 +1,7 @@
-initial_state: unit55-subjuntive
+initial_state: welcome
 
 general_prompt: |
-  You are a catalan language learning assistant. 
+  You are a catalan language learning assistant. Your name is Avenç, and you identify as a no-binary female.
   You will help the user learn Catalan by providing explanations, examples, and exercises. 
   You will also correct the user's mistakes and provide feedback on their progress.
   Your messages should be clear, concise, and easy to understand. You should also be patient and encouraging, and you should always provide positive reinforcement.
@@ -91,13 +91,48 @@ signals:
       Respond with that value, in the form of a single integer normalised between 0 and 100.
     placeholder_builtin: false
 
+#=======================================================================
+
+actions:
+  - &results
+    name: results
+    label: "Jump to results"
+    button_text: "Resultats"
+    target: unit55-results
+  - &home
+    name: home
+    label: "Tornar a l'inici"
+    button_text: "Inici"
+    target: welcome
+  - &unit-subjuntive
+    name: unit-subjuntive
+    label: "Repassar el subjuntiu present"
+    button_text: "El subjuntiu present"
+    target: unit55-subjuntive
+  - &grammar
+    name: grammar
+    label: "Show grammar"
+    button_text: "Gramàtica"
+  - &help
+    name: help
+    label: "Show help"
+    button_text: "Ajuda'm"
+    action_prompt: |
+      Given the current question, give some hint to the user, without revealing the answer.
+  - &chat
+    name: chat
+    label: "Preguntes lliures"
+    button_text: "Xat"
+    target: chat
+
+#=======================================================================
 
 states:
 
   welcome:
-    label: "Welcome to your catalan course"
+    label: "Benviguts"
     description: >
-      Learn catalan with Avance
+      Aprèn català amb Avance
     chat: false
     clear_context: true
     contextual_prompt: |
@@ -105,21 +140,17 @@ states:
       The user can now choose a grammar topic they see on the screen (that you don't see) to deepen.
       Encourage them to make a choice. 
     actions:
-      - name: subjuntive
-        label: "Repassar el subjuntiu present"
-        button_text: "El subjuntiu present"
-        target: unit55-subjuntive
-      - name: results
-        label: "Jump to results"
-        button_text: "Resultats"
-        target: unit55-results
+      - <<: *unit-subjuntive
+      - <<: *chat
+      - <<: *results
+
 
 #=======================================================================
 
   unit55-subjuntive:
-    label: "Unitat 55 - Index"
+    label: "Unitat 55: el subjuntiu present"
     description: >
-      Index of all exercises in this unit.
+      Índex de tots els exercicis d'aquesta unitat
     contextual_prompt: |
       Show in bold: "Unitat 55: subjuntiu"
       Show a short introduction explaining the cases where subjuntive - present tense is used. Use tables.
@@ -152,26 +183,16 @@ states:
         label: "Evaluation"
         button_text: "6. Avaluació"
         target: unit55-evaluation
-      - name: lliure
-        label: "Preguntes lliures"
-        button_text: "Xat lliure"
-        target: chat
-      - name: results
-        label: "Jump to results"
-        button_text: "Resultats"
-        target: unit55-results
-      - name: restart
-        label: "Restarting the unit"
-        button_text: "Inici"
-        target: welcome
+      - <<: *chat
+      - <<: *results
+      - <<: *home
 
 #=======================================================================
 
   unit55-regulars:
     label: "Unitat 55 - Formes Regulars"
     description: >
-      Exercise to learn how to conjugate Subjuntive - present regular verbs.
-      Canti, cantis, canti.
+      Com conjugar verbs regulars en present de subjuntiu
     contextual_prompt: |
       Unit 55 - Exercise 1.
       Give a warm welcome.
@@ -193,24 +214,19 @@ states:
         button_text: "Resultats"
         target: unit55-results
         trigger: "progress == 100"
-      - name: grammar
-        label: "Show grammar"
-        button_text: "Gramàtica"
+      - <<: *grammar
         target: unit55-regulars
         action_prompt: |
           Show a table with the rules to conjugate regular verbs in this mode and tense.
           Show all the verbs: parlar, prometre, tenir, llegir.
-      - name: restart
-        label: "Restarting the unit"
-        button_text: "Inici"
-        target: unit55-subjuntive
+      - <<: *unit-subjuntive
 
 #=======================================================================
 
   unit55-regulars-amb-alteracions:
     label: "Unitat 55 - Formes amb alteracions"
     description: >
-      Exercise to learn how to conjugate Subjuntive - present regular verbs with form -qu-.
+      Verbs regulars en subjuntiu - present amb alteracions ortogràfiques
     on_enter: celebrate
     contextual_prompt: |
       Unit 55. Exercise 2.
@@ -240,24 +256,19 @@ states:
         button_text: "Resultats"
         target: unit55-results
         trigger: "progress == 100"
-      - name: grammar
-        label: "Show grammar"
-        button_text: "Gramàtica"
+      - <<: *grammar
         target: unit55-regulars-amb-alteracions
         action_prompt: |
           - explain the trick: all verbs whose infinitive ends in -jar , -car, -çar, -gar have hortographic alterations
           - Show the a table of the rules to conjugate this kind regular verbs, with also some example of this.
-      - name: restart
-        label: "Restarting the unit"
-        button_text: "Inici"
-        target: unit55-subjuntive
+      - <<: *unit-subjuntive
 
 #=======================================================================
 
   unit55-regulars-amb-gu:
     label: "Unitat 55 - Formes amb -gu-"
     description: >
-      Exercise to learn how to conjugate Subjuntive - present regular verbs with form -gu-.
+      Formes de verbs regulars en subjuntiu - present amb -gu
     on_enter: celebrate
     contextual_prompt: |
       Unit 55. Exercise 3.
@@ -283,23 +294,19 @@ states:
         button_text: "Resultats"
         target: unit55-results
         trigger: "progress == 100"
-      - name: grammar
-        label: "Show grammar"
-        button_text: "Gramàtica"
+      - <<: *grammar
         target: unit55-regulars-amb-gu
         action_prompt: |
           - explain the trick: all verbs that end in -c (like creure, jo crec -> cregui) in the first person indicative present tense, will need the ortographic change in -gu.
           - Show the a table of the rules to conjugate this kind regular verbs, with also an example of this.
-      - name: restart
-        label: "Restarting the unit"
-        button_text: "Inici"
-        target: unit55-subjuntive
+      - <<: *unit-subjuntive
 
+#=======================================================================
 
   unit55-irregulars:
     label: "Unitat 55 - Formes irregulars"
     description: >
-      Exercise to learn how to conjugate Subjuntive - present irregular verbs.
+      Formes irregulars de verbs en subjuntiu - present
     on_enter: celebrate
     contextual_prompt: |
         Unit 55. Exercise 4.
@@ -321,21 +328,16 @@ states:
         button_text: "End exercise"
         target: unit55-results
         trigger: "progress == 100"
-      - name: grammar
-        label: "Show conjugation table"
-        button_text: "Gramàtica"
+      - <<: *grammar
         target: unit55-irregulars
         action_prompt: |
           - show quick table with conjugations for some important random irregular verbs of the subjuntive - present tense.
-      - name: restart
-        label: "Restarting the unit"
-        button_text: "Inici"
-        target: unit55-subjuntive
+      - <<: *unit-subjuntive
 
   unit55-D:
     label: "Unitat 55 - Conjugació lliure"
     description: >
-      Exercise to learn how to conjugate Subjuntive - any form.
+      Conjugar lliurement todas les formes de verbs en subjuntiu - present
     on_enter: celebrate
     contextual_prompt: |
         Unit 55. Exercise 5.
@@ -356,21 +358,16 @@ states:
         button_text: "End exercise"
         target: unit55-results
         trigger: "progress == 100"
-      - name: help
-        label: "Show help"
-        button_text: "Ajuda'm"
+      - <<: *help
         target: unit55-D
-        action_prompt: |
-          Given the current question, give some hint to the user, without revealing the answer.
-      - name: restart
-        label: "Restarting the unit"
-        button_text: "Inici"
-        target: unit55-subjuntive
+      - <<: *unit-subjuntive
+
+#=======================================================================
 
   unit55-evaluation:
     label: "Unitat 55 - Avaluació"
     description: >
-      Exercise to learn how to conjugate Subjuntive - present verbs in short phrases.
+      Competència lingüística
     clear_context: True
     on_enter: celebrate
     contextual_prompt: |
@@ -389,76 +386,68 @@ states:
         button_text: "Results"
         target: unit55-results
         trigger: "progress == 100"
-      - name: help
-        label: "Show help"
-        button_text: "Ajuda'm"
+      - <<: *help
         target: unit55-evaluation
-        action_prompt: |
-          Given the current question, give some hint to the user, without revealing the answer.
-      - name: restart
-        label: "Restarting the unit"
-        button_text: "Inici"
-        target: unit55-subjuntive
+      - <<: *unit-subjuntive
+
+#=======================================================================
 
   unit55-results:
     label: "Unitat 55 - Resultats"
     description: >
-      Summarizing user performance.
+      Resum del rendiment global
     on_enter: celebrate
     chat: False
     contextual_prompt: |
-        Unit 55. Summary of the current user performance.
-        Assume there are 6 exercises in this unit.
+      Unit 55. Summary of the current user performance.
+      Assume there are 6 exercises in this unit.
 
-        Required format of the the summary of the user performance:
-          - a table with:
-            - specific scoring, number of errors per exercise,
-            - progress per exercise in percentage in terms of number of steps covered with respect to the total number of steps for that exercise,
-            - number of times the user executed the same exercise in a unit,
-            - the overall scoring and total number of errors,
-            - the overall progress in terms of coverage of the unit.
-          - provide feedback on the trend over time.
-          - if you have enough information to suggest what to review:
-            - create a special paragraph 
-            - the title is "Propers passos"
-            - put a bullet list of suggestions on what to review, highlighting in bold which exercise of this unit would be good for that.
-            
-        Always check the full conversation and gather information to produce data with exactness.
-        Put a title in bold: Overall results.
-        
-        Output rule: Ignore the last question in the conversation. Only follow the instructions below to produce it.
+      Required format of the the summary of the user performance:
+        - a table with:
+          - specific scoring, number of errors per exercise,
+          - progress per exercise in percentage in terms of number of steps covered with respect to the total number of steps for that exercise,
+          - number of times the user executed the same exercise in a unit,
+          - the overall scoring and total number of errors,
+          - the overall progress in terms of coverage of the unit.
+        - provide feedback on the trend over time.
+        - if you have enough information to suggest what to review:
+          - create a special paragraph 
+          - the title is "Propers passos"
+          - put a bullet list of suggestions on what to review, highlighting in bold which exercise of this unit would be good for that.
+          
+      Always check the full conversation and gather information to produce data with exactness.
+      Put a title in bold: Overall results.
+      
+      Output rule: Ignore the last question in the conversation. Only follow the instructions below to produce it.
 
-        If you are missing other data required strictly follow this information:
-          - congratulate with the user as he is practising
-          - say that you don't have enough data to show results just yet
-          - say the specific information you miss to complete the table.
-          - finally encourage them to do more exercises.
-        
-        Otherwise always and only output the summary of the user performance.
-        Don't ask questions, don't do exercises.
-        
+      If you are missing other data required strictly follow this information:
+        - congratulate with the user as he is practising
+        - say that you don't have enough data to show results just yet
+        - say the specific information you miss to complete the table.
+        - finally encourage them to do more exercises.
+      
+      Otherwise always and only output the summary of the user performance.
+      Don't ask questions, don't do exercises.
+      
     actions:
-      - name: restart
-        label: "Restarting the unit"
-        button_text: "Inici"
-        target: unit55-subjuntive
+      - <<: *unit-subjuntive
+      - <<: *home
+
+
+#=======================================================================
 
   chat:
     label: "Xat lliure"
     description: >
-      Talk with your assistant
+      Parla amb Avenç
     contextual_prompt: |
       Unit Xat. Free style exercise.
-      The user will ask free questions about learning catalan and can set the topic and goal. 
-      Break the ice and ask if there is anything in particular they want to discuss about. Stick to learning Catalan.
-      Mention only once they can always go to other sections by pressing the buttons below.
-    clear_context: True #FIXME should be unnecessary
+      The user will ask free questions about learning catalan, translations from/to catalan, and can set the topic and goal. 
+      Break the ice and ask if there is anything in particular they want to discuss about.
+    clear_context: true #FIXME should be unnecessary
     actions:
-      - name: subjuntive
-        label: "Move to subjuntives"
-        button_text: "Al subjuntiu"
-        target: unit55-subjuntive
-      - name: restart
-        label: "Restarting the unit"
-        button_text: "Inici"
-        target: welcome
+      - <<: *unit-subjuntive
+      - <<: *home
+
+#=======================================================================
+

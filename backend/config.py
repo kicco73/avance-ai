@@ -19,11 +19,21 @@ class AiServiceConfig:
 
 
 @dataclass(frozen=True)
-class AudioServiceConfig:
+class TalkServiceConfig:
     name: str
     model: str
     # Optional: a future local provider (e.g. Piper) won't need one.
     key: str | None
+
+
+@dataclass(frozen=True)
+class ListenServiceConfig:
+    name: str
+    model: str
+    # Optional: unused by faster-whisper, kept for a future remote provider.
+    key: str | None
+    # Optional: skips faster-whisper's autodetect when given (e.g. "ca").
+    language: str | None
 
 
 class AppConfig:
@@ -55,25 +65,53 @@ class AppConfig:
         return value.strip()
 
     @staticmethod
-    def _parse_audio_services(raw: dict, path: Path) -> list[AudioServiceConfig]:
-        entries = raw.get("audio-service")
+    def _parse_talk_services(raw: dict, path: Path) -> list[TalkServiceConfig]:
+        entries = raw.get("talk-service")
         if not isinstance(entries, list) or not entries:
-            raise ConfigError(f"{path}: 'audio-service' must be a non-empty list.")
+            raise ConfigError(f"{path}: 'talk-service' must be a non-empty list.")
 
         services = []
         for i, entry in enumerate(entries):
             if not isinstance(entry, dict):
-                raise ConfigError(f"{path}: 'audio-service[{i}]' must be a mapping.")
+                raise ConfigError(f"{path}: 'talk-service[{i}]' must be a mapping.")
             name = entry.get("name")
             model = entry.get("model")
             key = entry.get("key")
             if not isinstance(name, str) or not name.strip():
-                raise ConfigError(f"{path}: 'audio-service[{i}].name' is missing or empty.")
+                raise ConfigError(f"{path}: 'talk-service[{i}].name' is missing or empty.")
             if not isinstance(model, str) or not model.strip():
-                raise ConfigError(f"{path}: 'audio-service[{i}].model' is missing or empty.")
+                raise ConfigError(f"{path}: 'talk-service[{i}].model' is missing or empty.")
             if key is not None and not isinstance(key, str):
-                raise ConfigError(f"{path}: 'audio-service[{i}].key' must be a string if present.")
-            services.append(AudioServiceConfig(name=name.strip(), model=model.strip(), key=key))
+                raise ConfigError(f"{path}: 'talk-service[{i}].key' must be a string if present.")
+            services.append(TalkServiceConfig(name=name.strip(), model=model.strip(), key=key))
+        return services
+
+    @staticmethod
+    def _parse_listen_services(raw: dict, path: Path) -> list[ListenServiceConfig]:
+        entries = raw.get("listen-service")
+        if not isinstance(entries, list) or not entries:
+            raise ConfigError(f"{path}: 'listen-service' must be a non-empty list.")
+
+        services = []
+        for i, entry in enumerate(entries):
+            if not isinstance(entry, dict):
+                raise ConfigError(f"{path}: 'listen-service[{i}]' must be a mapping.")
+            name = entry.get("name")
+            model = entry.get("model")
+            key = entry.get("key")
+            language = entry.get("language")
+            if not isinstance(name, str) or not name.strip():
+                raise ConfigError(f"{path}: 'listen-service[{i}].name' is missing or empty.")
+            if not isinstance(model, str) or not model.strip():
+                raise ConfigError(f"{path}: 'listen-service[{i}].model' is missing or empty.")
+            if key is not None and not isinstance(key, str):
+                raise ConfigError(f"{path}: 'listen-service[{i}].key' must be a string if present.")
+            if language is not None and not isinstance(language, str):
+                raise ConfigError(f"{path}: 'listen-service[{i}].language' must be a string if present.")
+            services.append(ListenServiceConfig(
+                name=name.strip(), model=model.strip(), key=key,
+                language=language.strip() if language else None,
+            ))
         return services
 
     @staticmethod
@@ -113,7 +151,8 @@ class AppConfig:
             )
 
         self.ai_services = self._parse_ai_services(raw, path)
-        self.audio_services = self._parse_audio_services(raw, path)
+        self.talk_services = self._parse_talk_services(raw, path)
+        self.listen_services = self._parse_listen_services(raw, path)
 
         model_service = raw.get("model-service")
         if not isinstance(model_service, dict):

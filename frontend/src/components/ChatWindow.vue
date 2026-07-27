@@ -2,6 +2,8 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
+import { setApiError } from '../errorStore.js'
+import { startRecording, stopRecording } from '../mic.js'
 
 const md = new MarkdownIt({
   breaks: true,
@@ -68,12 +70,13 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['send', 'resend', 'toggle-audio'])
+const emit = defineEmits(['send', 'resend', 'toggle-audio', 'voice-message'])
 
 const draft = ref('')
 const scrollEl = ref(null)
 const inputEl = ref(null)
 const showErrorDetail = ref(false)
+const recording = ref(false)
 
 // Either reason blocks ordinary chat turns — kept as two separate props
 // (rather than one pre-combined boolean) so the notice below can still
@@ -98,6 +101,31 @@ function submit() {
 function resend(i) {
   if (props.loading) return
   emit('resend', i)
+}
+
+// Push-to-talk: held down = recording, released = send. A plain right-
+// click shouldn't start one. The transcribed text is never shown or
+// staged in `draft` — see App.vue's handleVoiceMessage, which sends it
+// straight through the normal turn flow, by design.
+async function startPtt(event) {
+  if (event.pointerType === 'mouse' && event.button !== 0) return
+  if (recording.value || props.loading || chatDisabled.value) return
+  try {
+    await startRecording()
+    recording.value = true
+  } catch (err) {
+    setApiError('Microphone access was denied.', err.message)
+  }
+}
+
+// Also bound to pointerleave/pointercancel (not just pointerup): a
+// pointer that leaves the button's bounds while still held down must
+// stop the recording too, never leave it listening indefinitely.
+async function stopPtt() {
+  if (!recording.value) return
+  recording.value = false
+  const blob = await stopRecording()
+  if (blob?.size) emit('voice-message', blob)
 }
 
 watch(
@@ -156,11 +184,13 @@ defineExpose({ focusInput })
           <div
             class="bubble"
             :class="[
-              msg.role === 'user' ? 'bubble-user' : 'bubble-assistant',
+              msg.transcribing ? 'bubble-assistant bubble-loading' : (msg.role === 'user' ? 'bubble-user' : 'bubble-assistant'),
               msg.failed ? 'bubble-failed' : ''
             ]"
-            v-html="renderMarkdown(msg.content)"
-          />
+          >
+            <span v-if="msg.transcribing">Transcribing…</span>
+            <span v-else v-html="renderMarkdown(msg.content)" />
+          </div>
         </div>
       </TransitionGroup>
 
@@ -221,6 +251,24 @@ defineExpose({ focusInput })
         placeholder="Type a message..."
         :disabled="loading || chatDisabled"
       />
+
+      <button
+        type="button"
+        class="mic-btn"
+        :class="{ 'mic-btn-recording': recording }"
+        :disabled="!recording && (loading || chatDisabled)"
+        :title="recording ? 'Release to send' : 'Hold to record a voice message'"
+        @pointerdown.prevent="startPtt"
+        @pointerup="stopPtt"
+        @pointerleave="stopPtt"
+        @pointercancel="stopPtt"
+        @contextmenu.prevent
+      >
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+          <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z" />
+          <path d="M17 11a1 1 0 1 0-2 0 3 3 0 0 1-6 0 1 1 0 1 0-2 0 5 5 0 0 0 4 4.9V18H9a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-2.1A5 5 0 0 0 17 11z" />
+        </svg>
+      </button>
 
       <button
         type="button"
@@ -401,6 +449,7 @@ defineExpose({ focusInput })
   font-size: 0.95rem;
 }
 
+.mic-btn,
 .audio-btn {
   flex: none;
   width: 2.5rem;
@@ -412,6 +461,36 @@ defineExpose({ focusInput })
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.mic-btn {
+  touch-action: none;
+  user-select: none;
+}
+
+.mic-btn:hover:not(:disabled) {
+  background: #f0f0f0;
+}
+
+.mic-btn-recording {
+  border-color: #c62828;
+  background: #c62828;
+  color: white;
+  animation: mic-pulse 1.2s ease-in-out infinite;
+}
+
+.mic-btn-recording:hover {
+  background: #a02020;
+}
+
+.mic-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(198, 40, 40, 0.5); }
+  50% { box-shadow: 0 0 0 6px rgba(198, 40, 40, 0); }
 }
 
 .audio-btn:hover:not(:disabled) {

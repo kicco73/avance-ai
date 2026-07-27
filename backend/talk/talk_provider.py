@@ -1,6 +1,6 @@
 """Abstract interface shared by all audio (TTS) providers, mirroring
 ai/llm_provider.py's LLMProvider — no cascade knowledge anywhere here:
-retry/cascading is AudioService's responsibility alone (see audio_service.py).
+retry/cascading is TalkService's responsibility alone (see talk_service.py).
 """
 from __future__ import annotations
 
@@ -8,14 +8,14 @@ from abc import ABC, abstractmethod
 from typing import Iterator
 
 
-class AudioProvider(ABC):
+class TalkProvider(ABC):
     @abstractmethod
     def generate(self, text: str) -> Iterator[tuple[bytes, int]]:
         """Yields (raw_pcm_chunk, sample_rate) tuples for `text`."""
         raise NotImplementedError
 
 
-class StreamingAudioProvider(AudioProvider):
+class StreamingTalkProvider(TalkProvider):
     """Forwards chunks as _synthesize() produces them, no buffering — for
     a provider with nothing worth retrying mid-stream (e.g. local Piper)."""
 
@@ -27,7 +27,7 @@ class StreamingAudioProvider(AudioProvider):
         raise NotImplementedError
 
 
-class BufferedAudioProvider(AudioProvider):
+class BufferedTalkProvider(TalkProvider):
     """Materializes the whole utterance before returning any of it — for
     a provider whose failures are worth retrying (e.g. a remote API)."""
 

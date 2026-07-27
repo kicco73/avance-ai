@@ -1,10 +1,10 @@
 """On-disk cache for generated audio, content-addressed by a caller-
-supplied key (see AudioService.generate — a hash of the text), with a
+supplied key (see TalkService.generate — a hash of the text), with a
 retention policy applied both on write (keep at most MAX_FILES) and on
 read (drop everything older than whatever was just served). Also tracks
-in-flight generations (LiveAudioGeneration) so a second request for the
+in-flight generations (LiveTalkGeneration) so a second request for the
 same key arriving mid-generation gets fed chunks in real time instead of
-triggering a duplicate one. Owned and constructed by AudioService, not
+triggering a duplicate one. Owned and constructed by TalkService, not
 a singleton.
 """
 from __future__ import annotations
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 MAX_FILES = 10
 
 
-class LiveAudioGeneration(object):
+class LiveTalkGeneration(object):
     """One in-flight audio generation for a single cache key: an
     append-only log of the chunks produced so far, plus an Event any
     reader can wait on to notice new ones. stream_from(0) — the only way
@@ -67,28 +67,28 @@ class LiveAudioGeneration(object):
             await self._new_data.wait()
 
 
-class AudioStore(object):
+class TalkStore(object):
     def __init__(self) -> None:
         # Kept alive for the process's whole lifetime (not a `with` block,
         # which would delete it immediately) — the standard library's own
         # mechanism for a directory that cleans itself up on interpreter
         # exit, rather than a hand-managed folder under the project.
-        self._tempdir = tempfile.TemporaryDirectory(prefix="avance-audio-")
+        self._tempdir = tempfile.TemporaryDirectory(prefix="avance-talk-")
         self._base_dir = Path(self._tempdir.name)
         # In-flight generations, keyed by cache key — purely in-memory,
         # separate from the on-disk cache below, and gone the moment
         # generation finishes (see finish_live_generation).
-        self._live: dict[str, LiveAudioGeneration] = {}
+        self._live: dict[str, LiveTalkGeneration] = {}
 
-    def start_live_generation(self, key: str) -> LiveAudioGeneration:
-        generation = LiveAudioGeneration()
+    def start_live_generation(self, key: str) -> LiveTalkGeneration:
+        generation = LiveTalkGeneration()
         self._live[key] = generation
         return generation
 
     def finish_live_generation(self, key: str) -> None:
         self._live.pop(key, None)
 
-    def get_live_generation(self, key: str) -> LiveAudioGeneration | None:
+    def get_live_generation(self, key: str) -> LiveTalkGeneration | None:
         return self._live.get(key)
 
     def save(self, key: str, data: bytes) -> None:

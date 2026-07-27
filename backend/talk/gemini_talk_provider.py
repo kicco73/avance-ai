@@ -8,8 +8,8 @@ from google import genai
 from google.genai import errors as genai_errors
 from google.genai import types
 
-from audio.audio_format import pcm_sample_rate
-from audio.audio_provider import BufferedAudioProvider
+from talk.talk_format import pcm_sample_rate
+from talk.talk_provider import BufferedTalkProvider
 from cascade import ProviderError, ProviderRateLimitedError, ProviderUnavailableError
 
 TTS_VOICE = "kore"
@@ -26,7 +26,7 @@ def _audio_config() -> types.GenerateContentConfig:
     )
 
 
-class GeminiAudioProvider(BufferedAudioProvider):
+class GeminiTalkProvider(BufferedTalkProvider):
     def __init__(self, api_key: str, model: str) -> None:
         self._client = genai.Client(api_key=api_key)
         self._model = model

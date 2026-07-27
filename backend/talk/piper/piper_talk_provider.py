@@ -1,6 +1,6 @@
 """Audio provider backed by Piper — fully local/offline neural TTS, no
 network calls, no API key. Voice model files (a `.onnx` model plus its
-`.onnx.json` config) are placed by hand in audio/piper/models/, not
+`.onnx.json` config) are placed by hand in talk/piper/models/, not
 downloaded or managed by this module.
 """
 from __future__ import annotations
@@ -10,20 +10,20 @@ from typing import Iterator
 
 from piper import PiperVoice
 
-from audio.audio_provider import StreamingAudioProvider
+from talk.talk_provider import StreamingTalkProvider
 from cascade import ProviderError
 
 
-class PiperAudioProvider(StreamingAudioProvider):
+class PiperTalkProvider(StreamingTalkProvider):
     # Where voice model files are expected — this directory, not read from
-    # .config.yml (only the voice *name* is, via `model`; see AudioService).
+    # .config.yml (only the voice *name* is, via `model`; see TalkService).
     VOICES_DIR = Path(__file__).resolve().parent / 'models'
 
     def __init__(self, api_key: str | None, model: str) -> None:
         # `model` is the voice name (e.g. "ca_ES-upc_ona-medium"), not an
         # API key — api_key is accepted only to match every provider's
         # uniform (api_key, model) constructor shape (see
-        # AudioService._build_provider); Piper never uses it.
+        # TalkService._build_provider); Piper never uses it.
         model_path = self.VOICES_DIR / f"{model}.onnx"
         config_path = self.VOICES_DIR / f"{model}.onnx.json"
         if not model_path.is_file() or not config_path.is_file():

@@ -70,6 +70,19 @@ export function postChatMessage(text) {
   })
 }
 
+// `audioBlob` goes up as multipart/form-data — no Content-Type header set
+// here, so fetch() derives the correct boundary itself from the FormData
+// body. Routed through apiFetch like everything else: a transcription
+// failure surfaces in the same shared error area as any other REST call.
+export function postListenTranscribe(audioBlob) {
+  const formData = new FormData()
+  formData.append('file', audioBlob, 'recording.webm')
+  return apiFetch(`${API_URL}/listen/transcribe`, {
+    method: 'POST',
+    body: formData
+  })
+}
+
 export function getSignals() {
   return apiFetch(`${API_URL}/chat/signals`)
 }

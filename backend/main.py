@@ -18,7 +18,8 @@ from error_handlers import register_error_handlers
 from model_service import ModelService
 from model_watcher import ModelWatcher
 from ai.ai_service import AiService
-from audio.audio_service import AudioService
+from talk.talk_service import TalkService
+from listen.listen_service import ListenService
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -26,7 +27,8 @@ logger = logging.getLogger(__name__)
 config = AppConfig()
 
 ai_service = AiService(config.ai_services)
-audio_service = AudioService(config.audio_services)
+talk_service = TalkService(config.talk_services)
+listen_service = ListenService(config.listen_services)
 db = Db(config.database_url)
 model_service = ModelService(db)
 chat_service = ChatService(ai_service, model_service, db)
@@ -67,7 +69,7 @@ app.add_middleware(
 
 register_error_handlers(app)
 
-controller = AvanceController(chat_service, model_service, audio_service)
+controller = AvanceController(chat_service, model_service, talk_service, listen_service)
 app.include_router(controller.router)
 
 if chat_ws_adapter is not None:
