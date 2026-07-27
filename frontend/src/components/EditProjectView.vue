@@ -3,11 +3,11 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Compartment, EditorState } from '@codemirror/state'
 import { EditorView, basicSetup } from 'codemirror'
 import { yaml } from '@codemirror/lang-yaml'
-import { getModelFile, putModelFile } from '../api.js'
+import { getProjectFile, putProjectFile } from '../api.js'
 import { clearApiError, errorDetail, errorMessage } from '../errorStore.js'
 
 const props = defineProps({
-  modelName: {
+  projectName: {
     type: String,
     required: true
   }
@@ -52,7 +52,7 @@ async function load() {
   loading.value = true
   clearApiError()
   try {
-    content.value = await getModelFile(props.modelName)
+    content.value = await getProjectFile(props.projectName)
     originalContent.value = content.value
   } catch {
     // already surfaced via apiFetch
@@ -71,7 +71,7 @@ async function save() {
   saving.value = true
   clearApiError()
   try {
-    await putModelFile(props.modelName, content.value)
+    await putProjectFile(props.projectName, content.value)
     emit('saved')
     emit('close')
   } catch {
@@ -84,7 +84,7 @@ async function save() {
 // Only prompts when there's actually something to lose — a clean editor
 // (nothing typed, or already saved) closes straight away.
 function handleClose() {
-  if (isDirty.value && !window.confirm('Discard unsaved changes to this model?')) return
+  if (isDirty.value && !window.confirm('Discard unsaved changes to this project?')) return
   emit('close')
 }
 
@@ -97,10 +97,10 @@ onBeforeUnmount(() => view?.destroy())
 </script>
 
 <template>
-  <div class="edit-model-overlay">
-    <div class="edit-model-header">
-      <h2>Edit model — {{ modelName }}</h2>
-      <div class="edit-model-header-actions">
+  <div class="edit-project-overlay">
+    <div class="edit-project-header">
+      <h2>Edit project — {{ projectName }}</h2>
+      <div class="edit-project-header-actions">
         <button class="save-btn" :disabled="loading || saving" @click="save">
           {{ saving ? 'Saving…' : 'Save' }}
         </button>
@@ -108,28 +108,28 @@ onBeforeUnmount(() => view?.destroy())
       </div>
     </div>
 
-    <div v-if="errorMessage" class="edit-model-error-row">
-      <p class="edit-model-error">{{ errorMessage }}</p>
+    <div v-if="errorMessage" class="edit-project-error-row">
+      <p class="edit-project-error">{{ errorMessage }}</p>
       <button
         v-if="errorDetail"
         type="button"
-        class="edit-model-error-details-btn"
+        class="edit-project-error-details-btn"
         @click="showErrorDetail = !showErrorDetail"
       >
         {{ showErrorDetail ? 'Hide details' : 'Details' }}
       </button>
     </div>
-    <pre v-if="errorMessage && errorDetail && showErrorDetail" class="edit-model-error-detail">{{ errorDetail }}</pre>
+    <pre v-if="errorMessage && errorDetail && showErrorDetail" class="edit-project-error-detail">{{ errorDetail }}</pre>
 
-    <div class="edit-model-body">
-      <p v-if="loading" class="edit-model-status">Loading…</p>
-      <div v-show="!loading" ref="editorHost" class="edit-model-editor"></div>
+    <div class="edit-project-body">
+      <p v-if="loading" class="edit-project-status">Loading…</p>
+      <div v-show="!loading" ref="editorHost" class="edit-project-editor"></div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.edit-model-overlay {
+.edit-project-overlay {
   position: fixed;
   inset: 0;
   background: white;
@@ -139,7 +139,7 @@ onBeforeUnmount(() => view?.destroy())
   font-family: system-ui, -apple-system, sans-serif;
 }
 
-.edit-model-header {
+.edit-project-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -147,12 +147,12 @@ onBeforeUnmount(() => view?.destroy())
   border-bottom: 1px solid #ddd;
 }
 
-.edit-model-header h2 {
+.edit-project-header h2 {
   margin: 0;
   font-size: 1.1rem;
 }
 
-.edit-model-header-actions {
+.edit-project-header-actions {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -190,7 +190,7 @@ onBeforeUnmount(() => view?.destroy())
   color: white;
 }
 
-.edit-model-error-row {
+.edit-project-error-row {
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -199,14 +199,14 @@ onBeforeUnmount(() => view?.destroy())
   border-bottom: 1px solid #f5c6c2;
 }
 
-.edit-model-error {
+.edit-project-error {
   margin: 0;
   color: #c62828;
   font-size: 0.9rem;
   flex: 1;
 }
 
-.edit-model-error-details-btn {
+.edit-project-error-details-btn {
   padding: 0.2rem 0.6rem;
   border-radius: 6px;
   border: 1px solid #c62828;
@@ -216,7 +216,7 @@ onBeforeUnmount(() => view?.destroy())
   font-size: 0.8rem;
 }
 
-.edit-model-error-detail {
+.edit-project-error-detail {
   margin: 0;
   padding: 0.75rem 1rem;
   background: #fdecea;
@@ -228,19 +228,19 @@ onBeforeUnmount(() => view?.destroy())
   overflow-y: auto;
 }
 
-.edit-model-body {
+.edit-project-body {
   flex: 1;
   display: flex;
   min-height: 0;
   padding: 1rem;
 }
 
-.edit-model-status {
+.edit-project-status {
   margin: auto;
   color: #444;
 }
 
-.edit-model-editor {
+.edit-project-editor {
   flex: 1;
   min-width: 0;
   border: 1px solid #ddd;
@@ -248,18 +248,18 @@ onBeforeUnmount(() => view?.destroy())
   overflow: hidden;
 }
 
-.edit-model-editor :deep(.cm-editor) {
+.edit-project-editor :deep(.cm-editor) {
   height: 100%;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.85rem;
 }
 
-.edit-model-editor :deep(.cm-scroller) {
+.edit-project-editor :deep(.cm-scroller) {
   overflow: auto;
   line-height: 1.5;
 }
 
-.edit-model-editor :deep(.cm-editor.cm-focused) {
+.edit-project-editor :deep(.cm-editor.cm-focused) {
   outline: none;
 }
 </style>

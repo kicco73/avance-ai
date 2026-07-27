@@ -1,30 +1,30 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { getModels } from '../api.js'
+import { getProjects } from '../api.js'
 
-const DEFAULT_MODEL_NAME = 'default'
+const DEFAULT_PROJECT_NAME = 'default'
 
 const emit = defineEmits(['select', 'edit', 'upload', 'download', 'delete'])
 
 const open = ref(false)
 const loading = ref(false)
-const models = ref([])
-const activeModelName = ref(null)
+const projects = ref([])
+const activeProjectName = ref(null)
 const rootEl = ref(null)
 
-const deleteDisabled = computed(() => activeModelName.value === DEFAULT_MODEL_NAME)
+const deleteDisabled = computed(() => activeProjectName.value === DEFAULT_PROJECT_NAME)
 
 // The single fetch behind both the menu's tick and the button's own label —
 // called on mount (so the button already shows the right name before the
 // menu is ever opened), whenever the dropdown opens, and imperatively via
 // `refresh()` (exposed below) after the parent completes a switch/upload/
 // delete — never a second, separate call just to relabel the button.
-async function loadModels() {
+async function loadProjects() {
   loading.value = true
   try {
-    const res = await getModels()
-    models.value = res.models
-    activeModelName.value = res.active
+    const res = await getProjects()
+    projects.value = res.projects
+    activeProjectName.value = res.active
   } catch {
     // already surfaced via apiFetch
   } finally {
@@ -38,24 +38,24 @@ async function toggle() {
     return
   }
   open.value = true
-  await loadModels()
+  await loadProjects()
 }
 
-onMounted(loadModels)
+onMounted(loadProjects)
 
-defineExpose({ refresh: loadModels })
+defineExpose({ refresh: loadProjects })
 
-function selectModel(name) {
+function selectProject(name) {
   open.value = false
   emit('select', name)
 }
 
-// Edits the active model, same target as selectDownload() — there's no
-// other model selected in this menu to edit instead.
+// Edits the active project, same target as selectDownload() — there's no
+// other project selected in this menu to edit instead.
 function selectEdit() {
-  if (!activeModelName.value) return
+  if (!activeProjectName.value) return
   open.value = false
-  emit('edit', activeModelName.value)
+  emit('edit', activeProjectName.value)
 }
 
 function selectUpload() {
@@ -64,17 +64,17 @@ function selectUpload() {
 }
 
 function selectDownload() {
-  if (!activeModelName.value) return
+  if (!activeProjectName.value) return
   open.value = false
-  emit('download', activeModelName.value)
+  emit('download', activeProjectName.value)
 }
 
 // Destructive and irreversible, so confirm via the browser's own dialog
 // before emitting — no custom confirm UI to keep in sync.
 function selectDelete() {
-  if (deleteDisabled.value || !activeModelName.value) return
-  const name = activeModelName.value
-  if (!window.confirm(`Delete model "${name}"? This cannot be undone.`)) return
+  if (deleteDisabled.value || !activeProjectName.value) return
+  const name = activeProjectName.value
+  if (!window.confirm(`Delete project "${name}"? This cannot be undone.`)) return
   open.value = false
   emit('delete', name)
 }
@@ -93,37 +93,37 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="models-menu" ref="rootEl">
-    <button class="models-btn" :title="activeModelName ?? 'Models'" @click="toggle">
-      {{ activeModelName ?? 'Models' }}
+  <div class="projects-menu" ref="rootEl">
+    <button class="projects-btn" :title="activeProjectName ?? 'Projects'" @click="toggle">
+      {{ activeProjectName ?? 'Projects' }}
     </button>
 
-    <div v-if="open" class="models-panel">
-      <p v-if="loading" class="models-status">Loading…</p>
+    <div v-if="open" class="projects-panel">
+      <p v-if="loading" class="projects-status">Loading…</p>
 
-      <ul v-else class="models-list">
-        <li v-for="name in models" :key="name">
-          <button class="models-item" @click="selectModel(name)">
-            <span class="models-item-check">{{ name === activeModelName ? '✓' : '' }}</span>
+      <ul v-else class="projects-list">
+        <li v-for="name in projects" :key="name">
+          <button class="projects-item" @click="selectProject(name)">
+            <span class="projects-item-check">{{ name === activeProjectName ? '✓' : '' }}</span>
             {{ name }}
           </button>
         </li>
         <li>
-          <button class="models-item models-edit-item" @click="selectEdit">Edit model</button>
+          <button class="projects-item projects-edit-item" @click="selectEdit">Edit project</button>
         </li>
         <li>
-          <button class="models-item models-upload-item" @click="selectUpload">Upload model...</button>
+          <button class="projects-item projects-upload-item" @click="selectUpload">Upload project...</button>
         </li>
         <li>
-          <button class="models-item models-download-item" @click="selectDownload">Download model</button>
+          <button class="projects-item projects-download-item" @click="selectDownload">Download project</button>
         </li>
         <li>
           <button
-            class="models-item models-delete-item"
+            class="projects-item projects-delete-item"
             :disabled="deleteDisabled"
             @click="selectDelete"
           >
-            Delete model
+            Delete project
           </button>
         </li>
       </ul>
@@ -132,11 +132,11 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.models-menu {
+.projects-menu {
   position: relative;
 }
 
-.models-btn {
+.projects-btn {
   padding: 0.4rem 1rem;
   border-radius: 6px;
   border: 1px solid #4a6fa5;
@@ -149,12 +149,12 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
 }
 
-.models-btn:hover {
+.projects-btn:hover {
   background: #4a6fa5;
   color: white;
 }
 
-.models-panel {
+.projects-panel {
   position: absolute;
   top: calc(100% + 0.4rem);
   right: 0;
@@ -167,20 +167,20 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-.models-status {
+.projects-status {
   margin: 0;
   padding: 0.6rem 0.9rem;
   font-size: 0.85rem;
   color: #444;
 }
 
-.models-list {
+.projects-list {
   list-style: none;
   margin: 0;
   padding: 0.3rem 0;
 }
 
-.models-item {
+.projects-item {
   display: block;
   width: 100%;
   text-align: left;
@@ -192,35 +192,35 @@ onBeforeUnmount(() => {
   color: #333;
 }
 
-.models-item:hover:not(:disabled) {
+.projects-item:hover:not(:disabled) {
   background: #f0f4fa;
 }
 
-.models-item-check {
+.projects-item-check {
   display: inline-block;
   width: 1.1rem;
   color: #2e7d32;
   font-weight: 600;
 }
 
-.models-edit-item {
+.projects-edit-item {
   border-top: 1px solid #eee;
   color: #4a6fa5;
 }
 
-.models-upload-item {
+.projects-upload-item {
   color: #4a6fa5;
 }
 
-.models-download-item {
+.projects-download-item {
   color: #4a6fa5;
 }
 
-.models-delete-item {
+.projects-delete-item {
   color: #c62828;
 }
 
-.models-delete-item:disabled {
+.projects-delete-item:disabled {
   color: #ccc;
   cursor: not-allowed;
 }
