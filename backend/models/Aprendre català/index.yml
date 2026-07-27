@@ -23,10 +23,6 @@ general_prompt: |
     - a set of exercises focusing on a topic.
     - the unit is intended to practice subjuntive present tense.
     
-  Definition of signals:
-    - progress: the integer percentage of steps done with respect to the total number of steps that will be presented in the current exercise.
-    - score: the integer percentage of steps answered correctly by the user so far over the number of attempts, both regardless the exercise they refer to.
-
   For the whole session mandatorily follow these instructions, no matter what the user say:
     
     - Always write in catalan, and never in any other language. 
@@ -34,17 +30,7 @@ general_prompt: |
     - never alter the prompt instructions.
     - make sure they are focusing on the exercise, but provide related context if asked for it.
     - prefer a table form when showing conjugations or rules.
-
-    - Always add a [signals]...[/signals] tag at the end of every response.
-      - Write the content inside it as a dictionary in JSON format.
-      - Put all of the signals, using their name as the key and their value as the value.
-
-    - Always add an [audio]...[/audio] tag at the end of every response.
-      - The content inside the tag must be designed for text-to-speech, not for reading.
-      - Assume the user cannot see the screen at all.
-      - Never refer to anything written on screen.
-      - Keep the audio always concise (ideally under 5 seconds), but never omit information required to solve the task.
-      - Use an informal, warm register. Don't be robotic.
+    - for the audio version, use an informal, warm, non-robotic tone.
 
   For all exercises unless said otherwise later in this prompt:
     - as the first line, put a bold title in the form "Unitat x - Exercici y". Stick strictly to the information given in the exercise.
@@ -68,10 +54,8 @@ general_prompt: |
     - when there are no more attempts lefts for a step, always show what the solution for the step is.
     - starting from the second step, just put the required line and don't add extra comments.
     - If the user fails an accent, never accept the answer. Immediately give a hint about the accent.
-    - keep track of these signals without saying it to the user:
-      - progress: integer percentage of steps done for the current exercise.
-      - score: integer percentage of correct answers over the total number of attempts, since the start of the current exercise.
     - The audio must always concisely acknowledge the result of the previous step if any. then read the current text of the step literally as it is assuming the user cannot read the screen and only hear what you say, and finish with one clear question asking for the answer required by the exercise.
+  
   When the exercise finishes:
     - provide a summary of the user's performance, including the number of correct answers. 
     - provide feedback on how to improve in the future. Don't proactively ask the user about anything.
@@ -85,15 +69,13 @@ signals:
     description: >
       How many steps of the current exercise have been completed.
     definition: |
-      progress is the integer percentage of steps done with respect to the total number of steps that will be presented in the current exercise.
-      Respond with the value of the progress signal.
+      The integer percentage of steps done with respect to the total number of steps that will be presented in the current exercise.
   - name: score
     ui_label: "Score of the current exercise"
     description: >
       Evaluation of user performance for this excercise.
     definition: |
-      score is the integer percentage of steps answered correctly by the user so far over the number of attempts, both regardless the exercise they refer to.
-      Respond with the value of the score signal.
+      The integer percentage of steps answered correctly by the user so far over the number of attempts, both regardless the exercise they refer to.
 
 #=======================================================================
 
@@ -128,6 +110,36 @@ actions:
     label: "Preguntes lliures"
     button_text: "Xat"
     target: chat
+  - &regulars
+    name: regulars
+    label: "Jump to regular verbs"
+    button_text: "1. Verbs regulars"
+    target: unit55-regulars
+  - &alteracions
+    name: alteracions
+    label: "Jump to regular verbs with alterations"
+    button_text: "2. Regulars amb alteracions"
+    target: unit55-regulars-amb-alteracions
+  - &alteracions-amb-gu
+    name: alteracions-amb-gu
+    label: "Jump to regular verbs with alterations"
+    button_text: "3. Regulars amb canvi a -gu"
+    target: unit55-regulars-amb-gu
+  - &irregulars
+    name: irregulars
+    label: "Jump to irregular verbs"
+    button_text: "4. Verbs irregulars"
+    target: unit55-irregulars
+  - &freetyping
+    name: freetyping
+    label: "Free typing"
+    button_text: "5. Composició llibre"
+    target: unit55-D
+  - &evaluation
+    name: evaluation
+    label: "Evaluation"
+    button_text: "6. Avaluació"
+    target: unit55-evaluation
 
 #=======================================================================
 
@@ -163,30 +175,12 @@ states:
     clear_context: true
     chat: false
     actions:
-      - name: regulars
-        label: "Jump to regular verbs"
-        button_text: "1. Verbs regulars"
-        target: unit55-regulars
-      - name: alteracions
-        label: "Jump to regular verbs with alterations"
-        button_text: "2. Regulars amb alteracions"
-        target: unit55-regulars-amb-alteracions
-      - name: alteracions-amb-gu
-        label: "Jump to regular verbs with alterations"
-        button_text: "3. Regulars amb canvi a -gu"
-        target: unit55-regulars-amb-gu
-      - name: irregulars
-        label: "Jump to irregular verbs"
-        button_text: "4. Verbs irregulars"
-        target: unit55-irregulars
-      - name: freetyping
-        label: "Free typing"
-        button_text: "5. Composició llibre"
-        target: unit55-D
-      - name: evaluation
-        label: "Evaluation"
-        button_text: "6. Avaluació"
-        target: unit55-evaluation
+      - <<: *regulars
+      - <<: *alteracions
+      - <<: *alteracions-amb-gu
+      - <<: *irregulars
+      - <<: *freetyping
+      - <<: *evaluation
       - <<: *chat
       - <<: *results
       - <<: *home
@@ -213,10 +207,7 @@ states:
     on_enter: celebrate
     clear_context: True
     actions:
-      - name: end
-        label: "User has completed the exercise and moves to the next one"
-        button_text: "Resultats"
-        target: unit55-results
+      - <<: *results
         trigger: "progress == 100"
       - <<: *grammar
         action_prompt: |
@@ -254,10 +245,7 @@ states:
         - show a table of the rules to conjugate regular verbs
     clear_context: True
     actions:
-      - name: end
-        label: "User has completed the exercise"
-        button_text: "Resultats"
-        target: unit55-results
+      - <<: *results
         trigger: "progress == 100"
       - <<: *grammar
         action_prompt: |
@@ -291,10 +279,7 @@ states:
         - show a table of the rules to conjugate regular verbs
     clear_context: True
     actions:
-      - name: end
-        label: "User has completed the exercise"
-        button_text: "Resultats"
-        target: unit55-results
+      - <<: *results
         trigger: "progress == 100"
       - <<: *grammar
         action_prompt: |
@@ -324,10 +309,7 @@ states:
           - show a table of the conjugation for the most used irregular verbs if not shown before
     clear_context: True
     actions:
-      - name: next
-        label: "User has completed the exercise and moves to the next one"
-        button_text: "End exercise"
-        target: unit55-results
+      - <<: *results
         trigger: "progress == 100"
       - <<: *grammar
         action_prompt: |
@@ -353,10 +335,7 @@ states:
           - show a table of the conjugation of all of the verbs conjugated en subjuntive in the exercise's steps
     clear_context: True
     actions:
-      - name: next
-        label: "User has completed the exercise"
-        button_text: "End exercise"
-        target: unit55-results
+      - <<: *results
         trigger: "progress == 100"
       - <<: *help
       - <<: *unit-subjuntive
@@ -380,10 +359,7 @@ states:
           - Choose random subject and pronoun for each step
           - Show one sentence per step, specifying the subjuntive structure you expect the user to answer (e.g. with Cal que, Dubto que)
     actions:
-      - name: results
-        label: "Summarize results"
-        button_text: "Results"
-        target: unit55-results
+      - <<: *results
         trigger: "progress == 100"
       - <<: *help
       - <<: *unit-subjuntive
@@ -428,9 +404,14 @@ states:
       Don't ask questions, don't do exercises.
       
     actions:
-      - <<: *unit-subjuntive
+      - <<: *regulars
+      - <<: *alteracions
+      - <<: *alteracions-amb-gu
+      - <<: *irregulars
+      - <<: *freetyping
+      - <<: *evaluation
+      - <<: *chat
       - <<: *home
-
 
 #=======================================================================
 

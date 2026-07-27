@@ -31,8 +31,6 @@ class Message(BaseModel):
     content = TextField()
     timestamp = DateTimeField(index=True, default=datetime.utcnow)
     model_name = CharField(index=True, null=True)
-    # The [audio]...[/audio] tag's contents (see chat_service._extract_audio_tag),
-    # or None if the model didn't include one — text for TTS, not shown to the user.
     audio_text = TextField(null=True)
 
 

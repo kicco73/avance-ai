@@ -104,6 +104,11 @@ class Signals(object):
             for s in self.automaton.signals
         ]
 
+    def get_definition(self):
+        return "- Definition of signals:\n"+"\n\n".join(
+            f'\t- Signal "{s.name}":\n{s.definition}' for s in self.automaton.signals
+        )
+
     async def compute(
         self,
         ai_service: AiService,
@@ -116,9 +121,7 @@ class Signals(object):
         persisted). `since` excludes messages from before a clear_context
         state's entry. Only called from the auto-tracking flow."""
         automaton = self.automaton
-        signal_definitions = "\n\n".join(
-            f'Signal "{s.name}":\n{s.definition}' for s in automaton.signals
-        )
+        signal_definitions = self.get_definition()
         system_prompt = SIGNALS_SYSTEM_PROMPT_TEMPLATE.format(signal_definitions=signal_definitions)
         # Each signal brings only its own attachments into this shared call —
         # never a state's or general_prompt's (different scope entirely).
