@@ -17,7 +17,7 @@ EXTENSION_TO_MEDIA_TYPE = {
 VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 
 class AutomatonBuilder(object):
-    """Builds an Automaton from a model's index.yml: parses the YAML,
+    """Builds an Automaton from a project's index.yml: parses the YAML,
     resolves attachments, validates the result, and constructs the
     Automaton — the one place that shape is decided."""
 
@@ -58,7 +58,7 @@ class AutomatonBuilder(object):
             raw = yaml.safe_load(f)
 
         # Attachments are resolved relative to wherever this specific YAML file
-        # lives, not a shared fixed directory — each model carries its own.
+        # lives, not a shared fixed directory — each project carries its own.
         base_dir = path.parent
 
         general_prompt = raw["general_prompt"].strip()
@@ -80,7 +80,7 @@ class AutomatonBuilder(object):
         if not isinstance(raw_init_action, dict) or not raw_init_action.get("target"):
             raise ValueError(
                 "'init_action' is required and must be a mapping with at least a 'target' "
-                "field — the model's real starting state."
+                "field — the project's real starting state."
             )
         init_action = Action(
             name="init_action",

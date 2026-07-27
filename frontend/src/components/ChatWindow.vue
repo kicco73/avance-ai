@@ -12,12 +12,6 @@ const md = new MarkdownIt({
   html: false
 })
 
-// The model sometimes emits a data:image URI directly in the reply text
-// instead of wrapping it in markdown image syntax — with no `![]()` around
-// it, markdown-it has nothing to recognize as an image and just renders it
-// as a wall of base64 text. Wrap any such bare URI before rendering; one
-// already inside `![]( ... )` is skipped (the negative lookbehind), so a
-// well-behaved reply is untouched.
 const BARE_DATA_IMAGE_RE = /(?<!\]\()(data:image\/[a-zA-Z0-9+.-]+;base64,[A-Za-z0-9+/=]+)/g
 
 function autoWrapBareImages(text) {

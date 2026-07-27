@@ -3,11 +3,6 @@ import { setApiError } from './errorStore.js'
 const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 const WS_URL = import.meta.env.VITE_WS_URL ?? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/chat`
 
-// The one place every REST call goes through: on a non-2xx response (or a
-// network-level failure), writes {message, detail} into the shared error
-// area (see errorStore.js) before throwing, so no caller has to handle
-// display itself. `parse: 'blob'` is for downloadModel's zip body — every
-// other endpoint returns JSON on success.
 async function apiFetch(url, options, { parse = 'json' } = {}) {
   let res
   try {
@@ -129,58 +124,43 @@ export function postReset() {
   return apiFetch(`${API_URL}/chat/reset`, { method: 'POST' })
 }
 
-export function getModels() {
-  return apiFetch(`${API_URL}/models`)
+export function getProjects() {
+  return apiFetch(`${API_URL}/projects`)
 }
 
-// Idempotent: activating the model that's already active still succeeds,
-// but the backend skips the session reset entirely — no need for the
-// frontend to special-case "already active" before calling this.
-export function activateModel(modelName) {
-  return apiFetch(`${API_URL}/models/${encodeURIComponent(modelName)}/activate`, {
+export function activateProject(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/activate`, {
     method: 'PUT'
   })
 }
 
-// Raw request body (not multipart): the model's name is the resource in the
-// URL, decided by the caller — never derived server-side from the file.
-// Content-Type tells the backend the body's format (zip bundle vs. a lone
-// YAML file); it also sniffs the zip magic number as a fallback.
-export function putModel(modelName, file) {
+export function putProject(projectName, file) {
   const contentType = /\.zip$/i.test(file.name) ? 'application/zip' : 'application/x-yaml'
-  return apiFetch(`${API_URL}/models/${encodeURIComponent(modelName)}`, {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}`, {
     method: 'PUT',
     headers: { 'Content-Type': contentType },
     body: file
   })
 }
 
-// The read side of putModelFile(): round-trips with no transformation.
-// Only 'index.yml' is supported server-side for now.
-export function getModelFile(modelName) {
-  return apiFetch(`${API_URL}/models/${encodeURIComponent(modelName)}/index.yml`, {}, { parse: 'text' })
+export function getProjectFile(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/index.yml`, {}, { parse: 'text' })
 }
 
-// Raw text body (not JSON/multipart): edits `model_name`'s index.yml in
-// place. Unlike putModel(), this never creates a new model — the backend
-// 404s if it doesn't already exist.
-export function putModelFile(modelName, content) {
-  return apiFetch(`${API_URL}/models/${encodeURIComponent(modelName)}/index.yml`, {
+export function putProjectFile(projectName, content) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/index.yml`, {
     method: 'PUT',
     headers: { 'Content-Type': 'text/plain; charset=utf-8' },
     body: content
   })
 }
 
-export function deleteModel(modelName) {
-  return apiFetch(`${API_URL}/models/${encodeURIComponent(modelName)}`, {
+export function deleteProject(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}`, {
     method: 'DELETE'
   })
 }
 
-// The read side of the same resource putModel() writes: the returned blob
-// is always a zip, byte-for-byte what putModel() accepts back with no
-// transformation. Not JSON on success, hence `parse: 'blob'`.
-export function downloadModel(modelName) {
-  return apiFetch(`${API_URL}/models/${encodeURIComponent(modelName)}`, {}, { parse: 'blob' })
+export function downloadProject(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}`, {}, { parse: 'blob' })
 }

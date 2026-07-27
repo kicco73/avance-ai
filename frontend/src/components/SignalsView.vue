@@ -71,11 +71,6 @@ async function load() {
   loading.value = false
 }
 
-// Exposed for App.vue: called after every chat turn/action/model change so
-// the panel — now a docked inspector that stays open across turns — tracks
-// the backend's signal values live. No `loading` flip here: unlike the
-// initial load, a background refresh must update the numbers in place,
-// not blank the chart out from under the user.
 defineExpose({ refresh: fetchSignalsAndTriggers })
 
 // Reuses the signal values already fetched above — never calls the AI again.

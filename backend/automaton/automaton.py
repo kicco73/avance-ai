@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Attachment:
-    filename: str  # path relative to the model's own directory, also used as the display title
+    filename: str  # path relative to the project's own directory, also used as the display title
     # Anthropic `document` source shape, precomputed at load time:
     # {"type": "text"|"base64", "media_type": ..., "data": ...}.
     # Provider-neutral: consumers only look at type/data.

@@ -1,5 +1,5 @@
-"""Validating/staging/committing model activations, uploads, and
-deletions — plus every db.py access tied to "which model/state is
+"""Validating/staging/committing project activations, uploads, and
+deletions — plus every db.py access tied to "which project/state is
 active", encapsulated here so other layers never reach into db.py
 themselves for that.
 """
@@ -19,56 +19,56 @@ from session import Session
 
 logger = logging.getLogger(__name__)
 
-MODELS_DIR = Path(__file__).parent.parent / "models"
-DEFAULT_MODEL_NAME = "default"
+PROJECTS_DIR = Path(__file__).parent.parent / "projects"
+DEFAULT_PROJECT_NAME = "default"
 
-# Called with the newly-active Automaton once activate_model()/put_model()
+# Called with the newly-active Automaton once activate_project()/put_project()
 # have committed it.
 CommitCallback = Callable[[Automaton], Awaitable[None]]
 
 
-class ModelService(object):
+class ProjectService(object):
     def __init__(self, db) -> None:
         self._db = db
         # Pure build cache, not "active" state — see _load_and_validate.
         self._automaton_cache: dict[str, Automaton] = {}
-        # Fail fast at boot if the active model can't load.
+        # Fail fast at boot if the active project can't load.
         self.get_active_automaton_and_state()
 
     @staticmethod
-    def _is_safe_model_name(model_name: str) -> bool:
+    def _is_safe_project_name(project_name: str) -> bool:
         """No path traversal: must be a single plain path segment — not
         empty, not '.'/'..', no separators, resolving to itself when
         treated as a bare filename."""
-        if not model_name or model_name in (".", ".."):
+        if not project_name or project_name in (".", ".."):
             return False
-        return Path(model_name).name == model_name
+        return Path(project_name).name == project_name
 
-    def _load_model(self, model_name: str) -> Automaton:
-        cached = self._automaton_cache.get(model_name)
+    def _load_project(self, project_name: str) -> Automaton:
+        cached = self._automaton_cache.get(project_name)
         if cached is not None:
             return cached
 
-        if not ModelService._is_safe_model_name(model_name):
-            raise ValueError(f"Invalid model name: '{model_name}'.")
+        if not ProjectService._is_safe_project_name(project_name):
+            raise ValueError(f"Invalid project name: '{project_name}'.")
 
-        model_dir = MODELS_DIR / model_name
-        if not model_dir.is_dir():
-            raise ValueError(f"Model '{model_name}' does not exist.")
-        automaton = AutomatonBuilder().build(model_dir / "index.yml")
-        self._automaton_cache[model_name] = automaton
+        project_dir = PROJECTS_DIR / project_name
+        if not project_dir.is_dir():
+            raise ValueError(f"Project '{project_name}' does not exist.")
+        automaton = AutomatonBuilder().build(project_dir / "index.yml")
+        self._automaton_cache[project_name] = automaton
         return automaton
 
-    async def _finalize_model_update(
-        self, model_name: str, automaton: Automaton, commit: CommitCallback
+    async def _finalize_project_update(
+        self, project_name: str, automaton: Automaton, commit: CommitCallback
     ) -> bool:
-        """Used by the upload path (_put_yaml_model/_put_zip_model/
-        put_model_file): a deliberate replace, so it wipes `model_name`'s
+        """Used by the upload path (_put_yaml_project/_put_zip_project/
+        put_project_file): a deliberate replace, so it wipes `project_name`'s
         conversation data if it's currently active, before awaiting
         `commit`."""
-        self._automaton_cache[model_name] = automaton
-        if model_name == self.get_active_model_name():
-            self._db.reset_model(model_name)
+        self._automaton_cache[project_name] = automaton
+        if project_name == self.get_active_project_name():
+            self._db.reset_project(project_name)
             await commit(automaton)
             return True
         return False
@@ -122,16 +122,16 @@ class ModelService(object):
 
             zf.extractall(staging_dir)
 
-    def get_active_model_name(self) -> str:
-        """The current session user's active model name, read fresh from
+    def get_active_project_name(self) -> str:
+        """The current session user's active project name, read fresh from
         the DB every time. Defaults to (and persists) "default" the first
         time this user has no Settings row yet."""
         user = Session().user
-        model_name = self._db.get_active_model_name(user)
-        if model_name is None:
-            model_name = DEFAULT_MODEL_NAME
-            self._db.set_active_model_name(model_name, user)
-        return model_name
+        project_name = self._db.get_active_project_name(user)
+        if project_name is None:
+            project_name = DEFAULT_PROJECT_NAME
+            self._db.set_active_project_name(project_name, user)
+        return project_name
 
     def get_active_automaton_and_state(self) -> tuple[Automaton, State]:
         """The active Automaton paired with its current State — falls back
@@ -141,15 +141,15 @@ class ModelService(object):
         every caller of this (not just ChatService.open_if_needed) always
         sees a real state, whether or not init_action has actually been
         resolved/persisted yet."""
-        model_name = self.get_active_model_name()
-        automaton = self._load_model(model_name)
-        state_key = self._db.get_current_state(model_name)
+        project_name = self.get_active_project_name()
+        automaton = self._load_project(project_name)
+        state_key = self._db.get_current_state(project_name)
         if state_key is None or state_key not in automaton.states:
             if state_key is not None:
                 logger.warning(
-                    "Model '%s': persisted state '%s' no longer exists (renamed/removed on "
+                    "Project '%s': persisted state '%s' no longer exists (renamed/removed on "
                     "disk?) — falling back to init_action.target '%s'.",
-                    model_name, state_key, automaton.init_action.target,
+                    project_name, state_key, automaton.init_action.target,
                 )
             state_key = automaton.init_action.target
         return automaton, automaton.get_state(state_key)
@@ -168,7 +168,7 @@ class ModelService(object):
             state.key,
             action_name,
             new_state.key,
-            self.get_active_model_name(),
+            self.get_active_project_name(),
             transition_log_level=new_state.transition_log_level,
         )
         return automaton.get_state_payload(new_state), action, state.key
@@ -177,51 +177,51 @@ class ModelService(object):
         automaton, state = self.get_active_automaton_and_state()
         return automaton.get_state_payload(state)
 
-    def reset_active_model(self) -> None:
-        self._db.reset_model(self.get_active_model_name())
+    def reset_active_project(self) -> None:
+        self._db.reset_project(self.get_active_project_name())
 
-    def list_models(self) -> dict:
-        """Every subdirectory of models/ with an index.yml (unvalidated —
+    def list_projects(self) -> dict:
+        """Every subdirectory of projects/ with an index.yml (unvalidated —
         real validation is at activate/put time). '.'-prefixed dirs are
         staging artifacts, excluded."""
-        if not MODELS_DIR.is_dir():
+        if not PROJECTS_DIR.is_dir():
             names = []
         else:
             names = sorted(
                 entry.name
-                for entry in MODELS_DIR.iterdir()
+                for entry in PROJECTS_DIR.iterdir()
                 if entry.is_dir() and not entry.name.startswith(".") and (entry / "index.yml").is_file()
             )
-        return {"models": names, "active": self.get_active_model_name()}
+        return {"projects": names, "active": self.get_active_project_name()}
 
-    async def activate_model(self, model_name: str, commit: CommitCallback) -> Automaton:
-        """Validates via _load_and_validate(), persists `model_name` as
+    async def activate_project(self, project_name: str, commit: CommitCallback) -> Automaton:
+        """Validates via _load_and_validate(), persists `project_name` as
         active, then awaits `commit(new_automaton)`."""
-        new_automaton = self._load_model(model_name)
-        self._db.set_active_model_name(model_name, Session().user)
+        new_automaton = self._load_project(project_name)
+        self._db.set_active_project_name(project_name, Session().user)
         await commit(new_automaton)
         return new_automaton
 
-    async def activate_model_idempotent(self, model_name: str, commit: CommitCallback) -> Automaton:
-        """Always validates `model_name` first, even if already active —
+    async def activate_project_idempotent(self, project_name: str, commit: CommitCallback) -> Automaton:
+        """Always validates `project_name` first, even if already active —
         idempotency only skips the swap + commit, never the correctness
-        checks. A different model delegates to activate_model()."""
-        new_automaton = self._load_model(model_name)
-        if model_name == self.get_active_model_name():
+        checks. A different project delegates to activate_project()."""
+        new_automaton = self._load_project(project_name)
+        if project_name == self.get_active_project_name():
             return new_automaton
-        return await self.activate_model(model_name, commit)
+        return await self.activate_project(project_name, commit)
 
-    async def _put_yaml_model(self, model_name: str, content: bytes, commit: CommitCallback) -> dict:
-        """Writes a temp file inside the model dir so attachment paths
+    async def _put_yaml_project(self, project_name: str, content: bytes, commit: CommitCallback) -> dict:
+        """Writes a temp file inside the project dir so attachment paths
         resolve during validation; renames to index.yml only on success,
-        wiping any conversation data `model_name` already had."""
-        model_dir = MODELS_DIR / model_name
-        dir_preexisted = model_dir.is_dir()
-        model_dir.mkdir(parents=True, exist_ok=True)
+        wiping any conversation data `project_name` already had."""
+        project_dir = PROJECTS_DIR / project_name
+        dir_preexisted = project_dir.is_dir()
+        project_dir.mkdir(parents=True, exist_ok=True)
 
-        temp_path = model_dir / f".tmp_{uuid.uuid4().hex}.yml"
+        temp_path = project_dir / f".tmp_{uuid.uuid4().hex}.yml"
         temp_path.write_bytes(content)
-        final_path = model_dir / "index.yml"
+        final_path = project_dir / "index.yml"
 
         try:
             new_automaton = AutomatonBuilder().build(temp_path)
@@ -231,23 +231,23 @@ class ModelService(object):
             temp_path.unlink(missing_ok=True)
             if not dir_preexisted:
                 try:
-                    model_dir.rmdir()
+                    project_dir.rmdir()
                 except OSError:
                     pass  # not empty (e.g. a concurrent PUT of the same name) — leave it
-            raise ValueError(f"Invalid model definition: {exc}") from exc
+            raise ValueError(f"Invalid project definition: {exc}") from exc
 
         temp_path.replace(final_path)
 
-        self._db.set_active_model_name(model_name, Session().user)
-        await self._finalize_model_update(model_name, new_automaton, commit)
+        self._db.set_active_project_name(project_name, Session().user)
+        await self._finalize_project_update(project_name, new_automaton, commit)
 
-        return {"success": True, "model_name": model_name}
+        return {"success": True, "project_name": project_name}
 
-    async def _put_zip_model(self, model_name: str, content: bytes, commit: CommitCallback) -> dict:
+    async def _put_zip_project(self, project_name: str, content: bytes, commit: CommitCallback) -> dict:
         """Extracts into a temp dir (so attachment paths resolve during
         validation), then promotes it into place with one rename on
-        success, wiping any conversation data `model_name` already had."""
-        staging_dir = MODELS_DIR / f".tmp_{uuid.uuid4().hex}"
+        success, wiping any conversation data `project_name` already had."""
+        staging_dir = PROJECTS_DIR / f".tmp_{uuid.uuid4().hex}"
         staging_dir.mkdir(parents=True)
 
         try:
@@ -257,113 +257,113 @@ class ModelService(object):
             raise ValueError(str(exc)) from exc
 
         index_path = staging_dir / "index.yml"
-        final_dir = MODELS_DIR / model_name
+        final_dir = PROJECTS_DIR / project_name
 
         try:
             new_automaton = AutomatonBuilder().build(index_path)
         except Exception as exc:
             shutil.rmtree(staging_dir, ignore_errors=True)
-            raise ValueError(f"Invalid model definition: {exc}") from exc
+            raise ValueError(f"Invalid project definition: {exc}") from exc
 
         if final_dir.exists():
             shutil.rmtree(final_dir)
         staging_dir.rename(final_dir)
 
-        self._db.set_active_model_name(model_name, Session().user)
-        await self._finalize_model_update(model_name, new_automaton, commit)
+        self._db.set_active_project_name(project_name, Session().user)
+        await self._finalize_project_update(project_name, new_automaton, commit)
 
-        return {"success": True, "model_name": model_name}
+        return {"success": True, "project_name": project_name}
 
-    async def put_model(
-        self, model_name: str, content: bytes, content_type: str | None, commit: CommitCallback
+    async def put_project(
+        self, project_name: str, content: bytes, content_type: str | None, commit: CommitCallback
     ) -> dict:
-        """Creates or replaces a model from a raw body (YAML or zip, told
+        """Creates or replaces a project from a raw body (YAML or zip, told
         apart by _looks_like_zip). Stages -> validates -> only on success
         commits and swaps the active automaton via `commit`."""
-        if not self._is_safe_model_name(model_name):
-            raise ValueError(f"Invalid model name: '{model_name}'.")
+        if not self._is_safe_project_name(project_name):
+            raise ValueError(f"Invalid project name: '{project_name}'.")
 
         if self._looks_like_zip(content_type, content):
-            return await self._put_zip_model(model_name, content, commit)
-        return await self._put_yaml_model(model_name, content, commit)
+            return await self._put_zip_project(project_name, content, commit)
+        return await self._put_yaml_project(project_name, content, commit)
 
-    def export_model_zip(self, model_name: str) -> bytes:
-        """Exports `model_name` as a zip in the exact layout PUT accepts,
+    def export_project_zip(self, project_name: str) -> bytes:
+        """Exports `project_name` as a zip in the exact layout PUT accepts,
         so it round-trips with no transformation. Not restricted to the
-        active model; raises FileNotFoundError if unknown."""
-        if not self._is_safe_model_name(model_name) or not (MODELS_DIR / model_name).is_dir():
-            raise FileNotFoundError(f"Model '{model_name}' does not exist.")
+        active project; raises FileNotFoundError if unknown."""
+        if not self._is_safe_project_name(project_name) or not (PROJECTS_DIR / project_name).is_dir():
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
 
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-            for entry in sorted((MODELS_DIR / model_name).iterdir()):
+            for entry in sorted((PROJECTS_DIR / project_name).iterdir()):
                 if entry.is_file() and not entry.name.startswith("."):
                     zf.write(entry, arcname=entry.name)
         return buffer.getvalue()
 
     @staticmethod
     def _check_editable_file_name(file_name: str) -> None:
-        """The only file this endpoint pair (get_model_file/put_model_file)
-        will ever read or write — everything else in a model's directory
+        """The only file this endpoint pair (get_project_file/put_project_file)
+        will ever read or write — everything else in a project's directory
         (attachments) is out of scope for now."""
         if file_name != "index.yml":
             raise ValueError(f"Unsupported file '{file_name}': only 'index.yml' can be read/edited via this endpoint.")
 
-    def get_model_file(self, model_name: str, file_name: str) -> str:
+    def get_project_file(self, project_name: str, file_name: str) -> str:
         """Raw text content of `file_name` (only 'index.yml' for now)
-        inside `model_name`'s directory — the read side of
-        put_model_file(), round-tripping with no transformation."""
+        inside `project_name`'s directory — the read side of
+        put_project_file(), round-tripping with no transformation."""
         self._check_editable_file_name(file_name)
-        if not self._is_safe_model_name(model_name) or not (MODELS_DIR / model_name).is_dir():
-            raise FileNotFoundError(f"Model '{model_name}' does not exist.")
-        return (MODELS_DIR / model_name / file_name).read_text(encoding="utf-8")
+        if not self._is_safe_project_name(project_name) or not (PROJECTS_DIR / project_name).is_dir():
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+        return (PROJECTS_DIR / project_name / file_name).read_text(encoding="utf-8")
 
-    async def put_model_file(
-        self, model_name: str, file_name: str, content: bytes, commit: CommitCallback
+    async def put_project_file(
+        self, project_name: str, file_name: str, content: bytes, commit: CommitCallback
     ) -> dict:
         """Edits `file_name` (only 'index.yml' for now) of an existing
-        model in place: stages a full copy of the model's directory
+        project in place: stages a full copy of the project's directory
         (attachments included), swaps in the new content, and validates it
         with the same AutomatonBuilder used by every other load path.
-        Unlike put_model(), this never creates a new model — 404 if
-        `model_name` doesn't already exist — and never force-activates it;
+        Unlike put_project(), this never creates a new project — 404 if
+        `project_name` doesn't already exist — and never force-activates it;
         if it's already active it's refreshed via `commit`, same as
-        _finalize_model_update's other callers."""
+        _finalize_project_update's other callers."""
         self._check_editable_file_name(file_name)
-        if not self._is_safe_model_name(model_name) or not (MODELS_DIR / model_name).is_dir():
-            raise FileNotFoundError(f"Model '{model_name}' does not exist.")
-        model_dir = MODELS_DIR / model_name
+        if not self._is_safe_project_name(project_name) or not (PROJECTS_DIR / project_name).is_dir():
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+        project_dir = PROJECTS_DIR / project_name
 
-        staging_dir = MODELS_DIR / f".tmp_{uuid.uuid4().hex}"
-        shutil.copytree(model_dir, staging_dir)
+        staging_dir = PROJECTS_DIR / f".tmp_{uuid.uuid4().hex}"
+        shutil.copytree(project_dir, staging_dir)
         (staging_dir / file_name).write_bytes(content)
 
         try:
             new_automaton = AutomatonBuilder().build(staging_dir / file_name)
         except Exception as exc:
             shutil.rmtree(staging_dir, ignore_errors=True)
-            raise ValueError(f"Invalid model definition: {exc}") from exc
+            raise ValueError(f"Invalid project definition: {exc}") from exc
 
-        shutil.rmtree(model_dir)
-        staging_dir.rename(model_dir)
+        shutil.rmtree(project_dir)
+        staging_dir.rename(project_dir)
 
-        await self._finalize_model_update(model_name, new_automaton, commit)
+        await self._finalize_project_update(project_name, new_automaton, commit)
 
-        return {"success": True, "model_name": model_name}
+        return {"success": True, "project_name": project_name}
 
-    async def delete_model(self, model_name: str, commit: CommitCallback) -> None:
-        """Removes models/<model_name>/ from disk plus its conversation
-        data. Any model, active or not, except "default" (raises
+    async def delete_project(self, project_name: str, commit: CommitCallback) -> None:
+        """Removes projects/<project_name>/ from disk plus its conversation
+        data. Any project, active or not, except "default" (raises
         PermissionError). Reactivates "default" if it was active."""
-        if not self._is_safe_model_name(model_name) or not (MODELS_DIR / model_name).is_dir():
-            raise FileNotFoundError(f"Model '{model_name}' does not exist.")
-        if model_name == DEFAULT_MODEL_NAME:
-            raise PermissionError("The default model cannot be deleted.")
+        if not self._is_safe_project_name(project_name) or not (PROJECTS_DIR / project_name).is_dir():
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+        if project_name == DEFAULT_PROJECT_NAME:
+            raise PermissionError("The default project cannot be deleted.")
 
-        shutil.rmtree(MODELS_DIR / model_name)
-        self._db.reset_model(model_name)
-        # No orphaned Automaton for a model that no longer exists.
-        self._automaton_cache.pop(model_name, None)
+        shutil.rmtree(PROJECTS_DIR / project_name)
+        self._db.reset_project(project_name)
+        # No orphaned Automaton for a project that no longer exists.
+        self._automaton_cache.pop(project_name, None)
 
-        if model_name == self.get_active_model_name():
-            await self.activate_model(DEFAULT_MODEL_NAME, commit)
+        if project_name == self.get_active_project_name():
+            await self.activate_project(DEFAULT_PROJECT_NAME, commit)

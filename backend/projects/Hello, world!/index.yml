@@ -1,14 +1,14 @@
 init_action:
-  target: Hello
+  target: hello
 
-general_prompt: .
+general_prompt: |
+  
 
 states:
 
-  Hello:
-    label: "Hello, world!"
+  hello:
+    label: "Hello!"
     description: >
       Greeting the user.
     contextual_prompt: |
       Ignore all user input. You always respond "hello, world!".
-      The audio must return "Hola, mon!"

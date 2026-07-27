@@ -15,7 +15,7 @@ from config import AppConfig
 from controller import AvanceController
 from db import Db
 from error_handlers import register_error_handlers
-from model.model_service import ModelService
+from project.project_service import ProjectService
 from ai.ai_service import AiService
 from talk.talk_service import TalkService
 from listen.listen_service import ListenService
@@ -57,8 +57,8 @@ try:
     talk_service = TalkService(config.talk_services) if config.talk_services is not None else None
     listen_service = ListenService(config.listen_services) if config.listen_services is not None else None
     db = Db(config.database_url)
-    model_service = ModelService(db)
-    chat_service = ChatService(ai_service, model_service, db)
+    project_service = ProjectService(db)
+    chat_service = ChatService(ai_service, project_service, db)
 
     chat_ws_adapter = WsAdapter(chat_service) if config.chat_transport == "websocket" else None
 
@@ -74,7 +74,7 @@ try:
 
     register_error_handlers(app)
 
-    controller = AvanceController(chat_service, model_service, talk_service, listen_service)
+    controller = AvanceController(chat_service, project_service, talk_service, listen_service)
     app.include_router(controller.router)
 
     if chat_ws_adapter is not None:

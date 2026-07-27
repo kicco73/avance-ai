@@ -18,7 +18,7 @@ from chat.auto_tracker import AutoTracker
 from chat.metadata_handler import MetadataHandler
 from chat.priming import build_priming_messages
 from chat.signals import Signals
-from model.model_service import ModelService
+from project.project_service import ProjectService
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ FIXED_MESSAGE_INSTRUCTIONS = (
     "Fixed message:\n{fixed_message}"
 )
 
-# The model is prompted (see the active model's index.yml) to end its
+# The AI is prompted (see the active project's index.yml) to end its
 # reply with a short [audio]...[/audio] tag — the phrase to narrate,
 # distinct from the reply text itself. The tagged block (tag and content)
 # is stripped from what gets persisted/shown; the content between the
@@ -49,7 +49,7 @@ def _extract_visible_text_and_metadata(text: str) -> tuple[str, dict | None]:
     tag_text = match.group(1).strip()
     try:
         metadata = json.loads(tag_text) or {}
-        assert isinstance(metadata, dict) 
+        assert isinstance(metadata, dict)
     except Exception as exc:
         logger.warning(f"_extract_visible_text_and_metadata(): f{exc}")
         metadata = {}
@@ -70,14 +70,14 @@ class ChatService(object):
     def __init__(
         self,
         ai_service: AiService,
-        model_service: ModelService,
+        project_service: ProjectService,
         db: Db,
     ) -> None:
         self._ai_service = ai_service
-        self._model_service = model_service
+        self._project_service = project_service
         self._db = db
         self.signals = Signals(
-            get_active_automaton=lambda: model_service.get_active_automaton_and_state()[0], db=db
+            get_active_automaton=lambda: project_service.get_active_automaton_and_state()[0], db=db
         )
         self._metadata_handler = MetadataHandler()
         self._auto_tracker = AutoTracker(db, ai_service, self.signals)
@@ -89,8 +89,8 @@ class ChatService(object):
         self.lock = asyncio.Lock()
 
     @property
-    def _active_model_name(self) -> str:
-        return self._model_service.get_active_model_name()
+    def _active_project_name(self) -> str:
+        return self._project_service.get_active_project_name()
 
     def get_message_audio_text(self, message_id: int) -> str | None:
         return self._db.get_message_audio_text(message_id)
@@ -110,38 +110,38 @@ class ChatService(object):
         # init_action's own message (if any) is deliberately never
         # persisted (see open_if_needed) — the only place it's surfaced.
         init_message = await self.open_if_needed()
-        messages = self._db.get_messages(self._active_model_name, last_n=last_n)
+        messages = self._db.get_messages(self._active_project_name, last_n=last_n)
         if init_message is not None:
             messages.insert(0, init_message)
         return messages
 
     async def open_if_needed(self) -> dict | None:
-        model_name = self._active_model_name
-        automaton, state = self._model_service.get_active_automaton_and_state()
+        project_name = self._active_project_name
+        automaton, state = self._project_service.get_active_automaton_and_state()
 
         init_message = None
-        if self._db.get_current_state(model_name) is None:
+        if self._db.get_current_state(project_name) is None:
             action = automaton.init_action
             self._db.save_transition(
-                "", action.name, state.key, model_name, transition_log_level=state.transition_log_level
+                "", action.name, state.key, project_name, transition_log_level=state.transition_log_level
             )
             if action.action_prompt:
-                init_message = await self._generate_action_prompt_message(action, model_name, automaton, state)
+                init_message = await self._generate_action_prompt_message(action, project_name, automaton, state)
 
-        await self._generate_opening_message_if_needed(model_name, automaton, state)
+        await self._generate_opening_message_if_needed(project_name, automaton, state)
         return init_message
 
     @staticmethod
     def _current_state_payload(automaton: Automaton, state: State) -> dict:
         return automaton.get_state_payload(state)
 
-    def _history_cutoff(self, model_name: str, state: State) -> datetime | None:
+    def _history_cutoff(self, project_name: str, state: State) -> datetime | None:
         """Messages at or before this timestamp must be excluded from both
         the AI reply and auto-tracking's signal evaluation, per `state`'s
         history_cutoff. None means "no cutoff, use the full history"."""
         if not state.history_cutoff:
             return None
-        return self._db.get_last_transition_timestamp(model_name)
+        return self._db.get_last_transition_timestamp(project_name)
 
     def _build_turn_prompt(self, automaton, state) -> tuple[str, list]:
         # Shared by a normal chat turn and open_if_needed: system prompt +
@@ -156,51 +156,51 @@ class ChatService(object):
         system_prompt = f"{state.contextual_prompt}\n\n{automaton.general_prompt}\n\n{metadata_prompt}"
         return system_prompt, automaton.general_prompt_attachments + state.attachments
 
-    def _should_generate_opening_message(self, model_name: str, state: State) -> bool:
+    def _should_generate_opening_message(self, project_name: str, state: State) -> bool:
         # Evaluated BEFORE any message this same transition adds is
         # persisted (see _messages_for_transition) — an action_prompt
         # message must never make this gate think `state` already spoke.
-        content_since = self._history_cutoff(model_name, state)
+        content_since = self._history_cutoff(project_name, state)
         chat_blocked = state.final or not state.chat
-        gate_since = self._db.get_last_transition_timestamp(model_name) if chat_blocked else content_since
-        return not self._db.has_messages_since(model_name, gate_since)
+        gate_since = self._db.get_last_transition_timestamp(project_name) if chat_blocked else content_since
+        return not self._db.has_messages_since(project_name, gate_since)
 
     async def _generate_opening_message_if_needed(
-        self, model_name: str, automaton: Automaton, state: State
+        self, project_name: str, automaton: Automaton, state: State
     ) -> dict | None:
-        if not self._should_generate_opening_message(model_name, state):
+        if not self._should_generate_opening_message(project_name, state):
             return None
-        return await self._generate_opening_message_body(model_name, automaton, state)
+        return await self._generate_opening_message_body(project_name, automaton, state)
 
     async def _generate_opening_message_body(
-        self, model_name: str, automaton: Automaton, state: State
+        self, project_name: str, automaton: Automaton, state: State
     ) -> dict:
-        content_since = self._history_cutoff(model_name, state)
+        content_since = self._history_cutoff(project_name, state)
         system_prompt, turn_attachments = self._build_turn_prompt(automaton, state)
         chat_history = (
             build_priming_messages(turn_attachments)
-            + self._strip_timestamps(self._db.get_messages(model_name, since=content_since))
+            + self._strip_timestamps(self._db.get_messages(project_name, since=content_since))
             + [{"role": "user", "content": "..."}]
         )
 
         reply = await self._ai_service.generate(system_prompt, chat_history)
         visible_text, metadata = _extract_visible_text_and_metadata(reply)
         audio_text = self._metadata_handler.audio_text(metadata)
-        message_id = self._db.save_message("assistant", visible_text, model_name, audio_text=audio_text)
+        message_id = self._db.save_message("assistant", visible_text, project_name, audio_text=audio_text)
         return {"id": message_id, "content": visible_text, "audio_text": audio_text}
 
     async def _generate_action_prompt_message(
-        self, action: Action, model_name: str, automaton: Automaton, state: State
+        self, action: Action, project_name: str, automaton: Automaton, state: State
     ) -> dict:
         logger.warning("Executing action_prompt for action '%s'.", action.name)
 
         system_prompt = automaton.general_prompt
         turn_attachments = automaton.general_prompt_attachments + state.attachments
 
-        since = self._history_cutoff(model_name, state)
+        since = self._history_cutoff(project_name, state)
         chat_history = (
             build_priming_messages(turn_attachments)
-            + self._strip_timestamps(self._db.get_messages(model_name, since=since))
+            + self._strip_timestamps(self._db.get_messages(project_name, since=since))
             + [{"role": "user", "content": action.action_prompt}]
         )
 
@@ -212,7 +212,7 @@ class ChatService(object):
         return {"id": None, "content": visible_text, "audio_text": self._metadata_handler.audio_text(metadata)}
 
     async def _messages_for_transition(
-        self, action: Action, model_name: str, automaton: Automaton, new_state: State, *, is_self_loop: bool
+        self, action: Action, project_name: str, automaton: Automaton, new_state: State, *, is_self_loop: bool
     ) -> list[dict]:
         # Shared by the auto-tracking and manual-action paths: action_prompt
         # (if set) always generates first, then the destination state's own
@@ -223,19 +223,19 @@ class ChatService(object):
         # A self-loop (action.target == the state it fired from) must have
         # no side effect beyond action_prompt — it re-enters a state that
         # was never really left, not a genuine new entry to open.
-        should_open = not is_self_loop and self._should_generate_opening_message(model_name, new_state)
+        should_open = not is_self_loop and self._should_generate_opening_message(project_name, new_state)
 
         messages = []
         if action.action_prompt:
             messages.append(
-                await self._generate_action_prompt_message(action, model_name, automaton, new_state)
+                await self._generate_action_prompt_message(action, project_name, automaton, new_state)
             )
         if should_open:
-            messages.append(await self._generate_opening_message_body(model_name, automaton, new_state))
+            messages.append(await self._generate_opening_message_body(project_name, automaton, new_state))
         return messages
 
     async def _run_auto_tracking(
-        self, pending_message: dict | None, model_name: str, automaton: Automaton, state: State, signal_values: dict | None
+        self, pending_message: dict | None, project_name: str, automaton: Automaton, state: State, signal_values: dict | None
     ) -> tuple[Action | None, State, list[dict]]:
         # Whether to run auto-tracking at all is ChatService's own toggle
         # (see POST /api/chat/autotracking) — everything past that point
@@ -244,12 +244,12 @@ class ChatService(object):
         if not self.auto_tracking_enabled:
             return None, state, []
 
-        action, new_state = await self._auto_tracker.run(pending_message, model_name, automaton, state, signal_values)
+        action, new_state = await self._auto_tracker.run(pending_message, project_name, automaton, state, signal_values)
         if action is None:
             return None, state, []
 
         messages = await self._messages_for_transition(
-            action, model_name, automaton, new_state, is_self_loop=(action.target == state.key)
+            action, project_name, automaton, new_state, is_self_loop=(action.target == state.key)
         )
         return action, new_state, messages
 
@@ -257,16 +257,16 @@ class ChatService(object):
         """Applies a manual (button) action and, same as an auto-tracking
         transition, generates its action_prompt message (if any) and the
         destination state's opening message if it hasn't spoken yet —
-        ModelService's own apply_manual_action() only performs the
+        ProjectService's own apply_manual_action() only performs the
         transition; it has no way to call the LLM."""
         if self.lock.locked():
             raise ChatServiceError("A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT)
         async with self.lock:
-            state_payload, action, source_state_key = self._model_service.apply_manual_action(action_name)
-            model_name = self._active_model_name
-            automaton, state = self._model_service.get_active_automaton_and_state()
+            state_payload, action, source_state_key = self._project_service.apply_manual_action(action_name)
+            project_name = self._active_project_name
+            automaton, state = self._project_service.get_active_automaton_and_state()
             reply = await self._messages_for_transition(
-                action, model_name, automaton, state, is_self_loop=(action.target == source_state_key)
+                action, project_name, automaton, state, is_self_loop=(action.target == source_state_key)
             )
             return {
                 "state": state_payload,
@@ -280,7 +280,7 @@ class ChatService(object):
             return await self._process_turn_locked(text, on_retry)
 
     async def _process_turn_locked(self, text: str, on_retry: OnRetry | None) -> dict:
-        automaton, state = self._model_service.get_active_automaton_and_state()
+        automaton, state = self._project_service.get_active_automaton_and_state()
 
         if not state.chat:
             raise ChatServiceError(
@@ -290,16 +290,16 @@ class ChatService(object):
         pending_message = {"role": "user", "content": text, "timestamp": self._now_iso()}
 
         action: Action | None = None
-        model_name = self._active_model_name
+        project_name = self._active_project_name
         messages: list[dict] = []
 
         if automaton.autotracking_on_user_message:
             action, state, transition_messages = await self._run_auto_tracking(
-                pending_message, model_name, automaton, state, {}
+                pending_message, project_name, automaton, state, {}
             )
             messages.extend(transition_messages)
 
-        self._db.save_message("user", text, model_name)
+        self._db.save_message("user", text, project_name)
 
         # Phase 1's auto-tracking may have landed us on a state that never
         # generates a free-form reply (chat: false — typically a
@@ -310,18 +310,18 @@ class ChatService(object):
             system_prompt, turn_attachments = self._build_turn_prompt(automaton, state)
 
             priming_messages = build_priming_messages(turn_attachments)
-            since = self._history_cutoff(model_name, state)
-            chat_history = priming_messages + self._strip_timestamps(self._db.get_messages(model_name, since=since))
+            since = self._history_cutoff(project_name, state)
+            chat_history = priming_messages + self._strip_timestamps(self._db.get_messages(project_name, since=since))
 
             reply = await self._ai_service.generate(system_prompt, chat_history, on_retry=on_retry)
             visible_reply, metadata = _extract_visible_text_and_metadata(reply)
             audio_text = self._metadata_handler.audio_text(metadata)
-            assistant_id = self._db.save_message("assistant", visible_reply, model_name, audio_text=audio_text)
+            assistant_id = self._db.save_message("assistant", visible_reply, project_name, audio_text=audio_text)
             messages.append({"id": assistant_id, "content": visible_reply, "audio_text": audio_text})
 
             if automaton.autotracking_on_ai_message:
                 last_action, state, transition_messages = await self._run_auto_tracking(
-                    None, model_name, automaton, state, self._metadata_handler.signal_values(metadata)
+                    None, project_name, automaton, state, self._metadata_handler.signal_values(metadata)
                 )
                 if last_action:
                     action = last_action

@@ -23,17 +23,17 @@ class AutoTracker(object):
         self._ai_service = ai_service
         self._signals = signals
 
-    def _history_cutoff(self, model_name: str, state: State):
+    def _history_cutoff(self, project_name: str, state: State):
         # Same rule as ChatService._history_cutoff: history_cutoff states
         # exclude anything at or before the last transition.
         if not state.history_cutoff:
             return None
-        return self._db.get_last_transition_timestamp(model_name)
+        return self._db.get_last_transition_timestamp(project_name)
 
     async def run(
         self,
         pending_message: dict | None,
-        model_name: str,
+        project_name: str,
         automaton: Automaton,
         state: State,
         signal_values: dict | None,
@@ -46,13 +46,13 @@ class AutoTracker(object):
         if not signal_values:
             # fallback, we need to call AI to compute values
             logger.warning("AutoTracker.run(): signals not found in metadata, falling back to AI")
-            since = self._history_cutoff(model_name, state)
+            since = self._history_cutoff(project_name, state)
             signal_values = await self._signals.compute(
                 self._ai_service, build_priming_messages, pending_message, since=since
             )
         # Saved before trigger evaluation so a fired transition can reference
         # the exact snapshot id that caused it.
-        snapshot_id = self._db.save_signal_snapshot(signal_values, model_name)
+        snapshot_id = self._db.save_signal_snapshot(signal_values, project_name)
 
         triggered_action = automaton.evaluate_triggers(state.key, signal_values)
         if triggered_action is None:
@@ -68,7 +68,7 @@ class AutoTracker(object):
             state.key,
             triggered_action,
             action.target,
-            model_name,
+            project_name,
             transition_log_level=automaton.get_state(action.target).transition_log_level,
             signal_snapshot_id=snapshot_id,
             signal_values=relevant_values,

@@ -30,14 +30,14 @@ class Message(BaseModel):
     role = CharField()  # "user" or "assistant"
     content = TextField()
     timestamp = DateTimeField(index=True, default=datetime.utcnow)
-    model_name = CharField(index=True, null=True)
+    project_name = CharField(index=True, null=True)
     audio_text = TextField(null=True)
 
 
 class SignalSnapshot(BaseModel):
     values = TextField()  # JSON dict: {"problemRecognition": 42, ...}
     timestamp = DateTimeField(index=True, default=datetime.utcnow)
-    model_name = CharField(index=True, null=True)
+    project_name = CharField(index=True, null=True)
 
 
 # Single fixed user until there's real multi-user support (no login yet) —
@@ -48,10 +48,10 @@ DEFAULT_USER = "user"
 
 class Settings(BaseModel):
     """One row per user (today: always exactly one, DEFAULT_USER) — a
-    current-value pointer, not a log. `model` is the active-model name
-    (see set_active_model_name)."""
+    current-value pointer, not a log. `project` is the active-project name
+    (see set_active_project_name)."""
     user = CharField(primary_key=True)
-    model = CharField()
+    project = CharField()
 
 
 class Transition(BaseModel):
@@ -66,10 +66,10 @@ class Transition(BaseModel):
     # exists ahead of real multi-user support so the schema won't need to
     # change again when that lands.
     user = ForeignKeyField(Settings, index=True, backref="transitions")
-    model_name = CharField(index=True, null=True)
+    project_name = CharField(index=True, null=True)
 
 
-_MODEL_SCOPED_TABLES = (Message, SignalSnapshot, Transition)
+_PROJECT_SCOPED_TABLES = (Message, SignalSnapshot, Transition)
 
 
 class Db(object):
@@ -77,7 +77,7 @@ class Db(object):
         database.initialize(connect(database_url))
         database.connect(reuse_if_open=True)
         database.create_tables([Message, SignalSnapshot, Settings, Transition], safe=True)
-        self._migrate_add_model_name()
+        self._migrate_add_project_name()
         self._migrate_add_audio_text()
 
     def _migrate_add_audio_text(self) -> None:
@@ -88,29 +88,40 @@ class Db(object):
         if "audio_text" not in columns:
             migrate(migrator.add_column(Message._meta.table_name, "audio_text", TextField(null=True)))
 
-    def _migrate_add_model_name(self) -> None:
-        """One-time, idempotent ALTER TABLE for databases created before
-        model_name existed — adds the column (nullable) to each table it's
-        missing from, then backfills existing rows to whichever model is
+    def _migrate_add_project_name(self) -> None:
+        """One-time, idempotent migration to `project_name`/`project` (from
+        the model->project vocabulary rename): renames the column from its
+        pre-rename name (`model_name`/`model`) if present, else adds it
+        fresh (nullable) for databases that predate the column entirely —
+        backfilling only those freshly-added rows to whichever project is
         currently active, the closest available approximation (every
         switch used to wipe all data anyway, so pre-migration rows already
         all belonged to it)."""
         migrator = SqliteMigrator(database)
-        migrated = []
-        for table in _MODEL_SCOPED_TABLES:
+        freshly_added = []
+        for table in _PROJECT_SCOPED_TABLES:
             columns = {c.name for c in database.get_columns(table._meta.table_name)}
-            if "model_name" not in columns:
-                migrate(migrator.add_column(table._meta.table_name, "model_name", CharField(index=True, null=True)))
-                migrated.append(table)
-        if migrated:
-            active_model_name = self.get_active_model_name() or "default"
-            for table in migrated:
-                table.update(model_name=active_model_name).where(table.model_name.is_null()).execute()
+            if "project_name" in columns:
+                continue
+            if "model_name" in columns:
+                migrate(migrator.rename_column(table._meta.table_name, "model_name", "project_name"))
+            else:
+                migrate(migrator.add_column(table._meta.table_name, "project_name", CharField(index=True, null=True)))
+                freshly_added.append(table)
+
+        settings_columns = {c.name for c in database.get_columns(Settings._meta.table_name)}
+        if "project" not in settings_columns and "model" in settings_columns:
+            migrate(migrator.rename_column(Settings._meta.table_name, "model", "project"))
+
+        if freshly_added:
+            active_project_name = self.get_active_project_name() or "default"
+            for table in freshly_added:
+                table.update(project_name=active_project_name).where(table.project_name.is_null()).execute()
 
     def save_message(
-        self, role: str, content: str, model_name: str, audio_text: str | None = None
+        self, role: str, content: str, project_name: str, audio_text: str | None = None
     ) -> int:
-        message = Message.create(role=role, content=content, model_name=model_name, audio_text=audio_text)
+        message = Message.create(role=role, content=content, project_name=project_name, audio_text=audio_text)
         return message.id
 
     def get_message_audio_text(self, message_id: int) -> str | None:
@@ -118,15 +129,15 @@ class Db(object):
         return message.audio_text if message is not None else None
 
     def get_messages(
-        self, model_name: str, last_n: int | None = None, since: datetime | None = None
+        self, project_name: str, last_n: int | None = None, since: datetime | None = None
     ) -> list[dict]:
-        """Fetch `model_name`'s messages in chronological order. `last_n`
+        """Fetch `project_name`'s messages in chronological order. `last_n`
         limits at the SQL level (descending fetch + reverse) rather than
         slicing a full in-memory list. `since` excludes messages at or
         before that timestamp (a history_cutoff state's entry point)."""
         query = (
             Message.select()
-            .where(Message.model_name == model_name)
+            .where(Message.project_name == project_name)
             .order_by(Message.timestamp.desc())
         )
         if since is not None:
@@ -146,20 +157,20 @@ class Db(object):
             for m in rows
         ]
 
-    def has_messages_since(self, model_name: str, since: datetime | None) -> bool:
-        query = Message.select().where(Message.model_name == model_name)
+    def has_messages_since(self, project_name: str, since: datetime | None) -> bool:
+        query = Message.select().where(Message.project_name == project_name)
         if since is not None:
             query = query.where(Message.timestamp > since)
         return query.exists()
 
-    def save_signal_snapshot(self, values: dict, model_name: str) -> int:
-        snapshot = SignalSnapshot.create(values=json.dumps(values), model_name=model_name)
+    def save_signal_snapshot(self, values: dict, project_name: str) -> int:
+        snapshot = SignalSnapshot.create(values=json.dumps(values), project_name=project_name)
         return snapshot.id
 
-    def get_latest_signal_snapshot(self, model_name: str) -> dict | None:
+    def get_latest_signal_snapshot(self, project_name: str) -> dict | None:
         snapshot = (
             SignalSnapshot.select()
-            .where(SignalSnapshot.model_name == model_name)
+            .where(SignalSnapshot.project_name == project_name)
             .order_by(SignalSnapshot.timestamp.desc())
             .first()
         )
@@ -172,7 +183,7 @@ class Db(object):
         old_state: str,
         action: str,
         new_state: str,
-        model_name: str,
+        project_name: str,
         transition_log_level: str,
         signal_snapshot_id: int | None = None,
         signal_values: dict | None = None,
@@ -181,7 +192,7 @@ class Db(object):
             old_state=old_state,
             action=action,
             new_state=new_state,
-            model_name=model_name,
+            project_name=project_name,
             signal_snapshot=signal_snapshot_id,
             # Resolved here, not passed in: only one user exists today, but
             # the FK already exists so callers won't need to change later.
@@ -195,36 +206,36 @@ class Db(object):
             message += f" signals={signal_values}"
         logger.log(level, message)
 
-    def _latest_transition(self, model_name: str, *, real_only: bool = False) -> Transition | None:
-        query = Transition.select().where(Transition.model_name == model_name)
+    def _latest_transition(self, project_name: str, *, real_only: bool = False) -> Transition | None:
+        query = Transition.select().where(Transition.project_name == project_name)
         if real_only:
             query = query.where(Transition.old_state != Transition.new_state)
         return query.order_by(Transition.timestamp.desc()).first()
 
-    def get_current_state(self, model_name: str) -> str | None:
-        transition = self._latest_transition(model_name)
+    def get_current_state(self, project_name: str) -> str | None:
+        transition = self._latest_transition(project_name)
         return transition.new_state if transition else None
 
-    def get_last_transition_timestamp(self, model_name: str) -> datetime | None:
-        transition = self._latest_transition(model_name, real_only=True)
+    def get_last_transition_timestamp(self, project_name: str) -> datetime | None:
+        transition = self._latest_transition(project_name, real_only=True)
         return transition.timestamp if transition else None
 
-    def get_active_model_name(self, user: str = DEFAULT_USER) -> str | None:
-        """The model name persisted for `user`, or None if Settings has no
+    def get_active_project_name(self, user: str = DEFAULT_USER) -> str | None:
+        """The project name persisted for `user`, or None if Settings has no
         row for them yet (never populated — the very first boot)."""
         row = Settings.get_or_none(Settings.user == user)
-        return row.model if row is not None else None
+        return row.project if row is not None else None
 
-    def set_active_model_name(self, model_name: str, user: str = DEFAULT_USER) -> None:
-        Settings.insert(user=user, model=model_name).on_conflict(
+    def set_active_project_name(self, project_name: str, user: str = DEFAULT_USER) -> None:
+        Settings.insert(user=user, project=project_name).on_conflict(
             conflict_target=[Settings.user],
-            update={Settings.model: model_name},
+            update={Settings.project: project_name},
         ).execute()
 
-    def reset_model(self, model_name: str) -> None:
-        Transition.delete().where(Transition.model_name == model_name).execute()
-        SignalSnapshot.delete().where(SignalSnapshot.model_name == model_name).execute()
-        Message.delete().where(Message.model_name == model_name).execute()
+    def reset_project(self, project_name: str) -> None:
+        Transition.delete().where(Transition.project_name == project_name).execute()
+        SignalSnapshot.delete().where(SignalSnapshot.project_name == project_name).execute()
+        Message.delete().where(Message.project_name == project_name).execute()
 
     def reset_all(self) -> None:
         Transition.delete().execute()

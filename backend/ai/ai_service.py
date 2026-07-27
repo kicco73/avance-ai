@@ -1,7 +1,3 @@
-"""The AI layer as a single service, same style as ModelService/ChatService.
-Cascades text generation across every configured provider (see cascade.py)
-— callers never see LLMProvider or individual provider classes.
-"""
 from __future__ import annotations
 
 from config import AiServiceConfig

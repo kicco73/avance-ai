@@ -1,5 +1,5 @@
 """Computes and reports the monitoring signals defined in the active
-model's YAML. get_active_automaton and db are constructor-injected.
+project's YAML. get_active_automaton and db are constructor-injected.
 Instantiated as ChatService's `signals`."""
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ SIGNALS_SYSTEM_PROMPT_TEMPLATE = (
 BuildPrimingMessages = Callable[[list], list[dict]]
 
 # Supplies the currently-active Automaton — constructor-injected rather
-# than imported: this module doesn't own which model is active.
+# than imported: this module doesn't own which project is active.
 GetActiveAutomaton = Callable[[], Automaton]
 
 
@@ -49,10 +49,10 @@ class Signals(object):
     def automaton(self) -> Automaton:
         return self._get_active_automaton()
 
-    def _active_model_name(self) -> str:
-        """Settings-persisted pointer, not models_manager's in-memory
-        tracker — this module doesn't depend on models_manager, by design."""
-        return self._db.get_active_model_name()
+    def _active_project_name(self) -> str:
+        """Settings-persisted pointer, not ProjectService's in-memory
+        tracker — this module doesn't depend on ProjectService, by design."""
+        return self._db.get_active_project_name()
 
     def _signal_history_window(
         self, pending_message: dict | None, since: datetime | None
@@ -61,7 +61,7 @@ class Signals(object):
         not multi-turn history, which invites the model to keep chatting.
         `pending_message` is appended locally, unpersisted."""
         fetch_n = SIGNALS_HISTORY_WINDOW - 1 if pending_message is not None else SIGNALS_HISTORY_WINDOW
-        recent = self._db.get_messages(self._active_model_name(), last_n=fetch_n, since=since)
+        recent = self._db.get_messages(self._active_project_name(), last_n=fetch_n, since=since)
         if pending_message is not None:
             recent = recent + [pending_message]
         if recent and recent[0]["role"] != "user":
@@ -87,7 +87,7 @@ class Signals(object):
     @staticmethod
     def _validate_signal_value(raw_value: object) -> tuple[int | float | None, bool]:
         # Signals are unconstrained numbers, int or float: no fixed range
-        # (a model's own `definition` prompt is free to ask for e.g. 0-100,
+        # (a signal's own `definition` prompt is free to ask for e.g. 0-100,
         # but the software itself doesn't enforce it).
         if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
             return None, True
@@ -174,4 +174,4 @@ class Signals(object):
         """Read-only, never calls the AI — reports the latest snapshot
         persisted through db.py. Signals are only (re)computed via
         compute_signals(), from the auto-tracking flow."""
-        return self._snapshot_to_signals_payload(self._db.get_latest_signal_snapshot(self._active_model_name()))
+        return self._snapshot_to_signals_payload(self._db.get_latest_signal_snapshot(self._active_project_name()))

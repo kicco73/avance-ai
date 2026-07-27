@@ -10,7 +10,7 @@ from automaton.automaton import Automaton
 from talk.talk_service import TalkService, TalkServiceNotAvailableError
 from listen.listen_service import ListenService, ListenServiceError, ListenServiceNotAvailableError
 from chat.chat_service import ChatService, ChatServiceError
-from model.model_service import ModelService
+from project.project_service import ProjectService
 from schemas import (
     ActionRequest,
     AutoTrackingRequest,
@@ -46,12 +46,12 @@ class AvanceController(object):
     def __init__(
         self,
         chat_service: ChatService,
-        model_service: ModelService,
+        project_service: ProjectService,
         talk_service: TalkService | None,
         listen_service: ListenService | None,
     ) -> None:
         self.chat_service = chat_service
-        self.model_service = model_service
+        self.project_service = project_service
         self.talk_service = talk_service
         self.listen_service = listen_service
 
@@ -75,7 +75,7 @@ class AvanceController(object):
         pingBackend) — piggybacks talk_enabled/listen_enabled here so it
         stays the one call needed to know both "is the server up" and
         "which voice features does it actually have configured"."""
-        payload = self.model_service.get_active_state_payload()
+        payload = self.project_service.get_active_state_payload()
         payload["talk_enabled"] = self.talk_service is not None
         payload["listen_enabled"] = self.listen_service is not None
         return payload
@@ -155,92 +155,92 @@ class AvanceController(object):
 
     @post("/api/triggers/preview")
     def post_triggers_preview(self, req: TriggersPreviewRequest):
-        automaton, state = self.model_service.get_active_automaton_and_state()
+        automaton, state = self.project_service.get_active_automaton_and_state()
         return automaton.preview_triggers(state.key, req.signals)
 
     @post("/api/chat/reset")
     async def post_reset(self):
         async with self.chat_service.lock:
-            self.model_service.reset_active_model()
+            self.project_service.reset_active_project()
             self.chat_service.auto_tracking_enabled = True
-        return self.model_service.get_active_state_payload()
+        return self.project_service.get_active_state_payload()
 
-    @get("/api/models")
-    def get_models(self):
-        return self.model_service.list_models()
+    @get("/api/projects")
+    def get_projects(self):
+        return self.project_service.list_projects()
 
-    @put("/api/models/{model_name}/activate")
-    async def activate_model(self, model_name: str):
+    @put("/api/projects/{project_name}/activate")
+    async def activate_project(self, project_name: str):
         try:
-            await self.model_service.activate_model_idempotent(model_name, self._activate_model)
+            await self.project_service.activate_project_idempotent(project_name, self._activate_project)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {
             "success": True,
-            "model_name": model_name,
+            "project_name": project_name,
         }
 
-    @get("/api/models/{model_name}")
-    def get_model(self, model_name: str):
-        """Downloads `model_name` as a zip — the read side of PUT
-        /api/models/{model_name}, built so it round-trips back through PUT with
-        no transformation. Not restricted to the active model."""
+    @get("/api/projects/{project_name}")
+    def get_project(self, project_name: str):
+        """Downloads `project_name` as a zip — the read side of PUT
+        /api/projects/{project_name}, built so it round-trips back through PUT
+        with no transformation. Not restricted to the active project."""
         try:
-            content = self.model_service.export_model_zip(model_name)
+            content = self.project_service.export_project_zip(project_name)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         return Response(
             content=content,
             media_type="application/zip",
-            headers={"Content-Disposition": f'attachment; filename="{model_name}.zip"'},
+            headers={"Content-Disposition": f'attachment; filename="{project_name}.zip"'},
         )
 
-    @put("/api/models/{model_name}")
-    async def put_model(self, model_name: str, request: Request):
-        """Creates or replaces `model_name` from a raw body (YAML or zip, see
-        models_manager._looks_like_zip). Stage -> validate -> only on success
-        commit, swap, and wipe `model_name`'s prior conversation data."""
+    @put("/api/projects/{project_name}")
+    async def put_project(self, project_name: str, request: Request):
+        """Creates or replaces `project_name` from a raw body (YAML or zip, see
+        ProjectService._looks_like_zip). Stage -> validate -> only on success
+        commit, swap, and wipe `project_name`'s prior conversation data."""
         content = await request.body()
         content_type = request.headers.get("content-type")
 
         try:
-            result = await self.model_service.put_model(model_name, content, content_type, self._activate_model)
+            result = await self.project_service.put_project(project_name, content, content_type, self._activate_project)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/models/{model_name}/{file_name}")
-    def get_model_file(self, model_name: str, file_name: str):
-        """Raw text content of one of `model_name`'s files, for the "Edit
-        model" view — only 'index.yml' is supported for now (see
-        ModelService.get_model_file)."""
+    @get("/api/projects/{project_name}/{file_name}")
+    def get_project_file(self, project_name: str, file_name: str):
+        """Raw text content of one of `project_name`'s files, for the "Edit
+        project" view — only 'index.yml' is supported for now (see
+        ProjectService.get_project_file)."""
         try:
-            content = self.model_service.get_model_file(model_name, file_name)
+            content = self.project_service.get_project_file(project_name, file_name)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return Response(content=content, media_type="text/plain; charset=utf-8")
 
-    @put("/api/models/{model_name}/{file_name}")
-    async def put_model_file(self, model_name: str, file_name: str, request: Request):
-        """Edits one of `model_name`'s files in place (only 'index.yml' for
-        now) — stage a copy of the whole model dir, validate, and only on
-        success replace the real one. Unlike PUT /api/models/{model_name},
-        this never creates a new model."""
+    @put("/api/projects/{project_name}/{file_name}")
+    async def put_project_file(self, project_name: str, file_name: str, request: Request):
+        """Edits one of `project_name`'s files in place (only 'index.yml' for
+        now) — stage a copy of the whole project dir, validate, and only on
+        success replace the real one. Unlike PUT /api/projects/{project_name},
+        this never creates a new project."""
         content = await request.body()
         try:
-            result = await self.model_service.put_model_file(model_name, file_name, content, self._activate_model)
+            result = await self.project_service.put_project_file(project_name, file_name, content, self._activate_project)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return result
 
-    @delete("/api/models/{model_name}")
-    async def delete_model(self, model_name: str):
+    @delete("/api/projects/{project_name}")
+    async def delete_project(self, project_name: str):
 
         try:
-            await self.model_service.delete_model(model_name, self._activate_model)
+            await self.project_service.delete_project(project_name, self._activate_project)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except PermissionError as exc:
@@ -249,7 +249,7 @@ class AvanceController(object):
             raise HTTPException(status_code=HTTPStatus.INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
         return {"success": True}
 
-    async def _activate_model(self, new_automaton: Automaton) -> None:
-        # Unused: kept only to match ModelsManager's CommitCallback shape.
+    async def _activate_project(self, new_automaton: Automaton) -> None:
+        # Unused: kept only to match ProjectService's CommitCallback shape.
         async with self.chat_service.lock:
             self.chat_service.auto_tracking_enabled = True

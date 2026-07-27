@@ -42,7 +42,7 @@ requests from this origin).
 2. Chat freely in the central window: every message is sent to the backend over a
    websocket connection, which builds the system prompt by combining the current
    state's `contextual_prompt` with `general_prompt` (both read from the
-   active model YAML — see [Editing the automaton](#editing-the-automaton)),
+   active project YAML — see [Editing the automaton](#editing-the-automaton)),
    and calls the configured LLM provider (see
    [Switching LLM provider](#switching-llm-provider)) with the full conversation
    history. If the provider reports a transient overload (HTTP 503), the backend
@@ -89,12 +89,12 @@ required.
 
 ## Editing the automaton
 
-`backend/models/default/index.yml` is the **single source of truth** for
+`backend/projects/default/index.yml` is the **single source of truth** for
 states, actions, and contextual prompts — it's always what the backend loads
-at boot, regardless of any model uploaded via the UI in a previous session
+at boot, regardless of any project uploaded via the UI in a previous session
 (see below; uploads are never persisted as "the new default"). Attachments
-referenced from it (see `backend/models/README.md`) live alongside it in
-`models/default/`. To add or modify a state:
+referenced from it (see `backend/projects/README.md`) live alongside it in
+`projects/default/`. To add or modify a state:
 
 1. Add/edit an entry under `states:` with `label`, `description`,
    `contextual_prompt`, and the list of `actions` (each with `name`, `label`,
@@ -108,38 +108,38 @@ referenced from it (see `backend/models/README.md`) live alongside it in
 
 No Python code needs to change for these edits.
 
-### Switching models at runtime
+### Switching projects at runtime
 
-The **"Models"** menu in the UI lists every model already present under
-`backend/models/` (from `GET /api/models`, which also reports the active
+The **"Projects"** menu in the UI lists every project already present under
+`backend/projects/` (from `GET /api/projects`, which also reports the active
 one — a ✓ marks it in the menu); clicking one calls
-`PUT /api/models/{model_name}/activate` and, on success, makes it the active
-automaton — the app resets (same as clicking "Reset") since a different
-automaton makes prior states/actions/signals meaningless. Nothing on disk is
-touched by activating a model — it was already there — so a failed
-validation (malformed `index.yml`) just reports the error and leaves the
-active automaton untouched. Activating the model that's *already* active is
-idempotent: it's still validated, but doesn't repeat the reset.
+`PUT /api/projects/{project_name}/activate` and, on success, makes it the
+active automaton — the app resets (same as clicking "Reset") since a
+different automaton makes prior states/actions/signals meaningless. Nothing
+on disk is touched by activating a project — it was already there — so a
+failed validation (malformed `index.yml`) just reports the error and leaves
+the active automaton untouched. Activating the project that's *already*
+active is idempotent: it's still validated, but doesn't repeat the reset.
 
-The menu also has **"Upload..."**, which adds a new model (or replaces an
+The menu also has **"Upload..."**, which adds a new project (or replaces an
 existing one) without restarting the backend, via
-`PUT /api/models/{model_name}` — the model's name is decided by the request
-URL, not by anything in the uploaded file. The frontend derives it from the
-picked file's name (without extension); the raw file body is sent directly
-as the request payload, in either of two formats:
+`PUT /api/projects/{project_name}` — the project's name is decided by the
+request URL, not by anything in the uploaded file. The frontend derives it
+from the picked file's name (without extension); the raw file body is sent
+directly as the request payload, in either of two formats:
 
-- A lone `.yml`/`.yaml` file — becomes `models/<model_name>/index.yml`. It
+- A lone `.yml`/`.yaml` file — becomes `projects/<project_name>/index.yml`. It
   can't carry attachments of its own; if it references `attachments:`, those
   files must already exist in that directory (e.g. left there by a previous
-  zip upload of the same model).
+  zip upload of the same project).
 - A `.zip` archive containing exactly one `index.yml` at its root, plus zero
   or more attachment files alongside it (flat, no subdirectories) — becomes
-  `models/<model_name>/` in full. PUTting a zip under an existing model's
-  name fully replaces that directory, unlike the lone-file case.
+  `projects/<project_name>/` in full. PUTting a zip under an existing
+  project's name fully replaces that directory, unlike the lone-file case.
 
 The body's format is told apart by the request's `Content-Type` header
 (falling back to sniffing the zip file signature if it's missing or
-ambiguous) — this is a separate concern from the model's name, which always
+ambiguous) — this is a separate concern from the project's name, which always
 comes from the URL. Either way, the upload is validated with the exact same
 logic used at boot and by activate (state/action/trigger/signal/attachment
 checks, plus — for zips — path-safety and structure checks before anything
@@ -148,24 +148,25 @@ discarded (and its target directory too, if this upload is what created it)
 — the current automaton and all state stay exactly as they were. If it
 succeeds, it becomes the active automaton and the app resets, exactly like
 activating it. This is in-memory only for the running process — the next
-backend restart always reloads `models/default/index.yml`, never the last
-active model.
+backend restart always reloads `projects/default/index.yml`, never the last
+active project.
 
-**"Download"** fetches the *currently active* model back as a zip via
-`GET /api/models/{model_name}` — the read side of the same resource `PUT`
+**"Download"** fetches the *currently active* project back as a zip via
+`GET /api/projects/{project_name}` — the read side of the same resource `PUT`
 writes to, in the exact same flat layout (`index.yml` plus attachments,
 no subdirectories) that `PUT` already requires, so a downloaded zip is
 accepted back by `PUT` with zero transformation either way. Always a zip,
-even for a model with no attachments, so there's exactly one export format.
+even for a project with no attachments, so there's exactly one export format.
 
 Finally, **"Delete"** (with an inline confirm step) removes the *currently
-active* model via `DELETE /api/models/{model_name}`. Both `GET` and `DELETE`
-on this path are general-purpose — they work for any listed model, not just
-the active one, even though the menu only ever calls them on the active
-model; deleting (or downloading) one that isn't active has no effect on the
-running session at all. Deleting the active model falls back to `default`
-and resets, the same as activating it. `default` itself can never be deleted
-(enforced server-side, not just by the menu graying the option out).
+active* project via `DELETE /api/projects/{project_name}`. Both `GET` and
+`DELETE` on this path are general-purpose — they work for any listed
+project, not just the active one, even though the menu only ever calls them
+on the active project; deleting (or downloading) one that isn't active has
+no effect on the running session at all. Deleting the active project falls
+back to `default` and resets, the same as activating it. `default` itself
+can never be deleted (enforced server-side, not just by the menu graying the
+option out).
 
 ### Exception: the `crisis` state
 
@@ -177,7 +178,7 @@ translate `fixed_message` verbatim into whatever language the user is
 writing in, and returns that translation as the reply.
 
 **Important**: the crisis resources in `crisis.fixed_message`
-(`backend/models/default/index.yml`) are a **prototype placeholder** (Spanish
+(`backend/projects/default/index.yml`) are a **prototype placeholder** (Spanish
 emergency numbers used as an example) and are explicitly marked
 `TO BE REPLACED`. Before any real-world use they must be replaced with
 resources verified, up to date, and validated by a qualified clinical team
@@ -195,8 +196,8 @@ avance-prototype/
 │   │   ├── factory.py                 # selects the provider from LLM_PROVIDER
 │   │   ├── anthropic_provider.py      # Anthropic API (Claude) call wrapper
 │   │   └── gemini_provider.py         # Google Gemini API call wrapper
-│   ├── models/                        # each subdir is a model: index.yml + its own attachments (see models/README.md)
-│   │   └── default/                   # boot default; PUT /api/models/{model_name} can add more here at runtime
+│   ├── projects/                      # each subdir is a project: index.yml + its own attachments (see projects/README.md)
+│   │   └── default/                   # boot default; PUT /api/projects/{project_name} can add more here at runtime
 │   │       ├── index.yml              # automaton definition + general_prompt + contextual/fixed prompts
 │   │       └── *.txt                  # attachments referenced from index.yml
 │   ├── requirements.txt
@@ -221,11 +222,11 @@ avance-prototype/
 | GET    | `/api/state`                         | Current state, label, description, available actions                                                                             |
 | WS     | `/ws/chat`                           | Chat channel — see below                                                                                                          |
 | POST   | `/api/action`                        | `{action_name}` → applies the transition if valid for the current state                                                           |
-| GET    | `/api/models`                        | `{models: [...], active: "..."}` — model directory names under `backend/models/` with an `index.yml` present, plus the active one |
-| PUT    | `/api/models/{model_name}/activate`  | Validates and activates an already-present model (see above); idempotent — resets only if it's a different model, still validates either way |
-| GET    | `/api/models/{model_name}`           | Downloads that model as a zip (flat, `index.yml` + attachments) — round-trips with the PUT below with no transformation           |
-| PUT    | `/api/models/{model_name}`           | Raw file body (`Content-Type` says the format) → creates/replaces that model, then validates and activates it (see above)         |
-| DELETE | `/api/models/{model_name}`           | Removes that model from disk; falls back to `default` (and resets) only if it was the active one; `default` itself can't be deleted |
+| GET    | `/api/projects`                        | `{projects: [...], active: "..."}` — project directory names under `backend/projects/` with an `index.yml` present, plus the active one |
+| PUT    | `/api/projects/{project_name}/activate`  | Validates and activates an already-present project (see above); idempotent — resets only if it's a different project, still validates either way |
+| GET    | `/api/projects/{project_name}`           | Downloads that project as a zip (flat, `index.yml` + attachments) — round-trips with the PUT below with no transformation           |
+| PUT    | `/api/projects/{project_name}`           | Raw file body (`Content-Type` says the format) → creates/replaces that project, then validates and activates it (see above)         |
+| DELETE | `/api/projects/{project_name}`           | Removes that project from disk; falls back to `default` (and resets) only if it was the active one; `default` itself can't be deleted |
 | POST   | `/api/reset`                         | Resets state and history to the initial condition                                                                                 |
 
 `/ws/chat` replaces a plain request/response: the client sends `{message}`,

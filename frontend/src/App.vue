@@ -4,8 +4,8 @@ import ChatWindow from './components/ChatWindow.vue'
 import StateBar from './components/StateBar.vue'
 import ActionButtons from './components/ActionButtons.vue'
 import SignalsView from './components/SignalsView.vue'
-import EditModelView from './components/EditModelView.vue'
-import ModelsMenu from './components/ModelsMenu.vue'
+import EditProjectView from './components/EditProjectView.vue'
+import ProjectsMenu from './components/ProjectsMenu.vue'
 import SplashScreen from './components/SplashScreen.vue'
 import {
   getState,
@@ -16,10 +16,10 @@ import {
   messageAudioUrl,
   postListenTranscribe,
   postReset,
-  putModel,
-  activateModel,
-  deleteModel,
-  downloadModel
+  putProject,
+  activateProject,
+  deleteProject,
+  downloadProject
 } from './api.js'
 import { disconnect as disconnectChat, sendMessage } from './chatClient.js'
 import { playMessageChime, playMessageAudio } from './audio.js'
@@ -38,8 +38,8 @@ function renderMarkdown(text) {
   return DOMPurify.sanitize(md.render(text ?? ''))
 }
 const showSignals = ref(false)
-const showEditModel = ref(false)
-const editModelName = ref(null)
+const showEditProject = ref(false)
+const editProjectName = ref(null)
 const autoTrackingEnabled = ref(true)
 const autoTrackingLoading = ref(false)
 // Pure frontend state — the backend generates audio on demand whenever
@@ -63,7 +63,7 @@ const chatLoading = ref(false)
 const chatStatus = ref('')
 const actionLoading = ref(false)
 const modelUploadInput = ref(null)
-const modelsMenu = ref(null)
+const projectsMenu = ref(null)
 const chatWindow = ref(null)
 const signalsView = ref(null)
 
@@ -451,9 +451,9 @@ function clearChatUi() {
 // putModel/activateModel/deleteModel's responses carry the state payload
 // itself), same as handleReset picks up the opening message via REST,
 // regardless of chat transport.
-async function refreshStateAndModels() {
+async function refreshStateAndProjects() {
   const newState = await getState()
-  modelsMenu.value?.refresh()
+  projectsMenu.value?.refresh()
   handleStateChange(newState)
   await loadMessages()
   refreshSignalsIfOpen()
@@ -464,27 +464,25 @@ async function handleModelUploadChange(event) {
   event.target.value = '' // allow re-selecting the same file afterward
   if (!file) return
 
-  const modelName = file.name.replace(/\.(zip|ya?ml)$/i, '')
+  const projectName = file.name.replace(/\.(zip|ya?ml)$/i, '')
   clearChatUi()
   try {
-    await putModel(modelName, file)
-    await refreshStateAndModels()
+    await putProject(projectName, file)
+    await refreshStateAndProjects()
   } catch {
     // already surfaced via apiFetch
   }
 }
 
-function handleModelEdit(modelName) {
-  editModelName.value = modelName
-  showEditModel.value = true
+function handleModelEdit(projectName) {
+  editProjectName.value = projectName
+  showEditProject.value = true
 }
 
-// The edited model is always the active one (see ModelsMenu's selectEdit),
-// so a successful save always needs the same refresh as upload/switch/delete.
 async function handleModelEditSaved() {
   clearChatUi()
   try {
-    await refreshStateAndModels()
+    await refreshStateAndProjects()
   } catch {
     // already surfaced via apiFetch
   }
@@ -493,11 +491,11 @@ async function handleModelEditSaved() {
 // Activation is idempotent backend-side (re-activating the already-active
 // model is a no-op, no reset) so this handler doesn't need to
 // special-case that itself.
-async function handleModelSwitch(modelName) {
+async function handleProjectSwitch(projectName) {
   clearChatUi()
   try {
-    await activateModel(modelName)
-    await refreshStateAndModels()
+    await activateProject(projectName)
+    await refreshStateAndProjects()
   } catch {
     // already surfaced via apiFetch
   }
@@ -508,13 +506,13 @@ async function handleModelSwitch(modelName) {
 // browser's own download UI. No UI state changes at all on success: unlike
 // switch/upload/delete, downloading doesn't touch the active model or the
 // session. On failure, show the error the same way as the rest of the menu.
-async function handleModelDownload(modelName) {
+async function handleModelDownload(projectName) {
   try {
-    const blob = await downloadModel(modelName)
+    const blob = await downloadProject(projectName)
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `${modelName}.zip`
+    link.download = `${projectName}.zip`
     document.body.appendChild(link)
     link.click()
     link.remove()
@@ -527,11 +525,11 @@ async function handleModelDownload(modelName) {
 // Deleting the active model always falls back to "default" backend-side, so
 // this behaves the same as a successful switch/upload — reload state, clear
 // the chat.
-async function handleModelDelete(modelName) {
+async function handleModelDelete(projectName) {
   clearChatUi()
   try {
-    await deleteModel(modelName)
-    await refreshStateAndModels()
+    await deleteProject(projectName)
+    await refreshStateAndProjects()
   } catch {
     // already surfaced via apiFetch
   }
@@ -562,9 +560,9 @@ onBeforeUnmount(() => {
         >
           Signals
         </button>
-        <ModelsMenu
-          ref="modelsMenu"
-          @select="handleModelSwitch"
+        <ProjectsMenu
+          ref="projectsMenu"
+          @select="handleProjectSwitch"
           @edit="handleModelEdit"
           @upload="triggerModelUpload"
           @download="handleModelDownload"
@@ -638,10 +636,10 @@ onBeforeUnmount(() => {
       />
     </div>
 
-    <EditModelView
-      v-if="showEditModel"
-      :model-name="editModelName"
-      @close="showEditModel = false"
+    <EditProjectView
+      v-if="showEditProject"
+      :project-name="editProjectName"
+      @close="showEditProject = false"
       @saved="handleModelEditSaved"
     />
   </div>
