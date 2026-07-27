@@ -589,7 +589,6 @@ onBeforeUnmount(() => {
         :status="chatStatus"
         :error-message="errorMessage"
         :error-detail="errorDetail"
-        :final-state-reached="state?.final ?? false"
         :state-chat="state?.chat ?? true"
         :history-loaded="historyLoaded"
         :audio-enabled="audioEnabled"

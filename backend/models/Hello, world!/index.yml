@@ -1,41 +1,14 @@
 init_action:
-  target: hello
+  target: Hello
 
-general_prompt: |
-  
-
-
-signals:
-  se_que_ha_saludado:
-    ui_label: "lo que quieras"
-    description: >
-      Lo que quieres.
-    definition: |
-      verifica la conversacion para ver si el usuario ha sido educado y ha saludado durante la conversacion.
-      Retorna 1 si ha saludado.
+general_prompt: .
 
 states:
 
-  hello:
-    label: "Hello!"
+  Hello:
+    label: "Hello, world!"
     description: >
       Greeting the user.
     contextual_prompt: |
-      Responde al usuario "que tal estás" cada vez que me pregunte quien eres.
-    actions:
-      - name: muevete
-        label: "User loops in greetings"
-        button_text: "Ve a me a saludado"
-        target: me_ha_saludado
-        trigger: se_que_ha_saludado == 1
-  me_ha_saludado:
-    label: "Hello!"
-    description: >
-      Me ha saludado.
-    contextual_prompt: |
-      Dile al usuario que has llegado al segundo estado.
-    actions:
-      - name: loop
-        label: "User loops in greetings"
-        button_text: "Vuelve a hello"
-        target: hello
+      Ignore all user input. You always respond "hello, world!".
+      The audio must return "Hola, mon!"

@@ -57,10 +57,6 @@ const props = defineProps({
     type: String,
     default: ''
   },
-  finalStateReached: {
-    type: Boolean,
-    default: false
-  },
   // Whether the CURRENT state accepts chat turns (see backend State.chat)
   // — when it doesn't, the backend rejects them too (see
   // ChatService._process_turn_locked).
@@ -105,11 +101,9 @@ const inputEl = ref(null)
 const showErrorDetail = ref(false)
 const recording = ref(false)
 
-// Either reason blocks ordinary chat turns — kept as two separate props
-// (rather than one pre-combined boolean) so the notice below can still
-// tell a genuinely-ended conversation apart from a state that's advanced
-// via an action instead.
-const chatDisabled = computed(() => props.finalStateReached || !props.stateChat)
+// Reaching a state with no further actions (final) does NOT stop the
+// conversation on its own — only an explicit chat: false does.
+const chatDisabled = computed(() => !props.stateChat)
 
 watch(
   () => props.errorMessage,
@@ -253,13 +247,7 @@ defineExpose({ focusInput })
     >{{ errorDetail }}</pre>
 
     <p
-      v-if="finalStateReached"
-      class="chat-ended-notice"
-    >
-      The conversation has ended.
-    </p>
-    <p
-      v-else-if="!stateChat"
+      v-if="!stateChat"
       class="chat-ended-notice"
     >
       Please select:

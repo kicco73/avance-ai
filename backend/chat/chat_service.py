@@ -282,8 +282,6 @@ class ChatService(object):
     async def _process_turn_locked(self, text: str, on_retry: OnRetry | None) -> dict:
         automaton, state = self._model_service.get_active_automaton_and_state()
 
-        if state.final:
-            raise ChatServiceError("The conversation has ended in this state.", status_code=HTTPStatus.CONFLICT)
         if not state.chat:
             raise ChatServiceError(
                 "This state doesn't accept messages; use an action instead.", status_code=HTTPStatus.CONFLICT
@@ -304,11 +302,11 @@ class ChatService(object):
         self._db.save_message("user", text, model_name)
 
         # Phase 1's auto-tracking may have landed us on a state that never
-        # generates a free-form reply (final, or chat: false — typically a
+        # generates a free-form reply (chat: false — typically a
         # fixed_message state): its own opening/fixed message is already in
         # `messages` above (see _messages_for_transition) — generating a
         # second "normal" reply here would show the same content twice.
-        if not state.final and state.chat:
+        if state.chat:
             system_prompt, turn_attachments = self._build_turn_prompt(automaton, state)
 
             priming_messages = build_priming_messages(turn_attachments)

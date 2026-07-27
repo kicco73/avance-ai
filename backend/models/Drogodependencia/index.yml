@@ -70,6 +70,6 @@ states:
   Preparación:
     label: Preparación
     description: >
-      .
+      El paciente està preparado para algo jeje
     contextual_prompt: |
       ...
