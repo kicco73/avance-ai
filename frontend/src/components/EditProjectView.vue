@@ -513,7 +513,7 @@ function destroyGraph() {
 function nodeToCyData(n) {
   return {
     id: n.key,
-    label: n.label,
+    uiLabel: n.ui_label,
     description: n.description,
     final: n.final,
     isStart: n.is_start,
@@ -531,7 +531,7 @@ function edgeToCyData(e, id) {
     id,
     source: e.source,
     target: e.target,
-    label: e.label,
+    uiLabel: e.ui_label,
     actionName: e.action_name,
     buttonText: e.ui_button,
     trigger: e.trigger,
@@ -591,7 +591,7 @@ function renderGraph(nodes, edges) {
           'background-color': '#eef2f9',
           'border-width': 2,
           'border-color': '#4a6fa5',
-          label: 'data(label)',
+          label: 'data(uiLabel)',
           'text-valign': 'center',
           'text-halign': 'center',
           'font-size': '9px',
@@ -641,7 +641,7 @@ function renderGraph(nodes, edges) {
           'target-arrow-shape': 'triangle',
           'arrow-scale': 0.8,
           'curve-style': 'bezier',
-          label: 'data(label)',
+          label: 'data(uiLabel)',
           'font-size': '7px',
           color: '#666',
           'text-background-color': 'white',
@@ -1076,7 +1076,7 @@ onBeforeUnmount(() => {
                     >
                       {{ selectedElement.kind === 'state' ? 'State' : 'Action' }}
                     </span>
-                    <span class="inspector-detail-title">{{ selectedElement.data.label }}</span>
+                    <span class="inspector-detail-title">{{ selectedElement.data.uiLabel }}</span>
                     <button class="close-x-btn" title="Close" @click="closeGraphDetail">×</button>
                   </div>
 

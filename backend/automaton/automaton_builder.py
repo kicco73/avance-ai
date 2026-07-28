@@ -84,7 +84,7 @@ class AutomatonBuilder(object):
             )
         init_action = Action(
             name="init_action",
-            label="init_action",
+            ui_label="init_action",
             ui_button="",
             target=raw_init_action["target"],
             action_prompt=raw_init_action["action_prompt"].strip() if raw_init_action.get("action_prompt") else None,
@@ -94,7 +94,7 @@ class AutomatonBuilder(object):
         for key, raw_state in raw_states.items():
             if not isinstance(raw_state, dict):
                 raise ValueError(
-                    f"State '{key}': expected a mapping of fields (label, description, "
+                    f"State '{key}': expected a mapping of fields (ui_label, description, "
                     f"actions, ...), got {type(raw_state).__name__} instead. This usually "
                     "means a field meant to belong to a state (e.g. 'actions') was "
                     "indented as a sibling of the state's key rather than nested under it, "
@@ -103,7 +103,7 @@ class AutomatonBuilder(object):
             actions = [
                 Action(
                     name=raw_action["name"],
-                    label=raw_action["label"],
+                    ui_label=raw_action["ui_label"],
                     ui_button=raw_action["ui_button"],
                     # Missing 'target' means a self-loop: the action stays
                     # on the state it fired from.
@@ -126,7 +126,7 @@ class AutomatonBuilder(object):
 
             states[key] = State(
                 key=key,
-                label=raw_state["label"],
+                ui_label=raw_state["ui_label"],
                 # Derived, not read from YAML: a state is final iff it has no
                 # outgoing actions. Keeps the flag structurally impossible to
                 # desync from the actual `actions` list.
@@ -165,7 +165,7 @@ class AutomatonBuilder(object):
         # Minimal, never declared in YAML — see the reserved-key check
         # above. Not a real conversational state: ChatService.open_if_needed
         # is the only place that ever resolves out of it, via init_action.
-        states[""] = State(key="", label="", final=False, description="")
+        states[""] = State(key="", ui_label="", final=False, description="")
 
         for state in states.values():
             if state.transition_log_level not in VALID_LOG_LEVELS:

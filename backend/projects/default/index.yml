@@ -98,7 +98,7 @@ signals:
 states:
 
   Precontemplation:
-    label: Precontemplation
+    ui_label: Precontemplation
     description: >
       The user does not yet recognize the behavior as a problem, or has no
       current intention to change it within the next six months.
@@ -108,13 +108,13 @@ states:
       - precontemplation_instructions.txt
     actions:
       - name: raise awareness
-        label: "User acknowledges a possible problem"
+        ui_label: "User acknowledges a possible problem"
         ui_button: Raise awareness
         target: Contemplation
         trigger: "problemRecognition >= 75"
 
   Contemplation:
-    label: Contemplation
+    ui_label: Contemplation
     description: >
       The user is aware a problem may exist and is weighing costs and benefits
       of changing, without commitment to act.
@@ -125,13 +125,13 @@ states:
       "change talk" without arguing for change yourself. Never rush them toward a plan.
     actions:
       - name: resolve ambivalence
-        label: "Decisional balance shifts toward change"
+        ui_label: "Decisional balance shifts toward change"
         ui_button: "Resolve ambivalence"
         target: Preparation
         trigger: "decisionalBalanceShift >= 75"
 
   Preparation:
-    label: Preparation
+    ui_label: Preparation
     description: >
       The user intends to take action in the near term and begins concrete planning.
     contextual_prompt: |
@@ -141,13 +141,13 @@ states:
       they think would work, don't hand them a plan.
     actions:
       - name: commit to plan
-        label: "User sets a concrete date/step and reduces baseline consumption"
+        ui_label: "User sets a concrete date/step and reduces baseline consumption"
         ui_button: "Mark: plan defined"
         target: action
         trigger: "planConcreteness >= 75"
 
   action:
-    label: "Action"
+    ui_label: "Action"
     description: >
       The user is actively modifying the target behavior. Relapse risk is
       clinically highest in this stage.
@@ -161,23 +161,23 @@ states:
     actions:
       # order matters: safety-critical actions are evaluated first (FIFO priority)
       - name: detect risk
-        label: "Acute risk signal detected (e.g. self-harm ideation)"
+        ui_label: "Acute risk signal detected (e.g. self-harm ideation)"
         ui_button: "Detect acute risk"
         target: Crisis
         trigger: "detectRisk == 100"
       - name: encounter risk
-        label: "High-risk situation without effective coping, followed by a lapse"
+        ui_label: "High-risk situation without effective coping, followed by a lapse"
         ui_button: "Encounter risk"
         target: Relapse
         trigger: "encounterRisk == 100"
       - name: sustain behaviour
-        label: "Behavior sustained continuously for >= 6 months"
+        ui_label: "Behavior sustained continuously for >= 6 months"
         ui_button: "Mark: behavior sustained"
         target: Maintenance
         trigger: "stabilityConfidence >= 70" #daysSinceLastEvent >= 85 and 
 
   Maintenance:
-    label: Maintenance
+    ui_label: Maintenance
     description: >
       The changed behavior has been sustained long enough that relapse risk has
       substantially decreased.
@@ -189,18 +189,18 @@ states:
     transition_log_level: WARNING
     actions:
       - name: detect risk
-        label: "Acute risk signal detected (e.g. self-harm ideation)"
+        ui_label: "Acute risk signal detected (e.g. self-harm ideation)"
         ui_button: "Detect acute risk"
         target: Crisis
         trigger: "detectRisk == 100"
       - name: encounter risk
-        label: "High-risk situation without effective coping, followed by a lapse"
+        ui_label: "High-risk situation without effective coping, followed by a lapse"
         ui_button: "Encounter risk"
         target: Relapse
         trigger: "encounterRisk == 100"
 
   Relapse:
-    label: Relapse
+    ui_label: Relapse
     description: >
       A return to the target behavior following exposure to a high-risk situation
       without an effective coping response. Not treated as failure.
@@ -212,13 +212,13 @@ states:
       in depth yet.
     actions:
       - name: resume path
-        label: "Contact re-established after relapse, user re-engages"
+        ui_label: "Contact re-established after relapse, user re-engages"
         ui_button: "Resume path"
         target: Contemplation
         trigger: "reengagementSignal >= 70"
 
   Crisis:
-    label: Crisis
+    ui_label: Crisis
     transition_log_level: CRITICAL
     chat: no
     description: >

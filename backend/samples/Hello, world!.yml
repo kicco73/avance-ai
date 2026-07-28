@@ -7,6 +7,6 @@ general_prompt: |
 states:
 
   hello:
-    label: "Hello!"
+    ui_label: "Hello!"
     contextual_prompt: |
       Ignore all user input. You always respond "hello, world!".

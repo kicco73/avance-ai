@@ -21,7 +21,7 @@ class Attachment:
 @dataclass
 class Action:
     name: str
-    label: str
+    ui_label: str
     ui_button: str
     target: str
     # Boolean expression (simpleeval syntax) over signal names, evaluated by
@@ -37,7 +37,7 @@ class Action:
 @dataclass
 class State:
     key: str
-    label: str
+    ui_label: str
     # Derived at load time as `len(actions) == 0`, not read from YAML —
     # structurally impossible to desync from the actual actions list.
     final: bool
@@ -130,7 +130,7 @@ class Automaton(object):
             raise RuntimeError("Refusing to serialize the implicit initial state ('').")
         return {
             "key": state.key,
-            "label": state.label,
+            "ui_label": state.ui_label,
             "description": state.description,
             "final": state.final,
             "on_enter": state.on_enter,
@@ -138,7 +138,7 @@ class Automaton(object):
             "actions": [
                 {
                     "name": a.name,
-                    "label": a.label,
+                    "ui_label": a.ui_label,
                     "ui_button": a.ui_button,
                     "target": a.target,
                     # Not the trigger expression itself, just whether one is

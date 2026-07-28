@@ -94,7 +94,7 @@ signals:
 states:
 
   welcome:
-    label: "Welcome to your catalan course"
+    ui_label: "Welcome to your catalan course"
     description: >
       Learn catalan with Avance
     chat: false
@@ -105,18 +105,18 @@ states:
       Encourage them to make a choice. 
     actions:
       - name: subjuntive
-        label: "Repassar el subjuntiu present"
+        ui_label: "Repassar el subjuntiu present"
         ui_button: "El subjuntiu present"
         target: unit55-subjuntive
       - name: results
-        label: "Jump to results"
+        ui_label: "Jump to results"
         ui_button: "Resultats"
         target: unit55-results
 
 #=======================================================================
 
   unit55-subjuntive:
-    label: "Unitat 55 - Index"
+    ui_label: "Unitat 55 - Index"
     description: >
       Index of all exercises in this unit.
     contextual_prompt: |
@@ -128,46 +128,46 @@ states:
     chat: false
     actions:
       - name: regulars
-        label: "Jump to regular verbs"
+        ui_label: "Jump to regular verbs"
         ui_button: "1. Verbs regulars"
         target: unit55-regulars
       - name: alteracions
-        label: "Jump to regular verbs with alterations"
+        ui_label: "Jump to regular verbs with alterations"
         ui_button: "2. Regulars amb alteracions"
         target: unit55-regulars-amb-alteracions
       - name: alteracions-amb-gu
-        label: "Jump to regular verbs with alterations"
+        ui_label: "Jump to regular verbs with alterations"
         ui_button: "3. Regulars amb canvi a -gu"
         target: unit55-regulars-amb-gu
       - name: irregulars
-        label: "Jump to irregular verbs"
+        ui_label: "Jump to irregular verbs"
         ui_button: "4. Verbs irregulars"
         target: unit55-irregulars
       - name: freetyping
-        label: "Free typing"
+        ui_label: "Free typing"
         ui_button: "5. Composició llibre"
         target: unit55-D
       - name: evaluation
-        label: "Evaluation"
+        ui_label: "Evaluation"
         ui_button: "6. Avaluació"
         target: unit55-evaluation
       - name: lliure
-        label: "Preguntes lliures"
+        ui_label: "Preguntes lliures"
         ui_button: "Xat lliure"
         target: chat
       - name: results
-        label: "Jump to results"
+        ui_label: "Jump to results"
         ui_button: "Resultats"
         target: unit55-results
       - name: restart
-        label: "Restarting the unit"
+        ui_label: "Restarting the unit"
         ui_button: "Inici"
         target: welcome
 
 #=======================================================================
 
   unit55-regulars:
-    label: "Unitat 55 - Formes Regulars"
+    ui_label: "Unitat 55 - Formes Regulars"
     description: >
       Exercise to learn how to conjugate Subjuntive - present regular verbs.
       Canti, cantis, canti.
@@ -188,26 +188,26 @@ states:
     history_cutoff: True
     actions:
       - name: end
-        label: "User has completed the exercise and moves to the next one"
+        ui_label: "User has completed the exercise and moves to the next one"
         ui_button: "Resultats"
         target: unit55-results
         trigger: "progress == 100"
       - name: grammar
-        label: "Show grammar"
+        ui_label: "Show grammar"
         ui_button: "Gramàtica"
         target: unit55-regulars
         action_prompt: |
           Show a table with the rules to conjugate regular verbs in this mode and tense.
           Show all the verbs: parlar, prometre, tenir, llegir.
       - name: restart
-        label: "Restarting the unit"
+        ui_label: "Restarting the unit"
         ui_button: "Inici"
         target: unit55-subjuntive
 
 #=======================================================================
 
   unit55-regulars-amb-alteracions:
-    label: "Unitat 55 - Formes amb alteracions"
+    ui_label: "Unitat 55 - Formes amb alteracions"
     description: >
       Exercise to learn how to conjugate Subjuntive - present regular verbs with form -qu-.
     on_enter: celebrate
@@ -235,26 +235,26 @@ states:
     history_cutoff: True
     actions:
       - name: end
-        label: "User has completed the exercise"
+        ui_label: "User has completed the exercise"
         ui_button: "Resultats"
         target: unit55-results
         trigger: "progress == 100"
       - name: grammar
-        label: "Show grammar"
+        ui_label: "Show grammar"
         ui_button: "Gramàtica"
         target: unit55-regulars-amb-alteracions
         action_prompt: |
           - explain the trick: all verbs whose infinitive ends in -jar , -car, -çar, -gar have hortographic alterations
           - Show the a table of the rules to conjugate this kind regular verbs, with also some example of this.
       - name: restart
-        label: "Restarting the unit"
+        ui_label: "Restarting the unit"
         ui_button: "Inici"
         target: unit55-subjuntive
 
 #=======================================================================
 
   unit55-regulars-amb-gu:
-    label: "Unitat 55 - Formes amb -gu-"
+    ui_label: "Unitat 55 - Formes amb -gu-"
     description: >
       Exercise to learn how to conjugate Subjuntive - present regular verbs with form -gu-.
     on_enter: celebrate
@@ -278,25 +278,25 @@ states:
     history_cutoff: True
     actions:
       - name: end
-        label: "User has completed the exercise"
+        ui_label: "User has completed the exercise"
         ui_button: "Resultats"
         target: unit55-results
         trigger: "progress == 100"
       - name: grammar
-        label: "Show grammar"
+        ui_label: "Show grammar"
         ui_button: "Gramàtica"
         target: unit55-regulars-amb-gu
         action_prompt: |
           - explain the trick: all verbs that end in -c (like creure, jo crec -> cregui) in the first person indicative present tense, will need the ortographic change in -gu.
           - Show the a table of the rules to conjugate this kind regular verbs, with also an example of this.
       - name: restart
-        label: "Restarting the unit"
+        ui_label: "Restarting the unit"
         ui_button: "Inici"
         target: unit55-subjuntive
 
 
   unit55-irregulars:
-    label: "Unitat 55 - Formes irregulars"
+    ui_label: "Unitat 55 - Formes irregulars"
     description: >
       Exercise to learn how to conjugate Subjuntive - present irregular verbs.
     on_enter: celebrate
@@ -316,23 +316,23 @@ states:
     history_cutoff: True
     actions:
       - name: next
-        label: "User has completed the exercise and moves to the next one"
+        ui_label: "User has completed the exercise and moves to the next one"
         ui_button: "End exercise"
         target: unit55-results
         trigger: "progress == 100"
       - name: grammar
-        label: "Show conjugation table"
+        ui_label: "Show conjugation table"
         ui_button: "Gramàtica"
         target: unit55-irregulars
         action_prompt: |
           - show quick table with conjugations for some important random irregular verbs of the subjuntive - present tense.
       - name: restart
-        label: "Restarting the unit"
+        ui_label: "Restarting the unit"
         ui_button: "Inici"
         target: unit55-subjuntive
 
   unit55-D:
-    label: "Unitat 55 - Conjugació lliure"
+    ui_label: "Unitat 55 - Conjugació lliure"
     description: >
       Exercise to learn how to conjugate Subjuntive - any form.
     on_enter: celebrate
@@ -351,23 +351,23 @@ states:
     history_cutoff: True
     actions:
       - name: next
-        label: "User has completed the exercise"
+        ui_label: "User has completed the exercise"
         ui_button: "End exercise"
         target: unit55-results
         trigger: "progress == 100"
       - name: help
-        label: "Show help"
+        ui_label: "Show help"
         ui_button: "Ajuda'm"
         target: unit55-D
         action_prompt: |
           Given the current question, give some hint to the user, without revealing the answer.
       - name: restart
-        label: "Restarting the unit"
+        ui_label: "Restarting the unit"
         ui_button: "Inici"
         target: unit55-subjuntive
 
   unit55-evaluation:
-    label: "Unitat 55 - Avaluació"
+    ui_label: "Unitat 55 - Avaluació"
     description: >
       Exercise to learn how to conjugate Subjuntive - present verbs in short phrases.
     history_cutoff: True
@@ -384,23 +384,23 @@ states:
           - Show one sentence per step, specifying the subjuntive structure you expect the user to answer (e.g. with Cal que, Dubto que)
     actions:
       - name: results
-        label: "Summarize results"
+        ui_label: "Summarize results"
         ui_button: "Results"
         target: unit55-results
         trigger: "progress == 100"
       - name: help
-        label: "Show help"
+        ui_label: "Show help"
         ui_button: "Ajuda'm"
         target: unit55-evaluation
         action_prompt: |
           Given the current question, give some hint to the user, without revealing the answer.
       - name: restart
-        label: "Restarting the unit"
+        ui_label: "Restarting the unit"
         ui_button: "Inici"
         target: unit55-subjuntive
 
   unit55-results:
-    label: "Unitat 55 - Resultats"
+    ui_label: "Unitat 55 - Resultats"
     description: >
       Summarizing user performance.
     on_enter: celebrate
@@ -435,12 +435,12 @@ states:
 
     actions:
       - name: restart
-        label: "Restarting the unit"
+        ui_label: "Restarting the unit"
         ui_button: "Inici"
         target: unit55-subjuntive
 
   chat:
-    label: "Xat lliure"
+    ui_label: "Xat lliure"
     description: >
       Talk with your assistant
     contextual_prompt: |
@@ -451,10 +451,10 @@ states:
     history_cutoff: True #FIXME should be unnecessary
     actions:
       - name: subjuntive
-        label: "Move to subjuntives"
+        ui_label: "Move to subjuntives"
         ui_button: "Al subjuntiu"
         target: unit55-subjuntive
       - name: restart
-        label: "Restarting the unit"
+        ui_label: "Restarting the unit"
         ui_button: "Inici"
         target: welcome

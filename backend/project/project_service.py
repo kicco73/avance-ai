@@ -220,7 +220,7 @@ class ProjectService(object):
         nodes = [
             {
                 "key": state.key,
-                "label": state.label,
+                "ui_label": state.ui_label,
                 "description": state.description,
                 "final": state.final,
                 "is_start": state.key == automaton.init_action.target,
@@ -237,7 +237,7 @@ class ProjectService(object):
                 "source": state.key,
                 "target": action.target,
                 "action_name": action.name,
-                "label": action.label,
+                "ui_label": action.ui_label,
                 "ui_button": action.ui_button,
                 "trigger": action.trigger,
                 "has_trigger": action.trigger is not None,

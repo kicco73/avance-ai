@@ -47,7 +47,7 @@ states:
 # ----------------------------------------------------------------------------
 
   Contemplación:
-    label: Contemplación
+    ui_label: Contemplación
     
     description: >
       El paciente es consciente de su adicción y se muestra ambivalente.
@@ -60,7 +60,7 @@ states:
 
     actions:
       - name: usuario niega el problema
-        label: Usuario niega el problema
+        ui_label: Usuario niega el problema
         ui_button: Niega el problema
         target: Preparación
         trigger: "malestar_emocional > 49 and malestar_emocional < 100 and presion_social < 26 and abstinencia_parcial > 20"
@@ -68,7 +68,7 @@ states:
 # ----------------------------------------------------------------------------
 
   Preparación:
-    label: Preparación
+    ui_label: Preparación
     description: >
       El paciente està preparado para algo jeje
     contextual_prompt: |

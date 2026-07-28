@@ -18,7 +18,7 @@ function badgeClass(state) {
 <template>
   <div class="state-bar" v-if="state">
     <div class="state-info">
-      <span class="badge" :class="badgeClass(state)">{{ state.label }}</span>
+      <span class="badge" :class="badgeClass(state)">{{ state.ui_label }}</span>
       <p class="description">{{ state.description }}</p>
     </div>
   </div>
