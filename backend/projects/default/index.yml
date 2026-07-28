@@ -220,6 +220,7 @@ states:
   Crisis:
     label: Crisis
     transition_log_level: CRITICAL
+    chat: no
     description: >
       An acute-risk signal has been detected. Control passes to a fixed,
       non-generative safety protocol: this state has no contextual_prompt —

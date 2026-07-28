@@ -489,6 +489,18 @@ const isSelectedStateCurrent = computed(() => {
   return selectedElement.value?.kind === 'state' && selectedElement.value.data.id === liveState.value?.key
 })
 
+// Whether the detail card has any non-type badge to show at all — an
+// action that's neither Next nor Manual (a plain triggered action) has
+// none, and the badges row should collapse rather than render empty.
+const hasSelectedElementBadges = computed(() => {
+  if (!selectedElement.value) return false
+  if (selectedElement.value.kind === 'state') {
+    const d = selectedElement.value.data
+    return isSelectedStateCurrent.value || d.isStart || d.final || !d.chat || d.historyCutoff
+  }
+  return isSelectedActionNext.value || !selectedElement.value.data.hasTrigger
+})
+
 function destroyGraph() {
   cyGraph?.destroy()
   cyGraph = null
@@ -904,7 +916,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="edit-project-overlay">
     <div class="edit-project-header">
-      <h2>Edit project — {{ projectName }} <span class="edit-project-current-file">/ {{ currentFileName }}</span></h2>
+      <h2>Edit project — {{ projectName }}</h2>
       <div class="edit-project-header-actions">
         <button
           class="chat-toggle-btn"
@@ -987,6 +999,7 @@ onBeforeUnmount(() => {
 
           <div class="edit-project-editor-pane">
             <div class="edit-project-editor-toolbar">
+              <span class="edit-project-editor-filename">{{ currentFileName }}</span>
               <button class="save-btn" :disabled="loading || saving" @click="saveCurrentFile">
                 {{ saving ? 'Saving…' : 'Save' }}
               </button>
@@ -1016,7 +1029,14 @@ onBeforeUnmount(() => {
 
         <div class="inspector-panel" :style="{ '--inspector-width': inspectorWidth + 'px' }">
           <div class="inspector-header">
-            <h3>Inspect</h3>
+            <button
+              class="autotracking-btn"
+              :class="{ 'autotracking-btn-on': autoTrackingEnabled }"
+              :disabled="autoTrackingLoading"
+              @click="toggleAutoTracking"
+            >
+              Autotracking
+            </button>
             <button class="close-x-btn" title="Close" @click="toggleInspect">×</button>
           </div>
           <div class="inspector-tabs">
@@ -1046,20 +1066,24 @@ onBeforeUnmount(() => {
               <div v-if="selectedElement" class="inspector-detail-card">
                 <div class="inspector-detail-header">
                   <div class="inspector-detail-header-top">
-                    <span class="inspector-detail-title">{{ selectedElement.data.label }}</span>
-                    <button class="close-x-btn" title="Close" @click="closeGraphDetail">×</button>
-                  </div>
-
-                  <!-- One badge language for every tag a state/action can carry
-                       (type, Current, Start, Final, Next, Manual, ...) — see
-                       .inspector-detail-badge and its color variants below. -->
-                  <div class="inspector-detail-badges">
+                    <!-- Type badge sits right next to the title, same as
+                         Signal's own badge+name pairing (.inspector-signal-header)
+                         — only the type tag lives here, everything else
+                         (Current, Start, Final, Next, Manual, ...) is below. -->
                     <span
                       class="inspector-detail-badge"
                       :class="selectedElement.kind === 'state' ? 'inspector-detail-badge-state' : 'inspector-detail-badge-action'"
                     >
                       {{ selectedElement.kind === 'state' ? 'State' : 'Action' }}
                     </span>
+                    <span class="inspector-detail-title">{{ selectedElement.data.label }}</span>
+                    <button class="close-x-btn" title="Close" @click="closeGraphDetail">×</button>
+                  </div>
+
+                  <!-- One badge language for every other tag a state/action
+                       can carry (Current, Start, Final, Next, Manual, ...) —
+                       see .inspector-detail-badge and its color variants below. -->
+                  <div v-if="hasSelectedElementBadges" class="inspector-detail-badges">
                     <template v-if="selectedElement.kind === 'state'">
                       <span v-if="isSelectedStateCurrent" class="inspector-detail-badge inspector-detail-badge-current">
                         Current
@@ -1134,17 +1158,6 @@ onBeforeUnmount(() => {
             </div>
 
             <div v-show="inspectorTab === 'signals'" class="inspector-signals-section">
-              <div class="inspector-signals-toolbar">
-                <button
-                  class="autotracking-btn"
-                  :class="{ 'autotracking-btn-on': autoTrackingEnabled }"
-                  :disabled="autoTrackingLoading"
-                  @click="toggleAutoTracking"
-                >
-                  Autotracking: {{ autoTrackingEnabled ? 'On' : 'Off' }}
-                </button>
-              </div>
-
               <p v-if="signalsLoading" class="signals-status">Loading…</p>
               <p v-else-if="!signals.length" class="signals-status">No signals defined.</p>
               <div v-else class="inspector-signal-list">
@@ -1235,11 +1248,6 @@ onBeforeUnmount(() => {
   font-size: 1.1rem;
 }
 
-.edit-project-current-file {
-  font-weight: 400;
-  color: #666;
-  font-size: 0.95rem;
-}
 
 .edit-project-header-actions {
   display: flex;
@@ -1605,11 +1613,23 @@ onBeforeUnmount(() => {
 .edit-project-editor-toolbar {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
+  gap: 0.5rem;
   padding: 0.5rem 0.75rem;
   background: #f5f5f7;
   border-bottom: 1px solid #ddd;
   flex-shrink: 0;
+}
+
+.edit-project-editor-filename {
+  min-width: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #333;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .edit-project-editor-content {
@@ -1682,13 +1702,11 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 1rem;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: #f5f5f7;
   border-bottom: 1px solid #ddd;
-}
-
-.inspector-header h3 {
-  margin: 0;
-  font-size: 1rem;
+  flex-shrink: 0;
 }
 
 .inspector-tabs {
@@ -2035,12 +2053,6 @@ onBeforeUnmount(() => {
 
 .inspector-signal-bar-changed {
   animation: inspector-signal-bar-flash 0.9s ease-out;
-}
-
-.inspector-signals-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 0.75rem;
 }
 
 .autotracking-btn {
