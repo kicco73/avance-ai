@@ -16,11 +16,19 @@ import {
   postTriggersPreview
 } from '../api.js'
 import { clearApiError, errorDetail, errorMessage, setApiError } from '../errorStore.js'
+import { hasSignalValue, useSignalChangeFlash } from '../signalDisplay.js'
 // Aliased: this file already uses "state" to mean an automaton state node
 // (see the graph/signals data below) — `liveState` is specifically the
 // live conversation's current state, the single source of truth this
 // view's Inspector syncs itself to (see syncSelectionToCurrentState).
-import { state as liveState, turnCount, handleReset } from '../chatStore.js'
+import {
+  state as liveState,
+  turnCount,
+  autoTrackingEnabled,
+  autoTrackingLoading,
+  toggleAutoTracking,
+  handleReset
+} from '../chatStore.js'
 
 const props = defineProps({
   projectName: {
@@ -150,6 +158,12 @@ const inspecting = ref(true)
 const inspectorTab = ref('graph') // 'graph' | 'signals'
 const signalsLoading = ref(true)
 const signals = ref([])
+// Live value/error per signal name, keyed separately from `signals` (the
+// project's saved definitions) since they come from a different source
+// (getSignals(), the same live conversation ChatWindow reads) and refresh
+// on a different cadence — see refreshSignalValues.
+const signalValueByName = ref({})
+const { recentlyChanged: recentlyChangedSignals, markChanged: markSignalsChanged } = useSignalChangeFlash()
 const graphLoading = ref(true)
 const graphHost = ref(null)
 const inspectorWidth = ref(360)
@@ -271,10 +285,12 @@ function jumpToDefinition(target) {
   }
 }
 
-// Saves whatever file is currently open, in place. Shared by the header's
-// Save button (which also leaves the editor, see save()) and the
-// switch-file dialog's "Save" choice (which doesn't). Returns whether it
-// succeeded; on failure the shared error store already has the message.
+// Saves whatever file is currently open, in place — purely persistence,
+// never navigation: the editor toolbar's own Save button calls this
+// directly and stays open regardless of outcome, same as the switch-file
+// dialog's "Save" choice. Only Back (see handleClose) ever leaves the
+// editor. Returns whether it succeeded; on failure the shared error store
+// already has the message.
 async function saveCurrentFile() {
   saving.value = true
   clearApiError()
@@ -291,10 +307,6 @@ async function saveCurrentFile() {
   } finally {
     saving.value = false
   }
-}
-
-async function save() {
-  if (await saveCurrentFile()) emit('close')
 }
 
 async function switchFile(fileName) {
@@ -421,6 +433,23 @@ async function loadSignals() {
   }
 }
 
+// Live values for whatever signals the active conversation currently has
+// (see chatStore.js's shared state — the same getSignals() ChatWindow's
+// own Signals concerns already rely on via SignalsView). Kept separate
+// from loadSignals()'s definitions so either can refresh on its own
+// cadence — definitions rarely change; values do on every turn (see the
+// turnCount watcher below).
+async function refreshSignalValues() {
+  try {
+    const nextValues = await getSignals()
+    const previousValues = Object.entries(signalValueByName.value).map(([name, v]) => ({ name, ...v }))
+    markSignalsChanged(previousValues, nextValues)
+    signalValueByName.value = Object.fromEntries(nextValues.map((s) => [s.name, { value: s.value, error: s.error }]))
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
 let cyGraph = null
 
 // The state or action last tapped in the graph — { kind: 'state'|'action',
@@ -450,6 +479,14 @@ const isSelectedActionNext = computed(() => {
     selectedElement.value.data.source === nextAction.value.stateKey &&
     selectedElement.value.data.actionName === nextAction.value.actionName
   )
+})
+
+// Whether the currently selected detail card is showing the live
+// conversation's current state — drives the "Current" badge, in the same
+// amber used for the graph's own current-state highlight (see
+// .node.current-state in renderGraph and .inspector-detail-badge-current).
+const isSelectedStateCurrent = computed(() => {
+  return selectedElement.value?.kind === 'state' && selectedElement.value.data.id === liveState.value?.key
 })
 
 function destroyGraph() {
@@ -758,7 +795,7 @@ function setInspectorTab(tab) {
 // later re-open via toggleInspect.
 async function openInspect() {
   await nextTick() // graphHost only exists once the v-if block above mounts
-  await Promise.all([loadSignals(), loadGraph(), refreshNextAction()])
+  await Promise.all([loadSignals(), loadGraph(), refreshNextAction(), refreshSignalValues()])
 }
 
 // Toggled by the Inspect button and by the panel's own Close button, same
@@ -837,10 +874,14 @@ watch(
 )
 
 // A turn can shift signal values enough to change which action would fire
-// next even without a state change — see chatStore.js's turnCount.
+// next even without a state change — see chatStore.js's turnCount. The
+// Signals tab's bars need the same refresh to stay live regardless of
+// which tab is actually visible right now (v-show, not v-if — see
+// setInspectorTab).
 watch(turnCount, () => {
   if (!inspecting.value) return
   refreshNextAction()
+  refreshSignalValues()
 })
 
 onMounted(() => {
@@ -878,9 +919,6 @@ onBeforeUnmount(() => {
           @click="toggleInspect"
         >
           Inspect
-        </button>
-        <button class="save-btn" :disabled="loading || saving" @click="save">
-          {{ saving ? 'Saving…' : 'Save' }}
         </button>
         <button class="close-btn" @click="handleClose">Back</button>
       </div>
@@ -948,8 +986,15 @@ onBeforeUnmount(() => {
           <div class="split-divider" @mousedown="startExplorerDrag"></div>
 
           <div class="edit-project-editor-pane">
-            <p v-if="loading" class="edit-project-status">Loading…</p>
-            <div v-show="!loading" ref="editorHost" class="edit-project-editor"></div>
+            <div class="edit-project-editor-toolbar">
+              <button class="save-btn" :disabled="loading || saving" @click="saveCurrentFile">
+                {{ saving ? 'Saving…' : 'Save' }}
+              </button>
+            </div>
+            <div class="edit-project-editor-content">
+              <p v-if="loading" class="edit-project-status">Loading…</p>
+              <div v-show="!loading" ref="editorHost" class="edit-project-editor"></div>
+            </div>
           </div>
         </div>
 
@@ -959,6 +1004,7 @@ onBeforeUnmount(() => {
           <div class="edit-project-chat-panel" :style="{ height: chatHeight + 'px' }">
             <div class="edit-project-chat-toolbar">
               <button class="reset-btn" @click="handleReset">Reset</button>
+              <button class="close-x-btn" title="Close" @click="toggleChat">×</button>
             </div>
             <ChatWindow />
           </div>
@@ -971,7 +1017,7 @@ onBeforeUnmount(() => {
         <div class="inspector-panel" :style="{ '--inspector-width': inspectorWidth + 'px' }">
           <div class="inspector-header">
             <h3>Inspect</h3>
-            <button class="close-btn" @click="toggleInspect">Close</button>
+            <button class="close-x-btn" title="Close" @click="toggleInspect">×</button>
           </div>
           <div class="inspector-tabs">
             <button
@@ -999,17 +1045,47 @@ onBeforeUnmount(() => {
 
               <div v-if="selectedElement" class="inspector-detail-card">
                 <div class="inspector-detail-header">
-                  <span
-                    class="inspector-detail-badge"
-                    :class="selectedElement.kind === 'state' ? 'inspector-detail-badge-state' : 'inspector-detail-badge-action'"
-                  >
-                    {{ selectedElement.kind === 'state' ? 'State' : 'Action' }}
-                  </span>
-                  <span class="inspector-detail-title">{{ selectedElement.data.label }}</span>
-                  <span v-if="isSelectedActionNext" class="inspector-detail-badge inspector-detail-badge-next">
-                    Next
-                  </span>
-                  <button class="inspector-detail-close" title="Close" @click="closeGraphDetail">×</button>
+                  <div class="inspector-detail-header-top">
+                    <span class="inspector-detail-title">{{ selectedElement.data.label }}</span>
+                    <button class="close-x-btn" title="Close" @click="closeGraphDetail">×</button>
+                  </div>
+
+                  <!-- One badge language for every tag a state/action can carry
+                       (type, Current, Start, Final, Next, Manual, ...) — see
+                       .inspector-detail-badge and its color variants below. -->
+                  <div class="inspector-detail-badges">
+                    <span
+                      class="inspector-detail-badge"
+                      :class="selectedElement.kind === 'state' ? 'inspector-detail-badge-state' : 'inspector-detail-badge-action'"
+                    >
+                      {{ selectedElement.kind === 'state' ? 'State' : 'Action' }}
+                    </span>
+                    <template v-if="selectedElement.kind === 'state'">
+                      <span v-if="isSelectedStateCurrent" class="inspector-detail-badge inspector-detail-badge-current">
+                        Current
+                      </span>
+                      <span v-if="selectedElement.data.isStart" class="inspector-detail-badge inspector-detail-badge-start">
+                        Start
+                      </span>
+                      <span v-if="selectedElement.data.final" class="inspector-detail-badge inspector-detail-badge-final">
+                        Final
+                      </span>
+                      <span v-if="!selectedElement.data.chat" class="inspector-detail-badge inspector-detail-badge-neutral">
+                        No chat
+                      </span>
+                      <span v-if="selectedElement.data.historyCutoff" class="inspector-detail-badge inspector-detail-badge-neutral">
+                        History cutoff
+                      </span>
+                    </template>
+                    <template v-else>
+                      <span v-if="isSelectedActionNext" class="inspector-detail-badge inspector-detail-badge-next">
+                        Next
+                      </span>
+                      <span v-if="!selectedElement.data.hasTrigger" class="inspector-detail-badge inspector-detail-badge-manual">
+                        Manual
+                      </span>
+                    </template>
+                  </div>
                 </div>
 
                 <div class="inspector-detail-body">
@@ -1017,53 +1093,11 @@ onBeforeUnmount(() => {
                     <p v-if="selectedElement.data.description" class="inspector-detail-description">
                       {{ selectedElement.data.description }}
                     </p>
-                    <div class="inspector-meta-row">
-                      <div class="inspector-detail-flags">
-                        <span v-if="selectedElement.data.isStart" class="inspector-detail-flag inspector-detail-flag-start">
-                          Start
-                        </span>
-                        <span v-if="selectedElement.data.final" class="inspector-detail-flag inspector-detail-flag-final">
-                          Final
-                        </span>
-                        <span v-if="!selectedElement.data.chat" class="inspector-detail-flag">No chat</span>
-                        <span v-if="selectedElement.data.historyCutoff" class="inspector-detail-flag">
-                          History cutoff
-                        </span>
-                      </div>
-                      <div v-if="selectedElement.data.attachments?.length" class="inspector-attachments">
-                        <button
-                          v-for="(fileName, idx) in selectedElement.data.attachments"
-                          :key="fileName"
-                          class="inspector-attachment-btn"
-                          :class="{ 'inspector-attachment-btn-disabled': !files.includes(fileName) }"
-                          :disabled="!files.includes(fileName)"
-                          :title="files.includes(fileName) ? fileName : `${fileName} (not text-editable)`"
-                          @click.stop="selectFile(fileName)"
-                        >
-                          {{ attachmentLabel(idx) }}
-                        </button>
-                      </div>
-                    </div>
                     <p v-if="selectedElement.data.onEnter" class="inspector-detail-field">
                       <strong>On enter:</strong> {{ selectedElement.data.onEnter }}
                     </p>
                   </template>
                   <template v-else>
-                    <div v-if="selectedElement.data.attachments?.length" class="inspector-meta-row">
-                      <div class="inspector-attachments">
-                        <button
-                          v-for="(fileName, idx) in selectedElement.data.attachments"
-                          :key="fileName"
-                          class="inspector-attachment-btn"
-                          :class="{ 'inspector-attachment-btn-disabled': !files.includes(fileName) }"
-                          :disabled="!files.includes(fileName)"
-                          :title="files.includes(fileName) ? fileName : `${fileName} (not text-editable)`"
-                          @click.stop="selectFile(fileName)"
-                        >
-                          {{ attachmentLabel(idx) }}
-                        </button>
-                      </div>
-                    </div>
                     <p class="inspector-detail-field">
                       <strong>{{ selectedElement.data.source }}</strong> → <strong>{{ selectedElement.data.target }}</strong>
                     </p>
@@ -1078,11 +1112,39 @@ onBeforeUnmount(() => {
                       <strong>Action prompt:</strong> {{ selectedElement.data.actionPrompt }}
                     </p>
                   </template>
+
+                  <!-- Actions never carry attachments (only states/signals
+                       do — see automaton.py's Action dataclass), so this is
+                       naturally absent there; no separate branch needed. -->
+                  <div v-if="selectedElement.data.attachments?.length" class="inspector-attachments">
+                    <button
+                      v-for="(fileName, idx) in selectedElement.data.attachments"
+                      :key="fileName"
+                      class="inspector-attachment-btn"
+                      :class="{ 'inspector-attachment-btn-disabled': !files.includes(fileName) }"
+                      :disabled="!files.includes(fileName)"
+                      :title="files.includes(fileName) ? fileName : `${fileName} (not text-editable)`"
+                      @click.stop="selectFile(fileName)"
+                    >
+                      {{ attachmentLabel(idx) }}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
 
             <div v-show="inspectorTab === 'signals'" class="inspector-signals-section">
+              <div class="inspector-signals-toolbar">
+                <button
+                  class="autotracking-btn"
+                  :class="{ 'autotracking-btn-on': autoTrackingEnabled }"
+                  :disabled="autoTrackingLoading"
+                  @click="toggleAutoTracking"
+                >
+                  Autotracking: {{ autoTrackingEnabled ? 'On' : 'Off' }}
+                </button>
+              </div>
+
               <p v-if="signalsLoading" class="signals-status">Loading…</p>
               <p v-else-if="!signals.length" class="signals-status">No signals defined.</p>
               <div v-else class="inspector-signal-list">
@@ -1096,23 +1158,38 @@ onBeforeUnmount(() => {
                   <div class="inspector-signal-header">
                     <span class="inspector-detail-badge inspector-detail-badge-signal">Signal</span>
                     <span class="inspector-signal-name">{{ signal.ui_label || signal.name }}</span>
-                    <div v-if="signal.attachments?.length" class="inspector-attachments">
-                      <button
-                        v-for="(fileName, idx) in signal.attachments"
-                        :key="fileName"
-                        class="inspector-attachment-btn"
-                        :class="{ 'inspector-attachment-btn-disabled': !files.includes(fileName) }"
-                        :disabled="!files.includes(fileName)"
-                        :title="files.includes(fileName) ? fileName : `${fileName} (not text-editable)`"
-                        @click.stop="selectFile(fileName)"
-                      >
-                        {{ attachmentLabel(idx) }}
-                      </button>
-                    </div>
                   </div>
                   <span v-if="signal.description" class="inspector-signal-description">
                     {{ signal.description }}
                   </span>
+
+                  <div v-if="signal.attachments?.length" class="inspector-attachments">
+                    <button
+                      v-for="(fileName, idx) in signal.attachments"
+                      :key="fileName"
+                      class="inspector-attachment-btn"
+                      :class="{ 'inspector-attachment-btn-disabled': !files.includes(fileName) }"
+                      :disabled="!files.includes(fileName)"
+                      :title="files.includes(fileName) ? fileName : `${fileName} (not text-editable)`"
+                      @click.stop="selectFile(fileName)"
+                    >
+                      {{ attachmentLabel(idx) }}
+                    </button>
+                  </div>
+
+                  <div class="inspector-signal-bar-track">
+                    <div
+                      v-if="hasSignalValue(signalValueByName[signal.name])"
+                      class="inspector-signal-bar-fill"
+                      :class="{ 'inspector-signal-bar-changed': recentlyChangedSignals.has(signal.name) }"
+                      :style="{ width: signalValueByName[signal.name].value + '%' }"
+                    ></div>
+                    <div
+                      v-else
+                      class="inspector-signal-bar-fill inspector-signal-bar-na"
+                      :class="{ 'inspector-signal-bar-changed': recentlyChangedSignals.has(signal.name) }"
+                    ></div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1332,6 +1409,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  gap: 0.5rem;
   padding: 0.5rem 0.75rem;
   background: #f5f5f7;
   border-bottom: 1px solid #ddd;
@@ -1516,6 +1594,27 @@ onBeforeUnmount(() => {
 .edit-project-editor-pane {
   flex: 1;
   min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.edit-project-editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0.5rem 0.75rem;
+  background: #f5f5f7;
+  border-bottom: 1px solid #ddd;
+  flex-shrink: 0;
+}
+
+.edit-project-editor-content {
+  flex: 1;
+  min-height: 0;
   display: flex;
 }
 
@@ -1527,8 +1626,6 @@ onBeforeUnmount(() => {
 .edit-project-editor {
   flex: 1;
   min-width: 0;
-  border: 1px solid #ddd;
-  border-radius: 8px;
   overflow: hidden;
 }
 
@@ -1681,11 +1778,26 @@ onBeforeUnmount(() => {
 
 .inspector-detail-header {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 0.5rem;
   padding: 0.5rem 0.6rem;
   border-bottom: 1px solid #eee;
   flex-shrink: 0;
+}
+
+.inspector-detail-header-top {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Every tag a state/action can carry (type, Current, Start, Final, Next,
+   Manual, ...) lives in this one row, using the one badge component below
+   — same structure/alignment/position regardless of which tag it is. */
+.inspector-detail-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
 }
 
 .inspector-detail-badge {
@@ -1707,12 +1819,38 @@ onBeforeUnmount(() => {
   background: #8a6d3b;
 }
 
+.inspector-detail-badge-signal {
+  background: #6a4c93;
+}
+
+.inspector-detail-badge-current {
+  /* Same amber as node.current-state's overlay in renderGraph — this is
+     the one other place "this is the live current state" is shown. */
+  background: #f5a623;
+  color: #3a2600;
+}
+
+.inspector-detail-badge-start,
 .inspector-detail-badge-next {
+  /* Both read as "green = this is where the flow is/begins" — never on
+     the same card (Start is state-only, Next is action-only), so sharing
+     the hue reinforces one language instead of splitting it. */
   background: #2e7d32;
 }
 
-.inspector-detail-badge-signal {
-  background: #6a4c93;
+.inspector-detail-badge-final {
+  background: #c62828;
+}
+
+.inspector-detail-badge-manual {
+  background: #5c6b7a;
+}
+
+.inspector-detail-badge-neutral {
+  /* Minor informational flags (No chat, History cutoff) — same component,
+     deliberately unsaturated so they read as secondary to the semantic
+     (colored) badges. */
+  background: #8a8a8a;
 }
 
 .inspector-detail-title {
@@ -1726,7 +1864,11 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.inspector-detail-close {
+/* The one "×" close-panel button style, reused everywhere a panel needs
+   to close itself: the detail card (below), the Inspector's own header,
+   and the embedded chat panel's toolbar — one visual language instead of
+   a different button per panel. */
+.close-x-btn {
   flex-shrink: 0;
   width: 1.4rem;
   height: 1.4rem;
@@ -1739,7 +1881,7 @@ onBeforeUnmount(() => {
   font-size: 1rem;
 }
 
-.inspector-detail-close:hover {
+.close-x-btn:hover {
   background: #eee;
 }
 
@@ -1755,39 +1897,6 @@ onBeforeUnmount(() => {
   line-height: 1.4;
 }
 
-.inspector-meta-row {
-  display: flex;
-  align-items: flex-start;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin-bottom: 0.5rem;
-}
-
-.inspector-detail-flags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
-.inspector-detail-flag {
-  font-size: 0.7rem;
-  font-weight: 600;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
-  background: #eee;
-  color: #555;
-}
-
-.inspector-detail-flag-start {
-  background: #e3f2e3;
-  color: #2e7d32;
-}
-
-.inspector-detail-flag-final {
-  background: #fdecea;
-  color: #c62828;
-}
-
 .inspector-detail-field {
   margin: 0 0 0.4rem;
   line-height: 1.4;
@@ -1800,11 +1909,13 @@ onBeforeUnmount(() => {
   padding: 0.1rem 0.4rem;
 }
 
+/* Always the last thing in a box (state/action detail body, signal
+   block), left-aligned — see attachmentLabel/selectFile. */
 .inspector-attachments {
   display: flex;
   flex-wrap: wrap;
   gap: 0.3rem;
-  margin-left: auto;
+  margin-top: 0.5rem;
 }
 
 .inspector-attachment-btn {
@@ -1884,6 +1995,81 @@ onBeforeUnmount(() => {
   font-size: 0.78rem;
   color: #666;
   line-height: 1.4;
+}
+
+.inspector-signal-bar-track {
+  margin-top: 0.4rem;
+  height: 10px;
+  border-radius: 999px;
+  background: #eee;
+  overflow: hidden;
+}
+
+.inspector-signal-bar-fill {
+  height: 100%;
+  background: #4a6fa5;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.inspector-signal-bar-na {
+  width: 100%;
+  background: repeating-linear-gradient(45deg, #ccc, #ccc 6px, #ddd 6px, #ddd 12px);
+}
+
+@keyframes inspector-signal-bar-flash {
+  0% {
+    box-shadow: 0 0 0 0 rgba(74, 111, 165, 0.7);
+    filter: brightness(1.35);
+  }
+
+  70% {
+    box-shadow: 0 0 0 5px rgba(74, 111, 165, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(74, 111, 165, 0);
+    filter: brightness(1);
+  }
+}
+
+.inspector-signal-bar-changed {
+  animation: inspector-signal-bar-flash 0.9s ease-out;
+}
+
+.inspector-signals-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.75rem;
+}
+
+.autotracking-btn {
+  padding: 0.4rem 1rem;
+  border-radius: 6px;
+  border: 1px solid #999;
+  background: white;
+  color: #666;
+  cursor: pointer;
+  font-size: 0.82rem;
+}
+
+.autotracking-btn:hover:not(:disabled) {
+  background: #f0f0f0;
+}
+
+.autotracking-btn-on {
+  border-color: #2e7d32;
+  background: #2e7d32;
+  color: white;
+}
+
+.autotracking-btn-on:hover:not(:disabled) {
+  background: #256428;
+}
+
+.autotracking-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .switch-dialog-overlay {

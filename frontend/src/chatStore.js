@@ -47,9 +47,9 @@ export const spokenTextEnabled = ref(false)
 
 // Bumped at the end of every turn (chat/action/reset), even one that
 // didn't change `state` — a signal value can shift without a transition.
-// External UI that needs to react to "something happened" (e.g. App.vue's
-// docked SignalsView) watches this instead of the store reaching into
-// that UI directly.
+// External UI that needs to react to "something happened" (e.g.
+// EditProjectView.vue's Inspector, keeping its graph/signals live) watches
+// this instead of the store reaching into that UI directly.
 export const turnCount = ref(0)
 
 let nextMessageId = 0

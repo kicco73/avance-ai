@@ -1,8 +1,7 @@
 <script setup>
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import ChatWindow from './components/ChatWindow.vue'
 import StateBar from './components/StateBar.vue'
-import SignalsView from './components/SignalsView.vue'
 import EditProjectView from './components/EditProjectView.vue'
 import ProjectsMenu from './components/ProjectsMenu.vue'
 import SplashScreen from './components/SplashScreen.vue'
@@ -17,71 +16,17 @@ import { disconnect as disconnectChat } from './chatClient.js'
 import { clearApiError } from './errorStore.js'
 import {
   state,
-  autoTrackingEnabled,
-  autoTrackingLoading,
-  turnCount,
   setCapabilities,
   handleStateChange,
   loadMessages,
   loadAutoTracking,
-  toggleAutoTracking,
-  clearChatUi,
-  handleReset
+  clearChatUi
 } from './chatStore.js'
 
-const showSignals = ref(false)
 const showEditProject = ref(false)
 const editProjectName = ref(null)
 const modelUploadInput = ref(null)
 const projectsMenu = ref(null)
-const signalsView = ref(null)
-
-// Signals only ever change server-side as a result of auto-tracking inside
-// a chat turn/action, or wholesale when the active model itself changes
-// (reset/switch/upload/delete) — called from every one of those spots so
-// the docked inspector (see SignalsView) tracks the backend live instead
-// of only refreshing when reopened. A no-op while the panel is closed.
-function refreshSignalsIfOpen() {
-  if (showSignals.value) signalsView.value?.refresh()
-}
-
-// chatStore.js bumps this at the end of every chat turn/action/reset —
-// from either chat view, main or embedded (see EditProjectView.vue) —
-// since a signal value can shift even without a state change. Decouples
-// the store from knowing anything about this app's own docked panel.
-watch(turnCount, refreshSignalsIfOpen)
-
-// Draggable split between the chat and the docked Signals panel (see
-// SignalsView's own >=900px breakpoint — the resizer itself is hidden
-// below that width via the same media query, so this only ever matters
-// in docked mode). Width persists across reloads; a fresh session with no
-// saved width falls back to the panel's own default (400px, in its CSS).
-const SIGNALS_MIN_WIDTH = 280
-const SIGNALS_MAX_WIDTH = 720
-const CHAT_MIN_WIDTH = 320
-const appBody = ref(null)
-const resizingSignals = ref(false)
-const signalsPanelWidth = ref(Number(localStorage.getItem('signalsPanelWidth')) || 400)
-
-function startSignalsResize(event) {
-  resizingSignals.value = true
-  event.target.setPointerCapture(event.pointerId)
-}
-
-function onSignalsResizeMove(event) {
-  if (!resizingSignals.value || !appBody.value) return
-  const rect = appBody.value.getBoundingClientRect()
-  const maxWidth = Math.min(SIGNALS_MAX_WIDTH, rect.width - CHAT_MIN_WIDTH)
-  const newWidth = rect.right - event.clientX
-  signalsPanelWidth.value = Math.min(maxWidth, Math.max(SIGNALS_MIN_WIDTH, newWidth))
-}
-
-function stopSignalsResize(event) {
-  if (!resizingSignals.value) return
-  resizingSignals.value = false
-  event.target.releasePointerCapture(event.pointerId)
-  localStorage.setItem('signalsPanelWidth', String(signalsPanelWidth.value))
-}
 
 // Initial-boot backend readiness gate — entirely separate from the shared
 // error store (which is for runtime errors on an already-running app). 'checking': the
@@ -184,7 +129,6 @@ async function refreshStateAndProjects() {
   projectsMenu.value?.refresh()
   handleStateChange(newState)
   await loadMessages()
-  refreshSignalsIfOpen()
 }
 
 async function handleModelUploadChange(event) {
@@ -281,13 +225,6 @@ onBeforeUnmount(() => {
     <header class="topbar">
       <StateBar :state="state" />
       <div class="topbar-actions">
-        <button
-          class="signals-btn"
-          :class="{ 'signals-btn-on': showSignals }"
-          @click="showSignals = !showSignals"
-        >
-          Signals
-        </button>
         <ProjectsMenu
           ref="projectsMenu"
           @select="handleProjectSwitch"
@@ -303,38 +240,11 @@ onBeforeUnmount(() => {
           class="upload-model-input"
           @change="handleModelUploadChange"
         />
-        <button class="reset-btn" @click="handleReset">Reset</button>
       </div>
     </header>
 
-    <div class="app-body" ref="appBody" :class="{ 'app-body-resizing': resizingSignals }">
+    <div class="app-body">
       <ChatWindow />
-
-      <!-- Draggable split, docked mode only (hidden below the same
-           >=900px breakpoint SignalsView docks at — see its own CSS). -->
-      <div
-        v-if="showSignals"
-        class="signals-resizer"
-        @pointerdown="startSignalsResize"
-        @pointermove="onSignalsResizeMove"
-        @pointerup="stopSignalsResize"
-        @pointercancel="stopSignalsResize"
-      ></div>
-
-      <!-- Wide screens: docked inspector beside the chat, stays open across
-           turns and live-refreshes (see refreshSignalsIfOpen). Narrow
-           screens: SignalsView's own CSS falls back to a full-screen modal
-           (the inline width below is harmless there — inset:0 wins). -->
-      <SignalsView
-        v-if="showSignals"
-        ref="signalsView"
-        :style="{ width: signalsPanelWidth + 'px' }"
-        :state="state"
-        :auto-tracking-enabled="autoTrackingEnabled"
-        :auto-tracking-loading="autoTrackingLoading"
-        @close="showSignals = false"
-        @toggle-auto-tracking="toggleAutoTracking"
-      />
     </div>
 
     <EditProjectView
@@ -370,90 +280,12 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-/* While dragging, the pointer can slide over the chat/panel iframe-less
-   content faster than it moves — force the resize cursor and kill text
-   selection everywhere so the drag doesn't feel like it "catches" on
-   message bubbles. */
-.app-body-resizing {
-  cursor: col-resize;
-  user-select: none;
-}
-
-.app-body-resizing :deep(*) {
-  cursor: col-resize !important;
-  user-select: none !important;
-}
-
-.signals-resizer {
-  display: none;
-  flex: none;
-  width: 6px;
-  margin: 0 -3px;
-  cursor: col-resize;
-  touch-action: none;
-  position: relative;
-  z-index: 1;
-}
-
-.signals-resizer::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 2px;
-  right: 2px;
-  border-radius: 2px;
-}
-
-.signals-resizer:hover::after {
-  background: #4a6fa5;
-}
-
-@media (min-width: 900px) {
-  .signals-resizer {
-    display: block;
-  }
-}
-
 .topbar-actions {
   display: flex;
   gap: 0.5rem;
 }
 
-.signals-btn {
-  padding: 0.4rem 1rem;
-  border-radius: 6px;
-  border: 1px solid #4a6fa5;
-  background: white;
-  color: #4a6fa5;
-  cursor: pointer;
-}
-
-.signals-btn:hover {
-  background: #4a6fa5;
-  color: white;
-}
-
-.signals-btn-on {
-  background: #4a6fa5;
-  color: white;
-}
-
 .upload-model-input {
   display: none;
-}
-
-.reset-btn {
-  padding: 0.4rem 1rem;
-  border-radius: 6px;
-  border: 1px solid #c62828;
-  background: white;
-  color: #c62828;
-  cursor: pointer;
-}
-
-.reset-btn:hover {
-  background: #c62828;
-  color: white;
 }
 </style>
