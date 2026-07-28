@@ -11,10 +11,16 @@ import {
   putProjectFile,
   deleteProjectFile,
   getProjectSignals,
-  getProjectGraph
+  getProjectGraph,
+  getSignals,
+  postTriggersPreview
 } from '../api.js'
 import { clearApiError, errorDetail, errorMessage, setApiError } from '../errorStore.js'
-import { handleReset } from '../chatStore.js'
+// Aliased: this file already uses "state" to mean an automaton state node
+// (see the graph/signals data below) — `liveState` is specifically the
+// live conversation's current state, the single source of truth this
+// view's Inspector syncs itself to (see syncSelectionToCurrentState).
+import { state as liveState, turnCount, handleReset } from '../chatStore.js'
 
 const props = defineProps({
   projectName: {
@@ -422,43 +428,73 @@ let cyGraph = null
 // detail card below (see .inspector-graph-section's flex layout).
 const selectedElement = ref(null)
 
+// Raw graph data (as fetched, not the cytoscape-shaped elements) — kept
+// around so syncSelectionToCurrentState can look a live state key up by
+// key without re-fetching, the same way a click already has its node's
+// data on hand via evt.target.data().
+const graphNodes = ref([])
+const graphEdges = ref([])
+
+// { stateKey, actionName } of the action the engine would fire next from
+// the live current state, or null — see refreshNextAction. Reuses
+// postTriggersPreview (already computed for SignalsView's own "Next
+// triggerable action" section) instead of re-deriving trigger evaluation
+// here.
+const nextAction = ref(null)
+
+// Whether the currently selected detail card is showing exactly that
+// action — drives the green "Next" badge (see the action detail template).
+const isSelectedActionNext = computed(() => {
+  if (selectedElement.value?.kind !== 'action' || !nextAction.value) return false
+  return (
+    selectedElement.value.data.source === nextAction.value.stateKey &&
+    selectedElement.value.data.actionName === nextAction.value.actionName
+  )
+})
+
 function destroyGraph() {
   cyGraph?.destroy()
   cyGraph = null
 }
 
-// Every field the detail card might show travels in the element's own
-// cytoscape data, keyed camelCase — so a tap handler can read it straight
-// off evt.target.data() with no separate lookup structure to keep in sync.
+// The cytoscape-data shape for a state node — camelCase, one place this
+// mapping is decided so a tap handler (which reads it straight off
+// evt.target.data()) and the current-state auto-sync (which builds it
+// from the raw fetched node instead) never drift apart.
+function nodeToCyData(n) {
+  return {
+    id: n.key,
+    label: n.label,
+    description: n.description,
+    final: n.final,
+    isStart: n.is_start,
+    chat: n.chat,
+    onEnter: n.on_enter,
+    historyCutoff: n.history_cutoff,
+    transitionLogLevel: n.transition_log_level,
+    attachments: n.attachments
+  }
+}
+
+// Same idea as nodeToCyData, for an action edge.
+function edgeToCyData(e, id) {
+  return {
+    id,
+    source: e.source,
+    target: e.target,
+    label: e.label,
+    actionName: e.action_name,
+    buttonText: e.button_text,
+    trigger: e.trigger,
+    hasTrigger: e.has_trigger,
+    actionPrompt: e.action_prompt
+  }
+}
+
 function graphElements(nodes, edges) {
   return [
-    ...nodes.map((n) => ({
-      data: {
-        id: n.key,
-        label: n.label,
-        description: n.description,
-        final: n.final,
-        isStart: n.is_start,
-        chat: n.chat,
-        onEnter: n.on_enter,
-        historyCutoff: n.history_cutoff,
-        transitionLogLevel: n.transition_log_level,
-        attachments: n.attachments
-      }
-    })),
-    ...edges.map((e, i) => ({
-      data: {
-        id: `edge-${i}`,
-        source: e.source,
-        target: e.target,
-        label: e.label,
-        actionName: e.action_name,
-        buttonText: e.button_text,
-        trigger: e.trigger,
-        hasTrigger: e.has_trigger,
-        actionPrompt: e.action_prompt
-      }
-    }))
+    ...nodes.map((n) => ({ data: nodeToCyData(n) })),
+    ...edges.map((e, i) => ({ data: edgeToCyData(e, `edge-${i}`) }))
   ]
 }
 
@@ -494,10 +530,6 @@ function handleEdgeTap(evt) {
 // diagram instead of a force-directed tangle.
 function renderGraph(nodes, edges) {
   destroyGraph()
-  // A reload (reopening Inspect, or a save while it's open) can rename/
-  // remove the previously selected element, so start clean rather than
-  // risk showing stale detail for something that no longer exists.
-  selectedElement.value = null
   if (!graphHost.value) return
   const startKey = nodes.find((n) => n.is_start)?.key
   cyGraph = cytoscape({
@@ -539,6 +571,19 @@ function renderGraph(nodes, edges) {
         }
       },
       {
+        // The live conversation's current state — an overlay glow rather
+        // than a border/background change, so it composes cleanly with
+        // final/start's own colors instead of fighting them for the same
+        // visual channel (see syncSelectionToCurrentState/
+        // applyCurrentStateHighlight).
+        selector: 'node.current-state',
+        style: {
+          'overlay-color': '#f5a623',
+          'overlay-opacity': 0.35,
+          'overlay-padding': 6
+        }
+      },
+      {
         selector: 'edge',
         style: {
           width: 1.5,
@@ -558,11 +603,26 @@ function renderGraph(nodes, edges) {
         }
       },
       {
-        selector: 'edge[?hasTrigger]',
+        // No trigger = manual-only action (see AutomatonBuilder) — dashed
+        // to set it apart from the default solid line, which therefore
+        // reads as "automatic" (has a trigger) without needing its own
+        // rule. Never inferred from YAML text — `hasTrigger` comes
+        // straight from the backend's graph endpoint.
+        selector: 'edge[!hasTrigger]',
         style: {
-          'line-style': 'dashed',
-          'line-color': '#a67c2e',
-          'target-arrow-color': '#a67c2e'
+          'line-style': 'dashed'
+        }
+      },
+      {
+        // The action postTriggersPreview says would fire next from the
+        // live current state — see refreshNextAction/
+        // applyNextActionHighlight. Always a triggered (solid) edge, since
+        // only triggered actions are ever candidates.
+        selector: 'edge.next-action',
+        style: {
+          'line-color': '#2e7d32',
+          'target-arrow-color': '#2e7d32',
+          width: 2.5
         }
       },
       {
@@ -587,18 +647,97 @@ function renderGraph(nodes, edges) {
   cyGraph.on('tap', (evt) => {
     if (evt.target === cyGraph) closeGraphDetail()
   })
+
+  // A (re)build can rename/remove whatever was selected before, and is
+  // also the moment a freshly opened Inspector needs to catch up with
+  // reality — re-sync to the live current state either way. No cursor
+  // jump here: unlike an actual state change (see the liveState watcher
+  // below), a reload triggered by an unrelated file save must not yank
+  // focus away from whatever the user is doing.
+  applyCurrentStateHighlight()
+  applyNextActionHighlight()
+  syncSelectionToCurrentState()
 }
 
 async function loadGraph() {
   graphLoading.value = true
   try {
     const { nodes, edges } = await getProjectGraph(props.projectName)
+    graphNodes.value = nodes
+    graphEdges.value = edges
     renderGraph(nodes, edges)
   } catch {
     // already surfaced via apiFetch
   } finally {
     graphLoading.value = false
   }
+}
+
+// Recolors the live current state's node — see the node.current-state
+// style rule in renderGraph. A no-op while the graph isn't built
+// (Inspector closed) or the live state doesn't belong to this project's
+// graph (e.g. editing a project other than the currently active one).
+function applyCurrentStateHighlight() {
+  if (!cyGraph) return
+  cyGraph.nodes().removeClass('current-state')
+  const key = liveState.value?.key
+  if (key == null) return
+  cyGraph.nodes().filter((n) => n.id() === key).addClass('current-state')
+}
+
+// Recolors the edge postTriggersPreview says would fire next — see the
+// edge.next-action style rule in renderGraph.
+function applyNextActionHighlight() {
+  if (!cyGraph) return
+  cyGraph.edges().removeClass('next-action')
+  if (!nextAction.value) return
+  cyGraph
+    .edges()
+    .filter((edge) => edge.data('source') === nextAction.value.stateKey && edge.data('actionName') === nextAction.value.actionName)
+    .addClass('next-action')
+}
+
+// Mirrors what tapping the live current state's node in the graph would
+// do — same selection (and, when `jumpCursor` is true, the same editor
+// cursor jump) — so the Inspector automatically tracks whatever the
+// actual conversation is doing (autotracking, manual actions, reset, ...),
+// not just clicks made inside the graph itself. `jumpCursor` is only true
+// for an actual state-change event (see the liveState watcher below); a
+// routine graph reload (renderGraph) re-syncs the selection without it.
+function syncSelectionToCurrentState({ jumpCursor = false } = {}) {
+  const key = liveState.value?.key
+  const node = key == null ? null : graphNodes.value.find((n) => n.key === key)
+  if (!node) {
+    selectedElement.value = null
+    return
+  }
+  selectGraphElement('state', nodeToCyData(node))
+  if (jumpCursor) jumpToDefinition({ kind: 'state', stateKey: node.key })
+}
+
+// Reuses the same triggers-preview endpoint SignalsView already calls for
+// its own "Next triggerable action" section — no separate client-side
+// reimplementation of trigger evaluation. would_fire's own FIFO-priority
+// logic (see backend Automaton.preview_triggers) decides the winner; this
+// just finds it.
+async function refreshNextAction() {
+  const stateKeyAtFetch = liveState.value?.key
+  if (stateKeyAtFetch == null) {
+    nextAction.value = null
+    applyNextActionHighlight()
+    return
+  }
+  try {
+    const signalsList = await getSignals()
+    const signalValues = Object.fromEntries(signalsList.map((s) => [s.name, s.error ? null : s.value]))
+    const previews = await postTriggersPreview(signalValues)
+    const winner = previews.find((p) => p.would_fire)
+    nextAction.value = winner ? { stateKey: stateKeyAtFetch, actionName: winner.action_name } : null
+  } catch {
+    // already surfaced via apiFetch — the graph just shows no "next" edge
+    nextAction.value = null
+  }
+  applyNextActionHighlight()
 }
 
 // Switching to the graph tab can make graphHost visible again after being
@@ -619,7 +758,7 @@ function setInspectorTab(tab) {
 // later re-open via toggleInspect.
 async function openInspect() {
   await nextTick() // graphHost only exists once the v-if block above mounts
-  await Promise.all([loadSignals(), loadGraph()])
+  await Promise.all([loadSignals(), loadGraph(), refreshNextAction()])
 }
 
 // Toggled by the Inspect button and by the panel's own Close button, same
@@ -680,6 +819,28 @@ function handleWindowResize() {
 
 watch(saving, (isSaving) => {
   view?.dispatch({ effects: editableCompartment.reconfigure(EditorView.editable.of(!isSaving)) })
+})
+
+// The live conversation's current state changing — autotracking, a manual
+// action, a reset, anything — is treated exactly like the user clicking
+// that state in the graph: same selection, same cursor jump. Gated on the
+// Inspector being open since there's no graph to highlight/click-equivalent
+// otherwise, and jumping the editor's cursor while the user isn't even
+// looking at the Inspector would be pure disruption.
+watch(
+  () => liveState.value?.key,
+  () => {
+    if (!inspecting.value) return
+    applyCurrentStateHighlight()
+    syncSelectionToCurrentState({ jumpCursor: true })
+  }
+)
+
+// A turn can shift signal values enough to change which action would fire
+// next even without a state change — see chatStore.js's turnCount.
+watch(turnCount, () => {
+  if (!inspecting.value) return
+  refreshNextAction()
 })
 
 onMounted(() => {
@@ -845,6 +1006,9 @@ onBeforeUnmount(() => {
                     {{ selectedElement.kind === 'state' ? 'State' : 'Action' }}
                   </span>
                   <span class="inspector-detail-title">{{ selectedElement.data.label }}</span>
+                  <span v-if="isSelectedActionNext" class="inspector-detail-badge inspector-detail-badge-next">
+                    Next
+                  </span>
                   <button class="inspector-detail-close" title="Close" @click="closeGraphDetail">×</button>
                 </div>
 
@@ -1541,6 +1705,10 @@ onBeforeUnmount(() => {
 
 .inspector-detail-badge-action {
   background: #8a6d3b;
+}
+
+.inspector-detail-badge-next {
+  background: #2e7d32;
 }
 
 .inspector-detail-badge-signal {
