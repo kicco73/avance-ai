@@ -186,7 +186,7 @@ class ProjectService(object):
         self._db.reset_project(self.get_active_project_name())
 
     def get_project_signals(self, project_name: str) -> list[dict]:
-        """Signal definitions (name/ui_label/description/attachments) of
+        """Signal definitions (name/ui_label/ui_description/attachments) of
         `project_name`'s last successfully saved index.yml — the source for
         the "Edit project" view's Inspect panel. Reads through
         _load_project's cache, which every mutating path (put_project/
@@ -199,7 +199,7 @@ class ProjectService(object):
             {
                 "name": signal.name,
                 "ui_label": signal.ui_label,
-                "description": signal.description,
+                "ui_description": signal.ui_description,
                 "attachments": [a.filename for a in signal.attachments],
             }
             for signal in automaton.signals
@@ -221,7 +221,7 @@ class ProjectService(object):
             {
                 "key": state.key,
                 "ui_label": state.ui_label,
-                "description": state.description,
+                "ui_description": state.ui_description,
                 "final": state.final,
                 "is_start": state.key == automaton.init_action.target,
                 "chat": state.chat,
@@ -238,6 +238,7 @@ class ProjectService(object):
                 "target": action.target,
                 "action_name": action.name,
                 "ui_label": action.ui_label,
+                "ui_description": action.ui_description,
                 "ui_button": action.ui_button,
                 "trigger": action.trigger,
                 "has_trigger": action.trigger is not None,

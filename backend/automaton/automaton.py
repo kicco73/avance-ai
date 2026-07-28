@@ -24,13 +24,8 @@ class Action:
     ui_label: str
     ui_button: str
     target: str
-    # Boolean expression (simpleeval syntax) over signal names, evaluated by
-    # evaluate_triggers()/preview_triggers() for auto-tracking. None means the
-    # action is only ever triggered manually.
+    ui_description: str | None = None
     trigger: str | None = None
-    # Extra generation instruction for this specific transition, on top of
-    # the destination state's own context — see ChatService._generate_
-    # action_prompt_message. None means no extra message for this action.
     action_prompt: str | None = None
 
 
@@ -41,7 +36,7 @@ class State:
     # Derived at load time as `len(actions) == 0`, not read from YAML —
     # structurally impossible to desync from the actual actions list.
     final: bool
-    description: str | None = None
+    ui_description: str | None = None
     # Required unless fixed_message is set — the two are mutually exclusive
     # (see AutomatonBuilder.build): a fixed_message state never generates
     # free-form content, so it has no use for one.
@@ -81,7 +76,7 @@ class Signal:
     # Attachments for this signal's definition, sent only with the signals
     # computation call (never with normal chat turns).
     attachments: list[Attachment] = field(default_factory=list)
-    description: str | None = None
+    ui_description: str | None = None
 
 
 def trigger_signal_names(expression: str) -> set[str]:
@@ -131,7 +126,7 @@ class Automaton(object):
         return {
             "key": state.key,
             "ui_label": state.ui_label,
-            "description": state.description,
+            "ui_description": state.ui_description,
             "final": state.final,
             "on_enter": state.on_enter,
             "chat": state.chat,

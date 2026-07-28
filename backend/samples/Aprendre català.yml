@@ -71,7 +71,7 @@ signal_tracking_on_ai_message: true
 signals:
   - name: progress
     ui_label: "Progress of the current exercise"
-    description: >
+    ui_description: >
       How many steps of the current exercise have been completed.
     definition: |
       Desume from the conversation 
@@ -84,7 +84,7 @@ signals:
       Respond with that value, in the form of a single integer normalised between 0 and 100.
   - name: score
     ui_label: "Score of the current exercise"
-    description: >
+    ui_description: >
       Evaluation of user performance for this excercise.
     definition: |
       Desume from the conversation how many correct answers the user has given so far with respect to the number of intents.
@@ -95,7 +95,7 @@ states:
 
   welcome:
     ui_label: "Welcome to your catalan course"
-    description: >
+    ui_description: >
       Learn catalan with Avance
     chat: false
     history_cutoff: true
@@ -117,7 +117,7 @@ states:
 
   unit55-subjuntive:
     ui_label: "Unitat 55 - Index"
-    description: >
+    ui_description: >
       Index of all exercises in this unit.
     contextual_prompt: |
       Show in bold: "Unitat 55: subjuntiu"
@@ -168,7 +168,7 @@ states:
 
   unit55-regulars:
     ui_label: "Unitat 55 - Formes Regulars"
-    description: >
+    ui_description: >
       Exercise to learn how to conjugate Subjuntive - present regular verbs.
       Canti, cantis, canti.
     contextual_prompt: |
@@ -208,7 +208,7 @@ states:
 
   unit55-regulars-amb-alteracions:
     ui_label: "Unitat 55 - Formes amb alteracions"
-    description: >
+    ui_description: >
       Exercise to learn how to conjugate Subjuntive - present regular verbs with form -qu-.
     on_enter: celebrate
     contextual_prompt: |
@@ -255,7 +255,7 @@ states:
 
   unit55-regulars-amb-gu:
     ui_label: "Unitat 55 - Formes amb -gu-"
-    description: >
+    ui_description: >
       Exercise to learn how to conjugate Subjuntive - present regular verbs with form -gu-.
     on_enter: celebrate
     contextual_prompt: |
@@ -297,7 +297,7 @@ states:
 
   unit55-irregulars:
     ui_label: "Unitat 55 - Formes irregulars"
-    description: >
+    ui_description: >
       Exercise to learn how to conjugate Subjuntive - present irregular verbs.
     on_enter: celebrate
     contextual_prompt: |
@@ -333,7 +333,7 @@ states:
 
   unit55-D:
     ui_label: "Unitat 55 - Conjugació lliure"
-    description: >
+    ui_description: >
       Exercise to learn how to conjugate Subjuntive - any form.
     on_enter: celebrate
     contextual_prompt: |
@@ -368,7 +368,7 @@ states:
 
   unit55-evaluation:
     ui_label: "Unitat 55 - Avaluació"
-    description: >
+    ui_description: >
       Exercise to learn how to conjugate Subjuntive - present verbs in short phrases.
     history_cutoff: True
     on_enter: celebrate
@@ -401,7 +401,7 @@ states:
 
   unit55-results:
     ui_label: "Unitat 55 - Resultats"
-    description: >
+    ui_description: >
       Summarizing user performance.
     on_enter: celebrate
     chat: False
@@ -441,7 +441,7 @@ states:
 
   chat:
     ui_label: "Xat lliure"
-    description: >
+    ui_description: >
       Talk with your assistant
     contextual_prompt: |
       Unit Xat. Free style exercise.

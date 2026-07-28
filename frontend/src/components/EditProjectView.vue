@@ -514,7 +514,7 @@ function nodeToCyData(n) {
   return {
     id: n.key,
     uiLabel: n.ui_label,
-    description: n.description,
+    uiDescription: n.ui_description,
     final: n.final,
     isStart: n.is_start,
     chat: n.chat,
@@ -532,6 +532,7 @@ function edgeToCyData(e, id) {
     source: e.source,
     target: e.target,
     uiLabel: e.ui_label,
+    uiDescription: e.ui_description,
     actionName: e.action_name,
     buttonText: e.ui_button,
     trigger: e.trigger,
@@ -1114,14 +1115,17 @@ onBeforeUnmount(() => {
 
                 <div class="inspector-detail-body">
                   <template v-if="selectedElement.kind === 'state'">
-                    <p v-if="selectedElement.data.description" class="inspector-detail-description">
-                      {{ selectedElement.data.description }}
+                    <p v-if="selectedElement.data.uiDescription" class="inspector-detail-ui_description">
+                      {{ selectedElement.data.uiDescription }}
                     </p>
                     <p v-if="selectedElement.data.onEnter" class="inspector-detail-field">
                       <strong>On enter:</strong> {{ selectedElement.data.onEnter }}
                     </p>
                   </template>
                   <template v-else>
+                    <p v-if="selectedElement.data.uiDescription" class="inspector-detail-ui_description">
+                      {{ selectedElement.data.uiDescription }}
+                    </p>
                     <p class="inspector-detail-field">
                       <strong>{{ selectedElement.data.source }}</strong> → <strong>{{ selectedElement.data.target }}</strong>
                     </p>
@@ -1172,8 +1176,8 @@ onBeforeUnmount(() => {
                     <span class="inspector-detail-badge inspector-detail-badge-signal">Signal</span>
                     <span class="inspector-signal-name">{{ signal.ui_label || signal.name }}</span>
                   </div>
-                  <span v-if="signal.description" class="inspector-signal-description">
-                    {{ signal.description }}
+                  <span v-if="signal.ui_description" class="inspector-signal-ui_description">
+                    {{ signal.ui_description }}
                   </span>
 
                   <div v-if="signal.attachments?.length" class="inspector-attachments">
@@ -1910,7 +1914,7 @@ onBeforeUnmount(() => {
   color: #444;
 }
 
-.inspector-detail-description {
+.inspector-detail-ui_description {
   margin: 0 0 0.5rem;
   line-height: 1.4;
 }
@@ -2009,7 +2013,7 @@ onBeforeUnmount(() => {
   color: #333;
 }
 
-.inspector-signal-description {
+.inspector-signal-ui_description {
   font-size: 0.78rem;
   color: #666;
   line-height: 1.4;

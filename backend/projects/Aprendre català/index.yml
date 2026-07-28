@@ -26,14 +26,14 @@ signal_tracking_on_ai_message: true
 signals:
   progress:
     ui_label: "Progress of the current exercise"
-    description: >
+    ui_description: >
       How many steps of the current exercise have been completed.
     definition: |
       The integer percentage of steps done with respect to the total number of steps that will be presented in the current exercise.
   score:
     ui_label: "Score of the current exercise"
-    description: >
-      Evaluation of user performance for this excercise.
+    ui_description: >
+      Evaluation of user performance for this exercise.
     definition: |
       The integer percentage of steps answered correctly by the user so far over the number of attempts, both regardless the exercise they refer to.
 
@@ -42,62 +42,50 @@ signals:
 actions:
   - &results
     name: results
-    ui_label: "Jump to results"
     ui_button: "Resultats"
     target: unit55-results
   - &home
     name: home
-    ui_label: "Tornar a l'inici"
     ui_button: "Inici"
     target: welcome
   - &unit-subjuntive
     name: unit-subjuntive
-    ui_label: "Repassar el subjuntiu present"
     ui_button: "El subjuntiu present"
     target: unit55-subjuntive
   - &grammar
     name: grammar
-    ui_label: "Show grammar"
     ui_button: "Gramàtica"
   - &help
     name: help
-    ui_label: "Show help"
     ui_button: "Ajuda'm"
     action_prompt: |
       Given the current question, give some hint to the user, without revealing the answer.
   - &chat
     name: chat
-    ui_label: "Preguntes lliures"
     ui_button: "Xat"
     target: chat
   - &regulars
     name: regulars
     ui_label: "Jump to regular verbs"
-    ui_button: "1. Verbs regulars"
     target: unit55-regulars
   - &alteracions
     name: alteracions
-    ui_label: "Jump to regular verbs with alterations"
     ui_button: "2. Regulars amb alteracions"
     target: unit55-regulars-amb-alteracions
   - &alteracions-amb-gu
     name: alteracions-amb-gu
-    ui_label: "Jump to regular verbs with alterations"
     ui_button: "3. Regulars amb canvi a -gu"
     target: unit55-regulars-amb-gu
   - &irregulars
     name: irregulars
-    ui_label: "Jump to irregular verbs"
     ui_button: "4. Verbs irregulars"
     target: unit55-irregulars
   - &freetyping
     name: freetyping
-    ui_label: "Free typing"
     ui_button: "5. Composició llibre"
     target: unit55-D
   - &evaluation
     name: evaluation
-    ui_label: "Evaluation"
     ui_button: "6. Avaluació"
     target: unit55-evaluation
 
@@ -107,7 +95,7 @@ states:
 
   welcome:
     ui_label: "Benviguts"
-    description: >
+    ui_description: >
       Aprèn català amb Avance
     chat: false
     history_cutoff: true
@@ -124,7 +112,7 @@ states:
 
   unit55-subjuntive:
     ui_label: "Unitat 55: el subjuntiu present"
-    description: >
+    ui_description: >
       Índex de tots els exercicis d'aquesta unitat
     contextual_prompt: |
       Show in bold: "Unitat 55: subjuntiu"
@@ -148,7 +136,7 @@ states:
 
   unit55-regulars:
     ui_label: "Unitat 55 - Formes Regulars"
-    description: >
+    ui_description: >
       Com conjugar verbs regulars en present de subjuntiu
     contextual_prompt: |
       Unit 55 - Exercise 1.
@@ -180,7 +168,7 @@ states:
 
   unit55-regulars-amb-alteracions:
     ui_label: "Unitat 55 - Formes amb alteracions"
-    description: >
+    ui_description: >
       Verbs regulars en subjuntiu - present amb alteracions ortogràfiques
     on_enter: celebrate
     contextual_prompt: |
@@ -221,7 +209,7 @@ states:
 
   unit55-regulars-amb-gu:
     ui_label: "Unitat 55 - Formes amb -gu-"
-    description: >
+    ui_description: >
       Formes de verbs regulars en subjuntiu - present amb -gu
     on_enter: celebrate
     contextual_prompt: |
@@ -257,7 +245,7 @@ states:
 
   unit55-irregulars:
     ui_label: "Unitat 55 - Formes irregulars"
-    description: >
+    ui_description: >
       Formes irregulars de verbs en subjuntiu - present
     on_enter: celebrate
     contextual_prompt: |
@@ -284,7 +272,7 @@ states:
 
   unit55-D:
     ui_label: "Unitat 55 - Conjugació lliure"
-    description: >
+    ui_description: >
       Conjugar lliurement todas les formes de verbs en subjuntiu - present
     on_enter: celebrate
     contextual_prompt: |
@@ -310,7 +298,7 @@ states:
 
   unit55-evaluation:
     ui_label: "Unitat 55 - Avaluació"
-    description: >
+    ui_description: >
       Competència lingüística
     history_cutoff: True
     on_enter: celebrate
@@ -334,7 +322,7 @@ states:
 
   unit55-results:
     ui_label: "Unitat 55 - Resultats"
-    description: >
+    ui_description: >
       Resum del rendiment global
     on_enter: celebrate
     chat: False
@@ -383,7 +371,7 @@ states:
 
   chat:
     ui_label: "Xat lliure"
-    description: >
+    ui_description: >
       Parla amb Avenç
     contextual_prompt: |
       Unit Xat. Free style exercise.

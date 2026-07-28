@@ -97,11 +97,11 @@ onMounted(load)
           v-for="signal in signals"
           :key="signal.name"
           class="signal-row"
-          :title="signal.description"
+          :title="signal.ui_description"
         >
           <div class="signal-ui_label">
             <span class="signal-title">{{ signal.ui_label }}</span>
-            <span class="signal-description">{{ signal.description }}</span>
+            <span class="signal-ui_description">{{ signal.ui_description }}</span>
           </div>
 
           <div class="signal-bar-track">
@@ -126,8 +126,8 @@ onMounted(load)
 
       <div v-if="!loading" class="triggers-section">
         <h2 class="state-name-title">{{ state?.ui_label ?? '—' }}</h2>
-        <p v-if="state?.description" class="triggers-state-description">
-          {{ state.description }}
+        <p v-if="state?.ui_description" class="triggers-state-ui_description">
+          {{ state.ui_description }}
         </p>
 
         <h3 class="triggers-heading">Next triggerable action</h3>
@@ -286,7 +286,7 @@ onMounted(load)
   font-size: 0.9rem;
 }
 
-.signal-description {
+.signal-ui_description {
   font-size: 0.75rem;
   color: #777;
   overflow: hidden;
@@ -357,7 +357,7 @@ onMounted(load)
   font-size: 1.3rem;
 }
 
-.triggers-state-description {
+.triggers-state-ui_description {
   margin: 0 0 1.75rem;
   font-size: 0.9rem;
   color: #555;

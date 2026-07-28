@@ -98,7 +98,7 @@ class Signals(object):
             {
                 "name": s.name,
                 "ui_label": s.ui_label,
-                "description": s.description,
+                "ui_description": s.ui_description,
                 "value": None,
                 "error": error,
             }
@@ -143,7 +143,7 @@ class Signals(object):
             results.append({
                 "name": s.name,
                 "ui_label": s.ui_label,
-                "description": s.description,
+                "ui_description": s.ui_description,
                 "value": value,
                 "error": error,
             })
@@ -164,7 +164,7 @@ class Signals(object):
             results.append({
                 "name": s.name,
                 "ui_label": s.ui_label,
-                "description": s.description,
+                "ui_description": s.ui_description,
                 "value": value,
                 "error": error,
             })

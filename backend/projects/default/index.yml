@@ -18,7 +18,7 @@ signals:
 
   problemRecognition:
     ui_label: "Problem recognition"
-    description: >
+    ui_description: >
       How much the user's language has shifted from minimizing to recognizing
       a possible problem.
     definition: |
@@ -31,7 +31,7 @@ signals:
 
   decisionalBalanceShift:
     ui_label: "Decisional balance"
-    description: >
+    ui_description: >
       Ratio between reasons to change and reasons not to change expressed by
       the user.
     definition: |
@@ -43,7 +43,7 @@ signals:
 
   planConcreteness:
     ui_label: "Plan concreteness"
-    description: >
+    ui_description: >
       How specific and actionable the change plan expressed by the user is.
     definition: |
       Evaluate whether the user has expressed a concrete change plan: a specific
@@ -53,7 +53,7 @@ signals:
 
   reengagementSignal:
     ui_label: "Re-engagement signal"
-    description: >
+    ui_description: >
       How substantial the user's response is after a relapse event, versus
       evasive or absent.
     definition: |
@@ -64,7 +64,7 @@ signals:
 
   stabilityConfidence:
     ui_label: "Perceived stability"
-    description: >
+    ui_description: >
       How much the change seems integrated into the person's identity, rather
       than maintained only through effort.
     definition: |
@@ -76,7 +76,7 @@ signals:
 
   encounterRisk:
     ui_label: "Risk event encountered"
-    description: >
+    ui_description: >
       Binary signal: the user describes consumption after a period of
       abstinence.
     definition: |
@@ -87,7 +87,7 @@ signals:
 
   detectRisk:
     ui_label: "Acute risk detected"
-    description: >
+    ui_description: >
       Binary safety signal: presence of an acute risk signal in the most
       recent message.
     definition: |
@@ -99,7 +99,7 @@ states:
 
   Precontemplation:
     ui_label: Precontemplation
-    description: >
+    ui_description: >
       The user does not yet recognize the behavior as a problem, or has no
       current intention to change it within the next six months.
     contextual_prompt: |
@@ -115,7 +115,7 @@ states:
 
   Contemplation:
     ui_label: Contemplation
-    description: >
+    ui_description: >
       The user is aware a problem may exist and is weighing costs and benefits
       of changing, without commitment to act.
     contextual_prompt: |
@@ -132,7 +132,7 @@ states:
 
   Preparation:
     ui_label: Preparation
-    description: >
+    ui_description: >
       The user intends to take action in the near term and begins concrete planning.
     contextual_prompt: |
       The user is in the Preparation stage: they intend to change soon. Help them
@@ -148,7 +148,7 @@ states:
 
   action:
     ui_label: "Action"
-    description: >
+    ui_description: >
       The user is actively modifying the target behavior. Relapse risk is
       clinically highest in this stage.
     contextual_prompt: |
@@ -178,7 +178,7 @@ states:
 
   Maintenance:
     ui_label: Maintenance
-    description: >
+    ui_description: >
       The changed behavior has been sustained long enough that relapse risk has
       substantially decreased.
     contextual_prompt: |
@@ -201,7 +201,7 @@ states:
 
   Relapse:
     ui_label: Relapse
-    description: >
+    ui_description: >
       A return to the target behavior following exposure to a high-risk situation
       without an effective coping response. Not treated as failure.
     contextual_prompt: |
@@ -221,7 +221,7 @@ states:
     ui_label: Crisis
     transition_log_level: CRITICAL
     chat: no
-    description: >
+    ui_description: >
       An acute-risk signal has been detected. Control passes to a fixed,
       non-generative safety protocol: this state has no contextual_prompt —
       the two are mutually exclusive (see AutomatonBuilder.build) — since

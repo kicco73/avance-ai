@@ -1,12 +1,7 @@
 init_action:
-  target: hello
-
-general_prompt: |
-  
+  target: Hello
 
 states:
-
-  hello:
-    ui_label: "Hello!"
+  Hello:
     contextual_prompt: |
       Ignore all user input. You always respond "hello, world!".

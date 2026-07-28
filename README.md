@@ -96,7 +96,7 @@ at boot, regardless of any project uploaded via the UI in a previous session
 referenced from it (see `backend/projects/README.md`) live alongside it in
 `projects/default/`. To add or modify a state:
 
-1. Add/edit an entry under `states:` with ``, `description`,
+1. Add/edit an entry under `states:` with ``, `ui_description`,
    `contextual_prompt`, and the list of `actions` (each with `name`, ``,
    `ui_button`, `target`). `final` isn't a field: a state is final
    automatically when it has no actions.
@@ -217,9 +217,9 @@ avance-prototype/
 
 ## API endpoints
 
-| Method | Path                                 | Description                                                                                                                        |
+| Method | Path                                 | ui_description                                                                                                                        |
 |--------|--------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|
-| GET    | `/api/state`                         | Current state, , description, available actions                                                                             |
+| GET    | `/api/state`                         | Current state, , ui_description, available actions                                                                             |
 | WS     | `/ws/chat`                           | Chat channel — see below                                                                                                          |
 | POST   | `/api/action`                        | `{action_name}` → applies the transition if valid for the current state                                                           |
 | GET    | `/api/projects`                        | `{projects: [...], active: "..."}` — project directory names under `backend/projects/` with an `index.yml` present, plus the active one |

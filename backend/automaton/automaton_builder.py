@@ -61,7 +61,7 @@ class AutomatonBuilder(object):
         # lives, not a shared fixed directory — each project carries its own.
         base_dir = path.parent
 
-        general_prompt = raw["general_prompt"].strip()
+        general_prompt = raw["general_prompt"].strip() if "general_prompt" in raw else None
         general_prompt_attachments = self._load_attachments(
             raw.get("attachments", []), "general_prompt", base_dir
         )
@@ -94,7 +94,7 @@ class AutomatonBuilder(object):
         for key, raw_state in raw_states.items():
             if not isinstance(raw_state, dict):
                 raise ValueError(
-                    f"State '{key}': expected a mapping of fields (ui_label, description, "
+                    f"State '{key}': expected a mapping of fields (ui_label, ui_description, "
                     f"actions, ...), got {type(raw_state).__name__} instead. This usually "
                     "means a field meant to belong to a state (e.g. 'actions') was "
                     "indented as a sibling of the state's key rather than nested under it, "
@@ -103,8 +103,9 @@ class AutomatonBuilder(object):
             actions = [
                 Action(
                     name=raw_action["name"],
-                    ui_label=raw_action["ui_label"],
-                    ui_button=raw_action["ui_button"],
+                    ui_description=raw_action.get("ui_description"),
+                    ui_label=raw_action.get("ui_label") or raw_action["name"],
+                    ui_button=raw_action.get("ui_button") or raw_action.get("ui_label") or raw_action["name"],
                     # Missing 'target' means a self-loop: the action stays
                     # on the state it fired from.
                     target=raw_action.get("target", key),
@@ -126,12 +127,9 @@ class AutomatonBuilder(object):
 
             states[key] = State(
                 key=key,
-                ui_label=raw_state["ui_label"],
-                # Derived, not read from YAML: a state is final iff it has no
-                # outgoing actions. Keeps the flag structurally impossible to
-                # desync from the actual `actions` list.
+                ui_label=raw_state.get("ui_label", key),
                 final=len(actions) == 0,
-                description=raw_state["description"].strip() if raw_state.get("description") else None,
+                ui_description=raw_state["ui_description"].strip() if raw_state.get("ui_description") else None,
                 on_enter=raw_state["on_enter"] if "on_enter" in raw_state else None,
                 contextual_prompt=contextual_prompt.strip() if contextual_prompt else None,
                 actions=actions,
@@ -153,8 +151,8 @@ class AutomatonBuilder(object):
             signals.append(
                 Signal(
                     name=name,
-                    ui_label=raw_signal["ui_label"],
-                    description=raw_signal["description"].strip() if raw_signal.get("description") else None,
+                    ui_label=raw_signal.get("ui_label", name),
+                    ui_description=raw_signal["ui_description"].strip() if raw_signal.get("ui_description") else raw_signal["definition"].strip(),
                     definition=raw_signal["definition"].strip(),
                     attachments=self._load_attachments(
                         raw_signal.get("attachments", []), f"signal '{name}'", base_dir
@@ -165,7 +163,7 @@ class AutomatonBuilder(object):
         # Minimal, never declared in YAML — see the reserved-key check
         # above. Not a real conversational state: ChatService.open_if_needed
         # is the only place that ever resolves out of it, via init_action.
-        states[""] = State(key="", ui_label="", final=False, description="")
+        states[""] = State(key="", ui_label="", final=False, ui_description="")
 
         for state in states.values():
             if state.transition_log_level not in VALID_LOG_LEVELS:
