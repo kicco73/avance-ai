@@ -2,8 +2,29 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
-import { setApiError } from '../errorStore.js'
+import ActionButtons from './ActionButtons.vue'
+import { errorDetail, errorMessage, setApiError } from '../errorStore.js'
 import { startRecording, stopRecording } from '../mic.js'
+import {
+  state,
+  messages,
+  chatLoading,
+  chatStatus,
+  actionLoading,
+  autoTrackingEnabled,
+  historyLoaded,
+  audioEnabled,
+  talkAvailable,
+  micAvailable,
+  spokenTextEnabled,
+  draft,
+  handleSend,
+  handleResend,
+  handleVoiceMessage,
+  handleAction,
+  toggleAudio,
+  toggleSpokenText
+} from '../chatStore.js'
 
 const md = new MarkdownIt({
   breaks: true,
@@ -30,66 +51,11 @@ function displayContent(msg, spokenTextEnabled) {
   return msg.content
 }
 
-const props = defineProps({
-  messages: {
-    type: Array,
-    default: () => []
-  },
-  loading: {
-    type: Boolean,
-    default: false
-  },
-  status: {
-    type: String,
-    default: ''
-  },
-  errorMessage: {
-    type: String,
-    default: ''
-  },
-  errorDetail: {
-    type: String,
-    default: ''
-  },
-  // Whether the CURRENT state accepts chat turns (see backend State.chat)
-  // — when it doesn't, the backend rejects them too (see
-  // ChatService._process_turn_locked).
-  stateChat: {
-    type: Boolean,
-    default: true
-  },
-  historyLoaded: {
-    type: Boolean,
-    default: false
-  },
-  audioEnabled: {
-    type: Boolean,
-    default: false
-  },
-  // Whether the server actually has talk-service/listen-service
-  // configured (see App.vue's boot ping) — false hides the corresponding
-  // button entirely rather than disabling it, so the text input widens
-  // into the freed space instead of showing a dead control.
-  talkAvailable: {
-    type: Boolean,
-    default: true
-  },
-  micAvailable: {
-    type: Boolean,
-    default: true
-  },
-  // When on, assistant bubbles show audio_text (the short narrated
-  // phrase) instead of their full content — a pure display switch, see
-  // App.vue's toggleSpokenText.
-  spokenTextEnabled: {
-    type: Boolean,
-    default: false
-  }
-})
-
-const emit = defineEmits(['send', 'resend', 'toggle-audio', 'voice-message', 'toggle-spoken-text'])
-
-const draft = ref('')
+// This component takes no props and emits nothing: every chat view (the
+// main app's and the "Edit project" view's embedded one) reads and
+// mutates the one shared conversation in chatStore.js directly, so two
+// mounted instances are just two views of the same state — see
+// chatStore.js's own header comment.
 const scrollEl = ref(null)
 const inputEl = ref(null)
 const showErrorDetail = ref(false)
@@ -97,34 +63,31 @@ const recording = ref(false)
 
 // Reaching a state with no further actions (final) does NOT stop the
 // conversation on its own — only an explicit chat: false does.
-const chatDisabled = computed(() => !props.stateChat)
+const chatDisabled = computed(() => !(state.value?.chat ?? true))
 
-watch(
-  () => props.errorMessage,
-  () => {
-    showErrorDetail.value = false
-  }
-)
+watch(errorMessage, () => {
+  showErrorDetail.value = false
+})
 
 function submit() {
   const text = draft.value.trim()
-  if (!text || props.loading || chatDisabled.value) return
-  emit('send', text)
+  if (!text || chatLoading.value || chatDisabled.value) return
+  handleSend(text)
   draft.value = ''
 }
 
 function resend(i) {
-  if (props.loading) return
-  emit('resend', i)
+  if (chatLoading.value) return
+  handleResend(i)
 }
 
 // Push-to-talk: held down = recording, released = send. A plain right-
 // click shouldn't start one. The transcribed text is never shown or
-// staged in `draft` — see App.vue's handleVoiceMessage, which sends it
-// straight through the normal turn flow, by design.
+// staged in `draft` — see chatStore.js's handleVoiceMessage, which sends
+// it straight through the normal turn flow, by design.
 async function startPtt(event) {
   if (event.pointerType === 'mouse' && event.button !== 0) return
-  if (recording.value || props.loading || chatDisabled.value) return
+  if (recording.value || chatLoading.value || chatDisabled.value) return
   try {
     await startRecording()
     recording.value = true
@@ -140,11 +103,11 @@ async function stopPtt() {
   if (!recording.value) return
   recording.value = false
   const blob = await stopRecording()
-  if (blob?.size) emit('voice-message', blob)
+  if (blob?.size) handleVoiceMessage(blob)
 }
 
 watch(
-  () => props.messages.length,
+  () => messages.value.length,
   async () => {
     await nextTick()
 
@@ -154,26 +117,28 @@ watch(
   }
 )
 
-watch(
-  () => props.loading,
-  async (isLoading, wasLoading) => {
-    if (isLoading || !wasLoading || chatDisabled.value) return
+watch(chatLoading, async (isLoading, wasLoading) => {
+  if (isLoading || !wasLoading || chatDisabled.value) return
 
-    await nextTick()
-    inputEl.value?.focus()
-  }
-)
+  await nextTick()
+  inputEl.value?.focus()
+})
 
-// Exposed for App.vue: an action button click disables itself immediately
-// (see ActionButtons' :disabled), which blurs it since it had focus — this
-// lets the caller send focus back to the chat input once the action's
-// response has landed.
 function focusInput() {
   if (chatDisabled.value) return
   inputEl.value?.focus()
 }
 
-defineExpose({ focusInput })
+// An action button click disables itself immediately (see ActionButtons'
+// :disabled), which blurs it since it had focus — send this instance's
+// own input focus back once the action's response has landed. Each
+// mounted ChatWindow does this for itself, so whichever view's button was
+// actually clicked is the one that gets focus back.
+async function onAction(actionName) {
+  await handleAction(actionName)
+  await nextTick()
+  focusInput()
+}
 </script>
 
 <template>
@@ -210,10 +175,10 @@ defineExpose({ focusInput })
       </TransitionGroup>
 
       <div
-        v-if="loading"
+        v-if="chatLoading"
         class="bubble bubble-assistant bubble-loading"
       >
-        {{ status || '...' }}
+        {{ chatStatus || '...' }}
       </div>
     </div>
 
@@ -241,13 +206,18 @@ defineExpose({ focusInput })
     >{{ errorDetail }}</pre>
 
     <p
-      v-if="!stateChat"
+      v-if="chatDisabled"
       class="chat-ended-notice"
     >
       Please select:
     </p>
 
-    <slot name="actions" />
+    <ActionButtons
+      :actions="state?.actions ?? []"
+      :disabled="actionLoading"
+      :auto-tracking-enabled="autoTrackingEnabled"
+      @action="onAction"
+    />
 
     <form
       class="input-row"
@@ -258,7 +228,7 @@ defineExpose({ focusInput })
         v-model="draft"
         type="text"
         placeholder="Type a message..."
-        :disabled="loading || chatDisabled"
+        :disabled="chatLoading || chatDisabled"
       />
 
       <button
@@ -266,7 +236,7 @@ defineExpose({ focusInput })
         type="button"
         class="mic-btn"
         :class="{ 'mic-btn-recording': recording }"
-        :disabled="!recording && (loading || chatDisabled)"
+        :disabled="!recording && (chatLoading || chatDisabled)"
         :title="recording ? 'Release to send' : 'Hold to record a voice message'"
         @pointerdown.prevent="startPtt"
         @pointerup="stopPtt"
@@ -286,7 +256,7 @@ defineExpose({ focusInput })
         class="audio-btn"
         :class="{ 'audio-btn-on': audioEnabled }"
         :title="audioEnabled ? 'Audio: On' : 'Audio: Off'"
-        @click="emit('toggle-audio')"
+        @click="toggleAudio"
       >
         <svg v-if="audioEnabled" viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
           <path d="M3 9v6h4l5 5V4L7 9H3z" />
@@ -304,7 +274,7 @@ defineExpose({ focusInput })
         class="spoken-text-btn"
         :class="{ 'spoken-text-btn-on': spokenTextEnabled }"
         :title="spokenTextEnabled ? 'Showing spoken text' : 'Show spoken text'"
-        @click="emit('toggle-spoken-text')"
+        @click="toggleSpokenText"
       >
         <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
           <path d="M19 4H5c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 7.5H9.5v-.5h-2v2h2v-.5H11V15c0 .55-.45 1-1 1H6c-.55 0-1-.45-1-1V9c0-.55.45-1 1-1h4c.55 0 1 .45 1 1v1.5zm7 0h-1.5v-.5h-2v2h2v-.5H18V15c0 .55-.45 1-1 1h-4c-.55 0-1-.45-1-1V9c0-.55.45-1 1-1h4c.55 0 1 .45 1 1v1.5z" />

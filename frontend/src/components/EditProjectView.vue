@@ -4,6 +4,7 @@ import { Compartment } from '@codemirror/state'
 import { EditorView, basicSetup } from 'codemirror'
 import { yaml } from '@codemirror/lang-yaml'
 import cytoscape from 'cytoscape'
+import ChatWindow from './ChatWindow.vue'
 import {
   getProjectFiles,
   getProjectFile,
@@ -13,6 +14,7 @@ import {
   getProjectGraph
 } from '../api.js'
 import { clearApiError, errorDetail, errorMessage, setApiError } from '../errorStore.js'
+import { handleReset } from '../chatStore.js'
 
 const props = defineProps({
   projectName: {
@@ -151,6 +153,13 @@ const inspectorWidth = ref(360)
 // in the editor — see jumpToDefinition/applyPendingCursorTarget. Cleared
 // once applied, or if the user cancels a pending file-switch dialog.
 const pendingCursorTarget = ref(null)
+
+// Embedded chat: a second view of the exact same conversation as the main
+// app's (see chatStore.js) — docked below the file explorer/editor, with
+// its own minimal toolbar (just Reset). Open by default, toggled like
+// Inspect. Height in px, adjusted by dragging the horizontal divider above it.
+const chatOpen = ref(true)
+const chatHeight = ref(280)
 
 // The editor's own doc is the source of truth for content while it's
 // mounted — this ref only mirrors it (via the updateListener below) so
@@ -621,6 +630,13 @@ async function toggleInspect() {
   else destroyGraph()
 }
 
+// The embedded chat has no data of its own to load/unload — it's just a
+// second view of chatStore.js's shared conversation (see ChatWindow.vue) —
+// so toggling it is nothing more than showing/hiding the panel.
+function toggleChat() {
+  chatOpen.value = !chatOpen.value
+}
+
 function startExplorerDrag(event) {
   dragTarget = 'explorer'
   event.preventDefault()
@@ -628,6 +644,11 @@ function startExplorerDrag(event) {
 
 function startInspectorDrag(event) {
   dragTarget = 'inspector'
+  event.preventDefault()
+}
+
+function startChatDrag(event) {
+  dragTarget = 'chat'
   event.preventDefault()
 }
 
@@ -639,6 +660,10 @@ function onDrag(event) {
     // (negative movementX) needs to grow the panel, not shrink it.
     inspectorWidth.value = Math.min(560, Math.max(240, inspectorWidth.value - event.movementX))
     cyGraph?.resize()
+  } else if (dragTarget === 'chat') {
+    // The chat divider sits above the chat panel, so dragging it up
+    // (negative movementY) needs to grow the panel, not shrink it.
+    chatHeight.value = Math.min(600, Math.max(160, chatHeight.value - event.movementY))
   }
 }
 
@@ -680,6 +705,13 @@ onBeforeUnmount(() => {
       <h2>Edit project — {{ projectName }} <span class="edit-project-current-file">/ {{ currentFileName }}</span></h2>
       <div class="edit-project-header-actions">
         <button
+          class="chat-toggle-btn"
+          :class="{ 'chat-toggle-btn-on': chatOpen }"
+          @click="toggleChat"
+        >
+          Chat
+        </button>
+        <button
           class="inspect-btn"
           :class="{ 'inspect-btn-on': inspecting }"
           @click="toggleInspect"
@@ -707,54 +739,69 @@ onBeforeUnmount(() => {
     <pre v-if="errorMessage && errorDetail && showErrorDetail" class="edit-project-error-detail">{{ errorDetail }}</pre>
 
     <div class="edit-project-body">
-      <div class="file-explorer" :style="{ width: explorerWidth + 'px' }">
-        <div class="file-explorer-header">
-          <span class="file-explorer-title">Files</span>
-          <div class="file-explorer-header-actions">
-            <button class="file-explorer-new-btn" :disabled="creatingFile" @click="handleNewFile">
-              {{ creatingFile ? 'Creating…' : '+ New' }}
-            </button>
-            <button class="file-explorer-upload-btn" :disabled="uploading" @click="triggerUpload">
-              {{ uploading ? 'Uploading…' : '+ Upload' }}
-            </button>
+      <div class="edit-project-main-column">
+        <div class="edit-project-top-row">
+          <div class="file-explorer" :style="{ width: explorerWidth + 'px' }">
+            <div class="file-explorer-header">
+              <span class="file-explorer-title">Files</span>
+              <div class="file-explorer-header-actions">
+                <button class="file-explorer-new-btn" :disabled="creatingFile" @click="handleNewFile">
+                  {{ creatingFile ? 'Creating…' : '+ New' }}
+                </button>
+                <button class="file-explorer-upload-btn" :disabled="uploading" @click="triggerUpload">
+                  {{ uploading ? 'Uploading…' : '+ Upload' }}
+                </button>
+              </div>
+              <input
+                ref="uploadInput"
+                type="file"
+                accept=".txt,.yml,.yaml"
+                class="file-explorer-upload-input"
+                @change="handleUploadFile"
+              />
+            </div>
+            <p v-if="filesLoading" class="file-explorer-status">Loading…</p>
+            <ul v-else class="file-explorer-list">
+              <li v-for="name in files" :key="name" class="file-explorer-row">
+                <button
+                  class="file-explorer-item"
+                  :class="{ 'file-explorer-item-active': name === currentFileName }"
+                  :title="name"
+                  @click="selectFile(name)"
+                >
+                  {{ name }}
+                </button>
+                <button
+                  v-if="name !== 'index.yml'"
+                  class="file-explorer-delete-btn"
+                  :disabled="deletingFile === name"
+                  title="Delete file"
+                  @click="handleDeleteFile(name)"
+                >
+                  ×
+                </button>
+              </li>
+            </ul>
           </div>
-          <input
-            ref="uploadInput"
-            type="file"
-            accept=".txt,.yml,.yaml"
-            class="file-explorer-upload-input"
-            @change="handleUploadFile"
-          />
+
+          <div class="split-divider" @mousedown="startExplorerDrag"></div>
+
+          <div class="edit-project-editor-pane">
+            <p v-if="loading" class="edit-project-status">Loading…</p>
+            <div v-show="!loading" ref="editorHost" class="edit-project-editor"></div>
+          </div>
         </div>
-        <p v-if="filesLoading" class="file-explorer-status">Loading…</p>
-        <ul v-else class="file-explorer-list">
-          <li v-for="name in files" :key="name" class="file-explorer-row">
-            <button
-              class="file-explorer-item"
-              :class="{ 'file-explorer-item-active': name === currentFileName }"
-              :title="name"
-              @click="selectFile(name)"
-            >
-              {{ name }}
-            </button>
-            <button
-              v-if="name !== 'index.yml'"
-              class="file-explorer-delete-btn"
-              :disabled="deletingFile === name"
-              title="Delete file"
-              @click="handleDeleteFile(name)"
-            >
-              ×
-            </button>
-          </li>
-        </ul>
-      </div>
 
-      <div class="split-divider" @mousedown="startExplorerDrag"></div>
+        <template v-if="chatOpen">
+          <div class="split-divider-horizontal" @mousedown="startChatDrag"></div>
 
-      <div class="edit-project-editor-pane">
-        <p v-if="loading" class="edit-project-status">Loading…</p>
-        <div v-show="!loading" ref="editorHost" class="edit-project-editor"></div>
+          <div class="edit-project-chat-panel" :style="{ height: chatHeight + 'px' }">
+            <div class="edit-project-chat-toolbar">
+              <button class="reset-btn" @click="handleReset">Reset</button>
+            </div>
+            <ChatWindow />
+          </div>
+        </template>
       </div>
 
       <template v-if="inspecting">
@@ -991,6 +1038,28 @@ onBeforeUnmount(() => {
   color: white;
 }
 
+.chat-toggle-btn {
+  padding: 0.4rem 1rem;
+  border-radius: 6px;
+  border: 1px solid #4a6fa5;
+  background: white;
+  color: #4a6fa5;
+  cursor: pointer;
+}
+
+.chat-toggle-btn:hover {
+  background: #eef2f9;
+}
+
+.chat-toggle-btn-on {
+  background: #4a6fa5;
+  color: white;
+}
+
+.chat-toggle-btn-on:hover {
+  background: #3d5c8a;
+}
+
 .inspect-btn {
   padding: 0.4rem 1rem;
   border-radius: 6px;
@@ -1056,6 +1125,67 @@ onBeforeUnmount(() => {
   display: flex;
   min-height: 0;
   padding: 1rem;
+}
+
+.edit-project-main-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.edit-project-top-row {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.split-divider-horizontal {
+  flex-shrink: 0;
+  height: 6px;
+  margin: 0.4rem 0;
+  border-radius: 3px;
+  background: transparent;
+  cursor: row-resize;
+}
+
+.split-divider-horizontal:hover {
+  background: #dbe4f0;
+}
+
+.edit-project-chat-panel {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.edit-project-chat-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0.5rem 0.75rem;
+  background: #f5f5f7;
+  border-bottom: 1px solid #ddd;
+  flex-shrink: 0;
+}
+
+.edit-project-chat-toolbar .reset-btn {
+  padding: 0.4rem 1rem;
+  border-radius: 6px;
+  border: 1px solid #c62828;
+  background: white;
+  color: #c62828;
+  cursor: pointer;
+}
+
+.edit-project-chat-toolbar .reset-btn:hover {
+  background: #c62828;
+  color: white;
 }
 
 .file-explorer {
