@@ -61,7 +61,7 @@ states:
     actions:
       - name: usuario niega el problema
         label: Usuario niega el problema
-        button_text: Niega el problema
+        ui_button: Niega el problema
         target: Preparación
         trigger: "malestar_emocional > 49 and malestar_emocional < 100 and presion_social < 26 and abstinencia_parcial > 20"
 

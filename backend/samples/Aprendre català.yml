@@ -106,11 +106,11 @@ states:
     actions:
       - name: subjuntive
         label: "Repassar el subjuntiu present"
-        button_text: "El subjuntiu present"
+        ui_button: "El subjuntiu present"
         target: unit55-subjuntive
       - name: results
         label: "Jump to results"
-        button_text: "Resultats"
+        ui_button: "Resultats"
         target: unit55-results
 
 #=======================================================================
@@ -129,39 +129,39 @@ states:
     actions:
       - name: regulars
         label: "Jump to regular verbs"
-        button_text: "1. Verbs regulars"
+        ui_button: "1. Verbs regulars"
         target: unit55-regulars
       - name: alteracions
         label: "Jump to regular verbs with alterations"
-        button_text: "2. Regulars amb alteracions"
+        ui_button: "2. Regulars amb alteracions"
         target: unit55-regulars-amb-alteracions
       - name: alteracions-amb-gu
         label: "Jump to regular verbs with alterations"
-        button_text: "3. Regulars amb canvi a -gu"
+        ui_button: "3. Regulars amb canvi a -gu"
         target: unit55-regulars-amb-gu
       - name: irregulars
         label: "Jump to irregular verbs"
-        button_text: "4. Verbs irregulars"
+        ui_button: "4. Verbs irregulars"
         target: unit55-irregulars
       - name: freetyping
         label: "Free typing"
-        button_text: "5. Composició llibre"
+        ui_button: "5. Composició llibre"
         target: unit55-D
       - name: evaluation
         label: "Evaluation"
-        button_text: "6. Avaluació"
+        ui_button: "6. Avaluació"
         target: unit55-evaluation
       - name: lliure
         label: "Preguntes lliures"
-        button_text: "Xat lliure"
+        ui_button: "Xat lliure"
         target: chat
       - name: results
         label: "Jump to results"
-        button_text: "Resultats"
+        ui_button: "Resultats"
         target: unit55-results
       - name: restart
         label: "Restarting the unit"
-        button_text: "Inici"
+        ui_button: "Inici"
         target: welcome
 
 #=======================================================================
@@ -189,19 +189,19 @@ states:
     actions:
       - name: end
         label: "User has completed the exercise and moves to the next one"
-        button_text: "Resultats"
+        ui_button: "Resultats"
         target: unit55-results
         trigger: "progress == 100"
       - name: grammar
         label: "Show grammar"
-        button_text: "Gramàtica"
+        ui_button: "Gramàtica"
         target: unit55-regulars
         action_prompt: |
           Show a table with the rules to conjugate regular verbs in this mode and tense.
           Show all the verbs: parlar, prometre, tenir, llegir.
       - name: restart
         label: "Restarting the unit"
-        button_text: "Inici"
+        ui_button: "Inici"
         target: unit55-subjuntive
 
 #=======================================================================
@@ -236,19 +236,19 @@ states:
     actions:
       - name: end
         label: "User has completed the exercise"
-        button_text: "Resultats"
+        ui_button: "Resultats"
         target: unit55-results
         trigger: "progress == 100"
       - name: grammar
         label: "Show grammar"
-        button_text: "Gramàtica"
+        ui_button: "Gramàtica"
         target: unit55-regulars-amb-alteracions
         action_prompt: |
           - explain the trick: all verbs whose infinitive ends in -jar , -car, -çar, -gar have hortographic alterations
           - Show the a table of the rules to conjugate this kind regular verbs, with also some example of this.
       - name: restart
         label: "Restarting the unit"
-        button_text: "Inici"
+        ui_button: "Inici"
         target: unit55-subjuntive
 
 #=======================================================================
@@ -279,19 +279,19 @@ states:
     actions:
       - name: end
         label: "User has completed the exercise"
-        button_text: "Resultats"
+        ui_button: "Resultats"
         target: unit55-results
         trigger: "progress == 100"
       - name: grammar
         label: "Show grammar"
-        button_text: "Gramàtica"
+        ui_button: "Gramàtica"
         target: unit55-regulars-amb-gu
         action_prompt: |
           - explain the trick: all verbs that end in -c (like creure, jo crec -> cregui) in the first person indicative present tense, will need the ortographic change in -gu.
           - Show the a table of the rules to conjugate this kind regular verbs, with also an example of this.
       - name: restart
         label: "Restarting the unit"
-        button_text: "Inici"
+        ui_button: "Inici"
         target: unit55-subjuntive
 
 
@@ -317,18 +317,18 @@ states:
     actions:
       - name: next
         label: "User has completed the exercise and moves to the next one"
-        button_text: "End exercise"
+        ui_button: "End exercise"
         target: unit55-results
         trigger: "progress == 100"
       - name: grammar
         label: "Show conjugation table"
-        button_text: "Gramàtica"
+        ui_button: "Gramàtica"
         target: unit55-irregulars
         action_prompt: |
           - show quick table with conjugations for some important random irregular verbs of the subjuntive - present tense.
       - name: restart
         label: "Restarting the unit"
-        button_text: "Inici"
+        ui_button: "Inici"
         target: unit55-subjuntive
 
   unit55-D:
@@ -352,18 +352,18 @@ states:
     actions:
       - name: next
         label: "User has completed the exercise"
-        button_text: "End exercise"
+        ui_button: "End exercise"
         target: unit55-results
         trigger: "progress == 100"
       - name: help
         label: "Show help"
-        button_text: "Ajuda'm"
+        ui_button: "Ajuda'm"
         target: unit55-D
         action_prompt: |
           Given the current question, give some hint to the user, without revealing the answer.
       - name: restart
         label: "Restarting the unit"
-        button_text: "Inici"
+        ui_button: "Inici"
         target: unit55-subjuntive
 
   unit55-evaluation:
@@ -385,18 +385,18 @@ states:
     actions:
       - name: results
         label: "Summarize results"
-        button_text: "Results"
+        ui_button: "Results"
         target: unit55-results
         trigger: "progress == 100"
       - name: help
         label: "Show help"
-        button_text: "Ajuda'm"
+        ui_button: "Ajuda'm"
         target: unit55-evaluation
         action_prompt: |
           Given the current question, give some hint to the user, without revealing the answer.
       - name: restart
         label: "Restarting the unit"
-        button_text: "Inici"
+        ui_button: "Inici"
         target: unit55-subjuntive
 
   unit55-results:
@@ -436,7 +436,7 @@ states:
     actions:
       - name: restart
         label: "Restarting the unit"
-        button_text: "Inici"
+        ui_button: "Inici"
         target: unit55-subjuntive
 
   chat:
@@ -452,9 +452,9 @@ states:
     actions:
       - name: subjuntive
         label: "Move to subjuntives"
-        button_text: "Al subjuntiu"
+        ui_button: "Al subjuntiu"
         target: unit55-subjuntive
       - name: restart
         label: "Restarting the unit"
-        button_text: "Inici"
+        ui_button: "Inici"
         target: welcome

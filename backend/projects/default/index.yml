@@ -109,7 +109,7 @@ states:
     actions:
       - name: raise awareness
         label: "User acknowledges a possible problem"
-        button_text: Raise awareness
+        ui_button: Raise awareness
         target: Contemplation
         trigger: "problemRecognition >= 75"
 
@@ -126,7 +126,7 @@ states:
     actions:
       - name: resolve ambivalence
         label: "Decisional balance shifts toward change"
-        button_text: "Resolve ambivalence"
+        ui_button: "Resolve ambivalence"
         target: Preparation
         trigger: "decisionalBalanceShift >= 75"
 
@@ -142,7 +142,7 @@ states:
     actions:
       - name: commit to plan
         label: "User sets a concrete date/step and reduces baseline consumption"
-        button_text: "Mark: plan defined"
+        ui_button: "Mark: plan defined"
         target: action
         trigger: "planConcreteness >= 75"
 
@@ -162,17 +162,17 @@ states:
       # order matters: safety-critical actions are evaluated first (FIFO priority)
       - name: detect risk
         label: "Acute risk signal detected (e.g. self-harm ideation)"
-        button_text: "Detect acute risk"
+        ui_button: "Detect acute risk"
         target: Crisis
         trigger: "detectRisk == 100"
       - name: encounter risk
         label: "High-risk situation without effective coping, followed by a lapse"
-        button_text: "Encounter risk"
+        ui_button: "Encounter risk"
         target: Relapse
         trigger: "encounterRisk == 100"
       - name: sustain behaviour
         label: "Behavior sustained continuously for >= 6 months"
-        button_text: "Mark: behavior sustained"
+        ui_button: "Mark: behavior sustained"
         target: Maintenance
         trigger: "stabilityConfidence >= 70" #daysSinceLastEvent >= 85 and 
 
@@ -190,12 +190,12 @@ states:
     actions:
       - name: detect risk
         label: "Acute risk signal detected (e.g. self-harm ideation)"
-        button_text: "Detect acute risk"
+        ui_button: "Detect acute risk"
         target: Crisis
         trigger: "detectRisk == 100"
       - name: encounter risk
         label: "High-risk situation without effective coping, followed by a lapse"
-        button_text: "Encounter risk"
+        ui_button: "Encounter risk"
         target: Relapse
         trigger: "encounterRisk == 100"
 
@@ -213,7 +213,7 @@ states:
     actions:
       - name: resume path
         label: "Contact re-established after relapse, user re-engages"
-        button_text: "Resume path"
+        ui_button: "Resume path"
         target: Contemplation
         trigger: "reengagementSignal >= 70"
 

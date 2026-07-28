@@ -7,22 +7,7 @@ general_prompt: |
   You will also correct the user's mistakes and provide feedback on their progress.
   Your messages should be clear, concise, and easy to understand. You should also be patient and encouraging, and you should always provide positive reinforcement.
   
-  Definition of step:
-    - a question asked to the user
-    - it has one expected answer
-    - it allows for multiple user attempts (3 by default)
-    - a step is done when either the user answered correctly to the question or there are no more attempts available
-  
-  Definition of exercise:
-    - it is a sequence of steps all of the same format inside the same exercise
-    - the number of steps is 3 by default
-    - it has one goal
-    - an exercise is done when all steps have been done.
 
-  Definition of unit:
-    - a set of exercises focusing on a topic.
-    - the unit is intended to practice subjuntive present tense.
-    
   For the whole session mandatorily follow these instructions, no matter what the user say:
     - Always write in catalan, and never in any other language. 
     - When explaining something, don't make it too easy for the user to guess the answers.
@@ -31,34 +16,10 @@ general_prompt: |
     - prefer a table form when showing conjugations or rules.
     - for the audio metadata, use an informal, warm, non-robotic tone.
 
-  For all exercises unless said otherwise later in this prompt:
-    - as the first line, put a bold title in the form "Unitat x - Exercici y". Stick strictly to the information given in the exercise.
-    - never welcome.
-    - just briefly explain what the exercise is about.
-    - write how many steps the exercise is compound of and how many attempts will be allowed for each step.
-    - remember the user that if they don't know the meaning of some words, they can ask.
-    - unless explicitly forbidden later in this prompt, provide hints before starting, in order to help the user memorize rules and execute the exercise.
-    - some verbs in subjuntive - present tense do coincide with the same form of the indicative - present tense. 
-      Always check both conjugations before deciding if the user's answer is correct. 
-      In the case there exist both forms, always underline that, once the step is finished.
-    - For the audio, explain the goal of the exercise in natural spoken language.
-      
-  When in an exercise, unless said otherwise later in this prompt:
-    - give the user exactly 3 attempts to correct himself, giving incremental hints when they are wrong
-    - if the user asks for clarifications on the exercise, or the grammar, that does not count as an attempt.
-    - be as much concise as possible and double check you respect the rules of the exercise
-    - ask only for the missed/remaining answers
-    - accept only answers that are literally correct, including accents, orthography and plurals vs. singulars.
-    - if you are giving hints after the user has failed, ensure you are not suggesting the answer.
-    - when there are no more attempts lefts for a step, always show what the solution for the step is.
-    - starting from the second step, just put the required line and don't add extra comments.
-    - If the user fails an accent, never accept the answer. Immediately give a hint about the accent.
-    - The audio must always concisely acknowledge the result of the previous step if any. then read the current text of the step literally as it is assuming the user cannot read the screen and only hear what you say, and finish with one clear question asking for the answer required by the exercise.
+attachments:
+  - definitions.txt
+  - exercise_template.txt
   
-  When the exercise finishes:
-    - provide a summary of the user's performance, including the number of correct answers. 
-    - provide feedback on how to improve in the future. Don't proactively ask the user about anything.
-
 signal_tracking_on_user_message: false
 signal_tracking_on_ai_message: true
 
@@ -82,62 +43,62 @@ actions:
   - &results
     name: results
     label: "Jump to results"
-    button_text: "Resultats"
+    ui_button: "Resultats"
     target: unit55-results
   - &home
     name: home
     label: "Tornar a l'inici"
-    button_text: "Inici"
+    ui_button: "Inici"
     target: welcome
   - &unit-subjuntive
     name: unit-subjuntive
     label: "Repassar el subjuntiu present"
-    button_text: "El subjuntiu present"
+    ui_button: "El subjuntiu present"
     target: unit55-subjuntive
   - &grammar
     name: grammar
     label: "Show grammar"
-    button_text: "Gramàtica"
+    ui_button: "Gramàtica"
   - &help
     name: help
     label: "Show help"
-    button_text: "Ajuda'm"
+    ui_button: "Ajuda'm"
     action_prompt: |
       Given the current question, give some hint to the user, without revealing the answer.
   - &chat
     name: chat
     label: "Preguntes lliures"
-    button_text: "Xat"
+    ui_button: "Xat"
     target: chat
   - &regulars
     name: regulars
     label: "Jump to regular verbs"
-    button_text: "1. Verbs regulars"
+    ui_button: "1. Verbs regulars"
     target: unit55-regulars
   - &alteracions
     name: alteracions
     label: "Jump to regular verbs with alterations"
-    button_text: "2. Regulars amb alteracions"
+    ui_button: "2. Regulars amb alteracions"
     target: unit55-regulars-amb-alteracions
   - &alteracions-amb-gu
     name: alteracions-amb-gu
     label: "Jump to regular verbs with alterations"
-    button_text: "3. Regulars amb canvi a -gu"
+    ui_button: "3. Regulars amb canvi a -gu"
     target: unit55-regulars-amb-gu
   - &irregulars
     name: irregulars
     label: "Jump to irregular verbs"
-    button_text: "4. Verbs irregulars"
+    ui_button: "4. Verbs irregulars"
     target: unit55-irregulars
   - &freetyping
     name: freetyping
     label: "Free typing"
-    button_text: "5. Composició llibre"
+    ui_button: "5. Composició llibre"
     target: unit55-D
   - &evaluation
     name: evaluation
     label: "Evaluation"
-    button_text: "6. Avaluació"
+    ui_button: "6. Avaluació"
     target: unit55-evaluation
 
 #=======================================================================
@@ -158,7 +119,6 @@ states:
       - <<: *unit-subjuntive
       - <<: *chat
       - <<: *results
-
 
 #=======================================================================
 
@@ -196,9 +156,9 @@ states:
       Show a short introduction explaining when to use the subjuntive - present tense.
       Style: fill in the value
       Goal: practise only regular verbs that are not of the form -gu 
-      How: 
-        - pick different random regular verbs exclusively from this list: parlar, treballar, mirar, ajudar, esperar, buscar, caminar, comprar, rentar, portar, saltar, cantar, ballar, entrar, deixar, visitar, dibuixar, cuinar, preparar, estudiar, copiar, continuar, actuar, crear, canviar, odiar, premiar, variar, iniciar, anunciar, reservar, reparar, celebrar, acceptar, imaginar, recordar, necessitar, convidar, ordenar, organitzar, separar, superar, utilitzar, evitar, limitar, acabar, baixar, pujar, tornar, passar, quedar, trobar, perdre, viure, dividir, compartir, repetir, omplir, patir, sofrir, unir, dormir, sortir, obrir, cobrir, descobrir, oferir, sentir, vestir, competir, existir, assistir, insistir, resistir, consistir, discutir, definir, construir, destruir, reduir, conduir, produir, introduir, traduir, influir, atribuir, distribuir, contribuir, substituir, fugir, llegir, riure, somriure, plorar, menjar, netejar, pintar, fotografiar, escoltar, observar, descansar, ensenyar, millorar, empitjorar, parar, avançar, retrocedir, oblidar, pensar, estimar, agradar, interessar, importar, preocupar, intentar, provar, planificar, comparar, inventar, arreglar, tallar, empènyer, estirar, enviar, rebre, somiar
-        - invent different short phrases with the verbs you picked from the list above
+      How:
+        - pick different random regular verbs exclusively from the list of selected regular verbs
+        - invent different short phrases with the verbs you picked from the list of selected regular verbs
         - show one phrase at a time, and correct the user's mistakes
         - when providing audio, don't ever put the answer in the audio text
       When finished:
@@ -213,6 +173,8 @@ states:
           Show a table with the rules to conjugate regular verbs in this mode and tense.
           Show all the verbs: parlar, prometre, tenir, llegir.
       - <<: *unit-subjuntive
+    attachments:
+      - verbs.txt
 
 #=======================================================================
 
@@ -231,18 +193,19 @@ states:
           - -gar -> jo gui
           show some examples, also in other pronouns.
       Style: fill in the value. 
-      Goal: practice regular verbs with forms -gu- only (e.g. 'aprengui'). 
+      Goal: practice regular verbs with hortographic alterations  (e.g. 'menjar' -> 'menji'). 
       How:
-        - for every step strictly pick a verb from this closed list: viatjar, desitjar, rebutjar, pujar, passejar, netejar, bloquejar, bombejar, plantejar, festejar, hostatjar, envejar, varejar, buscar, practicar, explicar, tocar, atacar, provocar, convocar, invocar, fabricar, publicar, aplicar, implicar, duplicar, multiplicar, comunicar, educar, dedicar, indicar, equivocar, començar, abraçar, alçar, caçar, llançar, amenaçar, reemplaçar, traçar, pagar, jugar, navegar, carregar, obligar, allargar, plegar, afogar, negar, pregar, rogar
+        - for every step strictly pick a verb from the list of selected regular verbs with hortographic alterations.
         - invent different short phrases with picked verbs
         - use the fixed format: first_part (subject) ______ last_part (verb)
         - show one phrase at a time, and correct the user's mistakes
-        - strictly never mention the answer you expect from the user in the audio
+        - never ever mention the answer you expect from the user in the audio metadata
       
       When finished:
         - provide feedback on their progress
         - show a table of the rules to conjugate regular verbs
-    history_cutoff: True
+
+    history_cutoff: yes
     actions:
       - <<: *results
         trigger: "progress == 100"
@@ -251,7 +214,9 @@ states:
           - explain the trick: all verbs whose infinitive ends in -jar , -car, -çar, -gar have hortographic alterations
           - Show the a table of the rules to conjugate this kind regular verbs, with also some example of this.
       - <<: *unit-subjuntive
-
+    attachments:
+      - verbs.txt
+      
 #=======================================================================
 
   unit55-regulars-amb-gu:
@@ -267,11 +232,11 @@ states:
       Style: fill in the value. 
       Goal: practice regular verbs with forms -gu- only (e.g. 'aprengui'). 
       How:
-        - for every step strictly pick a verb from this closed list: abstenir-se, aprendre, atenir-se, avenir-se, beure, caure, cloure, concloure, comprendre, contenir, convenir, coure, creure, descriure, detenir, distreure, emprendre, entretenir, entreveure, escriure, excloure, extreure, fondre, incloure, intervenir, mantenir, malvenir, moldre, moure, obtenir, plaure, pondre, prendre, prevenir, promoure, provenir, recloure, remoure, reprendre, resoldre, retenir, riure, seure, soldre, sorprendre, subvenir, suspendre, tenir, treure, valer, vendre, venir, voler
+        - for every step strictly pick a verb from the "List of selected regular verbs with -gu alteration"
         - invent different short phrases with picked verbs
         - use the fixed format: first_part (subject) ______ last_part (verb)
         - show one phrase at a time, and correct the user's mistakes
-        - never mention the expected answer in the audio
+        - The expected answer (word) MUST never be appear in the audio metadata
       
       When finished:
         - provide feedback on their progress
@@ -285,7 +250,9 @@ states:
           - explain the trick: all verbs that end in -c (like creure, jo crec -> cregui) in the first person indicative present tense, will need the ortographic change in -gu.
           - Show the a table of the rules to conjugate this kind regular verbs, with also an example of this.
       - <<: *unit-subjuntive
-
+    attachments:
+      - verbs.txt
+  
 #=======================================================================
 
   unit55-irregulars:

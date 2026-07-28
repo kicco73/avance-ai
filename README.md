@@ -98,7 +98,7 @@ referenced from it (see `backend/projects/README.md`) live alongside it in
 
 1. Add/edit an entry under `states:` with `label`, `description`,
    `contextual_prompt`, and the list of `actions` (each with `name`, `label`,
-   `button_text`, `target`). `final` isn't a field: a state is final
+   `ui_button`, `target`). `final` isn't a field: a state is final
    automatically when it has no actions.
 2. Make sure every `target` referenced by an action matches an existing state
    key — the backend validates this constraint at startup and won't start if the

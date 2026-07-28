@@ -238,7 +238,7 @@ class ProjectService(object):
                 "target": action.target,
                 "action_name": action.name,
                 "label": action.label,
-                "button_text": action.button_text,
+                "ui_button": action.ui_button,
                 "trigger": action.trigger,
                 "has_trigger": action.trigger is not None,
                 "action_prompt": action.action_prompt,

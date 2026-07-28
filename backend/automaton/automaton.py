@@ -22,7 +22,7 @@ class Attachment:
 class Action:
     name: str
     label: str
-    button_text: str
+    ui_button: str
     target: str
     # Boolean expression (simpleeval syntax) over signal names, evaluated by
     # evaluate_triggers()/preview_triggers() for auto-tracking. None means the
@@ -139,7 +139,7 @@ class Automaton(object):
                 {
                     "name": a.name,
                     "label": a.label,
-                    "button_text": a.button_text,
+                    "ui_button": a.ui_button,
                     "target": a.target,
                     # Not the trigger expression itself, just whether one is
                     # set — the frontend uses this to decide button

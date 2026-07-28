@@ -36,7 +36,7 @@ const visibleActions = computed(() =>
       :disabled="disabled"
       @click="emit('action', action.name)"
     >
-      {{ action.button_text }}
+      {{ action.ui_button }}
     </button>
   </div>
 </template>

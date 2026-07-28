@@ -85,7 +85,7 @@ class AutomatonBuilder(object):
         init_action = Action(
             name="init_action",
             label="init_action",
-            button_text="",
+            ui_button="",
             target=raw_init_action["target"],
             action_prompt=raw_init_action["action_prompt"].strip() if raw_init_action.get("action_prompt") else None,
         )
@@ -104,7 +104,7 @@ class AutomatonBuilder(object):
                 Action(
                     name=raw_action["name"],
                     label=raw_action["label"],
-                    button_text=raw_action["button_text"],
+                    ui_button=raw_action["ui_button"],
                     # Missing 'target' means a self-loop: the action stays
                     # on the state it fired from.
                     target=raw_action.get("target", key),

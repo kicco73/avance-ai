@@ -533,7 +533,7 @@ function edgeToCyData(e, id) {
     target: e.target,
     label: e.label,
     actionName: e.action_name,
-    buttonText: e.button_text,
+    buttonText: e.ui_button,
     trigger: e.trigger,
     hasTrigger: e.has_trigger,
     actionPrompt: e.action_prompt
