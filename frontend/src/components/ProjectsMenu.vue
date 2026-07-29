@@ -49,9 +49,6 @@ function selectProject(name) {
   open.value = false
   emit('select', name)
 }
-
-// Edits the active project, same target as selectDownload() — there's no
-// other project selected in this menu to edit instead.
 function selectEdit() {
   if (!activeProjectName.value) return
   open.value = false
@@ -61,12 +58,6 @@ function selectEdit() {
 function selectUpload() {
   open.value = false
   emit('upload')
-}
-
-function selectDownload() {
-  if (!activeProjectName.value) return
-  open.value = false
-  emit('download', activeProjectName.value)
 }
 
 // Destructive and irreversible, so confirm via the browser's own dialog
@@ -113,9 +104,6 @@ onBeforeUnmount(() => {
         </li>
         <li>
           <button class="projects-item projects-upload-item" @click="selectUpload">Upload project...</button>
-        </li>
-        <li>
-          <button class="projects-item projects-download-item" @click="selectDownload">Download project</button>
         </li>
         <li>
           <button

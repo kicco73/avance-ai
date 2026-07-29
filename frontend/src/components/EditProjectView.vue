@@ -1052,7 +1052,7 @@ onBeforeUnmount(() => {
               :class="{ 'inspector-tab-btn-active': inspectorTab === 'graph' }"
               @click="setInspectorTab('graph')"
             >
-              State machine
+              States
             </button>
             <button
               class="inspector-tab-btn"
