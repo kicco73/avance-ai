@@ -12,13 +12,13 @@ on backend restart or on clicking "Reset".
 
 ```bash
 cd backend
-python3 -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate        # on Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .config.example.yml .config.yml
 
 # open .config.yml: set ai-service[0].name (anthropic or gemini) and its matching model/key
-uvicorn main:app --reload
+uvicorn main:app --reload --reload-dir .
 ```
 
 The backend starts on `http://localhost:8000`.

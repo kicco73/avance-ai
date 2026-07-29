@@ -1,0 +1,313 @@
+from __future__ import annotations
+
+import inspect
+from http import HTTPStatus
+from urllib.parse import quote
+
+from fastapi import APIRouter, HTTPException, Request, Response, UploadFile
+from fastapi.responses import StreamingResponse
+
+from automaton.automaton import Automaton, StatePayload
+from talk.talk_service import TalkService, TalkServiceNotAvailableError
+from listen.listen_service import ListenService, ListenServiceError, ListenServiceNotAvailableError
+from chat.chat_service import ChatService, ChatServiceError
+from project.project_service import ProjectService
+from schemas import (
+    ActionRequest,
+    AutoTrackingRequest,
+    ChatMessageRequest,
+    TriggersPreviewRequest,
+)
+
+
+def route(method: str, path: str, **kwargs):
+    def decorator(func):
+        func.__route_info__ = (method, path, kwargs)
+        return func
+    return decorator
+
+
+def get(path: str, **kwargs):
+    return route("GET", path, **kwargs)
+
+
+def post(path: str, **kwargs):
+    return route("POST", path, **kwargs)
+
+
+def put(path: str, **kwargs):
+    return route("PUT", path, **kwargs)
+
+
+def delete(path: str, **kwargs):
+    return route("DELETE", path, **kwargs)
+
+
+class AvanceController(object):
+    def __init__(
+        self,
+        chat_service: ChatService,
+        project_service: ProjectService,
+        talk_service: TalkService | None,
+        listen_service: ListenService | None,
+    ) -> None:
+        self.chat_service = chat_service
+        self.project_service = project_service
+        self.talk_service = talk_service
+        self.listen_service = listen_service
+
+        self.router = APIRouter()
+        for _, member in inspect.getmembers(self, predicate=inspect.ismethod):
+            info = getattr(member, "__route_info__", None)
+            if info is not None:
+                method, path, kwargs = info
+                self.router.add_api_route(path, member, methods=[method], **kwargs)
+
+    @get("/api/chat/signals")
+    def get_signals(self):
+        """Read-only: never calls the AI. Signals are only (re)computed inside
+        the auto-tracking flow (see ChatService._run_auto_tracking); this just
+        reports the latest persisted snapshot."""
+        return self.chat_service.signals.get_latest_signals()
+
+    @get("/api/state")
+    def get_state(self) -> StatePayload:
+        """Also the frontend's boot/readiness ping (see App.vue's
+        pingBackend) — piggybacks talk_enabled/listen_enabled here so it
+        stays the one call needed to know both "is the server up" and
+        "which voice features does it actually have configured"."""
+
+        try:
+            payload = self.project_service.get_active_state_payload()
+        except:
+            payload = {}
+            
+        payload["talk_enabled"] = self.talk_service is not None
+        payload["listen_enabled"] = self.listen_service is not None
+        return payload
+
+    @get("/api/chat/messages")
+    async def get_messages(self):
+        return await self.chat_service.get_messages()
+
+    @post("/api/chat/messages")
+    async def post_message(self, req: ChatMessageRequest):
+        text = req.message.strip()
+        if not text:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Message cannot be empty.")
+        return await self.chat_service.process_turn(text)
+
+    @post("/api/action")
+    async def post_action(self, req: ActionRequest):
+        try:
+            return await self.chat_service.apply_manual_action(req.action_name)
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @get("/api/chat/autotracking")
+    def get_autotracking(self):
+        return {"enabled": self.chat_service.auto_tracking_enabled}
+
+    @post("/api/chat/autotracking")
+    def post_autotracking(self, req: AutoTrackingRequest):
+        self.chat_service.auto_tracking_enabled = req.enabled
+        return {"enabled": self.chat_service.auto_tracking_enabled}
+
+    @get("/api/chat/messages/{message_id}/audio")
+    def get_message_audio(self, message_id: int, request: Request):
+        """Generates (or replays a cached/in-flight) audio for message_id,
+        streaming-compatible. 404 if the message had no [audio] tag — the
+        frontend treats that as "no audio available", not a failure (see
+        api.js's messageAudioUrl)."""
+        if self.talk_service is None:
+            raise HTTPException(
+                status_code=HTTPStatus.SERVICE_UNAVAILABLE, detail=str(TalkServiceNotAvailableError())
+            )
+        audio_text = self.chat_service.get_message_audio_text(message_id)
+        if not audio_text:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="No audio available for this message.")
+        return StreamingResponse(
+            self._stream_audio_until_disconnected(request, audio_text), media_type="audio/wav"
+        )
+
+    async def _stream_audio_until_disconnected(self, request: Request, audio_text: str):
+        # A dropped/aborted fetch (see audio.js's stopCurrentAudio) doesn't
+        # reliably surface as a send() failure — Starlette can keep writing
+        # into a closed socket for a while. Polling is_disconnected() stops
+        # the provider's work immediately instead of wasting a full synthesis.
+        
+        if self.talk_service is None:
+            raise TalkServiceNotAvailableError("Talk service is not available")
+        
+        generation = self.talk_service.generate(audio_text)
+        try:
+            async for chunk in generation:
+                if await request.is_disconnected():
+                    break
+                yield chunk
+        finally:
+            aclose = getattr(generation, "aclose", None)
+            if aclose and callable(aclose):
+                aclose()
+
+    @post("/api/listen/transcribe")
+    async def post_listen_transcribe(self, file: UploadFile):
+        """Isolated verification endpoint: not wired into process_turn or
+        the chat frontend yet — just confirms ListenService end-to-end."""
+        if self.listen_service is None:
+            raise HTTPException(
+                status_code=HTTPStatus.SERVICE_UNAVAILABLE, detail=str(ListenServiceNotAvailableError())
+            )
+        audio_bytes = await file.read()
+        try:
+            text = await self.listen_service.transcribe(audio_bytes)
+        except ListenServiceError as exc:
+            raise HTTPException(status_code=HTTPStatus.SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+        return {"text": text}
+
+    @post("/api/triggers/preview")
+    def post_triggers_preview(self, req: TriggersPreviewRequest):
+        automaton, state = self.project_service.get_active_automaton_and_state()
+        return automaton.preview_triggers(state.key, req.signals)
+
+    @post("/api/chat/reset")
+    async def post_reset(self):
+        async with self.chat_service.lock:
+            self.project_service.reset_active_project()
+            self.chat_service.auto_tracking_enabled = True
+        return self.project_service.get_active_state_payload()
+
+    @get("/api/projects")
+    def get_projects(self):
+        return self.project_service.list_projects()
+
+    @put("/api/projects/{project_name}/activate")
+    async def activate_project(self, project_name: str):
+        try:
+            await self.project_service.activate_project_idempotent(project_name, self._activate_project)
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return {
+            "success": True,
+            "project_name": project_name,
+        }
+
+    @get("/api/projects/{project_name}")
+    def get_project(self, project_name: str):
+        """Downloads `project_name` as a zip — the read side of PUT
+        /api/projects/{project_name}, built so it round-trips back through PUT
+        with no transformation. Not restricted to the active project."""
+        try:
+            content = self.project_service.export_project_zip(project_name)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        encoded_project_name = quote(project_name)
+        return Response(
+            content=content,
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": f'attachment; filename="project.zip"; filename*=UTF-8\'\'{encoded_project_name}.zip'
+            },
+        )
+
+    @put("/api/projects/{project_name}")
+    async def put_project(self, project_name: str, request: Request):
+        """Creates or replaces `project_name` from a raw body (YAML or zip, see
+        ProjectService._looks_like_zip). Stage -> validate -> only on success
+        commit, swap, and wipe `project_name`'s prior conversation data."""
+        content = await request.body()
+        content_type = request.headers.get("content-type")
+
+        try:
+            result = await self.project_service.put_project(project_name, content, content_type, self._activate_project)
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @get("/api/projects/{project_name}/graph")
+    def get_project_graph(self, project_name: str):
+        """The project's state machine (states as nodes, actions as edges)
+        of `project_name`'s last saved index.yml, for the "Edit project"
+        view's Inspect panel graph — not restricted to the active project."""
+        try:
+            return self.project_service.get_project_graph(project_name)
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @get("/api/projects/{project_name}/signals")
+    def get_project_signals(self, project_name: str):
+        """Signal definitions (name/ui_label/description) of `project_name`'s
+        last saved index.yml, for the "Edit project" view's Inspect panel —
+        not restricted to the active project."""
+        try:
+            return {"signals": self.project_service.get_project_signals(project_name)}
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @get("/api/projects/{project_name}/files")
+    def get_project_files(self, project_name: str):
+        """Text-editable files inside `project_name`'s directory (index.yml
+        plus any text attachments), for the "Edit project" view's file
+        explorer panel."""
+        try:
+            return {"files": self.project_service.list_project_files(project_name)}
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+
+    @get("/api/projects/{project_name}/files/{file_name}")
+    def get_project_file(self, project_name: str, file_name: str):
+        """Raw text content of one of `project_name`'s files, for the "Edit
+        project" view (see ProjectService.get_project_file)."""
+        try:
+            content = self.project_service.get_project_file(project_name, file_name)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return Response(content=content, media_type="text/plain; charset=utf-8")
+
+    @put("/api/projects/{project_name}/files/{file_name}")
+    async def put_project_file(self, project_name: str, file_name: str, request: Request):
+        """Creates or edits one of `project_name`'s files in place — stage a
+        copy of the whole project dir, validate, and only on success replace
+        the real one. Unlike PUT /api/projects/{project_name}, this never
+        creates a new project."""
+        content = await request.body()
+        try:
+            result = await self.project_service.put_project_file(project_name, file_name, content, self._activate_project)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return result
+
+    @delete("/api/projects/{project_name}/files/{file_name}")
+    async def delete_project_file(self, project_name: str, file_name: str):
+        """Deletes one text attachment from `project_name`'s directory —
+        index.yml itself is rejected (see ProjectService.delete_project_file)."""
+        try:
+            await self.project_service.delete_project_file(project_name, file_name, self._activate_project)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except PermissionError as exc:
+            raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return {"success": True}
+
+    @delete("/api/projects/{project_name}")
+    async def delete_project(self, project_name: str):
+
+        try:
+            await self.project_service.delete_project(project_name, self._activate_project)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except PermissionError as exc:
+            raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail=str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(status_code=HTTPStatus.INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+        return {"success": True}
+
+    async def _activate_project(self, new_automaton: Automaton) -> None:
+        # Unused: kept only to match ProjectService's CommitCallback shape.
+        async with self.chat_service.lock:
+            self.chat_service.auto_tracking_enabled = True
