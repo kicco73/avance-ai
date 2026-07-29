@@ -252,6 +252,7 @@ onBeforeUnmount(() => {
       :project-name="editProjectName"
       @close="showEditProject = false"
       @saved="handleModelEditSaved"
+      @download="handleModelDownload"
     />
   </div>
 </template>

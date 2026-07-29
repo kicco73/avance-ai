@@ -37,7 +37,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['close', 'saved'])
+const emit = defineEmits(['close', 'saved', 'download'])
 
 const UPLOADABLE_PATTERN = /\.(txt|ya?ml)$/i
 const YAML_PATTERN = /\.ya?ml$/i
@@ -826,6 +826,11 @@ function toggleChat() {
   chatOpen.value = !chatOpen.value
 }
 
+function handleDownload() {
+  emit('download', props.projectName)
+  alert("Project " + props.projectName + " downloaded to your local folder.")
+}
+
 function startExplorerDrag(event) {
   dragTarget = 'explorer'
   event.preventDefault()
@@ -933,6 +938,7 @@ onBeforeUnmount(() => {
         >
           Inspect
         </button>
+        <button class="inspect-btn" @click="handleDownload">Download</button>
         <button class="close-btn" @click="handleClose">Back</button>
       </div>
     </div>
