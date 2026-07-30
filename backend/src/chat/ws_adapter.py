@@ -14,6 +14,7 @@ from chat.chat_service import ChatService, ChatServiceError
 
 logger = logging.getLogger(__name__)
 
+
 class WsAdapter(object):
     def __init__(self, chat_service: ChatService) -> None:
         self._chat_service = chat_service
@@ -41,24 +42,25 @@ class WsAdapter(object):
                         "retry_in": retry_in,
                     })
 
+                async def _push_chunk(chunk: str) -> None:
+                    await websocket.send_json({
+                        "type": "chunk",
+                        "content": chunk,
+                    })
+
                 try:
-                    result = await self._chat_service.process_turn(text, on_retry=_push_retrying)
+                    result = await self._chat_service.process_turn(
+                        text,
+                        on_retry=_push_retrying,
+                        on_chunk=_push_chunk,
+                    )
                 except (ChatServiceError, AIServiceError) as exc:
-                    # ChatServiceError never reaches FastAPI's global exception
-                    # handlers here (those only apply to HTTP requests, not
-                    # websocket scope), so LLMProviderError needs the same
-                    # explicit translation into an 'error' frame.
                     await websocket.send_json({
                         "type": "error",
-                        "error": {"message": exc.message, "detail": exc.detail},
+                        "error": {"message": exc.message, "detail": getattr(exc, "detail", str(exc))},
                     })
                     continue
                 except Exception as exc:
-                    # Anything else unforeseen: without this, the exception
-                    # propagates past this inner try, past the outer one
-                    # (which only catches WebSocketDisconnect), and kills the
-                    # loop — the socket dies and every future message on it
-                    # would fail the same way until the client reconnects.
                     logger.exception(f"Unexpected error while processing a chat turn: {str(exc)}")
                     await websocket.send_json({
                         "type": "error",

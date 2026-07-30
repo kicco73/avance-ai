@@ -10,6 +10,7 @@ from ai.llm_provider import (
     AIServiceError,
     AIServiceProviderRateLimitedError,
     AIServiceProviderUnavailableError,
+    AIServiceConfig,
 )
 
 CLAUDE_DEFAULT_MODEL = "claude-sonnet-5"
@@ -40,9 +41,9 @@ def _build_messages(history: list[dict]) -> list[dict]:
 
 
 class AnthropicProvider(LLMProvider):
-    def __init__(self, api_key: str, model: str) -> None:
-        self._claude_model = model or CLAUDE_DEFAULT_MODEL
-        self._client = anthropic.Anthropic(api_key=api_key, timeout=REQUEST_TIMEOUT_SECONDS)
+    def __init__(self, config: AIServiceConfig) -> None:
+        self._claude_model = config.model or CLAUDE_DEFAULT_MODEL
+        self._client = anthropic.Anthropic(api_key=config.key, timeout=REQUEST_TIMEOUT_SECONDS)
 
     def generate(self, system_prompt: str, history: list[dict]) -> str:
         try:

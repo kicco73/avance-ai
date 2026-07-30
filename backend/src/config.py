@@ -1,22 +1,13 @@
-"""Typed access to backend/.config.yml, the single source of application
-configuration (replaces the old .env/os.environ approach). Read and
-validated once at startup by main.py.
-"""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
 import yaml
 
+from ai.llm_provider import AIServiceConfig
+
 class ConfigError(Exception):
     """Raised when backend/.config.yml is missing or structurally invalid."""
-
-@dataclass(frozen=True)
-class AiServiceConfig:
-    name: str
-    model: str
-    key: str
-
 
 @dataclass(frozen=True)
 class TalkServiceConfig:
@@ -45,7 +36,7 @@ class AppConfig:
     ]
 
     @classmethod
-    def _load_yml(cls) -> dict:
+    def _load_yml(cls):
         for path in cls.CONFIG_PATHS:
             if not path.is_file():
                 continue
@@ -151,7 +142,7 @@ class AppConfig:
         return services
 
     @classmethod
-    def _parse_ai_services(cls, raw: dict, path: Path) -> list[AiServiceConfig]:
+    def _parse_ai_services(cls, raw: dict, path: Path) -> list[AIServiceConfig]:
         entries = cls._get_providers(raw, "ai-service", path)
 
         services = []
@@ -161,13 +152,16 @@ class AppConfig:
             name = entry.get("name")
             model = entry.get("model")
             key = entry.get("key")
+            url = entry.get("url")
             if not isinstance(name, str) or not name.strip():
                 raise ConfigError(f"{path}: 'ai-service.providers[{i}].name' is missing or empty.")
             if not isinstance(model, str) or not model.strip():
                 raise ConfigError(f"{path}: 'ai-service.providers[{i}].model' is missing or empty.")
             if not isinstance(key, str):
                 raise ConfigError(f"{path}: 'ai-service.providers[{i}].key' must be a string.")
-            services.append(AiServiceConfig(name=name.strip(), model=model.strip(), key=key))
+            if key is not None and not isinstance(key, str):
+                raise ConfigError(f"{path}: 'ai-service.providers[{i}].key' must be a string or None.")
+            services.append(AIServiceConfig(name=name.strip(), model=model.strip(), key=key, url=url))
         return services
 
     def __init__(self) -> None:

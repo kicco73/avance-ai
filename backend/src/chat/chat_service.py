@@ -10,6 +10,7 @@ import logging
 import re
 from datetime import datetime, timezone
 from http import HTTPStatus
+from typing import Awaitable, Callable
 
 from automaton.automaton import Action, Automaton, State, StatePayload
 from db import Db
@@ -21,6 +22,8 @@ from chat.signals import Signals
 from project.project_service import ProjectService
 
 logger = logging.getLogger(__name__)
+
+OnChunk = Callable[[str], Awaitable[None]]
 
 # System prompt for states with a `fixed_message` (e.g. crisis): the model
 # must translate it verbatim, not generate a free-form reply. Used for both
@@ -34,7 +37,7 @@ FIXED_MESSAGE_INSTRUCTIONS = (
 )
 
 # The AI is prompted (see the active project's index.yml) to end its
-# reply with a short [audio]...[/audio] tag — the phrase to narrate,
+# reply with a short [avance]...[/avance] tag — the phrase to narrate,
 # distinct from the reply text itself. The tagged block (tag and content)
 # is stripped from what gets persisted/shown; the content between the
 # tags is what's sent to TTS instead of the reply text.
@@ -51,7 +54,7 @@ def _extract_visible_text_and_metadata(text: str) -> tuple[str, dict | None]:
         metadata = json.loads(tag_text) or {}
         assert isinstance(metadata, dict)
     except Exception as exc:
-        logger.warning(f"_extract_visible_text_and_metadata(): f{exc}")
+        logger.warning(f"_extract_visible_text_and_metadata(): {exc}")
         metadata = {}
     return visible_text, metadata
 
@@ -65,6 +68,7 @@ class ChatServiceError(Exception):
         self.message = message
         self.detail = detail
         self.status_code = status_code
+
 
 class ChatService(object):
     def __init__(
@@ -144,12 +148,8 @@ class ChatService(object):
         return self._db.get_last_transition_timestamp(project_name)
 
     def _build_turn_prompt(self, automaton: Automaton, state: State) -> tuple[str, list]:
-        # Shared by a normal chat turn and open_if_needed: system prompt +
-        # attachments for a turn landing on `state`.
         if state.fixed_message:
             logger.warning("Translating fixed_message for state '%s'.", state.key)
-            # A pure translation task doesn't use contextual_prompt, so it
-            # doesn't carry the attachments meant for it either.
             return FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message), []
 
         metadata_prompt = self._metadata_handler.build_prompt(self.signals.get_definition())
@@ -157,9 +157,6 @@ class ChatService(object):
         return system_prompt, list(automaton.general_attachments.values()) + list(state.attachments.values())
 
     def _should_generate_opening_message(self, project_name: str, state: State) -> bool:
-        # Evaluated BEFORE any message this same transition adds is
-        # persisted (see _messages_for_transition) — an action_prompt
-        # message must never make this gate think `state` already spoke.
         content_since = self._history_cutoff(project_name, state)
         chat_blocked = state.final or not state.chat
         gate_since = self._db.get_last_transition_timestamp(project_name) if chat_blocked else content_since
@@ -206,23 +203,11 @@ class ChatService(object):
 
         reply = await self._ai_service.generate(system_prompt, chat_history)
         visible_text, metadata = _extract_visible_text_and_metadata(reply)
-        # Deliberately not persisted: shown for this turn only, never part
-        # of future history/signals. No id, so no per-message audio either
-        # (the spoken-text toggle still works client-side off audio_text).
         return {"id": None, "content": visible_text, "audio_text": self._metadata_handler.audio_text(metadata)}
 
     async def _messages_for_transition(
         self, action: Action, project_name: str, automaton: Automaton, new_state: State, *, is_self_loop: bool
     ) -> list[dict]:
-        # Shared by the auto-tracking and manual-action paths: action_prompt
-        # (if set) always generates first, then the destination state's own
-        # opening/fixed_message (existing, gated mechanism) — independent of
-        # each other, so both can land for the same transition. Eligibility
-        # for the opening message is decided BEFORE action_prompt's message
-        # is persisted, so it never sees that message as "already spoken".
-        # A self-loop (action.target == the state it fired from) must have
-        # no side effect beyond action_prompt — it re-enters a state that
-        # was never really left, not a genuine new entry to open.
         should_open = not is_self_loop and self._should_generate_opening_message(project_name, new_state)
 
         messages = []
@@ -237,10 +222,6 @@ class ChatService(object):
     async def _run_auto_tracking(
         self, pending_message: dict | None, project_name: str, automaton: Automaton, state: State, signal_values: dict | None
     ) -> tuple[Action | None, State, list[dict]]:
-        # Whether to run auto-tracking at all is ChatService's own toggle
-        # (see POST /api/chat/autotracking) — everything past that point
-        # (signal computation/fallback, trigger evaluation, applying the
-        # transition) is AutoTracker's job, not this method's.
         if not self.auto_tracking_enabled:
             return None, state, []
 
@@ -254,11 +235,6 @@ class ChatService(object):
         return action, new_state, messages
 
     async def apply_manual_action(self, action_name: str) -> dict:
-        """Applies a manual (button) action and, same as an auto-tracking
-        transition, generates its action_prompt message (if any) and the
-        destination state's opening message if it hasn't spoken yet —
-        ProjectService's own apply_manual_action() only performs the
-        transition; it has no way to call the LLM."""
         if self.lock.locked():
             raise ChatServiceError("A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT)
         async with self.lock:
@@ -273,13 +249,17 @@ class ChatService(object):
                 "reply": reply,
             }
 
-    async def process_turn(self, text: str, on_retry: OnRetry | None = None) -> dict:
+    async def process_turn(
+        self, text: str, on_retry: OnRetry | None = None, on_chunk: OnChunk | None = None
+    ) -> dict:
         if self.lock.locked():
             raise ChatServiceError("A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT)
         async with self.lock:
-            return await self._process_turn_locked(text, on_retry)
+            return await self._process_turn_locked(text, on_retry, on_chunk)
 
-    async def _process_turn_locked(self, text: str, on_retry: OnRetry | None) -> dict:
+    async def _process_turn_locked(
+        self, text: str, on_retry: OnRetry | None, on_chunk: OnChunk | None
+    ) -> dict:
         automaton, state = self._project_service.get_active_automaton_and_state()
 
         if not state.chat:
@@ -301,11 +281,6 @@ class ChatService(object):
 
         self._db.save_message("user", text, project_name)
 
-        # Phase 1's auto-tracking may have landed us on a state that never
-        # generates a free-form reply (chat: false — typically a
-        # fixed_message state): its own opening/fixed message is already in
-        # `messages` above (see _messages_for_transition) — generating a
-        # second "normal" reply here would show the same content twice.
         if state.chat:
             system_prompt, turn_attachments = self._build_turn_prompt(automaton, state)
 
@@ -313,7 +288,15 @@ class ChatService(object):
             since = self._history_cutoff(project_name, state)
             chat_history = priming_messages + self._strip_timestamps(self._db.get_messages(project_name, since=since))
 
-            reply = await self._ai_service.generate(system_prompt, chat_history, on_retry=on_retry)
+            if on_chunk is not None:
+                full_raw_reply = ""
+                async for chunk in self._ai_service.generate_stream(system_prompt, chat_history):
+                    full_raw_reply += chunk
+                    await on_chunk(chunk)
+                reply = full_raw_reply
+            else:
+                reply = await self._ai_service.generate(system_prompt, chat_history, on_retry=on_retry)
+
             visible_reply, metadata = _extract_visible_text_and_metadata(reply)
             audio_text = self._metadata_handler.audio_text(metadata)
             assistant_id = self._db.save_message("assistant", visible_reply, project_name, audio_text=audio_text)

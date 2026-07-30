@@ -8,7 +8,7 @@ async function apiFetch(url, options, { parse = 'json' } = {}) {
   try {
     res = await fetch(url, options)
   } catch (err) {
-    if (err.name === 'AbortError') throw err // caller-driven timeout/cancel, not a user-facing failure
+    if (err.name === 'AbortError') throw err
     setApiError('Unable to reach the backend.', err.message)
     throw err
   }
@@ -23,7 +23,7 @@ async function apiFetch(url, options, { parse = 'json' } = {}) {
         detail = body.error.detail ?? ''
       }
     } catch {
-      // ignore non-JSON body
+      
     }
     setApiError(message, detail)
     const err = new Error(message)
@@ -37,9 +37,6 @@ async function apiFetch(url, options, { parse = 'json' } = {}) {
   return res.json()
 }
 
-// Also used as the initial-boot ping (see App.vue): `signal` lets that
-// caller bound each attempt with a timeout, since a plain fetch() never
-// times out on its own against a hung connection.
 export function getState(signal) {
   return apiFetch(`${API_URL}/state`, { signal })
 }
@@ -48,17 +45,68 @@ export function getMessages() {
   return apiFetch(`${API_URL}/chat/messages`)
 }
 
-// Chat normally runs over a websocket: the backend pushes status updates
-// (retrying, done, error) as they happen instead of the client polling for
-// them. See chatClient.js for the transport choice + fallback.
 export function createChatSocket() {
   return new WebSocket(WS_URL)
 }
 
-// Synchronous REST alternative to the websocket, for one chat turn — used
-// by chatClient.js once the websocket is confirmed unavailable. No
-// intermediate "retrying" notifications: the backend still retries
-// server-side, just silently from this transport's point of view.
+export function sendWebSocketMessage(payload, { onChunk, onStatus, onDone, onError } = {}) {
+  return new Promise((resolve, reject) => {
+    let ws
+    try {
+      ws = createChatSocket()
+    } catch (err) {
+      if (onError) onError(err)
+      reject(err)
+      return
+    }
+
+    ws.onopen = () => {
+      const messageData = typeof payload === 'string' ? { message: payload } : payload
+      ws.send(JSON.stringify(messageData))
+    }
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+
+        if (data.type === 'status' || data.status) {
+          if (onStatus) onStatus(data.status || data.message)
+        }
+        if (data.type === 'chunk' || data.chunk || data.delta || data.content) {
+          const chunkText = data.chunk ?? data.delta ?? data.content ?? ''
+          if (onChunk) onChunk(chunkText)
+        }
+        if (data.type === 'done' || data.done || data.finished) {
+          if (onDone) onDone(data)
+          ws.close()
+          resolve(data)
+        }
+        if (data.type === 'error' || data.error) {
+          const errMsg = data.error?.message || data.error || 'WebSocket Streaming Error'
+          setApiError(errMsg, data.error?.detail || '')
+          const err = new Error(errMsg)
+          if (onError) onError(err)
+          ws.close()
+          reject(err)
+        }
+      } catch (e) {
+        if (onChunk) onChunk(event.data)
+      }
+    }
+
+    ws.onerror = (evt) => {
+      const err = new Error('WebSocket connection error')
+      setApiError('WebSocket connection error', '')
+      if (onError) onError(err)
+      reject(err)
+    }
+
+    ws.onclose = () => {
+      
+    }
+  })
+}
+
 export function postChatMessage(text) {
   return apiFetch(`${API_URL}/chat/messages`, {
     method: 'POST',
@@ -67,10 +115,6 @@ export function postChatMessage(text) {
   })
 }
 
-// `audioBlob` goes up as multipart/form-data — no Content-Type header set
-// here, so fetch() derives the correct boundary itself from the FormData
-// body. Routed through apiFetch like everything else: a transcription
-// failure surfaces in the same shared error area as any other REST call.
 export function postListenTranscribe(audioBlob) {
   const formData = new FormData()
   formData.append('file', audioBlob, 'recording.webm')
@@ -104,10 +148,6 @@ export function postAutoTracking(enabled) {
   })
 }
 
-// Not fetched through apiFetch: a missing audio (404, e.g. purged or never
-// generated) must be silent, not routed through the shared error store —
-// see audio.js's playMessageAudio, which just points a plain <audio>-style
-// element at this URL and lets a 404 fail quietly on its own.
 export function messageAudioUrl(messageId) {
   return `${API_URL}/chat/messages/${messageId}/audio`
 }
