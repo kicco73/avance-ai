@@ -119,7 +119,7 @@ class Signals(object):
         build_priming_messages: BuildPrimingMessages,
         pending_message: dict | None = None,
         since: datetime | None = None,
-    ) -> list[SignalPayload]:
+    ) -> dict[str,SignalPayload]:
         """Calls the AI to (re)compute signal values from the persisted
         conversation plus `pending_message` (evaluated even though not yet
         persisted). `since` excludes messages from before a history_cutoff
@@ -173,7 +173,7 @@ class Signals(object):
             })
         return results
 
-    def get_latest_signals(self) -> list[dict]:
+    def get_latest_signals(self) -> [dict]:
         """Read-only, never calls the AI — reports the latest snapshot
         persisted through db.py. Signals are only (re)computed via
         compute_signals(), from the auto-tracking flow."""

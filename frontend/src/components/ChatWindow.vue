@@ -12,7 +12,6 @@ import {
   chatStatus,
   actionLoading,
   autoTrackingEnabled,
-  historyLoaded,
   audioEnabled,
   talkAvailable,
   micAvailable,
@@ -40,29 +39,24 @@ function autoWrapBareImages(text) {
 }
 
 function renderMarkdown(text) {
-  return DOMPurify.sanitize(md.render(autoWrapBareImages(text ?? '')))
+  if (!text) return ''
+  return DOMPurify.sanitize(md.render(autoWrapBareImages(text)))
 }
 
-// Spoken-text mode only ever applies to the assistant, and only for a
-// bubble that actually has a narrated phrase — a plain reply with no
-// [audio] tag has nothing else to show, so it falls back to `content`.
-function displayContent(msg, spokenTextEnabled) {
-  if (spokenTextEnabled && msg.role === 'assistant' && msg.audioText) return msg.audioText
-  return msg.content
+function getMessageText(msg) {
+  // Se l'utente vuole vedere lo spoken text ed è disponibile, usiamo audioText.
+  // In modalità normale (o se audioText è vuoto) usiamo il testo streaming normale in msg.content.
+  if (spokenTextEnabled.value && msg.role === 'assistant' && msg.audioText) {
+    return msg.audioText
+  }
+  return msg.content || ''
 }
 
-// This component takes no props and emits nothing: every chat view (the
-// main app's and the "Edit project" view's embedded one) reads and
-// mutates the one shared conversation in chatStore.js directly, so two
-// mounted instances are just two views of the same state — see
-// chatStore.js's own header comment.
 const scrollEl = ref(null)
 const inputEl = ref(null)
 const showErrorDetail = ref(false)
 const recording = ref(false)
 
-// Reaching a state with no further actions (final) does NOT stop the
-// conversation on its own — only an explicit chat: false does.
 const chatDisabled = computed(() => !(state.value?.chat ?? true))
 
 watch(errorMessage, () => {
@@ -81,10 +75,6 @@ function resend(i) {
   handleResend(i)
 }
 
-// Push-to-talk: held down = recording, released = send. A plain right-
-// click shouldn't start one. The transcribed text is never shown or
-// staged in `draft` — see chatStore.js's handleVoiceMessage, which sends
-// it straight through the normal turn flow, by design.
 async function startPtt(event) {
   if (event.pointerType === 'mouse' && event.button !== 0) return
   if (recording.value || chatLoading.value || chatDisabled.value) return
@@ -96,9 +86,6 @@ async function startPtt(event) {
   }
 }
 
-// Also bound to pointerleave/pointercancel (not just pointerup): a
-// pointer that leaves the button's bounds while still held down must
-// stop the recording too, never leave it listening indefinitely.
 async function stopPtt() {
   if (!recording.value) return
   recording.value = false
@@ -106,15 +93,21 @@ async function stopPtt() {
   if (blob?.size) handleVoiceMessage(blob)
 }
 
-watch(
-  () => messages.value.length,
-  async () => {
-    await nextTick()
-
+function scrollToBottom() {
+  nextTick(() => {
     if (scrollEl.value) {
       scrollEl.value.scrollTop = scrollEl.value.scrollHeight
     }
-  }
+  })
+}
+
+// Scroll in automatico quando arrivano nuovi messaggi o aggiornamenti in streaming
+watch(
+  messages,
+  () => {
+    scrollToBottom()
+  },
+  { deep: true }
 )
 
 watch(chatLoading, async (isLoading, wasLoading) => {
@@ -129,11 +122,6 @@ function focusInput() {
   inputEl.value?.focus()
 }
 
-// An action button click disables itself immediately (see ActionButtons'
-// :disabled), which blurs it since it had focus — send this instance's
-// own input focus back once the action's response has landed. Each
-// mounted ChatWindow does this for itself, so whichever view's button was
-// actually clicked is the one that gets focus back.
 async function onAction(actionName) {
   await handleAction(actionName)
   await nextTick()
@@ -144,42 +132,33 @@ async function onAction(actionName) {
 <template>
   <div class="chat-window">
     <div class="messages" ref="scrollEl">
-      <TransitionGroup :name="historyLoaded ? 'message-bubble' : 'v'">
-        <div
-          v-for="(msg, i) in messages"
-          :key="i"
-          class="message-row"
-          :class="msg.role === 'user' ? 'message-row-user' : 'message-row-assistant'"
-        >
-          <button
-            v-if="msg.role === 'user' && msg.failed"
-            type="button"
-            class="resend-icon"
-            title="Message not sent. Tap to retry."
-            @click="resend(i)"
-          >
-            &#33;
-          </button>
-
-          <div
-            class="bubble"
-            :class="[
-              msg.role === 'user' ? 'bubble-user' : 'bubble-assistant',
-              msg.failed ? 'bubble-failed' : ''
-            ]"
-          >
-            <span v-if="msg.transcribing">...</span>
-            <span v-else v-html="renderMarkdown(displayContent(msg, spokenTextEnabled))" />
-          </div>
-        </div>
-      </TransitionGroup>
-
       <div
-        v-if="chatLoading"
-        class="bubble bubble-assistant bubble-loading"
+        v-for="(msg, i) in messages"
+        :key="msg.messageId || msg.id || i"
+        class="message-row"
+        :class="msg.role === 'user' ? 'message-row-user' : 'message-row-assistant'"
       >
-        {{ chatStatus || '...' }}
+        <button
+          v-if="msg.role === 'user' && msg.failed"
+          type="button"
+          class="resend-icon"
+          title="Message not sent. Tap to retry."
+          @click="resend(i)"
+        >
+          &#33;
+        </button>
+
+        <div
+          class="bubble"
+          :class="[
+            msg.role === 'user' ? 'bubble-user' : 'bubble-assistant',
+            msg.failed ? 'bubble-failed' : ''
+          ]"
+        >
+          <span v-html="renderMarkdown(getMessageText(msg) || '...')" />
+        </div>
       </div>
+
     </div>
 
     <div
@@ -300,23 +279,6 @@ async function onAction(actionName) {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-}
-
-@keyframes message-bubble-in {
-  from {
-    opacity: 0;
-    transform: scale(0.92);
-  }
-
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-.message-bubble-enter-active {
-  animation: message-bubble-in 220ms
-    cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
 .message-row {
@@ -521,8 +483,6 @@ async function onAction(actionName) {
 .spoken-text-btn-on:hover:not(:disabled) {
   background: #256428;
 }
-
-/* ---------------- Markdown ---------------- */
 
 .bubble :deep(p) {
   margin: 0 0 0.8rem;

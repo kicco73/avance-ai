@@ -25,6 +25,12 @@ The backend starts on `http://localhost:8000`.
 
 ## Starting the frontend
 
+For development in your local environment with .venv enabled in the backend make sure you do:
+
+```bash
+cp frontend/.env.dev frontend/.env
+```
+
 In another terminal:
 
 ```bash

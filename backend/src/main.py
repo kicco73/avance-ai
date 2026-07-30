@@ -22,7 +22,7 @@ from listen.listen_service import ListenService
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
-
+logger.info("Booting avance api server.")
 
 def _build_fallback_app(error: Exception) -> FastAPI:
     """Used only when essential startup wiring below fails: every request,
@@ -73,7 +73,6 @@ try:
     )
 
     register_error_handlers(app)
-
     controller = AvanceController(chat_service, project_service, talk_service, listen_service)
     app.include_router(controller.router)
 
@@ -84,6 +83,9 @@ try:
         async def chat_ws(websocket: WebSocket) -> None:
             await adapter.chat_loop(websocket)
         
+    logger.info("Boot completed - avance api server ready.")
+
 except Exception as exc:
     logger.exception("Backend failed to start — serving a fallback error app instead of crashing.")
     app = _build_fallback_app(exc)
+

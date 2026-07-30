@@ -13,11 +13,6 @@ import { playMessageChime, playMessageAudio } from './audio.js'
 import { celebrate } from './confetti.js'
 import { clearApiError } from './errorStore.js'
 
-// The single shared conversation — every chat view (the main app's, see
-// App.vue, and the "Edit project" view's embedded one, see
-// EditProjectView.vue) is just a render of this same state: ChatWindow.vue
-// reads everything here directly instead of taking it as props, so a
-// message/action/reset from either view is instantly reflected in both.
 export const state = ref(null)
 export const messages = ref([])
 export const historyLoaded = ref(false)
@@ -26,30 +21,13 @@ export const chatStatus = ref('')
 export const actionLoading = ref(false)
 export const autoTrackingEnabled = ref(true)
 export const autoTrackingLoading = ref(false)
-// The chat input box's own draft text — shared like everything else above,
-// so typing in one view's input shows up in the other's too.
 export const draft = ref('')
 
-// Pure frontend state — the backend generates audio on demand whenever
-// this is on, no persisted toggle server-side (see maybeAutoPlayAudio).
 export const audioEnabled = ref(false)
-// Whether the server actually has talk-service/listen-service configured
-// (see backend/.config.yml's `enabled`) — set once via setCapabilities()
-// from App.vue's boot ping and never touched again: unlike `state`, this
-// isn't per-turn data, so it must not be overwritten by a later chat/
-// action response that doesn't carry these fields at all.
 export const talkAvailable = ref(true)
 export const micAvailable = ref(true)
-// When on, assistant bubbles show audio_text (the short narrated phrase,
-// see backend's [audio] tag) instead of the full reply — purely a display
-// switch, no playback triggered (see toggleSpokenText).
 export const spokenTextEnabled = ref(false)
 
-// Bumped at the end of every turn (chat/action/reset), even one that
-// didn't change `state` — a signal value can shift without a transition.
-// External UI that needs to react to "something happened" (e.g.
-// EditProjectView.vue's Inspector, keeping its graph/signals live) watches
-// this instead of the store reaching into that UI directly.
 export const turnCount = ref(0)
 
 let nextMessageId = 0
@@ -64,20 +42,13 @@ export function setCapabilities({ talkAvailable: talk, micAvailable: mic }) {
 }
 
 export function handleStateChange(newState) {
-  const changed = state.value?.key !== newState.key
+  const changed = state.value?.key !== newState?.key
   state.value = newState
-  // Only on an actual transition into the state, never on a redundant
-  // re-fetch of the one we're already in (e.g. the boot ping, or any other
-  // GET /api/state call that happens to return the same state) — otherwise
-  // celebrate() would refire every time this runs.
   if (changed && newState?.on_enter === 'celebrate') {
     celebrate()
   }
 }
 
-// Redisplays whatever conversation the backend already persisted (e.g.
-// across a backend restart) — session.history server-side is otherwise only
-// ever used internally to build LLM calls, never pushed to the client.
 export async function loadMessages() {
   try {
     const history = await getMessages()
@@ -91,15 +62,6 @@ export async function loadMessages() {
   } catch {
     // already surfaced via apiFetch
   } finally {
-    // Gates ChatWindow's bump-in animation (see its historyLoaded usage):
-    // this hydration is async, so it lands well after ChatWindow has
-    // already mounted — without this flag every history row would still
-    // read as "just added" the moment it arrives. Setting `messages` and
-    // `historyLoaded` in the very same tick isn't enough on its own: Vue
-    // batches both changes into one render, so TransitionGroup would see
-    // the *new* name already in effect for the very update that adds the
-    // history rows. Waiting a tick lets that first render (still gated by
-    // the old, unstyled name) flush before the flag flips.
     await nextTick()
     historyLoaded.value = true
   }
@@ -134,25 +96,15 @@ export function toggleAudio() {
   }
 }
 
-// Purely a display switch — flipping it doesn't touch playback, only
-// which text ChatWindow renders for assistant bubbles. Reactivity alone
-// re-renders every bubble in every open view.
 export function toggleSpokenText() {
   spokenTextEnabled.value = !spokenTextEnabled.value
 }
 
-// Fires the automatic narration for the last message a turn produced —
-// same call regardless of which transport delivered it and a no-op if the
-// toggle is off or the message has no id to look up.
 function maybeAutoPlayAudio(messageId) {
   if (!audioEnabled.value || messageId == null) return
   playMessageAudio(messageAudioUrl(messageId))
 }
 
-// Looks the message back up by id through the reactive `messages` array
-// (rather than mutating whatever reference the caller passed in) so the
-// assignment goes through Vue's reactive proxy and updates the UI
-// immediately in every open view.
 function setMessageFailed(id, failed) {
   const target = messages.value.find((m) => m.id === id)
   if (target) target.failed = failed
@@ -162,33 +114,68 @@ async function submitMessage(message) {
   clearApiError()
   setMessageFailed(message.id, false)
   chatLoading.value = true
+
+  // Creiamo subito la bolla dell'assistente che accoglierà i chunk in tempo reale
+  const assistantMsgId = ++nextMessageId
+  const assistantMsg = { id: assistantMsgId, role: 'assistant', content: '', audioText: null, messageId: null }
+  messages.value.push(assistantMsg)
+
   try {
-    // sendChatMessage() (chatClient.js) tries the websocket first and falls
-    // back to REST transparently — this code never knows which one ran.
+    // Passiamo le callback onStatus e onChunk a sendChatMessage
     const result = await sendChatMessage(message.content, {
-      onStatus: (text) => { chatStatus.value = text }
+      onStatus: (text) => {
+        chatStatus.value = text
+      },
+      onChunk: (chunkText) => {
+        // Troviamo l'indice del messaggio e aggiorniamo il valore creando un nuovo oggetto per scatenare la reattività di Vue
+        const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
+        if (idx !== -1) {
+          messages.value[idx] = {
+            ...messages.value[idx],
+            content: messages.value[idx].content + chunkText
+          }
+        }
+      }
     })
-    // result.reply is an array of {id, content}: normally one bubble, but
-    // a mid-turn auto-tracking transition into a fresh state can
-    // prepend/append that state's own opening message alongside the
-    // turn's own reply — one bubble per element, in the order the
-    // backend produced them.
-    for (const { id, content, audio_text } of result.reply) {
-      messages.value.push({ role: 'assistant', content, audioText: audio_text, messageId: id })
+
+    // Alla ricezione del frame 'done':
+    if (result.reply && result.reply.length > 0) {
+      const firstReply = result.reply[0]
+      const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
+      
+      if (idx !== -1) {
+        // Assegniamo l'ID definitivo e l'audio_text alla bolla che ha raccolto lo streaming
+        messages.value[idx] = {
+          ...messages.value[idx],
+          messageId: firstReply.id,
+          audioText: firstReply.audio_text,
+          // Sincronizziamo con il contenuto restituito dal server se fornito
+          content: firstReply.content || messages.value[idx].content
+        }
+      }
+
+      // Se la risposta contiene più messaggi (es. cambio di stato)
+      for (let i = 1; i < result.reply.length; i++) {
+        const { id, content, audio_text } = result.reply[i]
+        messages.value.push({ role: 'assistant', content, audioText: audio_text, messageId: id })
+      }
     }
-    // Only for a freshly arrived AI reply — never for the user's own sent
-    // message, and never for history loaded at boot/reset (this only ever
-    // runs from a live chat turn just completing).
+
     playMessageChime()
-    // Narrates only the LAST bubble of the turn — only that one can have
-    // an [audio] tag (see backend/chat/chat_service.py's _extract_audio_tag).
-    if (result.reply.length) maybeAutoPlayAudio(result.reply[result.reply.length - 1].id)
-    handleStateChange(result.state)
+
+    if (result.reply && result.reply.length > 0) {
+      maybeAutoPlayAudio(result.reply[result.reply.length - 1].id)
+    }
+
+    if (result.state) {
+      handleStateChange(result.state)
+    }
     bumpTurn()
-  } catch {
-    // Already surfaced via the websocket handler or apiFetch (see
-    // chatClient.js) — this only has to update this specific message's
-    // own status, synchronously with the outcome.
+  } catch (err) {
+    // In caso di errore durante l'invio, rimuoviamo la bolla vuota/incompleta
+    const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
+    if (idx !== -1) messages.value.splice(idx, 1)
+
     setMessageFailed(message.id, true)
   } finally {
     chatLoading.value = false
@@ -202,19 +189,11 @@ export async function handleSend(text) {
   await submitMessage(message)
 }
 
-// Removes the placeholder bubble outright (rather than marking it
-// failed): with no transcribed text there's nothing a resend could
-// retry, so the existing failed/resend affordance doesn't fit here.
 function dropVoicePlaceholder(id) {
   const idx = messages.value.findIndex((m) => m.id === id)
   if (idx !== -1) messages.value.splice(idx, 1)
 }
 
-// The mic button's whole point: the transcribed text is never staged in
-// `draft` for review — a user-side placeholder (same waiting style as the
-// assistant's own, see ChatWindow's bubble-loading) stands in for it while
-// transcription runs, then becomes the real sent message in place, same
-// id and same failed/resend lifecycle as a typed one (see submitMessage).
 export async function handleVoiceMessage(audioBlob) {
   const message = { id: ++nextMessageId, role: 'user', content: '', failed: false, transcribing: true }
   messages.value.push(message)
@@ -224,7 +203,6 @@ export async function handleVoiceMessage(audioBlob) {
     const result = await postListenTranscribe(audioBlob)
     text = result.text?.trim()
   } catch {
-    // Already surfaced via apiFetch.
     dropVoicePlaceholder(message.id)
     return
   }
@@ -248,10 +226,6 @@ export async function handleResend(index) {
 export async function handleAction(actionName) {
   actionLoading.value = true
   try {
-    // {state, reply}: reply is the destination state's own opening
-    // message, same {id, content} array shape as a normal turn's (see
-    // submitMessage) — empty if it already had something to say since
-    // its own cutoff.
     const result = await postAction(actionName)
     for (const { id, content, audio_text } of result.reply) {
       messages.value.push({ role: 'assistant', content, audioText: audio_text, messageId: id })
@@ -269,9 +243,6 @@ export async function handleAction(actionName) {
   }
 }
 
-// Optimistic UI clear shared by every path that's about to leave the
-// backend with a freshly reset active project — a manual reset (below) and
-// every project switch/upload/delete driven by App.vue.
 export function clearChatUi() {
   messages.value = []
   clearApiError()
