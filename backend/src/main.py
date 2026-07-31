@@ -53,9 +53,9 @@ def _build_fallback_app(error: Exception) -> FastAPI:
 try:
     config = AppConfig()
 
-    ai_service = AiService(config.ai_services)
-    talk_service = TalkService(config.talk_services) if config.talk_services is not None else None
-    listen_service = ListenService(config.listen_services) if config.listen_services is not None else None
+    ai_service = AiService.from_config(config.ai_services)
+    talk_service = TalkService.from_config(config.talk_services) if config.talk_services is not None else None
+    listen_service = ListenService.from_config(config.listen_services) if config.listen_services is not None else None
     db = Db(config.database_url)
     project_service = ProjectService(db)
     chat_service = ChatService(ai_service, project_service, db)

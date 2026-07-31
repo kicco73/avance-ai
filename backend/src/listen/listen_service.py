@@ -6,8 +6,9 @@ across every configured provider hidden inside.
 from __future__ import annotations
 
 from config import ListenServiceConfig
-from cascade import ProviderCascade, ProviderRateLimitedError, ProviderUnavailableError
+from cascade import ProviderError
 from listen.listen_provider import ListenProvider
+from listen.cascading_listen_provider import CascadingListenProvider
 from listen.faster_whisper_provider import FasterWhisperProvider
 
 
@@ -25,36 +26,44 @@ class ListenServiceNotAvailableError(Exception):
 
 
 class ListenService(ListenProvider):
+    """Thin wrapper around whatever ListenProvider it's given — a single
+    concrete provider or a CascadingListenProvider fronting several, the
+    service itself doesn't care which (see cascading_listen_provider.py).
+    `from_config` is the usual entry point (see main.py); the plain
+    constructor is what makes that substitution possible."""
+
     _PROVIDER_CLASSES = {
         "faster-whisper": FasterWhisperProvider,
     }
 
-    def __init__(self, listen_service_config: list[ListenServiceConfig]) -> None:
+    def __init__(self, provider: ListenProvider) -> None:
+        self._provider = provider
+
+    @classmethod
+    def from_config(cls, listen_service_config: list[ListenServiceConfig]) -> "ListenService":
         providers = [
-            (f"{service.name}/{service.model}", self._build_provider(service))
+            (f"{service.driver}/{service.model}", cls._build_provider(service))
             for service in listen_service_config
         ]
-        self._cascade: ProviderCascade[ListenProvider] = ProviderCascade(providers, kind="listen")
+        return cls(CascadingListenProvider(providers))
 
     @classmethod
     def _build_provider(cls, service: ListenServiceConfig) -> ListenProvider:
-        if service.name not in cls._PROVIDER_CLASSES:
+        if service.driver not in cls._PROVIDER_CLASSES:
             raise ValueError(
-                f"Invalid listen provider name: {service.name!r}. Must be one of: "
+                f"Invalid listen provider driver: {service.driver!r}. Must be one of: "
                 f"{', '.join(cls._PROVIDER_CLASSES.keys())}"
             )
-        return cls._PROVIDER_CLASSES[service.name](
+        return cls._PROVIDER_CLASSES[service.driver](
             api_key=service.key, model=service.model, language=service.language
         )
 
     async def transcribe(self, audio: bytes) -> str:
-        """Transcribed text for `audio`, cascading across every configured
-        STT provider. Raises ListenServiceError if all of them fail."""
+        """Transcribed text for `audio`. Raises ListenServiceError if the
+        underlying provider fails — per ListenProvider's own contract,
+        that's any cascade.ProviderError, not just the unavailable/rate-
+        limited subclasses that trigger a cascade's own retry/fallback."""
         try:
-            return await self._cascade.call_with_retry(
-                lambda provider: provider.transcribe(audio),
-                unavailable=ProviderUnavailableError,
-                rate_limited=ProviderRateLimitedError,
-            )
-        except (ProviderUnavailableError, ProviderRateLimitedError) as exc:
+            return await self._provider.transcribe(audio)
+        except ProviderError as exc:
             raise ListenServiceError("Every configured STT provider failed.") from exc

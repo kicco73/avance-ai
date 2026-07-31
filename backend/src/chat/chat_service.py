@@ -89,6 +89,12 @@ class ChatService(object):
     def get_message_audio_text(self, message_id: int) -> str | None:
         return self._db.get_message_audio_text(message_id)
 
+    def get_ai_models_info(self) -> dict:
+        return self._ai_service.get_models_info()
+
+    def select_ai_model(self, index: int | None) -> None:
+        self._ai_service.select_model(index)
+
     @staticmethod
     def _now_iso() -> str:
         return datetime.now(timezone.utc).isoformat()
@@ -236,6 +242,12 @@ class ChatService(object):
             return {
                 "state": state_payload,
                 "reply": reply,
+                # A transition can itself call the AI (action_prompt/opening
+                # message, via _messages_for_transition above) — piggyback
+                # the post-turn model status on this same response so the
+                # frontend's model button stays in sync without a separate
+                # round trip (see controller.py's GET /api/ai/models).
+                "ai_model": self.get_ai_models_info(),
             }
 
     async def process_turn(
@@ -313,4 +325,7 @@ class ChatService(object):
             "state_changed": action is not None,
             "new_state": action.target if action else None,
             "triggered_action": action.name if action else None,
+            # See apply_manual_action's own "ai_model" for why this rides
+            # along with the turn's result instead of a separate call.
+            "ai_model": self.get_ai_models_info(),
         }

@@ -9,6 +9,7 @@ from google import genai
 from google.genai import types
 from google.genai.errors import APIError
 
+from cascade import OnRetry
 from ai.llm_provider import (
     AIServiceConfig,
     AIServiceError,
@@ -78,7 +79,10 @@ class GeminiProvider(LLMProvider):
 
         return contents, gen_config
 
-    def generate(self, system_prompt: str, history: list[dict[str, Any]]) -> str:
+    def generate(
+        self, system_prompt: str, history: list[dict[str, Any]], on_retry: OnRetry | None = None
+    ) -> str:
+        # on_retry: unused — a leaf provider never retries on its own (see LLMProvider.generate).
         contents, config = self._format_history_and_config(system_prompt, history)
 
         with _handle_gemini_errors():
@@ -90,7 +94,7 @@ class GeminiProvider(LLMProvider):
             return response.text or ""
 
     async def generate_stream(
-        self, system_prompt: str, history: list[dict[str, Any]]
+        self, system_prompt: str, history: list[dict[str, Any]], on_retry: OnRetry | None = None
     ) -> AsyncIterator[str]:
         contents, config = self._format_history_and_config(system_prompt, history)
 

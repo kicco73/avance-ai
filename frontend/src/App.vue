@@ -20,6 +20,7 @@ import {
   handleStateChange,
   loadMessages,
   loadAutoTracking,
+  loadAiModels,
   clearChatUi
 } from './chatStore.js'
 
@@ -77,6 +78,7 @@ function bootSucceeded() {
   clearApiError()
   loadMessages()
   loadAutoTracking()
+  loadAiModels()
   // No proactive chat-socket connect here: chatClient.js connects lazily
   // on the first sendMessage() call, and the opening message (if any) is
   // already covered by loadMessages() above — it's persisted server-side

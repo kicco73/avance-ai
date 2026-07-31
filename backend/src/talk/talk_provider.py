@@ -1,6 +1,7 @@
 """Abstract interface shared by all audio (TTS) providers, mirroring
 ai/llm_provider.py's LLMProvider — no cascade knowledge anywhere here:
-retry/cascading is TalkService's responsibility alone (see talk_service.py).
+retry/cascading is CascadingTalkProvider's responsibility alone (see
+cascading_talk_provider.py).
 """
 from __future__ import annotations
 

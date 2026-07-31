@@ -136,6 +136,18 @@ export function postAction(actionName) {
   })
 }
 
+export function getAiModels() {
+  return apiFetch(`${API_URL}/ai/models`)
+}
+
+export function postAiModelSelection(index) {
+  return apiFetch(`${API_URL}/ai/models/selection`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ index })
+  })
+}
+
 export function getAutoTracking() {
   return apiFetch(`${API_URL}/chat/autotracking`)
 }

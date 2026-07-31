@@ -8,6 +8,7 @@ from typing import Any, AsyncIterator, Generator, cast
 import anthropic
 from anthropic.types import CacheControlEphemeralParam, MessageParam, TextBlockParam
 
+from cascade import OnRetry
 from ai.llm_provider import (
     AIServiceConfig,
     AIServiceError,
@@ -84,7 +85,10 @@ class AnthropicProvider(LLMProvider):
             api_key=config.key, timeout=REQUEST_TIMEOUT_SECONDS
         )
 
-    def generate(self, system_prompt: str, history: list[dict[str, Any]]) -> str:
+    def generate(
+        self, system_prompt: str, history: list[dict[str, Any]], on_retry: OnRetry | None = None
+    ) -> str:
+        # on_retry: unused — a leaf provider never retries on its own (see LLMProvider.generate).
         system_blocks: list[TextBlockParam] = [
             {"type": "text", "text": system_prompt, "cache_control": CACHE_CONTROL}
         ]
@@ -101,7 +105,7 @@ class AnthropicProvider(LLMProvider):
             return "".join(text_parts)
 
     async def generate_stream(
-        self, system_prompt: str, history: list[dict[str, Any]]
+        self, system_prompt: str, history: list[dict[str, Any]], on_retry: OnRetry | None = None
     ) -> AsyncIterator[str]:
         system_blocks: list[TextBlockParam] = [
             {"type": "text", "text": system_prompt, "cache_control": CACHE_CONTROL}

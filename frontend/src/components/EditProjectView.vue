@@ -5,6 +5,7 @@ import { EditorView, basicSetup } from 'codemirror'
 import { yaml } from '@codemirror/lang-yaml'
 import cytoscape from 'cytoscape'
 import ChatWindow from './ChatWindow.vue'
+import ModelMenu from './ModelMenu.vue'
 import {
   getProjectFiles,
   getProjectFile,
@@ -17,6 +18,7 @@ import {
 } from '../api.js'
 import { clearApiError, errorDetail, errorMessage, setApiError } from '../errorStore.js'
 import { hasSignalValue, useSignalChangeFlash } from '../signalDisplay.js'
+import { renderMarkdown } from '../markdown.js'
 // Aliased: this file already uses "state" to mean an automaton state node
 // (see the graph/signals data below) — `liveState` is specifically the
 // live conversation's current state, the single source of truth this
@@ -27,7 +29,9 @@ import {
   autoTrackingEnabled,
   autoTrackingLoading,
   toggleAutoTracking,
-  handleReset
+  handleReset,
+  aiModels,
+  aiModelCurrentIndex
 } from '../chatStore.js'
 
 const props = defineProps({
@@ -151,13 +155,20 @@ const showErrorDetail = ref(false)
 const editorHost = ref(null)
 const uploadInput = ref(null)
 
-// Inspect panel: shows the last-saved project's state machine graph and
-// signal definitions as two tabs (each gets the panel's full space), see
-// toggleInspect/setInspectorTab. Open by default.
+// Inspect panel: shows the last-saved project's state machine graph, its
+// signal definitions, and the chat's currently active AI model as three
+// tabs (each gets the panel's full space), see toggleInspect/setInspectorTab.
+// Open by default.
 const inspecting = ref(true)
-const inspectorTab = ref('graph') // 'graph' | 'signals'
+const inspectorTab = ref('graph') // 'graph' | 'signals' | 'model'
 const signalsLoading = ref(true)
 const signals = ref([])
+// The model tab shows whichever entry chatStore.js's aiModels/
+// aiModelCurrentIndex currently resolves to — same shared state ModelMenu.vue
+// reads (see chatStore.js), never a second source of truth: auto mode
+// picks a different index as the cascade advances, an explicit choice
+// pins one directly, and either way this just displays it.
+const activeModel = computed(() => aiModels.value[aiModelCurrentIndex.value] ?? null)
 // Live value/error per signal name, keyed separately from `signals` (the
 // project's saved definitions) since they come from a different source
 // (getSignals(), the same live conversation ChatWindow reads) and refresh
@@ -1023,6 +1034,7 @@ onBeforeUnmount(() => {
 
           <div class="edit-project-chat-panel" :style="{ height: chatHeight + 'px' }">
             <div class="edit-project-chat-toolbar">
+              <ModelMenu />
               <button class="reset-btn" @click="handleReset">Reset</button>
               <button class="close-x-btn" title="Close" @click="toggleChat">×</button>
             </div>
@@ -1036,14 +1048,18 @@ onBeforeUnmount(() => {
 
         <div class="inspector-panel" :style="{ '--inspector-width': inspectorWidth + 'px' }">
           <div class="inspector-header">
-            <button
-              class="autotracking-btn"
-              :class="{ 'autotracking-btn-on': autoTrackingEnabled }"
-              :disabled="autoTrackingLoading"
-              @click="toggleAutoTracking"
+            <label
+              class="dev-mode-toggle"
+              :class="{ 'dev-mode-toggle-active': !autoTrackingEnabled, 'dev-mode-toggle-disabled': autoTrackingLoading }"
             >
-              Autotracking
-            </button>
+              <input
+                type="checkbox"
+                :checked="!autoTrackingEnabled"
+                :disabled="autoTrackingLoading"
+                @change="toggleAutoTracking"
+              />
+              Dev mode: freeze automatic state transitions
+            </label>
             <button class="close-x-btn" title="Close" @click="toggleInspect">×</button>
           </div>
           <div class="inspector-tabs">
@@ -1060,6 +1076,13 @@ onBeforeUnmount(() => {
               @click="setInspectorTab('signals')"
             >
               Signals
+            </button>
+            <button
+              class="inspector-tab-btn"
+              :class="{ 'inspector-tab-btn-active': inspectorTab === 'model' }"
+              @click="setInspectorTab('model')"
+            >
+              Model
             </button>
           </div>
 
@@ -1214,6 +1237,26 @@ onBeforeUnmount(() => {
                     ></div>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            <div v-show="inspectorTab === 'model'" class="inspector-model-section">
+              <p v-if="!activeModel" class="signals-status">No AI model configured.</p>
+              <div v-else class="inspector-signal-block">
+                <div class="inspector-signal-header">
+                  <span class="inspector-detail-badge inspector-detail-badge-model">Model</span>
+                  <span class="inspector-signal-name">{{ activeModel.ui_label }}</span>
+                </div>
+                <br/>
+                <p class="inspector-detail-field"><strong>Driver:</strong> {{ activeModel.name }}</p>
+                <p class="inspector-detail-field"><strong>Model:</strong> {{ activeModel.model }}</p>
+                <p v-if="activeModel.url" class="inspector-detail-field"><strong>Url:</strong> {{ activeModel.url }}</p>
+                <br/>
+                <div
+                  v-if="activeModel.ui_description"
+                  class="inspector-model-description"
+                  v-html="renderMarkdown(activeModel.ui_description)"
+                ></div>
               </div>
             </div>
           </div>
@@ -1851,6 +1894,10 @@ onBeforeUnmount(() => {
   background: #6a4c93;
 }
 
+.inspector-detail-badge-model {
+  background: #2f8f83;
+}
+
 .inspector-detail-badge-current {
   /* Same amber as node.current-state's overlay in renderGraph — this is
      the one other place "this is the live current state" is shown. */
@@ -1982,6 +2029,35 @@ onBeforeUnmount(() => {
   overflow-y: auto;
 }
 
+.inspector-model-section {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Markdown-rendered (see ../markdown.js), so — unlike the plain-text
+   .inspector-detail-ui_description/.inspector-signal-ui_description — this
+   can contain nested block elements (paragraphs, lists); trims their
+   default top/bottom margins down to the same spacing those use. */
+.inspector-model-description {
+  margin: 0 0 0.5rem;
+  line-height: 1.4;
+}
+
+.inspector-model-description :deep(p) {
+  margin: 0 0 0.4rem;
+}
+
+.inspector-model-description :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.inspector-model-description :deep(ul),
+.inspector-model-description :deep(ol) {
+  margin: 0 0 0.4rem;
+  padding-left: 1.2rem;
+}
+
 .inspector-signal-list {
   display: flex;
   flex-direction: column;
@@ -2065,32 +2141,34 @@ onBeforeUnmount(() => {
   animation: inspector-signal-bar-flash 0.9s ease-out;
 }
 
-.autotracking-btn {
-  padding: 0.4rem 1rem;
-  border-radius: 6px;
-  border: 1px solid #999;
-  background: white;
+.dev-mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
   color: #666;
   cursor: pointer;
-  font-size: 0.82rem;
+  user-select: none;
 }
 
-.autotracking-btn:hover:not(:disabled) {
-  background: #f0f0f0;
+.dev-mode-toggle input {
+  cursor: pointer;
 }
 
-.autotracking-btn-on {
-  border-color: #2e7d32;
-  background: #2e7d32;
-  color: white;
+.dev-mode-toggle-active {
+  /* Same amber used elsewhere for "this changes normal behavior, pay
+     attention" (see .inspector-detail-badge-current) — freezing
+     transitions is a deliberate, temporary override, not the default. */
+  color: #b06a00;
+  font-weight: 600;
 }
 
-.autotracking-btn-on:hover:not(:disabled) {
-  background: #256428;
-}
-
-.autotracking-btn:disabled {
+.dev-mode-toggle-disabled {
   opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.dev-mode-toggle-disabled input {
   cursor: not-allowed;
 }
 

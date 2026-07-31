@@ -18,3 +18,10 @@ class TriggersPreviewRequest(BaseModel):
 
 class ChatMessageRequest(BaseModel):
     message: str
+
+
+class AiModelSelectionRequest(BaseModel):
+    # None selects auto (the ai-service cascade's own fallback order); an
+    # index into GET /api/ai/models' `models` pins generation to that
+    # entry directly. See ai/ai_service.py's AiService.select_model.
+    index: int | None = None

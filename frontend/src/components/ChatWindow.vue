@@ -1,10 +1,9 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue'
-import MarkdownIt from 'markdown-it'
-import DOMPurify from 'dompurify'
 import ActionButtons from './ActionButtons.vue'
 import { errorDetail, errorMessage, setApiError } from '../errorStore.js'
 import { startRecording, stopRecording } from '../mic.js'
+import { renderMarkdown as renderMarkdownBase } from '../markdown.js'
 import {
   state,
   messages,
@@ -25,22 +24,17 @@ import {
   toggleSpokenText
 } from '../chatStore.js'
 
-const md = new MarkdownIt({
-  breaks: true,
-  linkify: true,
-  typographer: true,
-  html: false
-})
-
 const BARE_DATA_IMAGE_RE = /(?<!\]\()(data:image\/[a-zA-Z0-9+.-]+;base64,[A-Za-z0-9+/=]+)/g
 
 function autoWrapBareImages(text) {
   return text.replace(BARE_DATA_IMAGE_RE, '![]($1)')
 }
 
+// Chat-specific: wraps bare pasted image data URIs as markdown images
+// before handing off to the shared renderer (see ../markdown.js).
 function renderMarkdown(text) {
   if (!text) return ''
-  return DOMPurify.sanitize(md.render(autoWrapBareImages(text)))
+  return renderMarkdownBase(autoWrapBareImages(text))
 }
 
 function getMessageText(msg) {

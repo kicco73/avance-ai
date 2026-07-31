@@ -1,6 +1,8 @@
 """Generic fallback cascade: ordered providers behind a "current" pointer,
-retry-then-cascade on failure. Shared by AiService, TalkService and
-ListenService, each with their own independent instance.
+retry-then-cascade on failure. The shared engine underneath
+CascadingLLMProvider, CascadingTalkProvider and CascadingListenProvider
+(ai/, talk/, listen/), each with their own independent instance — see
+those modules for how a cascade is exposed as a plain provider.
 """
 from __future__ import annotations
 
@@ -17,8 +19,9 @@ BASE_DELAY_SECONDS = 1.0
 
 
 class ProviderError(Exception):
-    """Shared transient/permanent taxonomy for AiService and TalkService
-    — defined once so neither duplicates the other's classification."""
+    """Shared transient/permanent taxonomy for the LLM/Talk/Listen provider
+    families — defined once so none of them duplicates the others'
+    classification."""
     message = "Provider service error."
     status_code = HTTPStatus.SERVICE_UNAVAILABLE
     detail = None
@@ -69,6 +72,10 @@ class ProviderCascade(Generic[Provider]):
     @property
     def current(self) -> Provider:
         return self._entries[self._index].provider
+
+    @property
+    def current_index(self) -> int:
+        return self._index
 
     def advance(self) -> None:
         self._index = (self._index + 1) % len(self._entries)

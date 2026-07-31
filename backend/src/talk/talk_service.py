@@ -13,19 +13,15 @@ import logging
 from typing import AsyncIterator
 
 from config import TalkServiceConfig
-from cascade import ProviderCascade, ProviderError, ProviderRateLimitedError, ProviderUnavailableError
+from cascade import ProviderError
 from talk.talk_provider import TalkProvider
+from talk.cascading_talk_provider import CascadingTalkProvider
 from talk.gemini_talk_provider import GeminiTalkProvider
 from talk.piper.piper_talk_provider import PiperTalkProvider
 from talk.talk_store import TalkStore
 from talk.talk_format import DEFAULT_PCM_SAMPLE_RATE, pcm_to_wav, streaming_wav_header
 
 logger = logging.getLogger(__name__)
-
-
-class TalkServiceError(Exception):
-    """Raised once every configured provider has failed — carries the
-    last provider-specific error as __cause__, never leaks it directly."""
 
 
 class TalkServiceNotAvailableError(Exception):
@@ -37,27 +33,37 @@ class TalkServiceNotAvailableError(Exception):
 
 
 class TalkService(TalkProvider):
+    """Thin wrapper around whatever TalkProvider it's given — a single
+    concrete provider or a CascadingTalkProvider fronting several, the
+    service itself doesn't care which (see cascading_talk_provider.py).
+    `from_config` is the usual entry point (see main.py); the plain
+    constructor is what makes that substitution possible."""
+
     _PROVIDER_CLASSES = {
         "gemini": GeminiTalkProvider,
         "piper": PiperTalkProvider,  # local, no `key` needed
     }
 
-    def __init__(self, talk_service_config: list[TalkServiceConfig]) -> None:
-        providers = [
-            (f"{service.name}/{service.model}", self._build_provider(service))
-            for service in talk_service_config
-        ]
-        self._cascade: ProviderCascade[TalkProvider] = ProviderCascade(providers, kind="talk")
+    def __init__(self, provider: TalkProvider) -> None:
+        self._provider = provider
         self._store = TalkStore()
 
     @classmethod
+    def from_config(cls, talk_service_config: list[TalkServiceConfig]) -> "TalkService":
+        providers = [
+            (f"{service.driver}/{service.model}", cls._build_provider(service))
+            for service in talk_service_config
+        ]
+        return cls(CascadingTalkProvider(providers))
+
+    @classmethod
     def _build_provider(cls, service: TalkServiceConfig) -> TalkProvider:
-        if service.name not in cls._PROVIDER_CLASSES:
+        if service.driver not in cls._PROVIDER_CLASSES:
             raise ValueError(
-                f"Invalid talk provider name: {service.name!r}. Must be one of: "
+                f"Invalid talk provider driver: {service.driver!r}. Must be one of: "
                 f"{', '.join(cls._PROVIDER_CLASSES.keys())}"
             )
-        return cls._PROVIDER_CLASSES[service.name](api_key=service.key, model=service.model)
+        return cls._PROVIDER_CLASSES[service.driver](api_key=service.key, model=service.model)
 
     async def generate(self, text: str) -> AsyncIterator[bytes]:
         """WAV-framed bytes for `text`, streaming-compatible: content-
@@ -83,7 +89,7 @@ class TalkService(TalkProvider):
         sample_rate = DEFAULT_PCM_SAMPLE_RATE
         header_sent = False
         try:
-            async for pcm_chunk, chunk_sample_rate in self._generate(text):
+            async for pcm_chunk, chunk_sample_rate in self._provider.generate(text):
                 sample_rate = chunk_sample_rate
                 pcm_chunks.append(pcm_chunk)
                 if not header_sent:
@@ -93,38 +99,10 @@ class TalkService(TalkProvider):
                     yield header
                 live.push(pcm_chunk)
                 yield pcm_chunk
-        except TalkServiceError as exc:
+        except ProviderError as exc:
             logger.warning("Audio generation failed for %s: %s", key, exc)
         finally:
             live.finish()
             if pcm_chunks:
                 self._store.save(key, pcm_to_wav(b"".join(pcm_chunks), sample_rate))
             self._store.finish_live_generation(key)
-
-    async def _generate(self, text: str) -> AsyncIterator[tuple[bytes, int]]:
-        """Raw (pcm_chunk, sample_rate) tuples for `text`, cascading across
-        every configured provider. Reuses ProviderCascade.call_with_retry
-        unchanged for the initial call; once a provider has already
-        yielded some chunks, a failure can only cascade, not retry (see
-        StreamingTalkProvider)."""
-        last_error: BaseException | None = None
-        for _ in range(len(self._cascade)):
-            try:
-                result = await self._cascade.call_with_retry(
-                    lambda provider: provider.generate(text),
-                    unavailable=ProviderUnavailableError,
-                    rate_limited=ProviderRateLimitedError,
-                )
-            except (ProviderUnavailableError, ProviderRateLimitedError) as exc:
-                raise TalkServiceError("Every configured audio provider failed.") from exc
-
-            try:
-                for chunk in result:
-                    yield chunk
-                return
-            except ProviderError as exc:
-                logger.warning("Audio provider failed mid-stream: %s", exc)
-                last_error = exc
-                self._cascade.advance()
-
-        raise TalkServiceError("Every configured audio provider failed.") from last_error

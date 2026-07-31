@@ -14,6 +14,7 @@ from chat.chat_service import ChatService, ChatServiceError
 from project.project_service import ProjectService
 from schemas import (
     ActionRequest,
+    AiModelSelectionRequest,
     AutoTrackingRequest,
     ChatMessageRequest,
     TriggersPreviewRequest,
@@ -85,6 +86,26 @@ class AvanceController(object):
         payload["talk_enabled"] = self.talk_service is not None
         payload["listen_enabled"] = self.listen_service is not None
         return payload
+
+    @get("/api/ai/models")
+    def get_ai_models(self):
+        """The ai-service provider roster (name/model/ui_label/ui_description),
+        whether auto mode is on, and which model is in effect right now
+        either way — for the chat toolbar's model menu."""
+        return self.chat_service.get_ai_models_info()
+
+    @post("/api/ai/models/selection")
+    def post_ai_model_selection(self, req: AiModelSelectionRequest):
+        """Sets which model generate()/generate_stream() use: `index: null`
+        for auto (the cascade's own fallback order), or `index` into GET
+        /api/ai/models' `models` to pin one directly. Returns the same
+        shape as GET /api/ai/models so the frontend can refresh in one
+        round trip."""
+        try:
+            self.chat_service.select_ai_model(req.index)
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return self.chat_service.get_ai_models_info()
 
     @get("/api/chat/messages")
     async def get_messages(self):

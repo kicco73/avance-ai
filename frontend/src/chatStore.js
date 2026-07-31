@@ -4,6 +4,8 @@ import {
   postAction,
   getAutoTracking,
   postAutoTracking,
+  getAiModels,
+  postAiModelSelection,
   messageAudioUrl,
   postListenTranscribe,
   postReset
@@ -21,6 +23,11 @@ export const chatStatus = ref('')
 export const actionLoading = ref(false)
 export const autoTrackingEnabled = ref(true)
 export const autoTrackingLoading = ref(false)
+
+export const aiModels = ref([])
+export const aiModelAuto = ref(true)
+export const aiModelCurrentIndex = ref(0)
+export const aiModelSelectionLoading = ref(false)
 export const draft = ref('')
 
 export const audioEnabled = ref(false)
@@ -85,6 +92,36 @@ export async function toggleAutoTracking() {
     // already surfaced via apiFetch
   } finally {
     autoTrackingLoading.value = false
+  }
+}
+
+// Applies the {auto, current_index, models} shape returned by both
+// GET /api/ai/models and POST /api/ai/models/selection, and — piggybacked
+// on every chat-turn/action response as `ai_model` (see chat_service.py) —
+// keeps this in sync whenever a turn's own AI call causes the backend's
+// cascade to fall back to a different model, with no extra round trip.
+function applyAiModelInfo(info) {
+  aiModels.value = info.models
+  aiModelAuto.value = info.auto
+  aiModelCurrentIndex.value = info.current_index
+}
+
+export async function loadAiModels() {
+  try {
+    applyAiModelInfo(await getAiModels())
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+export async function selectAiModel(index) {
+  aiModelSelectionLoading.value = true
+  try {
+    applyAiModelInfo(await postAiModelSelection(index))
+  } catch {
+    // already surfaced via apiFetch
+  } finally {
+    aiModelSelectionLoading.value = false
   }
 }
 
@@ -170,6 +207,9 @@ async function submitMessage(message) {
     if (result.state) {
       handleStateChange(result.state)
     }
+    if (result.ai_model) {
+      applyAiModelInfo(result.ai_model)
+    }
     bumpTurn()
   } catch (err) {
     // In caso di errore durante l'invio, rimuoviamo la bolla vuota/incompleta
@@ -235,6 +275,9 @@ export async function handleAction(actionName) {
       maybeAutoPlayAudio(result.reply[result.reply.length - 1].id)
     }
     handleStateChange(result.state)
+    if (result.ai_model) {
+      applyAiModelInfo(result.ai_model)
+    }
     bumpTurn()
   } catch {
     // already surfaced via apiFetch

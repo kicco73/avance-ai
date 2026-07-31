@@ -16,6 +16,7 @@ from openai import (
 )
 from openai.types.chat import ChatCompletionMessageParam
 
+from cascade import OnRetry
 from ai.llm_provider import (
     AIServiceConfig,
     AIServiceError,
@@ -82,7 +83,10 @@ class OpenAIProvider(LLMProvider):
         self._async_client: AsyncOpenAI = AsyncOpenAI(api_key=config.key, base_url=config.url)
         self._model: str = config.model
 
-    def generate(self, system_prompt: str, history: list[dict[str, Any]]) -> str:
+    def generate(
+        self, system_prompt: str, history: list[dict[str, Any]], on_retry: OnRetry | None = None
+    ) -> str:
+        # on_retry: unused — a leaf provider never retries on its own (see LLMProvider.generate).
         messages: list[ChatCompletionMessageParam] = _format_messages(system_prompt, history)
 
         with _handle_openai_errors():
@@ -94,7 +98,7 @@ class OpenAIProvider(LLMProvider):
             return response.choices[0].message.content or ""
 
     async def generate_stream(
-        self, system_prompt: str, history: list[dict[str, Any]]
+        self, system_prompt: str, history: list[dict[str, Any]], on_retry: OnRetry | None = None
     ) -> AsyncIterator[str]:
         messages: list[ChatCompletionMessageParam] = _format_messages(system_prompt, history)
 

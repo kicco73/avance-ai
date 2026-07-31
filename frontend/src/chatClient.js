@@ -14,7 +14,8 @@ function normalizeResult(data) {
     state: data.state,
     state_changed: data.state_changed,
     new_state: data.new_state,
-    triggered_action: data.triggered_action
+    triggered_action: data.triggered_action,
+    ai_model: data.ai_model
   }
 }
 

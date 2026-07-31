@@ -1,6 +1,7 @@
 """Abstract interface shared by all STT providers, mirroring
 ai/llm_provider.py's LLMProvider — no cascade knowledge here: retry/
-cascading is ListenService's responsibility alone (see listen_service.py).
+cascading is CascadingListenProvider's responsibility alone (see
+cascading_listen_provider.py).
 """
 from __future__ import annotations
 

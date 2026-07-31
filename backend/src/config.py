@@ -11,20 +11,26 @@ class ConfigError(Exception):
 
 @dataclass(frozen=True)
 class TalkServiceConfig:
-    name: str
+    driver: str
     model: str
     # Optional: a future local provider (e.g. Piper) won't need one.
     key: str | None
+    # Optional: falls back to `driver` (see AppConfig._parse_talk_services).
+    ui_label: str
+    ui_description: str | None = None
 
 
 @dataclass(frozen=True)
 class ListenServiceConfig:
-    name: str
+    driver: str
     model: str
     # Optional: unused by faster-whisper, kept for a future remote provider.
     key: str | None
     # Optional: skips faster-whisper's autodetect when given (e.g. "ca").
     language: str | None
+    # Optional: falls back to `driver` (see AppConfig._parse_listen_services).
+    ui_label: str
+    ui_description: str | None = None
 
 
 class AppConfig:
@@ -44,7 +50,7 @@ class AppConfig:
                 raw = yaml.safe_load(f)
                 return raw, path
         return None, None
-    
+
     @staticmethod
     def _require_str(raw: dict, section: str, field: str, path: Path) -> str:
         sub = raw.get(section)
@@ -69,6 +75,19 @@ class AppConfig:
         if not isinstance(entries, list) or not entries:
             raise ConfigError(f"{path}: '{section}.providers' must be a non-empty list.")
         return entries
+
+    @staticmethod
+    def _parse_ui_fields(entry: dict, driver: str, section: str, i: int, path: Path) -> tuple[str, str | None]:
+        """ui-label falls back to `driver` when absent/blank; ui-description
+        stays None when absent. Shared by the three providers[] parsers."""
+        ui_label = entry.get("ui-label")
+        if ui_label is not None and not isinstance(ui_label, str):
+            raise ConfigError(f"{path}: '{section}.providers[{i}].ui-label' must be a string if present.")
+        ui_description = entry.get("ui-description")
+        if ui_description is not None and not isinstance(ui_description, str):
+            raise ConfigError(f"{path}: '{section}.providers[{i}].ui-description' must be a string if present.")
+        return (ui_label.strip() if ui_label and ui_label.strip() else driver), \
+            (ui_description.strip() if ui_description and ui_description.strip() else None)
 
     @classmethod
     def _get_optional_providers(cls, raw: dict, section: str, path: Path) -> list | None:
@@ -101,16 +120,20 @@ class AppConfig:
         for i, entry in enumerate(entries):
             if not isinstance(entry, dict):
                 raise ConfigError(f"{path}: 'talk-service.providers[{i}]' must be a mapping.")
-            name = entry.get("name")
+            driver = entry.get("driver")
             model = entry.get("model")
             key = entry.get("key")
-            if not isinstance(name, str) or not name.strip():
-                raise ConfigError(f"{path}: 'talk-service.providers[{i}].name' is missing or empty.")
+            if not isinstance(driver, str) or not driver.strip():
+                raise ConfigError(f"{path}: 'talk-service.providers[{i}].driver' is missing or empty.")
             if not isinstance(model, str) or not model.strip():
                 raise ConfigError(f"{path}: 'talk-service.providers[{i}].model' is missing or empty.")
             if key is not None and not isinstance(key, str):
                 raise ConfigError(f"{path}: 'talk-service.providers[{i}].key' must be a string if present.")
-            services.append(TalkServiceConfig(name=name.strip(), model=model.strip(), key=key))
+            driver = driver.strip()
+            ui_label, ui_description = cls._parse_ui_fields(entry, driver, "talk-service", i, path)
+            services.append(TalkServiceConfig(
+                driver=driver, model=model.strip(), key=key, ui_label=ui_label, ui_description=ui_description,
+            ))
         return services
 
     @classmethod
@@ -123,21 +146,24 @@ class AppConfig:
         for i, entry in enumerate(entries):
             if not isinstance(entry, dict):
                 raise ConfigError(f"{path}: 'listen-service.providers[{i}]' must be a mapping.")
-            name = entry.get("name")
+            driver = entry.get("driver")
             model = entry.get("model")
             key = entry.get("key")
             language = entry.get("language")
-            if not isinstance(name, str) or not name.strip():
-                raise ConfigError(f"{path}: 'listen-service.providers[{i}].name' is missing or empty.")
+            if not isinstance(driver, str) or not driver.strip():
+                raise ConfigError(f"{path}: 'listen-service.providers[{i}].driver' is missing or empty.")
             if not isinstance(model, str) or not model.strip():
                 raise ConfigError(f"{path}: 'listen-service.providers[{i}].model' is missing or empty.")
             if key is not None and not isinstance(key, str):
                 raise ConfigError(f"{path}: 'listen-service.providers[{i}].key' must be a string if present.")
             if language is not None and not isinstance(language, str):
                 raise ConfigError(f"{path}: 'listen-service.providers[{i}].language' must be a string if present.")
+            driver = driver.strip()
+            ui_label, ui_description = cls._parse_ui_fields(entry, driver, "listen-service", i, path)
             services.append(ListenServiceConfig(
-                name=name.strip(), model=model.strip(), key=key,
+                driver=driver, model=model.strip(), key=key,
                 language=language.strip() if language else None,
+                ui_label=ui_label, ui_description=ui_description,
             ))
         return services
 
@@ -149,19 +175,24 @@ class AppConfig:
         for i, entry in enumerate(entries):
             if not isinstance(entry, dict):
                 raise ConfigError(f"{path}: 'ai-service.providers[{i}]' must be a mapping.")
-            name = entry.get("name")
+            driver = entry.get("driver")
             model = entry.get("model")
             key = entry.get("key")
             url = entry.get("url")
-            if not isinstance(name, str) or not name.strip():
-                raise ConfigError(f"{path}: 'ai-service.providers[{i}].name' is missing or empty.")
+            if not isinstance(driver, str) or not driver.strip():
+                raise ConfigError(f"{path}: 'ai-service.providers[{i}].driver' is missing or empty.")
             if not isinstance(model, str) or not model.strip():
                 raise ConfigError(f"{path}: 'ai-service.providers[{i}].model' is missing or empty.")
             if not isinstance(key, str):
                 raise ConfigError(f"{path}: 'ai-service.providers[{i}].key' must be a string.")
             if key is not None and not isinstance(key, str):
                 raise ConfigError(f"{path}: 'ai-service.providers[{i}].key' must be a string or None.")
-            services.append(AIServiceConfig(name=name.strip(), model=model.strip(), key=key, url=url))
+            driver = driver.strip()
+            ui_label, ui_description = cls._parse_ui_fields(entry, driver, "ai-service", i, path)
+            services.append(AIServiceConfig(
+                driver=driver, model=model.strip(), key=key, url=url,
+                ui_label=ui_label, ui_description=ui_description,
+            ))
         return services
 
     def __init__(self) -> None:

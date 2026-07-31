@@ -21,6 +21,11 @@ ai-service:
     - name: gemini
       model: gemini-flash-lite-latest
       key: <your-gemini-api-key>
+      # Both optional. ui_label is what the frontend's model menu shows for
+      # this entry — falls back to `name` (e.g. "gemini") if omitted.
+      # ui_description is an optional longer blurb shown alongside it.
+      # ui_label: Gemini Flash Lite
+      # ui_description: Google's fastest Gemini model.
 
 talk-service:
   # Optional, defaults to false (and the whole section can be omitted
@@ -38,6 +43,7 @@ talk-service:
     - name: gemini
       model: gemini-2.5-flash-preview-tts
       key: <your-gemini-api-key>
+      # ui_label/ui_description: same optional fields as ai-service above.
 
 listen-service:
   # Same optional, default-off shape as talk-service.enabled — see above.
@@ -50,3 +56,4 @@ listen-service:
     - name: faster-whisper
       model: small
       language: ca
+      # ui_label/ui_description: same optional fields as ai-service above.
