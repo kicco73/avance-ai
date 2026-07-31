@@ -62,7 +62,7 @@ def test_touch_chat_session_updates_end_only(db):
 def test_save_message_requires_a_session(db):
     session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
 
-    db.save_message("user", "hello", "proj", session_id)
+    db.save_message("user", "hello", session_id)
     messages = db.get_messages(session_id)
 
     assert [m["content"] for m in messages] == ["hello"]
@@ -71,8 +71,8 @@ def test_save_message_requires_a_session(db):
 def test_get_messages_scoped_by_session_not_project(db):
     s1 = _make_session(db, start=datetime(2026, 1, 1, 9, 0, 0))
     s2 = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
-    db.save_message("user", "in session 1", "proj", s1)
-    db.save_message("user", "in session 2", "proj", s2)
+    db.save_message("user", "in session 1", s1)
+    db.save_message("user", "in session 2", s2)
 
     assert [m["content"] for m in db.get_messages(s1)] == ["in session 1"]
     assert [m["content"] for m in db.get_messages(s2)] == ["in session 2"]
@@ -80,7 +80,7 @@ def test_get_messages_scoped_by_session_not_project(db):
 
 def test_reset_project_deletes_sessions_and_their_messages(db):
     session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
-    db.save_message("user", "hello", "proj", session_id)
+    db.save_message("user", "hello", session_id)
 
     db.reset_project("proj")
 

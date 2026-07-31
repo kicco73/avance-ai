@@ -50,24 +50,17 @@ class Message(BaseModel):
     role = CharField()  # "user" or "assistant"
     content = TextField()
     timestamp = DateTimeField(index=True, default=datetime.utcnow)
-    project_name = CharField(index=True, null=True)
     audio_text = TextField(null=True)
     # Every message belongs to exactly one ChatSession (see
     # ChatSessionManager) — column name is "session_id" (Peewee's default
-    # for a ForeignKeyField named `session`).
+    # for a ForeignKeyField named `session`). project_name is reached via
+    # session.project_name (a join) instead of being duplicated here.
     session = ForeignKeyField(ChatSession, null=False, backref="messages")
 
 
-class SignalSnapshot(BaseModel):
-    id = AutoField()
-    values = TextField()  # JSON dict: {"problemRecognition": 42, ...}
-    timestamp = DateTimeField(index=True, default=datetime.utcnow)
-    project_name = CharField(index=True, null=True)
-
-
 # Single fixed user until there's real multi-user support (no login yet) —
-# what every Settings/Transition row for "the current user" resolves to,
-# internally, never accepted as a parameter from outside this module.
+# what every Settings row for "the current user" resolves to, internally,
+# never accepted as a parameter from outside this module.
 DEFAULT_USER = "user"
 
 
@@ -79,19 +72,26 @@ class Settings(BaseModel):
     project = CharField()
 
 
-class Transition(BaseModel):
+class Signals(BaseModel):
+    """Merges the old SignalSnapshot + Transition tables into one event
+    log, scoped by `session` (its username/project_name are reached via a
+    join, instead of being duplicated as separate columns/FKs here — see
+    ChatSession). Every row is one of:
+    - a plain auto-tracking evaluation: `values` set, transition fields
+      all None (nothing fired).
+    - a transition: old_state/action/new_state set. `values` is set when
+      auto-tracking's own evaluation caused it, None for a manual action
+      or the automaton's initial transition.
+    A row can't reference "the snapshot that caused it" as a separate
+    row anymore (there's no second row) — the evaluation and the
+    transition it triggered are simply the same row."""
+    id = AutoField()
+    session = ForeignKeyField(ChatSession, null=False, backref="signals")
     timestamp = DateTimeField(index=True, default=datetime.utcnow)
-    old_state = CharField(index=True)
-    action = CharField()
-    new_state = CharField(index=True)
-    # null => manual transition (button); not null => automatic, references
-    # the signal snapshot whose values caused the transition.
-    signal_snapshot = ForeignKeyField(SignalSnapshot, null=True, backref="transitions")
-    # Always DEFAULT_USER for now (see Db.save_transition) — the column
-    # exists ahead of real multi-user support so the schema won't need to
-    # change again when that lands.
-    user = ForeignKeyField(Settings, index=True, backref="transitions")
-    project_name = CharField(index=True, null=True)
+    values = TextField(null=True)  # JSON dict: {"problemRecognition": 42, ...}, or None
+    old_state = CharField(null=True, index=True)
+    action = CharField(null=True)
+    new_state = CharField(null=True, index=True)
 
 
 class Archive(BaseModel):
@@ -106,7 +106,7 @@ class Db(object):
     def __init__(self, database_url: str) -> None:
         database.initialize(connect(database_url))
         database.connect(reuse_if_open=True)
-        database.create_tables([ChatSession, Message, SignalSnapshot, Settings, Transition, Archive], safe=True)
+        database.create_tables([ChatSession, Message, Settings, Signals, Archive], safe=True)
 
     def create_chat_session(
         self,
@@ -161,11 +161,9 @@ class Db(object):
         ).execute()
 
     def save_message(
-        self, role: str, content: str, project_name: str, session_id: int, audio_text: str | None = None
+        self, role: str, content: str, session_id: int, audio_text: str | None = None
     ) -> int:
-        message = Message.create(
-            role=role, content=content, project_name=project_name, session=session_id, audio_text=audio_text
-        )
+        message = Message.create(role=role, content=content, session=session_id, audio_text=audio_text)
         return message.id # type: ignore
 
     def get_message_audio_text(self, message_id: int) -> str | None:
@@ -207,54 +205,55 @@ class Db(object):
             query = query.where(Message.timestamp > since)
         return query.exists()
 
-    def save_signal_snapshot(self, values: dict, project_name: str) -> int:
-        snapshot = SignalSnapshot.create(values=json.dumps(values), project_name=project_name)
-        return snapshot.id
+    def save_signal_snapshot(self, values: dict, session_id: int) -> int:
+        row = Signals.create(session=session_id, values=json.dumps(values))
+        return row.id
 
     def get_latest_signal_snapshot(self, project_name: str) -> dict | None:
-        snapshot = (
-            SignalSnapshot.select()
-            .where(SignalSnapshot.project_name == project_name)
-            .order_by(SignalSnapshot.timestamp.desc())
+        row = (
+            Signals.select()
+            .join(ChatSession, on=(Signals.session == ChatSession.id))
+            .where((ChatSession.project_name == project_name) & Signals.values.is_null(False))
+            .order_by(Signals.timestamp.desc())
             .first()
         )
-        if snapshot is None:
+        if row is None:
             return None
-        return json.loads(snapshot.values)
+        return json.loads(row.values)
 
     def save_transition(
         self,
         old_state: str,
         action: str,
         new_state: str,
-        project_name: str,
+        session_id: int,
         transition_log_level: str,
-        signal_snapshot_id: int | None = None,
         signal_values: dict | None = None,
     ) -> None:
-        Transition.create(
+        Signals.create(
+            session=session_id,
             old_state=old_state,
             action=action,
             new_state=new_state,
-            project_name=project_name,
-            signal_snapshot=signal_snapshot_id,
-            # Resolved here, not passed in: only one user exists today, but
-            # the FK already exists so callers won't need to change later.
-            user=DEFAULT_USER,
+            values=json.dumps(signal_values) if signal_values is not None else None,
         )
 
-        trigger_type = "auto" if signal_snapshot_id is not None else "manual"
+        trigger_type = "auto" if signal_values is not None else "manual"
         level = getattr(logging, transition_log_level)
         message = f"State transition: {old_state} -> {new_state} (action={action}, trigger={trigger_type})"
         if signal_values:
             message += f" signals={signal_values}"
         logger.log(level, message)
 
-    def _latest_transition(self, project_name: str, *, real_only: bool = False) -> Transition | None:
-        query = Transition.select().where(Transition.project_name == project_name)
+    def _latest_transition(self, project_name: str, *, real_only: bool = False) -> Signals | None:
+        query = (
+            Signals.select()
+            .join(ChatSession, on=(Signals.session == ChatSession.id))
+            .where((ChatSession.project_name == project_name) & Signals.new_state.is_null(False))
+        )
         if real_only:
-            query = query.where(Transition.old_state != Transition.new_state)
-        return query.order_by(Transition.timestamp.desc()).first()
+            query = query.where(Signals.old_state != Signals.new_state)
+        return query.order_by(Signals.timestamp.desc()).first()
 
     def get_current_state(self, project_name: str) -> str | None:
         transition = self._latest_transition(project_name)
@@ -277,15 +276,15 @@ class Db(object):
         ).execute()
 
     def reset_project(self, project_name: str) -> None:
-        Transition.delete().where(Transition.project_name == project_name).execute()
-        SignalSnapshot.delete().where(SignalSnapshot.project_name == project_name).execute()
-        # Message before ChatSession: Message.session references ChatSession.
-        Message.delete().where(Message.project_name == project_name).execute()
+        # Signals/Message before ChatSession: both reference it by FK, and
+        # neither carries project_name directly anymore (see Message/Signals).
+        session_ids = ChatSession.select(ChatSession.id).where(ChatSession.project_name == project_name)
+        Signals.delete().where(Signals.session.in_(session_ids)).execute()
+        Message.delete().where(Message.session.in_(session_ids)).execute()
         ChatSession.delete().where(ChatSession.project_name == project_name).execute()
 
     def reset_all(self) -> None:
-        Transition.delete().execute()
-        SignalSnapshot.delete().execute()
+        Signals.delete().execute()
         Message.delete().execute()
         ChatSession.delete().execute()
 

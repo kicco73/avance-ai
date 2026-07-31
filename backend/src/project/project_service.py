@@ -163,7 +163,7 @@ class ProjectService(object):
             state_key = automaton.init_action.target
         return automaton, automaton.get_state(state_key)
 
-    def apply_manual_action(self, action_name: str) -> tuple[StatePayload, Action, str]:
+    def apply_manual_action(self, action_name: str, session_id: int) -> tuple[StatePayload, Action, str]:
         """Applies a manual (button) action and returns the destination
         state's payload, the Action that fired, and the source state's
         key (e.g. to detect a self-loop)."""
@@ -177,7 +177,7 @@ class ProjectService(object):
             state.key,
             action_name,
             new_state.key,
-            self.get_active_project_name(),
+            session_id,
             transition_log_level=new_state.transition_log_level,
         )
         return automaton.get_state_payload(new_state), action, state.key

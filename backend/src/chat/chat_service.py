@@ -162,7 +162,7 @@ class ChatService(object):
         if self._db.get_current_state(project_name) is None:
             action = automaton.init_action
             self._db.save_transition(
-                "", action.name, state.key, project_name, transition_log_level=state.transition_log_level
+                "", action.name, state.key, session_id, transition_log_level=state.transition_log_level
             )
             if action.action_prompt:
                 init_message = await self._generate_action_prompt_message(
@@ -219,7 +219,7 @@ class ChatService(object):
 
         reply = await self._ai_service.generate(system_prompt, chat_history)
         visible_text, tags = _filter_text_and_extract_tags(reply)
-        message_id = self._db.save_message("assistant", visible_text, project_name, session_id, audio_text=tags['audio'])
+        message_id = self._db.save_message("assistant", visible_text, session_id, audio_text=tags['audio'])
         return {"id": message_id, "content": visible_text, "audio_text": tags['audio']}
 
     async def _generate_action_prompt_message(
@@ -282,12 +282,17 @@ class ChatService(object):
         if self.lock.locked():
             raise ChatServiceError("A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT)
         async with self.lock:
-            state_payload, action, source_state_key = self._project_service.apply_manual_action(action_name)
             project_name = self._active_project_name
-            automaton, state = self._project_service.get_active_automaton_and_state()
+            _, source_state = self._project_service.get_active_automaton_and_state()
+            # Resolved before applying the action: save_transition (inside
+            # project_service.apply_manual_action) now needs a session_id.
             session = self._session_manager.get_or_create_current_session(
-                self._username, project_name, session_id, state.key
+                self._username, project_name, session_id, source_state.key
             )
+            state_payload, action, source_state_key = self._project_service.apply_manual_action(
+                action_name, session["id"]
+            )
+            automaton, state = self._project_service.get_active_automaton_and_state()
             reply = await self._messages_for_transition(
                 action, project_name, session["id"], automaton, state, is_self_loop=(action.target == source_state_key)
             )
@@ -358,7 +363,7 @@ class ChatService(object):
             )
             messages.extend(transition_messages)
 
-        self._db.save_message("user", text, project_name, resolved_session_id)
+        self._db.save_message("user", text, resolved_session_id)
 
         if state.chat:
             system_prompt, turn_attachments = self._build_turn_prompt(automaton, state)
@@ -380,7 +385,7 @@ class ChatService(object):
             metadata = _parse_metadata_tag(filter.tags['avance'].tag_content)
             audio_text = filter.tags['audio'].tag_content or None
             assistant_id = self._db.save_message(
-                "assistant", reply, project_name, resolved_session_id, audio_text=audio_text
+                "assistant", reply, resolved_session_id, audio_text=audio_text
             )
             messages.append({"id": assistant_id, "content": reply, "audio_text": audio_text})
 
