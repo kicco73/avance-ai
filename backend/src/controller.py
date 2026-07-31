@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import inspect
 from http import HTTPStatus
+from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
 
 from automaton.automaton import Automaton
+from db import Db
 from talk.talk_service import TalkService, TalkServiceNotAvailableError
 from listen.listen_service import ListenService, ListenServiceError, ListenServiceNotAvailableError
 from chat.chat_service import ChatService, ChatServiceError
@@ -51,11 +53,13 @@ class AvanceController(object):
         project_service: ProjectService,
         talk_service: TalkService | None,
         listen_service: ListenService | None,
+        db: Db,
     ) -> None:
         self.chat_service = chat_service
         self.project_service = project_service
         self.talk_service = talk_service
         self.listen_service = listen_service
+        self.db = db
 
         self.router = APIRouter()
         for _, member in inspect.getmembers(self, predicate=inspect.ismethod):
@@ -215,6 +219,35 @@ class AvanceController(object):
             self.project_service.reset_active_project()
             self.chat_service.auto_tracking_enabled = True
         return self.project_service.get_active_state_payload()
+
+    @get("/api/backup")
+    async def get_backup(self):
+        """Downloads the whole working SQLite database file — every
+        project, session, message, and signal, not scoped to the active
+        project — as a restorable backup (see POST /api/backup)."""
+        async with self.chat_service.lock:
+            content = self.db.export_backup()
+        filename = Path(self.db.backup_file_path()).stem + ".sqlite"
+        return Response(
+            content=content,
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    @post("/api/backup")
+    async def post_backup(self, request: Request):
+        """Restores the working SQLite database from an uploaded backup
+        file — replaces it in place, at the exact path this server is
+        configured to use (see config.database_url). Wipes whatever the
+        server currently has (all projects, sessions, messages)."""
+        content = await request.body()
+        async with self.chat_service.lock:
+            try:
+                self.db.restore_backup(content)
+            except ValueError as exc:
+                raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+            self.chat_service.auto_tracking_enabled = True
+        return {"success": True}
 
     @get("/api/projects")
     def get_projects(self):

@@ -6,10 +6,11 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime
 
 from peewee import CharField, DateTimeField, ForeignKeyField, Model, Proxy, TextField, BlobField, CompositeKey, AutoField
-from playhouse.db_url import connect
+from playhouse.db_url import connect, parse as parse_db_url
 
 logger = logging.getLogger(__name__)
 
@@ -103,10 +104,44 @@ class Archive(BaseModel):
 
 
 class Db(object):
+    # Sqlite files start with this fixed 16-byte header — checked before
+    # restore_backup() ever touches the working file, so an unrelated/
+    # corrupt upload fails loudly instead of clobbering it with garbage.
+    _SQLITE_MAGIC = b"SQLite format 3\x00"
+
     def __init__(self, database_url: str) -> None:
+        self._database_url = database_url
         database.initialize(connect(database_url))
         database.connect(reuse_if_open=True)
         database.create_tables([ChatSession, Message, Settings, Signals, Archive], safe=True)
+
+    def backup_file_path(self) -> str:
+        """Absolute path of the working SQLite file backing this Db — the
+        one location download/restore-backup ever act on (see
+        config.database_url)."""
+        return os.path.abspath(parse_db_url(self._database_url)["database"])
+
+    def export_backup(self) -> bytes:
+        with open(self.backup_file_path(), "rb") as f:
+            return f.read()
+
+    def restore_backup(self, content: bytes) -> None:
+        """Replaces the working SQLite file with `content`, in place (same
+        path/name), then reconnects. Callers must serialize this against
+        in-flight chat turns themselves (see controller.py's /api/backup)."""
+        if not content.startswith(self._SQLITE_MAGIC):
+            raise ValueError("Uploaded file is not a valid SQLite database.")
+
+        path = self.backup_file_path()
+        database.close()
+        # Write alongside the target first and rename into place — a
+        # direct overwrite could leave a half-written file if this fails
+        # partway through.
+        tmp_path = f"{path}.restoring"
+        with open(tmp_path, "wb") as f:
+            f.write(content)
+        os.replace(tmp_path, path)
+        database.connect(reuse_if_open=True)
 
     def create_chat_session(
         self,

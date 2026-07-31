@@ -51,7 +51,11 @@ const inputEl = ref(null)
 const showErrorDetail = ref(false)
 const recording = ref(false)
 
-const chatDisabled = computed(() => !(state.value?.chat ?? true))
+// No `state.value.key` means there's no active project/state at all (see
+// controller.py's GET /api/state, which returns just the talk/listen
+// flags in that case) — chat must stay disabled rather than defaulting
+// to enabled.
+const chatDisabled = computed(() => !state.value?.key || !state.value?.chat)
 
 watch(errorMessage, () => {
   showErrorDetail.value = false

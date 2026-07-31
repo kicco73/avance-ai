@@ -75,7 +75,7 @@ try:
     )
 
     register_error_handlers(app)
-    controller = AvanceController(chat_service, project_service, talk_service, listen_service)
+    controller = AvanceController(chat_service, project_service, talk_service, listen_service, db)
     app.include_router(controller.router)
 
     if chat_ws_adapter is not None:

@@ -189,6 +189,18 @@ export function getProjects() {
   return apiFetch(`${API_URL}/projects`)
 }
 
+export function getBackup() {
+  return apiFetch(`${API_URL}/backup`, {}, { parse: 'blob' })
+}
+
+export function postRestoreBackup(file) {
+  return apiFetch(`${API_URL}/backup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream' },
+    body: file
+  })
+}
+
 export function activateProject(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/activate`, {
     method: 'PUT'

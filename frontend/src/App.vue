@@ -10,7 +10,9 @@ import {
   putProject,
   activateProject,
   deleteProject,
-  downloadProject
+  downloadProject,
+  getBackup,
+  postRestoreBackup
 } from './api.js'
 import { disconnect as disconnectChat } from './chatClient.js'
 import { clearApiError } from './errorStore.js'
@@ -209,6 +211,40 @@ async function handleModelDelete(projectName) {
   }
 }
 
+// Whole-database download (every project, session, message, signal — not
+// scoped to the active project), unlike handleModelDownload's per-project
+// zip. No UI state changes on success, same reasoning as that one.
+async function handleDownloadBackup() {
+  try {
+    const blob = await getBackup()
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'avance-backup.sqlite'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+// Replaces the entire working database server-side — every project,
+// session, and message the server currently has is gone either way, so
+// this needs the same explicit confirmation as handleReset (chatStore.js),
+// then the same reload-everything path as switch/upload/delete.
+async function handleRestoreBackup(file) {
+  if (!window.confirm('Restore this backup? This replaces the entire working database (all projects, sessions, and messages) and cannot be undone.')) return
+  clearChatUi()
+  try {
+    await postRestoreBackup(file)
+    await refreshStateAndProjects()
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
 onMounted(startBootSequence)
 onBeforeUnmount(() => {
   disconnectChat()
@@ -234,6 +270,8 @@ onBeforeUnmount(() => {
           @upload="triggerModelUpload"
           @download="handleModelDownload"
           @delete="handleModelDelete"
+          @download-backup="handleDownloadBackup"
+          @restore-backup="handleRestoreBackup"
         />
         <input
           ref="modelUploadInput"

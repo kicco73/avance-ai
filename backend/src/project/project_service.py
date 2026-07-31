@@ -402,4 +402,14 @@ class ProjectService(object):
         self._automaton_cache.pop(project_name, None)
 
         if project_name == self.get_active_project_name():
-            await self.activate_project(DEFAULT_PROJECT_NAME, commit)
+            # DEFAULT_PROJECT_NAME is just a reserved name (see above) —
+            # not guaranteed to actually exist as an uploaded project (e.g.
+            # a fresh install, or it was never uploaded), so activating it
+            # blindly can 404. Prefer it when it exists, for continuity;
+            # otherwise fall back to whatever project is left, if any —
+            # activating nothing (rather than raising) when the deleted
+            # project was the last one.
+            remaining = self._db.list_projects()
+            fallback = DEFAULT_PROJECT_NAME if DEFAULT_PROJECT_NAME in remaining else next(iter(remaining), None)
+            if fallback is not None:
+                await self.activate_project(fallback, commit)
