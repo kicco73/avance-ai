@@ -31,6 +31,7 @@ class WsAdapter(object):
             while True:
                 data = await websocket.receive_json()
                 text = (data or {}).get("message", "").strip()
+                session_id = (data or {}).get("session_id")
                 if not text:
                     continue
 
@@ -57,6 +58,7 @@ class WsAdapter(object):
                 try:
                     result = await self._chat_service.process_turn(
                         text,
+                        session_id,
                         on_retry=_push_retrying,
                         on_chunk=_push_chunk,
                         on_audio=_push_audio,

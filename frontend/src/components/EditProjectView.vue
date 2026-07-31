@@ -30,6 +30,7 @@ import {
   autoTrackingLoading,
   toggleAutoTracking,
   handleReset,
+  handleNewSession,
   aiModels,
   aiModelCurrentIndex
 } from '../chatStore.js'
@@ -1048,6 +1049,7 @@ onBeforeUnmount(() => {
               </label>
               <div class="edit-project-chat-toolbar-actions">
                 <ModelMenu />
+                <button class="reset-btn" @click="handleNewSession">New session</button>
                 <button class="reset-btn" @click="handleReset">Reset</button>
                 <button class="close-x-btn" title="Close" @click="toggleChat">×</button>
               </div>

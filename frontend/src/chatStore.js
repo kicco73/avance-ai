@@ -1,5 +1,7 @@
 import { nextTick, ref } from 'vue'
 import {
+  getCurrentSession,
+  postCreateSession,
   getMessages,
   postAction,
   getAutoTracking,
@@ -16,6 +18,12 @@ import { celebrate } from './confetti.js'
 import { clearApiError } from './errorStore.js'
 
 export const state = ref(null)
+// The chat conversation's current session_id (see backend's
+// ChatSessionManager) — null until the first loadMessages()/ensureSession()
+// bootstrap. Every write call must carry it; the backend still resolves
+// the true writable session itself and this is kept in sync from each
+// response's own session_id (see submitMessage/handleAction).
+export const currentSessionId = ref(null)
 export const messages = ref([])
 export const historyLoaded = ref(false)
 export const chatLoading = ref(false)
@@ -56,9 +64,16 @@ export function handleStateChange(newState) {
   }
 }
 
+async function ensureSession() {
+  const session = await getCurrentSession(currentSessionId.value)
+  currentSessionId.value = session.id
+  return session.id
+}
+
 export async function loadMessages() {
   try {
-    const history = await getMessages()
+    const sessionId = await ensureSession()
+    const history = await getMessages(sessionId)
     messages.value = history.map((m) => ({
       role: m.role,
       content: m.content,
@@ -159,7 +174,7 @@ async function submitMessage(message) {
 
   try {
     // Passiamo le callback onStatus e onChunk a sendChatMessage
-    const result = await sendChatMessage(message.content, {
+    const result = await sendChatMessage(message.content, currentSessionId.value, {
       onStatus: (text) => {
         chatStatus.value = text
       },
@@ -209,6 +224,9 @@ async function submitMessage(message) {
     }
     if (result.ai_model) {
       applyAiModelInfo(result.ai_model)
+    }
+    if (result.session_id != null) {
+      currentSessionId.value = result.session_id
     }
     bumpTurn()
   } catch (err) {
@@ -266,7 +284,7 @@ export async function handleResend(index) {
 export async function handleAction(actionName) {
   actionLoading.value = true
   try {
-    const result = await postAction(actionName)
+    const result = await postAction(actionName, currentSessionId.value)
     for (const { id, content, audio_text } of result.reply) {
       messages.value.push({ role: 'assistant', content, audioText: audio_text, messageId: id })
     }
@@ -277,6 +295,9 @@ export async function handleAction(actionName) {
     handleStateChange(result.state)
     if (result.ai_model) {
       applyAiModelInfo(result.ai_model)
+    }
+    if (result.session_id != null) {
+      currentSessionId.value = result.session_id
     }
     bumpTurn()
   } catch {
@@ -291,6 +312,10 @@ export function clearChatUi() {
   clearApiError()
   chatStatus.value = ''
   autoTrackingEnabled.value = true
+  // reset_project/reset_all wipe ChatSession rows too (see db.py) — a
+  // stale id here would just be ignored server-side, but a project
+  // switch is exactly when "the current session" should be re-resolved.
+  currentSessionId.value = null
 }
 
 export async function handleReset() {
@@ -300,6 +325,19 @@ export async function handleReset() {
     const newState = await postReset()
     state.value = null
     handleStateChange(newState)
+    await loadMessages()
+    bumpTurn()
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+export async function handleNewSession() {
+  try {
+    const session = await postCreateSession()
+    currentSessionId.value = session.id
+    clearApiError()
+    messages.value = []
     await loadMessages()
     bumpTurn()
   } catch {

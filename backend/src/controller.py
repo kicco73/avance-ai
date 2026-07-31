@@ -7,7 +7,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
 
-from automaton.automaton import Automaton, StatePayload
+from automaton.automaton import Automaton
 from talk.talk_service import TalkService, TalkServiceNotAvailableError
 from listen.listen_service import ListenService, ListenServiceError, ListenServiceNotAvailableError
 from chat.chat_service import ChatService, ChatServiceError
@@ -72,11 +72,15 @@ class AvanceController(object):
         return self.chat_service.signals.get_latest_signals()
 
     @get("/api/state")
-    def get_state(self) -> StatePayload:
+    def get_state(self):
         """Also the frontend's boot/readiness ping (see App.vue's
         pingBackend) — piggybacks talk_enabled/listen_enabled here so it
         stays the one call needed to know both "is the server up" and
-        "which voice features does it actually have configured"."""
+        "which voice features does it actually have configured". No
+        `-> StatePayload` annotation: when there's no active project/state
+        yet (see the except below), the payload deliberately doesn't have
+        StatePayload's fields, and FastAPI would otherwise reject that
+        response as invalid instead of returning it."""
 
         try:
             payload = self.project_service.get_active_state_payload()
@@ -107,21 +111,35 @@ class AvanceController(object):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return self.chat_service.get_ai_models_info()
 
+    @get("/api/chat/session")
+    def get_current_session(self, session_id: int | None = None):
+        """Bootstrap endpoint: resolves (or creates) the active project's
+        current writable session — see chat/session_manager.py. Called by
+        the frontend before it has a known session_id, or to recover from
+        a stale one."""
+        return self.chat_service.get_or_create_current_session(session_id)
+
+    @post("/api/chat/sessions")
+    def post_create_session(self):
+        """Explicit "start a new session" action — always creates one,
+        superseding whichever session was previously current."""
+        return self.chat_service.create_session()
+
     @get("/api/chat/messages")
-    async def get_messages(self):
-        return await self.chat_service.get_messages()
+    async def get_messages(self, session_id: int):
+        return await self.chat_service.get_messages(session_id)
 
     @post("/api/chat/messages")
     async def post_message(self, req: ChatMessageRequest):
         text = req.message.strip()
         if not text:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Message cannot be empty.")
-        return await self.chat_service.process_turn(text)
+        return await self.chat_service.process_turn(text, req.session_id)
 
     @post("/api/action")
     async def post_action(self, req: ActionRequest):
         try:
-            return await self.chat_service.apply_manual_action(req.action_name)
+            return await self.chat_service.apply_manual_action(req.action_name, req.session_id)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 

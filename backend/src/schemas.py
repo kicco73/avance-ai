@@ -6,6 +6,10 @@ from pydantic import BaseModel
 
 class ActionRequest(BaseModel):
     action_name: str
+    # The frontend's current session_id (see chat/session_manager.py) —
+    # required by convention, but not authoritative: the backend always
+    # resolves and enforces the actual writable session server-side.
+    session_id: int | None = None
 
 
 class AutoTrackingRequest(BaseModel):
@@ -18,6 +22,8 @@ class TriggersPreviewRequest(BaseModel):
 
 class ChatMessageRequest(BaseModel):
     message: str
+    # See ActionRequest.session_id.
+    session_id: int | None = None
 
 
 class AiModelSelectionRequest(BaseModel):

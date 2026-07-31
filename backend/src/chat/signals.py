@@ -56,13 +56,13 @@ class Signals(object):
         return name
 
     def _signal_history_window(
-        self, pending_message: dict | None, since: datetime | None
+        self, session_id: int, pending_message: dict | None, since: datetime | None
     ) -> list[dict]:
         """Recent messages as a single 'evaluate this transcript' turn —
         not multi-turn history, which invites the model to keep chatting.
         `pending_message` is appended locally, unpersisted."""
         fetch_n = SIGNALS_HISTORY_WINDOW - 1 if pending_message is not None else SIGNALS_HISTORY_WINDOW
-        recent = self._db.get_messages(self._active_project_name(), last_n=fetch_n, since=since)
+        recent = self._db.get_messages(session_id, last_n=fetch_n, since=since)
         if pending_message is not None:
             recent = recent + [pending_message]
         if recent and recent[0]["role"] != "user":
@@ -117,6 +117,7 @@ class Signals(object):
         self,
         ai_service: AiService,
         build_priming_messages: BuildPrimingMessages,
+        session_id: int,
         pending_message: dict | None = None,
         since: datetime | None = None,
     ) -> dict[str,SignalPayload]:
@@ -131,7 +132,7 @@ class Signals(object):
         # never a state's or general_prompt's (different scope entirely).
         signal_attachments = [a for s in automaton.signals for a in s.attachments.values()]
         priming_messages = build_priming_messages(signal_attachments)
-        call_history = priming_messages + self._signal_history_window(pending_message, since)
+        call_history = priming_messages + self._signal_history_window(session_id, pending_message, since)
 
         try:
             raw_reply = await ai_service.generate(system_prompt, call_history)

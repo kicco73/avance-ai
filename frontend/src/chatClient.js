@@ -15,7 +15,8 @@ function normalizeResult(data) {
     state_changed: data.state_changed,
     new_state: data.new_state,
     triggered_action: data.triggered_action,
-    ai_model: data.ai_model
+    ai_model: data.ai_model,
+    session_id: data.session_id
   }
 }
 
@@ -118,29 +119,29 @@ async function ensureSocket() {
 }
 
 // Corretto: riceve { onStatus, onChunk } come oggetto unico
-async function sendViaWebsocket(text, { onStatus, onChunk } = {}) {
+async function sendViaWebsocket(text, sessionId, { onStatus, onChunk } = {}) {
   const ws = await ensureSocket()
   return new Promise((resolve, reject) => {
     pendingTurn = { resolve, reject, onStatus, onChunk }
-    ws.send(JSON.stringify({ message: text }))
+    ws.send(JSON.stringify({ message: text, session_id: sessionId }))
   })
 }
 
-async function sendViaRest(text) {
-  const data = await postChatMessage(text)
+async function sendViaRest(text, sessionId) {
+  const data = await postChatMessage(text, sessionId)
   return normalizeResult(data)
 }
 
-export async function sendMessage(text, options = {}) {
+export async function sendMessage(text, sessionId, options = {}) {
   if (!websocketUnavailable) {
     try {
-      return await sendViaWebsocket(text, options)
+      return await sendViaWebsocket(text, sessionId, options)
     } catch (err) {
       if (!(err instanceof WebSocketUnavailableError)) throw err
       websocketUnavailable = true
     }
   }
-  return sendViaRest(text)
+  return sendViaRest(text, sessionId)
 }
 
 export function disconnect() {

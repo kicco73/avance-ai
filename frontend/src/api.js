@@ -41,8 +41,17 @@ export function getState(signal) {
   return apiFetch(`${API_URL}/state`, { signal })
 }
 
-export function getMessages() {
-  return apiFetch(`${API_URL}/chat/messages`)
+export function getCurrentSession(sessionId) {
+  const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
+  return apiFetch(`${API_URL}/chat/session${query}`)
+}
+
+export function postCreateSession() {
+  return apiFetch(`${API_URL}/chat/sessions`, { method: 'POST' })
+}
+
+export function getMessages(sessionId) {
+  return apiFetch(`${API_URL}/chat/messages?session_id=${encodeURIComponent(sessionId)}`)
 }
 
 export function createChatSocket() {
@@ -107,11 +116,11 @@ export function sendWebSocketMessage(payload, { onChunk, onStatus, onDone, onErr
   })
 }
 
-export function postChatMessage(text) {
+export function postChatMessage(text, sessionId) {
   return apiFetch(`${API_URL}/chat/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: text })
+    body: JSON.stringify({ message: text, session_id: sessionId })
   })
 }
 
@@ -128,11 +137,11 @@ export function getSignals() {
   return apiFetch(`${API_URL}/chat/signals`)
 }
 
-export function postAction(actionName) {
+export function postAction(actionName, sessionId) {
   return apiFetch(`${API_URL}/action`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action_name: actionName })
+    body: JSON.stringify({ action_name: actionName, session_id: sessionId })
   })
 }
 

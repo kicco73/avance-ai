@@ -34,6 +34,7 @@ class AutoTracker(object):
         self,
         pending_message: dict | None,
         project_name: str,
+        session_id: int,
         automaton: Automaton,
         state: State,
         signal_values: dict | None,
@@ -48,7 +49,7 @@ class AutoTracker(object):
             logger.warning("AutoTracker.run(): signals not found in metadata, falling back to AI")
             since = self._history_cutoff(project_name, state)
             signal_values = await self._signals.compute(
-                self._ai_service, build_priming_messages, pending_message, since=since
+                self._ai_service, build_priming_messages, session_id, pending_message, since=since
             )
         # Saved before trigger evaluation so a fired transition can reference
         # the exact snapshot id that caused it.

@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from chat.chat_service import ChatService
+from chat.session_manager import ChatSessionManager
 from chat.ws_adapter import WsAdapter
 from config import AppConfig
 from controller import AvanceController
@@ -58,7 +59,8 @@ try:
     listen_service = ListenService.from_config(config.listen_services) if config.listen_services is not None else None
     db = Db(config.database_url)
     project_service = ProjectService(db)
-    chat_service = ChatService(ai_service, project_service, db)
+    session_manager = ChatSessionManager(db)
+    chat_service = ChatService(ai_service, project_service, db, session_manager)
 
     chat_ws_adapter = WsAdapter(chat_service) if config.chat_transport == "websocket" else None
 

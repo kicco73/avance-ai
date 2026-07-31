@@ -10,7 +10,6 @@ from datetime import datetime
 
 from peewee import CharField, DateTimeField, ForeignKeyField, Model, Proxy, TextField, BlobField, CompositeKey, AutoField
 from playhouse.db_url import connect
-from playhouse.migrate import SqliteMigrator, migrate
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +25,26 @@ class BaseModel(Model):
         database = database
 
 
+class ChatSession(BaseModel):
+    """A chat conversation's lifetime for one user+project. Open/closed is
+    computed by callers from `datetime_end` (see ChatSessionManager), not
+    stored here. Named ChatSession (not Session) to stay distinct from
+    session.py's process-local `Session` singleton — an unrelated concept."""
+    id = AutoField()
+    username = CharField()
+    project_name = CharField()
+    datetime_start = DateTimeField(null=False)
+    datetime_end = DateTimeField(null=False)
+    start_state = CharField(null=False)
+    end_state = CharField(null=False)
+
+    class Meta:
+        indexes = (
+            (("username", "project_name", "datetime_start", "datetime_end"), False),
+            (("username", "project_name", "start_state", "end_state"), False),
+        )
+
+
 class Message(BaseModel):
     id = AutoField()
     role = CharField()  # "user" or "assistant"
@@ -33,6 +52,10 @@ class Message(BaseModel):
     timestamp = DateTimeField(index=True, default=datetime.utcnow)
     project_name = CharField(index=True, null=True)
     audio_text = TextField(null=True)
+    # Every message belongs to exactly one ChatSession (see
+    # ChatSessionManager) — column name is "session_id" (Peewee's default
+    # for a ForeignKeyField named `session`).
+    session = ForeignKeyField(ChatSession, null=False, backref="messages")
 
 
 class SignalSnapshot(BaseModel):
@@ -79,59 +102,70 @@ class Archive(BaseModel):
         primary_key = CompositeKey('project_name', 'archive_name')
 
 
-_PROJECT_SCOPED_TABLES = (Message, SignalSnapshot, Transition)
-
-
 class Db(object):
     def __init__(self, database_url: str) -> None:
         database.initialize(connect(database_url))
         database.connect(reuse_if_open=True)
-        database.create_tables([Message, SignalSnapshot, Settings, Transition, Archive], safe=True)
-        self._migrate_add_project_name()
-        self._migrate_add_audio_text()
+        database.create_tables([ChatSession, Message, SignalSnapshot, Settings, Transition, Archive], safe=True)
 
-    def _migrate_add_audio_text(self) -> None:
-        """One-time, idempotent ALTER TABLE for databases created before
-        Message.audio_text existed."""
-        migrator = SqliteMigrator(database)
-        columns = {c.name for c in database.get_columns(Message._meta.table_name)}
-        if "audio_text" not in columns:
-            migrate(migrator.add_column(Message._meta.table_name, "audio_text", TextField(null=True)))
+    def create_chat_session(
+        self,
+        username: str,
+        project_name: str,
+        datetime_start: datetime,
+        datetime_end: datetime,
+        start_state: str,
+        end_state: str,
+    ) -> int:
+        session = ChatSession.create(
+            username=username,
+            project_name=project_name,
+            datetime_start=datetime_start,
+            datetime_end=datetime_end,
+            start_state=start_state,
+            end_state=end_state,
+        )
+        return session.id # type: ignore
 
-    def _migrate_add_project_name(self) -> None:
-        """One-time, idempotent migration to `project_name`/`project` (from
-        the model->project vocabulary rename): renames the column from its
-        pre-rename name (`model_name`/`model`) if present, else adds it
-        fresh (nullable) for databases that predate the column entirely —
-        backfilling only those freshly-added rows to whichever project is
-        currently active, the closest available approximation (every
-        switch used to wipe all data anyway, so pre-migration rows already
-        all belonged to it)."""
-        migrator = SqliteMigrator(database)
-        freshly_added = []
-        for table in _PROJECT_SCOPED_TABLES:
-            columns = {c.name for c in database.get_columns(table._meta.table_name)}
-            if "project_name" in columns:
-                continue
-            if "model_name" in columns:
-                migrate(migrator.rename_column(table._meta.table_name, "model_name", "project_name"))
-            else:
-                migrate(migrator.add_column(table._meta.table_name, "project_name", CharField(index=True, null=True)))
-                freshly_added.append(table)
+    @staticmethod
+    def _chat_session_to_dict(session: ChatSession) -> dict:
+        return {
+            "id": session.id,
+            "username": session.username,
+            "project_name": session.project_name,
+            "datetime_start": session.datetime_start,
+            "datetime_end": session.datetime_end,
+            "start_state": session.start_state,
+            "end_state": session.end_state,
+        }
 
-        settings_columns = {c.name for c in database.get_columns(Settings._meta.table_name)}
-        if "project" not in settings_columns and "model" in settings_columns:
-            migrate(migrator.rename_column(Settings._meta.table_name, "model", "project"))
+    def get_chat_session(self, session_id: int) -> dict | None:
+        session = ChatSession.get_or_none(ChatSession.id == session_id)
+        return self._chat_session_to_dict(session) if session is not None else None
 
-        if freshly_added:
-            active_project_name = self.get_active_project_name() or "default"
-            for table in freshly_added:
-                table.update(project_name=active_project_name).where(table.project_name.is_null()).execute()
+    def get_latest_chat_session(self, username: str, project_name: str) -> dict | None:
+        """The most recently started ChatSession for `username`+`project_name`
+        (see ChatSessionManager: this is the only one writes may ever land
+        on), or None if they have none yet."""
+        session = (
+            ChatSession.select()
+            .where((ChatSession.username == username) & (ChatSession.project_name == project_name))
+            .order_by(ChatSession.datetime_start.desc())
+            .first()
+        )
+        return self._chat_session_to_dict(session) if session is not None else None
+
+    def touch_chat_session(self, session_id: int, datetime_end: datetime, end_state: str) -> None:
+        ChatSession.update(datetime_end=datetime_end, end_state=end_state).where(
+            ChatSession.id == session_id
+        ).execute()
 
     def save_message(
-        self, role: str, content: str, project_name: str, audio_text: str | None = None
+        self, role: str, content: str, project_name: str, session_id: int, audio_text: str | None = None
     ) -> int:
-        message = Message.create(role=role, content=content, project_name=project_name, audio_text=audio_text)
+        message = Message.create(
+            role=role, content=content, project_name=project_name, session=session_id, audio_text=audio_text
+        )
         return message.id # type: ignore
 
     def get_message_audio_text(self, message_id: int) -> str | None:
@@ -139,15 +173,15 @@ class Db(object):
         return message.audio_text if message is not None else None
 
     def get_messages(
-        self, project_name: str, last_n: int | None = None, since: datetime | None = None
+        self, session_id: int, last_n: int | None = None, since: datetime | None = None
     ) -> list[dict]:
-        """Fetch `project_name`'s messages in chronological order. `last_n`
+        """Fetch `session_id`'s messages in chronological order. `last_n`
         limits at the SQL level (descending fetch + reverse) rather than
         slicing a full in-memory list. `since` excludes messages at or
         before that timestamp (a history_cutoff state's entry point)."""
         query = (
             Message.select()
-            .where(Message.project_name == project_name)
+            .where(Message.session == session_id)
             .order_by(Message.timestamp.desc())
         )
         if since is not None:
@@ -167,8 +201,8 @@ class Db(object):
             for m in rows
         ]
 
-    def has_messages_since(self, project_name: str, since: datetime | None) -> bool:
-        query = Message.select().where(Message.project_name == project_name)
+    def has_messages_since(self, session_id: int, since: datetime | None) -> bool:
+        query = Message.select().where(Message.session == session_id)
         if since is not None:
             query = query.where(Message.timestamp > since)
         return query.exists()
@@ -245,12 +279,15 @@ class Db(object):
     def reset_project(self, project_name: str) -> None:
         Transition.delete().where(Transition.project_name == project_name).execute()
         SignalSnapshot.delete().where(SignalSnapshot.project_name == project_name).execute()
+        # Message before ChatSession: Message.session references ChatSession.
         Message.delete().where(Message.project_name == project_name).execute()
+        ChatSession.delete().where(ChatSession.project_name == project_name).execute()
 
     def reset_all(self) -> None:
         Transition.delete().execute()
         SignalSnapshot.delete().execute()
         Message.delete().execute()
+        ChatSession.delete().execute()
 
     def save_archive(self, project_name: str, archive_name: str, content: str) -> None:
         Archive.insert(
