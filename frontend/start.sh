@@ -1,3 +1,3 @@
 #!/bin/sh
 
-npm start dev
+npm run dev

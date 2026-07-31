@@ -48,11 +48,18 @@ class WsAdapter(object):
                         "content": chunk,
                     })
 
+                async def _push_audio(audio: str) -> None:
+                    await websocket.send_json({
+                        "type": "audio_text",
+                        "content": audio,
+                    })
+
                 try:
                     result = await self._chat_service.process_turn(
                         text,
                         on_retry=_push_retrying,
                         on_chunk=_push_chunk,
+                        on_audio=_push_audio,
                     )
                 except (ChatServiceError, AIServiceError) as exc:
                     await websocket.send_json({

@@ -1,33 +1,29 @@
-"""Transport-agnostic chat-turn logic. Building the
-system prompt, running auto-tracking, calling the LLM provider with
-retry, and persisting the result all live here exactly once.
-"""
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
-import re
+
 from datetime import datetime, timezone
 from http import HTTPStatus
-from typing import Awaitable, Callable
+from typing import Awaitable, Callable, Any
 
 from automaton.automaton import Action, Automaton, State, StatePayload
 from db import Db
 from ai.ai_service import AiService, OnRetry
+
 from chat.auto_tracker import AutoTracker
 from chat.metadata_handler import MetadataHandler
 from chat.priming import build_priming_messages
 from chat.signals import Signals
 from project.project_service import ProjectService
+from chat.text_filter import TagFilter, ConcatTagFilter
 
 logger = logging.getLogger(__name__)
 
 OnChunk = Callable[[str], Awaitable[None]]
+OnAudio = Callable[[str], Awaitable[None]]
 
-# System prompt for states with a `fixed_message` (e.g. crisis): the model
-# must translate it verbatim, not generate a free-form reply. Used for both
-# a normal chat turn and an opening message landing on such a state.
 FIXED_MESSAGE_INSTRUCTIONS = (
     "You must reply with ONLY a translation of the fixed message below into "
     "the same language the user's last message is written in. Do not answer "
@@ -36,28 +32,22 @@ FIXED_MESSAGE_INSTRUCTIONS = (
     "Fixed message:\n{fixed_message}"
 )
 
-# The AI is prompted (see the active project's index.yml) to end its
-# reply with a short [avance]...[/avance] tag — the phrase to narrate,
-# distinct from the reply text itself. The tagged block (tag and content)
-# is stripped from what gets persisted/shown; the content between the
-# tags is what's sent to TTS instead of the reply text.
-_AVANCE_TAG_RE = re.compile(r"\[avance\](.*?)\[/avance\]", re.IGNORECASE | re.DOTALL)
-
-
-def _extract_visible_text_and_metadata(text: str) -> tuple[str, dict | None]:
-    match = _AVANCE_TAG_RE.search(text)
-    if match is None:
-        return text, {}
-    visible_text = (text[: match.start()] + text[match.end() :]).strip()
-    tag_text = match.group(1).strip()
+def _parse_metadata_tag(metadata_tag: str) -> Any:
+    metadata : dict[str, Any] = {}
     try:
-        metadata = json.loads(tag_text) or {}
+        metadata  = json.loads(metadata_tag) or {}
         assert isinstance(metadata, dict)
     except Exception as exc:
-        logger.warning(f"_extract_visible_text_and_metadata(): {exc}")
-        metadata = {}
-    return visible_text, metadata
+        logger.warning(f"_parse_metadata_tag(): {exc}")  
+    return metadata
+    
 
+def _filter_text_and_extract_tags(text: str) -> tuple[str, dict]:
+    filters = ConcatTagFilter('audio', 'avance')
+    return filters.filter_and_flush(text), {
+        'audio': filters.tags['audio'].tag_content,
+        'signals': _parse_metadata_tag(filters.tags['avance'].tag_content)   
+    }
 
 class ChatServiceError(Exception):
 
@@ -181,10 +171,9 @@ class ChatService(object):
         )
 
         reply = await self._ai_service.generate(system_prompt, chat_history)
-        visible_text, metadata = _extract_visible_text_and_metadata(reply)
-        audio_text = self._metadata_handler.audio_text(metadata)
-        message_id = self._db.save_message("assistant", visible_text, project_name, audio_text=audio_text)
-        return {"id": message_id, "content": visible_text, "audio_text": audio_text}
+        visible_text, tags = _filter_text_and_extract_tags(reply)
+        message_id = self._db.save_message("assistant", visible_text, project_name, audio_text=tags['audio'])
+        return {"id": message_id, "content": visible_text, "audio_text": tags['audio']}
 
     async def _generate_action_prompt_message(
         self, action: Action, project_name: str, automaton: Automaton, state: State
@@ -202,8 +191,8 @@ class ChatService(object):
         )
 
         reply = await self._ai_service.generate(system_prompt, chat_history)
-        visible_text, metadata = _extract_visible_text_and_metadata(reply)
-        return {"id": None, "content": visible_text, "audio_text": self._metadata_handler.audio_text(metadata)}
+        visible_text, tags = _filter_text_and_extract_tags(reply)
+        return {"id": None, "content": visible_text, "audio_text": tags['audio']}
 
     async def _messages_for_transition(
         self, action: Action, project_name: str, automaton: Automaton, new_state: State, *, is_self_loop: bool
@@ -250,15 +239,24 @@ class ChatService(object):
             }
 
     async def process_turn(
-        self, text: str, on_retry: OnRetry | None = None, on_chunk: OnChunk | None = None
+        self, text: str, on_retry: OnRetry | None = None, on_chunk: OnChunk | None = None, on_audio: OnAudio | None = None
     ) -> dict:
         if self.lock.locked():
             raise ChatServiceError("A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT)
         async with self.lock:
-            return await self._process_turn_locked(text, on_retry, on_chunk)
+            return await self._process_turn_locked(text, on_retry, on_chunk, on_audio)
 
+    async def _receive_ai_stream_and_sendreply(self, system_prompt: str, chat_history, filter, on_chunk) -> str:
+        reply = ""
+        async for chunk in self._ai_service.generate_stream(system_prompt, chat_history):
+            chunk = filter.filter(chunk)
+            reply += chunk
+            if chunk:
+                await on_chunk(chunk)
+        return reply
+    
     async def _process_turn_locked(
-        self, text: str, on_retry: OnRetry | None, on_chunk: OnChunk | None
+        self, text: str, on_retry: OnRetry | None, on_chunk: OnChunk | None, on_audio: OnAudio | None
     ) -> dict:
         automaton, state = self._project_service.get_active_automaton_and_state()
 
@@ -288,19 +286,18 @@ class ChatService(object):
             since = self._history_cutoff(project_name, state)
             chat_history = priming_messages + self._strip_timestamps(self._db.get_messages(project_name, since=since))
 
+            filter = ConcatTagFilter('audio', 'avance', audio=on_audio)
+
             if on_chunk is not None:
-                full_raw_reply = ""
-                async for chunk in self._ai_service.generate_stream(system_prompt, chat_history):
-                    full_raw_reply += chunk
-                    await on_chunk(chunk)
-                reply = full_raw_reply
+                reply = await self._receive_ai_stream_and_sendreply(system_prompt, chat_history, filter, on_chunk)
             else:
                 reply = await self._ai_service.generate(system_prompt, chat_history, on_retry=on_retry)
+                reply = filter.filter_and_flush(reply)
 
-            visible_reply, metadata = _extract_visible_text_and_metadata(reply)
-            audio_text = self._metadata_handler.audio_text(metadata)
-            assistant_id = self._db.save_message("assistant", visible_reply, project_name, audio_text=audio_text)
-            messages.append({"id": assistant_id, "content": visible_reply, "audio_text": audio_text})
+            metadata = _parse_metadata_tag(filter.tags['avance'].tag_content)
+            audio_text = filter.tags['audio'].tag_content or None
+            assistant_id = self._db.save_message("assistant", reply, project_name, audio_text=audio_text)
+            messages.append({"id": assistant_id, "content": reply, "audio_text": audio_text})
 
             if automaton.autotracking_on_ai_message:
                 last_action, state, transition_messages = await self._run_auto_tracking(
