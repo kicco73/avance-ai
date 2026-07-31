@@ -90,6 +90,34 @@ def test_delete_session_rejects_unknown_id(client, hello_project):
     assert response.status_code == 404
 
 
+def test_manual_new_session_starts_at_the_automatons_initial_state_not_the_current_one(client):
+    """Regression test: a brand new session represents starting the
+    conversation over, so it must be recorded as starting at the
+    automaton's own init_action.target — not wherever the project's
+    shared, project-wide automaton position has since moved to (that's a
+    separate fact, untouched by creating a session; see
+    ChatSession.start_state's own docs)."""
+    samples_dir = Path(__file__).resolve().parent.parent / "samples"
+    content = (samples_dir / "Aprendr català.zip").read_bytes()
+    resp = client.put("/api/projects/cat", content=content, headers={"Content-Type": "application/zip"})
+    assert resp.status_code == 200, resp.text
+    client.put("/api/projects/cat/activate")
+
+    bootstrap = client.get("/api/chat/session").json()
+    assert bootstrap["start_state"] == "welcome"  # this project's init_action.target
+
+    # Move the project's automaton away from its initial state.
+    action_response = client.post(
+        "/api/action", json={"action_name": "unit-subjuntive", "session_id": bootstrap["id"]}
+    )
+    assert action_response.status_code == 200
+    assert action_response.json()["state"]["key"] != "welcome"
+
+    new_session = client.post("/api/chat/sessions").json()
+
+    assert new_session["start_state"] == "welcome"
+
+
 def test_switching_projects_does_not_delete_the_previous_projects_sessions(client, app_db: Db):
     # Uploads both sample projects directly (avoids depending on a
     # single-project fixture, since this test needs two).

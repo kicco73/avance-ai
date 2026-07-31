@@ -162,10 +162,20 @@ class ChatService(object):
     def create_session(self) -> dict:
         """Explicit "new session" action (see session_manager.py's module
         docstring): always starts a fresh session, which immediately
-        becomes the active project's writable one."""
+        becomes the active project's writable one. Recorded as starting
+        at the automaton's own initial state (init_action.target) —
+        not wherever the shared, project-wide automaton position
+        currently happens to be — since a brand new session is meant to
+        represent starting the conversation over, not picking up whatever
+        state other sessions have since moved the project's automaton to
+        (that position is a single project-wide fact, unaffected by this;
+        see ChatSession.start_state/end_state as just this session's own
+        bookkeeping, not the authoritative current state)."""
         project_name = self._active_project_name
-        _, state = self._project_service.get_active_automaton_and_state()
-        session = self._session_manager.create_session(self._username, project_name, state.key)
+        automaton, _ = self._project_service.get_active_automaton_and_state()
+        session = self._session_manager.create_session(
+            self._username, project_name, automaton.init_action.target
+        )
         return self._session_payload(session, active=True)
 
     def list_sessions(self) -> list[dict]:
