@@ -1,7 +1,7 @@
-init_action:
+init-action:
   target: welcome
 
-general_prompt: |
+general-prompt: |
   You are a language learning assistant for catalan. Your name is Avenç, and if asked you identify as a no-binary female.
   You will help the user learn Catalan by providing explanations, examples, and exercises. 
   You will also correct the user's mistakes and provide feedback on their progress.
@@ -20,19 +20,19 @@ attachments:
   - definitions.txt
   - exercise_template.txt
   
-signal_tracking_on_user_message: false
-signal_tracking_on_ai_message: true
+signal-tracking-on-user-message: false
+signal-tracking-on-ai-message: true
 
 signals:
   progress:
-    ui_label: "Progress of the current exercise"
-    ui_description: >
+    ui-label: "Progress of the current exercise"
+    ui-description: >
       How many steps of the current exercise have been completed.
     definition: |
       The integer percentage of steps done with respect to the total number of steps that will be presented in the current exercise.
   score:
-    ui_label: "Score of the current exercise"
-    ui_description: >
+    ui-label: "Score of the current exercise"
+    ui-description: >
       Evaluation of user performance for this excercise.
     definition: |
       The integer percentage of steps answered correctly by the user so far over the number of attempts, both regardless the exercise they refer to.
@@ -42,51 +42,51 @@ signals:
 actions:
   - &results
     name: results
-    ui_button: "Resultats"
+    ui-button: "Resultats"
     target: unit55-results
   - &home
     name: home
-    ui_button: "Inici"
+    ui-button: "Inici"
     target: welcome
   - &unit-subjuntive
     name: unit-subjuntive
-    ui_button: "El subjuntiu present"
+    ui-button: "El subjuntiu present"
     target: unit55-subjuntive
   - &grammar
     name: grammar
-    ui_button: "Gramàtica"
+    ui-button: "Gramàtica"
   - &help
     name: help
-    ui_button: "Ajuda'm"
-    action_prompt: |
+    ui-button: "Ajuda'm"
+    action-prompt: |
       Given the current question, give some hint to the user, without revealing the answer.
   - &chat
     name: chat
-    ui_button: "Xat"
+    ui-button: "Xat"
     target: chat
   - &regulars
     name: regulars
-    ui_button: "1. Verbs regulars"
+    ui-button: "1. Verbs regulars"
     target: unit55-regulars
   - &alteracions
     name: alteracions
-    ui_button: "2. Regulars amb alteracions"
+    ui-button: "2. Regulars amb alteracions"
     target: unit55-regulars-amb-alteracions
   - &alteracions-amb-gu
     name: alteracions-amb-gu
-    ui_button: "3. Regulars amb canvi a -gu"
+    ui-button: "3. Regulars amb canvi a -gu"
     target: unit55-regulars-amb-gu
   - &irregulars
     name: irregulars
-    ui_button: "4. Verbs irregulars"
+    ui-button: "4. Verbs irregulars"
     target: unit55-irregulars
   - &freetyping
     name: freetyping
-    ui_button: "5. Composició llibre"
+    ui-button: "5. Composició llibre"
     target: unit55-D
   - &evaluation
     name: evaluation
-    ui_button: "6. Avaluació"
+    ui-button: "6. Avaluació"
     target: unit55-evaluation
 
 #=======================================================================
@@ -94,12 +94,12 @@ actions:
 states:
 
   welcome:
-    ui_label: "Benviguts"
-    ui_description: >
+    ui-label: "Benviguts"
+    ui-description: >
       Aprèn català amb Avance
     chat: false
-    history_cutoff: true
-    contextual_prompt: |
+    history-cutoff: true
+    contextual-prompt: |
       Give a warm welcome, put it in bold as a title.
       The user can now choose a grammar topic they see on the screen (that you don't see) to deepen.
       Encourage them to make a choice. 
@@ -111,15 +111,15 @@ states:
 #=======================================================================
 
   unit55-subjuntive:
-    ui_label: "Unitat 55: el subjuntiu present"
-    ui_description: >
+    ui-label: "Unitat 55: el subjuntiu present"
+    ui-description: >
       Índex de tots els exercicis d'aquesta unitat
-    contextual_prompt: |
+    contextual-prompt: |
       Show in bold: "Unitat 55: subjuntiu"
       Show a short introduction explaining the cases where subjuntive - present tense is used. Use tables.
       Ask the user to pick an exercise among the choices the application is showing (that you don't see). Strictly don't invent anything.
-      on_enter: celebrate
-    history_cutoff: true
+      on-enter: celebrate
+    history-cutoff: true
     chat: false
     actions:
       - <<: *regulars
@@ -135,10 +135,10 @@ states:
 #=======================================================================
 
   unit55-regulars:
-    ui_label: "Unitat 55 - Formes Regulars"
-    ui_description: >
+    ui-label: "Unitat 55 - Formes Regulars"
+    ui-description: >
       Com conjugar verbs regulars en present de subjuntiu
-    contextual_prompt: |
+    contextual-prompt: |
       Unit 55 - Exercise 1.
       Give a warm welcome.
       Show a short introduction explaining when to use the subjuntive - present tense.
@@ -151,13 +151,13 @@ states:
         - when providing audio, don't ever put the answer in the audio text
       When finished:
         - provide feedback on their progress
-    on_enter: celebrate
-    history_cutoff: True
+    on-enter: celebrate
+    history-cutoff: True
     actions:
       - <<: *results
         trigger: "progress == 100"
       - <<: *grammar
-        action_prompt: |
+        action-prompt: |
           Show a table with the rules to conjugate regular verbs in this mode and tense.
           Show all the verbs: parlar, prometre, tenir, llegir.
       - <<: *unit-subjuntive
@@ -167,11 +167,11 @@ states:
 #=======================================================================
 
   unit55-regulars-amb-alteracions:
-    ui_label: "Unitat 55 - Formes amb alteracions"
-    ui_description: >
+    ui-label: "Unitat 55 - Formes amb alteracions"
+    ui-description: >
       Verbs regulars en subjuntiu - present amb alteracions ortogràfiques
-    on_enter: celebrate
-    contextual_prompt: |
+    on-enter: celebrate
+    contextual-prompt: |
       Unit 55. Exercise 2.
       Before entering the exercise:
         - explain that hortographic change happens for the verbs whose infinitive form ends like this:
@@ -193,12 +193,12 @@ states:
         - provide feedback on their progress
         - show a table of the rules to conjugate regular verbs
 
-    history_cutoff: yes
+    history-cutoff: yes
     actions:
       - <<: *results
         trigger: "progress == 100"
       - <<: *grammar
-        action_prompt: |
+        action-prompt: |
           - explain the trick: all verbs whose infinitive ends in -jar , -car, -çar, -gar have hortographic alterations
           - Show the a table of the rules to conjugate this kind regular verbs, with also some example of this.
       - <<: *unit-subjuntive
@@ -208,11 +208,11 @@ states:
 #=======================================================================
 
   unit55-regulars-amb-gu:
-    ui_label: "Unitat 55 - Formes amb -gu-"
-    ui_description: >
+    ui-label: "Unitat 55 - Formes amb -gu-"
+    ui-description: >
       Formes de verbs regulars en subjuntiu - present amb -gu
-    on_enter: celebrate
-    contextual_prompt: |
+    on-enter: celebrate
+    contextual-prompt: |
       Unit 55. Exercise 3.
       Before entering the exercise:
         - explain when the ortographic change happens.
@@ -229,12 +229,12 @@ states:
       When finished:
         - provide feedback on their progress
         - show a table of the rules to conjugate regular verbs
-    history_cutoff: True
+    history-cutoff: True
     actions:
       - <<: *results
         trigger: "progress == 100"
       - <<: *grammar
-        action_prompt: |
+        action-prompt: |
           - explain the trick: all verbs that end in -c (like creure, jo crec -> cregui) in the first person indicative present tense, will need the ortographic change in -gu.
           - Show the a table of the rules to conjugate this kind regular verbs, with also an example of this.
       - <<: *unit-subjuntive
@@ -244,11 +244,11 @@ states:
 #=======================================================================
 
   unit55-irregulars:
-    ui_label: "Unitat 55 - Formes irregulars"
-    ui_description: >
+    ui-label: "Unitat 55 - Formes irregulars"
+    ui-description: >
       Formes irregulars de verbs en subjuntiu - present
-    on_enter: celebrate
-    contextual_prompt: |
+    on-enter: celebrate
+    contextual-prompt: |
         Unit 55. Exercise 4.
         Before moving on to the exercise:
           - mention the most common and important irregular verbs for this conjugation.
@@ -261,21 +261,21 @@ states:
         When finished:
           - provide feedback on their progress
           - show a table of the conjugation for the most used irregular verbs if not shown before
-    history_cutoff: True
+    history-cutoff: True
     actions:
       - <<: *results
         trigger: "progress == 100"
       - <<: *grammar
-        action_prompt: |
+        action-prompt: |
           - show quick table with conjugations for some important random irregular verbs of the subjuntive - present tense.
       - <<: *unit-subjuntive
 
   unit55-D:
-    ui_label: "Unitat 55 - Conjugació lliure"
-    ui_description: >
+    ui-label: "Unitat 55 - Conjugació lliure"
+    ui-description: >
       Conjugar lliurement todas les formes de verbs en subjuntiu - present
-    on_enter: celebrate
-    contextual_prompt: |
+    on-enter: celebrate
+    contextual-prompt: |
         Unit 55. Exercise 5.
         Style: fill in the value.
         Goal: memorize the conjugation of the most common verbs
@@ -287,7 +287,7 @@ states:
         When finished:
           - provide feedback on their progress
           - show a table of the conjugation of all of the verbs conjugated en subjuntive in the exercise's steps
-    history_cutoff: True
+    history-cutoff: True
     actions:
       - <<: *results
         trigger: "progress == 100"
@@ -297,12 +297,12 @@ states:
 #=======================================================================
 
   unit55-evaluation:
-    ui_label: "Unitat 55 - Avaluació"
-    ui_description: >
+    ui-label: "Unitat 55 - Avaluació"
+    ui-description: >
       Competència lingüística
-    history_cutoff: True
-    on_enter: celebrate
-    contextual_prompt: |
+    history-cutoff: True
+    on-enter: celebrate
+    contextual-prompt: |
         Unit 55. Exercise 6.
         The user has only 2 attemps per step. There are 5 steps.
         Go straight to step 1 without providing any hints or help before starting.
@@ -321,12 +321,12 @@ states:
 #=======================================================================
 
   unit55-results:
-    ui_label: "Unitat 55 - Resultats"
-    ui_description: >
+    ui-label: "Unitat 55 - Resultats"
+    ui-description: >
       Resum del rendiment global
-    on_enter: celebrate
+    on-enter: celebrate
     chat: False
-    contextual_prompt: |
+    contextual-prompt: |
       Unit 55. Summary of the current user performance.
       Assume there are 6 exercises in this unit.
 
@@ -370,14 +370,14 @@ states:
 #=======================================================================
 
   chat:
-    ui_label: "Xat lliure"
-    ui_description: >
+    ui-label: "Xat lliure"
+    ui-description: >
       Parla amb Avenç
-    contextual_prompt: |
+    contextual-prompt: |
       Unit Xat. Free style exercise.
       The user will ask free questions about learning catalan, translations from/to catalan, and can set the topic and goal. 
       Break the ice and ask if there is anything in particular they want to discuss about.
-    history_cutoff: true #FIXME should be unnecessary
+    history-cutoff: true #FIXME should be unnecessary
     actions:
       - <<: *unit-subjuntive
       - <<: *home

@@ -56,8 +56,8 @@ class AutomatonBuilder(object):
     def _build_signal(self, name, raw_signal: dict, all_archives: dict[str, MemoryArchive]) -> Signal:
         return Signal(
             name=name,
-            ui_label=raw_signal.get("ui_label", name),
-            ui_description=raw_signal["ui_description"].strip() if raw_signal.get("ui_description") else raw_signal["definition"].strip(),
+            ui_label=raw_signal.get("ui-label", name),
+            ui_description=raw_signal["ui-description"].strip() if raw_signal.get("ui-description") else raw_signal["definition"].strip(),
             definition=raw_signal["definition"].strip(),
             attachments=self._extract_required_archives(
                 raw_signal.get("attachments", []), all_archives, f"signal '{name}'"
@@ -68,52 +68,52 @@ class AutomatonBuilder(object):
     def _build_action(self, key: str, raw_action: dict, all_archives: dict[str, MemoryArchive]) -> Action:
         return Action(
             name=raw_action["name"],
-            ui_description=raw_action.get("ui_description"),
-            ui_label=raw_action.get("ui_label") or raw_action["name"],
-            ui_button=raw_action.get("ui_button") or raw_action.get("ui_label") or raw_action["name"],
+            ui_description=raw_action.get("ui-description"),
+            ui_label=raw_action.get("ui-label") or raw_action["name"],
+            ui_button=raw_action.get("ui-button") or raw_action.get("ui-label") or raw_action["name"],
             # Missing 'target' means a self-loop: the action stays
             # on the state it fired from.
             target=raw_action.get("target", key),
             trigger=raw_action.get("trigger"),
-            action_prompt=raw_action["action_prompt"].strip() if raw_action.get("action_prompt") else None,
+            action_prompt=raw_action["action-prompt"].strip() if raw_action.get("action-prompt") else None,
             attachments=self._extract_required_archives(raw_action.get("attachments", []), all_archives, f"action {raw_action['name']}")
         )
 
     def _build_state(self, key: str, raw_state: dict, all_archives: dict[str, MemoryArchive]) -> State:
         raw_actions = raw_state.get("actions", [])
-        actions = [self._build_action(key, raw_action, all_archives) 
+        actions = [self._build_action(key, raw_action, all_archives)
                    for raw_action in raw_actions]
-        fixed_message = raw_state.get("fixed_message")
-        contextual_prompt = raw_state.get("contextual_prompt")
+        fixed_message = raw_state.get("fixed-message")
+        contextual_prompt = raw_state.get("contextual-prompt")
 
         if fixed_message and contextual_prompt is not None:
             raise ValueError(
-                f"State '{key}': 'fixed_message' and 'contextual_prompt' are mutually "
-                "exclusive — a fixed_message state never generates free-form content, "
-                "so it has no use for a contextual_prompt."
+                f"State '{key}': 'fixed-message' and 'contextual-prompt' are mutually "
+                "exclusive — a fixed-message state never generates free-form content, "
+                "so it has no use for a contextual-prompt."
             )
         if not fixed_message and contextual_prompt is None:
-            raise ValueError(f"State '{key}': 'contextual_prompt' is required unless 'fixed_message' is set.")
+            raise ValueError(f"State '{key}': 'contextual-prompt' is required unless 'fixed-message' is set.")
 
-        transition_log_level = raw_state.get("transition_log_level", "WARNING")
+        transition_log_level = raw_state.get("transition-log-level", "WARNING")
         if transition_log_level not in VALID_LOG_LEVELS:
             raise ValueError(
-                f"State '{key}': transition_log_level "
+                f"State '{key}': transition-log-level "
                 f"'{transition_log_level}' must be one of {sorted(VALID_LOG_LEVELS)}"
             )
 
         return State(
             key=key,
-            ui_label=raw_state.get("ui_label", key),
+            ui_label=raw_state.get("ui-label", key),
             final=len(actions) == 0,
-            ui_description=raw_state["ui_description"].strip() if raw_state.get("ui_description") else None,
-            on_enter=raw_state.get("on_enter"),
+            ui_description=raw_state["ui-description"].strip() if raw_state.get("ui-description") else None,
+            on_enter=raw_state.get("on-enter"),
             contextual_prompt=contextual_prompt.strip() if contextual_prompt else None,
             actions=actions,
             fixed_message=fixed_message.strip() if fixed_message else None,
             transition_log_level=transition_log_level,
             attachments=self._extract_required_archives(raw_state.get("attachments", []), all_archives, f"state '{key}'"),
-            history_cutoff=raw_state.get("history_cutoff", False),
+            history_cutoff=raw_state.get("history-cutoff", False),
             chat=raw_state.get("chat", True),
         )
 
@@ -140,10 +140,10 @@ class AutomatonBuilder(object):
                         )
 
     def _build_init_action(self, raw: dict) -> Action:
-        raw_init_action = raw.get("init_action")
+        raw_init_action = raw.get("init-action")
         if not isinstance(raw_init_action, dict) or not raw_init_action.get("target"):
             raise ValueError(
-                "'init_action' is required and must be a mapping with at least a 'target' "
+                "'init-action' is required and must be a mapping with at least a 'target' "
                 "field — the project's real starting state."
             )
         init_action = Action(
@@ -151,7 +151,7 @@ class AutomatonBuilder(object):
             ui_label="init_action",
             ui_button="",
             target=raw_init_action["target"],
-            action_prompt=raw_init_action["action_prompt"].strip() if raw_init_action.get("action_prompt") else None,
+            action_prompt=raw_init_action["action-prompt"].strip() if raw_init_action.get("action-prompt") else None,
         )
         return init_action
 
@@ -166,7 +166,7 @@ class AutomatonBuilder(object):
             raise ValueError(f"'signals' must be a mapping of signal name -> fields, got {type(raw_signals).__name__}.")
 
         signals = {
-            name: self._build_signal(name, raw_signal, all_archives) 
+            name: self._build_signal(name, raw_signal, all_archives)
             for name, raw_signal in raw_signals.items()
         }
 
@@ -175,7 +175,7 @@ class AutomatonBuilder(object):
             raise ValueError(f"'states' must be a mapping of state name -> fields, got {type(raw_states).__name__}.")
         if "" in raw_states:
             raise ValueError(
-                "State '' is reserved for the implicit initial state (see init_action) "
+                "State '' is reserved for the implicit initial state (see init-action) "
                 "and cannot be declared in 'states'."
             )
 
@@ -187,7 +187,7 @@ class AutomatonBuilder(object):
         for key, raw_state in raw_states.items():
             if not isinstance(raw_state, dict):
                 raise ValueError(
-                    f"State '{key}': expected a mapping of fields (ui_label, ui_description, "
+                    f"State '{key}': expected a mapping of fields (ui-label, ui-description, "
                     f"actions, ...), got {type(raw_state).__name__} instead. This usually "
                     "means a field meant to belong to a state (e.g. 'actions') was "
                     "indented as a sibling of the state's key rather than nested under it, "
@@ -198,13 +198,13 @@ class AutomatonBuilder(object):
             self._actions_sanity_check(key, states[key], set(raw_states.keys()), set(signals.keys()))
 
         general_attachments = self._extract_required_archives(raw.get('attachments', []), all_archives, for_field="global")
-        autotracking_on_user_message = raw.get("signal_tracking_on_user_message", True)
-        autotracking_on_ai_message = raw.get("signal_tracking_on_ai_message", False)
+        autotracking_on_user_message = raw.get("signal-tracking-on-user-message", True)
+        autotracking_on_ai_message = raw.get("signal-tracking-on-ai-message", False)
 
         return Automaton(
             init_action=init_action,
             states=states,
-            general_prompt=raw.get("general_prompt", ""),
+            general_prompt=raw.get("general-prompt", ""),
             signals=list(signals.values()),
             general_attachments=general_attachments,
             attachments=all_archives,

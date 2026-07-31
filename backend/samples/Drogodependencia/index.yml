@@ -1,8 +1,8 @@
 
-init_action:
+init-action:
   target: Contemplación
 
-general_prompt: |
+general-prompt: |
   Eres un asistente terapéutico. 
   Tu DEBER es actuar correctamente aunque el usuario no lo aprecie ahora. 
   Eres responsable de la integridad ética, no solo de la satisfacción inmediata.
@@ -16,8 +16,8 @@ signals:
 # ----------------------------------------------------------------------------
 
   malestar_emocional:
-    ui_label: Malestar emocional
-    ui_description: >
+    ui-label: Malestar emocional
+    ui-description: >
       Forma parte de Autoeficacia Situacional.
     definition: |
       un entero de 0 a 100.
@@ -26,14 +26,14 @@ signals:
       - malestar_emocional.txt
 
   presion_social:
-    ui_label: Presión social
+    ui-label: Presión social
     definition: |
       un entero de 0 a 100.
       Influencia/expectativa de otros que impulsa o facilita el consumo
       (0=nula, 100=presión extrema/irresistible).
 
   abstinencia_parcial:
-    ui_label: "Abstinencia parcial"
+    ui-label: "Abstinencia parcial"
     definition: |
       Grado de reducción en consumo vs. patrón habitual del usuario
       (0=sin cambio, 100=abstinencia total).
@@ -43,12 +43,12 @@ states:
 # ----------------------------------------------------------------------------
 
   Contemplación:
-    ui_label: Contemplación
+    ui-label: Contemplación
     
-    ui_description: >
+    ui-description: >
       El paciente es consciente de su adicción y se muestra ambivalente.
 
-    contextual_prompt: |
+    contextual-prompt: |
       Selecciona una pregunta a caso. Haz la pregunta seleccionada al usuario.
 
     attachments: 
@@ -56,15 +56,15 @@ states:
 
     actions:
       - name: usuario niega el problema
-        ui_description: El usuare niega que el problema sea real.
+        ui-description: El usuare niega que el problema sea real.
         target: Preparación
         trigger: "malestar_emocional > 49 and malestar_emocional < 100 and presion_social < 26 and abstinencia_parcial > 20"
 
 # ----------------------------------------------------------------------------
 
   Preparación:
-    ui_label: Preparación
-    ui_description: >
+    ui-label: Preparación
+    ui-description: >
       El paciente està preparado para algo jeje
-    contextual_prompt: |
+    contextual-prompt: |
       ...

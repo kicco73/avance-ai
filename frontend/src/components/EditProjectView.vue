@@ -1034,9 +1034,23 @@ onBeforeUnmount(() => {
 
           <div class="edit-project-chat-panel" :style="{ height: chatHeight + 'px' }">
             <div class="edit-project-chat-toolbar">
-              <ModelMenu />
-              <button class="reset-btn" @click="handleReset">Reset</button>
-              <button class="close-x-btn" title="Close" @click="toggleChat">×</button>
+              <label
+                class="dev-mode-toggle"
+                :class="{ 'dev-mode-toggle-active': !autoTrackingEnabled, 'dev-mode-toggle-disabled': autoTrackingLoading }"
+              >
+                <input
+                  type="checkbox"
+                  :checked="!autoTrackingEnabled"
+                  :disabled="autoTrackingLoading"
+                  @change="toggleAutoTracking"
+                />
+                Dev mode: freeze automatic state transitions
+              </label>
+              <div class="edit-project-chat-toolbar-actions">
+                <ModelMenu />
+                <button class="reset-btn" @click="handleReset">Reset</button>
+                <button class="close-x-btn" title="Close" @click="toggleChat">×</button>
+              </div>
             </div>
             <ChatWindow />
           </div>
@@ -1048,18 +1062,7 @@ onBeforeUnmount(() => {
 
         <div class="inspector-panel" :style="{ '--inspector-width': inspectorWidth + 'px' }">
           <div class="inspector-header">
-            <label
-              class="dev-mode-toggle"
-              :class="{ 'dev-mode-toggle-active': !autoTrackingEnabled, 'dev-mode-toggle-disabled': autoTrackingLoading }"
-            >
-              <input
-                type="checkbox"
-                :checked="!autoTrackingEnabled"
-                :disabled="autoTrackingLoading"
-                @change="toggleAutoTracking"
-              />
-              Dev mode: freeze automatic state transitions
-            </label>
+            <span class="inspector-title">Inspector</span>
             <button class="close-x-btn" title="Close" @click="toggleInspect">×</button>
           </div>
           <div class="inspector-tabs">
@@ -1248,7 +1251,7 @@ onBeforeUnmount(() => {
                   <span class="inspector-signal-name">{{ activeModel.ui_label }}</span>
                 </div>
                 <br/>
-                <p class="inspector-detail-field"><strong>Driver:</strong> {{ activeModel.name }}</p>
+                <p class="inspector-detail-field"><strong>Driver:</strong> {{ activeModel.driver }}</p>
                 <p class="inspector-detail-field"><strong>Model:</strong> {{ activeModel.model }}</p>
                 <p v-if="activeModel.url" class="inspector-detail-field"><strong>Url:</strong> {{ activeModel.url }}</p>
                 <br/>
@@ -1469,12 +1472,18 @@ onBeforeUnmount(() => {
 .edit-project-chat-toolbar {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
   background: #f5f5f7;
   border-bottom: 1px solid #ddd;
   flex-shrink: 0;
+}
+
+.edit-project-chat-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .edit-project-chat-toolbar .reset-btn {
@@ -1538,6 +1547,14 @@ onBeforeUnmount(() => {
 }
 
 .file-explorer-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.inspector-title {
   font-size: 0.8rem;
   font-weight: 600;
   color: #555;

@@ -18,14 +18,14 @@ ai-service:
     # ai/ai_service.py's AiService): the first provider is tried first,
     # later ones are only used as a fallback if an earlier one becomes
     # unavailable (rate limit/quota, or an outage that outlasts retries).
-    - name: gemini
+    - driver: gemini
       model: gemini-flash-lite-latest
       key: <your-gemini-api-key>
-      # Both optional. ui_label is what the frontend's model menu shows for
-      # this entry — falls back to `name` (e.g. "gemini") if omitted.
-      # ui_description is an optional longer blurb shown alongside it.
-      # ui_label: Gemini Flash Lite
-      # ui_description: Google's fastest Gemini model.
+      # Both optional. ui-label is what the frontend's model menu shows for
+      # this entry — falls back to `driver` (e.g. "gemini") if omitted.
+      # ui-description is an optional longer blurb shown alongside it.
+      # ui-label: Gemini Flash Lite
+      # ui-description: Google's fastest Gemini model.
 
 talk-service:
   # Optional, defaults to false (and the whole section can be omitted
@@ -40,10 +40,10 @@ talk-service:
     # TalkService) — even when it happens to reuse the same key as
     # ai-service, as here. `key` is optional: a future local provider
     # (e.g. Piper) won't need one.
-    - name: gemini
+    - driver: gemini
       model: gemini-2.5-flash-preview-tts
       key: <your-gemini-api-key>
-      # ui_label/ui_description: same optional fields as ai-service above.
+      # ui-label/ui-description: same optional fields as ai-service above.
 
 listen-service:
   # Same optional, default-off shape as talk-service.enabled — see above.
@@ -53,7 +53,7 @@ listen-service:
     # fully local (no key needed) and downloads/caches its own model on
     # first use — nothing to place by hand. `language` is optional: if
     # given, skips faster-whisper's own autodetect.
-    - name: faster-whisper
+    - driver: faster-whisper
       model: small
       language: ca
-      # ui_label/ui_description: same optional fields as ai-service above.
+      # ui-label/ui-description: same optional fields as ai-service above.

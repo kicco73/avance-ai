@@ -218,10 +218,20 @@ class Automaton(object):
 
     @staticmethod
     def _eval_trigger(expression: str, signals: dict[str, Any]) -> bool:
-        """A malformed expression or a signal with value None must never
-        crash the caller: treat evaluation failures as False, with a
-        warning."""
+        """A malformed expression must never crash the caller: treat
+        evaluation failures as False, with a warning. A referenced signal
+        that hasn't been computed yet (value None — routine early in a
+        conversation, or right after a failed computation) is a distinct,
+        expected case: evaluating e.g. `signal > 5` against None would
+        always raise, so short-circuit to False without even trying,
+        instead of logging a warning for something that isn't wrong.
+        (Every referenced name is guaranteed to be a real signal by now —
+        see automaton_builder.py's _actions_sanity_check at build time —
+        so a None here only ever means "not computed yet", never a typo.)
+        """
         try:
+            if any(signals.get(name) is None for name in trigger_signal_names(expression)):
+                return False
             return bool(simpleeval.simple_eval(expression, names=signals))
         except Exception as exc:
             logger.warning("Trigger evaluation failed for expression '%s': %s", expression, exc)

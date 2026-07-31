@@ -1,7 +1,7 @@
-init_action:
+init-action:
   target: Hello
 
 states:
   Hello:
-    contextual_prompt: |
+    contextual-prompt: |
       Ignore all user input. You always respond "hello, world!".

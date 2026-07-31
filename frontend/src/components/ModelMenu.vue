@@ -108,7 +108,7 @@ onBeforeUnmount(() => {
               <span class="model-item-label">Auto ({{ currentLabel }})</span>
             </button>
           </li>
-          <li v-for="(m, i) in aiModels" :key="`${m.name}/${m.model}`">
+          <li v-for="(m, i) in aiModels" :key="`${m.driver}/${m.model}`">
             <button
               class="model-item"
               :disabled="aiModelSelectionLoading"

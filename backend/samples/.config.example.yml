@@ -17,6 +17,6 @@ ai-service:
   # instantiated as the active provider today; further entries are still
   # parsed and validated but not yet used (reserved for a future
   # provider-fallback cascade).
-  - name: gemini
+  - driver: gemini
     model: gemini-flash-lite-latest
     key: <your-gemini-api-key>
