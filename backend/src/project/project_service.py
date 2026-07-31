@@ -187,7 +187,10 @@ class ProjectService(object):
         return automaton.get_state_payload(state)
 
     def reset_active_project(self) -> None:
-        self._db.reset_project(self.get_active_project_name())
+        # User-scoped (see db.reset_project_for_user): only the current
+        # user's own sessions/messages/signals for this project are wiped
+        # — not every user's, unlike delete_project's full reset_project.
+        self._db.reset_project_for_user(Session().user, self.get_active_project_name())
 
     def get_project_signals(self, project_name: str) -> list[dict]:
         """Signal definitions (name/ui_label/ui_description/attachments) of

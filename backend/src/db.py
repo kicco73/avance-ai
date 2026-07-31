@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sqlite3
 from datetime import datetime
 
 from peewee import CharField, DateTimeField, ForeignKeyField, Model, Proxy, TextField, BlobField, CompositeKey, AutoField
@@ -56,7 +57,7 @@ class Message(BaseModel):
     # ChatSessionManager) — column name is "session_id" (Peewee's default
     # for a ForeignKeyField named `session`). project_name is reached via
     # session.project_name (a join) instead of being duplicated here.
-    session = ForeignKeyField(ChatSession, null=False, backref="messages")
+    session = ForeignKeyField(ChatSession, null=False, backref="messages", on_delete="CASCADE")
 
 
 # Single fixed user until there's real multi-user support (no login yet) —
@@ -87,7 +88,7 @@ class Signals(BaseModel):
     row anymore (there's no second row) — the evaluation and the
     transition it triggered are simply the same row."""
     id = AutoField()
-    session = ForeignKeyField(ChatSession, null=False, backref="signals")
+    session = ForeignKeyField(ChatSession, null=False, backref="signals", on_delete="CASCADE")
     timestamp = DateTimeField(index=True, default=datetime.utcnow)
     values = TextField(null=True)  # JSON dict: {"problemRecognition": 42, ...}, or None
     old_state = CharField(null=True, index=True)
@@ -113,7 +114,16 @@ class Db(object):
         self._database_url = database_url
         database.initialize(connect(database_url))
         database.connect(reuse_if_open=True)
+        self._enable_foreign_keys()
         database.create_tables([ChatSession, Message, Settings, Signals, Archive], safe=True)
+
+    @staticmethod
+    def _enable_foreign_keys() -> None:
+        """SQLite ignores FK constraints — including Message.session/
+        Signals.session's ON DELETE CASCADE — unless this is set on the
+        connection; it doesn't persist across reconnects, so
+        restore_backup() re-applies it too."""
+        database.execute_sql("PRAGMA foreign_keys = ON")
 
     def backup_file_path(self) -> str:
         """Absolute path of the working SQLite file backing this Db — the
@@ -125,23 +135,96 @@ class Db(object):
         with open(self.backup_file_path(), "rb") as f:
             return f.read()
 
+    # The models this Db's schema is made of — the source of truth for
+    # both create_tables (above) and the integrity check restore_backup
+    # runs against an uploaded file (see _expected_schema/_check_schema).
+    _MODELS = (ChatSession, Message, Settings, Signals, Archive)
+
+    @classmethod
+    def _expected_schema(cls) -> dict[str, set[str]]:
+        """{table_name: {column_name, ...}} for the schema this code
+        actually implements, derived from the models themselves so this
+        can never drift out of sync with them."""
+        return {
+            model._meta.table_name: {field.column_name for field in model._meta.sorted_fields}
+            for model in cls._MODELS
+        }
+
+    @staticmethod
+    def _actual_schema(sqlite_path: str) -> dict[str, set[str]]:
+        """Same shape as _expected_schema, read directly via sqlite3 (not
+        peewee/the shared `database` Proxy) so this can inspect a
+        candidate file without disturbing the live connection."""
+        conn = sqlite3.connect(sqlite_path)
+        try:
+            tables = [
+                row[0]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+                )
+            ]
+            return {
+                table: {row[1] for row in conn.execute(f"PRAGMA table_info('{table}')")}
+                for table in tables
+            }
+        finally:
+            conn.close()
+
+    def _check_schema(self, sqlite_path: str) -> None:
+        """Integrity check for restore_backup: the uploaded file must
+        have the exact same tables and columns as the schema this code
+        implements (not just a superset/subset) — column types/constraints
+        aren't compared, just names, which is enough to catch a backup
+        from an incompatible app version or an unrelated database."""
+        expected = self._expected_schema()
+        actual = self._actual_schema(sqlite_path)
+
+        missing_tables = expected.keys() - actual.keys()
+        extra_tables = actual.keys() - expected.keys()
+        if missing_tables or extra_tables:
+            raise ValueError(
+                "Backup schema doesn't match: "
+                + (f"missing table(s) {sorted(missing_tables)} " if missing_tables else "")
+                + (f"unexpected table(s) {sorted(extra_tables)}" if extra_tables else "")
+            )
+
+        for table, columns in expected.items():
+            missing_columns = columns - actual[table]
+            extra_columns = actual[table] - columns
+            if missing_columns or extra_columns:
+                raise ValueError(
+                    f"Backup schema doesn't match: table '{table}' "
+                    + (f"missing column(s) {sorted(missing_columns)} " if missing_columns else "")
+                    + (f"has unexpected column(s) {sorted(extra_columns)}" if extra_columns else "")
+                )
+
     def restore_backup(self, content: bytes) -> None:
         """Replaces the working SQLite file with `content`, in place (same
         path/name), then reconnects. Callers must serialize this against
-        in-flight chat turns themselves (see controller.py's /api/backup)."""
+        in-flight chat turns themselves (see controller.py's /api/backup).
+        Validated before the working file is touched at all: an invalid
+        upload (wrong magic bytes or mismatched schema) leaves it exactly
+        as it was."""
         if not content.startswith(self._SQLITE_MAGIC):
             raise ValueError("Uploaded file is not a valid SQLite database.")
 
         path = self.backup_file_path()
-        database.close()
-        # Write alongside the target first and rename into place — a
-        # direct overwrite could leave a half-written file if this fails
-        # partway through.
+        # Written and validated alongside the target first — only renamed
+        # into place once both the magic bytes and the schema check pass,
+        # so a bad upload never touches the working file.
         tmp_path = f"{path}.restoring"
         with open(tmp_path, "wb") as f:
             f.write(content)
+        try:
+            self._check_schema(tmp_path)
+        except Exception:
+            os.remove(tmp_path)
+            raise
+
+        database.close()
         os.replace(tmp_path, path)
         database.connect(reuse_if_open=True)
+        self._enable_foreign_keys()
 
     def create_chat_session(
         self,
@@ -190,10 +273,30 @@ class Db(object):
         )
         return self._chat_session_to_dict(session) if session is not None else None
 
+    def list_chat_sessions(self, username: str, project_name: str) -> list[dict]:
+        """All of `username`+`project_name`'s sessions, most recently
+        started first — for a session picker (see ChatService.list_sessions)."""
+        sessions = (
+            ChatSession.select()
+            .where((ChatSession.username == username) & (ChatSession.project_name == project_name))
+            .order_by(ChatSession.datetime_start.desc())
+        )
+        return [self._chat_session_to_dict(s) for s in sessions]
+
     def touch_chat_session(self, session_id: int, datetime_end: datetime, end_state: str) -> None:
         ChatSession.update(datetime_end=datetime_end, end_state=end_state).where(
             ChatSession.id == session_id
         ).execute()
+
+    def delete_chat_session(self, session_id: int) -> None:
+        """Deletes `session_id` and everything scoped to it (its messages
+        and signals). The schema's ON DELETE CASCADE (see Message.session/
+        Signals.session, and _enable_foreign_keys) already covers this at
+        the SQLite level — deleted explicitly here too, in dependency
+        order, so correctness doesn't rest on that alone."""
+        Signals.delete().where(Signals.session == session_id).execute()
+        Message.delete().where(Message.session == session_id).execute()
+        ChatSession.delete().where(ChatSession.id == session_id).execute()
 
     def save_message(
         self, role: str, content: str, session_id: int, audio_text: str | None = None
@@ -311,12 +414,32 @@ class Db(object):
         ).execute()
 
     def reset_project(self, project_name: str) -> None:
+        """Wipes every user's sessions/messages/signals for `project_name`
+        — used when the project itself is being deleted (see
+        ProjectService.delete_project), where nothing should survive.
+        For a single user's own "Reset conversation" action, see
+        reset_project_for_user — this is deliberately not scoped by user."""
         # Signals/Message before ChatSession: both reference it by FK, and
         # neither carries project_name directly anymore (see Message/Signals).
         session_ids = ChatSession.select(ChatSession.id).where(ChatSession.project_name == project_name)
         Signals.delete().where(Signals.session.in_(session_ids)).execute()
         Message.delete().where(Message.session.in_(session_ids)).execute()
         ChatSession.delete().where(ChatSession.project_name == project_name).execute()
+
+    def reset_project_for_user(self, username: str, project_name: str) -> None:
+        """Wipes only `username`'s own sessions (all of them, open or
+        closed) — plus their messages/signals — for `project_name`.
+        Other users' data for the same project (if any) is untouched.
+        Used by the "Reset conversation" action (see
+        ProjectService.reset_active_project)."""
+        session_ids = ChatSession.select(ChatSession.id).where(
+            (ChatSession.username == username) & (ChatSession.project_name == project_name)
+        )
+        Signals.delete().where(Signals.session.in_(session_ids)).execute()
+        Message.delete().where(Message.session.in_(session_ids)).execute()
+        ChatSession.delete().where(
+            (ChatSession.username == username) & (ChatSession.project_name == project_name)
+        ).execute()
 
     def reset_all(self) -> None:
         Signals.delete().execute()

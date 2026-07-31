@@ -30,7 +30,8 @@ import {
   autoTrackingLoading,
   toggleAutoTracking,
   handleReset,
-  handleNewSession,
+  sessionsPanelOpen,
+  toggleSessionsPanel,
   aiModels,
   aiModelCurrentIndex
 } from '../chatStore.js'
@@ -951,6 +952,7 @@ onBeforeUnmount(() => {
           Inspect
         </button>
         <button class="inspect-btn" @click="handleDownload">Download</button>
+        <button class="reset-btn" @click="handleReset">Reset</button>
         <button class="close-btn" @click="handleClose">Back</button>
       </div>
     </div>
@@ -1030,7 +1032,8 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <template v-if="chatOpen">
+        <Transition name="panel-slide-bottom">
+        <div v-if="chatOpen" class="edit-project-chat-wrap">
           <div class="split-divider-horizontal" @mousedown="startChatDrag"></div>
 
           <div class="edit-project-chat-panel" :style="{ height: chatHeight + 'px' }">
@@ -1048,18 +1051,25 @@ onBeforeUnmount(() => {
                 Dev mode: freeze automatic state transitions
               </label>
               <div class="edit-project-chat-toolbar-actions">
+                <button
+                  class="sessions-btn"
+                  :class="{ 'sessions-btn-active': sessionsPanelOpen }"
+                  title="Sessions"
+                  @click="toggleSessionsPanel"
+                >
+                  Sessions
+                </button>
                 <ModelMenu />
-                <button class="reset-btn" @click="handleNewSession">New session</button>
-                <button class="reset-btn" @click="handleReset">Reset</button>
-                <button class="close-x-btn" title="Close" @click="toggleChat">×</button>
               </div>
             </div>
             <ChatWindow />
           </div>
-        </template>
+        </div>
+        </Transition>
       </div>
 
-      <template v-if="inspecting">
+      <Transition name="panel-slide-right">
+      <div v-if="inspecting" class="inspector-wrap">
         <div class="split-divider inspector-divider" @mousedown="startInspectorDrag"></div>
 
         <div class="inspector-panel" :style="{ '--inspector-width': inspectorWidth + 'px' }">
@@ -1266,7 +1276,8 @@ onBeforeUnmount(() => {
             </div>
           </div>
         </div>
-      </template>
+      </div>
+      </Transition>
     </div>
 
     <div v-if="pendingFileName" class="switch-dialog-overlay">
@@ -1461,6 +1472,24 @@ onBeforeUnmount(() => {
   background: #dbe4f0;
 }
 
+.edit-project-chat-wrap {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.panel-slide-bottom-enter-active,
+.panel-slide-bottom-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.panel-slide-bottom-enter-from,
+.panel-slide-bottom-leave-to {
+  opacity: 0;
+  transform: translateY(16px);
+}
+
 .edit-project-chat-panel {
   flex-shrink: 0;
   display: flex;
@@ -1488,7 +1517,27 @@ onBeforeUnmount(() => {
   gap: 0.5rem;
 }
 
-.edit-project-chat-toolbar .reset-btn {
+.edit-project-chat-toolbar-actions .sessions-btn {
+  padding: 0.35rem 0.9rem;
+  border-radius: 6px;
+  border: 1px solid #4a6fa5;
+  background: white;
+  color: #4a6fa5;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.edit-project-chat-toolbar-actions .sessions-btn:hover {
+  background: #4a6fa5;
+  color: white;
+}
+
+.edit-project-chat-toolbar-actions .sessions-btn-active {
+  background: #4a6fa5;
+  color: white;
+}
+
+.edit-project-header-actions .reset-btn {
   padding: 0.4rem 1rem;
   border-radius: 6px;
   border: 1px solid #c62828;
@@ -1497,7 +1546,7 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-.edit-project-chat-toolbar .reset-btn:hover {
+.edit-project-header-actions .reset-btn:hover {
   background: #c62828;
   color: white;
 }
@@ -1743,6 +1792,23 @@ onBeforeUnmount(() => {
   .inspector-divider {
     display: none;
   }
+}
+
+.inspector-wrap {
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+}
+
+.panel-slide-right-enter-active,
+.panel-slide-right-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.panel-slide-right-enter-from,
+.panel-slide-right-leave-to {
+  opacity: 0;
+  transform: translateX(16px);
 }
 
 .inspector-panel {

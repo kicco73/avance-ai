@@ -86,3 +86,77 @@ def test_reset_project_deletes_sessions_and_their_messages(db):
 
     assert db.get_chat_session(session_id) is None
     assert db.get_messages(session_id) == []
+
+
+def test_reset_project_wipes_every_user_regardless(db):
+    mine = _make_session(db, username="user", start=datetime(2026, 1, 1, 10, 0, 0))
+    theirs = _make_session(db, username="other-user", start=datetime(2026, 1, 1, 11, 0, 0))
+
+    db.reset_project("proj")
+
+    assert db.get_chat_session(mine) is None
+    assert db.get_chat_session(theirs) is None
+
+
+def test_reset_project_for_user_only_touches_that_user(db):
+    mine = _make_session(db, username="user", project_name="proj", start=datetime(2026, 1, 1, 10, 0, 0))
+    theirs = _make_session(db, username="other-user", project_name="proj", start=datetime(2026, 1, 1, 11, 0, 0))
+    db.save_message("user", "hello", mine)
+    db.save_message("other-user", "hi", theirs)
+
+    db.reset_project_for_user("user", "proj")
+
+    assert db.get_chat_session(mine) is None
+    assert db.get_messages(mine) == []
+    assert db.get_chat_session(theirs) is not None
+    assert [m["content"] for m in db.get_messages(theirs)] == ["hi"]
+
+
+def test_reset_project_for_user_only_touches_that_project(db):
+    session_a = _make_session(db, username="user", project_name="proj-a", start=datetime(2026, 1, 1, 10, 0, 0))
+    session_b = _make_session(db, username="user", project_name="proj-b", start=datetime(2026, 1, 1, 10, 0, 0))
+
+    db.reset_project_for_user("user", "proj-a")
+
+    assert db.get_chat_session(session_a) is None
+    assert db.get_chat_session(session_b) is not None
+
+
+def test_delete_chat_session_removes_it_and_its_data(db):
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    db.save_message("user", "hello", session_id)
+    db.save_transition("", "init", "start", session_id, transition_log_level="INFO")
+
+    db.delete_chat_session(session_id)
+
+    assert db.get_chat_session(session_id) is None
+    assert db.get_messages(session_id) == []
+    assert db.get_current_state("proj") is None
+
+
+def test_delete_chat_session_does_not_touch_other_sessions(db):
+    keep = _make_session(db, start=datetime(2026, 1, 1, 9, 0, 0))
+    doomed = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    db.save_message("user", "keep me", keep)
+    db.save_message("user", "delete me", doomed)
+
+    db.delete_chat_session(doomed)
+
+    assert db.get_chat_session(keep) is not None
+    assert [m["content"] for m in db.get_messages(keep)] == ["keep me"]
+
+
+def test_foreign_key_cascade_is_enforced_at_the_sqlite_level(db):
+    """Reinforces db.delete_chat_session's explicit ordered deletes:
+    even a raw ChatSession delete (bypassing delete_chat_session
+    entirely) must cascade to Message on its own, proving PRAGMA
+    foreign_keys + ON DELETE CASCADE (see db._enable_foreign_keys and
+    Message.session) are actually both in effect for this connection."""
+    from db import ChatSession, Message
+
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    db.save_message("user", "hello", session_id)
+
+    ChatSession.delete().where(ChatSession.id == session_id).execute()
+
+    assert Message.select().where(Message.session == session_id).count() == 0

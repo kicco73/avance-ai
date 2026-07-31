@@ -50,6 +50,14 @@ export function postCreateSession() {
   return apiFetch(`${API_URL}/chat/sessions`, { method: 'POST' })
 }
 
+export function getSessions() {
+  return apiFetch(`${API_URL}/chat/sessions`)
+}
+
+export function deleteSession(sessionId) {
+  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
+}
+
 export function getMessages(sessionId) {
   return apiFetch(`${API_URL}/chat/messages?session_id=${encodeURIComponent(sessionId)}`)
 }

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ActionButtons from './ActionButtons.vue'
 import { errorDetail, errorMessage, setApiError } from '../errorStore.js'
 import { startRecording, stopRecording } from '../mic.js'
@@ -16,6 +16,14 @@ import {
   micAvailable,
   spokenTextEnabled,
   draft,
+  currentSessionId,
+  selectedSessionActive,
+  sessions,
+  sessionsLoading,
+  sessionsPanelOpen,
+  selectSession,
+  handleNewSession,
+  handleDeleteSession,
   handleSend,
   handleResend,
   handleVoiceMessage,
@@ -50,12 +58,66 @@ const scrollEl = ref(null)
 const inputEl = ref(null)
 const showErrorDetail = ref(false)
 const recording = ref(false)
+const deletingSessionId = ref(null)
+
+async function onDeleteSession(session) {
+  deletingSessionId.value = session.id
+  try {
+    await handleDeleteSession(session)
+  } finally {
+    deletingSessionId.value = null
+  }
+}
 
 // No `state.value.key` means there's no active project/state at all (see
 // controller.py's GET /api/state, which returns just the talk/listen
 // flags in that case) — chat must stay disabled rather than defaulting
-// to enabled.
-const chatDisabled = computed(() => !state.value?.key || !state.value?.chat)
+// to enabled. selectedSessionActive reflects the backend's own "active"
+// verdict for whichever session is currently displayed (see chatStore.js's
+// selectSession) — never recomputed here from a timestamp. A session can
+// be individually open (not expired) without being this one: only the
+// single most recently started open session per project is ever active
+// (see ChatSessionManager), every other one is inactive regardless of
+// its own open/closed status.
+const chatDisabled = computed(() => !state.value?.key || !state.value?.chat || !selectedSessionActive.value)
+
+const chatDisabledReason = computed(() => {
+  if (!selectedSessionActive.value) return 'This session is no longer active.'
+  return 'Please select:'
+})
+
+function formatSessionTimestamp(iso) {
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString()
+}
+
+// Draggable divider between the sessions panel and the chat itself (same
+// mousedown/movementX pattern as EditProjectView.vue's own split panes).
+const sessionsWidth = ref(240)
+let draggingSessions = false
+
+function startSessionsDrag(event) {
+  draggingSessions = true
+  event.preventDefault()
+}
+
+function onSessionsDrag(event) {
+  if (!draggingSessions) return
+  sessionsWidth.value = Math.min(420, Math.max(160, sessionsWidth.value + event.movementX))
+}
+
+function stopSessionsDrag() {
+  draggingSessions = false
+}
+
+onMounted(() => {
+  window.addEventListener('mousemove', onSessionsDrag)
+  window.addEventListener('mouseup', stopSessionsDrag)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('mousemove', onSessionsDrag)
+  window.removeEventListener('mouseup', stopSessionsDrag)
+})
 
 watch(errorMessage, () => {
   showErrorDetail.value = false
@@ -128,7 +190,55 @@ async function onAction(actionName) {
 </script>
 
 <template>
-  <div class="chat-window">
+  <div class="chat-window-shell">
+    <Transition name="panel-slide-left">
+    <div v-if="sessionsPanelOpen" class="sessions-panel-wrap">
+      <div class="sessions-panel" :style="{ width: sessionsWidth + 'px' }">
+        <div class="sessions-panel-header">
+          <span>Sessions</span>
+          <div class="sessions-panel-header-actions">
+            <button type="button" class="sessions-panel-icon-btn" title="New session" @click="handleNewSession">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                <path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <p v-if="sessionsLoading" class="sessions-status">Loading…</p>
+        <p v-else-if="!sessions.length" class="sessions-status">No sessions yet.</p>
+
+        <ul v-else class="sessions-list">
+          <li v-for="session in sessions" :key="session.id" class="session-row">
+            <button
+              type="button"
+              class="session-item"
+              :class="{ 'session-item-active': session.id === currentSessionId }"
+              @click="selectSession(session)"
+            >
+              <span class="session-badge" :class="{ 'session-badge-inactive': !session.active }">
+                {{ session.end_state }}
+              </span>
+              <span class="session-timestamp">{{ formatSessionTimestamp(session.datetime_start) }}</span>
+            </button>
+            <button
+              type="button"
+              class="session-delete-btn"
+              :disabled="deletingSessionId === session.id"
+              title="Delete session"
+              @click="onDeleteSession(session)"
+            >
+              &times;
+            </button>
+          </li>
+        </ul>
+      </div>
+
+      <div class="split-divider" @mousedown="startSessionsDrag"></div>
+    </div>
+    </Transition>
+
+    <div class="chat-window">
     <div class="messages" ref="scrollEl">
       <div
         v-for="(msg, i) in messages"
@@ -186,10 +296,11 @@ async function onAction(actionName) {
       v-if="chatDisabled"
       class="chat-ended-notice"
     >
-      Please select:
+      {{ chatDisabledReason }}
     </p>
 
     <ActionButtons
+      v-if="selectedSessionActive"
       :actions="state?.actions ?? []"
       :disabled="actionLoading"
       :auto-tracking-enabled="autoTrackingEnabled"
@@ -258,16 +369,189 @@ async function onAction(actionName) {
         </svg>
       </button>
     </form>
+    </div>
   </div>
 </template>
 
 <style scoped>
+.chat-window-shell {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
 .chat-window {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
   min-width: 0;
+}
+
+.sessions-panel-wrap {
+  display: flex;
+  flex-direction: row;
+  min-width: 0;
+  min-height: 0;
+}
+
+.panel-slide-left-enter-active,
+.panel-slide-left-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.panel-slide-left-enter-from,
+.panel-slide-left-leave-to {
+  opacity: 0;
+  transform: translateX(-16px);
+}
+
+.sessions-panel {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  min-height: 0;
+  border-right: 1px solid #ddd;
+  background: #f9fafb;
+}
+
+.split-divider {
+  flex-shrink: 0;
+  width: 6px;
+  border-radius: 3px;
+  background: transparent;
+  cursor: col-resize;
+}
+
+.split-divider:hover {
+  background: #dbe4f0;
+}
+
+.sessions-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid #ddd;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #333;
+}
+
+.sessions-panel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sessions-panel-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 6px;
+  border: 1px solid #4a6fa5;
+  background: white;
+  color: #4a6fa5;
+  cursor: pointer;
+  padding: 0;
+}
+
+.sessions-panel-icon-btn:hover {
+  background: #4a6fa5;
+  color: white;
+}
+
+.sessions-status {
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.sessions-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.3rem 0;
+  overflow-y: auto;
+}
+
+.session-row {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0 0.4rem;
+}
+
+.session-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  padding: 0.55rem 0.5rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.session-item:hover {
+  background: #eef2f8;
+}
+
+.session-item-active {
+  background: #e3ebf7;
+}
+
+.session-delete-btn {
+  flex-shrink: 0;
+  width: 1.4rem;
+  height: 1.4rem;
+  line-height: 1;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: #c62828;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.session-delete-btn:hover:not(:disabled) {
+  background: #fdecea;
+}
+
+.session-delete-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.session-badge {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  background: #4a6fa5;
+  color: white;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.session-badge-inactive {
+  background: #999;
+  opacity: 0.5;
+}
+
+.session-timestamp {
+  font-size: 0.75rem;
+  color: #666;
 }
 
 .messages {

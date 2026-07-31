@@ -114,7 +114,7 @@ class ChatService(object):
         model during normal chat."""
         return [{"role": m["role"], "content": m["content"]} for m in history]
 
-    def _session_payload(self, session: dict) -> dict:
+    def _session_payload(self, session: dict, *, active: bool) -> dict:
         return {
             "id": session["id"],
             "project_name": session["project_name"],
@@ -123,7 +123,28 @@ class ChatService(object):
             "start_state": session["start_state"],
             "end_state": session["end_state"],
             "open": self._session_manager.is_open(session),
+            # Distinct from "open" (see session_manager.py's module
+            # docstring): the single open session with the most recent
+            # datetime_start for this project — what the frontend must
+            # trust to decide whether this session still accepts chat
+            # turns/manual actions, never computed client-side.
+            "active": active,
         }
+
+    def _require_active_session(self, session_id: int | None, project_name: str, current_state: str) -> dict:
+        """A chat turn's session must already be the active one for this
+        project — never silently rotated to a different one, and rejected
+        just as firmly if it's merely open-but-superseded as if it were
+        outright closed (see session_manager.py's module docstring).
+        ValueError becomes a 409 the frontend can act on, e.g. hiding
+        manual action buttons and disabling the input until the user
+        bootstraps/starts a new session (see ChatWindow.vue/chatStore.js)."""
+        try:
+            return self._session_manager.require_active_session(
+                self._username, project_name, session_id, current_state
+            )
+        except ValueError as exc:
+            raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 
     def get_or_create_current_session(self, session_id: int | None) -> dict:
         """Bootstrap for a client with no (or a possibly-stale) session_id:
@@ -134,7 +155,9 @@ class ChatService(object):
         session = self._session_manager.get_or_create_current_session(
             self._username, project_name, session_id, state.key
         )
-        return self._session_payload(session)
+        # Always the active one by construction — see
+        # ChatSessionManager.get_or_create_current_session.
+        return self._session_payload(session, active=True)
 
     def create_session(self) -> dict:
         """Explicit "new session" action (see session_manager.py's module
@@ -143,9 +166,46 @@ class ChatService(object):
         project_name = self._active_project_name
         _, state = self._project_service.get_active_automaton_and_state()
         session = self._session_manager.create_session(self._username, project_name, state.key)
-        return self._session_payload(session)
+        return self._session_payload(session, active=True)
+
+    def list_sessions(self) -> list[dict]:
+        """Every session for the active project, most recently started
+        first — for the "Sessions" panel (see ChatWindow.vue). `active`
+        on each one (see _session_payload) is what the frontend must
+        trust to decide whether that particular session still accepts
+        chat turns/manual actions — never computed client-side (see
+        ChatSessionManager's module docstring)."""
+        project_name = self._active_project_name
+        sessions = self._db.list_chat_sessions(self._username, project_name)
+        active = self._session_manager.get_active_session(self._username, project_name)
+        active_id = active["id"] if active is not None else None
+        return [self._session_payload(s, active=(s["id"] == active_id)) for s in sessions]
+
+    def _require_own_session(self, session_id: int) -> None:
+        """Raises (404) unless `session_id` still exists and belongs to
+        the current user — sessions can now be deleted independently (see
+        delete_session), so anything that's about to write to a given
+        session_id (open_if_needed, via get_messages) can no longer just
+        trust it's still there the way get_or_create_current_session's
+        own resolution already does for the write endpoints."""
+        session = self._db.get_chat_session(session_id)
+        if session is None or session["username"] != self._username:
+            raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
+
+    def delete_session(self, session_id: int) -> None:
+        """Deletes `session_id` and everything scoped to it (see
+        db.delete_chat_session) — only the current user's own sessions,
+        never someone else's by guessing an id."""
+        self._require_own_session(session_id)
+        self._db.delete_chat_session(session_id)
 
     async def get_messages(self, session_id: int, last_n: int | None = None) -> list[dict]:
+        # Checked before open_if_needed (which can write an opening
+        # message to session_id): a session can be deleted out from under
+        # a stale request (e.g. another tab, or a client that hasn't
+        # noticed yet) — fail clean instead of an IntegrityError deep in
+        # save_message.
+        self._require_own_session(session_id)
         # init_action's own message (if any) is deliberately never
         # persisted (see open_if_needed) — the only place it's surfaced.
         init_message = await self.open_if_needed(session_id)
@@ -286,9 +346,7 @@ class ChatService(object):
             _, source_state = self._project_service.get_active_automaton_and_state()
             # Resolved before applying the action: save_transition (inside
             # project_service.apply_manual_action) now needs a session_id.
-            session = self._session_manager.get_or_create_current_session(
-                self._username, project_name, session_id, source_state.key
-            )
+            session = self._require_active_session(session_id, project_name, source_state.key)
             state_payload, action, source_state_key = self._project_service.apply_manual_action(
                 action_name, session["id"]
             )
@@ -352,9 +410,7 @@ class ChatService(object):
         project_name = self._active_project_name
         messages: list[dict] = []
 
-        session = self._session_manager.get_or_create_current_session(
-            self._username, project_name, session_id, state.key
-        )
+        session = self._require_active_session(session_id, project_name, state.key)
         resolved_session_id = session["id"]
 
         if automaton.autotracking_on_user_message:

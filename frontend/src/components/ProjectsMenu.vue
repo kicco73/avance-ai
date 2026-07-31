@@ -149,7 +149,9 @@ onBeforeUnmount(() => {
           </button>
         </li>
         <li>
-          <button class="projects-item" @click="selectRestoreBackup">Restore backup...</button>
+          <button class="projects-item projects-restore-item" @click="selectRestoreBackup">
+            Restore backup...
+          </button>
         </li>
       </ul>
     </div>
@@ -250,10 +252,6 @@ onBeforeUnmount(() => {
   color: #4a6fa5;
 }
 
-.projects-download-item {
-  color: #4a6fa5;
-}
-
 .projects-delete-item {
   color: #c62828;
 }
@@ -265,6 +263,10 @@ onBeforeUnmount(() => {
 
 .projects-backup-item {
   border-top: 1px solid #eee;
+  color: #4a6fa5;
+}
+
+.projects-restore-item {
   color: #4a6fa5;
 }
 

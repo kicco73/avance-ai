@@ -2,6 +2,8 @@ import { nextTick, ref } from 'vue'
 import {
   getCurrentSession,
   postCreateSession,
+  getSessions,
+  deleteSession,
   getMessages,
   postAction,
   getAutoTracking,
@@ -24,6 +26,18 @@ export const state = ref(null)
 // the true writable session itself and this is kept in sync from each
 // response's own session_id (see submitMessage/handleAction).
 export const currentSessionId = ref(null)
+// Whether the session currently displayed accepts new messages — always
+// true after the normal bootstrap/send/new-session flows (a session that
+// was just touched is the active one by definition — see
+// ChatSessionManager: at most one session is ever active per project, the
+// most recently started *open* one, so "active" and "open" aren't the
+// same thing), set to the backend's own `active` flag only when the user
+// picks a session from the sessions panel (see selectSession) — never
+// computed client-side.
+export const selectedSessionActive = ref(true)
+export const sessions = ref([])
+export const sessionsLoading = ref(false)
+export const sessionsPanelOpen = ref(false)
 export const messages = ref([])
 export const historyLoaded = ref(false)
 export const chatLoading = ref(false)
@@ -67,6 +81,7 @@ export function handleStateChange(newState) {
 async function ensureSession() {
   const session = await getCurrentSession(currentSessionId.value)
   currentSessionId.value = session.id
+  selectedSessionActive.value = session.active
   return session.id
 }
 
@@ -86,6 +101,72 @@ export async function loadMessages() {
   } finally {
     await nextTick()
     historyLoaded.value = true
+  }
+}
+
+export async function loadSessions() {
+  sessionsLoading.value = true
+  try {
+    sessions.value = await getSessions()
+  } catch {
+    // already surfaced via apiFetch
+  } finally {
+    sessionsLoading.value = false
+  }
+}
+
+export async function toggleSessionsPanel() {
+  sessionsPanelOpen.value = !sessionsPanelOpen.value
+  if (sessionsPanelOpen.value) {
+    await loadSessions()
+  }
+}
+
+// Switches the chat view to a specific past/present session, read directly
+// (never through ensureSession/get_or_create_current_session — picking an
+// old session must show *that* session's own history, not silently land
+// on whichever one the backend considers "current"). `active` comes
+// straight off the sessions-list entry the user clicked — the backend's
+// own verdict, never recomputed here (a session can be individually
+// "open" without being the active one — see ChatSessionManager).
+export async function selectSession(session) {
+  if (session.id === currentSessionId.value) return
+  currentSessionId.value = session.id
+  selectedSessionActive.value = session.active
+  messages.value = []
+  historyLoaded.value = false
+  try {
+    const history = await getMessages(session.id)
+    messages.value = history.map((m) => ({
+      role: m.role,
+      content: m.content,
+      audioText: m.audio_text,
+      failed: false,
+      messageId: m.id
+    }))
+  } catch {
+    // already surfaced via apiFetch
+  } finally {
+    await nextTick()
+    historyLoaded.value = true
+  }
+}
+
+// Deletes a session and everything in it server-side (see
+// db.delete_chat_session). If it was the one currently displayed, falls
+// back to the same bootstrap loadMessages() uses on first load — there's
+// no specific session left to keep showing.
+export async function handleDeleteSession(session) {
+  if (!window.confirm(`Delete this session (${session.end_state})? This cannot be undone.`)) return
+  try {
+    await deleteSession(session.id)
+    if (session.id === currentSessionId.value) {
+      currentSessionId.value = null
+      await loadMessages()
+    }
+    await loadSessions()
+  } catch {
+    // already surfaced via apiFetch
   }
 }
 
@@ -226,8 +307,12 @@ async function submitMessage(message) {
       applyAiModelInfo(result.ai_model)
     }
     if (result.session_id != null) {
+      // A turn always lands on a session it just touched (see
+      // ChatSessionManager) — open by definition.
       currentSessionId.value = result.session_id
+      selectedSessionActive.value = true
     }
+    if (sessionsPanelOpen.value) loadSessions()
     bumpTurn()
   } catch (err) {
     // In caso di errore durante l'invio, rimuoviamo la bolla vuota/incompleta
@@ -235,6 +320,10 @@ async function submitMessage(message) {
     if (idx !== -1) messages.value.splice(idx, 1)
 
     setMessageFailed(message.id, true)
+    // 409 = the backend rejected this exact session_id as closed (see
+    // ChatSessionManager.require_open_session) — reflect that immediately
+    // so the input disables and action buttons hide without a reload.
+    if (err.status === 409) selectedSessionActive.value = false
   } finally {
     chatLoading.value = false
     chatStatus.value = ''
@@ -298,10 +387,13 @@ export async function handleAction(actionName) {
     }
     if (result.session_id != null) {
       currentSessionId.value = result.session_id
+      selectedSessionActive.value = true
     }
+    if (sessionsPanelOpen.value) loadSessions()
     bumpTurn()
-  } catch {
+  } catch (err) {
     // already surfaced via apiFetch
+    if (err.status === 409) selectedSessionActive.value = false
   } finally {
     actionLoading.value = false
   }
@@ -316,6 +408,8 @@ export function clearChatUi() {
   // stale id here would just be ignored server-side, but a project
   // switch is exactly when "the current session" should be re-resolved.
   currentSessionId.value = null
+  selectedSessionActive.value = true
+  sessions.value = []
 }
 
 export async function handleReset() {
@@ -333,12 +427,22 @@ export async function handleReset() {
 }
 
 export async function handleNewSession() {
+  // Only one session is ever active per project (see ChatSessionManager) —
+  // starting a new one always supersedes whichever one was current, so
+  // this is a real "close the current session" action, not just an addition.
+  if (!window.confirm('Start a new session? This will close the current session for this project — only one can be active at a time.')) return
   try {
     const session = await postCreateSession()
     currentSessionId.value = session.id
+    selectedSessionActive.value = session.active
     clearApiError()
     messages.value = []
     await loadMessages()
+    // Opened unconditionally (not just refreshed when already open) so the
+    // new session is actually visible right away, wherever this was
+    // triggered from — not dependent on the sessions panel already being open.
+    sessionsPanelOpen.value = true
+    await loadSessions()
     bumpTurn()
   } catch {
     // already surfaced via apiFetch

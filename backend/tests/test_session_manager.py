@@ -93,3 +93,87 @@ def test_touch_session_refreshes_end_state(manager):
 
     assert touched["id"] == session["id"]
     assert touched["end_state"] == "next"
+
+
+def test_require_active_session_accepts_and_touches_an_open_session(manager):
+    session = manager.create_session("user", "proj", "start")
+
+    result = manager.require_active_session("user", "proj", session["id"], "next")
+
+    assert result["id"] == session["id"]
+    assert result["end_state"] == "next"
+
+
+def test_require_active_session_rejects_none(manager):
+    with pytest.raises(ValueError):
+        manager.require_active_session("user", "proj", None, "start")
+
+
+def test_require_active_session_rejects_unknown_session(manager):
+    with pytest.raises(ValueError):
+        manager.require_active_session("user", "proj", 999999, "start")
+
+
+def test_require_active_session_rejects_someone_elses_session(manager):
+    theirs = manager.create_session("other-user", "proj", "start")
+
+    with pytest.raises(ValueError):
+        manager.require_active_session("user", "proj", theirs["id"], "start")
+
+
+def test_require_active_session_rejects_a_different_projects_session(manager):
+    session = manager.create_session("user", "proj-a", "start")
+
+    with pytest.raises(ValueError):
+        manager.require_active_session("user", "proj-b", session["id"], "start")
+
+
+def test_require_active_session_rejects_a_closed_session_no_auto_rotation(manager, monkeypatch):
+    """The behavior this reinforces: unlike get_or_create_current_session,
+    a closed session is never silently swapped for a new one here — the
+    caller must bootstrap or start a new session explicitly instead."""
+    session = manager.create_session("user", "proj", "start")
+    stale_now = session["datetime_end"] + OPEN_WINDOW + timedelta(seconds=1)
+
+    class FrozenDatetime(datetime):
+        @classmethod
+        def utcnow(cls):
+            return stale_now
+
+    monkeypatch.setattr("chat.session_manager.datetime", FrozenDatetime)
+
+    with pytest.raises(ValueError):
+        manager.require_active_session("user", "proj", session["id"], "start")
+
+    # Rejected, not replaced — no new session should have appeared.
+    assert manager.get_session(session["id"])["end_state"] == "start"
+
+
+def test_get_active_session_is_none_when_none_exist(manager):
+    assert manager.get_active_session("user", "proj") is None
+
+
+def test_get_active_session_is_the_most_recently_started_open_one(manager):
+    manager.create_session("user", "proj", "start")
+    newer = manager.create_session("user", "proj", "start")
+
+    active = manager.get_active_session("user", "proj")
+
+    assert active["id"] == newer["id"]
+
+
+def test_require_active_session_rejects_an_open_but_superseded_session(manager):
+    """The exact bug this guards against: an older session that is still
+    individually open (not expired) must NOT be usable for writes once a
+    newer one has superseded it — only one session is ever active per
+    user+project, regardless of how many others are still open."""
+    older = manager.create_session("user", "proj", "start")
+    newer = manager.create_session("user", "proj", "start")
+    assert manager.is_open(older)  # not expired — this is the crux of the bug
+
+    with pytest.raises(ValueError):
+        manager.require_active_session("user", "proj", older["id"], "next")
+
+    # The active (newer) one is unaffected and still works normally.
+    result = manager.require_active_session("user", "proj", newer["id"], "next")
+    assert result["id"] == newer["id"]

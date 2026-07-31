@@ -23,7 +23,9 @@ import {
   loadMessages,
   loadAutoTracking,
   loadAiModels,
-  clearChatUi
+  clearChatUi,
+  sessionsPanelOpen,
+  toggleSessionsPanel
 } from './chatStore.js'
 
 const showEditProject = ref(false)
@@ -225,6 +227,7 @@ async function handleDownloadBackup() {
     link.click()
     link.remove()
     URL.revokeObjectURL(url)
+    alert('Backup downloaded to your local folder.')
   } catch {
     // already surfaced via apiFetch
   }
@@ -263,6 +266,16 @@ onBeforeUnmount(() => {
     <header class="topbar">
       <StateBar :state="state" />
       <div class="topbar-actions">
+        <button
+          type="button"
+          class="sessions-btn"
+          :class="{ 'sessions-btn-active': sessionsPanelOpen }"
+          :disabled="!state?.key"
+          title="Sessions"
+          @click="toggleSessionsPanel"
+        >
+          Sessions
+        </button>
         <ProjectsMenu
           ref="projectsMenu"
           @select="handleProjectSwitch"
@@ -328,5 +341,29 @@ onBeforeUnmount(() => {
 
 .upload-model-input {
   display: none;
+}
+
+.sessions-btn {
+  padding: 0.4rem 1rem;
+  border-radius: 6px;
+  border: 1px solid #4a6fa5;
+  background: white;
+  color: #4a6fa5;
+  cursor: pointer;
+}
+
+.sessions-btn:hover:not(:disabled) {
+  background: #4a6fa5;
+  color: white;
+}
+
+.sessions-btn-active {
+  background: #4a6fa5;
+  color: white;
+}
+
+.sessions-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>

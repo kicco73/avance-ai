@@ -129,6 +129,21 @@ class AvanceController(object):
         superseding whichever session was previously current."""
         return self.chat_service.create_session()
 
+    @get("/api/chat/sessions")
+    def get_sessions(self):
+        """Every session for the active project, for the chat's
+        "Sessions" side panel — see ChatService.list_sessions."""
+        return self.chat_service.list_sessions()
+
+    @delete("/api/chat/sessions/{session_id}")
+    def delete_session(self, session_id: int):
+        """Deletes a session and all its messages/signals — see
+        ChatService.delete_session. Raises ChatServiceError (404) if it
+        doesn't exist or belongs to someone else — handled by the global
+        exception handler (see error_handlers.py), no try/except needed here."""
+        self.chat_service.delete_session(session_id)
+        return {"success": True}
+
     @get("/api/chat/messages")
     async def get_messages(self, session_id: int):
         return await self.chat_service.get_messages(session_id)
