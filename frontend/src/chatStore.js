@@ -96,6 +96,11 @@ export async function loadMessages() {
       failed: false,
       messageId: m.id
     }))
+    // Whichever project just became active, the sessions panel (if open)
+    // was still showing the *previous* project's list (or the empty one
+    // clearChatUi leaves it in) — without this, switching projects looks
+    // like it wiped the sessions, when nothing server-side was touched.
+    if (sessionsPanelOpen.value) await loadSessions()
   } catch {
     // already surfaced via apiFetch
   } finally {

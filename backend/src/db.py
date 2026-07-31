@@ -204,7 +204,25 @@ class Db(object):
         in-flight chat turns themselves (see controller.py's /api/backup).
         Validated before the working file is touched at all: an invalid
         upload (wrong magic bytes or mismatched schema) leaves it exactly
-        as it was."""
+        as it was.
+
+        Reconnecting rebuilds the `database` Proxy's target from scratch
+        (database.initialize(connect(...)), not a close()+connect() on
+        the *same* underlying Database object — peewee's connection state
+        is per-thread, so simply closing and reopening only fixes up
+        whichever thread happens to call restore_backup(); every other
+        thread that already holds one (a previous request handled on a
+        different worker thread, or — should this ever grow into a
+        multi-process/queue-consumer setup — a connection in a different
+        process entirely) would keep its own stale connection to the
+        file that just got replaced out from under it, which is exactly
+        how this broke before (surfacing as `OperationalError: attempt to
+        write a readonly database` on the next unrelated request). Handing
+        the Proxy a brand new Database object sidesteps the assumption
+        entirely: nothing needs reconnecting anywhere else, because any
+        thread's *next* query goes through the new object and lazily
+        opens its own fresh connection then, on first use — regardless of
+        how many threads or processes are actually involved."""
         if not content.startswith(self._SQLITE_MAGIC):
             raise ValueError("Uploaded file is not a valid SQLite database.")
 
@@ -221,8 +239,22 @@ class Db(object):
             os.remove(tmp_path)
             raise
 
+        # A freshly written file gets whatever mode the process umask
+        # allows, which isn't necessarily the working file's own mode —
+        # preserved explicitly so a restore can never leave the file less
+        # permissive than it was (e.g. missing the owner's write bit,
+        # which every write after this would then fail against with
+        # "attempt to write a readonly database"). Best-effort: if the
+        # original file somehow can't be stat'd, proceed with whatever
+        # mode the new file already has rather than fail the restore over it.
+        try:
+            os.chmod(tmp_path, os.stat(path).st_mode)
+        except OSError:
+            pass
+
         database.close()
         os.replace(tmp_path, path)
+        database.initialize(connect(self._database_url))
         database.connect(reuse_if_open=True)
         self._enable_foreign_keys()
 

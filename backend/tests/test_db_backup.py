@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import os
+import stat
 import sqlite3
 from datetime import datetime
 
 import pytest
 
-from db import Db
+from db import Db, database
 
 
 def _make_sqlite_bytes(tmp_path, name, ddl_statements):
@@ -80,6 +82,40 @@ def test_restore_backup_accepts_a_schema_matching_backup(file_db):
     backup = file_db.export_backup()
     file_db.restore_backup(backup)  # must not raise
     assert file_db.export_backup().startswith(b"SQLite format 3\x00")
+
+
+def test_restore_backup_rebuilds_the_proxy_target_not_just_reconnects(file_db):
+    """The actual fix, not just its effect: restore_backup() must hand
+    the shared `database` Proxy a brand new Database object rather than
+    closing/reopening the *same* one. Peewee's connection state is
+    per-thread — a plain close()+connect() only fixes up the calling
+    thread's own state, leaving any other thread that already holds a
+    connection (a previous request on a different worker thread, or a
+    separate process in a future multi-consumer setup) with a stale
+    connection to the file that just got replaced. Rebinding the Proxy to
+    a new object sidesteps that: every thread's *next* query lazily opens
+    its own fresh connection to it, regardless of how many threads or
+    processes are involved."""
+    target_before = database.obj
+
+    file_db.restore_backup(file_db.export_backup())
+
+    assert database.obj is not target_before
+
+
+def test_restore_backup_preserves_the_working_files_permissions(file_db):
+    """Regression test: a freshly written temp file gets whatever mode the
+    process umask allows, which isn't necessarily the working file's own
+    mode. Left unpreserved, a restore could silently leave the file less
+    permissive than before (e.g. missing the owner's write bit), and every
+    write after that fails with "attempt to write a readonly database"."""
+    path = file_db.backup_file_path()
+    os.chmod(path, 0o600)  # deliberately not whatever the umask would produce
+    backup = file_db.export_backup()
+
+    file_db.restore_backup(backup)
+
+    assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
 
 
 def test_restore_backup_replaces_data_and_reconnects(file_db):
