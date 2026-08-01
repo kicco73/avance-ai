@@ -511,8 +511,9 @@ class Db(object):
         """The full Signals event log for `session_id` — every row, snapshot
         or transition alike (see metrics_framework/README.md, which splits
         them back apart by `new_state`'s presence). Consumed by
-        metrics_framework (via db_integration.py's AnalyticsDb protocol)
-        and metrics_framework/benchmark_metrics, which additionally needs
+        metrics_framework (via metrics_framework/interfaces.py's
+        AnalyticsDb protocol) and metrics_framework/benchmark_metrics,
+        which additionally needs
         `expected_values` (expert ground truth, JSON-serialized the same
         way as `values` — see Signals.expected_values) and `message_id`
         (see Signals.message — the "Benchmark project" view's own way to

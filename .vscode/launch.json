@@ -20,6 +20,24 @@
             "cwd": "${workspaceFolder}/backend",
             "console": "integratedTerminal",
             "justMyCode": true
+        },
+        {
+            "name": "Vitest: All frontend tests",
+            "type": "node",
+            "request": "launch",
+            "runtimeExecutable": "npm",
+            "runtimeArgs": ["test"],
+            "cwd": "${workspaceFolder}/frontend",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Vitest: Current file",
+            "type": "node",
+            "request": "launch",
+            "runtimeExecutable": "npx",
+            "runtimeArgs": ["vitest", "run", "${fileBasename}"],
+            "cwd": "${workspaceFolder}/frontend",
+            "console": "integratedTerminal"
         }
     ]
 }
