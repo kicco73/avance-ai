@@ -376,6 +376,37 @@ class Db(object):
         )
         return [self._chat_session_to_dict(s) for s in sessions]
 
+    def session_has_annotations(self, session_id: int) -> bool:
+        """Whether session_id has at least one expert annotation
+        (expected_state or expected_values) on any of its own Signals
+        rows — see ChatService._session_payload's own `has_annotations`,
+        for a single session."""
+        return (
+            Signals.select()
+            .where(
+                (Signals.session == session_id)
+                & (Signals.expected_state.is_null(False) | Signals.expected_values.is_null(False))
+            )
+            .exists()
+        )
+
+    def get_annotated_session_ids(self, username: str, project_name: str) -> set[int]:
+        """Which of username+project_name's own sessions have at least one
+        expert annotation on any of their own Signals rows — one query
+        for the whole list (see ChatService.list_sessions), rather than
+        session_has_annotations called once per session."""
+        rows = (
+            Signals.select(Signals.session)
+            .join(ChatSession, on=(Signals.session == ChatSession.id))
+            .where(
+                (ChatSession.username == username)
+                & (ChatSession.project_name == project_name)
+                & (Signals.expected_state.is_null(False) | Signals.expected_values.is_null(False))
+            )
+            .distinct()
+        )
+        return {row.session_id for row in rows}
+
     def touch_chat_session(self, session_id: int, datetime_end: datetime, end_state: str) -> None:
         ChatSession.update(datetime_end=datetime_end, end_state=end_state).where(
             ChatSession.id == session_id
@@ -580,6 +611,15 @@ class Db(object):
         ChatService.set_message_expected_signals)."""
         serialized = json.dumps(expected_values) if expected_values else None
         Signals.update(expected_values=serialized).where(Signals.id == signal_row_id).execute()
+
+    def clear_session_annotations(self, session_id: int) -> None:
+        """Clears every expected_state/expected_values annotation across
+        session_id's own Signals rows in one statement — the "Benchmark
+        project" view's "Unlabel all" action (see ChatService.
+        clear_session_annotations), after its own confirmation dialog.
+        Ownership is the caller's job, same as every other annotation
+        write here."""
+        Signals.update(expected_state=None, expected_values=None).where(Signals.session == session_id).execute()
 
     def _latest_transition(self, project_name: str, *, real_only: bool = False) -> Signals | None:
         query = (

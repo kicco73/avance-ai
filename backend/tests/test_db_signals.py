@@ -223,3 +223,35 @@ def test_reset_project_deletes_signals_rows_too(db):
 
     assert db.get_current_state("proj") is None
     assert db.get_latest_signal_snapshot("proj") is None
+
+
+def test_clear_session_annotations_clears_expected_state_and_values(db):
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    row_a = db.save_signal_snapshot({"foo": 1}, session_id)
+    row_b = db.save_transition("start", "advance", "next", session_id, transition_log_level="INFO")
+    db.set_signal_expected_state(row_a, "start")
+    db.set_signal_expected_values(row_a, {"foo": 75})
+    db.set_signal_expected_state(row_b, "next")
+
+    db.clear_session_annotations(session_id)
+
+    rows = {r["id"]: r for r in db.get_signals(session_id)}
+    assert rows[row_a]["expected_state"] is None
+    assert rows[row_a]["expected_values"] is None
+    assert rows[row_b]["expected_state"] is None
+    # The actual observation itself must never be touched.
+    assert rows[row_b]["new_state"] == "next"
+
+
+def test_clear_session_annotations_is_scoped_to_its_own_session(db):
+    session_a = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    session_b = _make_session(db, start=datetime(2026, 1, 2, 10, 0, 0))
+    row_a = db.save_signal_snapshot({"foo": 1}, session_a)
+    row_b = db.save_signal_snapshot({"foo": 1}, session_b)
+    db.set_signal_expected_state(row_a, "start")
+    db.set_signal_expected_state(row_b, "start")
+
+    db.clear_session_annotations(session_a)
+
+    assert db.get_signals(session_a)[0]["expected_state"] is None
+    assert db.get_signals(session_b)[0]["expected_state"] == "start"

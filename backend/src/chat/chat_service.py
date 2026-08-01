@@ -119,7 +119,7 @@ class ChatService(object):
         model during normal chat."""
         return [{"role": m["role"], "content": m["content"]} for m in history]
 
-    def _session_payload(self, session: dict, *, active: bool) -> dict:
+    def _session_payload(self, session: dict, *, active: bool, has_annotations: bool) -> dict:
         return {
             "id": session["id"],
             "project_name": session["project_name"],
@@ -134,6 +134,10 @@ class ChatService(object):
             # trust to decide whether this session still accepts chat
             # turns/manual actions, never computed client-side.
             "active": active,
+            # Whether any of this session's own Signals rows carry an
+            # expert annotation (see db.session_has_annotations) — the
+            # "Benchmark project" view's own Sessions panel marker.
+            "has_annotations": has_annotations,
         }
 
     def _require_active_session(self, session_id: int | None, project_name: str, current_state: str) -> dict:
@@ -161,8 +165,12 @@ class ChatService(object):
             self._username, project_name, session_id, state.key
         )
         # Always the active one by construction — see
-        # ChatSessionManager.get_or_create_current_session.
-        return self._session_payload(session, active=True)
+        # ChatSessionManager.get_or_create_current_session. Resolves an
+        # existing session as easily as a brand new one, so its own
+        # has_annotations is checked for real rather than assumed False.
+        return self._session_payload(
+            session, active=True, has_annotations=self._db.session_has_annotations(session["id"])
+        )
 
     def create_session(self) -> dict:
         """Explicit "new session" action (see session_manager.py's module
@@ -181,7 +189,9 @@ class ChatService(object):
         session = self._session_manager.create_session(
             self._username, project_name, automaton.init_action.target
         )
-        return self._session_payload(session, active=True)
+        # A brand new session has no messages/Signals rows yet at all —
+        # correct by construction, no query needed.
+        return self._session_payload(session, active=True, has_annotations=False)
 
     def list_sessions(self) -> list[dict]:
         """Every session for the active project, most recently started
@@ -194,7 +204,15 @@ class ChatService(object):
         sessions = self._db.list_chat_sessions(self._username, project_name)
         active = self._session_manager.get_active_session(self._username, project_name)
         active_id = active["id"] if active is not None else None
-        return [self._session_payload(s, active=(s["id"] == active_id)) for s in sessions]
+        # One query for the whole list, not one per session — see
+        # db.get_annotated_session_ids's own docstring.
+        annotated_ids = self._db.get_annotated_session_ids(self._username, project_name)
+        return [
+            self._session_payload(
+                s, active=(s["id"] == active_id), has_annotations=s["id"] in annotated_ids
+            )
+            for s in sessions
+        ]
 
     def _require_own_session(self, session_id: int) -> None:
         """Raises (404) unless `session_id` still exists and belongs to
@@ -360,14 +378,28 @@ class ChatService(object):
         assert updated is not None
         return updated
 
+    def clear_session_annotations(self, session_id: int) -> None:
+        """Clears every expert annotation (expected_state and
+        expected_values alike) across session_id's own Signals rows in
+        one call — the "Benchmark project" view's "Unlabel all" action,
+        fired only after its own confirmation dialog."""
+        self._require_own_session(session_id)
+        self._db.clear_session_annotations(session_id)
+
     async def open_if_needed(self, session_id: int) -> dict | None:
         project_name = self._active_project_name
         automaton, state = self._project_service.get_active_automaton_and_state()
 
         init_message = None
+        # Set only when this call is the one that actually creates the
+        # automaton's own "" -> start_state transition (a session's very
+        # first) — never on a later call for an already-bootstrapped
+        # session, even if that call still generates its own opening
+        # message for some other reason (see _should_generate_opening_message).
+        signal_row_id = None
         if self._db.get_current_state(project_name) is None:
             action = automaton.init_action
-            self._db.save_transition(
+            signal_row_id = self._db.save_transition(
                 "", action.name, state.key, session_id, transition_log_level=state.transition_log_level
             )
             if action.action_prompt:
@@ -375,7 +407,20 @@ class ChatService(object):
                     action, project_name, session_id, automaton, state
                 )
 
-        await self._generate_opening_message_if_needed(project_name, session_id, automaton, state)
+        # init_action's action_prompt reply (if any, see above) is
+        # deliberately never persisted (see get_messages' own docstring)
+        # — there's no message to link the init transition to there. Its
+        # own *opening* message (a real, persisted one) is the closest
+        # thing to "the message whose processing produced this
+        # transition" it actually has — without this, a session's very
+        # first transition could never be annotated at all in the
+        # "Benchmark project" view (see Signals.message's own docstring),
+        # since every other transition ties back to a real user/assistant
+        # message but this one otherwise wouldn't.
+        opening_message = await self._generate_opening_message_if_needed(project_name, session_id, automaton, state)
+        if signal_row_id is not None and opening_message is not None:
+            self._db.link_signal_to_message(signal_row_id, opening_message["id"])
+
         return init_message
 
     @staticmethod
@@ -556,8 +601,6 @@ class ChatService(object):
                 "This state doesn't accept messages; use an action instead.", status_code=HTTPStatus.CONFLICT
             )
 
-        pending_message = {"role": "user", "content": text, "timestamp": self._now_iso()}
-
         action: Action | None = None
         project_name = self._active_project_name
         messages: list[dict] = []
@@ -565,19 +608,34 @@ class ChatService(object):
         session = self._require_active_session(session_id, project_name, state.key)
         resolved_session_id = session["id"]
 
+        # Saved *before* auto-tracking runs — not after (see git history/
+        # PR discussion for why this was briefly reverted and why that was
+        # wrong): auto-tracking's own evaluation for this message can fire
+        # a transition, which can itself generate follow-up messages (an
+        # action_prompt, an opening message — including a fixed_message
+        # translation, see _build_turn_prompt) via _messages_for_transition
+        # below. Every one of those is a *reaction* to this user message —
+        # if it were saved first, they'd all get an earlier timestamp than
+        # the very message that caused them, corrupting the persisted
+        # chronological order (not just how the "Benchmark project" view's
+        # timeline happens to display it — every consumer of
+        # db.get_messages/get_signals' own timestamp ordering, e.g.
+        # chat_history for the next AI call, would see it too).
+        # Passing pending_message=None to _run_auto_tracking below (rather
+        # than this message's own not-yet-persisted content) is safe:
+        # _signal_history_window falls back to fetching it straight from
+        # the db instead, and since it's already saved by the time that
+        # runs, the resulting transcript is identical either way.
+        user_message_id = self._db.save_message("user", text, resolved_session_id)
+
         signal_row_id = None
         if automaton.autotracking_on_user_message:
             action, state, transition_messages, signal_row_id = await self._run_auto_tracking(
-                pending_message, project_name, resolved_session_id, automaton, state, {}
+                None, project_name, resolved_session_id, automaton, state, {}
             )
             messages.extend(transition_messages)
-
-        user_message_id = self._db.save_message("user", text, resolved_session_id)
-        # Only known once the message itself has an id — see
-        # link_signal_to_message's own docstring for why this can't happen
-        # any earlier for the user-message case.
-        if signal_row_id is not None:
-            self._db.link_signal_to_message(signal_row_id, user_message_id)
+            if signal_row_id is not None:
+                self._db.link_signal_to_message(signal_row_id, user_message_id)
 
         if state.chat:
             system_prompt, turn_attachments = self._build_turn_prompt(automaton, state)

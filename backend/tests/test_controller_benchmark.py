@@ -158,3 +158,46 @@ def test_get_benchmark_metrics_can_be_scoped_to_one_session(client, hello_projec
 def test_get_benchmark_metrics_is_404_for_someone_elses_or_unknown_session(client, hello_project):
     response = client.get("/api/chat/benchmark-metrics?session_id=999999")
     assert response.status_code == 404
+
+
+def test_delete_session_annotations_clears_everything_in_that_session(client, hello_project, app_db):
+    session = client.get("/api/chat/session").json()
+    turn = client.post("/api/chat/messages", json={"message": "hi", "session_id": session["id"]}).json()
+    message_id = turn["reply"][0]["id"]
+    signal_row_id = app_db.save_signal_snapshot({"foo": 80}, session["id"], message_id=message_id)
+    app_db.set_signal_expected_state(signal_row_id, "Hello")
+    app_db.set_signal_expected_values(signal_row_id, {"foo": 80})
+
+    response = client.delete(f"/api/chat/sessions/{session['id']}/annotations")
+
+    assert response.status_code == 200
+    assert response.json() == {"success": True}
+    row = app_db.get_signal_row_by_message(message_id)
+    assert row["expected_state"] is None
+    assert row["expected_values"] is None
+    # The actually-observed values must stay untouched.
+    assert row["values"] is not None
+
+
+def test_delete_session_annotations_is_404_for_someone_elses_or_unknown_session(client, hello_project):
+    response = client.delete("/api/chat/sessions/999999/annotations")
+    assert response.status_code == 404
+
+
+def test_init_transition_is_linked_to_the_opening_message_and_becomes_annotatable(client, hello_project):
+    """Regression test: the automaton's very first ("" -> start_state)
+    transition, created by ChatService.open_if_needed before any user
+    message exists, must still end up linked to a real message (the
+    session's opening message) so a domain expert can annotate it too —
+    see open_if_needed's own signal_row_id/opening_message wiring."""
+    session = client.get("/api/chat/session").json()
+    client.get(f"/api/chat/messages?session_id={session['id']}")  # triggers open_if_needed
+
+    signals = client.get(f"/api/chat/sessions/{session['id']}/signals").json()
+    init_row = next(row for row in signals if row["old_state"] == "")
+    assert init_row["message_id"] is not None
+
+    response = client.put(
+        f"/api/chat/messages/{init_row['message_id']}/expected-state", json={"expected_state": "Hello"}
+    )
+    assert response.status_code == 200

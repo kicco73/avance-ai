@@ -197,6 +197,17 @@ class AvanceController(object):
         signal name or an out-of-range value."""
         return self.chat_service.set_message_expected_signals(message_id, req.expected_values)
 
+    @delete("/api/chat/sessions/{session_id}/annotations")
+    def delete_session_annotations(self, session_id: int):
+        """Clears every expert annotation (expected_state and
+        expected_values alike) across session_id's own Signals rows —
+        the "Benchmark project" view's "Unlabel all" action, fired only
+        after its own confirmation dialog. ChatServiceError (404 for an
+        unknown/not-yours session_id) is handled globally, see
+        error_handlers.py."""
+        self.chat_service.clear_session_annotations(session_id)
+        return {"success": True}
+
     @post("/api/chat/messages")
     async def post_message(self, req: ChatMessageRequest):
         text = req.message.strip()

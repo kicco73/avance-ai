@@ -14,6 +14,24 @@ def test_bootstrap_creates_a_session(client, hello_project):
     assert body["project_name"] == hello_project
     assert body["open"] is True
     assert body["active"] is True
+    assert body["has_annotations"] is False
+
+
+def test_sessions_list_reflects_has_annotations_per_session(client, hello_project, app_db: Db):
+    session = client.get("/api/chat/session").json()
+    turn = client.post("/api/chat/messages", json={"message": "hi", "session_id": session["id"]}).json()
+    message_id = turn["reply"][0]["id"]
+    signal_row_id = app_db.save_signal_snapshot({"foo": 1}, session["id"], message_id=message_id)
+
+    before = {s["id"]: s for s in client.get("/api/chat/sessions").json()}
+    assert before[session["id"]]["has_annotations"] is False
+
+    app_db.set_signal_expected_state(signal_row_id, "Hello")
+
+    after = {s["id"]: s for s in client.get("/api/chat/sessions").json()}
+    assert after[session["id"]]["has_annotations"] is True
+    # And the same single-session bootstrap endpoint reflects it too.
+    assert client.get(f"/api/chat/session?session_id={session['id']}").json()["has_annotations"] is True
 
 
 def test_manual_new_session_supersedes_the_bootstrap_one(client, hello_project):
