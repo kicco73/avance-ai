@@ -108,6 +108,17 @@ def test_get_signals_on_a_session_with_no_signals_is_empty(db):
     assert db.get_signals(session_id) == []
 
 
+def test_get_signals_includes_expected_values_field(db):
+    """Nothing writes expected_values yet (see Signals.expected_values'
+    own docstring) — it's just always present, currently always None."""
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    db.save_signal_snapshot({"foo": 1}, session_id)
+
+    rows = db.get_signals(session_id)
+
+    assert rows[0]["expected_values"] is None
+
+
 def test_reset_project_deletes_signals_rows_too(db):
     session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
     db.save_transition("", "init", "start", session_id, transition_log_level="INFO", signal_values={"foo": 1})

@@ -4,7 +4,7 @@ import { getProjects } from '../api.js'
 
 const DEFAULT_PROJECT_NAME = 'default'
 
-const emit = defineEmits(['select', 'edit', 'upload', 'download', 'delete', 'download-backup', 'restore-backup'])
+const emit = defineEmits(['select', 'edit', 'benchmark', 'upload', 'download', 'delete', 'download-backup', 'restore-backup'])
 
 const open = ref(false)
 const loading = ref(false)
@@ -18,6 +18,10 @@ const restoreInput = ref(null)
 // even with zero projects uploaded) once there's nothing to select at all.
 const noProjectsAvailable = computed(() => projects.value.length === 0)
 const editDisabled = computed(() => noProjectsAvailable.value)
+// Same condition as Edit — a valid project must be loaded (see the
+// "Benchmark project" spec: "Abilitato solo quando è caricato un progetto
+// valido, analogamente a 'Edit project'").
+const benchmarkDisabled = computed(() => noProjectsAvailable.value)
 const deleteDisabled = computed(() => noProjectsAvailable.value || activeProjectName.value === DEFAULT_PROJECT_NAME)
 
 // The single fetch behind both the menu's tick and the button's own label —
@@ -59,6 +63,12 @@ function selectEdit() {
   if (editDisabled.value || !activeProjectName.value) return
   open.value = false
   emit('edit', activeProjectName.value)
+}
+
+function selectBenchmark() {
+  if (benchmarkDisabled.value || !activeProjectName.value) return
+  open.value = false
+  emit('benchmark', activeProjectName.value)
 }
 
 function selectUpload() {
@@ -129,6 +139,15 @@ onBeforeUnmount(() => {
             @click="selectEdit"
           >
             Edit project
+          </button>
+        </li>
+        <li>
+          <button
+            class="projects-item projects-edit-item"
+            :disabled="benchmarkDisabled"
+            @click="selectBenchmark"
+          >
+            Benchmark project
           </button>
         </li>
         <li>

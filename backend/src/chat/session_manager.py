@@ -5,9 +5,10 @@ isn't called `Session` (that name is session.py's unrelated process-local
 singleton).
 
 Two distinct, non-interchangeable concepts:
-- **open**: a session hasn't expired — less than OPEN_WINDOW has elapsed
-  since its datetime_end (see is_open). Purely a per-session, time-based
-  fact; says nothing about any other session.
+- **open**: a session hasn't expired — less than the configured open
+  window (see __init__'s open_window_minutes, and is_open) has elapsed
+  since its datetime_end. Purely a per-session, time-based fact; says
+  nothing about any other session.
 - **active**: within one username+project_name, the single open session
   with the most recent datetime_start (see get_active_session). At most
   one session is ever active at a time — the chat is driven by a single
@@ -45,19 +46,26 @@ from db import Db
 
 logger = logging.getLogger(__name__)
 
-# A session is open iff less than this has elapsed since its datetime_end
-# was last refreshed (see touch_session/get_or_create_current_session).
-OPEN_WINDOW = timedelta(hours=1)
+# Default open window, in minutes, when the caller doesn't supply one —
+# matches config.yml's own chat-service.max_session_duration_in_minutes
+# default (see config.py's AppConfig), which is the single source of
+# truth in a real deployment (see main.py). Kept here too so tests/other
+# direct constructions don't need to know that default themselves.
+DEFAULT_OPEN_WINDOW_MINUTES = 60.0
 
 
 class ChatSessionManager(object):
-    def __init__(self, db: Db) -> None:
+    def __init__(self, db: Db, open_window_minutes: float = DEFAULT_OPEN_WINDOW_MINUTES) -> None:
         self._db = db
+        self._open_window = timedelta(minutes=open_window_minutes)
 
-    @staticmethod
-    def is_open(session: dict, now: datetime | None = None) -> bool:
+    @property
+    def open_window(self) -> timedelta:
+        return self._open_window
+
+    def is_open(self, session: dict, now: datetime | None = None) -> bool:
         now = now if now is not None else datetime.utcnow()
-        return now - session["datetime_end"] < OPEN_WINDOW
+        return now - session["datetime_end"] < self._open_window
 
     def get_active_session(self, username: str, project_name: str) -> dict | None:
         """The single session `username`+`project_name` may currently

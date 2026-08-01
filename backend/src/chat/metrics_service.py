@@ -3,6 +3,7 @@ on demand — no caching (see metrics_framework/README.md #16). Instantiated
 as ChatService's `metrics`, same DI style as chat/signals.py's `Signals`."""
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Callable
 
 from automaton.automaton import Automaton
@@ -20,17 +21,23 @@ class ChatMetrics(object):
         self._get_username = get_username
         self._get_active_project_name = get_active_project_name
 
-    def _calculate(self) -> list[tuple[MetricCalculator, MetricResult]]:
+    def _calculate(self, until: datetime | None = None) -> list[tuple[MetricCalculator, MetricResult]]:
         """One AnalyticsCalculator per call: loads the analytical dataset
         once, then evaluates every core metric against it — the one place
         that construction happens, shared by calculate_all/calculate_values
-        so neither duplicates it."""
-        calculator = AnalyticsCalculator(self._db, self._get_username(), self._get_active_project_name())
+        so neither duplicates it. `until` restricts the dataset to what
+        existed at or before that point (see AnalyticsCalculator)."""
+        calculator = AnalyticsCalculator(
+            self._db, self._get_username(), self._get_active_project_name(), until=until
+        )
         return list(zip(calculator.metrics, calculator.calculate_all()))
 
-    def calculate_all(self) -> list[dict]:
+    def calculate_all(self, until: datetime | None = None) -> list[dict]:
         """ui_label/ui_description/value per metric, for the "Edit
-        project" view's Inspector Metrics tab."""
+        project" view's Inspector Metrics tab (live, `until` omitted) and
+        the "Benchmark project" view's point-in-time Inspector (`until`
+        set to a specific past message's timestamp — see
+        ChatService.get_metrics)."""
         return [
             {
                 "name": metric.name,
@@ -38,7 +45,7 @@ class ChatMetrics(object):
                 "ui_description": metric.ui_description,
                 "value": result.value,
             }
-            for metric, result in self._calculate()
+            for metric, result in self._calculate(until=until)
         ]
 
     def calculate_values(self) -> dict[str, float]:

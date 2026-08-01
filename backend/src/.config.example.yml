@@ -11,6 +11,11 @@ database:
 chat-service:
   # "websocket" or "rest"
   transport: websocket
+  # Optional, defaults to 60. How long (in minutes) a chat session stays
+  # "open" — i.e. still writable — after its last activity (see
+  # chat/session_manager.py's ChatSessionManager). The single source of
+  # truth for this duration; nothing else hardcodes it.
+  max_session_duration_in_minutes: 60
 
 ai-service:
   providers:

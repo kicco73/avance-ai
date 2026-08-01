@@ -22,26 +22,12 @@ class UserAnalyticsDataBuilder(object):
         self._username = username
         self._project_name = project_name
 
-    def build(self, until: datetime | None = None) -> UserAnalyticsData:
-        """`until`, when given, restricts every dataset to what existed at
-        or before that point in time — sessions that hadn't started yet,
-        and messages/signals timestamped after it, are excluded. This is
-        what lets a caller compute metrics "as of" a specific past
-        message (see chat/metrics_service.py's calculate_values_until)
-        instead of always the full, current history."""
+    def build(self) -> UserAnalyticsData:
         sessions = self._db.list_chat_sessions(self._username, self._project_name)
-        if until is not None:
-            sessions = [row for row in sessions if row["datetime_start"] <= until]
         session_ids = [int(row["id"]) for row in sessions]
 
         messages = self._load_messages(session_ids)
         signals = self._load_signals(session_ids)
-        if until is not None:
-            until_ts = pd.Timestamp(until, tz="UTC") if until.tzinfo is None else pd.Timestamp(until)
-            if not messages.empty:
-                messages = messages.loc[messages["timestamp"] <= until_ts].copy()
-            if not signals.empty:
-                signals = signals.loc[signals["timestamp"] <= until_ts].copy()
 
         if signals.empty:
             transitions = self._empty_transitions()

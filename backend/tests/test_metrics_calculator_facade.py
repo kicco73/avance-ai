@@ -81,6 +81,58 @@ class TestUserAnalyticsDataBuilder:
         assert len(data.transitions) == 1
         assert data.transitions.iloc[0]["id"] == 2
 
+    def test_until_excludes_messages_after_the_cutoff(self):
+        db = FakeAnalyticsDb(
+            sessions=[session_row(1, datetime(2026, 1, 1), datetime(2026, 1, 1))],
+            messages_by_session={
+                1: [
+                    {"id": 1, "role": "user", "content": "before", "audio_text": None, "timestamp": _iso(datetime(2026, 1, 1, 9))},
+                    {"id": 2, "role": "user", "content": "after", "audio_text": None, "timestamp": _iso(datetime(2026, 1, 1, 11))},
+                ]
+            },
+        )
+        data = UserAnalyticsDataBuilder(db, "user", "proj").build(until=datetime(2026, 1, 1, 10))
+
+        assert list(data.messages["content"]) == ["before"]
+
+    def test_until_excludes_signals_after_the_cutoff(self):
+        db = FakeAnalyticsDb(
+            sessions=[session_row(1, datetime(2026, 1, 1), datetime(2026, 1, 1))],
+            signals_by_session={
+                1: [
+                    signal_row(1, _iso(datetime(2026, 1, 1, 9)), values={"x": 1}),
+                    signal_row(2, _iso(datetime(2026, 1, 1, 11)), values={"x": 2}),
+                ]
+            },
+        )
+        data = UserAnalyticsDataBuilder(db, "user", "proj").build(until=datetime(2026, 1, 1, 10))
+
+        assert len(data.signals) == 1
+        assert data.signals.iloc[0]["id"] == 1
+
+    def test_until_excludes_sessions_that_had_not_started_yet(self):
+        db = FakeAnalyticsDb(
+            sessions=[
+                session_row(1, datetime(2026, 1, 1), datetime(2026, 1, 1)),
+                session_row(2, datetime(2026, 1, 5), datetime(2026, 1, 5)),
+            ],
+        )
+        data = UserAnalyticsDataBuilder(db, "user", "proj").build(until=datetime(2026, 1, 2))
+
+        assert list(data.sessions["id"]) == [1]
+
+    def test_until_none_behaves_exactly_like_the_full_history(self):
+        db = FakeAnalyticsDb(
+            sessions=[session_row(1, datetime(2026, 1, 1), datetime(2026, 1, 1))],
+            messages_by_session={
+                1: [{"id": 1, "role": "user", "content": "hi", "audio_text": None, "timestamp": _iso(datetime(2026, 1, 1, 9))}]
+            },
+        )
+        with_none = UserAnalyticsDataBuilder(db, "user", "proj").build(until=None)
+        without_arg = UserAnalyticsDataBuilder(db, "user", "proj").build()
+
+        assert list(with_none.messages["content"]) == list(without_arg.messages["content"])
+
     def test_user_messages_property_filters_by_role(self):
         db = FakeAnalyticsDb(
             sessions=[session_row(1, datetime(2026, 1, 1), datetime(2026, 1, 1))],
@@ -157,6 +209,24 @@ class TestAnalyticsCalculator:
         calculator = AnalyticsCalculator(FakeAnalyticsDb(), "user", "proj", metrics=custom)
         assert calculator.metrics == custom
         assert len(calculator.calculate_all()) == 1
+
+    def test_until_restricts_metrics_to_the_history_at_or_before_it(self):
+        db = FakeAnalyticsDb(
+            sessions=[session_row(1, datetime(2026, 1, 1), datetime(2026, 1, 1))],
+            messages_by_session={
+                1: [
+                    {"id": 1, "role": "user", "content": "hi", "audio_text": None, "timestamp": _iso(datetime(2026, 1, 1, 9))},
+                    {"id": 2, "role": "user", "content": "hi2", "audio_text": None, "timestamp": _iso(datetime(2026, 1, 1, 11))},
+                ]
+            },
+        )
+        cutoff = AnalyticsCalculator(db, "user", "proj", until=datetime(2026, 1, 1, 10))
+        full = AnalyticsCalculator(db, "user", "proj")
+
+        cutoff_engagement = {r.name: r.value for r in cutoff.calculate_all()}["engagement"]
+        full_engagement = {r.name: r.value for r in full.calculate_all()}["engagement"]
+
+        assert cutoff_engagement < full_engagement
 
     def test_empty_history_scores_every_metric_at_or_near_the_floor(self):
         calculator = AnalyticsCalculator(FakeAnalyticsDb(), "user", "proj")

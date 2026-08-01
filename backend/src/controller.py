@@ -76,11 +76,16 @@ class AvanceController(object):
         return self.chat_service.signals.get_latest_signals()
 
     @get("/api/chat/metrics")
-    def get_metrics(self):
+    def get_metrics(self, message_id: int | None = None):
         """Computes the metrics_framework's core metrics for the active
         user+project on demand — no caching, see metrics_framework/
-        README.md. For the "Edit project" view's Inspector Metrics tab."""
-        return self.chat_service.metrics.calculate_all()
+        README.md. For the "Edit project" view's Inspector Metrics tab
+        (no `message_id`, always the live/current history) and the
+        "Benchmark project" view's point-in-time Inspector (`message_id`
+        restricts the history to what existed at or before that exact
+        message). ChatServiceError (404 for an unknown/not-yours
+        `message_id`) is handled globally, see error_handlers.py."""
+        return self.chat_service.get_metrics(message_id)
 
     @get("/api/state")
     def get_state(self):
@@ -154,6 +159,14 @@ class AvanceController(object):
     @get("/api/chat/messages")
     async def get_messages(self, session_id: int):
         return await self.chat_service.get_messages(session_id)
+
+    @get("/api/chat/sessions/{session_id}/signals")
+    def get_session_signals(self, session_id: int):
+        """The full Signals event log for `session_id` (snapshots and
+        transitions alike, chronological) — for the "Benchmark project"
+        view, which reconstructs state/signal values at any point in the
+        session's timeline entirely client-side from this one call."""
+        return self.chat_service.get_session_signals(session_id)
 
     @post("/api/chat/messages")
     async def post_message(self, req: ChatMessageRequest):

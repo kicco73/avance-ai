@@ -3,9 +3,9 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Compartment } from '@codemirror/state'
 import { EditorView, basicSetup } from 'codemirror'
 import { yaml } from '@codemirror/lang-yaml'
-import cytoscape from 'cytoscape'
 import ChatWindow from './ChatWindow.vue'
 import ModelMenu from './ModelMenu.vue'
+import Inspector from './Inspector.vue'
 import {
   getProjectFiles,
   getProjectFile,
@@ -13,19 +13,14 @@ import {
   putProjectFile,
   deleteProjectFile,
   deleteProjectVersions,
-  getProjectSignals,
-  getProjectGraph,
   getSignals,
-  getMetrics,
   postTriggersPreview
 } from '../api.js'
 import { clearApiError, errorDetail, errorMessage, setApiError } from '../errorStore.js'
-import { hasSignalValue, useSignalChangeFlash } from '../signalDisplay.js'
-import { renderMarkdown } from '../markdown.js'
 // Aliased: this file already uses "state" to mean an automaton state node
-// (see the graph/signals data below) — `liveState` is specifically the
-// live conversation's current state, the single source of truth this
-// view's Inspector syncs itself to (see syncSelectionToCurrentState).
+// — `liveState` is specifically the live conversation's current state,
+// which this view's Inspector highlights as "current" (see the
+// highlighted-state-key binding below).
 import {
   state as liveState,
   turnCount,
@@ -50,13 +45,6 @@ const emit = defineEmits(['close', 'saved', 'download'])
 
 const UPLOADABLE_PATTERN = /\.(txt|ya?ml)$/i
 const YAML_PATTERN = /\.ya?ml$/i
-
-// [a] [b] [c] ... labels for the Inspect panel's attachment buttons —
-// position within a single state/signal's own attachments list, not a
-// project-wide index.
-function attachmentLabel(index) {
-  return String.fromCharCode(97 + index)
-}
 
 function lineIndent(line) {
   const m = line.match(/^[ \t]*/)
@@ -160,37 +148,27 @@ const showErrorDetail = ref(false)
 const editorHost = ref(null)
 const uploadInput = ref(null)
 
-// Inspect panel: shows the last-saved project's state machine graph, its
-// signal definitions, the metrics_framework's core metrics, and the chat's
-// currently active AI model as four tabs (each gets the panel's full
-// space), see toggleInspect/setInspectorTab. Open by default.
+// Inspect panel: the shared Inspector component (see Inspector.vue) shows
+// the last-saved project's state graph, its signal definitions, the
+// metrics_framework's core metrics, and (here only — see
+// inspectorRef/showModelTab below) the chat's currently active AI model.
+// Open by default, see toggleInspect. `inspectorRef` is how this view
+// drives the few things that stay its own responsibility: reloading after
+// a save, refreshing the Metrics tab, and resizing the graph on drag.
 const inspecting = ref(true)
-const inspectorTab = ref('graph') // 'graph' | 'signals' | 'metrics' | 'model'
-const signalsLoading = ref(true)
-const signals = ref([])
-// Metrics are computed on demand (see metrics_framework/README.md #16: no
-// caching) — only fetched when this tab is actually opened, and refreshed
-// on a new turn only while it stays the visible tab (see the turnCount
-// watcher below and setInspectorTab). Not part of openInspect's eager
-// Promise.all the way signals/graph are — nothing to show until then.
-const metricsLoading = ref(false)
-const metrics = ref([])
-const { recentlyChanged: recentlyChangedMetrics, markChanged: markMetricsChanged } = useSignalChangeFlash()
+const inspectorRef = ref(null)
+const inspectorWidth = ref(360)
 // The model tab shows whichever entry chatStore.js's aiModels/
 // aiModelCurrentIndex currently resolves to — same shared state ModelMenu.vue
 // reads (see chatStore.js), never a second source of truth: auto mode
 // picks a different index as the cascade advances, an explicit choice
 // pins one directly, and either way this just displays it.
 const activeModel = computed(() => aiModels.value[aiModelCurrentIndex.value] ?? null)
-// Live value/error per signal name, keyed separately from `signals` (the
-// project's saved definitions) since they come from a different source
-// (getSignals(), the same live conversation ChatWindow reads) and refresh
-// on a different cadence — see refreshSignalValues.
+// Live value/error per signal name — fed to the Inspector's signal-values
+// prop, refreshed on its own cadence (see refreshSignalValues), never a
+// concern the Inspector itself resolves (see Inspector.vue's own
+// signalValues prop docstring).
 const signalValueByName = ref({})
-const { recentlyChanged: recentlyChangedSignals, markChanged: markSignalsChanged } = useSignalChangeFlash()
-const graphLoading = ref(true)
-const graphHost = ref(null)
-const inspectorWidth = ref(360)
 
 // A definition clicked in the Inspect panel (graph node/edge or signal
 // block) to jump the editor's cursor to, once index.yml is the file open
@@ -367,7 +345,7 @@ async function saveCurrentFile() {
     emit('saved')
     // The Inspect panel reflects the last saved state, so a successful
     // save is exactly when it needs to catch up (see toggleInspect).
-    if (inspecting.value) await Promise.all([loadSignals(), loadGraph()])
+    if (inspecting.value) await inspectorRef.value?.refresh()
     return true
   } catch {
     return false
@@ -521,364 +499,27 @@ async function handleClose() {
   emit('close')
 }
 
-async function loadSignals() {
-  signalsLoading.value = true
-  try {
-    signals.value = (await getProjectSignals(props.projectName)).signals
-  } catch {
-    // already surfaced via apiFetch
-  } finally {
-    signalsLoading.value = false
-  }
-}
-
-// Computes the metrics_framework's core metrics for the active user+project
-// on demand — see setInspectorTab (fetched on opening the tab) and the
-// turnCount watcher (refreshed on a new turn only while the tab stays open).
-async function loadMetrics() {
-  metricsLoading.value = true
-  try {
-    const nextMetrics = await getMetrics()
-    markMetricsChanged(metrics.value, nextMetrics)
-    metrics.value = nextMetrics
-  } catch {
-    // already surfaced via apiFetch
-  } finally {
-    metricsLoading.value = false
-  }
-}
-
 // Live values for whatever signals the active conversation currently has
 // (see chatStore.js's shared state — the same getSignals() ChatWindow's
-// own Signals concerns already rely on via SignalsView). Kept separate
-// from loadSignals()'s definitions so either can refresh on its own
-// cadence — definitions rarely change; values do on every turn (see the
-// turnCount watcher below).
+// own Signals concerns already rely on via SignalsView). Just the values —
+// the flash-on-change animation is Inspector.vue's own concern (it watches
+// this prop internally, see its signalValues prop docstring).
 async function refreshSignalValues() {
   try {
     const nextValues = await getSignals()
-    const previousValues = Object.entries(signalValueByName.value).map(([name, v]) => ({ name, ...v }))
-    markSignalsChanged(previousValues, nextValues)
     signalValueByName.value = Object.fromEntries(nextValues.map((s) => [s.name, { value: s.value, error: s.error }]))
   } catch {
     // already surfaced via apiFetch
   }
 }
 
-let cyGraph = null
-
-// The state or action last tapped in the graph — { kind: 'state'|'action',
-// data } or null. Non-null shrinks the graph box to make room for its
-// detail card below (see .inspector-graph-section's flex layout).
-const selectedElement = ref(null)
-
-// Raw graph data (as fetched, not the cytoscape-shaped elements) — kept
-// around so syncSelectionToCurrentState can look a live state key up by
-// key without re-fetching, the same way a click already has its node's
-// data on hand via evt.target.data().
-const graphNodes = ref([])
-const graphEdges = ref([])
-
 // { stateKey, actionName } of the action the engine would fire next from
 // the live current state, or null — see refreshNextAction. Reuses
 // postTriggersPreview (already computed for SignalsView's own "Next
 // triggerable action" section) instead of re-deriving trigger evaluation
-// here.
+// here. Fed to the Inspector as its next-action-edge prop, which draws and
+// highlights the corresponding edge itself.
 const nextAction = ref(null)
-
-// Whether the currently selected detail card is showing exactly that
-// action — drives the green "Next" badge (see the action detail template).
-const isSelectedActionNext = computed(() => {
-  if (selectedElement.value?.kind !== 'action' || !nextAction.value) return false
-  return (
-    selectedElement.value.data.source === nextAction.value.stateKey &&
-    selectedElement.value.data.actionName === nextAction.value.actionName
-  )
-})
-
-// Whether the currently selected detail card is showing the live
-// conversation's current state — drives the "Current" badge, in the same
-// amber used for the graph's own current-state highlight (see
-// .node.current-state in renderGraph and .inspector-detail-badge-current).
-const isSelectedStateCurrent = computed(() => {
-  return selectedElement.value?.kind === 'state' && selectedElement.value.data.id === liveState.value?.key
-})
-
-// Whether the detail card has any non-type badge to show at all — an
-// action that's neither Next nor Manual (a plain triggered action) has
-// none, and the badges row should collapse rather than render empty.
-const hasSelectedElementBadges = computed(() => {
-  if (!selectedElement.value) return false
-  if (selectedElement.value.kind === 'state') {
-    const d = selectedElement.value.data
-    return isSelectedStateCurrent.value || d.isStart || d.final || !d.chat || d.historyCutoff
-  }
-  return isSelectedActionNext.value || !selectedElement.value.data.hasTrigger
-})
-
-function destroyGraph() {
-  cyGraph?.destroy()
-  cyGraph = null
-}
-
-// The cytoscape-data shape for a state node — camelCase, one place this
-// mapping is decided so a tap handler (which reads it straight off
-// evt.target.data()) and the current-state auto-sync (which builds it
-// from the raw fetched node instead) never drift apart.
-function nodeToCyData(n) {
-  return {
-    id: n.key,
-    uiLabel: n.ui_label,
-    uiDescription: n.ui_description,
-    final: n.final,
-    isStart: n.is_start,
-    chat: n.chat,
-    onEnter: n.on_enter,
-    historyCutoff: n.history_cutoff,
-    transitionLogLevel: n.transition_log_level,
-    attachments: n.attachments
-  }
-}
-
-// Same idea as nodeToCyData, for an action edge.
-function edgeToCyData(e, id) {
-  return {
-    id,
-    source: e.source,
-    target: e.target,
-    uiLabel: e.ui_label,
-    uiDescription: e.ui_description,
-    actionName: e.action_name,
-    buttonText: e.ui_button,
-    trigger: e.trigger,
-    hasTrigger: e.has_trigger,
-    actionPrompt: e.action_prompt
-  }
-}
-
-function graphElements(nodes, edges) {
-  return [
-    ...nodes.map((n) => ({ data: nodeToCyData(n) })),
-    ...edges.map((e, i) => ({ data: edgeToCyData(e, `edge-${i}`) }))
-  ]
-}
-
-// Selecting/deselecting resizes the graph box (see .inspector-graph-section),
-// so Cytoscape needs a nudge once the layout settles.
-function selectGraphElement(kind, data) {
-  selectedElement.value = { kind, data }
-  nextTick(() => cyGraph?.resize())
-}
-
-function closeGraphDetail() {
-  selectedElement.value = null
-  nextTick(() => cyGraph?.resize())
-}
-
-// A tap on a node/edge both opens its detail card and jumps the editor's
-// cursor to its definition — see selectGraphElement/jumpToDefinition.
-function handleNodeTap(evt) {
-  const data = evt.target.data()
-  selectGraphElement('state', data)
-  jumpToDefinition({ kind: 'state', stateKey: data.id })
-}
-
-function handleEdgeTap(evt) {
-  const data = evt.target.data()
-  selectGraphElement('action', data)
-  jumpToDefinition({ kind: 'action', stateKey: data.source, actionName: data.actionName })
-}
-
-// Renders the state machine into graphHost with Cytoscape — a fresh
-// instance every time (cheap for graphs this size), rooted breadthfirst on
-// the start state so the flow reads top-to-bottom/left-to-right like a
-// diagram instead of a force-directed tangle.
-function renderGraph(nodes, edges) {
-  destroyGraph()
-  if (!graphHost.value) return
-  const startKey = nodes.find((n) => n.is_start)?.key
-  cyGraph = cytoscape({
-    container: graphHost.value,
-    elements: graphElements(nodes, edges),
-    style: [
-      {
-        selector: 'node',
-        style: {
-          'background-color': '#eef2f9',
-          'border-width': 2,
-          'border-color': '#4a6fa5',
-          label: 'data(uiLabel)',
-          'text-valign': 'center',
-          'text-halign': 'center',
-          'font-size': '9px',
-          color: '#333',
-          shape: 'round-rectangle',
-          width: 'label',
-          height: 'label',
-          padding: '8px',
-          'text-wrap': 'wrap',
-          'text-max-width': '80px'
-        }
-      },
-      {
-        selector: 'node[?final]',
-        style: {
-          'border-width': 4,
-          'border-color': '#c62828',
-          'background-color': '#fdecea'
-        }
-      },
-      {
-        selector: 'node[?isStart]',
-        style: {
-          'border-color': '#2e7d32',
-          'background-color': '#eaf6ea'
-        }
-      },
-      {
-        // The live conversation's current state — an overlay glow rather
-        // than a border/background change, so it composes cleanly with
-        // final/start's own colors instead of fighting them for the same
-        // visual channel (see syncSelectionToCurrentState/
-        // applyCurrentStateHighlight).
-        selector: 'node.current-state',
-        style: {
-          'overlay-color': '#f5a623',
-          'overlay-opacity': 0.35,
-          'overlay-padding': 6
-        }
-      },
-      {
-        selector: 'edge',
-        style: {
-          width: 1.5,
-          'line-color': '#9ab0cc',
-          'target-arrow-color': '#9ab0cc',
-          'target-arrow-shape': 'triangle',
-          'arrow-scale': 0.8,
-          'curve-style': 'bezier',
-          label: 'data(uiLabel)',
-          'font-size': '7px',
-          color: '#666',
-          'text-background-color': 'white',
-          'text-background-opacity': 0.85,
-          'text-background-padding': '2px',
-          'text-wrap': 'wrap',
-          'text-max-width': '70px'
-        }
-      },
-      {
-        // No trigger = manual-only action (see AutomatonBuilder) — dashed
-        // to set it apart from the default solid line, which therefore
-        // reads as "automatic" (has a trigger) without needing its own
-        // rule. Never inferred from YAML text — `hasTrigger` comes
-        // straight from the backend's graph endpoint.
-        selector: 'edge[!hasTrigger]',
-        style: {
-          'line-style': 'dashed'
-        }
-      },
-      {
-        // The action postTriggersPreview says would fire next from the
-        // live current state — see refreshNextAction/
-        // applyNextActionHighlight. Always a triggered (solid) edge, since
-        // only triggered actions are ever candidates.
-        selector: 'edge.next-action',
-        style: {
-          'line-color': '#2e7d32',
-          'target-arrow-color': '#2e7d32',
-          width: 2.5
-        }
-      },
-      {
-        selector: 'edge[source = target]',
-        style: {
-          'curve-style': 'loop',
-          'loop-direction': '-45deg',
-          'loop-sweep': '45deg'
-        }
-      }
-    ],
-    layout: {
-      name: 'breadthfirst',
-      directed: true,
-      roots: startKey ? [startKey] : undefined,
-      padding: 16,
-      spacingFactor: 1.1
-    }
-  })
-  cyGraph.on('tap', 'node', handleNodeTap)
-  cyGraph.on('tap', 'edge', handleEdgeTap)
-  cyGraph.on('tap', (evt) => {
-    if (evt.target === cyGraph) closeGraphDetail()
-  })
-
-  // A (re)build can rename/remove whatever was selected before, and is
-  // also the moment a freshly opened Inspector needs to catch up with
-  // reality — re-sync to the live current state either way. No cursor
-  // jump here: unlike an actual state change (see the liveState watcher
-  // below), a reload triggered by an unrelated file save must not yank
-  // focus away from whatever the user is doing.
-  applyCurrentStateHighlight()
-  applyNextActionHighlight()
-  syncSelectionToCurrentState()
-}
-
-async function loadGraph() {
-  graphLoading.value = true
-  try {
-    const { nodes, edges } = await getProjectGraph(props.projectName)
-    graphNodes.value = nodes
-    graphEdges.value = edges
-    renderGraph(nodes, edges)
-  } catch {
-    // already surfaced via apiFetch
-  } finally {
-    graphLoading.value = false
-  }
-}
-
-// Recolors the live current state's node — see the node.current-state
-// style rule in renderGraph. A no-op while the graph isn't built
-// (Inspector closed) or the live state doesn't belong to this project's
-// graph (e.g. editing a project other than the currently active one).
-function applyCurrentStateHighlight() {
-  if (!cyGraph) return
-  cyGraph.nodes().removeClass('current-state')
-  const key = liveState.value?.key
-  if (key == null) return
-  cyGraph.nodes().filter((n) => n.id() === key).addClass('current-state')
-}
-
-// Recolors the edge postTriggersPreview says would fire next — see the
-// edge.next-action style rule in renderGraph.
-function applyNextActionHighlight() {
-  if (!cyGraph) return
-  cyGraph.edges().removeClass('next-action')
-  if (!nextAction.value) return
-  cyGraph
-    .edges()
-    .filter((edge) => edge.data('source') === nextAction.value.stateKey && edge.data('actionName') === nextAction.value.actionName)
-    .addClass('next-action')
-}
-
-// Mirrors what tapping the live current state's node in the graph would
-// do — same selection (and, when `jumpCursor` is true, the same editor
-// cursor jump) — so the Inspector automatically tracks whatever the
-// actual conversation is doing (autotracking, manual actions, reset, ...),
-// not just clicks made inside the graph itself. `jumpCursor` is only true
-// for an actual state-change event (see the liveState watcher below); a
-// routine graph reload (renderGraph) re-syncs the selection without it.
-function syncSelectionToCurrentState({ jumpCursor = false } = {}) {
-  const key = liveState.value?.key
-  const node = key == null ? null : graphNodes.value.find((n) => n.key === key)
-  if (!node) {
-    selectedElement.value = null
-    return
-  }
-  selectGraphElement('state', nodeToCyData(node))
-  if (jumpCursor) jumpToDefinition({ kind: 'state', stateKey: node.key })
-}
 
 // Reuses the same triggers-preview endpoint SignalsView already calls for
 // its own "Next triggerable action" section — no separate client-side
@@ -889,7 +530,6 @@ async function refreshNextAction() {
   const stateKeyAtFetch = liveState.value?.key
   if (stateKeyAtFetch == null) {
     nextAction.value = null
-    applyNextActionHighlight()
     return
   }
   try {
@@ -902,38 +542,23 @@ async function refreshNextAction() {
     // already surfaced via apiFetch — the graph just shows no "next" edge
     nextAction.value = null
   }
-  applyNextActionHighlight()
-}
-
-// Switching to the graph tab can make graphHost visible again after being
-// hidden (v-show) while the panel had its cytoscape instance already
-// built — a resize/fit is enough to make it render correctly since the
-// breadthfirst layout's node positions never depended on container size.
-function setInspectorTab(tab) {
-  inspectorTab.value = tab
-  if (tab === 'graph') {
-    nextTick(() => {
-      cyGraph?.resize()
-      cyGraph?.fit()
-    })
-  } else if (tab === 'metrics') {
-    loadMetrics()
-  }
 }
 
 // Shared by the initial mount (Inspect is open by default) and every
-// later re-open via toggleInspect.
+// later re-open via toggleInspect. Inspector.vue loads its own graph/
+// signals definitions on mount (see its own onMounted) — this view only
+// owns the live/point-in-time pieces layered on top of them.
 async function openInspect() {
-  await nextTick() // graphHost only exists once the v-if block above mounts
-  await Promise.all([loadSignals(), loadGraph(), refreshNextAction(), refreshSignalValues()])
+  await nextTick() // Inspector only exists once the v-if block above mounts
+  await Promise.all([refreshNextAction(), refreshSignalValues()])
 }
 
 // Toggled by the Inspect button and by the panel's own Close button, same
-// as SignalsView's autotracking/close pair.
-async function toggleInspect() {
+// as SignalsView's autotracking/close pair. Inspector.vue's own
+// onBeforeUnmount handles its cytoscape cleanup when it unmounts (v-if).
+function toggleInspect() {
   inspecting.value = !inspecting.value
-  if (inspecting.value) await openInspect()
-  else destroyGraph()
+  if (inspecting.value) openInspect()
 }
 
 // The embedded chat has no data of its own to load/unload — it's just a
@@ -970,7 +595,7 @@ function onDrag(event) {
     // The inspector's divider sits on its left edge, so dragging it left
     // (negative movementX) needs to grow the panel, not shrink it.
     inspectorWidth.value = Math.min(560, Math.max(240, inspectorWidth.value - event.movementX))
-    cyGraph?.resize()
+    inspectorRef.value?.resize()
   } else if (dragTarget === 'chat') {
     // The chat divider sits above the chat panel, so dragging it up
     // (negative movementY) needs to grow the panel, not shrink it.
@@ -986,40 +611,23 @@ function stopDrag() {
 // and with the viewport (narrow-screen full-takeover breakpoint, window
 // resize) — Cytoscape needs an explicit nudge to notice either.
 function handleWindowResize() {
-  cyGraph?.resize()
+  inspectorRef.value?.resize()
 }
 
 watch(saving, (isSaving) => {
   view?.dispatch({ effects: editableCompartment.reconfigure(EditorView.editable.of(!isSaving)) })
 })
 
-// The live conversation's current state changing — autotracking, a manual
-// action, a reset, anything — is treated exactly like the user clicking
-// that state in the graph: same selection, same cursor jump. Gated on the
-// Inspector being open since there's no graph to highlight/click-equivalent
-// otherwise, and jumping the editor's cursor while the user isn't even
-// looking at the Inspector would be pure disruption.
-watch(
-  () => liveState.value?.key,
-  () => {
-    if (!inspecting.value) return
-    applyCurrentStateHighlight()
-    syncSelectionToCurrentState({ jumpCursor: true })
-  }
-)
-
 // A turn can shift signal values enough to change which action would fire
-// next even without a state change — see chatStore.js's turnCount. The
-// Signals tab's bars need the same refresh to stay live regardless of
-// which tab is actually visible right now (v-show, not v-if — see
-// setInspectorTab). Metrics are heavier to compute (see loadMetrics), so
-// unlike signals they're only refreshed while their own tab is the one
-// actually open — never prefetched in the background.
+// next even without a state change — see chatStore.js's turnCount. Metrics
+// are heavier to compute, so unlike signals they're only refreshed while
+// the Inspector's own Metrics tab is the one actually open (see
+// Inspector.vue's refreshMetrics) — never prefetched in the background.
 watch(turnCount, () => {
   if (!inspecting.value) return
   refreshNextAction()
   refreshSignalValues()
-  if (inspectorTab.value === 'metrics') loadMetrics()
+  inspectorRef.value?.refreshMetrics()
 })
 
 onMounted(() => {
@@ -1032,7 +640,6 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   destroyEditor()
-  destroyGraph()
   window.removeEventListener('mousemove', onDrag)
   window.removeEventListener('mouseup', stopDrag)
   window.removeEventListener('resize', handleWindowResize)
@@ -1194,239 +801,20 @@ onBeforeUnmount(() => {
         <div class="split-divider inspector-divider" @mousedown="startInspectorDrag"></div>
 
         <div class="inspector-panel" :style="{ '--inspector-width': inspectorWidth + 'px' }">
-          <div class="inspector-header">
-            <span class="inspector-title">Inspector</span>
-            <button class="close-x-btn" title="Close" @click="toggleInspect">×</button>
-          </div>
-          <div class="inspector-tabs">
-            <button
-              class="inspector-tab-btn"
-              :class="{ 'inspector-tab-btn-active': inspectorTab === 'graph' }"
-              @click="setInspectorTab('graph')"
-            >
-              States
-            </button>
-            <button
-              class="inspector-tab-btn"
-              :class="{ 'inspector-tab-btn-active': inspectorTab === 'signals' }"
-              @click="setInspectorTab('signals')"
-            >
-              Signals
-            </button>
-            <button
-              class="inspector-tab-btn"
-              :class="{ 'inspector-tab-btn-active': inspectorTab === 'metrics' }"
-              @click="setInspectorTab('metrics')"
-            >
-              Metrics
-            </button>
-            <button
-              class="inspector-tab-btn"
-              :class="{ 'inspector-tab-btn-active': inspectorTab === 'model' }"
-              @click="setInspectorTab('model')"
-            >
-              Model
-            </button>
-          </div>
-
-          <div class="inspector-body">
-            <div v-show="inspectorTab === 'graph'" class="inspector-graph-section">
-              <div class="inspector-graph-host-wrap">
-                <p v-if="graphLoading" class="signals-status inspector-graph-status">Loading…</p>
-                <div ref="graphHost" class="inspector-graph-host"></div>
-              </div>
-
-              <div v-if="selectedElement" class="inspector-detail-card">
-                <div class="inspector-detail-header">
-                  <div class="inspector-detail-header-top">
-                    <!-- Type badge sits right next to the title, same as
-                         Signal's own badge+name pairing (.inspector-signal-header)
-                         — only the type tag lives here, everything else
-                         (Current, Start, Final, Next, Manual, ...) is below. -->
-                    <span
-                      class="inspector-detail-badge"
-                      :class="selectedElement.kind === 'state' ? 'inspector-detail-badge-state' : 'inspector-detail-badge-action'"
-                    >
-                      {{ selectedElement.kind === 'state' ? 'State' : 'Action' }}
-                    </span>
-                    <span class="inspector-detail-title">{{ selectedElement.data.uiLabel }}</span>
-                    <button class="close-x-btn" title="Close" @click="closeGraphDetail">×</button>
-                  </div>
-
-                  <!-- One badge language for every other tag a state/action
-                       can carry (Current, Start, Final, Next, Manual, ...) —
-                       see .inspector-detail-badge and its color variants below. -->
-                  <div v-if="hasSelectedElementBadges" class="inspector-detail-badges">
-                    <template v-if="selectedElement.kind === 'state'">
-                      <span v-if="isSelectedStateCurrent" class="inspector-detail-badge inspector-detail-badge-current">
-                        Current
-                      </span>
-                      <span v-if="selectedElement.data.isStart" class="inspector-detail-badge inspector-detail-badge-start">
-                        Start
-                      </span>
-                      <span v-if="selectedElement.data.final" class="inspector-detail-badge inspector-detail-badge-final">
-                        Final
-                      </span>
-                      <span v-if="!selectedElement.data.chat" class="inspector-detail-badge inspector-detail-badge-neutral">
-                        No chat
-                      </span>
-                      <span v-if="selectedElement.data.historyCutoff" class="inspector-detail-badge inspector-detail-badge-neutral">
-                        History cutoff
-                      </span>
-                    </template>
-                    <template v-else>
-                      <span v-if="isSelectedActionNext" class="inspector-detail-badge inspector-detail-badge-next">
-                        Next
-                      </span>
-                      <span v-if="!selectedElement.data.hasTrigger" class="inspector-detail-badge inspector-detail-badge-manual">
-                        Manual
-                      </span>
-                    </template>
-                  </div>
-                </div>
-
-                <div class="inspector-detail-body">
-                  <template v-if="selectedElement.kind === 'state'">
-                    <p v-if="selectedElement.data.uiDescription" class="inspector-detail-ui_description">
-                      {{ selectedElement.data.uiDescription }}
-                    </p>
-                    <p v-if="selectedElement.data.onEnter" class="inspector-detail-field">
-                      <strong>On enter:</strong> {{ selectedElement.data.onEnter }}
-                    </p>
-                  </template>
-                  <template v-else>
-                    <p v-if="selectedElement.data.uiDescription" class="inspector-detail-ui_description">
-                      {{ selectedElement.data.uiDescription }}
-                    </p>
-                    <p class="inspector-detail-field">
-                      <strong>{{ selectedElement.data.source }}</strong> → <strong>{{ selectedElement.data.target }}</strong>
-                    </p>
-                    <p v-if="selectedElement.data.buttonText" class="inspector-detail-field">
-                      <strong>Button:</strong> {{ selectedElement.data.buttonText }}
-                    </p>
-                    <p v-if="selectedElement.data.trigger" class="inspector-detail-field">
-                      <strong>Trigger:</strong>
-                      <code class="inspector-detail-code">{{ selectedElement.data.trigger }}</code>
-                    </p>
-                    <p v-if="selectedElement.data.actionPrompt" class="inspector-detail-field">
-                      <strong>Action prompt:</strong> {{ selectedElement.data.actionPrompt }}
-                    </p>
-                  </template>
-
-                  <!-- Actions never carry attachments (only states/signals
-                       do — see automaton.py's Action dataclass), so this is
-                       naturally absent there; no separate branch needed. -->
-                  <div v-if="selectedElement.data.attachments?.length" class="inspector-attachments">
-                    <button
-                      v-for="(fileName, idx) in selectedElement.data.attachments"
-                      :key="fileName"
-                      class="inspector-attachment-btn"
-                      :class="{ 'inspector-attachment-btn-disabled': !files.includes(fileName) }"
-                      :disabled="!files.includes(fileName)"
-                      :title="files.includes(fileName) ? fileName : `${fileName} (not text-editable)`"
-                      @click.stop="selectFile(fileName)"
-                    >
-                      {{ attachmentLabel(idx) }}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div v-show="inspectorTab === 'signals'" class="inspector-signals-section">
-              <p v-if="signalsLoading" class="signals-status">Loading…</p>
-              <p v-else-if="!signals.length" class="signals-status">No signals defined.</p>
-              <div v-else class="inspector-signal-list">
-                <div
-                  v-for="signal in signals"
-                  :key="signal.name"
-                  class="inspector-signal-block inspector-signal-block-clickable"
-                  title="Jump to definition"
-                  @click="jumpToDefinition({ kind: 'signal', signalName: signal.name })"
-                >
-                  <div class="inspector-signal-header">
-                    <span class="inspector-detail-badge inspector-detail-badge-signal">Signal</span>
-                    <span class="inspector-signal-name">{{ signal.ui_label || signal.name }}</span>
-                  </div>
-                  <span v-if="signal.ui_description" class="inspector-signal-ui_description">
-                    {{ signal.ui_description }}
-                  </span>
-
-                  <div v-if="signal.attachments?.length" class="inspector-attachments">
-                    <button
-                      v-for="(fileName, idx) in signal.attachments"
-                      :key="fileName"
-                      class="inspector-attachment-btn"
-                      :class="{ 'inspector-attachment-btn-disabled': !files.includes(fileName) }"
-                      :disabled="!files.includes(fileName)"
-                      :title="files.includes(fileName) ? fileName : `${fileName} (not text-editable)`"
-                      @click.stop="selectFile(fileName)"
-                    >
-                      {{ attachmentLabel(idx) }}
-                    </button>
-                  </div>
-
-                  <div class="inspector-signal-bar-track">
-                    <div
-                      v-if="hasSignalValue(signalValueByName[signal.name])"
-                      class="inspector-signal-bar-fill"
-                      :class="{ 'inspector-signal-bar-changed': recentlyChangedSignals.has(signal.name) }"
-                      :style="{ width: signalValueByName[signal.name].value + '%' }"
-                    ></div>
-                    <div
-                      v-else
-                      class="inspector-signal-bar-fill inspector-signal-bar-na"
-                      :class="{ 'inspector-signal-bar-changed': recentlyChangedSignals.has(signal.name) }"
-                    ></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div v-show="inspectorTab === 'metrics'" class="inspector-metrics-section">
-              <p v-if="metricsLoading" class="signals-status">Loading…</p>
-              <p v-else-if="!metrics.length" class="signals-status">No metrics computed yet.</p>
-              <div v-else class="inspector-signal-list">
-                <div v-for="metric in metrics" :key="metric.name" class="inspector-signal-block">
-                  <div class="inspector-signal-header">
-                    <span class="inspector-detail-badge inspector-detail-badge-metric">Metric</span>
-                    <span class="inspector-signal-name">{{ metric.ui_label || metric.name }}</span>
-                  </div>
-                  <span v-if="metric.ui_description" class="inspector-signal-ui_description">
-                    {{ metric.ui_description }}
-                  </span>
-
-                  <div class="inspector-signal-bar-track">
-                    <div
-                      class="inspector-signal-bar-fill"
-                      :class="{ 'inspector-signal-bar-changed': recentlyChangedMetrics.has(metric.name) }"
-                      :style="{ width: metric.value + '%' }"
-                    ></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div v-show="inspectorTab === 'model'" class="inspector-model-section">
-              <p v-if="!activeModel" class="signals-status">No AI model configured.</p>
-              <div v-else class="inspector-signal-block">
-                <div class="inspector-signal-header">
-                  <span class="inspector-detail-badge inspector-detail-badge-model">Model</span>
-                  <span class="inspector-signal-name">{{ activeModel.ui_label }}</span>
-                </div>
-                <br/>
-                <p class="inspector-detail-field"><strong>Driver:</strong> {{ activeModel.driver }}</p>
-                <p class="inspector-detail-field"><strong>Model:</strong> {{ activeModel.model }}</p>
-                <p v-if="activeModel.url" class="inspector-detail-field"><strong>Url:</strong> {{ activeModel.url }}</p>
-                <br/>
-                <div
-                  v-if="activeModel.ui_description"
-                  class="inspector-model-description"
-                  v-html="renderMarkdown(activeModel.ui_description)"
-                ></div>
-              </div>
-            </div>
-          </div>
+          <Inspector
+            ref="inspectorRef"
+            :project-name="projectName"
+            :highlighted-state-key="liveState?.key ?? null"
+            :auto-jump-on-highlight-change="true"
+            :next-action-edge="nextAction"
+            :signal-values="signalValueByName"
+            :show-model-tab="true"
+            :active-model="activeModel"
+            :editable-files="files"
+            @jump-to-definition="jumpToDefinition"
+            @select-attachment="selectFile"
+            @close="toggleInspect"
+          />
         </div>
       </div>
       </Transition>
@@ -1757,14 +1145,6 @@ onBeforeUnmount(() => {
   letter-spacing: 0.03em;
 }
 
-.inspector-title {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #555;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
 .file-explorer-upload-btn {
   padding: 0.25rem 0.6rem;
   border-radius: 6px;
@@ -2015,406 +1395,6 @@ onBeforeUnmount(() => {
     border-radius: 8px;
     overflow: hidden;
   }
-}
-
-.inspector-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  background: #f5f5f7;
-  border-bottom: 1px solid #ddd;
-  flex-shrink: 0;
-}
-
-.inspector-tabs {
-  display: flex;
-  gap: 0.25rem;
-  padding: 0.5rem 1rem 0;
-  border-bottom: 1px solid #ddd;
-  flex-shrink: 0;
-}
-
-.inspector-tab-btn {
-  padding: 0.45rem 0.9rem;
-  border: none;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  background: none;
-  cursor: pointer;
-  font-size: 0.82rem;
-  color: #666;
-}
-
-.inspector-tab-btn:hover {
-  color: #333;
-}
-
-.inspector-tab-btn-active {
-  color: #2c4d7a;
-  font-weight: 600;
-  border-bottom-color: #4a6fa5;
-}
-
-.inspector-body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  padding: 1rem;
-}
-
-.signals-status {
-  margin: 0;
-  color: #444;
-  font-size: 0.9rem;
-}
-
-.inspector-graph-section {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.inspector-graph-host-wrap {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  background: #fcfcfd;
-  overflow: hidden;
-}
-
-.inspector-graph-host {
-  width: 100%;
-  height: 100%;
-}
-
-.inspector-graph-status {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.inspector-detail-card {
-  flex-shrink: 0;
-  margin-top: 0.75rem;
-  max-height: 45%;
-  display: flex;
-  flex-direction: column;
-  border-radius: 8px;
-  border: 1px solid #eee;
-  background: #fafafa;
-  overflow: hidden;
-}
-
-.inspector-detail-header {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  padding: 0.5rem 0.6rem;
-  border-bottom: 1px solid #eee;
-  flex-shrink: 0;
-}
-
-.inspector-detail-header-top {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-/* Every tag a state/action can carry (type, Current, Start, Final, Next,
-   Manual, ...) lives in this one row, using the one badge component below
-   — same structure/alignment/position regardless of which tag it is. */
-.inspector-detail-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
-.inspector-detail-badge {
-  flex-shrink: 0;
-  font-size: 0.68rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
-  color: white;
-}
-
-.inspector-detail-badge-state {
-  background: #4a6fa5;
-}
-
-.inspector-detail-badge-action {
-  background: #8a6d3b;
-}
-
-.inspector-detail-badge-signal {
-  background: #6a4c93;
-}
-
-.inspector-detail-badge-model {
-  background: #2f8f83;
-}
-
-.inspector-detail-badge-metric {
-  background: #ad1457;
-}
-
-.inspector-detail-badge-current {
-  /* Same amber as node.current-state's overlay in renderGraph — this is
-     the one other place "this is the live current state" is shown. */
-  background: #f5a623;
-  color: #3a2600;
-}
-
-.inspector-detail-badge-start,
-.inspector-detail-badge-next {
-  /* Both read as "green = this is where the flow is/begins" — never on
-     the same card (Start is state-only, Next is action-only), so sharing
-     the hue reinforces one language instead of splitting it. */
-  background: #2e7d32;
-}
-
-.inspector-detail-badge-final {
-  background: #c62828;
-}
-
-.inspector-detail-badge-manual {
-  background: #5c6b7a;
-}
-
-.inspector-detail-badge-neutral {
-  /* Minor informational flags (No chat, History cutoff) — same component,
-     deliberately unsaturated so they read as secondary to the semantic
-     (colored) badges. */
-  background: #8a8a8a;
-}
-
-.inspector-detail-title {
-  flex: 1;
-  min-width: 0;
-  font-weight: 600;
-  font-size: 0.85rem;
-  color: #333;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* The one "×" close-panel button style, reused everywhere a panel needs
-   to close itself: the detail card (below), the Inspector's own header,
-   and the embedded chat panel's toolbar — one visual language instead of
-   a different button per panel. */
-.close-x-btn {
-  flex-shrink: 0;
-  width: 1.4rem;
-  height: 1.4rem;
-  line-height: 1;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  color: #666;
-  cursor: pointer;
-  font-size: 1rem;
-}
-
-.close-x-btn:hover {
-  background: #eee;
-}
-
-.inspector-detail-body {
-  padding: 0.6rem 0.75rem;
-  overflow-y: auto;
-  font-size: 0.8rem;
-  color: #444;
-}
-
-.inspector-detail-ui_description {
-  margin: 0 0 0.5rem;
-  line-height: 1.4;
-}
-
-.inspector-detail-field {
-  margin: 0 0 0.4rem;
-  line-height: 1.4;
-}
-
-.inspector-detail-code {
-  font-size: 0.75rem;
-  background: #eee;
-  border-radius: 4px;
-  padding: 0.1rem 0.4rem;
-}
-
-/* Always the last thing in a box (state/action detail body, signal
-   block), left-aligned — see attachmentLabel/selectFile. */
-.inspector-attachments {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-  margin-top: 0.5rem;
-}
-
-.inspector-attachment-btn {
-  width: 1.5rem;
-  height: 1.5rem;
-  line-height: 1;
-  border-radius: 4px;
-  border: 1px solid #4a6fa5;
-  background: white;
-  color: #4a6fa5;
-  cursor: pointer;
-  font-size: 0.72rem;
-  font-weight: 600;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-
-.inspector-attachment-btn:hover:not(:disabled) {
-  background: #4a6fa5;
-  color: white;
-}
-
-.inspector-attachment-btn-disabled {
-  border-color: #ccc;
-  color: #aaa;
-  cursor: not-allowed;
-}
-
-.inspector-attachment-btn-disabled:hover {
-  background: white;
-  color: #aaa;
-}
-
-.inspector-signals-section {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.inspector-metrics-section {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.inspector-model-section {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-/* Markdown-rendered (see ../markdown.js), so — unlike the plain-text
-   .inspector-detail-ui_description/.inspector-signal-ui_description — this
-   can contain nested block elements (paragraphs, lists); trims their
-   default top/bottom margins down to the same spacing those use. */
-.inspector-model-description {
-  margin: 0 0 0.5rem;
-  line-height: 1.4;
-}
-
-.inspector-model-description :deep(p) {
-  margin: 0 0 0.4rem;
-}
-
-.inspector-model-description :deep(p:last-child) {
-  margin-bottom: 0;
-}
-
-.inspector-model-description :deep(ul),
-.inspector-model-description :deep(ol) {
-  margin: 0 0 0.4rem;
-  padding-left: 1.2rem;
-}
-
-.inspector-signal-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-}
-
-.inspector-signal-block {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  padding: 0.6rem 0.75rem;
-  border-radius: 8px;
-  border: 1px solid #eee;
-  background: #fafafa;
-}
-
-.inspector-signal-block-clickable {
-  cursor: pointer;
-}
-
-.inspector-signal-block-clickable:hover {
-  border-color: #c9d6e8;
-  background: #f0f4fa;
-}
-
-.inspector-signal-header {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.inspector-signal-name {
-  font-weight: 600;
-  font-size: 0.85rem;
-  color: #333;
-}
-
-.inspector-signal-ui_description {
-  font-size: 0.78rem;
-  color: #666;
-  line-height: 1.4;
-}
-
-.inspector-signal-bar-track {
-  margin-top: 0.4rem;
-  height: 10px;
-  border-radius: 999px;
-  background: #eee;
-  overflow: hidden;
-}
-
-.inspector-signal-bar-fill {
-  height: 100%;
-  background: #4a6fa5;
-  border-radius: 999px;
-  transition: width 0.3s ease;
-}
-
-.inspector-signal-bar-na {
-  width: 100%;
-  background: repeating-linear-gradient(45deg, #ccc, #ccc 6px, #ddd 6px, #ddd 12px);
-}
-
-@keyframes inspector-signal-bar-flash {
-  0% {
-    box-shadow: 0 0 0 0 rgba(74, 111, 165, 0.7);
-    filter: brightness(1.35);
-  }
-
-  70% {
-    box-shadow: 0 0 0 5px rgba(74, 111, 165, 0);
-  }
-
-  100% {
-    box-shadow: 0 0 0 0 rgba(74, 111, 165, 0);
-    filter: brightness(1);
-  }
-}
-
-.inspector-signal-bar-changed {
-  animation: inspector-signal-bar-flash 0.9s ease-out;
 }
 
 .dev-mode-toggle {

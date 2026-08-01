@@ -4,12 +4,21 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from chat.session_manager import ChatSessionManager, OPEN_WINDOW
+from chat.session_manager import ChatSessionManager
 
 
 @pytest.fixture
 def manager(db) -> ChatSessionManager:
     return ChatSessionManager(db)
+
+
+def test_open_window_defaults_to_60_minutes(manager):
+    assert manager.open_window == timedelta(minutes=60)
+
+
+def test_open_window_is_configurable(db):
+    manager = ChatSessionManager(db, open_window_minutes=5)
+    assert manager.open_window == timedelta(minutes=5)
 
 
 def test_creates_a_new_session_when_none_exists(manager):
@@ -45,7 +54,7 @@ def test_ignores_a_stale_or_unknown_session_id_from_the_caller(manager):
 
 def test_creates_a_new_session_once_the_current_one_has_gone_idle(manager, monkeypatch):
     first = manager.get_or_create_current_session("user", "proj", None, "start")
-    stale_now = first["datetime_end"] + OPEN_WINDOW + timedelta(seconds=1)
+    stale_now = first["datetime_end"] + manager.open_window + timedelta(seconds=1)
 
     class FrozenDatetime(datetime):
         @classmethod
@@ -133,7 +142,7 @@ def test_require_active_session_rejects_a_closed_session_no_auto_rotation(manage
     a closed session is never silently swapped for a new one here — the
     caller must bootstrap or start a new session explicitly instead."""
     session = manager.create_session("user", "proj", "start")
-    stale_now = session["datetime_end"] + OPEN_WINDOW + timedelta(seconds=1)
+    stale_now = session["datetime_end"] + manager.open_window + timedelta(seconds=1)
 
     class FrozenDatetime(datetime):
         @classmethod

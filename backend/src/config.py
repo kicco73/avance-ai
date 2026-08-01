@@ -69,6 +69,16 @@ class AppConfig:
         return sub
 
     @classmethod
+    def _get_optional_positive_float(
+        cls, raw: dict, section: str, field: str, path: Path, default: float
+    ) -> float:
+        sub = cls._get_section(raw, section, path)
+        value = sub.get(field, default)
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+            raise ConfigError(f"{path}: '{section}.{field}' must be a positive number if present.")
+        return float(value)
+
+    @classmethod
     def _get_providers(cls, raw: dict, section: str, path: Path) -> list:
         sub = cls._get_section(raw, section, path)
         entries = sub.get("providers")
@@ -208,6 +218,12 @@ class AppConfig:
                 f"{path}: chat-service.transport={self.chat_transport!r} is not "
                 f"valid. Allowed values: {', '.join(self.VALID_TRANSPORTS)}."
             )
+        # The single source of truth for how long a chat session stays
+        # "open" (see chat/session_manager.py's ChatSessionManager) — never
+        # hardcoded elsewhere.
+        self.max_session_duration_in_minutes = self._get_optional_positive_float(
+            raw, "chat-service", "max_session_duration_in_minutes", path, default=60.0
+        )
 
         self.ai_services = self._parse_ai_services(raw, path)
         self.talk_services = self._parse_talk_services(raw, path)

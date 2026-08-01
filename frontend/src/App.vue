@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import ChatWindow from './components/ChatWindow.vue'
 import StateBar from './components/StateBar.vue'
 import EditProjectView from './components/EditProjectView.vue'
+import BenchmarkProjectView from './components/BenchmarkProjectView.vue'
 import ProjectsMenu from './components/ProjectsMenu.vue'
 import SplashScreen from './components/SplashScreen.vue'
 import {
@@ -30,6 +31,8 @@ import {
 
 const showEditProject = ref(false)
 const editProjectName = ref(null)
+const showBenchmarkProject = ref(false)
+const benchmarkProjectName = ref(null)
 const modelUploadInput = ref(null)
 const projectsMenu = ref(null)
 
@@ -157,6 +160,11 @@ function handleModelEdit(projectName) {
   showEditProject.value = true
 }
 
+function handleModelBenchmark(projectName) {
+  benchmarkProjectName.value = projectName
+  showBenchmarkProject.value = true
+}
+
 async function handleModelEditSaved() {
   clearChatUi()
   try {
@@ -280,6 +288,7 @@ onBeforeUnmount(() => {
           ref="projectsMenu"
           @select="handleProjectSwitch"
           @edit="handleModelEdit"
+          @benchmark="handleModelBenchmark"
           @upload="triggerModelUpload"
           @download="handleModelDownload"
           @delete="handleModelDelete"
@@ -306,6 +315,12 @@ onBeforeUnmount(() => {
       @close="showEditProject = false"
       @saved="handleModelEditSaved"
       @download="handleModelDownload"
+    />
+
+    <BenchmarkProjectView
+      v-if="showBenchmarkProject"
+      :project-name="benchmarkProjectName"
+      @close="showBenchmarkProject = false"
     />
   </div>
 </template>

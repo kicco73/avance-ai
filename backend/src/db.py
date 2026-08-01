@@ -53,6 +53,12 @@ class Message(BaseModel):
     content = TextField()
     timestamp = DateTimeField(index=True, default=datetime.utcnow)
     audio_text = TextField(null=True)
+    # Expert-provided ground truth for benchmark_metrics (see
+    # metrics_framework/benchmark_metrics) — the state an expert says the
+    # automaton should be in immediately after this message. Never set by
+    # the chat flow itself; None until some future annotation feature
+    # writes it.
+    expected_state = CharField(null=True)
     # Every message belongs to exactly one ChatSession (see
     # ChatSessionManager) — column name is "session_id" (Peewee's default
     # for a ForeignKeyField named `session`). project_name is reached via
@@ -91,6 +97,11 @@ class Signals(BaseModel):
     session = ForeignKeyField(ChatSession, null=False, backref="signals", on_delete="CASCADE")
     timestamp = DateTimeField(index=True, default=datetime.utcnow)
     values = TextField(null=True)  # JSON dict: {"problemRecognition": 42, ...}, or None
+    # Expert-provided ground truth for benchmark_metrics (see
+    # metrics_framework/benchmark_metrics) — JSON-serialized the same way
+    # as `values`. Never set by the chat/auto-tracking flow itself; None
+    # until some future annotation feature writes it.
+    expected_values = TextField(null=True)
     old_state = CharField(null=True, index=True)
     action = CharField(null=True)
     new_state = CharField(null=True, index=True)
@@ -358,13 +369,35 @@ class Db(object):
         message = Message.get_or_none(Message.id == message_id)
         return message.audio_text if message is not None else None
 
+    def get_message(self, message_id: int) -> dict | None:
+        """A single message by id, with its `session_id` — for resolving
+        "what timestamp does this message correspond to" (see the
+        "Benchmark project" view's point-in-time Inspector,
+        ChatService.get_metrics) and for ownership checks against its
+        session (ChatService._require_own_message)."""
+        message = Message.get_or_none(Message.id == message_id)
+        if message is None:
+            return None
+        return {
+            "id": message.id,
+            "role": message.role,
+            "content": message.content,
+            "audio_text": message.audio_text,
+            "timestamp": message.timestamp.isoformat(),
+            "expected_state": message.expected_state,
+            "session_id": message.session_id,
+        }
+
     def get_messages(
         self, session_id: int, last_n: int | None = None, since: datetime | None = None
     ) -> list[dict]:
         """Fetch `session_id`'s messages in chronological order. `last_n`
         limits at the SQL level (descending fetch + reverse) rather than
         slicing a full in-memory list. `since` excludes messages at or
-        before that timestamp (a history_cutoff state's entry point)."""
+        before that timestamp (a history_cutoff state's entry point).
+        `session_id`/`expected_state` are included on every row for
+        metrics_framework/benchmark_metrics, which pools messages across
+        several sessions and needs to know which one each came from."""
         query = (
             Message.select()
             .where(Message.session == session_id)
@@ -383,6 +416,8 @@ class Db(object):
                 "content": m.content,
                 "audio_text": m.audio_text,
                 "timestamp": m.timestamp.isoformat(),
+                "expected_state": m.expected_state,
+                "session_id": session_id,
             }
             for m in rows
         ]
@@ -412,8 +447,11 @@ class Db(object):
     def get_signals(self, session_id: int) -> list[dict]:
         """The full Signals event log for `session_id` — every row, snapshot
         or transition alike (see metrics_framework/README.md, which splits
-        them back apart by `new_state`'s presence). Only consumer today is
-        metrics_framework, via db_integration.py's AnalyticsDb protocol."""
+        them back apart by `new_state`'s presence). Consumed by
+        metrics_framework (via db_integration.py's AnalyticsDb protocol)
+        and metrics_framework/benchmark_metrics, which additionally needs
+        `expected_values` (expert ground truth, JSON-serialized the same
+        way as `values` — see Signals.expected_values)."""
         rows = (
             Signals.select()
             .where(Signals.session == session_id)
@@ -424,6 +462,7 @@ class Db(object):
                 "id": row.id,
                 "timestamp": row.timestamp.isoformat(),
                 "values": row.values,
+                "expected_values": row.expected_values,
                 "old_state": row.old_state,
                 "action": row.action,
                 "new_state": row.new_state,

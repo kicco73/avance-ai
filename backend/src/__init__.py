@@ -11,7 +11,7 @@ from .benchmark_metrics import (
     StateAccuracyMetric,
     TransitionResponsivenessMetric,
 )
-from .calculator import AnalyticsCalculator, metric_names
+from .calculator import AnalyticsCalculator
 from .dto import MetricResult, MetricWindow, UserAnalyticsData
 from .interfaces import MetricCalculator
 from .timeline import Timeline, UserAnalyticsDataBuilder
@@ -24,7 +24,6 @@ __all__ = [
     "Timeline",
     "UserAnalyticsData",
     "UserAnalyticsDataBuilder",
-    "metric_names",
     "BenchmarkCalculator",
     "BenchmarkConfiguration",
     "BenchmarkMetric",

@@ -62,6 +62,12 @@ export function getMessages(sessionId) {
   return apiFetch(`${API_URL}/chat/messages?session_id=${encodeURIComponent(sessionId)}`)
 }
 
+// The full Signals event log for a session (snapshots + transitions,
+// chronological) — for the "Benchmark project" view's timeline.
+export function getSessionSignals(sessionId) {
+  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/signals`)
+}
+
 export function createChatSocket() {
   return new WebSocket(WS_URL)
 }
@@ -145,8 +151,12 @@ export function getSignals() {
   return apiFetch(`${API_URL}/chat/signals`)
 }
 
-export function getMetrics() {
-  return apiFetch(`${API_URL}/chat/metrics`)
+// `messageId`, when given, computes metrics as of that exact message's
+// own timestamp instead of the live/current history — see the
+// "Benchmark project" view's point-in-time Inspector.
+export function getMetrics(messageId) {
+  const query = messageId != null ? `?message_id=${encodeURIComponent(messageId)}` : ''
+  return apiFetch(`${API_URL}/chat/metrics${query}`)
 }
 
 export function postAction(actionName, sessionId) {

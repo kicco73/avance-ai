@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from datetime import datetime
 
 from .dto import MetricResult
 from .interfaces import AnalyticsDb, MetricCalculator
@@ -33,8 +34,13 @@ class AnalyticsCalculator(object):
         username: str,
         project_name: str,
         metrics: Iterable[MetricCalculator] | None = None,
+        until: datetime | None = None,
     ) -> None:
-        self._data = UserAnalyticsDataBuilder(db, username, project_name).build()
+        """`until` (naive UTC, matching the DB's own timestamp convention)
+        restricts the whole analytical dataset to what existed at or
+        before that point — see UserAnalyticsDataBuilder.build. Omitted,
+        this is the full, current history, exactly as before."""
+        self._data = UserAnalyticsDataBuilder(db, username, project_name).build(until=until)
         self._metrics = tuple(metrics) if metrics is not None else self.default_metrics()
 
     @property

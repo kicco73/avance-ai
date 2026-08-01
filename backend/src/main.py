@@ -59,7 +59,7 @@ try:
     listen_service = ListenService.from_config(config.listen_services) if config.listen_services is not None else None
     db = Db(config.database_url)
     project_service = ProjectService(db)
-    session_manager = ChatSessionManager(db)
+    session_manager = ChatSessionManager(db, open_window_minutes=config.max_session_duration_in_minutes)
     chat_service = ChatService(ai_service, project_service, db, session_manager)
 
     chat_ws_adapter = WsAdapter(chat_service) if config.chat_transport == "websocket" else None

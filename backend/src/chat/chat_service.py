@@ -228,6 +228,40 @@ class ChatService(object):
             messages.insert(0, init_message)
         return messages
 
+    def get_session_signals(self, session_id: int) -> list[dict]:
+        """The full Signals event log for `session_id` (see
+        db.get_signals) — every snapshot/transition row, chronological —
+        for the "Benchmark project" view's timeline: state transitions
+        and signal values interleaved with messages, reconstructed
+        entirely client-side from this one call."""
+        self._require_own_session(session_id)
+        return self._db.get_signals(session_id)
+
+    def _require_own_message(self, message_id: int) -> dict:
+        """Raises (404) unless `message_id` exists and belongs to a
+        session owned by the current user — same ownership contract as
+        _require_own_session, just message-scoped (see get_metrics)."""
+        message = self._db.get_message(message_id)
+        if message is not None:
+            session = self._db.get_chat_session(message["session_id"])
+            if session is not None and session["username"] == self._username:
+                return message
+        raise ChatServiceError("Message not found.", status_code=HTTPStatus.NOT_FOUND)
+
+    def get_metrics(self, message_id: int | None = None) -> list[dict]:
+        """metrics_framework's core metrics for the active user+project —
+        the full current history, or (when `message_id` is given)
+        restricted to whatever existed at or before that exact message's
+        own timestamp (see ChatMetrics.calculate_all/AnalyticsCalculator's
+        `until`) — for the "Benchmark project" view's point-in-time
+        Inspector, keyed by message id rather than a raw timestamp so the
+        UI never has to serialize/parse one itself."""
+        if message_id is None:
+            return self.metrics.calculate_all()
+        message = self._require_own_message(message_id)
+        until = datetime.fromisoformat(message["timestamp"])
+        return self.metrics.calculate_all(until=until)
+
     async def open_if_needed(self, session_id: int) -> dict | None:
         project_name = self._active_project_name
         automaton, state = self._project_service.get_active_automaton_and_state()

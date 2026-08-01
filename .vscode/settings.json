@@ -14,7 +14,9 @@
     "git.autorefresh": true,
     "git.autofetch": false,
     "files.watcherExclude": {
-        "**/.git/**": true,
+        "**/.git/objects/**": true,
+        "**/.git/lfs/**": true,
+        "**/.git/subtree-cache/**": true,
         "**/ai/llama.cpp/**": true,
         "**/backend/.venv/**": true,
         "**/backend/**/__pycache__/**": true,
