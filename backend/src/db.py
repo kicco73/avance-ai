@@ -391,6 +391,28 @@ class Db(object):
             return None
         return json.loads(row.values)
 
+    def get_signals(self, session_id: int) -> list[dict]:
+        """The full Signals event log for `session_id` — every row, snapshot
+        or transition alike (see metrics_framework/README.md, which splits
+        them back apart by `new_state`'s presence). Only consumer today is
+        metrics_framework, via db_integration.py's AnalyticsDb protocol."""
+        rows = (
+            Signals.select()
+            .where(Signals.session == session_id)
+            .order_by(Signals.timestamp.asc(), Signals.id.asc())
+        )
+        return [
+            {
+                "id": row.id,
+                "timestamp": row.timestamp.isoformat(),
+                "values": row.values,
+                "old_state": row.old_state,
+                "action": row.action,
+                "new_state": row.new_state,
+            }
+            for row in rows
+        ]
+
     def save_transition(
         self,
         old_state: str,

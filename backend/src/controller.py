@@ -75,6 +75,13 @@ class AvanceController(object):
         reports the latest persisted snapshot."""
         return self.chat_service.signals.get_latest_signals()
 
+    @get("/api/chat/metrics")
+    def get_metrics(self):
+        """Computes the metrics_framework's core metrics for the active
+        user+project on demand — no caching, see metrics_framework/
+        README.md. For the "Edit project" view's Inspector Metrics tab."""
+        return self.chat_service.metrics.calculate_all()
+
     @get("/api/state")
     def get_state(self):
         """Also the frontend's boot/readiness ping (see App.vue's
@@ -226,7 +233,8 @@ class AvanceController(object):
     @post("/api/triggers/preview")
     def post_triggers_preview(self, req: TriggersPreviewRequest):
         automaton, state = self.project_service.get_active_automaton_and_state()
-        return automaton.preview_triggers(state.key, req.signals)
+        names = self.chat_service.metrics.merge_if_referenced(automaton, state.key, req.signals)
+        return automaton.preview_triggers(state.key, names)
 
     @post("/api/chat/reset")
     async def post_reset(self):

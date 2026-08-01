@@ -145,6 +145,10 @@ export function getSignals() {
   return apiFetch(`${API_URL}/chat/signals`)
 }
 
+export function getMetrics() {
+  return apiFetch(`${API_URL}/chat/metrics`)
+}
+
 export function postAction(actionName, sessionId) {
   return apiFetch(`${API_URL}/action`, {
     method: 'POST',

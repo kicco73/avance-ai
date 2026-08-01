@@ -15,6 +15,7 @@ from session import Session
 
 from chat.auto_tracker import AutoTracker
 from chat.metadata_handler import MetadataHandler
+from chat.metrics_service import ChatMetrics
 from chat.priming import build_priming_messages
 from chat.session_manager import ChatSessionManager
 from chat.signals import Signals
@@ -77,8 +78,11 @@ class ChatService(object):
         self.signals = Signals(
             get_active_automaton=lambda: project_service.get_active_automaton_and_state()[0], db=db
         )
+        self.metrics = ChatMetrics(
+            db, get_username=lambda: Session().user, get_active_project_name=lambda: project_service.get_active_project_name()
+        )
         self._metadata_handler = MetadataHandler()
-        self._auto_tracker = AutoTracker(db, ai_service, self.signals)
+        self._auto_tracker = AutoTracker(db, ai_service, self.signals, self.metrics)
         self.auto_tracking_enabled = True
 
         # Single-user prototype: serializes chat-turn processing across

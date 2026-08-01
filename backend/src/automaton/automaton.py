@@ -184,6 +184,19 @@ class Automaton(object):
             f"Action '{action_name}' not available in state '{state.key}'"
         )
 
+    def triggers_reference(self, state_key: str, names: set[str]) -> bool:
+        """Whether any triggerable action leaving `state_key` references at
+        least one of `names` in its trigger expression. Generic (`names` is
+        just a set the caller decides the meaning of) — lets a caller skip
+        resolving an expensive extra value set (e.g. metrics_framework's
+        metrics, see chat/metrics_service.py's merge_if_referenced) before
+        evaluation, whenever nothing in this state's triggers could
+        possibly use it."""
+        state = self.states[state_key]
+        return any(
+            action.trigger and trigger_signal_names(action.trigger) & names for action in state.actions
+        )
+
     def evaluate_triggers(self, state_key: str, signals: dict[str, Any]) -> str | None:
         """Returns the first action (YAML order) whose trigger evaluates
         true — FIFO priority — or None. Actions without `trigger` stay

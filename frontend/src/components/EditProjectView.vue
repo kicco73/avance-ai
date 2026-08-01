@@ -14,6 +14,7 @@ import {
   getProjectSignals,
   getProjectGraph,
   getSignals,
+  getMetrics,
   postTriggersPreview
 } from '../api.js'
 import { clearApiError, errorDetail, errorMessage, setApiError } from '../errorStore.js'
@@ -158,13 +159,21 @@ const editorHost = ref(null)
 const uploadInput = ref(null)
 
 // Inspect panel: shows the last-saved project's state machine graph, its
-// signal definitions, and the chat's currently active AI model as three
-// tabs (each gets the panel's full space), see toggleInspect/setInspectorTab.
-// Open by default.
+// signal definitions, the metrics_framework's core metrics, and the chat's
+// currently active AI model as four tabs (each gets the panel's full
+// space), see toggleInspect/setInspectorTab. Open by default.
 const inspecting = ref(true)
-const inspectorTab = ref('graph') // 'graph' | 'signals' | 'model'
+const inspectorTab = ref('graph') // 'graph' | 'signals' | 'metrics' | 'model'
 const signalsLoading = ref(true)
 const signals = ref([])
+// Metrics are computed on demand (see metrics_framework/README.md #16: no
+// caching) — only fetched when this tab is actually opened, and refreshed
+// on a new turn only while it stays the visible tab (see the turnCount
+// watcher below and setInspectorTab). Not part of openInspect's eager
+// Promise.all the way signals/graph are — nothing to show until then.
+const metricsLoading = ref(false)
+const metrics = ref([])
+const { recentlyChanged: recentlyChangedMetrics, markChanged: markMetricsChanged } = useSignalChangeFlash()
 // The model tab shows whichever entry chatStore.js's aiModels/
 // aiModelCurrentIndex currently resolves to — same shared state ModelMenu.vue
 // reads (see chatStore.js), never a second source of truth: auto mode
@@ -443,6 +452,22 @@ async function loadSignals() {
     // already surfaced via apiFetch
   } finally {
     signalsLoading.value = false
+  }
+}
+
+// Computes the metrics_framework's core metrics for the active user+project
+// on demand — see setInspectorTab (fetched on opening the tab) and the
+// turnCount watcher (refreshed on a new turn only while the tab stays open).
+async function loadMetrics() {
+  metricsLoading.value = true
+  try {
+    const nextMetrics = await getMetrics()
+    markMetricsChanged(metrics.value, nextMetrics)
+    metrics.value = nextMetrics
+  } catch {
+    // already surfaced via apiFetch
+  } finally {
+    metricsLoading.value = false
   }
 }
 
@@ -814,6 +839,8 @@ function setInspectorTab(tab) {
       cyGraph?.resize()
       cyGraph?.fit()
     })
+  } else if (tab === 'metrics') {
+    loadMetrics()
   }
 }
 
@@ -908,11 +935,14 @@ watch(
 // next even without a state change — see chatStore.js's turnCount. The
 // Signals tab's bars need the same refresh to stay live regardless of
 // which tab is actually visible right now (v-show, not v-if — see
-// setInspectorTab).
+// setInspectorTab). Metrics are heavier to compute (see loadMetrics), so
+// unlike signals they're only refreshed while their own tab is the one
+// actually open — never prefetched in the background.
 watch(turnCount, () => {
   if (!inspecting.value) return
   refreshNextAction()
   refreshSignalValues()
+  if (inspectorTab.value === 'metrics') loadMetrics()
 })
 
 onMounted(() => {
@@ -1094,6 +1124,13 @@ onBeforeUnmount(() => {
             </button>
             <button
               class="inspector-tab-btn"
+              :class="{ 'inspector-tab-btn-active': inspectorTab === 'metrics' }"
+              @click="setInspectorTab('metrics')"
+            >
+              Metrics
+            </button>
+            <button
+              class="inspector-tab-btn"
               :class="{ 'inspector-tab-btn-active': inspectorTab === 'model' }"
               @click="setInspectorTab('model')"
             >
@@ -1249,6 +1286,30 @@ onBeforeUnmount(() => {
                       v-else
                       class="inspector-signal-bar-fill inspector-signal-bar-na"
                       :class="{ 'inspector-signal-bar-changed': recentlyChangedSignals.has(signal.name) }"
+                    ></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div v-show="inspectorTab === 'metrics'" class="inspector-metrics-section">
+              <p v-if="metricsLoading" class="signals-status">Loading…</p>
+              <p v-else-if="!metrics.length" class="signals-status">No metrics computed yet.</p>
+              <div v-else class="inspector-signal-list">
+                <div v-for="metric in metrics" :key="metric.name" class="inspector-signal-block">
+                  <div class="inspector-signal-header">
+                    <span class="inspector-detail-badge inspector-detail-badge-metric">Metric</span>
+                    <span class="inspector-signal-name">{{ metric.ui_label || metric.name }}</span>
+                  </div>
+                  <span v-if="metric.ui_description" class="inspector-signal-ui_description">
+                    {{ metric.ui_description }}
+                  </span>
+
+                  <div class="inspector-signal-bar-track">
+                    <div
+                      class="inspector-signal-bar-fill"
+                      :class="{ 'inspector-signal-bar-changed': recentlyChangedMetrics.has(metric.name) }"
+                      :style="{ width: metric.value + '%' }"
                     ></div>
                   </div>
                 </div>
@@ -1983,6 +2044,10 @@ onBeforeUnmount(() => {
   background: #2f8f83;
 }
 
+.inspector-detail-badge-metric {
+  background: #ad1457;
+}
+
 .inspector-detail-badge-current {
   /* Same amber as node.current-state's overlay in renderGraph — this is
      the one other place "this is the live current state" is shown. */
@@ -2109,6 +2174,12 @@ onBeforeUnmount(() => {
 }
 
 .inspector-signals-section {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.inspector-metrics-section {
   flex: 1;
   min-height: 0;
   overflow-y: auto;

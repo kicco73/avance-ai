@@ -10,6 +10,7 @@ import logging
 
 from automaton.automaton import Action, Automaton, State
 from ai.ai_service import AiService
+from chat.metrics_service import ChatMetrics
 from chat.priming import build_priming_messages
 from chat.signals import Signals
 from db import Db
@@ -18,10 +19,11 @@ logger = logging.getLogger(__name__)
 
 
 class AutoTracker(object):
-    def __init__(self, db: Db, ai_service: AiService, signals: Signals) -> None:
+    def __init__(self, db: Db, ai_service: AiService, signals: Signals, metrics: ChatMetrics) -> None:
         self._db = db
         self._ai_service = ai_service
         self._signals = signals
+        self._metrics = metrics
 
     def _history_cutoff(self, project_name: str, state: State):
         # Same rule as ChatService._history_cutoff: history_cutoff states
@@ -51,7 +53,14 @@ class AutoTracker(object):
             signal_values = await self._signals.compute(
                 self._ai_service, build_priming_messages, session_id, pending_message, since=since
             )
-        triggered_action = automaton.evaluate_triggers(state.key, signal_values)
+        # Metrics are merged only for this evaluation, never persisted:
+        # signal_values below (save_signal_snapshot/save_transition) stays
+        # exactly what auto-tracking actually observed — mixing metric
+        # values into that log would corrupt SignalStabilityMetric's own
+        # future readings, which trusts every numeric key there to be a
+        # real domain signal (see metrics_framework/metrics/signal_stability.py).
+        evaluation_names = self._metrics.merge_if_referenced(automaton, state.key, signal_values)
+        triggered_action = automaton.evaluate_triggers(state.key, evaluation_names)
         if triggered_action is None:
             # No transition fired — just the evaluation itself is worth
             # keeping (see db.get_latest_signal_snapshot, Signals.values).

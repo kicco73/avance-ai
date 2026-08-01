@@ -80,6 +80,34 @@ def test_get_last_transition_timestamp_excludes_self_loops(db):
     assert db.get_current_state("proj") == "start"
 
 
+def test_get_signals_returns_the_full_event_log_chronologically(db):
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    db.save_signal_snapshot({"foo": 1}, session_id)
+    db.save_transition("start", "advance", "next", session_id, transition_log_level="INFO", signal_values={"foo": 2})
+
+    rows = db.get_signals(session_id)
+
+    assert [r["values"] for r in rows] == ['{"foo": 1}', '{"foo": 2}']
+    assert rows[0]["new_state"] is None  # a plain snapshot, no transition
+    assert rows[1]["old_state"] == "start"
+    assert rows[1]["new_state"] == "next"
+
+
+def test_get_signals_is_scoped_to_its_own_session(db):
+    session_a = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    session_b = _make_session(db, start=datetime(2026, 1, 2, 10, 0, 0))
+    db.save_signal_snapshot({"foo": 1}, session_a)
+    db.save_signal_snapshot({"foo": 2}, session_b)
+
+    assert [r["values"] for r in db.get_signals(session_a)] == ['{"foo": 1}']
+    assert [r["values"] for r in db.get_signals(session_b)] == ['{"foo": 2}']
+
+
+def test_get_signals_on_a_session_with_no_signals_is_empty(db):
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    assert db.get_signals(session_id) == []
+
+
 def test_reset_project_deletes_signals_rows_too(db):
     session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
     db.save_transition("", "init", "start", session_id, transition_log_level="INFO", signal_values={"foo": 1})

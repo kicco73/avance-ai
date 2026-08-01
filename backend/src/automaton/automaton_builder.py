@@ -1,4 +1,5 @@
 from automaton.automaton import Action, MemoryArchive, Automaton, Signal, SourceDict, State, trigger_signal_names
+from metrics_framework import metric_names
 
 import yaml
 import base64
@@ -117,7 +118,12 @@ class AutomatonBuilder(object):
             chat=raw_state.get("chat", True),
         )
 
-    def _actions_sanity_check(self, key: str, state: State, declared_states: set[str], declared_signals: set[str]):
+    def _actions_sanity_check(self, key: str, state: State, declared_states: set[str], valid_trigger_names: set[str]):
+        """`valid_trigger_names` is every name a trigger expression may
+        reference: this project's own declared signals, plus every core
+        metric name (see metrics_framework.metric_names — a trigger can
+        compare against either kind interchangeably, see automaton.py's
+        Automaton.triggers_reference/evaluate_triggers)."""
         for action in state.actions:
                 if action.target not in declared_states:
                     raise ValueError(
@@ -132,11 +138,11 @@ class AutomatonBuilder(object):
                             f"State {key}, action '{action.name}': "
                             f"trigger '{action.trigger}' is not a valid expression: {exc}"
                         ) from exc
-                    unknown_names = referenced_names - declared_signals
+                    unknown_names = referenced_names - valid_trigger_names
                     if unknown_names:
                         raise ValueError(
                             f"Action '{action.name}': "
-                            f"trigger references undefined signal(s): {', '.join(sorted(unknown_names))}"
+                            f"trigger references undefined signal(s)/metric(s): {', '.join(sorted(unknown_names))}"
                         )
 
     def _build_init_action(self, raw: dict) -> Action:
@@ -170,6 +176,18 @@ class AutomatonBuilder(object):
             for name, raw_signal in raw_signals.items()
         }
 
+        reserved_names = set(signals.keys()) & metric_names()
+        if reserved_names:
+            raise ValueError(
+                "Signal name(s) reserved for core metrics (see metrics_framework) cannot be "
+                f"reused as signal names: {', '.join(sorted(reserved_names))}"
+            )
+        # A trigger may reference either a declared signal or a core
+        # metric — see automaton.py's Automaton.evaluate_triggers, whose
+        # caller merges metric values into the same flat `names` dict
+        # (see chat/metrics_service.py's merge_if_referenced).
+        valid_trigger_names = set(signals.keys()) | metric_names()
+
         raw_states = raw["states"]
         if not isinstance(raw_states, dict):
             raise ValueError(f"'states' must be a mapping of state name -> fields, got {type(raw_states).__name__}.")
@@ -182,7 +200,7 @@ class AutomatonBuilder(object):
         init_action = self._build_init_action(raw)
         states: dict[str, State] = {}
         states[""] = State(key="", ui_label="", final=False, ui_description="", actions=[init_action])
-        self._actions_sanity_check(init_action.name, states[""], set(raw_states.keys()), set(signals.keys()))
+        self._actions_sanity_check(init_action.name, states[""], set(raw_states.keys()), valid_trigger_names)
 
         for key, raw_state in raw_states.items():
             if not isinstance(raw_state, dict):
@@ -195,7 +213,7 @@ class AutomatonBuilder(object):
                 )
 
             states[key] = self._build_state(key, raw_state, all_archives)
-            self._actions_sanity_check(key, states[key], set(raw_states.keys()), set(signals.keys()))
+            self._actions_sanity_check(key, states[key], set(raw_states.keys()), valid_trigger_names)
 
         general_attachments = self._extract_required_archives(raw.get('attachments', []), all_archives, for_field="global")
         autotracking_on_user_message = raw.get("signal-tracking-on-user-message", True)
