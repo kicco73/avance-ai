@@ -166,6 +166,40 @@ function transitionAnnotationStatus(transition) {
   return transition.expected_state === transition.new_state ? 'correct' : 'incorrect'
 }
 
+// The state genuinely in effect at or before `timestamp`, per only the
+// *real* transitions in signalsLog (own new_state !== own old_state) —
+// used to resolve what a no-real-change row (see resolveTransitionRow)
+// should display as its own old/new state. Deliberately reads
+// signalsLog directly rather than the timeline computed below, which
+// itself needs this to build those very rows — going through timeline
+// would be circular. signalsLog is already chronological (see
+// db.get_signals), so a single forward scan is enough.
+function actualStateAtOrBefore(timestamp) {
+  let result = sessionStartState.value
+  for (const row of signalsLog.value) {
+    if (row.timestamp > timestamp) break
+    if (row.new_state != null && row.new_state !== row.old_state) result = row.new_state
+  }
+  return result
+}
+
+// An expert can annotate expected_state on *any* evaluation point, not
+// just one that happened to fire a real transition — e.g. "the state
+// should have changed here, but didn't" is exactly the kind of miss
+// state_accuracy exists to catch (see metrics_framework/benchmark_metrics).
+// A row with no real transition of its own (a plain auto-tracking
+// snapshot, old_state/new_state both null, or a fired self-loop,
+// old_state === new_state) has nothing of its own to show as "old_state
+// -> new_state" though, so both are filled in with whatever state was
+// actually in effect at that point — same value on both sides, same as
+// a self-loop reads today, so transitionAnnotationStatus's own
+// expected_state/new_state comparison still means the right thing.
+function resolveTransitionRow(row) {
+  if (row.new_state != null && row.new_state !== row.old_state) return row
+  const actualState = actualStateAtOrBefore(row.timestamp)
+  return { ...row, old_state: actualState, new_state: actualState }
+}
+
 // Only the literal first session ever opened for a project gets a real
 // "" -> start_state Signals row (see backend ChatService.open_if_needed) —
 // every other session genuinely has no such row, so there's nothing here
@@ -196,20 +230,25 @@ function syntheticSessionStartEntry() {
   }
 }
 
-// Chronological, merged view of the session's messages and its real
-// (non-self-loop) state transitions — a self-loop has nothing to show
-// (the state didn't visibly change), same exclusion db.get_last_transition_timestamp
+// Chronological, merged view of the session's messages and its state
+// transitions — real ones, plus any evaluation point an expert annotated
+// even though nothing actually changed there (see resolveTransitionRow).
+// An unannotated self-loop/plain-snapshot still has nothing worth
+// showing on its own, same exclusion db.get_last_transition_timestamp
 // already applies for history-cutoff purposes.
 const timeline = computed(() => {
   const messageEntries = rawMessages.value.map((m) => ({ kind: 'message', timestamp: m.timestamp, message: m }))
   const transitionEntries = signalsLog.value
-    .filter((s) => s.new_state != null && s.new_state !== s.old_state)
-    .map((s) => ({
-      kind: 'transition',
-      timestamp: s.timestamp,
-      transition: s,
-      annotationStatus: transitionAnnotationStatus(s)
-    }))
+    .filter((s) => (s.new_state != null && s.new_state !== s.old_state) || s.expected_state != null)
+    .map((s) => {
+      const transition = resolveTransitionRow(s)
+      return {
+        kind: 'transition',
+        timestamp: s.timestamp,
+        transition,
+        annotationStatus: transitionAnnotationStatus(transition)
+      }
+    })
   const synthetic = syntheticSessionStartEntry()
   if (synthetic) transitionEntries.push(synthetic)
   return [...messageEntries, ...transitionEntries].sort((a, b) => {
@@ -521,7 +560,10 @@ onBeforeUnmount(() => {
                 ]"
                 @click="selectTransition(entry.transition)"
               >
-                <span class="benchmark-transition-arrow">→</span>
+                <span
+                  class="benchmark-transition-arrow"
+                  :title="entry.transition.old_state === entry.transition.new_state ? 'No actual state change here' : ''"
+                >{{ entry.transition.old_state === entry.transition.new_state ? '↻' : '→' }}</span>
                 <span class="benchmark-transition-badge">{{ entry.transition.new_state }}</span>
                 <span
                   v-if="entry.annotationStatus === 'correct'"

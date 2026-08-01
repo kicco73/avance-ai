@@ -184,6 +184,49 @@ def test_delete_session_annotations_is_404_for_someone_elses_or_unknown_session(
     assert response.status_code == 404
 
 
+def test_annotating_a_later_sessions_own_start_materializes_a_signals_row(client, hello_project):
+    """Only the literal first session ever opened for a project gets a
+    real "" -> start_state Signals row (see the previous test) — every
+    later session has nothing real to annotate against at its own start
+    until an expert actually tries (see ChatService.
+    _materialize_session_start_row)."""
+    first = client.get("/api/chat/session").json()
+    client.get(f"/api/chat/messages?session_id={first['id']}")
+
+    second = client.post("/api/chat/sessions").json()
+    messages = client.get(f"/api/chat/messages?session_id={second['id']}").json()
+    assert messages
+    first_message_id = messages[0]["id"]
+    assert client.get(f"/api/chat/sessions/{second['id']}/signals").json() == []
+
+    response = client.put(
+        f"/api/chat/messages/{first_message_id}/expected-state", json={"expected_state": "Hello"}
+    )
+
+    assert response.status_code == 200
+    signals = client.get(f"/api/chat/sessions/{second['id']}/signals").json()
+    assert len(signals) == 1
+    assert signals[0]["old_state"] == ""
+    assert signals[0]["message_id"] == first_message_id
+    assert signals[0]["expected_state"] == "Hello"
+
+
+def test_clearing_the_only_annotation_on_a_materialized_start_row_deletes_it(client, hello_project):
+    first = client.get("/api/chat/session").json()
+    client.get(f"/api/chat/messages?session_id={first['id']}")
+    second = client.post("/api/chat/sessions").json()
+    first_message_id = client.get(f"/api/chat/messages?session_id={second['id']}").json()[0]["id"]
+    client.put(f"/api/chat/messages/{first_message_id}/expected-state", json={"expected_state": "Hello"})
+
+    response = client.put(
+        f"/api/chat/messages/{first_message_id}/expected-state", json={"expected_state": None}
+    )
+
+    assert response.status_code == 200
+    assert response.json() is None
+    assert client.get(f"/api/chat/sessions/{second['id']}/signals").json() == []
+
+
 def test_init_transition_is_linked_to_the_opening_message_and_becomes_annotatable(client, hello_project):
     """Regression test: the automaton's very first ("" -> start_state)
     transition, created by ChatService.open_if_needed before any user

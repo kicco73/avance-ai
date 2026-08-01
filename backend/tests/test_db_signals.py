@@ -255,3 +255,38 @@ def test_clear_session_annotations_is_scoped_to_its_own_session(db):
 
     assert db.get_signals(session_a)[0]["expected_state"] is None
     assert db.get_signals(session_b)[0]["expected_state"] == "start"
+
+
+def test_clear_session_annotations_deletes_an_emptied_session_start_row(db):
+    """A session-start bookkeeping row (old_state == "", see ChatService.
+    _materialize_session_start_row) only ever exists to hold an
+    annotation — clearing it must remove the row entirely, not leave an
+    empty husk behind."""
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    start_row = db.save_transition("", "", "start", session_id, transition_log_level="INFO")
+    db.set_signal_expected_state(start_row, "start")
+
+    db.clear_session_annotations(session_id)
+
+    assert db.get_signals(session_id) == []
+
+
+def test_clear_session_annotations_keeps_a_real_transitions_row(db):
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    row_id = db.save_transition("start", "advance", "next", session_id, transition_log_level="INFO")
+    db.set_signal_expected_state(row_id, "next")
+
+    db.clear_session_annotations(session_id)
+
+    rows = db.get_signals(session_id)
+    assert [r["id"] for r in rows] == [row_id]
+    assert rows[0]["new_state"] == "next"
+
+
+def test_delete_signal_row_removes_it(db):
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    row_id = db.save_signal_snapshot({"foo": 1}, session_id)
+
+    db.delete_signal_row(row_id)
+
+    assert db.get_signals(session_id) == []

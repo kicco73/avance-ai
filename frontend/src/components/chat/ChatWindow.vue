@@ -60,9 +60,14 @@ async function onDeleteSession(session) {
 // its own open/closed status.
 const chatDisabled = computed(() => !state.value?.key || !state.value?.chat || !selectedSessionActive.value)
 
+// Mirrors chatDisabled's own three conditions, in the same order, each
+// with its own explanation — a chat-blocked state (e.g. final, see
+// backend chat_service.py's own "doesn't accept messages" wording) is not
+// the same situation as no project/state being active at all.
 const chatDisabledReason = computed(() => {
   if (!selectedSessionActive.value) return 'This session is no longer active.'
-  return 'Please select:'
+  if (!state.value?.key) return 'Please select:'
+  return "This state doesn't accept messages; use an action instead."
 })
 
 // Draggable divider between the sessions panel and the chat itself (same

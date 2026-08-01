@@ -612,14 +612,27 @@ class Db(object):
         serialized = json.dumps(expected_values) if expected_values else None
         Signals.update(expected_values=serialized).where(Signals.id == signal_row_id).execute()
 
+    def delete_signal_row(self, signal_row_id: int) -> None:
+        """Deletes one Signals row outright — used only for a session-start
+        bookkeeping row (old_state == "", see ChatService.
+        _materialize_session_start_row) once its only reason to exist, an
+        expert annotation, is cleared again (see
+        ChatService._finalize_annotation_write). Never used on a row with
+        real observed `values` — those stay forever, annotated or not."""
+        Signals.delete().where(Signals.id == signal_row_id).execute()
+
     def clear_session_annotations(self, session_id: int) -> None:
         """Clears every expected_state/expected_values annotation across
         session_id's own Signals rows in one statement — the "Benchmark
         project" view's "Unlabel all" action (see ChatService.
         clear_session_annotations), after its own confirmation dialog.
         Ownership is the caller's job, same as every other annotation
-        write here."""
+        write here. Also deletes any session-start bookkeeping row
+        (old_state == "", see ChatService._materialize_session_start_row)
+        this leaves fully empty — same reasoning as delete_signal_row,
+        just applied session-wide instead of message-by-message."""
         Signals.update(expected_state=None, expected_values=None).where(Signals.session == session_id).execute()
+        Signals.delete().where((Signals.session == session_id) & (Signals.old_state == "")).execute()
 
     def _latest_transition(self, project_name: str, *, real_only: bool = False) -> Signals | None:
         query = (

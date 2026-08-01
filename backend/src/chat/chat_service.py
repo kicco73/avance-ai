@@ -317,11 +317,16 @@ class ChatService(object):
     def _require_annotatable_message(self, message_id: int) -> dict:
         """Raises (404) for an unowned/unknown message, (409) for one with
         no linked Signals row at all (see Signals.message) — nothing was
-        ever computed for it, so there's nothing to annotate against.
-        Returns that Signals row (not the message) — both annotation
-        setters below write straight into it."""
+        ever computed for it, so there's nothing to annotate against —
+        *unless* it's the one case that's still fair game: message_id is
+        its own session's very first message and that session never got
+        its own "session started here" row (see
+        _materialize_session_start_row). Returns the Signals row (not the
+        message) — both annotation setters below write straight into it."""
         self._require_own_message(message_id)
         row = self._db.get_signal_row_by_message(message_id)
+        if row is None:
+            row = self._materialize_session_start_row(message_id)
         if row is None:
             raise ChatServiceError(
                 "This message isn't an evaluation point — nothing to annotate.",
@@ -329,14 +334,71 @@ class ChatService(object):
             )
         return row
 
-    def set_message_expected_state(self, message_id: int, expected_state: str | None) -> dict:
+    def _materialize_session_start_row(self, message_id: int) -> dict | None:
+        """Every session conceptually starts at its own `start_state`, but
+        only the literal first session ever opened for a project gets a
+        real Signals row for that (see open_if_needed's own "" ->
+        start_state transition, created once per project, not once per
+        session) — every other session's own start has nothing in the
+        database to annotate against at all. Rather than leave every
+        later session permanently un-annotatable at its own start point
+        (see the "Benchmark project" view's chat timeline, which shows a
+        synthesized row there precisely because there's nothing real to
+        show), lazily creates that row here, the first time an expert
+        actually tries to annotate it — same shape open_if_needed's own
+        eager case uses. Returns None (falls through to the usual 409)
+        for anything other than a session's own first message, or a
+        session whose start row does exist but is linked elsewhere (must
+        never happen in practice, but not this function's job to fix)."""
+        message = self._db.get_message(message_id)
+        if message is None:
+            return None
+        session_id = message["session_id"]
+        earliest = self._db.get_messages(session_id)
+        if not earliest or earliest[0]["id"] != message_id:
+            return None
+        existing = next(
+            (row for row in self._db.get_signals(session_id) if row["old_state"] == ""), None
+        )
+        if existing is not None:
+            if existing["message_id"] is not None:
+                return None
+            self._db.link_signal_to_message(existing["id"], message_id)
+            return self._db.get_signal_row_by_message(message_id)
+        session = self._db.get_chat_session(session_id)
+        if session is None:
+            return None
+        self._db.save_transition(
+            "", "", session["start_state"], session_id, transition_log_level="INFO", message_id=message_id
+        )
+        return self._db.get_signal_row_by_message(message_id)
+
+    def _finalize_annotation_write(self, signal_row_id: int, message_id: int) -> dict | None:
+        """Re-reads the row just written to — except a session-start
+        bookkeeping row (old_state == "", see
+        _materialize_session_start_row) left carrying no annotation at
+        all afterward, which is deleted instead of kept around as an
+        empty husk: it only ever existed to hold that annotation, so
+        clearing the last one reverts things to exactly "no row exists
+        for this message", same as before it was ever materialized.
+        Returns None in that case — the caller (a PUT response) has
+        nothing left to describe."""
+        updated = self._db.get_signal_row_by_message(message_id)
+        assert updated is not None  # just written above, under the same message
+        if updated["old_state"] == "" and updated["expected_state"] is None and not updated["expected_values"]:
+            self._db.delete_signal_row(signal_row_id)
+            return None
+        return updated
+
+    def set_message_expected_state(self, message_id: int, expected_state: str | None) -> dict | None:
         """Sets (expected_state given) or clears (None) the expert-
         annotated expected state for message_id's own evaluation — see
         Signals.expected_state's own docstring. Returns the updated
-        Signals row. `expected_state` must name a real state in the
-        active project's own automaton — the "Benchmark project" view's
-        States dropdown is populated from exactly that list, but this is
-        the one place that actually enforces it."""
+        Signals row, or None if clearing it deleted the row entirely (see
+        _finalize_annotation_write). `expected_state` must name a real
+        state in the active project's own automaton — the "Benchmark
+        project" view's States dropdown is populated from exactly that
+        list, but this is the one place that actually enforces it."""
         row = self._require_annotatable_message(message_id)
         if expected_state is not None:
             automaton, _ = self._project_service.get_active_automaton_and_state()
@@ -345,11 +407,9 @@ class ChatService(object):
                     f"Unknown state '{expected_state}'.", status_code=HTTPStatus.UNPROCESSABLE_ENTITY
                 )
         self._db.set_signal_expected_state(row["id"], expected_state)
-        updated = self._db.get_signal_row_by_message(message_id)
-        assert updated is not None  # just written above, under the same message
-        return updated
+        return self._finalize_annotation_write(row["id"], message_id)
 
-    def set_message_expected_signals(self, message_id: int, expected_values: dict | None) -> dict:
+    def set_message_expected_signals(self, message_id: int, expected_values: dict | None) -> dict | None:
         """Sets or clears the expert-annotated expected signal values for
         message_id's own evaluation — see Signals.expected_values's own
         docstring. `expected_values` is the *whole* replacement dict: a
@@ -358,7 +418,8 @@ class ChatService(object):
         dict on every change, never a single-key patch). Every key must
         name a real signal in the active project, every value a plain
         number in [0, 100] (see Inspector.vue's own slider range). Returns
-        the updated Signals row."""
+        the updated Signals row, or None if clearing it deleted the row
+        entirely (see _finalize_annotation_write)."""
         row = self._require_annotatable_message(message_id)
         if expected_values:
             automaton, _ = self._project_service.get_active_automaton_and_state()
@@ -374,9 +435,7 @@ class ChatService(object):
                         status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
                     )
         self._db.set_signal_expected_values(row["id"], expected_values)
-        updated = self._db.get_signal_row_by_message(message_id)
-        assert updated is not None
-        return updated
+        return self._finalize_annotation_write(row["id"], message_id)
 
     def clear_session_annotations(self, session_id: int) -> None:
         """Clears every expert annotation (expected_state and
