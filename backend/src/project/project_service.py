@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import io
 import logging
+import re
 import zipfile
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from typing import Awaitable, Callable
 
@@ -64,16 +66,84 @@ class ProjectService(object):
         self._automaton_cache[project_name] = automaton
         return automaton
 
+    @staticmethod
+    def _strip_stamp(content: str) -> str:
+        """Removes any existing root-level `version:`/`last-changed:`
+        line(s) from an index.yml's raw text — used both to rebuild the
+        stamp (see _stamp_index_yml) and to compare index.yml's real body
+        across saves without the stamp itself (which always differs once
+        refreshed) making every save look like a change."""
+        return re.sub(r"(?m)^(?:version|last-changed):[^\n]*\n?", "", content)
+
+    def _stamp_index_yml(self, content: str, version: int) -> str:
+        """Prepends fresh `version`/`last-changed` root fields reflecting
+        `version` — a text-level edit (strip any existing occurrence of
+        either key at the root, then prepend both anew), not a
+        parse+re-dump, so every comment/formatting/key order elsewhere in
+        the file survives untouched. AutomatonBuilder ignores unknown
+        top-level keys, so this never affects validation."""
+        return f"version: {version}\nlast-changed: {datetime.utcnow().isoformat()}\n{self._strip_stamp(content)}"
+
+    def _project_update_changed(self, existing: dict[str, str], files: dict[str, str]) -> bool:
+        """Whether `files` (new content for some subset of a project's
+        own files — see _prepare_project_update) is a genuine change
+        against `existing`. index.yml is compared on its body alone (see
+        _strip_stamp): its stamp always differs once refreshed, which
+        would otherwise make every save of it look like a change even
+        with nothing else edited."""
+        def body(name: str, content: str) -> str:
+            return self._strip_stamp(content) if name == "index.yml" else content
+        return any(body(name, existing.get(name, "")) != body(name, content) for name, content in files.items())
+
+    def _prepare_project_update(self, project_name: str, files: dict[str, str]) -> tuple[Automaton, dict[str, str] | None]:
+        """Builds+validates the Automaton for `files` (new content for
+        some subset of `project_name`'s own files — all of them for a
+        zip upload, just one for a single-file edit) merged onto its
+        current ones. index.yml is always freshly re-stamped with the
+        version this update would become (see _stamp_index_yml) before
+        validation, whether or not it's part of `files` itself — a save
+        triggered by any other file still keeps index.yml's own embedded
+        version number in sync with the version its DB row is about to
+        get. Read-only — never writes anything. Returns (automaton,
+        to_persist): the second element is the full merged file set to
+        hand to db.save_project_version, or None when nothing actually
+        changed (see _project_update_changed) — the caller's signal to skip
+        persistence (and, likely, resetting the active conversation)
+        entirely."""
+        existing = self._db.get_archives(project_name)
+        version = self._db.next_project_version(project_name)
+
+        merged = {**existing, **files}
+        if "index.yml" in merged:
+            merged["index.yml"] = self._stamp_index_yml(merged["index.yml"], version)
+
+        automaton = AutomatonBuilder().build(merged)
+
+        if not self._project_update_changed(existing, files):
+            return automaton, None
+        return automaton, merged
+
+    def _file_version_info(self, project_name: str, file_name: str) -> dict:
+        result = self._db.get_archive(project_name, file_name)
+        if result is None:
+            raise FileNotFoundError(f"File '{file_name}' does not exist in project '{project_name}'.")
+        content, version = result
+        return {
+            "content": content,
+            "version": version,
+            "total_versions": self._db.count_archive_versions(project_name, file_name),
+        }
+
     async def _finalize_project_update(
         self, project_name: str, automaton: Automaton, commit: CommitCallback
     ) -> bool:
-        """Used by the upload path (_put_yaml_project/_put_zip_project/
-        put_project_file): a deliberate replace, so it wipes `project_name`'s
+        """Used by every project-mutating path (put_project/put_project_file/
+        delete_project_file): a deliberate replace, so it wipes `project_name`'s
         conversation data if it's currently active, before awaiting
-        `commit`."""
-
-        for attachment in automaton.attachments.values():
-            self._db.save_archive(project_name, attachment.filename, attachment.source['data'])
+        `commit`. Archive persistence itself is each caller's own
+        responsibility (see db.save_project_version/db.delete_archive) —
+        this only refreshes the in-memory automaton cache and, if
+        `project_name` is the active project, resets its conversation."""
 
         self._automaton_cache[project_name] = automaton
         if project_name == self.get_active_project_name():
@@ -287,15 +357,15 @@ class ProjectService(object):
         if not self._is_safe_project_name(project_name):
             raise ValueError(f"Invalid project name: '{project_name}'.")
 
-        with tempfile.TemporaryDirectory() as tmp:    
+        with tempfile.TemporaryDirectory() as tmp:
             try:
                 staging_dir = Path(tmp)
                 self._extract_zip_safely(content, staging_dir)
-                archives = {
+                files = {
                     file.name: file.read_text()
                     for file in staging_dir.iterdir()
                 }
-                new_automaton = AutomatonBuilder().build(archives) 
+                new_automaton, to_persist = self._prepare_project_update(project_name, files)
             except (zipfile.BadZipFile, ValueError) as exc:
                 raise ValueError(str(exc)) from exc
             except Exception as exc:
@@ -303,6 +373,8 @@ class ProjectService(object):
                 raise ValueError(f"Invalid project definition: {exc}") from exc
 
         self._db.set_active_project_name(project_name, Session().user)
+        if to_persist is not None:
+            self._db.save_project_version(project_name, to_persist)
         await self._finalize_project_update(project_name, new_automaton, commit)
 
         return {"success": True, "project_name": project_name}
@@ -349,11 +421,38 @@ class ProjectService(object):
         logger.critical(names)
         return names
 
-    def get_project_file(self, project_name: str, file_name: str) -> str:
-        content = self._db.get_archive(project_name, file_name)
-        if content is None:
-            raise FileNotFoundError(f"File '{file_name}' does not exist in project '{project_name}'.")
-        return content
+    def get_project_file(self, project_name: str, file_name: str) -> dict:
+        """{content, version, total_versions} for `file_name`'s latest
+        version — version/total_versions are what the "Edit project"
+        view's Undo/Redo buttons use to know their own enabled range
+        (see get_project_file_at_version for a specific past version)."""
+        return self._file_version_info(project_name, file_name)
+
+    def get_project_file_at_version(self, project_name: str, file_name: str, version: int) -> dict:
+        """Same shape as get_project_file, but for exactly `version` —
+        404s (via FileNotFoundError) unless that precise version was
+        actually saved for this file."""
+        result = self._db.get_archive(project_name, file_name, version=version)
+        if result is None:
+            raise FileNotFoundError(
+                f"File '{file_name}' in project '{project_name}' has no version {version}."
+            )
+        content, actual_version = result
+        return {
+            "content": content,
+            "version": actual_version,
+            "total_versions": self._db.count_archive_versions(project_name, file_name),
+        }
+
+    def count_project_file_versions(self, project_name: str, file_name: str) -> int:
+        return self._db.count_archive_versions(project_name, file_name)
+
+    def prune_project_history(self, project_name: str) -> None:
+        """Discards every file's older versions for `project_name`,
+        keeping only each one's current/latest — see db.prune_archive_history."""
+        if project_name not in self._db.list_projects():
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+        self._db.prune_archive_history(project_name)
 
     async def put_project_file(
         self, project_name: str, file_name: str, content: bytes, commit: CommitCallback
@@ -363,20 +462,19 @@ class ProjectService(object):
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
 
         text_content = content.decode("utf-8") if isinstance(content, bytes) else content
-
         self._check_editable_file_name(file_name)
-        archives = self._db.get_archives(project_name=project_name)
-        archives[file_name] = text_content
+
         try:
-            new_automaton = AutomatonBuilder().build(archives)
+            new_automaton, to_persist = self._prepare_project_update(project_name, {file_name: text_content})
         except Exception as exc:
             raise ValueError(f"Invalid project update: {exc}") from exc
 
-        self._db.save_archive(project_name, file_name, text_content)
-
+        if to_persist is not None:
+            self._db.save_project_version(project_name, to_persist)
         await self._finalize_project_update(project_name, new_automaton, commit)
 
-        return {"success": True, "project_name": project_name}
+        info = self._file_version_info(project_name, file_name)
+        return {"success": True, "project_name": project_name, **info}
 
     async def delete_project_file(
         self, project_name: str, file_name: str, commit: CommitCallback

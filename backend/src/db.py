@@ -10,7 +10,7 @@ import os
 import sqlite3
 from datetime import datetime
 
-from peewee import CharField, DateTimeField, ForeignKeyField, Model, Proxy, TextField, BlobField, CompositeKey, AutoField
+from peewee import CharField, DateTimeField, ForeignKeyField, IntegerField, Model, Proxy, TextField, AutoField, fn
 from playhouse.db_url import connect, parse as parse_db_url
 
 logger = logging.getLogger(__name__)
@@ -97,11 +97,29 @@ class Signals(BaseModel):
 
 
 class Archive(BaseModel):
+    """One row per saved version of a project file — never updated in
+    place, only ever inserted (see Db.save_project_version). `version` is
+    project-wide, not per file: every file in a project is always saved
+    together at the same version number, starting at 0 and always
+    increasing by exactly 1 on the next real change — see
+    Db.next_project_version, the single place that's decided. This is
+    what lets a version number resolve to one complete, self-consistent
+    snapshot across every file, with plain exact-match lookups (see
+    Db.get_archive) instead of a "closest version" fallback."""
+    id = AutoField()
     project_name = CharField(index=True, null=False)
     archive_name = CharField(index=True, null=False)
-    content = BlobField(null=False)
+    version = IntegerField(index=True, null=False)
+    # Always text (index.yml plus its .md/.txt/.csv attachments — see
+    # project_service.TEXT_EDITABLE_EXTENSIONS): TextField so callers get
+    # back a plain str, not the bytes a BlobField would hand back
+    # regardless of what was written.
+    content = TextField(null=False)
+
     class Meta:
-        primary_key = CompositeKey('project_name', 'archive_name')
+        indexes = (
+            (("project_name", "archive_name", "version"), True),
+        )
 
 
 class Db(object):
@@ -500,37 +518,76 @@ class Db(object):
         Message.delete().execute()
         ChatSession.delete().execute()
 
-    def save_archive(self, project_name: str, archive_name: str, content: str) -> None:
-        Archive.insert(
-            project_name=project_name,
-            archive_name=archive_name,
-            content=content
-        ).on_conflict(
-            conflict_target=[Archive.project_name, Archive.archive_name],
-            update={
-                Archive.content: content
-            }
-        ).execute()
+    def next_project_version(self, project_name: str) -> int:
+        """The version number `project_name`'s *next* save
+        (save_project_version) will get: 0 if it has no archive rows at
+        all yet, else one past its current highest — recomputed fresh
+        from the stored rows every call, never a remembered counter. A
+        read-only peek: a caller that needs to know this ahead of
+        actually saving — e.g. to stamp it into index.yml's own content
+        before handing it to save_project_version — calls this first;
+        save_project_version itself always recomputes it independently
+        rather than trusting a caller-supplied value, so there is no way
+        to save at a stale or arbitrary version by mistake."""
+        latest = Archive.select(fn.MAX(Archive.version)).where(Archive.project_name == project_name).scalar()
+        return 0 if latest is None else latest + 1
 
-    
-    def get_archive(self, project_name: str, archive_name: str) -> str:
-        return Archive \
-                .select(Archive.content) \
-                .where(
-                    (Archive.project_name == project_name) &
-                    (Archive.archive_name == archive_name)
-                ).scalar()
+    def save_project_version(self, project_name: str, files: dict[str, str]) -> int:
+        """The only way to persist project files: every entry in `files`
+        (every file in the project — changed content or simply carried
+        forward as-is, see ProjectService._prepare_project_update) is
+        written together as one new version — computed here, internally,
+        via next_project_version, and nowhere else. There is deliberately
+        no way for a caller to specify/target a version directly: a save
+        can only ever create a brand new, current version for the whole
+        project, never modify or add to an earlier one. Each file gets
+        its own new row (Archive rows are never updated in place — see
+        its own docstring). Returns the version used."""
+        version = self.next_project_version(project_name)
+        for archive_name, content in files.items():
+            Archive.create(project_name=project_name, archive_name=archive_name, version=version, content=content)
+        return version
+
+    def get_archive(self, project_name: str, archive_name: str, version: int | None = None) -> tuple[str, int] | None:
+        """(content, version) for `archive_name` — its latest version, or
+        (when `version` is given) EXACTLY that version. None if no such
+        row exists — either it was never saved at that version, or that
+        version has since been pruned. No "highest not exceeding"
+        fallback: every file that exists as of a given project version
+        has a real row there (see save_project_version), so an exact
+        match is always correct and a miss always means exactly what it
+        says."""
+        query = Archive.select(Archive.content, Archive.version).where(
+            (Archive.project_name == project_name) & (Archive.archive_name == archive_name)
+        )
+        if version is not None:
+            query = query.where(Archive.version == version)
+        row = query.order_by(Archive.version.desc()).first()
+        return (row.content, row.version) if row is not None else None
+
+    def count_archive_versions(self, project_name: str, archive_name: str) -> int:
+        return Archive.select().where(
+            (Archive.project_name == project_name) & (Archive.archive_name == archive_name)
+        ).count()
 
     def get_archives(self, project_name: str) -> dict:
+        """Every archive's *latest* version content, keyed by name — what
+        AutomatonBuilder/export_project_zip/the file explorer all treat
+        as "the project's current files". Grouping by MAX(id) rather than
+        MAX(version) is equivalent here (rows are only ever inserted, in
+        increasing version order, so a later version always has a later
+        id too) and avoids a second correlated subquery."""
+        latest_ids = (
+            Archive
+                .select(fn.MAX(Archive.id))
+                .where(Archive.project_name == project_name)
+                .group_by(Archive.archive_name)
+        )
         return {
             row.archive_name: row.content
-            for row in (
-                Archive
-                    .select(Archive.archive_name, Archive.content)
-                    .where(Archive.project_name == project_name)
-            )
+            for row in Archive.select(Archive.archive_name, Archive.content).where(Archive.id.in_(latest_ids))
         }
-    
+
     def list_projects(self) -> list[str]:
         return [
             p.project_name
@@ -545,11 +602,31 @@ class Db(object):
             for p in Archive
                 .select(Archive.archive_name)
                 .where(Archive.project_name == project_name)
+                .distinct()
         ]
 
-    def delete_archive(self, project_name: str, archive_name: str) -> None:
+    def prune_archive_history(self, project_name: str) -> None:
+        """Keeps only each archive's latest version for `project_name`,
+        deleting every older one — the version history is meant to be a
+        bounded, session-scoped undo buffer (see the "Edit project" view's
+        own cleanup on close), not permanent storage like the chat
+        history."""
+        latest_ids = (
+            Archive
+                .select(fn.MAX(Archive.id))
+                .where(Archive.project_name == project_name)
+                .group_by(Archive.archive_name)
+        )
         Archive.delete().where(
-            (Archive.project_name == project_name) & 
+            (Archive.project_name == project_name) & (Archive.id.not_in(latest_ids))
+        ).execute()
+
+    def delete_archive(self, project_name: str, archive_name: str) -> None:
+        """Deletes every version of `archive_name` — the file itself is
+        being removed from the project, so there's nothing left to keep
+        history of."""
+        Archive.delete().where(
+            (Archive.project_name == project_name) &
             (Archive.archive_name == archive_name)
         ).execute()
 

@@ -9,8 +9,10 @@ import ModelMenu from './ModelMenu.vue'
 import {
   getProjectFiles,
   getProjectFile,
+  getProjectFileVersion,
   putProjectFile,
   deleteProjectFile,
+  deleteProjectVersions,
   getProjectSignals,
   getProjectGraph,
   getSignals,
@@ -212,6 +214,27 @@ const content = ref('')
 const originalContent = ref('')
 const isDirty = computed(() => content.value !== originalContent.value)
 
+// The currently open file's own version history (see backend's Archive
+// versioning — a project-wide counter, so most files share the same
+// range, but one added partway through a project's history can have
+// fewer versions on record than its own version *number* suggests).
+// `latestVersion`/`totalVersions` are set only on load/save (see
+// loadFileContent/saveCurrentFile), never by undo/redo — they're what
+// the file's version numbers actually span, not "where you're currently
+// looking". `currentVersion` is the version presently shown in the
+// editor, which undo/redo do move (see jumpToVersion). Undo/redo
+// navigate purely client-side: they load a past/future version's content
+// into the editor without saving anything — only Save (unchanged) ever
+// persists a new version, of whatever's currently in the editor.
+const currentVersion = ref(0)
+const latestVersion = ref(0)
+const totalVersions = ref(1)
+// The file's own oldest version on record — not necessarily 0: a file
+// added to the project partway through its history starts later.
+const oldestVersion = computed(() => latestVersion.value - totalVersions.value + 1)
+const canUndo = computed(() => currentVersion.value > oldestVersion.value)
+const canRedo = computed(() => currentVersion.value < latestVersion.value)
+
 // Set while the unsaved-changes dialog is blocking a switch to this file —
 // resolved one way or another by confirmSwitchSave/Discard/Cancel.
 const pendingFileName = ref(null)
@@ -243,6 +266,16 @@ function destroyEditor() {
   view = null
 }
 
+// Replaces the editor's whole document in place (undo/redo, and
+// refreshing after a save that may have changed the content server-side
+// — see _stamp_index_yml) — `content` updates itself via the
+// updateListener already wired in createEditor, so callers never set it
+// directly.
+function setEditorDoc(newContent) {
+  if (!view) return
+  view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: newContent } })
+}
+
 async function loadFiles() {
   filesLoading.value = true
   try {
@@ -259,8 +292,12 @@ async function loadFileContent(fileName) {
   clearApiError()
   destroyEditor()
   try {
-    content.value = await getProjectFile(props.projectName, fileName)
-    originalContent.value = content.value
+    const file = await getProjectFile(props.projectName, fileName)
+    content.value = file.content
+    originalContent.value = file.content
+    currentVersion.value = file.version
+    latestVersion.value = file.version
+    totalVersions.value = file.total_versions
   } catch {
     loading.value = false
     return
@@ -317,8 +354,16 @@ async function saveCurrentFile() {
   saving.value = true
   clearApiError()
   try {
-    await putProjectFile(props.projectName, currentFileName.value, content.value)
-    originalContent.value = content.value
+    const result = await putProjectFile(props.projectName, currentFileName.value, content.value)
+    // The saved content may differ from what was sent (index.yml's
+    // version/last-changed get stamped server-side — see
+    // ProjectService._stamp_index_yml) — refresh the editor to match
+    // exactly what's now actually stored, not just what was typed.
+    setEditorDoc(result.content)
+    originalContent.value = result.content
+    currentVersion.value = result.version
+    latestVersion.value = result.version
+    totalVersions.value = result.total_versions
     emit('saved')
     // The Inspect panel reflects the last saved state, so a successful
     // save is exactly when it needs to catch up (see toggleInspect).
@@ -329,6 +374,30 @@ async function saveCurrentFile() {
   } finally {
     saving.value = false
   }
+}
+
+// Undo/redo are pure navigation over the currently open file's own
+// version history — they load a past/future version's content into the
+// editor (marking it dirty relative to `originalContent`, exactly like
+// any other unsaved edit) without persisting anything; Save is still the
+// only thing that ever creates a new version, of whatever ends up in the
+// editor.
+async function jumpToVersion(version) {
+  try {
+    const file = await getProjectFileVersion(props.projectName, currentFileName.value, version)
+    setEditorDoc(file.content)
+    currentVersion.value = file.version
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+function undo() {
+  if (canUndo.value) jumpToVersion(currentVersion.value - 1)
+}
+
+function redo() {
+  if (canRedo.value) jumpToVersion(currentVersion.value + 1)
 }
 
 async function switchFile(fileName) {
@@ -438,9 +507,17 @@ async function handleDeleteFile(fileName) {
 }
 
 // Only prompts when there's actually something to lose — a clean editor
-// (nothing typed, or already saved) closes straight away.
-function handleClose() {
+// (nothing typed, or already saved) closes straight away. The project's
+// whole version history (every file's undo/redo trail) is a bounded,
+// session-scoped undo buffer, not permanent storage — discarded here so
+// it never outlives one "Edit project" visit (see db.prune_archive_history).
+async function handleClose() {
   if (isDirty.value && !window.confirm('Discard unsaved changes to this file?')) return
+  try {
+    await deleteProjectVersions(props.projectName)
+  } catch {
+    // already surfaced via apiFetch — must not block closing the editor
+  }
   emit('close')
 }
 
@@ -1051,9 +1128,23 @@ onBeforeUnmount(() => {
           <div class="edit-project-editor-pane">
             <div class="edit-project-editor-toolbar">
               <span class="edit-project-editor-filename">{{ currentFileName }}</span>
-              <button class="save-btn" :disabled="loading || saving" @click="saveCurrentFile">
-                {{ saving ? 'Saving…' : 'Save' }}
-              </button>
+              <div class="edit-project-editor-toolbar-actions">
+                <button
+                  class="undo-redo-btn"
+                  title="Undo (previous version)"
+                  :disabled="loading || saving || !canUndo"
+                  @click="undo"
+                >↶</button>
+                <button
+                  class="undo-redo-btn"
+                  title="Redo (next version)"
+                  :disabled="loading || saving || !canRedo"
+                  @click="redo"
+                >↷</button>
+                <button class="save-btn" :disabled="loading || saving" @click="saveCurrentFile">
+                  {{ saving ? 'Saving…' : 'Save' }}
+                </button>
+              </div>
             </div>
             <div class="edit-project-editor-content">
               <p v-if="loading" class="edit-project-status">Loading…</p>
@@ -1812,6 +1903,35 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.edit-project-editor-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.undo-redo-btn {
+  width: 1.8rem;
+  height: 1.8rem;
+  line-height: 1;
+  border-radius: 6px;
+  border: 1px solid #4a6fa5;
+  background: white;
+  color: #4a6fa5;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.undo-redo-btn:hover:not(:disabled) {
+  background: #eef2f9;
+}
+
+.undo-redo-btn:disabled {
+  border-color: #ccc;
+  color: #ccc;
+  cursor: not-allowed;
 }
 
 .edit-project-editor-content {

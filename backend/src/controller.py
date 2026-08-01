@@ -350,15 +350,45 @@ class AvanceController(object):
 
     @get("/api/projects/{project_name}/files/{file_name}")
     def get_project_file(self, project_name: str, file_name: str):
-        """Raw text content of one of `project_name`'s files, for the "Edit
-        project" view (see ProjectService.get_project_file)."""
+        """{content, version, total_versions} of `file_name`'s latest
+        version, for the "Edit project" view (see
+        ProjectService.get_project_file) — version/total_versions are
+        what its Undo/Redo buttons use to know their own enabled range."""
         try:
-            content = self.project_service.get_project_file(project_name, file_name)
+            return self.project_service.get_project_file(project_name, file_name)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-        return Response(content=content, media_type="text/plain; charset=utf-8")
+
+    @get("/api/projects/{project_name}/files/{file_name}/versions/{version}")
+    def get_project_file_version(self, project_name: str, file_name: str, version: int):
+        """Same shape as GET .../files/{file_name}, but for exactly
+        `version` — 404 unless that precise version was actually saved
+        for this file."""
+        try:
+            return self.project_service.get_project_file_at_version(project_name, file_name, version)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+
+    @get("/api/projects/{project_name}/files/{file_name}/versions")
+    def get_project_file_versions(self, project_name: str, file_name: str):
+        """How many versions of `file_name` are on record — 0 if it (or
+        the project) doesn't exist."""
+        return {"total_versions": self.project_service.count_project_file_versions(project_name, file_name)}
+
+    @delete("/api/projects/{project_name}/versions")
+    def delete_project_versions(self, project_name: str):
+        """Discards every file's older versions for `project_name`,
+        keeping only each one's current/latest (see
+        ProjectService.prune_project_history) — the "Edit project" view
+        calls this itself when closing, so a project's version history
+        never outlives one editing session."""
+        try:
+            self.project_service.prune_project_history(project_name)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        return {"success": True}
 
     @put("/api/projects/{project_name}/files/{file_name}")
     async def put_project_file(self, project_name: str, file_name: str, request: Request):
