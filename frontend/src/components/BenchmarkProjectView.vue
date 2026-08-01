@@ -295,21 +295,31 @@ function stateAsOf(timestamp) {
   return result
 }
 
+// Reshapes a Signals row's own raw `values` JSON (or null) into
+// Inspector's own { [name]: { value, error } } signalValues prop shape
+// (see AutoTracker.run — a persisted snapshot is always a plain
+// {name: value} dict, never {value, error}, so error is always null
+// here). Shared by every "what were the signals right here" lookup below.
+function valuesToSignalValues(raw) {
+  if (raw == null) return {}
+  const parsed = JSON.parse(raw)
+  return Object.fromEntries(Object.entries(parsed).map(([name, value]) => [name, { value, error: null }]))
+}
+
 // The latest Signals row that actually carries values (a plain snapshot,
 // or a transition that had signal_values — see db.py's Signals.values) at
-// or before `timestamp`, reshaped into Inspector's own
-// { [name]: { value, error } } signalValues prop shape (see
-// AutoTracker.run — a persisted snapshot is always a plain {name: value}
-// dict, never {value, error}, so error is always null here).
+// or before `timestamp` — only a fallback for a message with no
+// evaluation of its own (see signalValues); a row's own evaluation can be
+// timestamped fractionally *after* the message that caused it (see
+// effectiveTimestamp's own docstring), so this would otherwise always
+// land one point behind for a message that does have one.
 function signalValuesAsOf(timestamp) {
   let latest = null
   for (const row of signalsLog.value) {
     if (row.timestamp > timestamp || row.values == null) continue
     if (latest == null || row.timestamp >= latest.timestamp) latest = row
   }
-  if (!latest) return {}
-  const parsed = JSON.parse(latest.values)
-  return Object.fromEntries(Object.entries(parsed).map(([name, value]) => [name, { value, error: null }]))
+  return latest ? valuesToSignalValues(latest.values) : {}
 }
 
 // A transition has no message_id of its own, but point-in-time metrics
@@ -329,7 +339,19 @@ function nearestMessageIdAtOrBefore(timestamp) {
 const highlightedStateKey = computed(() => {
   if (!selected.value) return null
   if (selected.value.kind === 'transition') return selected.value.transition.new_state
-  return stateAsOf(selected.value.message.timestamp)
+  // Prefer the state a transition *directly linked* to this exact
+  // message produced (see Signals.message) over the raw-timestamp
+  // fallback below: that transition's own row is timestamped fractionally
+  // *after* the message that caused it (auto-tracking's own evaluation
+  // runs once the message is already saved — see effectiveTimestamp's own
+  // docstring), so stateAsOf(message.timestamp) would otherwise always
+  // land one step behind, showing the state as it was *before* this
+  // message instead of what it became because of it.
+  const message = selected.value.message
+  const ownTransition = timeline.value.find(
+    (entry) => entry.kind === 'transition' && entry.transition.message_id === message.id
+  )
+  return ownTransition ? ownTransition.transition.new_state : stateAsOf(message.timestamp)
 })
 
 // Only a transition has "the action that produced it" to highlight — the
@@ -354,8 +376,21 @@ const untilMessageId = computed(() => {
 
 const signalValues = computed(() => {
   if (!selected.value) return {}
-  const timestamp = selected.value.kind === 'message' ? selected.value.message.timestamp : selected.value.transition.timestamp
-  return signalValuesAsOf(timestamp)
+  if (selected.value.kind === 'transition') {
+    // Whatever this row itself observed — never a timestamp lookup,
+    // which risks landing on the *previous* row instead (see
+    // signalValuesAsOf's own docstring). A row with nothing real behind
+    // it (the synthetic session-start entry, a manual action, an
+    // unfired self-loop) correctly has no values of its own, so this
+    // reads as n/a rather than falling back to "whatever came before".
+    return valuesToSignalValues(selected.value.transition.values)
+  }
+  const linked = signalsLog.value.find((s) => s.message_id === selected.value.message.id)
+  if (linked) return valuesToSignalValues(linked.values)
+  // This message was never itself an evaluation point (e.g. an assistant
+  // reply auto-tracking didn't run for) — the closest thing still true
+  // is whatever the latest real evaluation showed strictly before it.
+  return signalValuesAsOf(selected.value.message.timestamp)
 })
 
 // The Signals row backing the current selection's own evaluation, if
