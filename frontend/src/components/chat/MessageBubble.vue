@@ -1,6 +1,6 @@
 <script setup>
-import { renderMarkdown as renderMarkdownBase } from '../markdown.js'
-import { useFloatingTooltip } from '../useFloatingTooltip.js'
+import { renderMarkdown as renderMarkdownBase } from '../../markdown.js'
+import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 
 const BARE_DATA_IMAGE_RE = /(?<!\]\()(data:image\/[a-zA-Z0-9+.-]+;base64,[A-Za-z0-9+/=]+)/g
 

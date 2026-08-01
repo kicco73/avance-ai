@@ -3,8 +3,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ActionButtons from './ActionButtons.vue'
 import MessageBubble from './MessageBubble.vue'
 import SessionsPanel from './SessionsPanel.vue'
-import { errorDetail, errorMessage, setApiError } from '../errorStore.js'
-import { startRecording, stopRecording } from '../mic.js'
+import { errorDetail, errorMessage, setApiError } from '../../errorStore.js'
+import { startRecording, stopRecording } from '../../mic.js'
 import {
   state,
   messages,
@@ -31,7 +31,7 @@ import {
   handleAction,
   toggleAudio,
   toggleSpokenText
-} from '../chatStore.js'
+} from '../../chatStore.js'
 
 const scrollEl = ref(null)
 const inputEl = ref(null)

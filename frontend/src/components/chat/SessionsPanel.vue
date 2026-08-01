@@ -1,5 +1,5 @@
 <script setup>
-import { useFloatingTooltip } from '../useFloatingTooltip.js'
+import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 
 // The sessions list content (header + rows) shared by every chat surface
 // that lets a user pick a past/present session — the main page and the

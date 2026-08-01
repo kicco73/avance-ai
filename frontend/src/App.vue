@@ -1,6 +1,6 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import ChatWindow from './components/ChatWindow.vue'
+import ChatWindow from './components/chat/ChatWindow.vue'
 import StateBar from './components/StateBar.vue'
 import EditProjectView from './components/EditProjectView.vue'
 import BenchmarkProjectView from './components/BenchmarkProjectView.vue'

@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Compartment } from '@codemirror/state'
 import { EditorView, basicSetup } from 'codemirror'
 import { yaml } from '@codemirror/lang-yaml'
-import ChatWindow from './ChatWindow.vue'
+import ChatWindow from './chat/ChatWindow.vue'
 import ModelMenu from './ModelMenu.vue'
 import Inspector from './inspector/Inspector.vue'
 import {

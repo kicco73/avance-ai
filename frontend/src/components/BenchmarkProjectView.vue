@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import MessageBubble from './MessageBubble.vue'
-import SessionsPanel from './SessionsPanel.vue'
+import MessageBubble from './chat/MessageBubble.vue'
+import SessionsPanel from './chat/SessionsPanel.vue'
 import Inspector from './inspector/Inspector.vue'
 import {
   getMessages, getSessionSignals, getSessions, putMessageExpectedState, putMessageExpectedSignals,
@@ -166,6 +166,36 @@ function transitionAnnotationStatus(transition) {
   return transition.expected_state === transition.new_state ? 'correct' : 'incorrect'
 }
 
+// Only the literal first session ever opened for a project gets a real
+// "" -> start_state Signals row (see backend ChatService.open_if_needed) —
+// every other session genuinely has no such row, so there's nothing here
+// to build a real transitionEntries row from. A synthetic one is added
+// instead purely so the reviewer can see (and annotate) where the
+// conversation began — annotating it materializes the real row backend-
+// side (see ChatService._materialize_session_start_row), which replaces
+// this synthetic entry on the next reload; clearing that annotation
+// deletes the row again (see _finalize_annotation_write), bringing this
+// synthetic entry right back.
+function syntheticSessionStartEntry() {
+  const hasOwnStartRow = signalsLog.value.some((s) => s.old_state === '')
+  const firstMessage = rawMessages.value[0]
+  if (hasOwnStartRow || !firstMessage || sessionStartState.value == null) return null
+  return {
+    kind: 'transition',
+    timestamp: firstMessage.timestamp,
+    transition: {
+      id: null,
+      old_state: '',
+      action: '',
+      new_state: sessionStartState.value,
+      expected_state: null,
+      expected_values: null,
+      message_id: firstMessage.id
+    },
+    annotationStatus: null
+  }
+}
+
 // Chronological, merged view of the session's messages and its real
 // (non-self-loop) state transitions — a self-loop has nothing to show
 // (the state didn't visibly change), same exclusion db.get_last_transition_timestamp
@@ -180,6 +210,8 @@ const timeline = computed(() => {
       transition: s,
       annotationStatus: transitionAnnotationStatus(s)
     }))
+  const synthetic = syntheticSessionStartEntry()
+  if (synthetic) transitionEntries.push(synthetic)
   return [...messageEntries, ...transitionEntries].sort((a, b) => {
     const ta = effectiveTimestamp(a)
     const tb = effectiveTimestamp(b)
@@ -319,13 +351,31 @@ const expectedValues = computed(() => {
   return raw ? JSON.parse(raw) : {}
 })
 
+// A full reload (rather than patching signalsLog in place) is needed
+// because an annotation write can now change *which* Signals row exists
+// for a message, not just its fields: annotating a session's own start
+// point materializes a brand-new row (see backend ChatService.
+// _materialize_session_start_row — the synthetic entry above has no real
+// row/id yet), and clearing the last annotation on that same kind of row
+// deletes it again (see _finalize_annotation_write). Re-selects the
+// current transition by message_id (its own row id may have just changed
+// underneath it) so the Inspector doesn't keep showing a stale snapshot.
+async function reloadSignalsLog() {
+  if (!currentSessionId.value) return
+  signalsLog.value = await getSessionSignals(currentSessionId.value)
+  if (selected.value?.kind === 'transition') {
+    const messageId = selected.value.transition.message_id
+    const match = timeline.value.find((e) => e.kind === 'transition' && e.transition.message_id === messageId)
+    selected.value = match ? { kind: 'transition', transition: match.transition } : null
+  }
+}
+
 async function onUpdateExpectedState(value) {
   const messageId = annotatableMessageId.value
   if (messageId == null) return
   try {
-    const updated = await putMessageExpectedState(messageId, value)
-    const idx = signalsLog.value.findIndex((s) => s.id === updated.id)
-    if (idx !== -1) signalsLog.value[idx] = { ...signalsLog.value[idx], expected_state: updated.expected_state }
+    await putMessageExpectedState(messageId, value)
+    await reloadSignalsLog()
     inspectorRef.value?.refreshPerformance()
   } catch {
     // already surfaced via apiFetch
@@ -336,9 +386,8 @@ async function onUpdateExpectedSignals(values) {
   const messageId = annotatableMessageId.value
   if (messageId == null) return
   try {
-    const updated = await putMessageExpectedSignals(messageId, values)
-    const idx = signalsLog.value.findIndex((s) => s.id === updated.id)
-    if (idx !== -1) signalsLog.value[idx] = { ...signalsLog.value[idx], expected_values: updated.expected_values }
+    await putMessageExpectedSignals(messageId, values)
+    await reloadSignalsLog()
     inspectorRef.value?.refreshPerformance()
   } catch {
     // already surfaced via apiFetch
@@ -359,7 +408,7 @@ async function onUnlabelAll() {
   unlabelingAll.value = true
   try {
     await deleteSessionAnnotations(currentSessionId.value)
-    signalsLog.value = signalsLog.value.map((s) => ({ ...s, expected_state: null, expected_values: null }))
+    await reloadSignalsLog()
     inspectorRef.value?.refreshPerformance()
   } catch {
     // already surfaced via apiFetch

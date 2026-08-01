@@ -4,7 +4,6 @@ const FLASH_MS = 900
 
 // A signal has a displayable value only when it's been computed and came
 // back clean — shared by every UI that renders a signal's live value bar
-// (see SignalsView.vue and EditProjectView.vue's Inspector Signals tab).
 export function hasSignalValue(signal) {
   return signal != null && signal.value !== null && !signal.error
 }
