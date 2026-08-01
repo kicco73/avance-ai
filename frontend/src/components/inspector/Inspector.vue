@@ -19,6 +19,14 @@ const props = defineProps({
   closable: { type: Boolean, default: true },
   editableFiles: { type: Array, default: null },
   annotatable: { type: Boolean, default: false },
+  // Separate from `annotatable` (which only ever gates the States tab's
+  // own expected-state control): the automaton's own starting point (see
+  // BenchmarkProjectView.vue's own init-transition handling) has no real
+  // signal evaluation behind it at all, so it can only ever be
+  // disagreed-with on *where the automaton starts*, never on signal
+  // values nothing was ever computed for — callers that don't
+  // distinguish the two just pass the same value as `annotatable`.
+  annotatableSignals: { type: Boolean, default: false },
   expectedState: { type: String, default: null },
   expectedValues: { type: Object, default: () => ({}) },
   showPerformanceTab: { type: Boolean, default: false },
@@ -116,7 +124,7 @@ watch(() => props.highlightedStateKey, () => {
       :projectName="projectName"
       :signalValues="signalValues"
       :editableFiles="editableFiles"
-      :annotatable="annotatable"
+      :annotatable="annotatableSignals"
       :expectedValues="expectedValues"
       @jump-to-definition="emit('jump-to-definition', $event)"
       @select-attachment="emit('select-attachment', $event)"
