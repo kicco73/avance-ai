@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { getSignals, postTriggersPreview } from '../api.js'
-import { hasSignalValue, useSignalChangeFlash } from '../signalDisplay.js'
+import { hasSignalValue, useSignalChangeFlash } from './inspector/signalDisplay.js'
 
 defineProps({
   state: {

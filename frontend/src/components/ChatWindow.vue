@@ -190,6 +190,7 @@ async function onAction(actionName) {
         :key="msg.messageId || msg.id || i"
         :message="msg"
         :spoken-text-enabled="spokenTextEnabled"
+        show-timestamp
         @resend="resend(i)"
       />
 

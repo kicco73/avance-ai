@@ -91,6 +91,16 @@ export function putMessageExpectedSignals(messageId, expectedValues) {
   })
 }
 
+// Clears every expert annotation (expected_state and expected_values
+// alike) across sessionId's own Signals rows in one call — the
+// "Benchmark project" view's "Unlabel all" action, after its own
+// confirmation dialog.
+export function deleteSessionAnnotations(sessionId) {
+  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/annotations`, {
+    method: 'DELETE'
+  })
+}
+
 export function createChatSocket() {
   return new WebSocket(WS_URL)
 }

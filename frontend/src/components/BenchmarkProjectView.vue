@@ -2,9 +2,10 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import MessageBubble from './MessageBubble.vue'
 import SessionsPanel from './SessionsPanel.vue'
-import Inspector from './Inspector.vue'
+import Inspector from './inspector/Inspector.vue'
 import {
-  getMessages, getSessionSignals, getSessions, putMessageExpectedState, putMessageExpectedSignals
+  getMessages, getSessionSignals, getSessions, putMessageExpectedState, putMessageExpectedSignals,
+  deleteSessionAnnotations
 } from '../api.js'
 import { currentSessionId, sessions, sessionsLoading, loadSessions, selectSession } from '../chatStore.js'
 
@@ -34,10 +35,10 @@ const sessionStartState = ref(null)
 
 const inspectorRef = ref(null)
 const inspectorWidth = ref(360)
-// The Sessions panel starts open when there's nothing selected yet, so
-// the picker is immediately visible instead of a dead-end "no session"
-// message with no obvious way out.
-const benchmarkSessionsPanelOpen = ref(!currentSessionId.value)
+// The Sessions panel starts open — reviewing a specific session is the
+// point of this view, so the picker should always be immediately visible
+// rather than tucked behind a toggle.
+const benchmarkSessionsPanelOpen = ref(true)
 const sessionsPanelWidth = ref(240)
 let dragTarget = null
 
@@ -123,6 +124,48 @@ function toBubbleMessage(m) {
   return { role: m.role, content: m.content, audioText: m.audio_text, timestamp: m.timestamp }
 }
 
+// Whether the Signals row this message's own evaluation produced (see
+// Signals.message_id) has at least one expert-annotated expected signal
+// value — drives the message bubble's own "!" marker (see MessageBubble.
+// vue's signalsAnnotated prop). Independent of the transition ✓/✕
+// indicator, which is about expected_state, not expected_values.
+function messageHasAnnotatedSignals(message) {
+  const row = signalsLog.value.find((s) => s.message_id === message.id)
+  if (!row?.expected_values) return false
+  try {
+    const parsed = JSON.parse(row.expected_values)
+    return parsed != null && Object.keys(parsed).length > 0
+  } catch {
+    return false
+  }
+}
+
+// A transition linked to a message (see Signals.message) is positioned as
+// if it happened exactly when that message did, not by its own raw
+// timestamp: auto-tracking's own evaluation for a user message runs
+// *before* that message is saved (see backend ChatService.
+// _process_turn_locked), so the transition's own row can end up
+// timestamped slightly earlier than the very message that caused it —
+// which would otherwise show the state change before the message that
+// produced it. A manual action's transition (no linked message) has
+// nothing to correct against, so it keeps its own raw timestamp.
+function effectiveTimestamp(entry) {
+  if (entry.kind === 'message') return entry.message.timestamp
+  const messageId = entry.transition.message_id
+  const linkedMessage = messageId != null ? rawMessages.value.find((m) => m.id === messageId) : null
+  return linkedMessage ? linkedMessage.timestamp : entry.transition.timestamp
+}
+
+// Whether a transition's own expert-annotated expected_state (see
+// Signals.expected_state — lives directly on the transition's own row
+// now, no message lookup needed) agrees with what actually happened —
+// null when unannotated (the timeline shows no verdict either way, same
+// as the Inspector's own States tab).
+function transitionAnnotationStatus(transition) {
+  if (transition.expected_state == null) return null
+  return transition.expected_state === transition.new_state ? 'correct' : 'incorrect'
+}
+
 // Chronological, merged view of the session's messages and its real
 // (non-self-loop) state transitions — a self-loop has nothing to show
 // (the state didn't visibly change), same exclusion db.get_last_transition_timestamp
@@ -131,8 +174,21 @@ const timeline = computed(() => {
   const messageEntries = rawMessages.value.map((m) => ({ kind: 'message', timestamp: m.timestamp, message: m }))
   const transitionEntries = signalsLog.value
     .filter((s) => s.new_state != null && s.new_state !== s.old_state)
-    .map((s) => ({ kind: 'transition', timestamp: s.timestamp, transition: s }))
-  return [...messageEntries, ...transitionEntries].sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+    .map((s) => ({
+      kind: 'transition',
+      timestamp: s.timestamp,
+      transition: s,
+      annotationStatus: transitionAnnotationStatus(s)
+    }))
+  return [...messageEntries, ...transitionEntries].sort((a, b) => {
+    const ta = effectiveTimestamp(a)
+    const tb = effectiveTimestamp(b)
+    if (ta !== tb) return ta.localeCompare(tb)
+    // The same effective moment only happens when a transition is tied to
+    // this exact message (see effectiveTimestamp) — the message it's
+    // explaining always reads first.
+    return (a.kind === 'message' ? 0 : 1) - (b.kind === 'message' ? 0 : 1)
+  })
 })
 
 // The point in time currently reflected by the Inspector — a message or a
@@ -289,6 +345,29 @@ async function onUpdateExpectedSignals(values) {
   }
 }
 
+// Whether this session has anything for "Unlabel all" to actually clear —
+// disables the button rather than opening a confirm dialog for nothing.
+const hasAnyAnnotations = computed(() => {
+  return signalsLog.value.some((s) => s.expected_state != null || s.expected_values != null)
+})
+
+const unlabelingAll = ref(false)
+
+async function onUnlabelAll() {
+  if (!currentSessionId.value || !hasAnyAnnotations.value) return
+  if (!window.confirm('Remove every annotation in this session? This cannot be undone.')) return
+  unlabelingAll.value = true
+  try {
+    await deleteSessionAnnotations(currentSessionId.value)
+    signalsLog.value = signalsLog.value.map((s) => ({ ...s, expected_state: null, expected_values: null }))
+    inspectorRef.value?.refreshPerformance()
+  } catch {
+    // already surfaced via apiFetch
+  } finally {
+    unlabelingAll.value = false
+  }
+}
+
 // Metrics aren't reactive to props on their own (see Inspector.vue's
 // refreshMetrics docstring) — every selection change needs an explicit
 // nudge, same as EditProjectView.vue's turnCount watcher.
@@ -298,6 +377,10 @@ watch(selected, () => {
 
 onMounted(() => {
   loadTimeline()
+  // The Sessions panel starts open (see benchmarkSessionsPanelOpen) —
+  // toggleBenchmarkSessionsPanel only loads on a closed-to-open flip, so
+  // the initial open needs its own load.
+  loadSessions()
   window.addEventListener('mousemove', onDrag)
   window.addEventListener('mouseup', stopDrag)
   window.addEventListener('resize', handleWindowResize)
@@ -344,6 +427,18 @@ onBeforeUnmount(() => {
         </Transition>
 
         <div class="benchmark-chat-content">
+          <div class="benchmark-chat-toolbar">
+            <span class="benchmark-chat-title">Chat</span>
+            <button
+              type="button"
+              class="benchmark-unlabel-all-btn"
+              :disabled="!hasAnyAnnotations || unlabelingAll"
+              @click="onUnlabelAll"
+            >
+              {{ unlabelingAll ? 'Unlabelling…' : 'Unlabel all' }}
+            </button>
+          </div>
+
           <p v-if="loading" class="benchmark-status">Loading…</p>
           <p v-else-if="!currentSessionId" class="benchmark-status">
             No session selected — pick one from the Sessions panel first.
@@ -361,17 +456,34 @@ onBeforeUnmount(() => {
                 ]"
                 @click="selectMessage(entry.message)"
               >
-                <MessageBubble :message="toBubbleMessage(entry.message)" show-timestamp />
+                <MessageBubble
+                  :message="toBubbleMessage(entry.message)"
+                  show-timestamp
+                  :signals-annotated="messageHasAnnotatedSignals(entry.message)"
+                />
               </div>
 
               <div
                 v-else
                 class="benchmark-row benchmark-transition-row"
-                :class="{ 'benchmark-row-selected': isTransitionSelected(entry.transition) }"
+                :class="[
+                  { 'benchmark-row-selected': isTransitionSelected(entry.transition) },
+                  entry.annotationStatus ? `benchmark-transition-row-${entry.annotationStatus}` : ''
+                ]"
                 @click="selectTransition(entry.transition)"
               >
                 <span class="benchmark-transition-arrow">→</span>
                 <span class="benchmark-transition-badge">{{ entry.transition.new_state }}</span>
+                <span
+                  v-if="entry.annotationStatus === 'correct'"
+                  class="benchmark-transition-annotation-icon benchmark-transition-annotation-icon-correct"
+                  title="Matches the expert-annotated expected state"
+                >✓</span>
+                <span
+                  v-else-if="entry.annotationStatus === 'incorrect'"
+                  class="benchmark-transition-annotation-icon benchmark-transition-annotation-icon-incorrect"
+                  title="Differs from the expert-annotated expected state"
+                >✕</span>
               </div>
             </template>
           </div>
@@ -521,6 +633,47 @@ onBeforeUnmount(() => {
   flex-direction: column;
 }
 
+.benchmark-chat-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: #f5f5f7;
+  border-bottom: 1px solid #ddd;
+  flex-shrink: 0;
+}
+
+/* Same style as Inspector.vue's own .inspector-title. */
+.benchmark-chat-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.benchmark-unlabel-all-btn {
+  padding: 0.3rem 0.7rem;
+  border-radius: 6px;
+  border: 1px solid #c62828;
+  background: white;
+  color: #c62828;
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+
+.benchmark-unlabel-all-btn:hover:not(:disabled) {
+  background: #c62828;
+  color: white;
+}
+
+.benchmark-unlabel-all-btn:disabled {
+  border-color: #ccc;
+  color: #ccc;
+  cursor: not-allowed;
+}
+
 .benchmark-status {
   margin: auto;
   color: #444;
@@ -575,6 +728,34 @@ onBeforeUnmount(() => {
   background: #f0dcb0;
 }
 
+/* Whether the transition's own expert-annotated expected_state agrees
+   with what actually happened (see transitionAnnotationStatus) — lets a
+   reviewer spot a mismatch across the whole timeline at a glance, not
+   just by opening the Inspector on each one. */
+.benchmark-transition-row-correct {
+  background: #e8f5e9;
+}
+
+.benchmark-transition-row-correct:hover {
+  background: #dcefdd;
+}
+
+.benchmark-transition-row-correct.benchmark-row-selected {
+  background: #c8e6c9;
+}
+
+.benchmark-transition-row-incorrect {
+  background: #fdecea;
+}
+
+.benchmark-transition-row-incorrect:hover {
+  background: #fbdedb;
+}
+
+.benchmark-transition-row-incorrect.benchmark-row-selected {
+  background: #f5c6c2;
+}
+
 .benchmark-transition-arrow {
   color: #8a6d3b;
   font-weight: 600;
@@ -588,6 +769,26 @@ onBeforeUnmount(() => {
   color: white;
   font-size: 0.78rem;
   font-weight: 600;
+}
+
+.benchmark-transition-annotation-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2rem;
+  height: 1.2rem;
+  border-radius: 50%;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: white;
+}
+
+.benchmark-transition-annotation-icon-correct {
+  background: #2e7d32;
+}
+
+.benchmark-transition-annotation-icon-incorrect {
+  background: #c62828;
 }
 
 .split-divider {

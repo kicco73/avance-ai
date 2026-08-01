@@ -5,7 +5,7 @@ import { EditorView, basicSetup } from 'codemirror'
 import { yaml } from '@codemirror/lang-yaml'
 import ChatWindow from './ChatWindow.vue'
 import ModelMenu from './ModelMenu.vue'
-import Inspector from './Inspector.vue'
+import Inspector from './inspector/Inspector.vue'
 import {
   getProjectFiles,
   getProjectFile,

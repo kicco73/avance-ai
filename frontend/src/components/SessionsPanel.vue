@@ -1,4 +1,6 @@
 <script setup>
+import { useFloatingTooltip } from '../useFloatingTooltip.js'
+
 // The sessions list content (header + rows) shared by every chat surface
 // that lets a user pick a past/present session — the main page and the
 // "Edit project" view's embedded chat (both via ChatWindow.vue) and the
@@ -24,11 +26,22 @@ function formatSessionTimestamp(iso) {
   const date = new Date(iso)
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString()
 }
+
+// The "has expert annotations" tag icon's own tooltip — one shared
+// instance for the whole list (see useFloatingTooltip's own docstring on
+// why a per-row template ref doesn't work inside v-for), since only one
+// row can be hovered at a time anyway.
+const {
+  visible: annotationTooltipVisible,
+  style: annotationTooltipStyle,
+  show: showAnnotationTooltip,
+  hide: hideAnnotationTooltip
+} = useFloatingTooltip()
 </script>
 
 <template>
   <div class="sessions-panel-header">
-    <span>Sessions</span>
+    <span class="sessions-panel-title">Sessions</span>
     <div v-if="allowCreate" class="sessions-panel-header-actions">
       <button type="button" class="sessions-panel-icon-btn" title="New session" @click="emit('create')">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
@@ -49,8 +62,20 @@ function formatSessionTimestamp(iso) {
         :class="{ 'session-item-active': session.id === currentSessionId }"
         @click="emit('select', session)"
       >
-        <span class="session-badge" :class="{ 'session-badge-inactive': !session.active }">
-          {{ session.end_state }}
+        <span class="session-badge-row">
+          <span class="session-badge" :class="{ 'session-badge-inactive': !session.active }">
+            {{ session.end_state }}
+          </span>
+          <span
+            v-if="session.has_annotations"
+            class="session-annotation-icon"
+            tabindex="0"
+            @mouseenter="showAnnotationTooltip($event.currentTarget)"
+            @mouseleave="hideAnnotationTooltip"
+            @focus="showAnnotationTooltip($event.currentTarget)"
+            @blur="hideAnnotationTooltip"
+            @click.stop
+          >🏷</span>
         </span>
         <span class="session-timestamp">{{ formatSessionTimestamp(session.datetime_start) }}</span>
       </button>
@@ -66,6 +91,12 @@ function formatSessionTimestamp(iso) {
       </button>
     </li>
   </ul>
+
+  <Teleport to="body">
+    <span v-if="annotationTooltipVisible" class="session-annotation-tooltip-floating" :style="annotationTooltipStyle">
+      Has expert annotations
+    </span>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -75,9 +106,15 @@ function formatSessionTimestamp(iso) {
   justify-content: space-between;
   padding: 0.6rem 0.9rem;
   border-bottom: 1px solid #ddd;
+}
+
+/* Same style as Inspector.vue's own .inspector-title. */
+.sessions-panel-title {
+  font-size: 0.8rem;
   font-weight: 600;
-  font-size: 0.9rem;
-  color: #333;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .sessions-panel-header-actions {
@@ -170,6 +207,14 @@ function formatSessionTimestamp(iso) {
   cursor: not-allowed;
 }
 
+.session-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .session-badge {
   display: inline-block;
   padding: 0.15rem 0.6rem;
@@ -192,5 +237,32 @@ function formatSessionTimestamp(iso) {
 .session-timestamp {
   font-size: 0.75rem;
   color: #666;
+}
+
+/* "Benchmark project" view's own marker (see session.has_annotations) —
+   shown wherever this list is used, since it's just accurate information
+   about the session, not something specific to reviewing it. */
+.session-annotation-icon {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: help;
+}
+
+/* Teleported to <body>, position: fixed — see useFloatingTooltip.js. */
+.session-annotation-tooltip-floating {
+  position: fixed;
+  width: max-content;
+  max-width: 200px;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  background: #333;
+  color: white;
+  font-size: 0.72rem;
+  font-weight: 400;
+  line-height: 1.3;
+  text-align: left;
+  pointer-events: none;
+  z-index: 1000;
 }
 </style>

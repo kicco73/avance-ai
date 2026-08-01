@@ -1,5 +1,6 @@
 <script setup>
 import { renderMarkdown as renderMarkdownBase } from '../markdown.js'
+import { useFloatingTooltip } from '../useFloatingTooltip.js'
 
 const BARE_DATA_IMAGE_RE = /(?<!\]\()(data:image\/[a-zA-Z0-9+.-]+;base64,[A-Za-z0-9+/=]+)/g
 
@@ -19,7 +20,12 @@ const props = defineProps({
   spokenTextEnabled: { type: Boolean, default: false },
   // "Benchmark project" view only (see BenchmarkProjectView.vue) — the
   // live chat never shows this.
-  showTimestamp: { type: Boolean, default: false }
+  showTimestamp: { type: Boolean, default: false },
+  // "Benchmark project" view only — whether the Signals row this
+  // message's own evaluation produced has an expert-annotated
+  // expected_values (see Signals.expected_values). Shows a small "this
+  // bubble has a signal annotation" marker; the live chat never sets this.
+  signalsAnnotated: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['resend'])
@@ -41,6 +47,17 @@ function formatTimestamp(iso) {
   if (Number.isNaN(date.getTime())) return ''
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
+
+// The "Signal labelled" tooltip on the (!) badge — the browser's native
+// `title` attribute wasn't rendering reliably (see useFloatingTooltip's
+// own docstring, first built for Inspector.vue's (?) icon).
+const {
+  triggerRef: annotationIconRef,
+  visible: annotationTooltipVisible,
+  style: annotationTooltipStyle,
+  show: showAnnotationTooltip,
+  hide: hideAnnotationTooltip
+} = useFloatingTooltip()
 </script>
 
 <template>
@@ -67,6 +84,25 @@ function formatTimestamp(iso) {
         ]"
       >
         <span v-html="renderMarkdown(getMessageText(message) || '...')" />
+        <span
+          v-if="signalsAnnotated"
+          ref="annotationIconRef"
+          class="bubble-annotation-icon"
+          tabindex="0"
+          @mouseenter="showAnnotationTooltip"
+          @mouseleave="hideAnnotationTooltip"
+          @focus="showAnnotationTooltip"
+          @blur="hideAnnotationTooltip"
+        >!</span>
+        <Teleport to="body">
+          <span
+            v-if="signalsAnnotated && annotationTooltipVisible"
+            class="bubble-annotation-tooltip-floating"
+            :style="annotationTooltipStyle"
+          >
+            Signal labelled
+          </span>
+        </Teleport>
       </div>
       <span v-if="showTimestamp" class="bubble-timestamp">{{ formatTimestamp(message.timestamp) }}</span>
     </div>
@@ -112,11 +148,50 @@ function formatTimestamp(iso) {
 }
 
 .bubble {
+  position: relative;
   max-width: 100%;
   padding: 0.6rem 0.9rem;
   border-radius: 12px;
   line-height: 1.5;
   overflow-wrap: anywhere;
+}
+
+/* "Benchmark project" view only — see the signalsAnnotated prop's own
+   docstring. Same amber used elsewhere for "pay attention, this differs
+   from the live default" (see Inspector's own .inspector-detail-badge-current). */
+.bubble-annotation-icon {
+  position: absolute;
+  top: -0.4rem;
+  right: -0.4rem;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  background: #f5a623;
+  color: #3a2600;
+  font-size: 0.7rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid white;
+  cursor: help;
+}
+
+/* Teleported to <body>, position: fixed — see useFloatingTooltip.js. */
+.bubble-annotation-tooltip-floating {
+  position: fixed;
+  width: max-content;
+  max-width: 200px;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  background: #333;
+  color: white;
+  font-size: 0.72rem;
+  font-weight: 400;
+  line-height: 1.3;
+  text-align: left;
+  pointer-events: none;
+  z-index: 1000;
 }
 
 .bubble-user {
