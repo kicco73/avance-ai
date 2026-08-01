@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ActionButtons from './ActionButtons.vue'
 import MessageBubble from './MessageBubble.vue'
+import SessionsPanel from './SessionsPanel.vue'
 import { errorDetail, errorMessage, setApiError } from '../errorStore.js'
 import { startRecording, stopRecording } from '../mic.js'
 import {
@@ -63,11 +64,6 @@ const chatDisabledReason = computed(() => {
   if (!selectedSessionActive.value) return 'This session is no longer active.'
   return 'Please select:'
 })
-
-function formatSessionTimestamp(iso) {
-  const date = new Date(iso)
-  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString()
-}
 
 // Draggable divider between the sessions panel and the chat itself (same
 // mousedown/movementX pattern as EditProjectView.vue's own split panes).
@@ -172,44 +168,15 @@ async function onAction(actionName) {
     <Transition name="panel-slide-left">
     <div v-if="sessionsPanelOpen" class="sessions-panel-wrap">
       <div class="sessions-panel" :style="{ width: sessionsWidth + 'px' }">
-        <div class="sessions-panel-header">
-          <span>Sessions</span>
-          <div class="sessions-panel-header-actions">
-            <button type="button" class="sessions-panel-icon-btn" title="New session" @click="handleNewSession">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                <path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        <p v-if="sessionsLoading" class="sessions-status">Loading…</p>
-        <p v-else-if="!sessions.length" class="sessions-status">No sessions yet.</p>
-
-        <ul v-else class="sessions-list">
-          <li v-for="session in sessions" :key="session.id" class="session-row">
-            <button
-              type="button"
-              class="session-item"
-              :class="{ 'session-item-active': session.id === currentSessionId }"
-              @click="selectSession(session)"
-            >
-              <span class="session-badge" :class="{ 'session-badge-inactive': !session.active }">
-                {{ session.end_state }}
-              </span>
-              <span class="session-timestamp">{{ formatSessionTimestamp(session.datetime_start) }}</span>
-            </button>
-            <button
-              type="button"
-              class="session-delete-btn"
-              :disabled="deletingSessionId === session.id"
-              title="Delete session"
-              @click="onDeleteSession(session)"
-            >
-              &times;
-            </button>
-          </li>
-        </ul>
+        <SessionsPanel
+          :sessions="sessions"
+          :loading="sessionsLoading"
+          :current-session-id="currentSessionId"
+          :deleting-session-id="deletingSessionId"
+          @select="selectSession"
+          @create="handleNewSession"
+          @delete="onDeleteSession"
+        />
       </div>
 
       <div class="split-divider" @mousedown="startSessionsDrag"></div>
@@ -386,131 +353,6 @@ async function onAction(actionName) {
 
 .split-divider:hover {
   background: #dbe4f0;
-}
-
-.sessions-panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.6rem 0.9rem;
-  border-bottom: 1px solid #ddd;
-  font-weight: 600;
-  font-size: 0.9rem;
-  color: #333;
-}
-
-.sessions-panel-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.sessions-panel-icon-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.6rem;
-  height: 1.6rem;
-  border-radius: 6px;
-  border: 1px solid #4a6fa5;
-  background: white;
-  color: #4a6fa5;
-  cursor: pointer;
-  padding: 0;
-}
-
-.sessions-panel-icon-btn:hover {
-  background: #4a6fa5;
-  color: white;
-}
-
-.sessions-status {
-  margin: 0;
-  padding: 0.75rem 0.9rem;
-  font-size: 0.85rem;
-  color: #666;
-}
-
-.sessions-list {
-  list-style: none;
-  margin: 0;
-  padding: 0.3rem 0;
-  overflow-y: auto;
-}
-
-.session-row {
-  display: flex;
-  align-items: center;
-  gap: 0.2rem;
-  padding: 0 0.4rem;
-}
-
-.session-item {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.3rem;
-  flex: 1;
-  min-width: 0;
-  text-align: left;
-  padding: 0.55rem 0.5rem;
-  border: none;
-  background: none;
-  cursor: pointer;
-}
-
-.session-item:hover {
-  background: #eef2f8;
-}
-
-.session-item-active {
-  background: #e3ebf7;
-}
-
-.session-delete-btn {
-  flex-shrink: 0;
-  width: 1.4rem;
-  height: 1.4rem;
-  line-height: 1;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  color: #c62828;
-  cursor: pointer;
-  font-size: 1rem;
-}
-
-.session-delete-btn:hover:not(:disabled) {
-  background: #fdecea;
-}
-
-.session-delete-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.session-badge {
-  display: inline-block;
-  padding: 0.15rem 0.6rem;
-  border-radius: 999px;
-  background: #4a6fa5;
-  color: white;
-  font-size: 0.72rem;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-}
-
-.session-badge-inactive {
-  background: #999;
-  opacity: 0.5;
-}
-
-.session-timestamp {
-  font-size: 0.75rem;
-  color: #666;
 }
 
 .messages {

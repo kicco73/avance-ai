@@ -262,6 +262,73 @@ class ChatService(object):
         until = datetime.fromisoformat(message["timestamp"])
         return self.metrics.calculate_all(until=until)
 
+    def _require_annotatable_message(self, message_id: int) -> dict:
+        """Raises (404) for an unowned/unknown message, (409) for one that
+        isn't an evaluation point at all (see Message.is_evaluation_point)
+        — nothing was ever computed for it, so there's nothing to annotate
+        against, and (for signals) no linked Signals row to write into."""
+        message = self._require_own_message(message_id)
+        if not message["is_evaluation_point"]:
+            raise ChatServiceError(
+                "This message isn't an evaluation point — nothing to annotate.",
+                status_code=HTTPStatus.CONFLICT,
+            )
+        return message
+
+    def set_message_expected_state(self, message_id: int, expected_state: str | None) -> dict:
+        """Sets (expected_state given) or clears (None) message_id's
+        expert-annotated expected state — see Message.expected_state's own
+        docstring. Returns the updated message. `expected_state` must name
+        a real state in the active project's own automaton — the
+        "Benchmark project" view's States dropdown is populated from
+        exactly that list, but this is the one place that actually
+        enforces it."""
+        self._require_annotatable_message(message_id)
+        if expected_state is not None:
+            automaton, _ = self._project_service.get_active_automaton_and_state()
+            if expected_state == "" or expected_state not in automaton.states:
+                raise ChatServiceError(
+                    f"Unknown state '{expected_state}'.", status_code=HTTPStatus.UNPROCESSABLE_ENTITY
+                )
+        self._db.set_message_expected_state(message_id, expected_state)
+        updated = self._db.get_message(message_id)
+        assert updated is not None  # just written above, under the same id
+        return updated
+
+    def set_message_expected_signals(self, message_id: int, expected_values: dict | None) -> dict:
+        """Sets or clears message_id's expert-annotated expected signal
+        values — see Signals.expected_values's own docstring.
+        `expected_values` is the *whole* replacement dict: a signal name
+        missing from it is annotation-cleared for that signal alone (the
+        "Benchmark project" view's own sliders send the whole dict on
+        every change, never a single-key patch). Every key must name a
+        real signal in the active project, every value a plain number in
+        [0, 100] (see Inspector.vue's own slider range). Returns the
+        updated Signals row (see db.get_signal_row_by_message)."""
+        self._require_annotatable_message(message_id)
+        if expected_values:
+            automaton, _ = self._project_service.get_active_automaton_and_state()
+            valid_names = {s.name for s in automaton.signals}
+            for name, value in expected_values.items():
+                if name not in valid_names:
+                    raise ChatServiceError(
+                        f"Unknown signal '{name}'.", status_code=HTTPStatus.UNPROCESSABLE_ENTITY
+                    )
+                if isinstance(value, bool) or not isinstance(value, (int, float)) or not (0 <= value <= 100):
+                    raise ChatServiceError(
+                        f"Signal '{name}' must be a number between 0 and 100.",
+                        status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
+                    )
+        row = self._db.get_signal_row_by_message(message_id)
+        # _require_annotatable_message above guarantees is_evaluation_point,
+        # which (see link_signal_to_message) is only ever true alongside a
+        # linked Signals row.
+        assert row is not None
+        self._db.set_signal_expected_values(row["id"], expected_values)
+        updated = self._db.get_signal_row_by_message(message_id)
+        assert updated is not None
+        return updated
+
     async def open_if_needed(self, session_id: int) -> dict | None:
         project_name = self._active_project_name
         automaton, state = self._project_service.get_active_automaton_and_state()
@@ -371,20 +438,26 @@ class ChatService(object):
         automaton: Automaton,
         state: State,
         signal_values: dict | None,
-    ) -> tuple[Action | None, State, list[dict]]:
+    ) -> tuple[Action | None, State, list[dict], int | None]:
+        """The trailing `int | None` is the id of whatever Signals row this
+        call's own evaluation persisted (None if auto-tracking is off, or
+        this state has nothing triggerable to evaluate at all — see
+        AutoTracker.run) — the caller links it to the message that caused
+        this call, once that message itself has an id (see
+        _process_turn_locked/link_signal_to_message)."""
         if not self.auto_tracking_enabled:
-            return None, state, []
+            return None, state, [], None
 
-        action, new_state = await self._auto_tracker.run(
+        action, new_state, signal_row_id = await self._auto_tracker.run(
             pending_message, project_name, session_id, automaton, state, signal_values
         )
         if action is None:
-            return None, state, []
+            return None, state, [], signal_row_id
 
         messages = await self._messages_for_transition(
             action, project_name, session_id, automaton, new_state, is_self_loop=(action.target == state.key)
         )
-        return action, new_state, messages
+        return action, new_state, messages, signal_row_id
 
     async def apply_manual_action(self, action_name: str, session_id: int | None) -> dict:
         if self.lock.locked():
@@ -461,13 +534,19 @@ class ChatService(object):
         session = self._require_active_session(session_id, project_name, state.key)
         resolved_session_id = session["id"]
 
+        signal_row_id = None
         if automaton.autotracking_on_user_message:
-            action, state, transition_messages = await self._run_auto_tracking(
+            action, state, transition_messages, signal_row_id = await self._run_auto_tracking(
                 pending_message, project_name, resolved_session_id, automaton, state, {}
             )
             messages.extend(transition_messages)
 
-        self._db.save_message("user", text, resolved_session_id)
+        user_message_id = self._db.save_message("user", text, resolved_session_id)
+        # Only known once the message itself has an id — see
+        # link_signal_to_message's own docstring for why this can't happen
+        # any earlier for the user-message case.
+        if signal_row_id is not None:
+            self._db.link_signal_to_message(signal_row_id, user_message_id)
 
         if state.chat:
             system_prompt, turn_attachments = self._build_turn_prompt(automaton, state)
@@ -494,12 +573,14 @@ class ChatService(object):
             messages.append({"id": assistant_id, "content": reply, "audio_text": audio_text})
 
             if automaton.autotracking_on_ai_message:
-                last_action, state, transition_messages = await self._run_auto_tracking(
+                last_action, state, transition_messages, signal_row_id = await self._run_auto_tracking(
                     None, project_name, resolved_session_id, automaton, state, self._metadata_handler.signal_values(metadata)
                 )
                 if last_action:
                     action = last_action
                 messages.extend(transition_messages)
+                if signal_row_id is not None:
+                    self._db.link_signal_to_message(signal_row_id, assistant_id)
 
         self._session_manager.touch_session(resolved_session_id, state.key)
 

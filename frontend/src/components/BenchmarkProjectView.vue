@@ -1,9 +1,12 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import MessageBubble from './MessageBubble.vue'
+import SessionsPanel from './SessionsPanel.vue'
 import Inspector from './Inspector.vue'
-import { getMessages, getSessionSignals, getSessions } from '../api.js'
-import { currentSessionId } from '../chatStore.js'
+import {
+  getMessages, getSessionSignals, getSessions, putMessageExpectedState, putMessageExpectedSignals
+} from '../api.js'
+import { currentSessionId, sessions, sessionsLoading, loadSessions, selectSession } from '../chatStore.js'
 
 const props = defineProps({
   projectName: {
@@ -30,6 +33,11 @@ const sessionStartState = ref(null)
 
 const inspectorRef = ref(null)
 const inspectorWidth = ref(360)
+// The Sessions panel starts open when there's nothing selected yet, so
+// the picker is immediately visible instead of a dead-end "no session"
+// message with no obvious way out.
+const benchmarkSessionsPanelOpen = ref(!currentSessionId.value)
+const sessionsPanelWidth = ref(240)
 let dragTarget = null
 
 function startInspectorDrag(event) {
@@ -37,14 +45,40 @@ function startInspectorDrag(event) {
   event.preventDefault()
 }
 
+function startSessionsDrag(event) {
+  dragTarget = 'sessions'
+  event.preventDefault()
+}
+
 function onDrag(event) {
-  if (dragTarget !== 'inspector') return
-  inspectorWidth.value = Math.min(560, Math.max(240, inspectorWidth.value - event.movementX))
-  inspectorRef.value?.resize()
+  if (dragTarget === 'inspector') {
+    inspectorWidth.value = Math.min(560, Math.max(240, inspectorWidth.value - event.movementX))
+    inspectorRef.value?.resize()
+  } else if (dragTarget === 'sessions') {
+    sessionsPanelWidth.value = Math.min(420, Math.max(160, sessionsPanelWidth.value + event.movementX))
+  }
 }
 
 function stopDrag() {
   dragTarget = null
+}
+
+// Toggled by the header's own Sessions button, same as ChatWindow.vue's
+// own panel — but a local, independent open/closed flag: the main page's
+// own Sessions panel (see chatStore.js's sessionsPanelOpen) is a separate
+// piece of UI, hidden behind this full-screen overlay while it's open,
+// and shouldn't change just because this view's own panel did.
+function toggleBenchmarkSessionsPanel() {
+  benchmarkSessionsPanelOpen.value = !benchmarkSessionsPanelOpen.value
+  if (benchmarkSessionsPanelOpen.value) loadSessions()
+}
+
+// Picking a session here uses the exact same shared mechanism as every
+// other session picker in the app (see chatStore.js's own selectSession,
+// used by SessionsPanel.vue's other callers) — currentSessionId is the
+// one source of truth, and the watcher below reacts to it changing.
+function onSelectSession(session) {
+  selectSession(session)
 }
 
 function handleWindowResize() {
@@ -61,21 +95,28 @@ async function loadTimeline() {
     return
   }
   loading.value = true
+  selected.value = null
   try {
-    const [messageRows, signalRows, sessions] = await Promise.all([
+    const [messageRows, signalRows, allSessions] = await Promise.all([
       getMessages(sessionId),
       getSessionSignals(sessionId),
       getSessions()
     ])
     rawMessages.value = messageRows
     signalsLog.value = signalRows
-    sessionStartState.value = sessions.find((s) => s.id === sessionId)?.start_state ?? null
+    sessionStartState.value = allSessions.find((s) => s.id === sessionId)?.start_state ?? null
   } catch {
     // already surfaced via apiFetch
   } finally {
     loading.value = false
   }
 }
+
+// A session switch (from this view's own Sessions panel, or the main
+// page's — currentSessionId is shared, see onSelectSession) always shows
+// *that* session's own timeline from scratch — whatever was selected
+// before belonged to a different session's history.
+watch(currentSessionId, loadTimeline)
 
 function toBubbleMessage(m) {
   return { role: m.role, content: m.content, audioText: m.audio_text, timestamp: m.timestamp }
@@ -175,7 +216,12 @@ const firedActionEdge = computed(() => {
 const untilMessageId = computed(() => {
   if (!selected.value) return null
   if (selected.value.kind === 'message') return selected.value.message.id
-  return nearestMessageIdAtOrBefore(selected.value.transition.timestamp)
+  // A transition auto-tracking produced is linked straight back to the
+  // message whose evaluation caused it (see db.py's Signals.message) — an
+  // exact lookup, only falling back to the nearest-before heuristic for a
+  // manual action's transition, which was never evaluated from any
+  // message at all.
+  return selected.value.transition.message_id ?? nearestMessageIdAtOrBefore(selected.value.transition.timestamp)
 })
 
 const signalValues = computed(() => {
@@ -183,6 +229,59 @@ const signalValues = computed(() => {
   const timestamp = selected.value.kind === 'message' ? selected.value.message.timestamp : selected.value.transition.timestamp
   return signalValuesAsOf(timestamp)
 })
+
+// The evaluation-point message backing the current selection, if any —
+// itself for a message click, or (via the message_id resolved above) the
+// message whose evaluation produced a clicked transition. null when the
+// selected point isn't backed by any evaluation at all (a manual action's
+// transition, or a message that never triggered auto-tracking — see
+// Message.is_evaluation_point's own docstring) — the Inspector's
+// annotation controls only ever show for a non-null value here.
+const annotatableMessage = computed(() => {
+  if (!selected.value) return null
+  if (selected.value.kind === 'message') {
+    return selected.value.message.is_evaluation_point ? selected.value.message : null
+  }
+  const messageId = selected.value.transition.message_id
+  return messageId != null ? rawMessages.value.find((m) => m.id === messageId) ?? null : null
+})
+
+// The Signals row annotatableMessage's own evaluation produced — where
+// its expected_values annotation lives (see db.get_signal_row_by_message).
+const annotatableSignalsRow = computed(() => {
+  const messageId = annotatableMessage.value?.id
+  return messageId != null ? signalsLog.value.find((s) => s.message_id === messageId) ?? null : null
+})
+
+const expectedState = computed(() => annotatableMessage.value?.expected_state ?? null)
+const expectedValues = computed(() => {
+  const raw = annotatableSignalsRow.value?.expected_values
+  return raw ? JSON.parse(raw) : {}
+})
+
+async function onUpdateExpectedState(value) {
+  const messageId = annotatableMessage.value?.id
+  if (messageId == null) return
+  try {
+    const updated = await putMessageExpectedState(messageId, value)
+    const idx = rawMessages.value.findIndex((m) => m.id === messageId)
+    if (idx !== -1) rawMessages.value[idx] = { ...rawMessages.value[idx], expected_state: updated.expected_state }
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+async function onUpdateExpectedSignals(values) {
+  const messageId = annotatableMessage.value?.id
+  if (messageId == null) return
+  try {
+    const updated = await putMessageExpectedSignals(messageId, values)
+    const idx = signalsLog.value.findIndex((s) => s.id === updated.id)
+    if (idx !== -1) signalsLog.value[idx] = { ...signalsLog.value[idx], expected_values: updated.expected_values }
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
 
 // Metrics aren't reactive to props on their own (see Inspector.vue's
 // refreshMetrics docstring) — every selection change needs an explicit
@@ -209,42 +308,67 @@ onBeforeUnmount(() => {
     <div class="benchmark-header">
       <h2>Benchmark project — {{ projectName }}</h2>
       <div class="benchmark-header-actions">
+        <button
+          class="sessions-toggle-btn"
+          :class="{ 'sessions-toggle-btn-on': benchmarkSessionsPanelOpen }"
+          @click="toggleBenchmarkSessionsPanel"
+        >
+          Sessions
+        </button>
         <button class="close-btn" @click="emit('close')">Back</button>
       </div>
     </div>
 
     <div class="benchmark-body">
       <div class="benchmark-chat-pane">
-        <p v-if="loading" class="benchmark-status">Loading…</p>
-        <p v-else-if="!currentSessionId" class="benchmark-status">
-          No session selected — pick one from the Sessions panel first.
-        </p>
-        <p v-else-if="!timeline.length" class="benchmark-status">This session has no messages yet.</p>
-
-        <div v-else class="benchmark-timeline">
-          <template v-for="entry in timeline" :key="entry.kind + '-' + (entry.kind === 'message' ? entry.message.id : entry.transition.id)">
-            <div
-              v-if="entry.kind === 'message'"
-              class="benchmark-row benchmark-message-row"
-              :class="[
-                entry.message.role === 'user' ? 'benchmark-message-row-user' : 'benchmark-message-row-assistant',
-                { 'benchmark-row-selected': isMessageSelected(entry.message) }
-              ]"
-              @click="selectMessage(entry.message)"
-            >
-              <MessageBubble :message="toBubbleMessage(entry.message)" show-timestamp />
+        <Transition name="panel-slide-left">
+          <div v-if="benchmarkSessionsPanelOpen" class="sessions-panel-wrap">
+            <div class="sessions-panel" :style="{ width: sessionsPanelWidth + 'px' }">
+              <SessionsPanel
+                :sessions="sessions"
+                :loading="sessionsLoading"
+                :current-session-id="currentSessionId"
+                :allow-create="false"
+                :allow-delete="false"
+                @select="onSelectSession"
+              />
             </div>
+            <div class="split-divider" @mousedown="startSessionsDrag"></div>
+          </div>
+        </Transition>
 
-            <div
-              v-else
-              class="benchmark-row benchmark-transition-row"
-              :class="{ 'benchmark-row-selected': isTransitionSelected(entry.transition) }"
-              @click="selectTransition(entry.transition)"
-            >
-              <span class="benchmark-transition-arrow">→</span>
-              <span class="benchmark-transition-badge">{{ entry.transition.new_state }}</span>
-            </div>
-          </template>
+        <div class="benchmark-chat-content">
+          <p v-if="loading" class="benchmark-status">Loading…</p>
+          <p v-else-if="!currentSessionId" class="benchmark-status">
+            No session selected — pick one from the Sessions panel first.
+          </p>
+          <p v-else-if="!timeline.length" class="benchmark-status">This session has no messages yet.</p>
+
+          <div v-else class="benchmark-timeline">
+            <template v-for="entry in timeline" :key="entry.kind + '-' + (entry.kind === 'message' ? entry.message.id : entry.transition.id)">
+              <div
+                v-if="entry.kind === 'message'"
+                class="benchmark-row benchmark-message-row"
+                :class="[
+                  entry.message.role === 'user' ? 'benchmark-message-row-user' : 'benchmark-message-row-assistant',
+                  { 'benchmark-row-selected': isMessageSelected(entry.message) }
+                ]"
+                @click="selectMessage(entry.message)"
+              >
+                <MessageBubble :message="toBubbleMessage(entry.message)" show-timestamp />
+              </div>
+
+              <div
+                v-else
+                class="benchmark-row benchmark-transition-row"
+                :class="{ 'benchmark-row-selected': isTransitionSelected(entry.transition) }"
+                @click="selectTransition(entry.transition)"
+              >
+                <span class="benchmark-transition-arrow">→</span>
+                <span class="benchmark-transition-badge">{{ entry.transition.new_state }}</span>
+              </div>
+            </template>
+          </div>
         </div>
       </div>
 
@@ -258,7 +382,12 @@ onBeforeUnmount(() => {
           :fired-action-edge="firedActionEdge"
           :signal-values="signalValues"
           :until-message-id="untilMessageId"
+          :annotatable="annotatableMessage != null"
+          :expected-state="expectedState"
+          :expected-values="expectedValues"
           :closable="false"
+          @update-expected-state="onUpdateExpectedState"
+          @update-expected-signals="onUpdateExpectedSignals"
         />
       </div>
     </div>
@@ -309,6 +438,28 @@ onBeforeUnmount(() => {
   color: white;
 }
 
+.sessions-toggle-btn {
+  padding: 0.4rem 1rem;
+  border-radius: 6px;
+  border: 1px solid #4a6fa5;
+  background: white;
+  color: #4a6fa5;
+  cursor: pointer;
+}
+
+.sessions-toggle-btn:hover {
+  background: #eef2f9;
+}
+
+.sessions-toggle-btn-on {
+  background: #4a6fa5;
+  color: white;
+}
+
+.sessions-toggle-btn-on:hover {
+  background: #3d5c8a;
+}
+
 .benchmark-body {
   flex: 1;
   display: flex;
@@ -321,10 +472,45 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 0;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   border: 1px solid #ddd;
   border-radius: 8px;
   overflow: hidden;
+}
+
+.sessions-panel-wrap {
+  display: flex;
+  flex-direction: row;
+  min-width: 0;
+  min-height: 0;
+}
+
+.panel-slide-left-enter-active,
+.panel-slide-left-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.panel-slide-left-enter-from,
+.panel-slide-left-leave-to {
+  opacity: 0;
+  transform: translateX(-16px);
+}
+
+.sessions-panel {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  min-height: 0;
+  border-right: 1px solid #ddd;
+  background: #f9fafb;
+}
+
+.benchmark-chat-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .benchmark-status {

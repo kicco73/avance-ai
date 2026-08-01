@@ -19,6 +19,8 @@ from schemas import (
     AiModelSelectionRequest,
     AutoTrackingRequest,
     ChatMessageRequest,
+    ExpectedSignalsRequest,
+    ExpectedStateRequest,
     TriggersPreviewRequest,
 )
 
@@ -167,6 +169,23 @@ class AvanceController(object):
         view, which reconstructs state/signal values at any point in the
         session's timeline entirely client-side from this one call."""
         return self.chat_service.get_session_signals(session_id)
+
+    @put("/api/chat/messages/{message_id}/expected-state")
+    def put_message_expected_state(self, message_id: int, req: ExpectedStateRequest):
+        """Sets or (expected_state: null) clears message_id's expert-
+        annotated expected state — the "Benchmark project" view's States
+        tab. ChatServiceError (404 unowned/unknown message, 409 not an
+        evaluation point, 422 unknown state) is handled globally, see
+        error_handlers.py."""
+        return self.chat_service.set_message_expected_state(message_id, req.expected_state)
+
+    @put("/api/chat/messages/{message_id}/expected-signals")
+    def put_message_expected_signals(self, message_id: int, req: ExpectedSignalsRequest):
+        """Sets or clears message_id's expert-annotated expected signal
+        values — the "Benchmark project" view's Signals tab. Same error
+        handling as put_message_expected_state, plus 422 for an unknown
+        signal name or an out-of-range value."""
+        return self.chat_service.set_message_expected_signals(message_id, req.expected_values)
 
     @post("/api/chat/messages")
     async def post_message(self, req: ChatMessageRequest):

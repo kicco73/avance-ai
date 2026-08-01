@@ -40,11 +40,14 @@ class AutoTracker(object):
         automaton: Automaton,
         state: State,
         signal_values: dict | None,
-    ) -> tuple[Action | None, State]:
-        """Returns (None, state) if nothing fired, else (action, the
-        state it landed on) — with the transition already persisted."""
+    ) -> tuple[Action | None, State, int | None]:
+        """Returns (None, state, None) if nothing was even evaluated (no
+        triggerable action to check), else (action or None, the resulting
+        state, the id of the Signals row the evaluation itself persisted —
+        see ChatService._run_auto_tracking, which links that row back to
+        whichever message caused this call)."""
         if not state.has_triggerable_actions:
-            return None, state
+            return None, state, None
 
         if not signal_values:
             # fallback, we need to call AI to compute values
@@ -64,8 +67,8 @@ class AutoTracker(object):
         if triggered_action is None:
             # No transition fired — just the evaluation itself is worth
             # keeping (see db.get_latest_signal_snapshot, Signals.values).
-            self._db.save_signal_snapshot(signal_values, session_id)
-            return None, state
+            signal_row_id = self._db.save_signal_snapshot(signal_values, session_id)
+            return None, state, signal_row_id
 
         action = automaton.move(state.key, triggered_action)
         # Always saved, self-loop or not — a fired trigger is a real event
@@ -73,7 +76,7 @@ class AutoTracker(object):
         # history_cutoff's timestamp (see db.get_last_transition_timestamp).
         # The full evaluated values ride along on this same row (see
         # db.py's Signals) instead of a separate snapshot row to link to.
-        self._db.save_transition(
+        signal_row_id = self._db.save_transition(
             state.key,
             triggered_action,
             action.target,
@@ -83,4 +86,4 @@ class AutoTracker(object):
         )
 
         new_state = automaton.get_state(action.target)
-        return action, new_state
+        return action, new_state, signal_row_id

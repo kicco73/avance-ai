@@ -48,13 +48,42 @@ const props = defineProps({
   // — enables the attachment buttons in the detail card/Signals tab and
   // their disabled state. null (BenchmarkView's default) hides them
   // entirely: there's no file explorer to jump an attachment into.
-  editableFiles: { type: Array, default: null }
+  editableFiles: { type: Array, default: null },
+  // BenchmarkView-only: whether the currently selected point has an
+  // evaluation-point message backing it (see backend Message.
+  // is_evaluation_point) to annotate against. false hides every
+  // annotation control below regardless of expectedState/expectedValues
+  // — EditProjectView never sets this, so it never renders them.
+  annotatable: { type: Boolean, default: false },
+  // The point's current expected_state annotation, or null if unannotated
+  // — see the States tab's own dropdown.
+  expectedState: { type: String, default: null },
+  // { [signalName]: number } — the point's current expected_values
+  // annotation (only the signals actually annotated) — see the Signals
+  // tab's own sliders.
+  expectedValues: { type: Object, default: () => ({}) }
 })
 
-const emit = defineEmits(['jump-to-definition', 'select-attachment', 'close'])
+const emit = defineEmits([
+  'jump-to-definition', 'select-attachment', 'close', 'update-expected-state', 'update-expected-signals'
+])
 
 function attachmentLabel(index) {
   return String.fromCharCode(97 + index)
+}
+
+// Signals annotations are always PUT as the whole replacement dict (see
+// api.js's putMessageExpectedSignals) — every change here starts from the
+// current expectedValues prop and adds/removes exactly one key, so the
+// parent never has to reconstruct a partial patch itself.
+function onExpectedSignalChange(signalName, rawValue) {
+  emit('update-expected-signals', { ...props.expectedValues, [signalName]: Number(rawValue) })
+}
+
+function onClearExpectedSignal(signalName) {
+  const next = { ...props.expectedValues }
+  delete next[signalName]
+  emit('update-expected-signals', next)
 }
 
 const inspectorTab = ref('graph') // 'graph' | 'signals' | 'metrics' | 'model'
@@ -507,6 +536,28 @@ onBeforeUnmount(destroyGraph)
 
   <div class="inspector-body">
     <div v-show="inspectorTab === 'graph'" class="inspector-graph-section">
+      <div v-if="annotatable" class="inspector-annotation-bar">
+        <label class="inspector-annotation-label">Expected state</label>
+        <select
+          class="inspector-annotation-select"
+          :class="{ 'inspector-annotation-select-diff': expectedState != null && expectedState !== highlightedStateKey }"
+          :value="expectedState ?? highlightedStateKey ?? ''"
+          @change="emit('update-expected-state', $event.target.value)"
+        >
+          <option v-for="node in graphNodes" :key="node.key" :value="node.key">{{ node.ui_label }}</option>
+        </select>
+        <button
+          v-if="expectedState != null"
+          type="button"
+          class="inspector-annotation-clear-btn"
+          title="Remove annotation"
+          @click="emit('update-expected-state', null)"
+        >
+          ×
+        </button>
+        <span class="inspector-annotation-help" title="Mark the expected state after this message.">?</span>
+      </div>
+
       <div class="inspector-graph-host-wrap">
         <p v-if="graphLoading" class="signals-status inspector-graph-status">Loading…</p>
         <div ref="graphHost" class="inspector-graph-host"></div>
@@ -648,6 +699,35 @@ onBeforeUnmount(destroyGraph)
               class="inspector-signal-bar-fill inspector-signal-bar-na"
               :class="{ 'inspector-signal-bar-changed': recentlyChangedSignals.has(signal.name) }"
             ></div>
+            <!-- The expected-value annotation slider — the current-value
+                 fill above stays the actual observation, untouched; this
+                 is purely an overlay (see .inspector-signal-slider's own
+                 transparent track/thumb-only styling). -->
+            <input
+              v-if="annotatable"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              class="inspector-signal-slider"
+              :class="{ 'inspector-signal-slider-set': expectedValues[signal.name] != null }"
+              :value="expectedValues[signal.name] ?? 0"
+              :title="`Expected: ${expectedValues[signal.name] ?? '—'}`"
+              @click.stop
+              @change="onExpectedSignalChange(signal.name, $event.target.value)"
+            />
+          </div>
+
+          <div v-if="annotatable && expectedValues[signal.name] != null" class="inspector-signal-annotation-footer">
+            <span class="inspector-signal-expected-label">Expected: {{ expectedValues[signal.name] }}</span>
+            <button
+              type="button"
+              class="inspector-annotation-clear-btn"
+              title="Remove annotation"
+              @click.stop="onClearExpectedSignal(signal.name)"
+            >
+              ×
+            </button>
           </div>
         </div>
       </div>
@@ -767,6 +847,68 @@ onBeforeUnmount(destroyGraph)
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+.inspector-annotation-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.6rem;
+  flex-shrink: 0;
+}
+
+.inspector-annotation-label {
+  font-size: 0.78rem;
+  color: #666;
+}
+
+.inspector-annotation-select {
+  flex: 1;
+  min-width: 0;
+  padding: 0.3rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  background: white;
+  font-size: 0.82rem;
+  color: #333;
+}
+
+.inspector-annotation-select-diff {
+  /* Same amber used elsewhere for "pay attention, this differs from what
+     actually happened" (see .inspector-detail-badge-current). */
+  border-color: #f5a623;
+  background: #fff8ec;
+}
+
+.inspector-annotation-clear-btn {
+  flex-shrink: 0;
+  width: 1.4rem;
+  height: 1.4rem;
+  line-height: 1;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: #666;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.inspector-annotation-clear-btn:hover {
+  background: #eee;
+}
+
+.inspector-annotation-help {
+  flex-shrink: 0;
+  width: 1.2rem;
+  height: 1.2rem;
+  border-radius: 50%;
+  border: 1px solid #999;
+  color: #666;
+  font-size: 0.7rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: help;
 }
 
 .inspector-graph-host-wrap {
@@ -1055,11 +1197,12 @@ onBeforeUnmount(destroyGraph)
 }
 
 .inspector-signal-bar-track {
+  position: relative;
   margin-top: 0.4rem;
   height: 10px;
   border-radius: 999px;
   background: #eee;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .inspector-signal-bar-fill {
@@ -1072,6 +1215,81 @@ onBeforeUnmount(destroyGraph)
 .inspector-signal-bar-na {
   width: 100%;
   background: repeating-linear-gradient(45deg, #ccc, #ccc 6px, #ddd 6px, #ddd 12px);
+}
+
+/* The expected-value annotation slider — overlaid on the same track as
+   the current-value fill above, transparent everywhere except its own
+   thumb (see .inspector-signal-slider-set), so both values stay
+   simultaneously visible and directly comparable. */
+.inspector-signal-slider {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+.inspector-signal-slider::-webkit-slider-runnable-track {
+  background: transparent;
+  height: 100%;
+}
+
+.inspector-signal-slider::-moz-range-track {
+  background: transparent;
+  height: 100%;
+}
+
+.inspector-signal-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 4px;
+  height: 16px;
+  margin-top: -3px;
+  border-radius: 2px;
+  border: 1px solid white;
+  background: #999;
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.inspector-signal-slider::-moz-range-thumb {
+  width: 4px;
+  height: 16px;
+  border-radius: 2px;
+  border: 1px solid white;
+  background: #999;
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+/* An actual annotation (as opposed to the slider's own default-at-zero
+   position) gets the same magenta used elsewhere for "this is expert-
+   annotated ground truth" (see .inspector-detail-badge-fired). */
+.inspector-signal-slider-set::-webkit-slider-thumb {
+  background: #ad1457;
+  opacity: 1;
+}
+
+.inspector-signal-slider-set::-moz-range-thumb {
+  background: #ad1457;
+  opacity: 1;
+}
+
+.inspector-signal-annotation-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.3rem;
+}
+
+.inspector-signal-expected-label {
+  font-size: 0.72rem;
+  color: #ad1457;
+  font-weight: 600;
 }
 
 @keyframes inspector-signal-bar-flash {

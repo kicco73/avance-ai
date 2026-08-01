@@ -42,3 +42,40 @@ def test_get_messages_includes_session_id_and_expected_state(db):
     assert len(rows) == 1
     assert rows[0]["session_id"] == session_id
     assert rows[0]["expected_state"] is None
+
+
+def test_new_messages_default_to_not_being_an_evaluation_point(db):
+    session_id = _make_session(db)
+    message_id = db.save_message("user", "hi", session_id)
+
+    assert db.get_message(message_id)["is_evaluation_point"] is False
+    assert db.get_messages(session_id)[0]["is_evaluation_point"] is False
+
+
+def test_link_signal_to_message_flips_is_evaluation_point_and_sets_the_fk(db):
+    session_id = _make_session(db)
+    message_id = db.save_message("user", "hi", session_id)
+    signal_row_id = db.save_signal_snapshot({"foo": 1}, session_id)
+
+    db.link_signal_to_message(signal_row_id, message_id)
+
+    assert db.get_message(message_id)["is_evaluation_point"] is True
+    linked = db.get_signal_row_by_message(message_id)
+    assert linked["id"] == signal_row_id
+
+
+def test_get_signal_row_by_message_is_none_when_unlinked(db):
+    session_id = _make_session(db)
+    message_id = db.save_message("user", "hi", session_id)
+    assert db.get_signal_row_by_message(message_id) is None
+
+
+def test_set_message_expected_state_sets_and_clears(db):
+    session_id = _make_session(db)
+    message_id = db.save_message("user", "hi", session_id)
+
+    db.set_message_expected_state(message_id, "b")
+    assert db.get_message(message_id)["expected_state"] == "b"
+
+    db.set_message_expected_state(message_id, None)
+    assert db.get_message(message_id)["expected_state"] is None

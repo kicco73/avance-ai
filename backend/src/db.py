@@ -10,7 +10,9 @@ import os
 import sqlite3
 from datetime import datetime
 
-from peewee import CharField, DateTimeField, ForeignKeyField, IntegerField, Model, Proxy, TextField, AutoField, fn
+from peewee import (
+    BooleanField, CharField, DateTimeField, ForeignKeyField, IntegerField, Model, Proxy, TextField, AutoField, fn
+)
 from playhouse.db_url import connect, parse as parse_db_url
 
 logger = logging.getLogger(__name__)
@@ -55,10 +57,21 @@ class Message(BaseModel):
     audio_text = TextField(null=True)
     # Expert-provided ground truth for benchmark_metrics (see
     # metrics_framework/benchmark_metrics) — the state an expert says the
-    # automaton should be in immediately after this message. Never set by
-    # the chat flow itself; None until some future annotation feature
-    # writes it.
+    # automaton should be in immediately after this message. Set/cleared
+    # only via ChatService.set_message_expected_state (the "Benchmark
+    # project" view's States annotation — see Inspector.vue).
     expected_state = CharField(null=True)
+    # Whether auto-tracking actually evaluates signals/state right after
+    # this message — decided once, at chat-turn time, from the automaton's
+    # own autotracking_on_user_message/autotracking_on_ai_message flags and
+    # State.has_triggerable_actions (see ChatService._process_turn_locked)
+    # — never recomputed later, since the project's own YAML (and so its
+    # states/triggers) can change after the fact. Only a message with this
+    # set to true has a linked Signals row to annotate (see
+    # Signals.message) — the "Benchmark project" view's annotation
+    # controls are hidden for every other message (see is_evaluation_point
+    # in get_messages/get_message's own payload).
+    is_evaluation_point = BooleanField(default=False)
     # Every message belongs to exactly one ChatSession (see
     # ChatSessionManager) — column name is "session_id" (Peewee's default
     # for a ForeignKeyField named `session`). project_name is reached via
@@ -98,13 +111,26 @@ class Signals(BaseModel):
     timestamp = DateTimeField(index=True, default=datetime.utcnow)
     values = TextField(null=True)  # JSON dict: {"problemRecognition": 42, ...}, or None
     # Expert-provided ground truth for benchmark_metrics (see
-    # metrics_framework/benchmark_metrics) — JSON-serialized the same way
-    # as `values`. Never set by the chat/auto-tracking flow itself; None
-    # until some future annotation feature writes it.
+    # metrics_framework/benchmark_metrics) — a JSON dict, like `values`, but
+    # partial: only the signals the expert actually annotated. Set/cleared
+    # only via ChatService.set_message_expected_signals (the "Benchmark
+    # project" view's Signals annotation — see Inspector.vue). Only ever
+    # meaningful on a row that has `message` set (see below) — never
+    # written on a manual action's row, which has nothing to annotate
+    # against.
     expected_values = TextField(null=True)
     old_state = CharField(null=True, index=True)
     action = CharField(null=True)
     new_state = CharField(null=True, index=True)
+    # The message this row's evaluation ran right after — set only for a
+    # row AutoTracker.run() produced (see ChatService._link_signal_to_message),
+    # null for a manual action's transition (see project_service.
+    # apply_manual_action) or the automaton's own initial transition (see
+    # ChatService.open_if_needed), neither of which has a message to link
+    # to. The one thing that lets an expected_values annotation resolve
+    # back to "which message's evaluation is this" without guessing from
+    # timestamps.
+    message = ForeignKeyField(Message, null=True, backref="signal_row", on_delete="SET NULL")
 
 
 class Archive(BaseModel):
@@ -362,6 +388,10 @@ class Db(object):
     def save_message(
         self, role: str, content: str, session_id: int, audio_text: str | None = None
     ) -> int:
+        # is_evaluation_point starts (and, for most messages, stays) at its
+        # column default of False — only link_signal_to_message ever flips
+        # it, once it's known whether this specific message's processing
+        # actually produced a Signals row to link (see its own docstring).
         message = Message.create(role=role, content=content, session=session_id, audio_text=audio_text)
         return message.id # type: ignore
 
@@ -385,6 +415,7 @@ class Db(object):
             "audio_text": message.audio_text,
             "timestamp": message.timestamp.isoformat(),
             "expected_state": message.expected_state,
+            "is_evaluation_point": message.is_evaluation_point,
             "session_id": message.session_id,
         }
 
@@ -395,9 +426,11 @@ class Db(object):
         limits at the SQL level (descending fetch + reverse) rather than
         slicing a full in-memory list. `since` excludes messages at or
         before that timestamp (a history_cutoff state's entry point).
-        `session_id`/`expected_state` are included on every row for
-        metrics_framework/benchmark_metrics, which pools messages across
-        several sessions and needs to know which one each came from."""
+        `session_id`/`expected_state`/`is_evaluation_point` are included on
+        every row for metrics_framework/benchmark_metrics, which pools
+        messages across several sessions and needs to know which one each
+        came from, and for the "Benchmark project" view (see
+        Message.is_evaluation_point)."""
         query = (
             Message.select()
             .where(Message.session == session_id)
@@ -417,6 +450,7 @@ class Db(object):
                 "audio_text": m.audio_text,
                 "timestamp": m.timestamp.isoformat(),
                 "expected_state": m.expected_state,
+                "is_evaluation_point": m.is_evaluation_point,
                 "session_id": session_id,
             }
             for m in rows
@@ -451,7 +485,10 @@ class Db(object):
         metrics_framework (via db_integration.py's AnalyticsDb protocol)
         and metrics_framework/benchmark_metrics, which additionally needs
         `expected_values` (expert ground truth, JSON-serialized the same
-        way as `values` — see Signals.expected_values)."""
+        way as `values` — see Signals.expected_values) and `message_id`
+        (see Signals.message — the "Benchmark project" view's own way to
+        find "the row this message's evaluation produced", with no
+        timestamp-nearest guessing)."""
         rows = (
             Signals.select()
             .where(Signals.session == session_id)
@@ -466,6 +503,7 @@ class Db(object):
                 "old_state": row.old_state,
                 "action": row.action,
                 "new_state": row.new_state,
+                "message_id": row.message_id,
             }
             for row in rows
         ]
@@ -478,8 +516,8 @@ class Db(object):
         session_id: int,
         transition_log_level: str,
         signal_values: dict | None = None,
-    ) -> None:
-        Signals.create(
+    ) -> int:
+        row = Signals.create(
             session=session_id,
             old_state=old_state,
             action=action,
@@ -493,6 +531,55 @@ class Db(object):
         if signal_values:
             message += f" signals={signal_values}"
         logger.log(level, message)
+        return row.id
+
+    def link_signal_to_message(self, signal_row_id: int, message_id: int) -> None:
+        """Points an already-created Signals row (see save_signal_snapshot/
+        save_transition) back at the message whose processing produced it,
+        and flips that message's own is_evaluation_point to True — the
+        only place either ever changes from their creation-time defaults.
+        Called once auto-tracking has actually run for a message (see
+        ChatService._run_auto_tracking) — never earlier: the user-message
+        case's own evaluation runs before that message is even saved (see
+        ChatService._process_turn_locked's evaluate-then-save order), so
+        neither fact can be set at Signals.create()/save_message() time."""
+        Signals.update(message=message_id).where(Signals.id == signal_row_id).execute()
+        Message.update(is_evaluation_point=True).where(Message.id == message_id).execute()
+
+    def get_signal_row_by_message(self, message_id: int) -> dict | None:
+        """The Signals row `message_id`'s own evaluation produced (see
+        Signals.message/link_signal_to_message), or None if this message
+        isn't an evaluation point at all (see Message.is_evaluation_point).
+        The "Benchmark project" view's own way to read/write a signals
+        annotation for a given message without knowing its Signals row id."""
+        row = Signals.get_or_none(Signals.message == message_id)
+        if row is None:
+            return None
+        return {
+            "id": row.id,
+            "timestamp": row.timestamp.isoformat(),
+            "values": row.values,
+            "expected_values": row.expected_values,
+            "old_state": row.old_state,
+            "action": row.action,
+            "new_state": row.new_state,
+            "message_id": row.message_id,
+        }
+
+    def set_message_expected_state(self, message_id: int, expected_state: str | None) -> None:
+        """Sets (or, with None, clears) message_id's expected_state — see
+        Message.expected_state's own docstring. Existence/ownership and
+        "is this a valid state" are the caller's job (see
+        ChatService.set_message_expected_state)."""
+        Message.update(expected_state=expected_state).where(Message.id == message_id).execute()
+
+    def set_signal_expected_values(self, signal_row_id: int, expected_values: dict | None) -> None:
+        """Sets (or, with None/{}, clears) a Signals row's expected_values —
+        see its own docstring. Existence/ownership and "are these real
+        signal names" are the caller's job (see
+        ChatService.set_message_expected_signals)."""
+        serialized = json.dumps(expected_values) if expected_values else None
+        Signals.update(expected_values=serialized).where(Signals.id == signal_row_id).execute()
 
     def _latest_transition(self, project_name: str, *, real_only: bool = False) -> Signals | None:
         query = (

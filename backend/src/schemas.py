@@ -31,3 +31,16 @@ class AiModelSelectionRequest(BaseModel):
     # index into GET /api/ai/models' `models` pins generation to that
     # entry directly. See ai/ai_service.py's AiService.select_model.
     index: int | None = None
+
+
+class ExpectedStateRequest(BaseModel):
+    # None clears the annotation — see ChatService.set_message_expected_state.
+    expected_state: str | None = None
+
+
+class ExpectedSignalsRequest(BaseModel):
+    # The whole replacement dict — a signal name missing from it is
+    # annotation-cleared for that signal alone; None/{} clears every
+    # signal's annotation for this message. See
+    # ChatService.set_message_expected_signals.
+    expected_values: dict[str, int | float] | None = None

@@ -68,6 +68,29 @@ export function getSessionSignals(sessionId) {
   return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/signals`)
 }
 
+// Sets (expectedState given) or clears (null) messageId's expert-
+// annotated expected state — the "Benchmark project" view's States tab.
+// 409 if messageId isn't an evaluation point, 422 for an unknown state.
+export function putMessageExpectedState(messageId, expectedState) {
+  return apiFetch(`${API_URL}/chat/messages/${encodeURIComponent(messageId)}/expected-state`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expected_state: expectedState })
+  })
+}
+
+// Sets or clears messageId's expert-annotated expected signal values —
+// the "Benchmark project" view's Signals tab. `expectedValues` is the
+// whole replacement dict (a signal name missing from it is annotation-
+// cleared for that signal alone); null/{} clears every signal.
+export function putMessageExpectedSignals(messageId, expectedValues) {
+  return apiFetch(`${API_URL}/chat/messages/${encodeURIComponent(messageId)}/expected-signals`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expected_values: expectedValues })
+  })
+}
+
 export function createChatSocket() {
   return new WebSocket(WS_URL)
 }

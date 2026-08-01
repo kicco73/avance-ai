@@ -119,6 +119,36 @@ def test_get_signals_includes_expected_values_field(db):
     assert rows[0]["expected_values"] is None
 
 
+def test_get_signals_includes_message_id_field(db):
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    message_id = db.save_message("user", "hi", session_id)
+    signal_row_id = db.save_signal_snapshot({"foo": 1}, session_id)
+
+    rows = db.get_signals(session_id)
+    assert rows[0]["message_id"] is None
+
+    db.link_signal_to_message(signal_row_id, message_id)
+    rows = db.get_signals(session_id)
+    assert rows[0]["message_id"] == message_id
+
+
+def test_set_signal_expected_values_sets_and_clears(db):
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    signal_row_id = db.save_signal_snapshot({"foo": 1}, session_id)
+
+    db.set_signal_expected_values(signal_row_id, {"foo": 75})
+    assert db.get_signals(session_id)[0]["expected_values"] == '{"foo": 75}'
+
+    db.set_signal_expected_values(signal_row_id, None)
+    assert db.get_signals(session_id)[0]["expected_values"] is None
+
+
+def test_save_transition_returns_the_new_row_id(db):
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    row_id = db.save_transition("start", "advance", "next", session_id, transition_log_level="INFO")
+    assert db.get_signals(session_id)[0]["id"] == row_id
+
+
 def test_reset_project_deletes_signals_rows_too(db):
     session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
     db.save_transition("", "init", "start", session_id, transition_log_level="INFO", signal_values={"foo": 1})

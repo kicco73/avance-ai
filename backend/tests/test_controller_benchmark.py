@@ -68,3 +68,48 @@ def test_get_metrics_with_an_unknown_message_id_is_404(client, hello_project):
     client.get("/api/chat/session")
     response = client.get("/api/chat/metrics?message_id=999999")
     assert response.status_code == 404
+
+
+def test_get_messages_includes_is_evaluation_point(client, hello_project):
+    """"Hello world" declares no signals/triggers (see
+    test_get_session_signals_returns_the_full_event_log) — nothing it
+    sends is ever an evaluation point."""
+    session = client.get("/api/chat/session").json()
+    client.post("/api/chat/messages", json={"message": "hi", "session_id": session["id"]})
+
+    rows = client.get(f"/api/chat/messages?session_id={session['id']}").json()
+
+    assert rows
+    assert all(row["is_evaluation_point"] is False for row in rows)
+
+
+def test_put_expected_state_is_409_for_a_non_evaluation_point_message(client, hello_project):
+    session = client.get("/api/chat/session").json()
+    turn = client.post("/api/chat/messages", json={"message": "hi", "session_id": session["id"]}).json()
+    message_id = turn["reply"][0]["id"]
+
+    response = client.put(f"/api/chat/messages/{message_id}/expected-state", json={"expected_state": "start"})
+
+    assert response.status_code == 409
+
+
+def test_put_expected_signals_is_409_for_a_non_evaluation_point_message(client, hello_project):
+    session = client.get("/api/chat/session").json()
+    turn = client.post("/api/chat/messages", json={"message": "hi", "session_id": session["id"]}).json()
+    message_id = turn["reply"][0]["id"]
+
+    response = client.put(
+        f"/api/chat/messages/{message_id}/expected-signals", json={"expected_values": {"foo": 50}}
+    )
+
+    assert response.status_code == 409
+
+
+def test_put_expected_state_is_404_for_an_unknown_message(client, hello_project):
+    response = client.put("/api/chat/messages/999999/expected-state", json={"expected_state": "start"})
+    assert response.status_code == 404
+
+
+def test_put_expected_signals_is_404_for_an_unknown_message(client, hello_project):
+    response = client.put("/api/chat/messages/999999/expected-signals", json={"expected_values": {"foo": 50}})
+    assert response.status_code == 404

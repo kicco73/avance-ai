@@ -59,7 +59,7 @@ async def test_a_trigger_referencing_only_a_metric_can_fire(db):
     automaton = _automaton_with_trigger("engagement >= 1")
     session_id = _session_id(db)
 
-    action, new_state = await _tracker(db, automaton).run(
+    action, new_state, _ = await _tracker(db, automaton).run(
         pending_message=None,
         project_name=PROJECT_NAME,
         session_id=session_id,
@@ -76,7 +76,7 @@ async def test_a_metric_referencing_trigger_that_is_not_met_does_not_fire(db):
     automaton = _automaton_with_trigger("engagement >= 99")
     session_id = _session_id(db)
 
-    action, new_state = await _tracker(db, automaton).run(
+    action, new_state, _ = await _tracker(db, automaton).run(
         pending_message=None,
         project_name=PROJECT_NAME,
         session_id=session_id,
@@ -133,7 +133,7 @@ async def test_a_trigger_can_combine_a_signal_and_a_metric(db):
     automaton = _automaton_with_trigger("mySignal >= 40 and engagement >= 1")
     session_id = _session_id(db)
 
-    action, new_state = await _tracker(db, automaton).run(
+    action, new_state, _ = await _tracker(db, automaton).run(
         pending_message=None,
         project_name=PROJECT_NAME,
         session_id=session_id,
