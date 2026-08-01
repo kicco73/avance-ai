@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import cytoscape from 'cytoscape'
-import { getProjectSignals, getProjectGraph, getMetrics } from '../api.js'
+import { getProjectSignals, getProjectGraph, getMetrics, getBenchmarkMetrics } from '../api.js'
 import { hasSignalValue, useSignalChangeFlash } from '../signalDisplay.js'
 import { renderMarkdown } from '../markdown.js'
 
@@ -49,11 +49,11 @@ const props = defineProps({
   // their disabled state. null (BenchmarkView's default) hides them
   // entirely: there's no file explorer to jump an attachment into.
   editableFiles: { type: Array, default: null },
-  // BenchmarkView-only: whether the currently selected point has an
-  // evaluation-point message backing it (see backend Message.
-  // is_evaluation_point) to annotate against. false hides every
-  // annotation control below regardless of expectedState/expectedValues
-  // — EditProjectView never sets this, so it never renders them.
+  // BenchmarkView-only: whether the currently selected point has a
+  // Signals row linked to it (see backend Signals.message) to annotate
+  // against. false hides every annotation control below regardless of
+  // expectedState/expectedValues — EditProjectView never sets this, so
+  // it never renders them.
   annotatable: { type: Boolean, default: false },
   // The point's current expected_state annotation, or null if unannotated
   // — see the States tab's own dropdown.
@@ -61,7 +61,18 @@ const props = defineProps({
   // { [signalName]: number } — the point's current expected_values
   // annotation (only the signals actually annotated) — see the Signals
   // tab's own sliders.
-  expectedValues: { type: Object, default: () => ({}) }
+  expectedValues: { type: Object, default: () => ({}) },
+  // BenchmarkView-only: shows the Performance tab (expert-annotation-vs-
+  // actual benchmark metrics — see backend metrics_framework/
+  // benchmark_metrics) when true. EditProjectView never sets this: those
+  // metrics only ever reflect annotations, which only exist in Benchmark
+  // mode.
+  showPerformanceTab: { type: Boolean, default: false },
+  // Which session's own annotations the Performance tab is scoped to —
+  // see api.js's getBenchmarkMetrics. Changing it (the "Benchmark
+  // project" view's own session picker) refreshes the tab like any other
+  // annotation change would.
+  benchmarkSessionId: { type: [Number, String], default: null }
 })
 
 const emit = defineEmits([
@@ -72,12 +83,42 @@ function attachmentLabel(index) {
   return String.fromCharCode(97 + index)
 }
 
+// A signal's slider mid-drag, not yet committed (see onExpectedSignalInput/
+// onExpectedSignalChange) — drives the knob position and the semi-
+// transparent fill in real time without round-tripping to the backend on
+// every pixel of movement; @change (drag release) is what actually saves.
+const draggingExpectedValues = ref({})
+
+// The value the knob/fill for `signalName` should show right now: mid-
+// drag first, then the saved annotation, else — so a never-annotated
+// signal starts at what was actually observed, not stuck at 0 — the
+// signal's own current computed value.
+function displayedExpectedValue(signalName) {
+  if (draggingExpectedValues.value[signalName] != null) return draggingExpectedValues.value[signalName]
+  if (props.expectedValues[signalName] != null) return props.expectedValues[signalName]
+  return props.signalValues[signalName]?.value ?? 0
+}
+
+// Whether to show the "this is an actual annotation" color (magenta) as
+// opposed to the neutral "just previewing the current value" one — true
+// while dragging (about to become one) or once actually saved.
+function isExpectedValueSet(signalName) {
+  return draggingExpectedValues.value[signalName] != null || props.expectedValues[signalName] != null
+}
+
+function onExpectedSignalInput(signalName, rawValue) {
+  draggingExpectedValues.value = { ...draggingExpectedValues.value, [signalName]: Number(rawValue) }
+}
+
 // Signals annotations are always PUT as the whole replacement dict (see
 // api.js's putMessageExpectedSignals) — every change here starts from the
 // current expectedValues prop and adds/removes exactly one key, so the
 // parent never has to reconstruct a partial patch itself.
 function onExpectedSignalChange(signalName, rawValue) {
   emit('update-expected-signals', { ...props.expectedValues, [signalName]: Number(rawValue) })
+  const next = { ...draggingExpectedValues.value }
+  delete next[signalName]
+  draggingExpectedValues.value = next
 }
 
 function onClearExpectedSignal(signalName) {
@@ -94,6 +135,10 @@ const signals = ref([])
 const metricsLoading = ref(false)
 const metrics = ref([])
 const { recentlyChanged: recentlyChangedMetrics, markChanged: markMetricsChanged } = useSignalChangeFlash()
+
+const performanceLoading = ref(false)
+const performanceMetrics = ref([])
+const { recentlyChanged: recentlyChangedPerformance, markChanged: markPerformanceChanged } = useSignalChangeFlash()
 
 const { recentlyChanged: recentlyChangedSignals, markChanged: markSignalsChanged } = useSignalChangeFlash()
 watch(
@@ -397,6 +442,19 @@ async function loadMetrics() {
   }
 }
 
+async function loadPerformanceMetrics() {
+  performanceLoading.value = true
+  try {
+    const nextMetrics = await getBenchmarkMetrics(props.benchmarkSessionId ?? undefined)
+    markPerformanceChanged(performanceMetrics.value, nextMetrics)
+    performanceMetrics.value = nextMetrics
+  } catch {
+    // already surfaced via apiFetch
+  } finally {
+    performanceLoading.value = false
+  }
+}
+
 function applyCurrentStateHighlight() {
   if (!cyGraph) return
   cyGraph.nodes().removeClass('current-state')
@@ -454,6 +512,8 @@ function setInspectorTab(tab) {
     })
   } else if (tab === 'metrics') {
     loadMetrics()
+  } else if (tab === 'performance') {
+    loadPerformanceMetrics()
   }
 }
 
@@ -466,6 +526,11 @@ watch(
 )
 watch(() => props.nextActionEdge, applyNextActionHighlight, { deep: true })
 watch(() => props.firedActionEdge, applyFiredActionHighlight, { deep: true })
+// A different session under review is exactly like an annotation
+// changing, as far as the Performance tab is concerned — same refresh.
+watch(() => props.benchmarkSessionId, () => {
+  if (inspectorTab.value === 'performance') loadPerformanceMetrics()
+})
 
 // Reloads the project's own definitions (graph + signals) — called by a
 // parent that just saved an edit (EditProjectView); nothing to reload for
@@ -484,11 +549,22 @@ async function refreshMetrics() {
   if (inspectorTab.value === 'metrics') await loadMetrics()
 }
 
+// Same idea as refreshMetrics, for the Performance tab — called by
+// BenchmarkProjectView.vue whenever an annotation (expected_state or
+// expected_values) is actually saved/cleared, since that's the only
+// thing benchmark metrics ever reflect (see metrics_framework/
+// benchmark_metrics's own README: "only expert-annotated points
+// contribute"). Never prefetched in the background, same reasoning as
+// core metrics.
+async function refreshPerformance() {
+  if (inspectorTab.value === 'performance') await loadPerformanceMetrics()
+}
+
 function resize() {
   cyGraph?.resize()
 }
 
-defineExpose({ refresh, refreshMetrics, resize })
+defineExpose({ refresh, refreshMetrics, refreshPerformance, resize })
 
 onMounted(async () => {
   await nextTick() // graphHost only exists once this component has mounted
@@ -523,6 +599,14 @@ onBeforeUnmount(destroyGraph)
       @click="setInspectorTab('metrics')"
     >
       Metrics
+    </button>
+    <button
+      v-if="showPerformanceTab"
+      class="inspector-tab-btn"
+      :class="{ 'inspector-tab-btn-active': inspectorTab === 'performance' }"
+      @click="setInspectorTab('performance')"
+    >
+      Performance
     </button>
     <button
       v-if="showModelTab"
@@ -699,10 +783,17 @@ onBeforeUnmount(destroyGraph)
               class="inspector-signal-bar-fill inspector-signal-bar-na"
               :class="{ 'inspector-signal-bar-changed': recentlyChangedSignals.has(signal.name) }"
             ></div>
-            <!-- The expected-value annotation slider — the current-value
-                 fill above stays the actual observation, untouched; this
-                 is purely an overlay (see .inspector-signal-slider's own
-                 transparent track/thumb-only styling). -->
+            <!-- The expected-value annotation overlay — the current-value
+                 fill above stays the actual observation, untouched. The
+                 semi-transparent fill tracks the knob (mid-drag or
+                 committed) so the annotated point is legible at a glance,
+                 not just from the knob's own position. -->
+            <div
+              v-if="annotatable"
+              class="inspector-signal-expected-fill"
+              :class="{ 'inspector-signal-expected-fill-set': isExpectedValueSet(signal.name) }"
+              :style="{ width: displayedExpectedValue(signal.name) + '%' }"
+            ></div>
             <input
               v-if="annotatable"
               type="range"
@@ -710,17 +801,21 @@ onBeforeUnmount(destroyGraph)
               max="100"
               step="1"
               class="inspector-signal-slider"
-              :class="{ 'inspector-signal-slider-set': expectedValues[signal.name] != null }"
-              :value="expectedValues[signal.name] ?? 0"
+              :class="{ 'inspector-signal-slider-set': isExpectedValueSet(signal.name) }"
+              :value="displayedExpectedValue(signal.name)"
               :title="`Expected: ${expectedValues[signal.name] ?? '—'}`"
               @click.stop
+              @input="onExpectedSignalInput(signal.name, $event.target.value)"
               @change="onExpectedSignalChange(signal.name, $event.target.value)"
             />
           </div>
 
-          <div v-if="annotatable && expectedValues[signal.name] != null" class="inspector-signal-annotation-footer">
-            <span class="inspector-signal-expected-label">Expected: {{ expectedValues[signal.name] }}</span>
+          <div v-if="annotatable && isExpectedValueSet(signal.name)" class="inspector-signal-annotation-footer">
+            <span class="inspector-signal-expected-label">
+              Expected: {{ draggingExpectedValues[signal.name] ?? expectedValues[signal.name] }}
+            </span>
             <button
+              v-if="expectedValues[signal.name] != null"
               type="button"
               class="inspector-annotation-clear-btn"
               title="Remove annotation"
@@ -753,6 +848,37 @@ onBeforeUnmount(destroyGraph)
               :style="{ width: metric.value + '%' }"
             ></div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="showPerformanceTab" v-show="inspectorTab === 'performance'" class="inspector-metrics-section">
+      <p v-if="performanceLoading" class="signals-status">Loading…</p>
+      <p v-else-if="!performanceMetrics.length" class="signals-status">No benchmark metrics computed yet.</p>
+      <div v-else class="inspector-signal-list">
+        <div v-for="metric in performanceMetrics" :key="metric.name" class="inspector-signal-block">
+          <div class="inspector-signal-header">
+            <span class="inspector-detail-badge inspector-detail-badge-performance">Performance</span>
+            <span class="inspector-signal-name">{{ metric.ui_label || metric.name }}</span>
+          </div>
+          <span v-if="metric.ui_description" class="inspector-signal-ui_description">
+            {{ metric.ui_description }}
+          </span>
+
+          <div class="inspector-signal-bar-track">
+            <div
+              class="inspector-signal-bar-fill"
+              :class="{ 'inspector-signal-bar-changed': recentlyChangedPerformance.has(metric.name) }"
+              :style="{ width: metric.value + '%' }"
+            ></div>
+          </div>
+          <!-- See metrics_framework/benchmark_metrics's own README: a
+               score is meaningless without knowing how many annotated
+               points produced it — always shown alongside, never
+               discarded. -->
+          <span class="inspector-performance-sample-count">
+            {{ metric.sample_count }} annotated {{ metric.sample_count === 1 ? 'point' : 'points' }}
+          </span>
         </div>
       </div>
     </div>
@@ -998,6 +1124,10 @@ onBeforeUnmount(destroyGraph)
   background: #ad1457;
 }
 
+.inspector-detail-badge-performance {
+  background: #1565c0;
+}
+
 .inspector-detail-badge-current {
   background: #f5a623;
   color: #3a2600;
@@ -1196,6 +1326,13 @@ onBeforeUnmount(destroyGraph)
   line-height: 1.4;
 }
 
+.inspector-performance-sample-count {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 0.7rem;
+  color: #888;
+}
+
 .inspector-signal-bar-track {
   position: relative;
   margin-top: 0.4rem;
@@ -1217,9 +1354,27 @@ onBeforeUnmount(destroyGraph)
   background: repeating-linear-gradient(45deg, #ccc, #ccc 6px, #ddd 6px, #ddd 12px);
 }
 
+/* The expected-value annotation overlay — a semi-transparent fill up to
+   the knob's own position (see .inspector-signal-slider below), so the
+   annotated point reads clearly against the current-value fill beneath
+   it without hiding it (see displayedExpectedValue/isExpectedValueSet). */
+.inspector-signal-expected-fill {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  border-radius: 999px;
+  background: rgba(153, 153, 153, 0.3);
+  pointer-events: none;
+  transition: width 0.1s ease;
+}
+
+.inspector-signal-expected-fill-set {
+  background: rgba(173, 20, 87, 0.3);
+}
+
 /* The expected-value annotation slider — overlaid on the same track as
    the current-value fill above, transparent everywhere except its own
-   thumb (see .inspector-signal-slider-set), so both values stay
+   knob (see .inspector-signal-slider-set), so both values stay
    simultaneously visible and directly comparable. */
 .inspector-signal-slider {
   position: absolute;
@@ -1246,37 +1401,35 @@ onBeforeUnmount(destroyGraph)
 .inspector-signal-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 4px;
-  height: 16px;
-  margin-top: -3px;
-  border-radius: 2px;
-  border: 1px solid white;
+  width: 14px;
+  height: 14px;
+  margin-top: -2px;
+  border-radius: 50%;
+  border: 2px solid white;
   background: #999;
-  opacity: 0.6;
-  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  cursor: grab;
 }
 
 .inspector-signal-slider::-moz-range-thumb {
-  width: 4px;
-  height: 16px;
-  border-radius: 2px;
-  border: 1px solid white;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid white;
   background: #999;
-  opacity: 0.6;
-  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  cursor: grab;
 }
 
-/* An actual annotation (as opposed to the slider's own default-at-zero
-   position) gets the same magenta used elsewhere for "this is expert-
-   annotated ground truth" (see .inspector-detail-badge-fired). */
+/* An actual annotation (as opposed to the knob's own default-at-the-
+   current-value position) gets the same magenta used elsewhere for "this
+   is expert-annotated ground truth" (see .inspector-detail-badge-fired). */
 .inspector-signal-slider-set::-webkit-slider-thumb {
   background: #ad1457;
-  opacity: 1;
 }
 
 .inspector-signal-slider-set::-moz-range-thumb {
   background: #ad1457;
-  opacity: 1;
 }
 
 .inspector-signal-annotation-footer {

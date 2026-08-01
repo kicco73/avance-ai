@@ -89,6 +89,16 @@ class AvanceController(object):
         `message_id`) is handled globally, see error_handlers.py."""
         return self.chat_service.get_metrics(message_id)
 
+    @get("/api/chat/benchmark-metrics")
+    def get_benchmark_metrics(self, session_id: int | None = None):
+        """Expert-annotation-vs-actual benchmark metrics (see
+        metrics_framework/benchmark_metrics) for the active user+project —
+        every annotated session, or (session_id given) just that one. For
+        the "Benchmark project" view's Performance tab. ChatServiceError
+        (404 for an unknown/not-yours session_id) is handled globally,
+        see error_handlers.py."""
+        return self.chat_service.get_benchmark_metrics(session_id)
+
     @get("/api/state")
     def get_state(self):
         """Also the frontend's boot/readiness ping (see App.vue's

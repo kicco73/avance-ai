@@ -182,6 +182,16 @@ export function getMetrics(messageId) {
   return apiFetch(`${API_URL}/chat/metrics${query}`)
 }
 
+// Expert-annotation-vs-actual benchmark metrics (see backend's
+// metrics_framework/benchmark_metrics) for the active user+project —
+// every annotated session, or (sessionId given) just that one. Same
+// {name, ui_label, ui_description, value} shape as getMetrics, plus
+// sample_count — the "Benchmark project" view's Performance tab.
+export function getBenchmarkMetrics(sessionId) {
+  const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
+  return apiFetch(`${API_URL}/chat/benchmark-metrics${query}`)
+}
+
 export function postAction(actionName, sessionId) {
   return apiFetch(`${API_URL}/action`, {
     method: 'POST',

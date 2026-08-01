@@ -132,6 +132,18 @@ def test_get_signals_includes_message_id_field(db):
     assert rows[0]["message_id"] == message_id
 
 
+def test_get_signals_includes_expected_state_field(db):
+    """Nothing writes expected_state yet in this test (see
+    Signals.expected_state's own docstring) — it's just always present,
+    currently always None."""
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    db.save_signal_snapshot({"foo": 1}, session_id)
+
+    rows = db.get_signals(session_id)
+
+    assert rows[0]["expected_state"] is None
+
+
 def test_set_signal_expected_values_sets_and_clears(db):
     session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
     signal_row_id = db.save_signal_snapshot({"foo": 1}, session_id)
@@ -141,6 +153,60 @@ def test_set_signal_expected_values_sets_and_clears(db):
 
     db.set_signal_expected_values(signal_row_id, None)
     assert db.get_signals(session_id)[0]["expected_values"] is None
+
+
+def test_set_signal_expected_state_sets_and_clears(db):
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    signal_row_id = db.save_signal_snapshot({"foo": 1}, session_id)
+
+    db.set_signal_expected_state(signal_row_id, "b")
+    assert db.get_signals(session_id)[0]["expected_state"] == "b"
+
+    db.set_signal_expected_state(signal_row_id, None)
+    assert db.get_signals(session_id)[0]["expected_state"] is None
+
+
+def test_link_signal_to_message_sets_the_fk_both_ways(db):
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    message_id = db.save_message("user", "hi", session_id)
+    signal_row_id = db.save_signal_snapshot({"foo": 1}, session_id)
+
+    db.link_signal_to_message(signal_row_id, message_id)
+
+    linked = db.get_signal_row_by_message(message_id)
+    assert linked is not None
+    assert linked["id"] == signal_row_id
+    assert db.get_signals(session_id)[0]["message_id"] == message_id
+
+
+def test_get_signal_row_by_message_is_none_when_unlinked(db):
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    message_id = db.save_message("user", "hi", session_id)
+    assert db.get_signal_row_by_message(message_id) is None
+
+
+def test_save_signal_snapshot_accepts_a_message_id_at_creation(db):
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    message_id = db.save_message("assistant", "hi", session_id)
+
+    signal_row_id = db.save_signal_snapshot({"foo": 1}, session_id, message_id=message_id)
+
+    linked = db.get_signal_row_by_message(message_id)
+    assert linked is not None
+    assert linked["id"] == signal_row_id
+
+
+def test_save_transition_accepts_a_message_id_at_creation(db):
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    message_id = db.save_message("assistant", "hi", session_id)
+
+    row_id = db.save_transition(
+        "start", "advance", "next", session_id, transition_log_level="INFO", message_id=message_id
+    )
+
+    linked = db.get_signal_row_by_message(message_id)
+    assert linked is not None
+    assert linked["id"] == row_id
 
 
 def test_save_transition_returns_the_new_row_id(db):

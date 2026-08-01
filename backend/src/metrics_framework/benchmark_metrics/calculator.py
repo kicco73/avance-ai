@@ -48,6 +48,15 @@ class BenchmarkCalculator(object):
             BenchmarkConsistencyMetric(self._configuration),
         )
 
+    @property
+    def metrics(self) -> tuple[BenchmarkMetric, ...]:
+        """The metric instances calculate_all() evaluates, in the same
+        order as its own results — lets a caller (see ChatService.
+        get_benchmark_metrics) pair each BenchmarkMetricResult with its
+        own name/ui_label/ui_description without re-deriving the registry
+        itself (mirrors metrics_framework's own AnalyticsCalculator.metrics)."""
+        return self._metrics
+
     def calculate_all(self) -> list[BenchmarkMetricResult]:
         observations = self._build_observations()
         return [metric.calculate(observations) for metric in self._metrics]
@@ -61,8 +70,14 @@ class BenchmarkCalculator(object):
     def _build_observations(self):
         sessions = self._load_sessions()
         session_ids = [int(row["id"]) for row in sessions]
-        messages = self._load_messages(session_ids)
-        signals = self._load_signals(session_ids)
+        # Signals loaded once per session and reused for both frames: a
+        # message's own expected_state now lives on whichever Signals row
+        # its evaluation produced (see db.py's Signals.message), not on
+        # the message itself — refetching per frame would just double the
+        # db calls for the exact same rows.
+        signal_rows_by_session = {session_id: self._db.get_signals(session_id) for session_id in session_ids}
+        messages = self._load_messages(session_ids, signal_rows_by_session)
+        signals = self._load_signals(session_ids, signal_rows_by_session)
         data = BenchmarkData(
             messages=messages,
             sessions=self._frame(sessions, [
@@ -79,13 +94,19 @@ class BenchmarkCalculator(object):
             return sessions
         return [row for row in sessions if int(row["id"]) == self._session_id]
 
-    def _load_messages(self, session_ids: list[int]) -> pd.DataFrame:
+    def _load_messages(
+        self, session_ids: list[int], signal_rows_by_session: dict[int, list[dict[str, Any]]]
+    ) -> pd.DataFrame:
+        columns = ["id", "role", "content", "audio_text", "timestamp", "expected_state", "session_id"]
         rows: list[dict[str, Any]] = []
         for session_id in session_ids:
-            rows.extend(self._db.get_messages(session_id))
-        columns = [
-            "id", "role", "content", "audio_text", "timestamp", "expected_state", "expected_values", "session_id"
-        ]
+            expected_state_by_message = {
+                row["message_id"]: row["expected_state"]
+                for row in signal_rows_by_session[session_id]
+                if row["message_id"] is not None
+            }
+            for message in self._db.get_messages(session_id):
+                rows.append({**message, "expected_state": expected_state_by_message.get(message["id"])})
         if not rows:
             return pd.DataFrame(columns=columns)
         frame = pd.DataFrame.from_records(rows)
@@ -96,10 +117,12 @@ class BenchmarkCalculator(object):
         frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True)
         return frame[columns].sort_values(["session_id", "timestamp", "id"], kind="stable")
 
-    def _load_signals(self, session_ids: list[int]) -> pd.DataFrame:
+    def _load_signals(
+        self, session_ids: list[int], signal_rows_by_session: dict[int, list[dict[str, Any]]]
+    ) -> pd.DataFrame:
         rows: list[dict[str, Any]] = []
         for session_id in session_ids:
-            for row in self._db.get_signals(session_id):
+            for row in signal_rows_by_session[session_id]:
                 copied = dict(row)
                 copied["session_id"] = session_id
                 rows.append(copied)

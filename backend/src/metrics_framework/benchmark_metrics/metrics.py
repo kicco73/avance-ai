@@ -46,6 +46,14 @@ class StateAccuracyMetric(object):
     def name(self) -> str:
         return "state_accuracy"
 
+    @property
+    def ui_label(self) -> str:
+        return "State Accuracy"
+
+    @property
+    def ui_description(self) -> str:
+        return "Percentage of expert-annotated points where the system reached the expected state."
+
     def calculate(self, observations: tuple[BenchmarkObservation, ...]) -> BenchmarkMetricResult:
         values = [o.state_agreement for o in observations if o.state_agreement is not None]
         return _Statistics.result(self.name, [float(v) for v in values], metadata={"unit": "percent"})
@@ -55,6 +63,14 @@ class SignalAccuracyMetric(object):
     @property
     def name(self) -> str:
         return "signal_accuracy"
+
+    @property
+    def ui_label(self) -> str:
+        return "Signal Accuracy"
+
+    @property
+    def ui_description(self) -> str:
+        return "How close the system's signal values are to the expert's annotated expected values."
 
     def calculate(self, observations: tuple[BenchmarkObservation, ...]) -> BenchmarkMetricResult:
         values = [v for o in observations for v in o.signal_agreements.values()]
@@ -75,6 +91,14 @@ class TransitionResponsivenessMetric(object):
     def name(self) -> str:
         return "transition_responsiveness"
 
+    @property
+    def ui_label(self) -> str:
+        return "Transition Responsiveness"
+
+    @property
+    def ui_description(self) -> str:
+        return "How close in message position and time expected state transitions occurred to when they actually did."
+
     def calculate(self, observations: tuple[BenchmarkObservation, ...]) -> BenchmarkMetricResult:
         values = [
             float(o.transition_responsiveness)
@@ -88,6 +112,14 @@ class BenchmarkAccuracyMetric(object):
     @property
     def name(self) -> str:
         return "benchmark_accuracy"
+
+    @property
+    def ui_label(self) -> str:
+        return "Benchmark Accuracy"
+
+    @property
+    def ui_description(self) -> str:
+        return "Overall agreement with expert expectations — the mean of state accuracy, signal accuracy, and transition responsiveness."
 
     def calculate(self, observations: tuple[BenchmarkObservation, ...]) -> BenchmarkMetricResult:
         state_values = [o.state_agreement for o in observations if o.state_agreement is not None]
@@ -115,6 +147,14 @@ class BenchmarkStabilityMetric(object):
     @property
     def name(self) -> str:
         return "benchmark_stability"
+
+    @property
+    def ui_label(self) -> str:
+        return "Benchmark Stability"
+
+    @property
+    def ui_description(self) -> str:
+        return "How consistent (low-dispersion) the project's behavior is relative to the benchmark, independent of its accuracy."
 
     def calculate(self, observations: tuple[BenchmarkObservation, ...]) -> BenchmarkMetricResult:
         # Stability is calculated from error distributions. For normalized
@@ -147,6 +187,14 @@ class BenchmarkConsistencyMetric(object):
     @property
     def name(self) -> str:
         return "benchmark_consistency"
+
+    @property
+    def ui_label(self) -> str:
+        return "Benchmark Consistency"
+
+    @property
+    def ui_description(self) -> str:
+        return "Absence of a systematic directional bias in signal values or transition timing — 100 means no consistent over/under-estimation."
 
     def calculate(self, observations: tuple[BenchmarkObservation, ...]) -> BenchmarkMetricResult:
         # 100 means no systematic directional error. Signal bias is measured

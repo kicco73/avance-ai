@@ -19,6 +19,7 @@ from chat.metrics_service import ChatMetrics
 from chat.priming import build_priming_messages
 from chat.session_manager import ChatSessionManager
 from chat.signals import Signals
+from metrics_framework import BenchmarkCalculator, BenchmarkConfiguration
 from project.project_service import ProjectService
 from chat.text_filter import TagFilter, ConcatTagFilter
 
@@ -262,50 +263,85 @@ class ChatService(object):
         until = datetime.fromisoformat(message["timestamp"])
         return self.metrics.calculate_all(until=until)
 
+    def get_benchmark_metrics(self, session_id: int | None = None) -> list[dict]:
+        """Expert-annotation-vs-actual benchmark metrics (see
+        metrics_framework/benchmark_metrics) for the active user+project —
+        every annotated session, or (session_id given) just that one. Same
+        {name, ui_label, ui_description, value} shape as the core metrics
+        (see ChatMetrics.calculate_all), plus `sample_count` (how many
+        annotated points fed each metric — see the framework's own
+        README on why that must never be discarded alongside the score) —
+        the "Benchmark project" view's Performance tab.
+        max_session_duration_in_minutes comes from the same single source
+        ChatSessionManager's own open-session window already uses (see
+        config.yml's chat-service.max_session_duration_in_minutes) — never
+        a second, independently-configured value."""
+        if session_id is not None:
+            self._require_own_session(session_id)
+        configuration = BenchmarkConfiguration(
+            max_session_duration_in_minutes=self._session_manager.open_window.total_seconds() / 60.0
+        )
+        calculator = BenchmarkCalculator(
+            self._db, self._username, self._active_project_name, configuration=configuration, session_id=session_id
+        )
+        results = calculator.calculate_all()
+        return [
+            {
+                "name": metric.name,
+                "ui_label": metric.ui_label,
+                "ui_description": metric.ui_description,
+                "value": result.value,
+                "sample_count": result.sample_count,
+            }
+            for metric, result in zip(calculator.metrics, results)
+        ]
+
     def _require_annotatable_message(self, message_id: int) -> dict:
-        """Raises (404) for an unowned/unknown message, (409) for one that
-        isn't an evaluation point at all (see Message.is_evaluation_point)
-        — nothing was ever computed for it, so there's nothing to annotate
-        against, and (for signals) no linked Signals row to write into."""
-        message = self._require_own_message(message_id)
-        if not message["is_evaluation_point"]:
+        """Raises (404) for an unowned/unknown message, (409) for one with
+        no linked Signals row at all (see Signals.message) — nothing was
+        ever computed for it, so there's nothing to annotate against.
+        Returns that Signals row (not the message) — both annotation
+        setters below write straight into it."""
+        self._require_own_message(message_id)
+        row = self._db.get_signal_row_by_message(message_id)
+        if row is None:
             raise ChatServiceError(
                 "This message isn't an evaluation point — nothing to annotate.",
                 status_code=HTTPStatus.CONFLICT,
             )
-        return message
+        return row
 
     def set_message_expected_state(self, message_id: int, expected_state: str | None) -> dict:
-        """Sets (expected_state given) or clears (None) message_id's
-        expert-annotated expected state — see Message.expected_state's own
-        docstring. Returns the updated message. `expected_state` must name
-        a real state in the active project's own automaton — the
-        "Benchmark project" view's States dropdown is populated from
-        exactly that list, but this is the one place that actually
-        enforces it."""
-        self._require_annotatable_message(message_id)
+        """Sets (expected_state given) or clears (None) the expert-
+        annotated expected state for message_id's own evaluation — see
+        Signals.expected_state's own docstring. Returns the updated
+        Signals row. `expected_state` must name a real state in the
+        active project's own automaton — the "Benchmark project" view's
+        States dropdown is populated from exactly that list, but this is
+        the one place that actually enforces it."""
+        row = self._require_annotatable_message(message_id)
         if expected_state is not None:
             automaton, _ = self._project_service.get_active_automaton_and_state()
             if expected_state == "" or expected_state not in automaton.states:
                 raise ChatServiceError(
                     f"Unknown state '{expected_state}'.", status_code=HTTPStatus.UNPROCESSABLE_ENTITY
                 )
-        self._db.set_message_expected_state(message_id, expected_state)
-        updated = self._db.get_message(message_id)
-        assert updated is not None  # just written above, under the same id
+        self._db.set_signal_expected_state(row["id"], expected_state)
+        updated = self._db.get_signal_row_by_message(message_id)
+        assert updated is not None  # just written above, under the same message
         return updated
 
     def set_message_expected_signals(self, message_id: int, expected_values: dict | None) -> dict:
-        """Sets or clears message_id's expert-annotated expected signal
-        values — see Signals.expected_values's own docstring.
-        `expected_values` is the *whole* replacement dict: a signal name
-        missing from it is annotation-cleared for that signal alone (the
-        "Benchmark project" view's own sliders send the whole dict on
-        every change, never a single-key patch). Every key must name a
-        real signal in the active project, every value a plain number in
-        [0, 100] (see Inspector.vue's own slider range). Returns the
-        updated Signals row (see db.get_signal_row_by_message)."""
-        self._require_annotatable_message(message_id)
+        """Sets or clears the expert-annotated expected signal values for
+        message_id's own evaluation — see Signals.expected_values's own
+        docstring. `expected_values` is the *whole* replacement dict: a
+        signal name missing from it is annotation-cleared for that signal
+        alone (the "Benchmark project" view's own sliders send the whole
+        dict on every change, never a single-key patch). Every key must
+        name a real signal in the active project, every value a plain
+        number in [0, 100] (see Inspector.vue's own slider range). Returns
+        the updated Signals row."""
+        row = self._require_annotatable_message(message_id)
         if expected_values:
             automaton, _ = self._project_service.get_active_automaton_and_state()
             valid_names = {s.name for s in automaton.signals}
@@ -319,11 +355,6 @@ class ChatService(object):
                         f"Signal '{name}' must be a number between 0 and 100.",
                         status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
                     )
-        row = self._db.get_signal_row_by_message(message_id)
-        # _require_annotatable_message above guarantees is_evaluation_point,
-        # which (see link_signal_to_message) is only ever true alongside a
-        # linked Signals row.
-        assert row is not None
         self._db.set_signal_expected_values(row["id"], expected_values)
         updated = self._db.get_signal_row_by_message(message_id)
         assert updated is not None

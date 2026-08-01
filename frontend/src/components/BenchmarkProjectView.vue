@@ -19,15 +19,16 @@ const emit = defineEmits(['close'])
 
 const loading = ref(true)
 // Raw backend rows (id, role, content, audio_text, timestamp,
-// expected_state, session_id) — see db.get_messages. Kept as-is (not
-// chatStore.js's live `messages` shape) since this view reviews a fixed
-// past session, never the live conversation.
+// session_id) — see db.get_messages. Kept as-is (not chatStore.js's live
+// `messages` shape) since this view reviews a fixed past session, never
+// the live conversation.
 const rawMessages = ref([])
 // The session's full Signals event log (id, timestamp, values,
-// expected_values, old_state, action, new_state) — see db.get_signals —
-// from which both the timeline's transition rows and every point-in-time
-// signal-values reconstruction below are derived, with no further
-// backend round trips.
+// expected_values, expected_state, old_state, action, new_state,
+// message_id) — see db.get_signals — from which the timeline's
+// transition rows, every point-in-time signal-values reconstruction, and
+// every annotation (see annotatableSignalsRow) are derived, with no
+// further backend round trips.
 const signalsLog = ref([])
 const sessionStartState = ref(null)
 
@@ -230,54 +231,59 @@ const signalValues = computed(() => {
   return signalValuesAsOf(timestamp)
 })
 
-// The evaluation-point message backing the current selection, if any —
-// itself for a message click, or (via the message_id resolved above) the
-// message whose evaluation produced a clicked transition. null when the
-// selected point isn't backed by any evaluation at all (a manual action's
-// transition, or a message that never triggered auto-tracking — see
-// Message.is_evaluation_point's own docstring) — the Inspector's
-// annotation controls only ever show for a non-null value here.
-const annotatableMessage = computed(() => {
-  if (!selected.value) return null
-  if (selected.value.kind === 'message') {
-    return selected.value.message.is_evaluation_point ? selected.value.message : null
-  }
-  const messageId = selected.value.transition.message_id
-  return messageId != null ? rawMessages.value.find((m) => m.id === messageId) ?? null : null
-})
-
-// The Signals row annotatableMessage's own evaluation produced — where
-// its expected_values annotation lives (see db.get_signal_row_by_message).
+// The Signals row backing the current selection's own evaluation, if
+// any — the row itself for a clicked transition auto-tracking produced
+// (see its own message_id), or (found by message_id) the row a clicked
+// message's own evaluation produced. null when there's no evaluation to
+// annotate against at all — a manual action's transition (message_id
+// null: see project_service.apply_manual_action), or a message
+// auto-tracking never evaluated anything after (see Signals.message's own
+// docstring) — the Inspector's annotation controls only ever show for a
+// non-null value here.
 const annotatableSignalsRow = computed(() => {
-  const messageId = annotatableMessage.value?.id
-  return messageId != null ? signalsLog.value.find((s) => s.message_id === messageId) ?? null : null
+  if (!selected.value) return null
+  if (selected.value.kind === 'transition') {
+    return selected.value.transition.message_id != null ? selected.value.transition : null
+  }
+  return signalsLog.value.find((s) => s.message_id === selected.value.message.id) ?? null
 })
 
-const expectedState = computed(() => annotatableMessage.value?.expected_state ?? null)
+// The message id to PUT an annotation change against — the annotation
+// API is message-centric (see api.js's putMessageExpectedState/
+// putMessageExpectedSignals), so a transition selection still resolves
+// back to whichever message its own row says caused it.
+const annotatableMessageId = computed(() => {
+  if (!annotatableSignalsRow.value) return null
+  return selected.value.kind === 'message' ? selected.value.message.id : annotatableSignalsRow.value.message_id
+})
+
+const expectedState = computed(() => annotatableSignalsRow.value?.expected_state ?? null)
 const expectedValues = computed(() => {
   const raw = annotatableSignalsRow.value?.expected_values
   return raw ? JSON.parse(raw) : {}
 })
 
 async function onUpdateExpectedState(value) {
-  const messageId = annotatableMessage.value?.id
+  const messageId = annotatableMessageId.value
   if (messageId == null) return
   try {
     const updated = await putMessageExpectedState(messageId, value)
-    const idx = rawMessages.value.findIndex((m) => m.id === messageId)
-    if (idx !== -1) rawMessages.value[idx] = { ...rawMessages.value[idx], expected_state: updated.expected_state }
+    const idx = signalsLog.value.findIndex((s) => s.id === updated.id)
+    if (idx !== -1) signalsLog.value[idx] = { ...signalsLog.value[idx], expected_state: updated.expected_state }
+    inspectorRef.value?.refreshPerformance()
   } catch {
     // already surfaced via apiFetch
   }
 }
 
 async function onUpdateExpectedSignals(values) {
-  const messageId = annotatableMessage.value?.id
+  const messageId = annotatableMessageId.value
   if (messageId == null) return
   try {
     const updated = await putMessageExpectedSignals(messageId, values)
     const idx = signalsLog.value.findIndex((s) => s.id === updated.id)
     if (idx !== -1) signalsLog.value[idx] = { ...signalsLog.value[idx], expected_values: updated.expected_values }
+    inspectorRef.value?.refreshPerformance()
   } catch {
     // already surfaced via apiFetch
   }
@@ -382,9 +388,11 @@ onBeforeUnmount(() => {
           :fired-action-edge="firedActionEdge"
           :signal-values="signalValues"
           :until-message-id="untilMessageId"
-          :annotatable="annotatableMessage != null"
+          :annotatable="annotatableSignalsRow != null"
           :expected-state="expectedState"
           :expected-values="expectedValues"
+          :show-performance-tab="true"
+          :benchmark-session-id="currentSessionId"
           :closable="false"
           @update-expected-state="onUpdateExpectedState"
           @update-expected-signals="onUpdateExpectedSignals"

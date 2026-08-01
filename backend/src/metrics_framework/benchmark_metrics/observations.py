@@ -141,7 +141,13 @@ class BenchmarkObservationBuilder(object):
         """
         points: dict[tuple[int, int], dict[str, Any]] = {}
         for row in messages.itertuples(index=False):
-            if row.expected_state:
+            # A column mixing real strings with missing values (any
+            # session with at least one annotated *and* one unannotated
+            # message) comes back from pandas as float NaN for the
+            # missing ones, not None/''/falsy — plain truthiness treats
+            # NaN as truthy and would otherwise turn every unannotated
+            # message into a spurious "expected_state='nan'" point.
+            if pd.notna(row.expected_state) and row.expected_state:
                 points[(int(row.session_id), int(row.id))] = {
                     "session_id": int(row.session_id),
                     "message_id": int(row.id),
@@ -154,7 +160,7 @@ class BenchmarkObservationBuilder(object):
         if not signals.empty:
             for row in signals.itertuples(index=False):
                 expected_values = row.expected_values
-                if not expected_values:
+                if pd.isna(expected_values) or not expected_values:
                     continue
                 session_messages = messages.loc[
                     messages["session_id"].eq(int(row.session_id))
@@ -164,13 +170,14 @@ class BenchmarkObservationBuilder(object):
                     continue
                 message = session_messages.sort_values(["timestamp", "id"], kind="stable").iloc[-1]
                 key = (int(row.session_id), int(message["id"]))
+                message_expected_state = message.get("expected_state")
                 point = points.setdefault(
                     key,
                     {
                         "session_id": int(row.session_id),
                         "message_id": int(message["id"]),
                         "timestamp": pd.Timestamp(row.timestamp),
-                        "expected_state": message.get("expected_state"),
+                        "expected_state": message_expected_state if pd.notna(message_expected_state) else None,
                         "expected_values": None,
                         "actual_values": None,
                     },

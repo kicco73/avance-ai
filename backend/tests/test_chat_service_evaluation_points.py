@@ -1,9 +1,9 @@
-"""Integration-ish tests for how a real chat turn decides
-Message.is_evaluation_point and links a Signals row to the message that
-caused it (see ChatService._process_turn_locked/_run_auto_tracking,
-db.link_signal_to_message) — and for the expected_state/expected_values
-annotation writes that only an evaluation-point message allows (see
-ChatService.set_message_expected_state/set_message_expected_signals).
+"""Integration-ish tests for how a real chat turn links a Signals row to
+the message that caused it (see ChatService._process_turn_locked/
+_run_auto_tracking, db.link_signal_to_message) — and for the
+expected_state/expected_values annotation writes that only a message with
+such a link allows (see ChatService.set_message_expected_state/
+set_message_expected_signals).
 """
 from __future__ import annotations
 
@@ -77,11 +77,34 @@ class TaggedAiService:
         yield self._reply
 
 
+class JsonAiService:
+    """Like TaggedAiService, but the reply *is* the raw JSON object itself
+    — what AutoTracker.run()'s AI-fallback path (Signals.compute(), see
+    its own _parse_signals_reply) expects for autotracking_on_user_message,
+    which always calls it with signal_values={} (see
+    ChatService._process_turn_locked)."""
+
+    def __init__(self, signals: dict) -> None:
+        self._reply = str(signals).replace("'", '"')
+
+    def get_models_info(self) -> dict:
+        return {"auto": True, "current_index": 0, "models": []}
+
+    def select_model(self, index: int | None) -> None:
+        pass
+
+    async def generate(self, system_prompt, history, on_retry=None) -> str:
+        return self._reply
+
+    async def generate_stream(self, system_prompt, history, on_retry=None):
+        yield self._reply
+
+
 @pytest.fixture
 def chat_service_for(db):
-    def make(automaton: Automaton, *, signal_values: dict = {"foo": 1}) -> ChatService:
+    def make(automaton: Automaton, *, signal_values: dict = {"foo": 1}, ai_service=None) -> ChatService:
         service = ChatService(
-            ai_service=TaggedAiService(signal_values),
+            ai_service=ai_service or TaggedAiService(signal_values),
             project_service=FakeProjectService(automaton),
             db=db,
             session_manager=ChatSessionManager(db),
@@ -96,7 +119,21 @@ async def _bootstrap_session(chat_service: ChatService) -> int:
     return session["id"]
 
 
-async def test_ai_message_evaluation_marks_the_assistant_message_as_an_evaluation_point(db, chat_service_for):
+async def test_user_message_evaluation_is_linked_to_the_user_message(db, chat_service_for):
+    chat_service = chat_service_for(
+        _automaton(autotracking_on_user_message=True), ai_service=JsonAiService({"foo": 1})
+    )
+    session_id = await _bootstrap_session(chat_service)
+
+    await chat_service.process_turn("hello", session_id)
+
+    user_message = next(m for m in db.get_messages(session_id) if m["role"] == "user")
+    linked = db.get_signal_row_by_message(user_message["id"])
+    assert linked is not None
+    assert linked["new_state"] == "b"
+
+
+async def test_ai_message_evaluation_is_linked_to_the_assistant_message(db, chat_service_for):
     chat_service = chat_service_for(_automaton(autotracking_on_ai_message=True))
     session_id = await _bootstrap_session(chat_service)
 
@@ -104,7 +141,6 @@ async def test_ai_message_evaluation_marks_the_assistant_message_as_an_evaluatio
 
     assistant_message = next(m for m in result["reply"] if m.get("id") is not None)
     stored = db.get_message(assistant_message["id"])
-    assert stored["is_evaluation_point"] is True
     assert stored["role"] == "assistant"
 
     linked = db.get_signal_row_by_message(assistant_message["id"])
@@ -112,14 +148,13 @@ async def test_ai_message_evaluation_marks_the_assistant_message_as_an_evaluatio
     assert linked["new_state"] == "b"  # the trigger fired: foo >= 0
 
 
-async def test_no_autotracking_means_no_evaluation_point_at_all(db, chat_service_for):
+async def test_no_autotracking_means_no_linked_signal_row_at_all(db, chat_service_for):
     chat_service = chat_service_for(_automaton())  # both autotracking flags default False
     session_id = await _bootstrap_session(chat_service)
 
     result = await chat_service.process_turn("hello", session_id)
 
     assistant_message = next(m for m in result["reply"] if m.get("id") is not None)
-    assert db.get_message(assistant_message["id"])["is_evaluation_point"] is False
     assert db.get_signal_row_by_message(assistant_message["id"]) is None
 
 
