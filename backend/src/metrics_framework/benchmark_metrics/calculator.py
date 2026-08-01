@@ -31,12 +31,22 @@ class BenchmarkCalculator(object):
         session_id: int | None = None,
         metrics: Iterable[BenchmarkMetric] | None = None,
     ) -> None:
+        """The *default* metric set is filtered down to whatever's
+        meaningful in a "one_session" context (see BenchmarkMetric.scope)
+        — every current caller (ChatService.get_benchmark_metrics, for
+        both the "Benchmark"/"Edit project" views' own Performance tabs)
+        only ever wants that, session_id given or not. An explicitly
+        passed `metrics` is used as-is, unfiltered — the caller's own
+        explicit choice, not this calculator's to second-guess."""
         self._db = db
         self._username = username
         self._project_name = project_name
         self._session_id = session_id
         self._configuration = configuration or BenchmarkConfiguration()
-        self._metrics = tuple(metrics) if metrics is not None else self.default_metrics()
+        if metrics is not None:
+            self._metrics = tuple(metrics)
+        else:
+            self._metrics = tuple(m for m in self.default_metrics() if "one_session" in m.scope)
 
     def default_metrics(self) -> tuple[BenchmarkMetric, ...]:
         return (

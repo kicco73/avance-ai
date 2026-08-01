@@ -3,9 +3,15 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from ..dto import MetricResult, UserAnalyticsData
+from ..scope import ALL_METRIC_SCOPES, MetricScope
 
 
 class BaseMetric(object):
+    # Every context by default — a subclass narrows this when the metric
+    # only makes sense over a specific dataset (see RetentionMetric,
+    # ActivityConsistencyMetric).
+    scope: frozenset[MetricScope] = ALL_METRIC_SCOPES
+
     @property
     def name(self) -> str:
         raise NotImplementedError

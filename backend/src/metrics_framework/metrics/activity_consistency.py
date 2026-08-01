@@ -15,6 +15,10 @@ class ActivityConsistencyMetric(BaseMetric):
     is zero.
     """
 
+    # Regularity across calendar days is meaningless within a single
+    # session — needs the user's own broader activity history.
+    scope = frozenset({"all_sessions_per_user", "all_sessions"})
+
     @property
     def name(self) -> str:
         return "activity_consistency"

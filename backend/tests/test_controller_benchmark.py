@@ -57,9 +57,10 @@ def test_get_metrics_response_shape_is_unchanged_by_message_id(client, hello_pro
 
     assert response.status_code == 200
     body = response.json()
-    assert {m["name"] for m in body} == {
-        "engagement", "retention", "activity_consistency", "state_stability", "signal_stability"
-    }
+    # Always a one_session context — retention/activity_consistency's own
+    # scope excludes that (see AnalyticsCalculator's own default-metric
+    # filtering), so neither is ever included here.
+    assert {m["name"] for m in body} == {"engagement", "state_stability", "signal_stability"}
     for metric in body:
         assert set(metric) == {"name", "ui_label", "ui_description", "value"}
 
@@ -121,9 +122,12 @@ def test_get_benchmark_metrics_response_shape(client, hello_project, app_db):
 
     assert response.status_code == 200
     body = response.json()
+    # Always a one_session context (session_id given or not — see
+    # ChatService.get_benchmark_metrics/BenchmarkCalculator's own
+    # default-metric filtering) — benchmark_stability/benchmark_consistency's
+    # own scope is {all_sessions}, so neither is ever included here.
     assert {m["name"] for m in body} == {
-        "state_accuracy", "signal_accuracy", "transition_responsiveness",
-        "benchmark_accuracy", "benchmark_stability", "benchmark_consistency",
+        "state_accuracy", "signal_accuracy", "transition_responsiveness", "benchmark_accuracy",
     }
     for metric in body:
         assert set(metric) == {"name", "ui_label", "ui_description", "value", "sample_count"}

@@ -15,6 +15,10 @@ class RetentionMetric(BaseMetric):
     is zero because retention cannot be observed yet.
     """
 
+    # Return behavior is meaningless within a single session — needs at
+    # least the user's own session history to observe a gap at all.
+    scope = frozenset({"all_sessions_per_user", "all_sessions"})
+
     def __init__(self, horizon_days: float = 14.0) -> None:
         self._horizon_days = horizon_days
 

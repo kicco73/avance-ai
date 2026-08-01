@@ -41,7 +41,7 @@ class _Statistics(object):
         )
 
 
-class StateAccuracyMetric(object):
+class StateAccuracyMetric(BenchmarkMetric):
     @property
     def name(self) -> str:
         return "state_accuracy"
@@ -59,7 +59,7 @@ class StateAccuracyMetric(object):
         return _Statistics.result(self.name, [float(v) for v in values], metadata={"unit": "percent"})
 
 
-class SignalAccuracyMetric(object):
+class SignalAccuracyMetric(BenchmarkMetric):
     @property
     def name(self) -> str:
         return "signal_accuracy"
@@ -86,7 +86,7 @@ class SignalAccuracyMetric(object):
         return _Statistics.result(self.name, values, components=components, metadata={"unit": "percent"})
 
 
-class TransitionResponsivenessMetric(object):
+class TransitionResponsivenessMetric(BenchmarkMetric):
     @property
     def name(self) -> str:
         return "transition_responsiveness"
@@ -108,7 +108,7 @@ class TransitionResponsivenessMetric(object):
         return _Statistics.result(self.name, values, metadata={"unit": "percent"})
 
 
-class BenchmarkAccuracyMetric(object):
+class BenchmarkAccuracyMetric(BenchmarkMetric):
     @property
     def name(self) -> str:
         return "benchmark_accuracy"
@@ -143,7 +143,11 @@ class BenchmarkAccuracyMetric(object):
         return _Statistics.result(self.name, component_values, components=components, metadata={"unit": "percent"})
 
 
-class BenchmarkStabilityMetric(object):
+class BenchmarkStabilityMetric(BenchmarkMetric):
+    # Dispersion of the project's own error only means something across
+    # the whole cross-session benchmark, not one session alone.
+    scope = frozenset({"all_sessions"})
+
     @property
     def name(self) -> str:
         return "benchmark_stability"
@@ -180,7 +184,11 @@ class BenchmarkStabilityMetric(object):
         return _Statistics.result(self.name, values, components=stability_components, metadata={"unit": "percent"})
 
 
-class BenchmarkConsistencyMetric(object):
+class BenchmarkConsistencyMetric(BenchmarkMetric):
+    # Systematic directional bias only means something across the whole
+    # cross-session benchmark, not one session alone.
+    scope = frozenset({"all_sessions"})
+
     def __init__(self, configuration: BenchmarkConfiguration | None = None) -> None:
         self._configuration = configuration or BenchmarkConfiguration()
 

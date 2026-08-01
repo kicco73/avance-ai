@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-EXPECTED_METRIC_NAMES = {"engagement", "retention", "activity_consistency", "state_stability", "signal_stability"}
+# GET /api/chat/metrics always evaluates in a one_session context (see
+# AnalyticsCalculator's own default-metric filtering) — retention/
+# activity_consistency's own scope is {all_sessions_per_user, all_sessions},
+# so neither is ever included here.
+EXPECTED_METRIC_NAMES = {"engagement", "state_stability", "signal_stability"}
 
 
 def test_metrics_endpoint_returns_every_core_metric_with_ui_metadata(client, hello_project):
@@ -26,8 +30,6 @@ def test_metrics_reflect_an_empty_conversation_at_baseline(client, hello_project
     body = client.get("/api/chat/metrics").json()
     by_name = {m["name"]: m["value"] for m in body}
 
-    assert by_name["activity_consistency"] == 0.0
-    assert by_name["retention"] == 0.0
     assert by_name["signal_stability"] == 0.0
 
 

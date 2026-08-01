@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from .dto import MetricResult, UserAnalyticsData
+from .scope import MetricScope
 
 
 class AnalyticsDb(Protocol):
@@ -20,5 +21,8 @@ class MetricCalculator(Protocol):
 
     @property
     def ui_description(self) -> str: ...
+
+    @property
+    def scope(self) -> frozenset[MetricScope]: ...
 
     def calculate(self, data: UserAnalyticsData) -> MetricResult: ...

@@ -57,8 +57,6 @@ def test_every_engaged_branch_targets_its_own_distinct_final_state(client):
         "notice_mood": "mood_reached",
         "notice_combo": "combo_reached",
         "notice_engagement": "engagement_reached",
-        "notice_retention": "retention_reached",
-        "notice_consistency": "consistency_reached",
         "notice_stability": "stability_reached",
         "notice_signal_stability": "signal_stability_reached",
     }

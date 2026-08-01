@@ -78,10 +78,25 @@ def test_every_engaged_branch_matches_its_own_live_metric_or_signal_value(client
     assert results["notice_mood"] == (100 >= 70)
     assert results["notice_combo"] == (100 >= 40 and values["engagement"] >= 10)
     assert results["notice_engagement"] == (values["engagement"] >= 20)
-    assert results["notice_retention"] == (values["retention"] >= 1)
-    assert results["notice_consistency"] == (values["activity_consistency"] >= 1)
     assert results["notice_stability"] == (values["state_stability"] >= 80)
     assert results["notice_signal_stability"] == (values["signal_stability"] >= 1)
+
+
+def test_metric_values_never_include_a_non_session_scoped_metric(client):
+    """retention/activity_consistency's own scope is
+    {all_sessions_per_user, all_sessions} (see MetricCalculator.scope) —
+    never one_session, the only context a chat turn's own trigger
+    evaluation (and this sample's own Inspector-facing /api/chat/metrics)
+    ever runs in (see AnalyticsCalculator's own default-metric
+    filtering) — so neither ever appears here, and the sample's own
+    index.yml deliberately has no trigger referencing either."""
+    _upload_and_activate(client)
+    client.get("/api/chat/session")
+
+    values = _metric_values(client)
+
+    assert "retention" not in values
+    assert "activity_consistency" not in values
 
 
 def test_notice_combo_needs_both_the_signal_and_the_metric_side_true(client):
@@ -101,27 +116,24 @@ def test_notice_combo_needs_both_the_signal_and_the_metric_side_true(client):
     assert results["notice_combo"] is False
 
 
-def test_more_sessions_raise_engagement_and_retention_without_any_ai_call(client):
+def test_more_sessions_raise_engagement_without_any_ai_call(client):
     _upload_and_activate(client)
     session = client.get("/api/chat/session").json()
     _enter_engaged(client, session)
 
     # POST /api/chat/sessions never touches the AI/auto-tracker (see
-    # ChatService.create_session) — a clean way to grow the engagement and
-    # retention metrics' session-based components in a test.
+    # ChatService.create_session) — a clean way to grow engagement's own
+    # session-based component in a test.
     for _ in range(6):
         response = client.post("/api/chat/sessions")
         assert response.status_code == 200
 
     values = _metric_values(client)
     assert values["engagement"] >= 20
-    assert values["retention"] >= 1
 
     response = client.post("/api/triggers/preview", json={"signals": {"mood": 100}})
     results = {p["action_name"]: p["result"] for p in response.json()}
     assert results["notice_engagement"] is True
-    assert results["notice_retention"] is True
-    # Untouched by session count alone: these need real message/signal
-    # history (see the sample's own file-level comment).
-    assert results["notice_consistency"] is False
+    # Untouched by session count alone: needs real signal history (see
+    # the sample's own file-level comment).
     assert results["notice_signal_stability"] is False

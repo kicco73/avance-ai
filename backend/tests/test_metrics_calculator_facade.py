@@ -232,7 +232,17 @@ class TestAnalyticsCalculator:
         calculator = AnalyticsCalculator(FakeAnalyticsDb(), "user", "proj")
         results = {r.name: r.value for r in calculator.calculate_all()}
         assert results["engagement"] == 0.0
-        assert results["retention"] == 0.0
-        assert results["activity_consistency"] == 0.0
         assert results["state_stability"] == 100.0  # "no evidence of instability" reads as stable
         assert results["signal_stability"] == 0.0
+
+    def test_default_metrics_are_filtered_to_a_one_session_context(self):
+        """Every current caller (chat/metrics_service.py's ChatMetrics, for
+        both the "Benchmark"/"Edit project" views' own metrics displays and
+        trigger evaluation) only ever runs within one session — retention/
+        activity_consistency's own scope excludes that (see
+        RetentionMetric/ActivityConsistencyMetric.scope), so neither is
+        ever part of the default set an instance actually evaluates,
+        unlike the *full*, unfiltered registry default_metrics() itself
+        returns (see test_default_metrics_covers_all_five_core_metrics)."""
+        calculator = AnalyticsCalculator(FakeAnalyticsDb(), "user", "proj")
+        assert {m.name for m in calculator.metrics} == {"engagement", "state_stability", "signal_stability"}

@@ -39,9 +39,20 @@ class AnalyticsCalculator(object):
         """`until` (naive UTC, matching the DB's own timestamp convention)
         restricts the whole analytical dataset to what existed at or
         before that point — see UserAnalyticsDataBuilder.build. Omitted,
-        this is the full, current history, exactly as before."""
+        this is the full, current history, exactly as before.
+
+        The *default* metric set is filtered down to whatever's
+        meaningful in a "one_session" context (see BaseMetric.scope) —
+        every current caller (chat/metrics_service.py's ChatMetrics, for
+        both the "Benchmark"/"Edit project" views' own metrics displays
+        and trigger evaluation) only ever wants that. An explicitly
+        passed `metrics` is used as-is, unfiltered — the caller's own
+        explicit choice, not this calculator's to second-guess."""
         self._data = UserAnalyticsDataBuilder(db, username, project_name).build(until=until)
-        self._metrics = tuple(metrics) if metrics is not None else self.default_metrics()
+        if metrics is not None:
+            self._metrics = tuple(metrics)
+        else:
+            self._metrics = tuple(m for m in self.default_metrics() if "one_session" in m.scope)
 
     @property
     def metrics(self) -> tuple[MetricCalculator, ...]:
