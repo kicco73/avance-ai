@@ -110,6 +110,19 @@ async function loadTimeline() {
     rawMessages.value = messageRows
     signalsLog.value = signalRows
     sessionStartState.value = allSessions.find((s) => s.id === sessionId)?.start_state ?? null
+    // Both the core Metrics tab (project-wide, but "live" means "as of
+    // now" — a stale point-in-time cutoff from the previous session's
+    // own selection would otherwise linger) and the session-scoped
+    // Performance tab need a fresh fetch for *this* session — neither
+    // reactively recomputes on its own (see Inspector.vue's own
+    // refreshMetrics/refreshPerformance, each a no-op unless its own tab
+    // is the one currently showing). Relying on the `selected` reset
+    // above alone isn't enough: switching sessions while nothing was
+    // ever selected leaves `selected` at null both before and after,
+    // so that watcher never fires at all.
+    await nextTick()
+    inspectorRef.value?.refreshMetrics()
+    inspectorRef.value?.refreshPerformance()
   } catch {
     // already surfaced via apiFetch
   } finally {

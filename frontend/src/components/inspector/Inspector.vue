@@ -79,9 +79,6 @@ function setInspectorTab(tab) {
   }
 }
 
-watch(() => props.benchmarkSessionId, () => {
-  if (inspectorTab.value === 'performance') performanceTabRef.value?.loadPerformanceMetrics()
-})
 watch(() => props.highlightedStateKey, () => {
   // Sync tab internal states if needed, but handled inside the tab
 })
