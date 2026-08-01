@@ -1,0 +1,138 @@
+# Metrics Playground
+#
+# No narrative purpose beyond exercising metrics_framework's core metrics
+# (engagement, retention, activity_consistency, state_stability,
+# signal_stability) as trigger conditions — plus an ordinary signal
+# ("mood") and a trigger that combines a signal with a metric in the same
+# expression. See backend/src/metrics_framework/README.md for what each
+# metric measures and how it's normalized (0..100).
+#
+# "lobby"'s own warm_up fires almost immediately: even a freshly
+# bootstrapped session with zero messages already scores a few points of
+# "engagement" from its own session count alone (>= 4 is enough).
+#
+# Every action in "engaged" targets "engaged" itself: firing one is a
+# self-loop, so the conversation never dead-ends — each one just prompts
+# an acknowledgment (via its own action-prompt) and stays put, ready to
+# fire again (or a different one) on a later turn. How to exercise each:
+#
+# - notice_mood: send a message with a clearly positive tone — "mood" is
+#   re-estimated by the AI every user turn.
+# - notice_engagement / notice_combo: need more engagement than the
+#   bootstrap baseline gives (>= 20, and >= 10 respectively) — a handful
+#   of extra sessions (New Session) is enough on its own, no messages
+#   required, since engagement also scores session volume; notice_combo
+#   additionally needs mood >= 40.
+# - notice_retention: needs at least two sessions started within the
+#   metric's default 14-day retention horizon — the same extra sessions
+#   above satisfy this too.
+# - notice_consistency: needs real user messages spread across at least
+#   two distinct calendar days.
+# - notice_stability: state_stability starts at 100 before any
+#   transition, but the very first move (even "lobby"'s own warm_up) is
+#   itself a real transition landing in an almost-zero-elapsed window,
+#   which drops it sharply — it only climbs back up as real time passes
+#   in "engaged" without a further transition.
+# - notice_signal_stability: needs at least two AI-computed "mood" values
+#   on record (two user turns with auto-tracking on).
+
+init-action:
+  target: lobby
+
+general-prompt: |
+  You are a lightweight assistant for a metrics-testing demo project.
+  Keep replies short and friendly.
+
+signals:
+  mood:
+    ui-label: "Mood"
+    ui-description: >
+      How positive the user's tone sounds in their most recent messages.
+    definition: |
+      Evaluate the user's tone in their most recent messages on a scale
+      from 0 to 100, where 0 is clearly negative/frustrated and 100 is
+      clearly positive/enthusiastic. Respond with a single integer.
+
+states:
+
+  lobby:
+    ui-label: Lobby
+    ui-description: >
+      Starting point — chat normally until the engagement metric crosses
+      its threshold, then the conversation moves to "engaged".
+    contextual-prompt: |
+      Chat naturally and briefly with the user about anything they like.
+    actions:
+      - name: warm_up
+        ui-label: "Engagement metric crosses its threshold"
+        ui-button: "Warm up"
+        target: engaged
+        trigger: "engagement >= 4"
+
+  engaged:
+    ui-label: Engaged
+    ui-description: >
+      Every action here targets "engaged" itself (a self-loop) and checks
+      a different metric (or signal, or a combination of both) — see the
+      file-level comment above for how to exercise each one. Firing one
+      never ends the conversation: it just triggers its own acknowledgment
+      message, and every action stays available to fire again afterward.
+    contextual-prompt: |
+      Continue the conversation naturally.
+    actions:
+      - name: notice_mood
+        ui-label: "Mood signal alone crosses its threshold"
+        ui-button: "Notice mood"
+        target: engaged
+        trigger: "mood >= 70"
+        action-prompt: |
+          Briefly acknowledge to the user that the mood-based trigger just
+          fired, then continue the conversation normally.
+      - name: notice_combo
+        ui-label: "Mood signal AND engagement metric both cross their thresholds"
+        ui-button: "Notice combo"
+        target: engaged
+        trigger: "mood >= 40 and engagement >= 10"
+        action-prompt: |
+          Briefly acknowledge to the user that the combined mood+engagement
+          trigger just fired, then continue the conversation normally.
+      - name: notice_engagement
+        ui-label: "Engagement metric crosses its threshold"
+        ui-button: "Notice engagement"
+        target: engaged
+        trigger: "engagement >= 20"
+        action-prompt: |
+          Briefly acknowledge to the user that the engagement trigger just
+          fired, then continue the conversation normally.
+      - name: notice_retention
+        ui-label: "Retention metric crosses its threshold"
+        ui-button: "Notice retention"
+        target: engaged
+        trigger: "retention >= 1"
+        action-prompt: |
+          Briefly acknowledge to the user that the retention trigger just
+          fired, then continue the conversation normally.
+      - name: notice_consistency
+        ui-label: "Activity consistency metric crosses its threshold"
+        ui-button: "Notice consistency"
+        target: engaged
+        trigger: "activity_consistency >= 1"
+        action-prompt: |
+          Briefly acknowledge to the user that the activity-consistency
+          trigger just fired, then continue the conversation normally.
+      - name: notice_stability
+        ui-label: "State stability metric stays above its threshold"
+        ui-button: "Notice stability"
+        target: engaged
+        trigger: "state_stability >= 80"
+        action-prompt: |
+          Briefly acknowledge to the user that the state-stability trigger
+          just fired, then continue the conversation normally.
+      - name: notice_signal_stability
+        ui-label: "Signal stability metric crosses its threshold"
+        ui-button: "Notice signal stability"
+        target: engaged
+        trigger: "signal_stability >= 1"
+        action-prompt: |
+          Briefly acknowledge to the user that the signal-stability
+          trigger just fired, then continue the conversation normally.
