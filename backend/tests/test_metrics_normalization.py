@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from metrics_framework.normalization import Normalizer
+from metrics.metrics_framework.normalization import Normalizer
 
 
 def test_clamp_bounds_the_value_to_0_100():

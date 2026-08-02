@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from metrics_framework.metrics.base import BaseMetric
+from metrics.metrics_framework.metrics.base import BaseMetric
 
 
 def test_result_clamps_the_value_to_0_100():

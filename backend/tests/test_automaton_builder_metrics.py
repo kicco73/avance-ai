@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
-from metrics_framework import metric_names
+from metrics.metrics_framework import metric_names
 
 
 def test_a_signal_named_after_a_metric_is_rejected():

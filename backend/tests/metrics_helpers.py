@@ -10,7 +10,7 @@ import json
 
 import pandas as pd
 
-from metrics_framework.dto import UserAnalyticsData
+from metrics.metrics_framework.dto import UserAnalyticsData
 
 SESSION_COLUMNS = ["id", "username", "project_name", "datetime_start", "datetime_end", "start_state", "end_state"]
 MESSAGE_COLUMNS = ["id", "role", "content", "audio_text", "timestamp"]

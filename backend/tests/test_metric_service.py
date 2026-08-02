@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 from automaton.automaton import Action, Automaton, State
-from chat.metrics_service import ChatMetrics
-from metrics_framework import AnalyticsCalculator
+from metrics.metric_service import MetricService
+from metrics.metrics_framework import AnalyticsCalculator
 
-# ChatMetrics always evaluates in a one_session context (a chat turn only
-# ever runs within one session) — metric_names() itself stays the *full*
-# reserved-name registry (still needed for trigger-expression validation
-# at project-load time), but calculate_values()/merge_if_referenced only
-# ever return the subset actually meaningful there (see
-# AnalyticsCalculator's own default-metric filtering).
+# MetricService always evaluates in a one_session context (a chat turn
+# only ever runs within one session) — metric_names() itself stays the
+# *full* reserved-name registry (still needed for trigger-expression
+# validation at project-load time), but calculate_values()/
+# merge_if_referenced only ever return the subset actually meaningful
+# there (see AnalyticsCalculator's own default-metric filtering).
 SESSION_SCOPED_METRIC_NAMES = {
     m.name for m in AnalyticsCalculator.default_metrics() if "one_session" in m.scope
 }
@@ -34,8 +34,8 @@ def _automaton_with_trigger(trigger_expr: str) -> Automaton:
     )
 
 
-def _metrics(db) -> ChatMetrics:
-    return ChatMetrics(db, get_username=lambda: "user", get_active_project_name=lambda: "proj")
+def _metrics(db) -> MetricService:
+    return MetricService(db, get_username=lambda: "user", get_active_project_name=lambda: "proj")
 
 
 def test_calculate_values_returns_a_flat_name_to_value_mapping(db):

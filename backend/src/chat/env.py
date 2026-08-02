@@ -11,7 +11,7 @@ session. Every read is additionally enriched with a fixed set of values
 this class always computes fresh, never persisted, since they're only
 ever true "right now" — see ENV_COMPUTED_KEYS/_compute. Instantiated as
 ChatService's `env`, same DI style as chat/signals.py's Signals and
-chat/metrics_service.py's ChatMetrics.
+metrics/metric_service.py's MetricService.
 """
 from __future__ import annotations
 
@@ -214,7 +214,7 @@ class Env(object):
         every env value (stored and action-set alike) — but only when at
         least one triggerable action leaving `state_key` actually
         references one (see Automaton.triggers_reference), the same
-        skip-when-unused optimization ChatMetrics.merge_if_referenced
+        skip-when-unused optimization MetricService.merge_if_referenced
         already applies to metrics."""
         stored = self.stored()
         action_set = self.action_set()

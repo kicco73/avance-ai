@@ -12,6 +12,8 @@ import pytest
 from automaton.automaton import Action, Automaton, Signal, State
 from chat.chat_service import ChatService, ChatServiceError
 from chat.session_manager import ChatSessionManager
+from metrics.metric_service import MetricService
+from signals.signal_service import SignalService, SignalServiceError
 
 PROJECT_NAME = "proj"
 
@@ -80,11 +82,24 @@ class TaggedAiService:
 @pytest.fixture
 def chat_service_for(db):
     def make(automaton: Automaton, *, signal_values: dict = {"foo": 1}, ai_service=None) -> ChatService:
+        ai_service = ai_service or TaggedAiService(signal_values)
+        project_service = FakeProjectService(automaton)
+        metric_service = MetricService(
+            db, get_username=lambda: "user", get_active_project_name=lambda: PROJECT_NAME,
+        )
+        signal_service = SignalService(
+            db, ai_service, metric_service,
+            get_active_automaton=lambda: project_service.get_active_automaton_and_state()[0],
+            get_username=lambda: "user",
+            get_active_project_name=lambda: PROJECT_NAME,
+        )
         service = ChatService(
-            ai_service=ai_service or TaggedAiService(signal_values),
-            project_service=FakeProjectService(automaton),
+            ai_service=ai_service,
+            project_service=project_service,
             db=db,
             session_manager=ChatSessionManager(db),
+            signal_service=signal_service,
+            metric_service=metric_service,
         )
         return service
 
@@ -159,7 +174,7 @@ async def test_set_message_expected_state_rejects_an_unknown_state(db, chat_serv
     result = await chat_service.process_turn("hello", session_id)
     message_id = next(m for m in result["reply"] if m.get("id") is not None)["id"]
 
-    with pytest.raises(ChatServiceError):
+    with pytest.raises(SignalServiceError):
         chat_service.set_message_expected_state(message_id, "not-a-real-state")
 
 
@@ -169,7 +184,7 @@ async def test_set_message_expected_state_rejects_a_non_evaluation_point_message
     result = await chat_service.process_turn("hello", session_id)
     message_id = next(m for m in result["reply"] if m.get("id") is not None)["id"]
 
-    with pytest.raises(ChatServiceError):
+    with pytest.raises(SignalServiceError):
         chat_service.set_message_expected_state(message_id, "a")
 
 
@@ -194,7 +209,7 @@ async def test_set_message_expected_signals_rejects_an_unknown_signal_name(db, c
     result = await chat_service.process_turn("hello", session_id)
     message_id = next(m for m in result["reply"] if m.get("id") is not None)["id"]
 
-    with pytest.raises(ChatServiceError):
+    with pytest.raises(SignalServiceError):
         chat_service.set_message_expected_signals(message_id, {"not-a-real-signal": 50})
 
 
@@ -204,5 +219,5 @@ async def test_set_message_expected_signals_rejects_an_out_of_range_value(db, ch
     result = await chat_service.process_turn("hello", session_id)
     message_id = next(m for m in result["reply"] if m.get("id") is not None)["id"]
 
-    with pytest.raises(ChatServiceError):
+    with pytest.raises(SignalServiceError):
         chat_service.set_message_expected_signals(message_id, {"foo": 150})

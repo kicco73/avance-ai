@@ -11,7 +11,10 @@ from chat.session_manager import ChatSessionManager
 from controller import AvanceController
 from db import Db
 from error_handlers import register_error_handlers
+from metrics.metric_service import MetricService
 from project.project_service import ProjectService
+from session import Session
+from signals.signal_service import SignalService
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples"
 
@@ -74,7 +77,20 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     dev server's connection to it) nor make real, costly AI calls."""
     project_service = ProjectService(app_db)
     session_manager = ChatSessionManager(app_db)
-    chat_service = ChatService(fake_ai_service, project_service, app_db, session_manager)
+    metric_service = MetricService(
+        app_db,
+        get_username=lambda: Session().user,
+        get_active_project_name=lambda: project_service.get_active_project_name(),
+    )
+    signal_service = SignalService(
+        app_db, fake_ai_service, metric_service,
+        get_active_automaton=lambda: project_service.get_active_automaton_and_state()[0],
+        get_username=lambda: Session().user,
+        get_active_project_name=lambda: project_service.get_active_project_name(),
+    )
+    chat_service = ChatService(
+        fake_ai_service, project_service, app_db, session_manager, signal_service, metric_service
+    )
 
     fastapi_app = FastAPI(title="Avance State Engine (test)")
     register_error_handlers(fastapi_app)

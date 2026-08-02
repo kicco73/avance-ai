@@ -1,4 +1,4 @@
-"""Tests for chat.signal_evaluator.SignalEvaluator — the shared logic
+"""Tests for signals.evaluator.SignalEvaluator — the shared logic
 behind both of AutoTracker's ways of getting signal values: `validate`
 (embedded — a reply already generated for some other reason already
 reported them) and `compute_explicitly` (no reply to piggyback on, makes
@@ -11,8 +11,8 @@ from datetime import datetime
 from automaton.automaton import Action, Automaton, Signal, State
 from chat.env import Env
 from chat.metadata_handler import MetadataHandler
-from chat.signal_evaluator import SignalEvaluator
-from chat.signals import Signals
+from signals.evaluator import SignalEvaluator
+from signals.definitions import Signals
 
 USERNAME = "user"
 PROJECT_NAME = "proj"

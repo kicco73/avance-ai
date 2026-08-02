@@ -4,7 +4,6 @@ import json
 import logging
 from typing import Any, TYPE_CHECKING
 
-from chat.signals import Signals
 from chat.text_filter import ConcatTagFilter
 
 if TYPE_CHECKING:
@@ -84,15 +83,18 @@ class MetadataHandler(object):
             'env': self._parse_env_tag(filters.tags['env'].tag_content),
         }
 
-    def build_prompt(self, signals: Signals, env: "Env", signal_names: set[str] | None = None) -> str:
-        """`signal_names` (see Automaton.triggerable_signal_names)
-        restricts signals.get_definition() to only the ones the current
-        state's own outgoing triggers could actually use — passed
-        straight through, see its own docstring. Omitted (None) means
-        every declared signal."""
+    def build_prompt(self, signal_definition: str, env: "Env") -> str:
+        """`signal_definition` is the already-rendered "Definition of
+        signals:" block (see signals.definitions.Signals.get_definition,
+        typically scoped down to a state's own triggerable signals — see
+        Automaton.triggerable_signal_names) — a plain string, not a
+        Signals object, so this module never needs to depend on the
+        signals package (chat/ depends on signals/, never the reverse;
+        see signals/evaluator.py's own compute_explicitly, which resolves
+        the string before calling this)."""
         env_block = "\n".join(f"{key}: {value}" for key, value in env.to_dict().items())
         return "\n".join([
-            signals.get_definition(signal_names),
+            signal_definition,
             EMBED_METADATA_PROMPT,
             f"[env]\n{env_block}\n[/env]",
         ])

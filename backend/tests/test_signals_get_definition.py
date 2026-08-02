@@ -6,7 +6,7 @@ signal_evaluator.py, chat_service.py's _build_turn_prompt).
 from __future__ import annotations
 
 from automaton.automaton import Action, Automaton, Signal, State
-from chat.signals import Signals
+from signals.definitions import Signals
 
 
 def _automaton(signals: list[Signal]) -> Automaton:

@@ -1,6 +1,6 @@
 from automaton.automaton import Action, MemoryArchive, Automaton, Signal, SourceDict, State, trigger_signal_names
 from typing import Any
-from metrics_framework import metric_names
+from metrics.metrics_framework import metric_names
 
 import yaml
 import base64

@@ -16,8 +16,11 @@ from config import AppConfig
 from controller import AvanceController
 from db import Db
 from error_handlers import register_error_handlers
+from metrics.metric_service import MetricService
 from project.project_service import ProjectService
 from ai.ai_service import AiService
+from session import Session
+from signals.signal_service import SignalService
 from talk.talk_service import TalkService
 from listen.listen_service import ListenService
 
@@ -63,7 +66,27 @@ try:
     )
     project_service = ProjectService(db)
     session_manager = ChatSessionManager(db, open_window_minutes=config.max_session_duration_in_minutes)
-    chat_service = ChatService(ai_service, project_service, db, session_manager)
+    # A leaf service (see metrics/metric_service.py's own module
+    # docstring) — depends only on db, so it's built first and handed to
+    # whoever needs it, never the other way around.
+    metric_service = MetricService(
+        db,
+        get_username=lambda: Session().user,
+        get_active_project_name=lambda: project_service.get_active_project_name(),
+        get_max_session_duration_in_minutes=lambda: config.max_session_duration_in_minutes,
+    )
+    # Architecturally analogous to ai_service/chat_service/... above —
+    # instantiated once here, not built by ChatService for itself (see
+    # signals/signal_service.py's own module docstring). Both this and
+    # ChatService depend on ai_service (and metric_service) directly,
+    # never through one another.
+    signal_service = SignalService(
+        db, ai_service, metric_service,
+        get_active_automaton=lambda: project_service.get_active_automaton_and_state()[0],
+        get_username=lambda: Session().user,
+        get_active_project_name=lambda: project_service.get_active_project_name(),
+    )
+    chat_service = ChatService(ai_service, project_service, db, session_manager, signal_service, metric_service)
 
     chat_ws_adapter = WsAdapter(chat_service) if config.chat_transport == "websocket" else None
 

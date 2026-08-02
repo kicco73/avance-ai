@@ -4,12 +4,12 @@ import json
 from datetime import datetime
 
 from automaton.automaton import Action, Automaton, Signal, State
-from chat.auto_tracker import AutoTracker
+from signals.auto_tracker import AutoTracker
 from chat.env import Env
 from chat.metadata_handler import MetadataHandler
-from chat.metrics_service import ChatMetrics
-from chat.signal_evaluator import SignalEvaluator
-from chat.signals import Signals
+from metrics.metric_service import MetricService
+from signals.evaluator import SignalEvaluator
+from signals.definitions import Signals
 
 USERNAME = "user"
 PROJECT_NAME = "proj"
@@ -42,7 +42,7 @@ def _automaton_with_trigger(trigger_expr: str, target: str = "b") -> Automaton:
 
 
 def _tracker(db, automaton: Automaton) -> AutoTracker:
-    metrics = ChatMetrics(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
+    metrics = MetricService(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
     signals = Signals(get_active_automaton=lambda: automaton, db=db)
     env = Env(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
     signal_evaluator = SignalEvaluator(MetadataHandler())

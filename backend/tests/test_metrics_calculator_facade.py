@@ -5,8 +5,8 @@ from datetime import datetime
 
 import pytest
 
-from metrics_framework import AnalyticsCalculator
-from metrics_framework.timeline import Timeline, UserAnalyticsDataBuilder
+from metrics.metrics_framework import AnalyticsCalculator
+from metrics.metrics_framework.timeline import Timeline, UserAnalyticsDataBuilder
 from metrics_helpers import message_row, session_row, signal_row
 
 
@@ -236,7 +236,7 @@ class TestAnalyticsCalculator:
         assert results["signal_stability"] == 0.0
 
     def test_default_metrics_are_filtered_to_a_one_session_context(self):
-        """Every current caller (chat/metrics_service.py's ChatMetrics, for
+        """Every current caller (metrics/metric_service.py's MetricService, for
         both the "Benchmark"/"Edit project" views' own metrics displays and
         trigger evaluation) only ever runs within one session — retention/
         activity_consistency's own scope excludes that (see

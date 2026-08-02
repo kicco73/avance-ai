@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from metrics_framework.metrics import (
+from metrics.metrics_framework.metrics import (
     ActivityConsistencyMetric,
     EngagementMetric,
     RetentionMetric,

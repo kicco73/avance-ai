@@ -10,18 +10,16 @@ from typing import Awaitable, Callable
 from automaton.automaton import Action, Automaton, State, StatePayload
 from db import Db, _utc_iso
 from ai.ai_service import AiService, OnRetry
+from service_error import ServiceError
 from session import Session
 
-from chat.auto_tracker import AutoTracker
 from chat.env import Env
 from chat.metadata_handler import MetadataHandler
-from chat.metrics_service import ChatMetrics
 from chat.priming import build_priming_messages
 from chat.session_manager import ChatSessionManager
-from chat.signal_evaluator import SignalEvaluator
-from chat.signals import Signals
-from metrics_framework import BenchmarkCalculator, BenchmarkConfiguration
+from metrics.metric_service import MetricService
 from project.project_service import ProjectService
+from signals.signal_service import SignalService
 from chat.text_filter import TagFilter, ConcatTagFilter
 
 logger = logging.getLogger(__name__)
@@ -37,15 +35,8 @@ FIXED_MESSAGE_INSTRUCTIONS = (
     "Fixed message:\n{fixed_message}"
 )
 
-class ChatServiceError(Exception):
-
-    def __init__(
-        self, message: str, detail: str | None = None, *, status_code: int = HTTPStatus.INTERNAL_SERVER_ERROR
-    ) -> None:
-        super().__init__(message)
-        self.message = message
-        self.detail = detail
-        self.status_code = status_code
+class ChatServiceError(ServiceError):
+    pass
 
 
 class ChatService(object):
@@ -55,26 +46,19 @@ class ChatService(object):
         project_service: ProjectService,
         db: Db,
         session_manager: ChatSessionManager,
+        signal_service: SignalService,
+        metric_service: MetricService,
     ) -> None:
         self._ai_service = ai_service
         self._project_service = project_service
         self._db = db
         self._session_manager = session_manager
-        self.signals = Signals(
-            get_active_automaton=lambda: project_service.get_active_automaton_and_state()[0], db=db
-        )
-        self.metrics = ChatMetrics(
-            db, get_username=lambda: Session().user, get_active_project_name=lambda: project_service.get_active_project_name()
-        )
+        self.signal_service = signal_service
+        self.metric_service = metric_service
         self.env = Env(
             db, get_username=lambda: Session().user, get_active_project_name=lambda: project_service.get_active_project_name()
         )
         self._metadata_handler = MetadataHandler()
-        self._signal_evaluator = SignalEvaluator(self._metadata_handler)
-        self._auto_tracker = AutoTracker(
-            db, ai_service, self.signals, self.metrics, self.env, self._signal_evaluator
-        )
-        self.auto_tracking_enabled = True
 
         # Single-user prototype: serializes chat-turn processing across
         # both transports and against a concurrent reset/activate/upload/
@@ -262,12 +246,12 @@ class ChatService(object):
 
     def get_session_signals(self, session_id: int) -> list[dict]:
         """The full Signals event log for `session_id` (see
-        db.get_signals) — every snapshot/transition row, chronological —
-        for the "Label sessions" view's timeline: state transitions
-        and signal values interleaved with messages, reconstructed
-        entirely client-side from this one call."""
+        SignalService.get_session_signals) — every snapshot/transition
+        row, chronological — for the "Label sessions" view's timeline:
+        state transitions and signal values interleaved with messages,
+        reconstructed entirely client-side from this one call."""
         self._require_own_session(session_id)
-        return self._db.get_signals(session_id)
+        return self.signal_service.get_session_signals(session_id)
 
     def _require_own_message(self, message_id: int) -> dict:
         """Raises (404) unless `message_id` exists and belongs to a
@@ -297,16 +281,16 @@ class ChatService(object):
         return datetime.fromisoformat(message["timestamp"]).replace(tzinfo=None)
 
     def get_metrics(self, message_id: int | None = None) -> list[dict]:
-        """metrics_framework's core metrics for the active user+project —
-        the full current history, or (when `message_id` is given)
-        restricted to whatever existed at or before that exact message's
-        own timestamp (see ChatMetrics.calculate_all/AnalyticsCalculator's
-        `until`) — for the "Label sessions" view's point-in-time
-        Inspector."""
+        """metrics.metrics_framework's core metrics for the active
+        user+project — the full current history, or (when `message_id`
+        is given) restricted to whatever existed at or before that exact
+        message's own timestamp (see MetricService.calculate_all/
+        AnalyticsCalculator's `until`) — for the "Label sessions" view's
+        point-in-time Inspector."""
         until = self._until_from_message(message_id)
         if until is None:
-            return self.metrics.calculate_all()
-        return self.metrics.calculate_all(until=until)
+            return self.metric_service.calculate_all()
+        return self.metric_service.calculate_all(until=until)
 
     def get_env(self, message_id: int | None = None) -> dict:
         """{"stored": ..., "action_set": ..., "computed": ...} — see
@@ -363,167 +347,40 @@ class ChatService(object):
 
     def get_benchmark_metrics(self, session_id: int | None = None) -> list[dict]:
         """Expert-annotation-vs-actual benchmark metrics (see
-        metrics_framework/benchmark_metrics) for the active user+project —
-        every annotated session, or (session_id given) just that one. Same
-        {name, ui_label, ui_description, value} shape as the core metrics
-        (see ChatMetrics.calculate_all), plus `sample_count` (how many
-        annotated points fed each metric — see the framework's own
-        README on why that must never be discarded alongside the score) —
-        the "Label sessions" view's Performance tab.
-        max_session_duration_in_minutes comes from the same single source
-        ChatSessionManager's own open-session window already uses (see
-        config.yml's chat-service.max_session_duration_in_minutes) — never
-        a second, independently-configured value."""
+        MetricService.get_benchmark_metrics) for the active user+project —
+        every annotated session, or (session_id given) just that one —
+        the "Label sessions" view's Performance tab. Ownership of
+        `session_id`, when given, is checked here; everything else is
+        MetricService's own job."""
         if session_id is not None:
             self._require_own_session(session_id)
-        configuration = BenchmarkConfiguration(
-            max_session_duration_in_minutes=self._session_manager.open_window.total_seconds() / 60.0
-        )
-        calculator = BenchmarkCalculator(
-            self._db, self._username, self._active_project_name, configuration=configuration, session_id=session_id
-        )
-        results = calculator.calculate_all()
-        return [
-            {
-                "name": metric.name,
-                "ui_label": metric.ui_label,
-                "ui_description": metric.ui_description,
-                "value": result.value,
-                "sample_count": result.sample_count,
-            }
-            for metric, result in zip(calculator.metrics, results)
-        ]
-
-    def _require_annotatable_message(self, message_id: int) -> dict:
-        """Raises (404) for an unowned/unknown message, (409) for one with
-        no linked Signals row at all (see Signals.message) — nothing was
-        ever computed for it, so there's nothing to annotate against —
-        *unless* it's the one case that's still fair game: message_id is
-        its own session's very first message and that session never got
-        its own "session started here" row (see
-        _materialize_session_start_row). Returns the Signals row (not the
-        message) — both annotation setters below write straight into it."""
-        self._require_own_message(message_id)
-        row = self._db.get_signal_row_by_message(message_id)
-        if row is None:
-            row = self._materialize_session_start_row(message_id)
-        if row is None:
-            raise ChatServiceError(
-                "This message isn't an evaluation point — nothing to annotate.",
-                status_code=HTTPStatus.CONFLICT,
-            )
-        return row
-
-    def _materialize_session_start_row(self, message_id: int) -> dict | None:
-        """Every session conceptually starts at its own `start_state`, but
-        only the literal first session ever opened for a project gets a
-        real Signals row for that (see open_if_needed's own "" ->
-        start_state transition, created once per project, not once per
-        session) — every other session's own start has nothing in the
-        database to annotate against at all. Rather than leave every
-        later session permanently un-annotatable at its own start point
-        (see the "Label sessions" view's chat timeline, which shows a
-        synthesized row there precisely because there's nothing real to
-        show), lazily creates that row here, the first time an expert
-        actually tries to annotate it — same shape open_if_needed's own
-        eager case uses. Returns None (falls through to the usual 409)
-        for anything other than a session's own first message, or a
-        session whose start row does exist but is linked elsewhere (must
-        never happen in practice, but not this function's job to fix)."""
-        message = self._db.get_message(message_id)
-        if message is None:
-            return None
-        session_id = message["session_id"]
-        earliest = self._db.get_messages(session_id)
-        if not earliest or earliest[0]["id"] != message_id:
-            return None
-        existing = next(
-            (row for row in self._db.get_signals(session_id) if row["old_state"] == ""), None
-        )
-        if existing is not None:
-            if existing["message_id"] is not None:
-                return None
-            self._db.link_signal_to_message(existing["id"], message_id)
-            return self._db.get_signal_row_by_message(message_id)
-        session = self._db.get_chat_session(session_id)
-        if session is None:
-            return None
-        self._db.save_transition(
-            "", "", session["start_state"], session_id, transition_log_level="INFO", message_id=message_id
-        )
-        return self._db.get_signal_row_by_message(message_id)
-
-    def _finalize_annotation_write(self, signal_row_id: int, message_id: int) -> dict | None:
-        """Re-reads the row just written to — except a session-start
-        bookkeeping row (old_state == "", see
-        _materialize_session_start_row) left carrying no annotation at
-        all afterward, which is deleted instead of kept around as an
-        empty husk: it only ever existed to hold that annotation, so
-        clearing the last one reverts things to exactly "no row exists
-        for this message", same as before it was ever materialized.
-        Returns None in that case — the caller (a PUT response) has
-        nothing left to describe."""
-        updated = self._db.get_signal_row_by_message(message_id)
-        assert updated is not None  # just written above, under the same message
-        if updated["old_state"] == "" and updated["expected_state"] is None and not updated["expected_values"]:
-            self._db.delete_signal_row(signal_row_id)
-            return None
-        return updated
+        return self.metric_service.get_benchmark_metrics(session_id)
 
     def set_message_expected_state(self, message_id: int, expected_state: str | None) -> dict | None:
         """Sets (expected_state given) or clears (None) the expert-
-        annotated expected state for message_id's own evaluation — see
-        Signals.expected_state's own docstring. Returns the updated
-        Signals row, or None if clearing it deleted the row entirely (see
-        _finalize_annotation_write). `expected_state` must name a real
-        state in the active project's own automaton — the "Benchmark
-        project" view's States dropdown is populated from exactly that
-        list, but this is the one place that actually enforces it."""
-        row = self._require_annotatable_message(message_id)
-        if expected_state is not None:
-            automaton, _ = self._project_service.get_active_automaton_and_state()
-            if expected_state == "" or expected_state not in automaton.states:
-                raise ChatServiceError(
-                    f"Unknown state '{expected_state}'.", status_code=HTTPStatus.UNPROCESSABLE_ENTITY
-                )
-        self._db.set_signal_expected_state(row["id"], expected_state)
-        return self._finalize_annotation_write(row["id"], message_id)
+        annotated expected state for message_id's own evaluation (see
+        SignalService.set_message_expected_state) — ownership of
+        `message_id` is checked here, everything else about resolving/
+        validating/writing the annotation is SignalService's own job."""
+        self._require_own_message(message_id)
+        return self.signal_service.set_message_expected_state(message_id, expected_state)
 
     def set_message_expected_signals(self, message_id: int, expected_values: dict | None) -> dict | None:
         """Sets or clears the expert-annotated expected signal values for
-        message_id's own evaluation — see Signals.expected_values's own
-        docstring. `expected_values` is the *whole* replacement dict: a
-        signal name missing from it is annotation-cleared for that signal
-        alone (the "Label sessions" view's own sliders send the whole
-        dict on every change, never a single-key patch). Every key must
-        name a real signal in the active project, every value a plain
-        number in [0, 100] (see Inspector.vue's own slider range). Returns
-        the updated Signals row, or None if clearing it deleted the row
-        entirely (see _finalize_annotation_write)."""
-        row = self._require_annotatable_message(message_id)
-        if expected_values:
-            automaton, _ = self._project_service.get_active_automaton_and_state()
-            valid_names = {s.name for s in automaton.signals}
-            for name, value in expected_values.items():
-                if name not in valid_names:
-                    raise ChatServiceError(
-                        f"Unknown signal '{name}'.", status_code=HTTPStatus.UNPROCESSABLE_ENTITY
-                    )
-                if isinstance(value, bool) or not isinstance(value, (int, float)) or not (0 <= value <= 100):
-                    raise ChatServiceError(
-                        f"Signal '{name}' must be a number between 0 and 100.",
-                        status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
-                    )
-        self._db.set_signal_expected_values(row["id"], expected_values)
-        return self._finalize_annotation_write(row["id"], message_id)
+        message_id's own evaluation (see SignalService.
+        set_message_expected_signals) — same ownership-then-delegate
+        split as set_message_expected_state above."""
+        self._require_own_message(message_id)
+        return self.signal_service.set_message_expected_signals(message_id, expected_values)
 
     def clear_session_annotations(self, session_id: int) -> None:
         """Clears every expert annotation (expected_state and
         expected_values alike) across session_id's own Signals rows in
-        one call — the "Label sessions" view's "Unlabel all" action,
-        fired only after its own confirmation dialog."""
+        one call (see SignalService.clear_session_annotations) — the
+        "Label sessions" view's "Unlabel all" action, fired only after
+        its own confirmation dialog."""
         self._require_own_session(session_id)
-        self._db.clear_session_annotations(session_id)
+        self.signal_service.clear_session_annotations(session_id)
 
     async def open_if_needed(self, session_id: int) -> dict | None:
         project_name = self._active_project_name
@@ -586,7 +443,8 @@ class ChatService(object):
         # anything else, since nothing outside this set could affect
         # which action fires from here.
         signal_names = automaton.triggerable_signal_names(state.key)
-        metadata_prompt = self._metadata_handler.build_prompt(self.signals, self.env, signal_names)
+        signal_definition = self.signal_service.get_definition(signal_names)
+        metadata_prompt = self._metadata_handler.build_prompt(signal_definition, self.env)
         system_prompt = f"{automaton.general_prompt}\n\n{state.contextual_prompt}\n\n{metadata_prompt}"
         return system_prompt, list(automaton.general_attachments.values()) + list(state.attachments.values())
 
@@ -666,13 +524,10 @@ class ChatService(object):
         """The trailing `int | None` is the id of whatever Signals row this
         call's own evaluation persisted (None if auto-tracking is off, or
         this state has nothing triggerable to evaluate at all — see
-        AutoTracker.run) — the caller links it to the message that caused
-        this call, once that message itself has an id (see
-        _process_turn_locked/link_signal_to_message)."""
-        if not self.auto_tracking_enabled:
-            return None, state, [], None
-
-        action, new_state, signal_row_id = await self._auto_tracker.run(
+        SignalService.run_auto_tracking) — the caller links it to the
+        message that caused this call, once that message itself has an
+        id (see _process_turn_locked/link_signal_to_message)."""
+        action, new_state, signal_row_id = await self.signal_service.run_auto_tracking(
             pending_message, project_name, session_id, automaton, state, signal_values
         )
         if action is None:
@@ -694,7 +549,7 @@ class ChatService(object):
         already sees the updated env, not last turn's."""
         if not action.env:
             return
-        scope = {**signal_values, **self.metrics.calculate_values(), **self.env.to_dict()}
+        scope = {**signal_values, **self.metric_service.calculate_values(), **self.env.to_dict()}
         updates = automaton.eval_action_env(action, scope)
         if updates:
             self.env.update_action_set(updates)

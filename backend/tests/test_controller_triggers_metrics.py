@@ -3,7 +3,7 @@ from __future__ import annotations
 import io
 import zipfile
 
-from metrics_framework import metric_names
+from metrics.metrics_framework import metric_names
 
 METRIC_TRIGGER_PROJECT = """
 init-action:

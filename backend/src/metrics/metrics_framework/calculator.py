@@ -43,7 +43,7 @@ class AnalyticsCalculator(object):
 
         The *default* metric set is filtered down to whatever's
         meaningful in a "one_session" context (see BaseMetric.scope) —
-        every current caller (chat/metrics_service.py's ChatMetrics, for
+        every current caller (metrics/metric_service.py's MetricService, for
         both the "Benchmark"/"Edit project" views' own metrics displays
         and trigger evaluation) only ever wants that. An explicitly
         passed `metrics` is used as-is, unfiltered — the caller's own

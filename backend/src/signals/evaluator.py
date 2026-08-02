@@ -29,7 +29,7 @@ from ai.ai_service import AiService
 from ai.llm_provider import AIServiceError
 from chat.env import Env
 from chat.metadata_handler import MetadataHandler
-from chat.signals import Signals
+from signals.definitions import Signals
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +91,13 @@ class SignalEvaluator(object):
         degrades to every (scoped) signal reported None, same as a
         malformed/empty embedded report would."""
         automaton = signals.automaton
-        system_prompt = self._metadata_handler.build_prompt(signals, env, names)
+        # build_prompt only ever needs the already-rendered definition
+        # text, not the Signals object itself — resolved here, not
+        # inside MetadataHandler, so that module stays free of any
+        # dependency on the signals package (chat/ is the one depending
+        # on signals/, never the reverse).
+        signal_definition = signals.get_definition(names)
+        system_prompt = self._metadata_handler.build_prompt(signal_definition, env)
         relevant_signals = automaton.signals if names is None else [s for s in automaton.signals if s.name in names]
         # Each signal brings only its own attachments into this call —
         # never a state's or general_prompt's (different scope entirely).

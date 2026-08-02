@@ -7,28 +7,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from automaton.automaton import Action, Automaton, Signal, State
 from chat.env import Env
 from chat.metadata_handler import MetadataHandler
-from chat.signals import Signals
 
 USERNAME = "user"
 PROJECT_NAME = "proj"
-
-
-def _empty_automaton() -> Automaton:
-    init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
-    return Automaton(
-        init_action=init_action,
-        states={"": State(key="", ui_label="", final=False, actions=[init_action]),
-                "a": State(key="a", ui_label="A", final=True, contextual_prompt="hi")},
-        general_prompt="",
-        signals=[],
-        attachments={},
-        general_attachments={},
-        autotracking_on_user_message=True,
-        autotracking_on_ai_message=False,
-    )
 
 
 def _handler() -> MetadataHandler:
@@ -74,35 +57,23 @@ def test_build_prompt_renders_an_env_block_with_stored_and_computed_values(db):
         start_state="a", end_state="a",
     )
     db.set_env(PROJECT_NAME, {"favorite_color": "blue"}, USERNAME)
-    signals = Signals(get_active_automaton=_empty_automaton, db=db)
     env = Env(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
 
-    prompt = _handler().build_prompt(signals, env)
+    prompt = _handler().build_prompt("- Definition of signals:\n", env)
 
     assert "[env]" in prompt and "[/env]" in prompt
     assert "favorite_color: blue" in prompt
     assert "number_of_user_sessions: 1" in prompt
 
 
-def test_build_prompt_scopes_signal_definitions_via_signal_names(db):
-    """signal_names (see Automaton.triggerable_signal_names) passes
-    straight through to Signals.get_definition — the env block itself is
-    unaffected either way."""
-    automaton = Automaton(
-        init_action=Action(name="init_action", ui_label="init_action", ui_button="", target="a"),
-        states={"": State(key="", ui_label="", final=False), "a": State(key="a", ui_label="A", final=True, contextual_prompt="hi")},
-        general_prompt="",
-        signals=[
-            Signal(name="mood", ui_label="Mood", definition="mood definition"),
-            Signal(name="unused", ui_label="Unused", definition="unused definition"),
-        ],
-        attachments={}, general_attachments={},
-        autotracking_on_user_message=True, autotracking_on_ai_message=False,
-    )
-    signals = Signals(get_active_automaton=lambda: automaton, db=db)
+def test_build_prompt_embeds_the_given_signal_definition_verbatim(db):
+    """build_prompt takes the already-rendered definition text directly
+    (see signals.definitions.Signals.get_definition/signals.evaluator.
+    SignalEvaluator.compute_explicitly, which resolve and scope it before
+    calling this) — it has no opinion of its own on which signals that
+    text describes, just embeds whatever string it's given."""
     env = Env(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
 
-    prompt = _handler().build_prompt(signals, env, signal_names={"mood"})
+    prompt = _handler().build_prompt('- Definition of signals:\n\t- Signal "mood":\nmood definition', env)
 
     assert "mood definition" in prompt
-    assert "unused definition" not in prompt

@@ -27,6 +27,18 @@ from schemas import (
 )
 
 
+# Slug -> filename under src/docs/ — a fixed allow-list, not a raw path
+# built from the request, so get_doc below can never be tricked into
+# reading anything outside this directory (no path-traversal surface at
+# all: an unknown slug is just a 404, never a filesystem lookup).
+DOC_FILES = {
+    "project-specs": "PROJECT_SPECS.md",
+    "metrics": "METRICS.md",
+    "benchmark": "BENCHMARK.md",
+}
+DOCS_DIR = Path(__file__).resolve().parent / "docs"
+
+
 def route(method: str, path: str, **kwargs):
     def decorator(func):
         func.__route_info__ = (method, path, kwargs)
@@ -72,12 +84,25 @@ class AvanceController(object):
                 method, path, kwargs = info
                 self.router.add_api_route(path, member, methods=[method], **kwargs)
 
+    @get("/api/docs/{name}")
+    def get_doc(self, name: str):
+        """Raw markdown content of one of src/docs/'s fixed set of
+        reference docs (see DOC_FILES) — backs each "(?)" documentation
+        button (EditProjectView.vue's own, next to Save; the Inspector's
+        Metrics/Performance tabs) with the actual .md file's content
+        instead of duplicating it into the frontend bundle. `name` not in
+        DOC_FILES is a 404, not a filesystem error."""
+        filename = DOC_FILES.get(name)
+        if filename is None:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=f"Unknown doc '{name}'.")
+        return {"content": (DOCS_DIR / filename).read_text()}
+
     @get("/api/chat/signals")
     def get_signals(self):
         """Read-only: never calls the AI. Signals are only (re)computed inside
-        the auto-tracking flow (see ChatService._run_auto_tracking); this just
+        the auto-tracking flow (see SignalService.run_auto_tracking); this just
         reports the latest persisted snapshot."""
-        return self.chat_service.signals.get_latest_signals()
+        return self.chat_service.signal_service.get_latest_signals()
 
     @get("/api/chat/env")
     def get_env(self, message_id: int | None = None):
@@ -295,12 +320,12 @@ class AvanceController(object):
 
     @get("/api/chat/autotracking")
     def get_autotracking(self):
-        return {"enabled": self.chat_service.auto_tracking_enabled}
+        return {"enabled": self.chat_service.signal_service.auto_tracking_enabled}
 
     @post("/api/chat/autotracking")
     def post_autotracking(self, req: AutoTrackingRequest):
-        self.chat_service.auto_tracking_enabled = req.enabled
-        return {"enabled": self.chat_service.auto_tracking_enabled}
+        self.chat_service.signal_service.auto_tracking_enabled = req.enabled
+        return {"enabled": self.chat_service.signal_service.auto_tracking_enabled}
 
     @get("/api/chat/messages/{message_id}/audio")
     def get_message_audio(self, message_id: int, request: Request):
@@ -357,14 +382,14 @@ class AvanceController(object):
     @post("/api/triggers/preview")
     def post_triggers_preview(self, req: TriggersPreviewRequest):
         automaton, state = self.project_service.get_active_automaton_and_state()
-        names = self.chat_service.metrics.merge_if_referenced(automaton, state.key, req.signals)
+        names = self.chat_service.metric_service.merge_if_referenced(automaton, state.key, req.signals)
         return automaton.preview_triggers(state.key, names)
 
     @post("/api/chat/reset")
     async def post_reset(self):
         async with self.chat_service.lock:
             self.project_service.reset_active_project()
-            self.chat_service.auto_tracking_enabled = True
+            self.chat_service.signal_service.auto_tracking_enabled = True
         return self.project_service.get_active_state_payload()
 
     @get("/api/backup")
@@ -393,7 +418,7 @@ class AvanceController(object):
                 self.db.restore_backup(content)
             except ValueError as exc:
                 raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-            self.chat_service.auto_tracking_enabled = True
+            self.chat_service.signal_service.auto_tracking_enabled = True
         return {"success": True}
 
     @get("/api/projects")
@@ -569,4 +594,4 @@ class AvanceController(object):
     async def _activate_project(self, new_automaton: Automaton) -> None:
         # Unused: kept only to match ProjectService's CommitCallback shape.
         async with self.chat_service.lock:
-            self.chat_service.auto_tracking_enabled = True
+            self.chat_service.signal_service.auto_tracking_enabled = True

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from metrics_framework import BenchmarkCalculator
+from metrics.metrics_framework import BenchmarkCalculator
 
 
 def _make_session(db, *, username="user", project_name="proj", start, start_state="a"):

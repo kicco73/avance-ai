@@ -1,6 +1,6 @@
 <script setup>
-import { ref, watch, onMounted } from 'vue'
-import { getProjectSignals } from '../../api.js'
+import { computed, ref, watch, onMounted } from 'vue'
+import { getProjectGraph, getProjectSignals } from '../../api.js'
 import { hasSignalValue, useSignalChangeFlash } from './signalDisplay.js'
 
 const props = defineProps({
@@ -17,6 +17,46 @@ const signalsLoading = ref(true)
 const signals = ref([])
 const { recentlyChanged: recentlyChangedSignals, markChanged: markSignalsChanged } = useSignalChangeFlash()
 const draggingExpectedValues = ref({})
+
+// "Relevant" (see Automaton.triggerable_signal_names on the backend,
+// the same idea this mirrors client-side for display purposes only —
+// nothing here affects what's actually computed) — a signal referenced
+// by at least one action's own `trigger` anywhere in the project, not
+// just the currently highlighted state: this tab lists every declared
+// signal regardless of which state is selected, so relevance here is
+// project-wide. On by default (showOnlyRelevant) since a project's own
+// declared signals often include ones no trigger actually reads yet
+// (still mid-authoring, or intentionally advisory/display-only).
+const showOnlyRelevant = ref(true)
+const relevantSignalNames = ref(new Set())
+
+// A small stand-in for Automaton.trigger_signal_names' own ast-based
+// free-variable extraction (see automaton.py) — good enough for this
+// display-only purpose without shipping a real Python-expression parser
+// to the browser: any identifier-shaped token, minus the handful of
+// simpleeval-supported keywords that could never be a signal's own name.
+const EXPRESSION_KEYWORDS = new Set(['and', 'or', 'not', 'in', 'is', 'True', 'False', 'None'])
+function referencedNames(expression) {
+  return (expression.match(/[A-Za-z_][A-Za-z0-9_]*/g) || []).filter((name) => !EXPRESSION_KEYWORDS.has(name))
+}
+
+async function loadRelevantSignalNames() {
+  try {
+    const { edges } = await getProjectGraph(props.projectName)
+    const names = new Set()
+    for (const edge of edges) {
+      if (!edge.trigger) continue
+      for (const name of referencedNames(edge.trigger)) names.add(name)
+    }
+    relevantSignalNames.value = names
+  } catch {
+    // already surfaced via apiFetch — worst case the filter shows nothing
+  }
+}
+
+const displayedSignals = computed(() =>
+  showOnlyRelevant.value ? signals.value.filter((s) => relevantSignalNames.value.has(s.name)) : signals.value
+)
 
 function attachmentLabel(index) { return String.fromCharCode(97 + index) }
 
@@ -54,6 +94,7 @@ async function loadSignals() {
   signalsLoading.value = true
   try {
     signals.value = (await getProjectSignals(props.projectName)).signals
+    await loadRelevantSignalNames()
   } catch {} finally { signalsLoading.value = false }
 }
 
@@ -64,10 +105,17 @@ onMounted(loadSignals)
 
 <template>
   <div class="inspector-signals-section">
+    <label v-if="!signalsLoading && signals.length" class="inspector-signals-relevant-toggle">
+      <input type="checkbox" v-model="showOnlyRelevant" />
+      Show only relevant signals
+    </label>
     <p v-if="signalsLoading" class="signals-status">Loading…</p>
     <p v-else-if="!signals.length" class="signals-status">No signals defined.</p>
+    <p v-else-if="!displayedSignals.length" class="signals-status">
+      No relevant signals — none are referenced by an action's own trigger yet.
+    </p>
     <div v-else class="inspector-signal-list">
-      <div v-for="signal in signals" :key="signal.name" class="inspector-signal-block" :class="{ 'inspector-signal-block-clickable': editableFiles }" :title="editableFiles ? 'Jump to definition' : undefined" @click="editableFiles && emit('jump-to-definition', { kind: 'signal', signalName: signal.name })">
+      <div v-for="signal in displayedSignals" :key="signal.name" class="inspector-signal-block" :class="{ 'inspector-signal-block-clickable': editableFiles }" :title="editableFiles ? 'Jump to definition' : undefined" @click="editableFiles && emit('jump-to-definition', { kind: 'signal', signalName: signal.name })">
         <div class="inspector-signal-header">
           <span class="inspector-detail-badge inspector-detail-badge-signal">Signal</span>
           <span class="inspector-signal-name">{{ signal.ui_label || signal.name }}</span>
@@ -92,7 +140,9 @@ onMounted(loadSignals)
 </template>
 
 <style scoped>
-.inspector-signals-section { flex: 1; min-height: 0; overflow-y: auto; }
+.inspector-signals-section { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+.inspector-signals-relevant-toggle { display: flex; align-items: center; gap: 0.35rem; margin-bottom: 0.6rem; font-size: 0.78rem; color: #555; cursor: pointer; user-select: none; flex-shrink: 0; }
+.inspector-signals-relevant-toggle input { cursor: pointer; }
 .signals-status { margin: 0; color: #444; font-size: 0.9rem; }
 .inspector-signal-list { display: flex; flex-direction: column; gap: 0.6rem; }
 .inspector-signal-block { display: flex; flex-direction: column; gap: 0.2rem; padding: 0.6rem 0.75rem; border-radius: 8px; border: 1px solid #eee; background: #fafafa; }

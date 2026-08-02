@@ -12,10 +12,10 @@ import logging
 from automaton.automaton import Action, Automaton, State
 from ai.ai_service import AiService
 from chat.env import Env
-from chat.metrics_service import ChatMetrics
 from chat.priming import build_priming_messages
-from chat.signal_evaluator import SignalEvaluator
-from chat.signals import Signals
+from metrics.metric_service import MetricService
+from signals.definitions import Signals
+from signals.evaluator import SignalEvaluator
 from db import Db
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 class AutoTracker(object):
     def __init__(
-        self, db: Db, ai_service: AiService, signals: Signals, metrics: ChatMetrics, env: Env,
+        self, db: Db, ai_service: AiService, signals: Signals, metrics: MetricService, env: Env,
         signal_evaluator: SignalEvaluator,
     ) -> None:
         self._db = db
@@ -52,7 +52,7 @@ class AutoTracker(object):
         """Returns (None, state, None) if nothing was even evaluated (no
         triggerable action to check), else (action or None, the resulting
         state, the id of the Signals row the evaluation itself persisted —
-        see ChatService._run_auto_tracking, which links that row back to
+        see SignalService.run_auto_tracking, which links that row back to
         whichever message caused this call)."""
         if not state.has_triggerable_actions:
             return None, state, None
