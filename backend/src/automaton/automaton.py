@@ -37,6 +37,19 @@ class Action:
     # none), since it describes *how you got there*, not the destination
     # itself.
     on_enter: str | None = None
+    # {env key: expression source}, evaluated (see Automaton.
+    # eval_action_env) whenever this action fires — manually or via
+    # auto-tracking's trigger — and merged onto chat.env.Env's own
+    # persisted store (see chat_service.py/auto_tracker.py's own call
+    # sites) so the *next* prompt already sees the updated value. Each
+    # expression shares the exact same variable scope/mechanics as a
+    # `trigger` (see _eval_trigger) — declared signals, core metrics, env
+    # itself — just without the boolean cast, since a result here can be
+    # any simple value, not only true/false. Normalized to a string at
+    # build time even for a YAML value that isn't naturally one (e.g.
+    # `True`, `42`) — see automaton_builder.py's _build_action — so this
+    # is always Python-expression source, exactly like `trigger`.
+    env: dict[str, str] | None = None
 
 @dataclass
 class State:
@@ -208,6 +221,37 @@ class Automaton(object):
             action.trigger and trigger_signal_names(action.trigger) & names for action in state.actions
         )
 
+    def triggerable_signal_names(self, state_key: str) -> set[str]:
+        """Every declared signal name referenced by at least one action
+        leaving `state_key` — either in its own `trigger`, or in one of
+        its `env` field's expressions (see automaton_builder.py's
+        _build_action/eval_action_env: same scope as a trigger, so a
+        signal can drive an env update — e.g. `last_mood: mood` — without
+        ever gating a transition itself). The exact subset a
+        signals-computation call actually needs for this state (see
+        chat/signal_evaluator.py's validate/compute_explicitly and
+        chat_service.py's _build_turn_prompt, which all scope their own
+        prompt/definitions/validation down to this set instead of every
+        declared signal). Reuses trigger_signal_names — the same
+        ast-based free-variable extraction _actions_sanity_check and
+        triggers_reference already rely on, since simpleeval's own
+        expression grammar is just a restricted subset of what ast.parse
+        already accepts, so no separate parser is needed here either —
+        rather than a fresh regex/hand-rolled extraction. Either source
+        can also reference a core metric or an env key, neither of which
+        is a signal a computation call could ever produce, so the result
+        is intersected against this automaton's own declared signal
+        names."""
+        state = self.states[state_key]
+        referenced: set[str] = set()
+        for action in state.actions:
+            if action.trigger:
+                referenced |= trigger_signal_names(action.trigger)
+            if action.env:
+                for expression in action.env.values():
+                    referenced |= trigger_signal_names(expression)
+        return referenced & {s.name for s in self.signals}
+
     def evaluate_triggers(self, state_key: str, signals: dict[str, Any]) -> str | None:
         """Returns the first action (YAML order) whose trigger evaluates
         true — FIFO priority — or None. Actions without `trigger` stay
@@ -239,6 +283,35 @@ class Automaton(object):
                 "would_fire": would_fire,
             })
         return results
+
+    @staticmethod
+    def eval_action_env(action: Action, names: dict[str, Any]) -> dict[str, Any]:
+        """`action`'s own `env` expressions (see automaton_builder.py's
+        _build_action), evaluated against `names` — same mechanics as
+        _eval_trigger (simpleeval), just without its boolean cast: a
+        result here can be any simple value. Unlike _eval_trigger, a
+        referenced name that's still None (or missing outright — e.g. a
+        free-form env key that was never set, or a typo) is NOT silently
+        treated as a routine no-op: it's left to simpleeval to fail
+        naturally, so the exception below always logs it. One key's
+        failure never blocks the others in the same `env:` mapping —
+        each is caught and logged individually. Returns only the keys
+        that evaluated successfully — the caller (chat.env.Env.update)
+        merges these onto whatever's already stored, so a failed key
+        simply leaves its previous value untouched rather than being
+        clobbered with a spurious one."""
+        if not action.env:
+            return {}
+        result: dict[str, Any] = {}
+        for key, expression in action.env.items():
+            try:
+                result[key] = simpleeval.simple_eval(expression, names=names)
+            except Exception as exc:
+                logger.warning(
+                    "env expression evaluation failed for action '%s', key '%s' ('%s'): %s",
+                    action.name, key, expression, exc,
+                )
+        return result
 
     @staticmethod
     def _eval_trigger(expression: str, signals: dict[str, Any]) -> bool:

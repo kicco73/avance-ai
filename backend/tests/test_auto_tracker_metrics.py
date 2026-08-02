@@ -99,7 +99,14 @@ async def test_a_metric_referencing_trigger_that_is_not_met_does_not_fire(db):
 
 
 async def test_metric_values_used_for_evaluation_are_never_persisted(db):
-    automaton = _automaton_with_trigger("engagement >= 1")
+    # mySignal must appear in the trigger too, not just engagement — see
+    # Automaton.triggerable_signal_names/AutoTracker.run's own new
+    # signal-scoping optimization: a signal no trigger leaving this state
+    # references at all is now correctly dropped before persisting, same
+    # as a metric always was, so a trigger that only ever names a metric
+    # would (correctly) filter mySignal out too and defeat this test's
+    # own actual point below.
+    automaton = _automaton_with_trigger("mySignal >= 1 and engagement >= 1")
     session_id = _session_id(db)
 
     await _tracker(db, automaton).run(

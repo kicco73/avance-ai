@@ -57,6 +57,16 @@ function isMessageSelected(message) {
 function isTransitionSelected(transition) {
   return props.selected?.kind === 'transition' && props.selected.transition.id === transition.id
 }
+
+// A fired action that left the state unchanged (see benchmarkTimeline.js's
+// buildTimeline own includeSelfLoops — only EditProjectView.vue's live
+// chat ever includes one of these unannotated) still happened and is
+// worth showing, just visually de-emphasized (see .timeline-transition-
+// row-self-loop below) since nothing about the conversation's own state
+// actually moved.
+function isSelfLoop(transition) {
+  return transition.old_state === transition.new_state
+}
 </script>
 
 <template>
@@ -89,15 +99,15 @@ function isTransitionSelected(transition) {
         v-else
         class="timeline-row timeline-transition-row"
         :class="[
-          { 'timeline-row-selected': isTransitionSelected(entry.transition) },
+          { 'timeline-row-selected': isTransitionSelected(entry.transition), 'timeline-transition-row-self-loop': isSelfLoop(entry.transition) },
           entry.annotationStatus ? `timeline-transition-row-${entry.annotationStatus}` : ''
         ]"
         @click="emit('select-transition', entry.transition)"
       >
         <span
           class="timeline-transition-arrow"
-          :title="entry.transition.old_state === entry.transition.new_state ? 'No actual state change here' : ''"
-        >{{ entry.transition.old_state === entry.transition.new_state ? '↻' : '→' }}</span>
+          :title="isSelfLoop(entry.transition) ? 'No actual state change here' : ''"
+        >{{ isSelfLoop(entry.transition) ? '↻' : '→' }}</span>
         <span class="timeline-transition-badge">{{ entry.transition.new_state }}</span>
         <span
           v-if="entry.annotationStatus === 'correct'"
@@ -170,6 +180,12 @@ function isTransitionSelected(transition) {
 
 .timeline-transition-row.timeline-row-selected {
   background: #f0dcb0;
+}
+
+/* A fired self-loop (see isSelfLoop) — de-emphasized rather than hidden,
+   since the conversation's own state genuinely didn't move here. */
+.timeline-transition-row-self-loop {
+  opacity: 0.5;
 }
 
 /* Whether the transition's own expert-annotated expected_state agrees

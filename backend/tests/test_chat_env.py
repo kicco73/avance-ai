@@ -91,6 +91,69 @@ def test_update_with_empty_values_is_a_noop(db):
     assert db.get_env(PROJECT_NAME, USERNAME) == {"a": "1"}
 
 
+def test_update_drops_a_computed_key_the_model_echoed_back(db):
+    """A model shown `today: 2026-01-01` in its own prompt (see
+    MetadataHandler.build_prompt/env.to_dict) will sometimes echo it back
+    in its own [env] tag despite being told only to report new/changed
+    values — that must never pollute stored()/the Inspector's "AI"
+    section with what is, and must remain, a purely computed value."""
+    _session(db)
+    env = _env(db)
+
+    env.update({"today": "2026-01-01", "favorite_color": "blue"})
+
+    assert db.get_env(PROJECT_NAME, USERNAME) == {"favorite_color": "blue"}
+
+
+def test_update_drops_a_key_that_is_currently_action_set(db):
+    """Same bug, different source: an action's own `env:` field (see
+    automaton_builder.py's _build_action) sets a key like
+    WRONG_ANSWERS_ON_CURRENT_STEP, the model sees it in its own prompt
+    and echoes it back — must not duplicate into stored() ("AI") on top
+    of action_set() ("SET"), see chat_service.py's/auto_tracker.py's own
+    _apply_action_env for the write path that owns this key instead."""
+    _session(db)
+    env = _env(db)
+    env.update_action_set({"WRONG_ANSWERS_ON_CURRENT_STEP": 2})
+
+    env.update({"WRONG_ANSWERS_ON_CURRENT_STEP": "2", "favorite_color": "blue"})
+
+    assert db.get_env(PROJECT_NAME, USERNAME) == {"favorite_color": "blue"}
+    assert env.action_set() == {"WRONG_ANSWERS_ON_CURRENT_STEP": 2}
+
+
+def test_update_is_a_noop_when_every_key_is_filtered_out(db):
+    _session(db)
+    env = _env(db)
+    env.update_action_set({"a": 1})
+
+    env.update({"a": "1", "today": "2026-01-01"})
+
+    assert db.get_env(PROJECT_NAME, USERNAME) == {}
+
+
+def test_clear_action_set_wipes_every_action_set_key(db):
+    _session(db)
+    env = _env(db)
+    env.update_action_set({"a": 1, "b": 2})
+
+    env.clear_action_set()
+
+    assert env.action_set() == {}
+
+
+def test_clear_action_set_leaves_stored_and_computed_untouched(db):
+    _session(db)
+    env = _env(db)
+    env.update({"favorite_color": "blue"})
+    env.update_action_set({"a": 1})
+
+    env.clear_action_set()
+
+    assert env.stored() == {"favorite_color": "blue"}
+    assert "today" in env.computed()
+
+
 def test_today_and_time_are_computed_fresh_never_stored(db):
     db.set_active_project_name(PROJECT_NAME, USERNAME)
     env = _env(db)
@@ -210,6 +273,79 @@ def test_env_computed_key_is_usable_in_a_trigger(db):
     )
     names = env.merge_if_referenced(automaton, "a", {})
     assert names["number_of_user_sessions"] == 1
+    assert automaton.evaluate_triggers("a", names) == "advance"
+
+
+def test_action_set_reads_a_value_set_via_update_action_set(db):
+    _session(db)
+    env = _env(db)
+    env.update_action_set({"number_of_steps": 3})
+
+    assert env.action_set() == {"number_of_steps": 3}
+    assert env.stored() == {}
+
+
+def test_action_set_and_stored_are_independent_stores(db):
+    _session(db)
+    env = _env(db)
+    env.update({"favorite_color": "blue"})
+    env.update_action_set({"number_of_steps": 3})
+
+    assert env.stored() == {"favorite_color": "blue"}
+    assert env.action_set() == {"number_of_steps": 3}
+
+
+def test_update_action_set_merges_onto_existing_action_set_values(db):
+    _session(db)
+    env = _env(db)
+    env.update_action_set({"a": 1})
+
+    env.update_action_set({"b": 2})
+
+    assert env.action_set() == {"a": 1, "b": 2}
+
+
+def test_update_action_set_with_empty_values_is_a_noop(db):
+    _session(db)
+    env = _env(db)
+    env.update_action_set({"a": 1})
+
+    env.update_action_set({})
+    env.update_action_set(None)
+
+    assert env.action_set() == {"a": 1}
+
+
+def test_get_reads_an_action_set_value_too(db):
+    _session(db)
+    env = _env(db)
+    env.update_action_set({"number_of_steps": 3})
+
+    assert env.get("number_of_steps") == 3
+
+
+def test_to_dict_merges_stored_and_action_set_and_computed(db):
+    _session(db)
+    env = _env(db)
+    env.update({"favorite_color": "blue"})
+    env.update_action_set({"number_of_steps": 3})
+
+    result = env.to_dict()
+
+    assert result["favorite_color"] == "blue"
+    assert result["number_of_steps"] == 3
+    assert "today" in result
+
+
+def test_merge_if_referenced_includes_action_set_values(db):
+    _session(db)
+    automaton = _automaton_with_trigger("number_of_steps >= 3")
+    env = _env(db)
+    env.update_action_set({"number_of_steps": 3})
+
+    names = env.merge_if_referenced(automaton, "a", {})
+
+    assert names["number_of_steps"] == 3
     assert automaton.evaluate_triggers("a", names) == "advance"
 
 

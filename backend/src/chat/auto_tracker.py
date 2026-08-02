@@ -57,12 +57,20 @@ class AutoTracker(object):
         if not state.has_triggerable_actions:
             return None, state, None
 
+        # The only signals a trigger leaving this state could ever use —
+        # see Automaton.triggerable_signal_names. Scopes both the
+        # embedded validation and the explicit fallback call below down
+        # to exactly this set, instead of every signal the project
+        # declares, since anything outside it can't affect
+        # evaluate_triggers below no matter what value it takes.
+        needed_signal_names = automaton.triggerable_signal_names(state.key)
+
         if signal_values:
             # Embedded — a reply was already generated for some other
             # reason and already reported these (see MetadataHandler.
             # signal_values) — still validated the same way an explicit
             # computation's own reply would be (see SignalEvaluator).
-            signal_values = self._signal_evaluator.validate(automaton, signal_values)
+            signal_values = self._signal_evaluator.validate(automaton, signal_values, needed_signal_names)
         else:
             # No reply to piggyback on at all — fall back to a dedicated
             # call, using the exact same prompt/tag convention.
@@ -70,7 +78,7 @@ class AutoTracker(object):
             since = self._history_cutoff(project_name, state)
             signal_values = await self._signal_evaluator.compute_explicitly(
                 self._ai_service, self._signals, self._env, build_priming_messages,
-                session_id, pending_message, since=since,
+                session_id, pending_message, since=since, names=needed_signal_names,
             )
         # Metrics/env are merged only for this evaluation, never persisted:
         # signal_values below (save_signal_snapshot/save_transition) stays
@@ -102,5 +110,26 @@ class AutoTracker(object):
             signal_values=signal_values,
         )
 
+        self._apply_action_env(automaton, action, signal_values)
+
         new_state = automaton.get_state(action.target)
         return action, new_state, signal_row_id
+
+    def _apply_action_env(self, automaton: Automaton, action: Action, signal_values: dict) -> None:
+        """The fired action's own `env` field (see automaton_builder.py's
+        _build_action/Automaton.eval_action_env), evaluated and merged
+        onto chat.env.Env's persisted store — a no-op, at no extra cost,
+        for the overwhelmingly common action with no `env` field at all.
+        Rebuilt fresh rather than reusing `evaluation_names` (this run's
+        own merge_if_referenced calls above, gated on the *state's*
+        triggers referencing metrics/env): an env expression can
+        reference either even when nothing in this state's triggers do,
+        and needs the current *stored* env values too (e.g. `count + 1`
+        reading `count`'s own previous value) which trigger evaluation
+        itself never merges in."""
+        if not action.env:
+            return
+        scope = {**signal_values, **self._metrics.calculate_values(), **self._env.to_dict()}
+        updates = automaton.eval_action_env(action, scope)
+        if updates:
+            self._env.update_action_set(updates)

@@ -199,6 +199,9 @@ actions:
     action-prompt: |
       Briefly acknowledge the mood/engagement trigger, then continue.
     on-enter: celebrate
+    env:
+      reset_counter: True
+      number_of_steps: number_of_steps + 1
     attachments: []
 ```
 
@@ -211,6 +214,7 @@ Each entry:
 | `trigger` | no | string (expression) | `None` | A boolean expression over signal/metric names — see §6.2. Absent means **manual-only**: reachable only via `POST /api/action`, never fired by auto-tracking. |
 | `action-prompt` | no | string | `None` | An instruction sent to the model **as if it were the user's own message**, to produce an immediate reaction to this action firing — see §6.3. |
 | `on-enter` | no | string | `None` | Passed through to the frontend as-is when this action fires. Today the **only** value with any actual behavior is `"celebrate"` (a confetti animation) — any other string is inert, forwarded but unused; do not rely on other values doing anything unless the frontend is extended to recognize them. A property of the action firing, not of its destination state: two different actions landing on the same state can each carry their own value (or none) — a state reached one way might celebrate, reached another way might not. |
+| `env` | no | mapping of key -> expression | `None` | Updates the project's own environment memory when this action fires (manually or via a trigger) — see §6.4. |
 | `ui-label` | no | string | `name` (also used if `ui-label` is present but empty) | Shown in the frontend. |
 | `ui-button` | no | string | `ui-label`, and transitively `name`, if absent or empty | Button text in the frontend's manual-action bar. |
 | `ui-description` | no | string | `None` | Shown in the frontend. |
@@ -277,6 +281,59 @@ separate "opening message" is generated for re-entering the same state.
 If it moves to a genuinely different state, the new state's own opening
 message (if one would normally be generated there) follows afterward.
 
+### 6.4 Action `env`
+
+Every project also has a free-form **environment memory**: `key: value`
+facts (always strings when the model itself reports one — see the
+`[env]...[/env]` block every prompt embeds) persisted per user+project
+and rendered back into every subsequent prompt, alongside a handful of
+values the engine always computes fresh: `today`, `time`,
+`current_session_duration_in_minutes`, `last_user_session_datetime`,
+`number_of_user_sessions`, `state_duration_in_minutes`.
+
+An action's own `env:` field updates this memory as a **side effect of
+the action firing** (manually or via its `trigger`) — each entry is
+`key: expression`, evaluated with the same mechanics as `trigger` (§6.2:
+`simpleeval`, no function calls/imports/attribute access), just without
+the boolean cast — a result can be any simple value (string, number,
+bool, `None`, ...), not only true/false:
+
+```yaml
+env:
+  reset_counter: True
+  number_of_steps: number_of_steps + 1
+```
+
+The variable scope is the same one a `trigger` sees (declared signals,
+core metric names, the engine's own always-computed env keys above) —
+**plus** every key already stored in the environment memory itself,
+since referencing (and updating) one of those is this field's whole
+purpose. That's also why build-time validation differs from `trigger`'s:
+a syntactically invalid expression still fails at build time, but
+referencing an unfamiliar name never does — there's no way to tell a
+typo apart from a free-form env key that simply hasn't been set yet
+(e.g. `number_of_steps` before its very first increment).
+
+At evaluation time, a failure (a referenced name that's still `None`, a
+free-form key that was never set at all, or a runtime error like
+division by zero) is never silent — it's logged as a warning, with the
+action name, the key, and the underlying error, and that one key's
+previous stored value, if any, is left untouched rather than being
+overwritten with a spurious result. One bad key never blocks the others
+in the same `env:` mapping. Updated values merge onto (rather than
+replace) the rest of the environment memory, and the merge happens
+**before** anything else that turn/transition generates a
+model reply for (`action-prompt`, the destination state's own opening
+message, or a normal chat turn — §6.3, §5) — so the very next prompt
+already reflects the new value.
+
+Persisted separately from the model's own `[env]`-reported values (the
+prompt sees both merged together, but they're kept apart everywhere
+else): the "Edit project" view's Inspector Env tab shows them in their
+own **ACTION** section, distinct from the model-reported **AI** one and the
+engine's own **COMPUTED** one — never editable/deletable through that
+UI, only ever a side effect of the action that set them firing again.
+
 ## 7. Attachments
 
 A filename listed under any `attachments:` (global, a signal's, or a
@@ -335,6 +392,9 @@ how you're likely to hit them:
   key (or is omitted/self-referential for a self-loop).
 - Every action's `trigger`, if given, is syntactically valid and
   references only declared signals and/or reserved metric names.
+- Every action's `env`, if given, is a mapping, and each of its
+  expressions is syntactically valid — referencing an unfamiliar name is
+  **not** checked here (§6.4), unlike `trigger`.
 - No signal is named after a reserved core metric name (§3).
 - Every `attachments:` entry (global, per-signal, per-state — not
   per-action) names a file actually present in the upload.

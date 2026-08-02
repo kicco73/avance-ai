@@ -57,9 +57,18 @@ class Signals(object):
         transcript = "\n".join(f"[{m['timestamp']}] {m['role']}: {m['content']}" for m in recent)
         return [{"role": "user", "content": f"Conversation transcript:\n\n{transcript}"}]
 
-    def get_definition(self):
+    def get_definition(self, names: set[str] | None = None) -> str:
+        """`names` (see Automaton.triggerable_signal_names) restricts the
+        definitions actually included — the auto-tracking prompt's own
+        scoping optimization (see chat/signal_evaluator.py): a signal
+        the current state's own outgoing triggers could never use is
+        simply never asked for, saving both the definition's own tokens
+        and whatever the model would otherwise spend computing it.
+        Omitted (None) means every declared signal, unchanged from
+        before this existed."""
+        relevant = self.automaton.signals if names is None else [s for s in self.automaton.signals if s.name in names]
         return "- Definition of signals:\n"+"\n\n".join(
-            f'\t- Signal "{s.name}":\n{s.definition}' for s in self.automaton.signals
+            f'\t- Signal "{s.name}":\n{s.definition}' for s in relevant
         )
 
     def _snapshot_to_signals_payload(self, snapshot: dict | None) -> list[SignalPayload]:

@@ -43,7 +43,8 @@ import {
   handleSend,
   handleTruncateFrom,
   sessionsPanelOpen,
-  toggleSessionsPanel
+  toggleSessionsPanel,
+  spokenTextEnabled
 } from '../chatStore.js'
 
 const props = defineProps({
@@ -222,7 +223,14 @@ const rawLiveMessages = computed(() =>
   }))
 )
 
-const timeline = computed(() => buildTimeline(rawLiveMessages.value, signalsLog.value, sessionStartState.value))
+// includeSelfLoops: true — unlike BenchmarkProjectView.vue's own review
+// timeline, the live chat here should show every action that actually
+// fired, including a self-loop that left the state unchanged (see
+// ChatTimeline.vue's own dimmed styling for these) — not just the ones
+// an expert happened to annotate.
+const timeline = computed(() =>
+  buildTimeline(rawLiveMessages.value, signalsLog.value, sessionStartState.value, { includeSelfLoops: true })
+)
 
 async function refreshSignalsLog() {
   if (!currentSessionId.value) {
@@ -319,6 +327,20 @@ const untilMessageId = computed(() => {
   )
 })
 
+// The Env tab's own "is this still 'now'?" (see Inspector.vue's
+// envEditable prop): true with nothing selected (the live view), and
+// also true when the selected bubble is the conversation's own latest
+// message — nothing happened after it yet, so it's effectively "now"
+// too, unlike every earlier bubble which is genuine history.
+const latestMessageId = computed(() => {
+  const msgs = rawLiveMessages.value
+  return msgs.length ? msgs[msgs.length - 1].id : null
+})
+const envEditable = computed(() =>
+  !selected.value ||
+  (selected.value.kind === 'message' && selected.value.message.id === latestMessageId.value)
+)
+
 const effectiveSignalValues = computed(() =>
   selected.value ? signalValuesFor(selected.value, signalsLog.value) : signalValueByName.value
 )
@@ -353,6 +375,14 @@ const pendingCursorTarget = ref(null)
 // Inspect. Height in px, adjusted by dragging the horizontal divider above it.
 const chatOpen = ref(true)
 const chatHeight = ref(280)
+
+// File explorer + editor row: v-show, not v-if (see toggleEditor) — the
+// CodeMirror view is mounted once, imperatively, straight into
+// editorHost.value (see mountEditor's own `parent:` below); an v-if here
+// would tear that DOM node down and leave the EditorView pointing at a
+// detached node on the next open, exactly the same reason editorHost's
+// own v-show (below) exists. Open by default, toggled like Chat/Inspect.
+const editorOpen = ref(true)
 
 // The editor's own doc is the source of truth for content while it's
 // mounted — this ref only mirrors it (via the updateListener below) so
@@ -758,6 +788,13 @@ function toggleChat() {
   chatOpen.value = !chatOpen.value
 }
 
+// See editorOpen's own docstring for why this is a plain visibility
+// flip (v-show) rather than the mount/unmount toggleChat/toggleInspect
+// otherwise use (v-if) — nothing here needs loading or tearing down.
+function toggleEditor() {
+  editorOpen.value = !editorOpen.value
+}
+
 function handleDownload() {
   emit('download', props.projectName)
   alert("Project " + props.projectName + " downloaded to your local folder.")
@@ -817,6 +854,12 @@ watch(saving, (isSaving) => {
 // rows, annotation icons) — visible whenever the chat panel is, whether
 // or not Inspect is open, so it refreshes unconditionally.
 watch(turnCount, () => {
+  // A completed turn always adds a new message — whatever was selected
+  // before now belongs to older history, so the Inspector should follow
+  // the conversation's own newest message again (same reasoning as the
+  // currentSessionId watch below going back to null on a session switch),
+  // rather than staying pinned on a bubble that's no longer the latest.
+  selected.value = null
   refreshSignalsLog()
   if (!inspecting.value) return
   refreshNextAction()
@@ -883,6 +926,13 @@ onBeforeUnmount(() => {
       <div class="edit-project-header-actions">
         <button
           class="chat-toggle-btn"
+          :class="{ 'chat-toggle-btn-on': editorOpen }"
+          @click="toggleEditor"
+        >
+          Edit
+        </button>
+        <button
+          class="chat-toggle-btn"
           :class="{ 'chat-toggle-btn-on': chatOpen }"
           @click="toggleChat"
         >
@@ -905,7 +955,7 @@ onBeforeUnmount(() => {
 
     <div class="edit-project-body">
       <div class="edit-project-main-column">
-        <div class="edit-project-top-row">
+        <div v-show="editorOpen" class="edit-project-top-row">
           <div class="file-explorer" :style="{ width: explorerWidth + 'px' }">
             <div class="file-explorer-header">
               <span class="file-explorer-title">Files</span>
@@ -980,10 +1030,15 @@ onBeforeUnmount(() => {
         </div>
 
         <Transition name="panel-slide-bottom">
-        <div v-if="chatOpen" class="edit-project-chat-wrap">
-          <div class="split-divider-horizontal" @mousedown="startChatDrag"></div>
+        <div v-if="chatOpen" class="edit-project-chat-wrap" :class="{ 'edit-project-chat-wrap-full': !editorOpen }">
+          <!-- Nothing to split against once the editor row is hidden (see
+               editorOpen) — the divider drags the boundary between it and
+               chat, which no longer exists, and the chat panel below
+               switches to filling the whole column instead of its own
+               fixed, drag-adjusted chatHeight. -->
+          <div v-if="editorOpen" class="split-divider-horizontal" @mousedown="startChatDrag"></div>
 
-          <div class="edit-project-chat-panel" :style="{ height: chatHeight + 'px' }">
+          <div class="edit-project-chat-panel" :style="editorOpen ? { height: chatHeight + 'px' } : null">
             <div class="edit-project-chat-toolbar">
               <label
                 class="dev-mode-toggle"
@@ -1015,6 +1070,7 @@ onBeforeUnmount(() => {
                   :timeline="timeline"
                   :signals-log="signalsLog"
                   :selected="selected"
+                  :spoken-text-enabled="spokenTextEnabled"
                   @select-message="selectMessage"
                   @select-transition="selectTransition"
                 >
@@ -1048,6 +1104,7 @@ onBeforeUnmount(() => {
             :fired-action-edge="firedActionEdge"
             :signal-values="effectiveSignalValues"
             :until-message-id="untilMessageId"
+            :env-editable="envEditable"
             :editable-files="files"
             @jump-to-definition="jumpToDefinition"
             @select-attachment="selectFile"
@@ -1216,6 +1273,18 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+}
+
+/* editorOpen is false — see the v-if/v-else... above: no fixed
+   chatHeight to honor anymore, so this (and its own chat-panel) grow to
+   fill whatever space the now-hidden top-row would have used instead. */
+.edit-project-chat-wrap-full {
+  flex: 1;
+}
+
+.edit-project-chat-wrap-full .edit-project-chat-panel {
+  flex: 1;
   min-height: 0;
 }
 

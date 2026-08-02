@@ -33,7 +33,15 @@ const props = defineProps({
   // (the "Label sessions" view) turns it off: env is a live, per-user
   // memory the model builds up during actual chat, not something that
   // makes sense to inspect while reviewing a past labeled session.
-  showEnvTab: { type: Boolean, default: true }
+  showEnvTab: { type: Boolean, default: true },
+  // Whether the Env tab's stored values may be edited/deleted at the
+  // current untilMessageId — the caller's call, not derivable in here:
+  // EditProjectView.vue allows it both when nothing is selected (live)
+  // and when the selected bubble is the conversation's own latest
+  // message (still "now", nothing happened after it), but keeps every
+  // earlier bubble read-only (see chat.env.Env.update — always writes
+  // going forward from "now", there's no "editing history").
+  envEditable: { type: Boolean, default: true }
 })
 
 const emit = defineEmits([
@@ -155,6 +163,7 @@ watch(() => props.highlightedStateKey, () => {
       v-show="inspectorTab === 'env'"
       ref="envTabRef"
       :untilMessageId="untilMessageId"
+      :editable="envEditable"
     />
 
     <InspectorPerformanceTab

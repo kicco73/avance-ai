@@ -81,21 +81,39 @@ class AvanceController(object):
 
     @get("/api/chat/env")
     def get_env(self, message_id: int | None = None):
-        """{"stored": ..., "computed": ...} — the active user+project's
-        current "environment" memory (see chat.env.Env), split so the
-        "Edit project" view's Inspector Env tab knows which values are
-        actually editable/deletable (only the stored ones — see PUT/
-        DELETE below). Live/current, or (`message_id` given) as of that
-        exact message — same point-in-time convention as
-        GET /api/chat/metrics. ChatServiceError (404 for an unknown/
-        not-yours `message_id`) is handled globally, see error_handlers.py."""
+        """{"stored": ..., "action_set": ..., "computed": ...} — the
+        active user+project's current "environment" memory (see chat.
+        env.Env), split so the "Edit project" view's Inspector Env tab
+        knows which section each value belongs in ("AI"/"ACTION"/
+        "COMPUTED") and which are actually editable/deletable (only the
+        stored — "AI" — ones, see PUT/DELETE below; "ACTION" values are
+        only ever cleared as a whole, see DELETE /api/chat/action-env).
+        Live/current, or (`message_id` given) as of that exact message —
+        same point-in-time convention as GET /api/chat/metrics.
+        ChatServiceError (404 for an unknown/not-yours `message_id`) is
+        handled globally, see error_handlers.py."""
         return self.chat_service.get_env(message_id)
 
     @delete("/api/chat/env")
     def clear_env(self):
         """Wipes every stored env key at once (see ChatService.clear_env)
-        — the Inspector Env tab's own "clear all" button. Always live."""
+        — the Inspector Env tab's own "clear all" button for the AI
+        section. Always live."""
         return self.chat_service.clear_env()
+
+    # A distinct top-level path, not /api/chat/env/action — this router
+    # (see __init__ above) registers routes in inspect.getmembers' own
+    # alphabetical-by-method-name order, not source order, so a path
+    # under /api/chat/env/{key} could easily end up registered before a
+    # literal /api/chat/env/action and swallow it as key="action". A
+    # completely different path sidesteps that footgun outright rather
+    # than relying on naming this method to sort correctly.
+    @delete("/api/chat/action-env")
+    def clear_action_env(self):
+        """Wipes every action-set env key at once (see ChatService.
+        clear_action_env) — the Inspector Env tab's own "clear all"
+        button for the ACTION section. Always live."""
+        return self.chat_service.clear_action_env()
 
     @put("/api/chat/env/{key}")
     def put_env_value(self, key: str, req: SetEnvValueRequest):

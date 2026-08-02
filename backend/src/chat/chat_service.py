@@ -309,15 +309,20 @@ class ChatService(object):
         return self.metrics.calculate_all(until=until)
 
     def get_env(self, message_id: int | None = None) -> dict:
-        """{"stored": ..., "computed": ...} — see chat.env.Env.stored/
-        computed, reported separately (not merged, unlike Env.to_dict's
-        own use in the turn prompt) so the Inspector Env tab knows which
-        values are actually editable/deletable (see set_env_value/
-        delete_env_key: only the stored ones are). Live/current, or
-        (`message_id` given) as of that exact message — same
-        point-in-time convention as get_metrics."""
+        """{"stored": ..., "action_set": ..., "computed": ...} — see
+        chat.env.Env.stored/action_set/computed, reported separately (not
+        merged, unlike Env.to_dict's own use in the turn prompt) so the
+        Inspector Env tab knows which section each value belongs in
+        ("AI"/"SET"/"COMPUTED") and which are actually editable/deletable
+        (see set_env_value/delete_env_key: only the stored — "AI" — ones
+        are). Live/current, or (`message_id` given) as of that exact
+        message — same point-in-time convention as get_metrics."""
         until = self._until_from_message(message_id)
-        return {"stored": self.env.stored(until), "computed": self.env.computed(until)}
+        return {
+            "stored": self.env.stored(until),
+            "action_set": self.env.action_set(until),
+            "computed": self.env.computed(until),
+        }
 
     def set_env_value(self, key: str, value: str) -> dict:
         """Edits one stored env key (see chat.env.Env.set_value) — always
@@ -330,22 +335,31 @@ class ChatService(object):
         bootstraps one first, same as a real chat turn would."""
         self.get_or_create_current_session(None)
         self.env.set_value(key, value)
-        return {"stored": self.env.stored(), "computed": self.env.computed()}
+        return self.get_env()
 
     def delete_env_key(self, key: str) -> dict:
         """Removes one stored env key outright (see chat.env.Env.
         delete_key) — always live. Returns the same shape as get_env."""
         self.get_or_create_current_session(None)
         self.env.delete_key(key)
-        return {"stored": self.env.stored(), "computed": self.env.computed()}
+        return self.get_env()
 
     def clear_env(self) -> dict:
         """Wipes every stored env key at once (see chat.env.Env.clear) —
-        the Inspector Env tab's own "clear all" button. Always live.
-        Returns the same shape as get_env."""
+        the Inspector Env tab's own "clear all" button for the AI
+        section. Always live. Returns the same shape as get_env."""
         self.get_or_create_current_session(None)
         self.env.clear()
-        return {"stored": self.env.stored(), "computed": self.env.computed()}
+        return self.get_env()
+
+    def clear_action_env(self) -> dict:
+        """Wipes every action-set env key at once (see chat.env.Env.
+        clear_action_set) — the Inspector Env tab's own "clear all"
+        button for the ACTION section. Always live. Returns the same
+        shape as get_env."""
+        self.get_or_create_current_session(None)
+        self.env.clear_action_set()
+        return self.get_env()
 
     def get_benchmark_metrics(self, session_id: int | None = None) -> list[dict]:
         """Expert-annotation-vs-actual benchmark metrics (see
@@ -565,7 +579,14 @@ class ChatService(object):
             logger.warning("Translating fixed_message for state '%s'.", state.key)
             return FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message), []
 
-        metadata_prompt = self._metadata_handler.build_prompt(self.signals, self.env)
+        # Only the signals a trigger leaving `state` could actually use
+        # (see Automaton.triggerable_signal_names) — the embedded
+        # signals report this same reply's own [avance] tag carries (see
+        # AutoTracker.run's "Embedded" branch) never needs to ask about
+        # anything else, since nothing outside this set could affect
+        # which action fires from here.
+        signal_names = automaton.triggerable_signal_names(state.key)
+        metadata_prompt = self._metadata_handler.build_prompt(self.signals, self.env, signal_names)
         system_prompt = f"{automaton.general_prompt}\n\n{state.contextual_prompt}\n\n{metadata_prompt}"
         return system_prompt, list(automaton.general_attachments.values()) + list(state.attachments.values())
 
@@ -662,6 +683,22 @@ class ChatService(object):
         )
         return action, new_state, messages, signal_row_id
 
+    def _apply_action_env(self, automaton: Automaton, action: Action, signal_values: dict) -> None:
+        """A manual action's own version of AutoTracker's own
+        _apply_action_env — same expression scope (this call's own
+        signal_values, empty for a manual action since no AI computation
+        ran; every core metric; env's own current stored+computed
+        values), same no-op-when-unset shortcut. Called before
+        _messages_for_transition below so a transition's own
+        action_prompt/opening message prompt (see _build_turn_prompt)
+        already sees the updated env, not last turn's."""
+        if not action.env:
+            return
+        scope = {**signal_values, **self.metrics.calculate_values(), **self.env.to_dict()}
+        updates = automaton.eval_action_env(action, scope)
+        if updates:
+            self.env.update_action_set(updates)
+
     async def apply_manual_action(self, action_name: str, session_id: int | None) -> dict:
         if self.lock.locked():
             raise ChatServiceError("A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT)
@@ -675,6 +712,7 @@ class ChatService(object):
                 action_name, session["id"]
             )
             automaton, state = self._project_service.get_active_automaton_and_state()
+            self._apply_action_env(automaton, action, {})
             reply = await self._messages_for_transition(
                 action, project_name, session["id"], automaton, state, is_self_loop=(action.target == source_state_key)
             )

@@ -32,6 +32,28 @@ class Env(object):
         self._get_username = get_username
         self._get_active_project_name = get_active_project_name
 
+    def action_set(self, until: datetime | None = None) -> dict[str, Any]:
+        """Just the persisted values an action's own YAML `env:` field set
+        (see automaton_builder.py's _build_action/Automaton.
+        eval_action_env, and update_action_set below) — kept in a
+        separate store from `stored()`'s model-reported ones so the
+        Inspector Env tab can badge the two apart ("SET" vs "AI"), even
+        though both are merged together (with `computed()`) into what
+        actually reaches the turn's own prompt (see to_dict). Same
+        `until` convention as stored()."""
+        return self._db.get_action_env(self._get_active_project_name(), self._get_username(), until=until)
+
+    def update_action_set(self, values: dict[str, Any]) -> None:
+        """action_set()'s own update — an action firing (see chat_service.
+        py's/auto_tracker.py's own _apply_action_env), never the model
+        itself (that's update(), for `[env]`-reported values). Merges
+        onto whatever's already action-set, same no-op-for-falsy rule as
+        update()."""
+        if not values:
+            return
+        merged = {**self.action_set(), **values}
+        self._db.set_action_env(self._get_active_project_name(), merged, self._get_username())
+
     def stored(self, until: datetime | None = None) -> dict[str, Any]:
         """Just the persisted, free-form key:values — never the computed
         ones (see computed/ENV_COMPUTED_KEYS). `until` (naive-but-UTC):
@@ -56,10 +78,28 @@ class Env(object):
         keys — a no-op for an empty/falsy `values` (most turns don't
         report any, and there's nothing to persist or query for). Always
         live: there's no "editing history" here, only ever the current
-        value going forward."""
+        value going forward.
+
+        Silently drops any key that isn't genuinely the model's own to
+        report: a computed one (ENV_COMPUTED_KEYS), or one currently
+        action-set (see action_set/update_action_set) — both are shown to
+        the model as part of the very same [env] block it's asked to
+        mirror back (see MetadataHandler.build_prompt's env.to_dict()),
+        and despite being told to "only include a key when reporting
+        something new", a model will often echo the whole block back
+        verbatim regardless. Without this filter that echo would
+        re-land here and show up duplicated under the Inspector's "AI"
+        section even though it's really computed/action-set — see the
+        bug this was written to fix, reported against
+        WRONG_ANSWERS_ON_CURRENT_STEP (an action-set key) showing up
+        under "AI" too."""
         if not values:
             return
-        merged = {**self.stored(), **values}
+        action_set = self.action_set()
+        filtered = {key: value for key, value in values.items() if key not in ENV_COMPUTED_KEYS and key not in action_set}
+        if not filtered:
+            return
+        merged = {**self.stored(), **filtered}
         self._db.set_env(self._get_active_project_name(), merged, self._get_username())
 
     def set_value(self, key: str, value: str) -> None:
@@ -85,10 +125,20 @@ class Env(object):
         self._db.set_env(self._get_active_project_name(), current, self._get_username())
 
     def clear(self) -> None:
-        """The Inspector Env tab's own "clear all" — wipes every stored
-        key at once. Computed values (see computed) are unaffected, since
-        there's nothing stored about them to begin with."""
+        """The Inspector Env tab's own "clear all" for the AI section —
+        wipes every stored key at once. Computed values (see computed)
+        are unaffected, since there's nothing stored about them to begin
+        with; action-set ones (see action_set/clear_action_set) live in
+        a separate store, untouched by this."""
         self._db.set_env(self._get_active_project_name(), {}, self._get_username())
+
+    def clear_action_set(self) -> None:
+        """The Inspector Env tab's own "clear all" for the ACTION
+        section — action_set()'s own equivalent of clear() above. An
+        action whose `env:` field still fires afterward will simply
+        re-populate whatever it sets again on its next turn, same as any
+        other action-set write (see update_action_set)."""
+        self._db.set_action_env(self._get_active_project_name(), {}, self._get_username())
 
     def _compute(self, key: str, until: datetime | None = None) -> Any:
         """One of ENV_COMPUTED_KEYS — derived fresh from the current
@@ -138,15 +188,22 @@ class Env(object):
     def get(self, key: str, default: Any = None, until: datetime | None = None) -> Any:
         if key in ENV_COMPUTED_KEYS:
             return self._compute(key, until)
-        return self.stored(until).get(key, default)
+        # action_set() takes priority on a name collision — an action's
+        # own `env:` field is the more deliberate/authoritative source
+        # for a key it manages, vs. whatever the model itself happened
+        # to report under the same name (see stored/action_set's own
+        # docstrings; collisions aren't expected by design, but this
+        # keeps precedence well-defined if one ever occurs).
+        return {**self.stored(until), **self.action_set(until)}.get(key, default)
 
     def to_dict(self, until: datetime | None = None) -> dict[str, Any]:
-        """Every stored value plus every computed one, freshly assembled
-        — what MetadataHandler.build_prompt renders back into the turn's
-        own [env]...[/env] block. Always live (`until` omitted) there:
-        only ChatService.get_env's own point-in-time Inspector reads ever
-        pass it."""
+        """Every stored value, every action-set one, plus every computed
+        one, freshly assembled — what MetadataHandler.build_prompt
+        renders back into the turn's own [env]...[/env] block. Always
+        live (`until` omitted) there: only ChatService.get_env's own
+        point-in-time Inspector reads ever pass it."""
         result = self.stored(until)
+        result.update(self.action_set(until))
         result.update(self.computed(until))
         return result
 
@@ -154,15 +211,17 @@ class Env(object):
         """`names` (signal/metric values headed for trigger evaluation —
         see automaton.py's Automaton.evaluate_triggers/preview_triggers
         and chat/metrics_service.py's own equivalent), augmented with
-        every env value — but only when at least one triggerable action
-        leaving `state_key` actually references one (see Automaton.
-        triggers_reference), the same skip-when-unused optimization
-        ChatMetrics.merge_if_referenced already applies to metrics."""
+        every env value (stored and action-set alike) — but only when at
+        least one triggerable action leaving `state_key` actually
+        references one (see Automaton.triggers_reference), the same
+        skip-when-unused optimization ChatMetrics.merge_if_referenced
+        already applies to metrics."""
         stored = self.stored()
-        candidate_names = set(ENV_COMPUTED_KEYS) | set(stored.keys())
+        action_set = self.action_set()
+        candidate_names = set(ENV_COMPUTED_KEYS) | set(stored.keys()) | set(action_set.keys())
         if not automaton.triggers_reference(state_key, candidate_names):
             return names
-        merged = dict(stored)
+        merged = {**stored, **action_set}
         for key in ENV_COMPUTED_KEYS:
             merged[key] = self._compute(key)
         return {**names, **merged}

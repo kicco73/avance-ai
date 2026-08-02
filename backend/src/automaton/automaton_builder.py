@@ -1,4 +1,5 @@
 from automaton.automaton import Action, MemoryArchive, Automaton, Signal, SourceDict, State, trigger_signal_names
+from typing import Any
 from metrics_framework import metric_names
 
 import yaml
@@ -82,6 +83,25 @@ class AutomatonBuilder(object):
         )
 
 
+    @staticmethod
+    def _build_action_env(raw_env: Any, action_name: str) -> dict[str, str] | None:
+        """{key: expression} straight from YAML, normalized to always be
+        Python-expression *source* (see Action.env's own docstring) —
+        `True`/`42`/`null`/... parse as native YAML types rather than
+        strings, but still need to round-trip through the same
+        simpleeval-based evaluator a `trigger` does (see Automaton.
+        eval_action_env), so anything that isn't already a str is
+        stringified into its own Python-literal spelling here instead of
+        at every evaluation."""
+        if not raw_env:
+            return None
+        if not isinstance(raw_env, dict):
+            raise ValueError(
+                f"Action '{action_name}': 'env' must be a mapping of key -> expression, "
+                f"got {type(raw_env).__name__}."
+            )
+        return {key: value if isinstance(value, str) else str(value) for key, value in raw_env.items()}
+
     def _build_action(self, key: str, raw_action: dict, all_archives: dict[str, MemoryArchive]) -> Action:
         return Action(
             name=raw_action["name"],
@@ -95,6 +115,7 @@ class AutomatonBuilder(object):
             action_prompt=raw_action["action-prompt"].strip() if raw_action.get("action-prompt") else None,
             attachments=self._extract_required_archives(raw_action.get("attachments", []), all_archives, f"action {raw_action['name']}"),
             on_enter=raw_action.get("on-enter"),
+            env=self._build_action_env(raw_action.get("env"), raw_action["name"]),
         )
 
     def _build_state(self, key: str, raw_state: dict, all_archives: dict[str, MemoryArchive]) -> State:
@@ -146,7 +167,14 @@ class AutomatonBuilder(object):
         are only ever known at runtime (whatever the model has reported
         so far), never at build time, so they can't be validated the same
         way — referencing one in a trigger fails this check exactly like
-        referencing any other genuinely undefined name would."""
+        referencing any other genuinely undefined name would. An action's
+        own `env` expressions (see Action.env/Automaton.eval_action_env)
+        get only a syntax check here, deliberately not the same
+        unknown-name check: unlike a trigger, an env expression's whole
+        point is often to reference (and update) a project's own
+        free-form env key — e.g. `number_of_steps: number_of_steps + 1`
+        — which is exactly one of these runtime-only names this method
+        can't see at build time either."""
         for action in state.actions:
                 if action.target not in declared_states:
                     raise ValueError(
@@ -167,6 +195,15 @@ class AutomatonBuilder(object):
                             f"Action '{action.name}': "
                             f"trigger references undefined signal(s)/metric(s)/env value(s): {', '.join(sorted(unknown_names))}"
                         )
+                if action.env:
+                    for env_key, expression in action.env.items():
+                        try:
+                            trigger_signal_names(expression)
+                        except SyntaxError as exc:
+                            raise ValueError(
+                                f"State {key}, action '{action.name}': "
+                                f"env expression for '{env_key}' ('{expression}') is not a valid expression: {exc}"
+                            ) from exc
 
     def _build_init_action(self, raw: dict) -> Action:
         raw_init_action = raw.get("init-action")

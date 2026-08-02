@@ -84,6 +84,24 @@ def test_validate_of_none_raw_values_fills_every_declared_signal_with_none():
     assert _evaluator().validate(automaton, None) == {"a": None, "b": None}
 
 
+def test_validate_with_names_restricts_the_result_to_that_subset():
+    automaton = _automaton([Signal(name="a", ui_label="A", definition="d"), Signal(name="b", ui_label="B", definition="d")])
+    result = _evaluator().validate(automaton, {"a": 1, "b": 2}, names={"a"})
+    assert result == {"a": 1}
+
+
+def test_validate_with_names_still_fills_none_for_a_missing_needed_signal():
+    automaton = _automaton([Signal(name="a", ui_label="A", definition="d"), Signal(name="b", ui_label="B", definition="d")])
+    result = _evaluator().validate(automaton, {}, names={"a"})
+    assert result == {"a": None}
+
+
+def test_validate_with_an_empty_names_set_returns_nothing():
+    automaton = _automaton([Signal(name="a", ui_label="A", definition="d")])
+    result = _evaluator().validate(automaton, {"a": 1}, names=set())
+    assert result == {}
+
+
 async def test_compute_explicitly_extracts_and_validates_from_an_avance_tag(db):
     automaton = _automaton([Signal(name="mood", ui_label="Mood", definition="d")])
     signals = Signals(get_active_automaton=lambda: automaton, db=db)
@@ -120,6 +138,38 @@ async def test_compute_explicitly_degrades_to_none_values_on_ai_failure(db):
     )
 
     assert result == {"mood": None}
+
+
+async def test_compute_explicitly_with_names_only_prompts_for_that_subset(db):
+    automaton = _automaton([
+        Signal(name="mood", ui_label="Mood", definition="mood definition"),
+        Signal(name="irrelevant", ui_label="Irrelevant", definition="irrelevant definition"),
+    ])
+    signals = Signals(get_active_automaton=lambda: automaton, db=db)
+    env = Env(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
+    session_id = db.create_chat_session(
+        username=USERNAME, project_name=PROJECT_NAME,
+        datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
+        start_state="a", end_state="a",
+    )
+    captured = {}
+
+    class CapturingAiService:
+        async def generate(self, system_prompt, history, on_retry=None) -> str:
+            captured["system_prompt"] = system_prompt
+            return 'Hi![avance]{"signals": {"mood": 75, "irrelevant": 1}}[/avance]'
+
+    result = await _evaluator().compute_explicitly(
+        CapturingAiService(), signals, env, build_priming_messages=lambda attachments: [],
+        session_id=session_id, names={"mood"},
+    )
+
+    assert "mood definition" in captured["system_prompt"]
+    assert "irrelevant definition" not in captured["system_prompt"]
+    # Even though the model reported "irrelevant" too (an over-eager
+    # reply, or one from before this optimization) — it's outside
+    # `names`, so validate() drops it rather than persisting it.
+    assert result == {"mood": 75}
 
 
 async def test_compute_explicitly_with_no_avance_tag_at_all_is_all_none(db):

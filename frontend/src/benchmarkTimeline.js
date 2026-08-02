@@ -123,13 +123,27 @@ export function syntheticSessionStartEntry(signalsLog, rawMessages, sessionStart
 // Chronological, merged view of the session's messages and its state
 // transitions — real ones, plus any evaluation point an expert annotated
 // even though nothing actually changed there (see resolveTransitionRow).
-// An unannotated self-loop/plain-snapshot still has nothing worth
-// showing on its own, same exclusion db.get_last_transition_timestamp
-// already applies for history-cutoff purposes.
-export function buildTimeline(rawMessages, signalsLog, sessionStartState) {
+// An unannotated *plain snapshot* (old_state/new_state both null — no
+// action fired at all, just an auto-tracking evaluation) still has
+// nothing worth showing on its own, same exclusion db.
+// get_last_transition_timestamp already applies for history-cutoff
+// purposes — that one's never included, annotated or not.
+// A fired *self-loop* (old_state === new_state, both real) is a
+// different case: `includeSelfLoops` (EditProjectView.vue's own live
+// chat, where the reviewer wants to see every action actually fire, not
+// just the ones that moved somewhere) includes it unconditionally, same
+// as an annotated one already was for BenchmarkProjectView.vue's
+// "Label sessions" review (unannotated ones stay excluded there, by
+// omitting this flag — self-loops the model already didn't get flagged
+// on aren't worth the clutter for that view's own purpose).
+export function buildTimeline(rawMessages, signalsLog, sessionStartState, { includeSelfLoops = false } = {}) {
   const messageEntries = rawMessages.map((m) => ({ kind: 'message', timestamp: m.timestamp, message: m }))
   const transitionEntries = signalsLog
-    .filter((s) => (s.new_state != null && s.new_state !== s.old_state) || s.expected_state != null)
+    .filter((s) => {
+      if (s.new_state == null) return s.expected_state != null
+      const isSelfLoop = s.new_state === s.old_state
+      return !isSelfLoop || includeSelfLoops || s.expected_state != null
+    })
     .map((s) => {
       const transition = resolveTransitionRow(s, signalsLog, sessionStartState)
       return {

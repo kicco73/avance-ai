@@ -185,12 +185,15 @@ export function getSignals() {
 }
 
 // The active user+project's current "environment" memory (see backend's
-// chat.env.Env) — {stored, computed}: stored key:values the model has
-// reported via [env]...[/env] (or a person has edited directly, see
-// putEnvValue/deleteEnvValue below) plus every always-computed key,
-// reported separately since only the stored ones are editable/
-// deletable. `messageId`, when given, restricts to values as they stood
-// at or before that exact message (same convention as getMetrics).
+// chat.env.Env) — {stored, action_set, computed}: `stored` key:values the
+// model has reported via [env]...[/env] (or a person has edited directly,
+// see putEnvValue/deleteEnvValue below), `action_set` ones an action's own
+// YAML `env:` field set (see automaton_builder.py's _build_action — never
+// editable/deletable through this API, only ever a side effect of an
+// action firing), and every always-computed key — reported separately so
+// InspectorEnvTab.vue knows which section ("AI"/"SET"/"COMPUTED") each
+// value belongs in. `messageId`, when given, restricts to values as they
+// stood at or before that exact message (same convention as getMetrics).
 export function getEnv(messageId) {
   const query = messageId != null ? `?message_id=${encodeURIComponent(messageId)}` : ''
   return apiFetch(`${API_URL}/chat/env${query}`)
@@ -212,10 +215,20 @@ export function deleteEnvValue(key) {
   })
 }
 
-// Wipes every stored env key at once — always live. Returns the same
-// {stored, computed} shape as getEnv.
+// Wipes every stored ("AI" section) env key at once — always live.
+// Returns the same {stored, action_set, computed} shape as getEnv.
 export function clearEnv() {
   return apiFetch(`${API_URL}/chat/env`, {
+    method: 'DELETE'
+  })
+}
+
+// Wipes every action-set ("ACTION" section) env key at once — always
+// live. A distinct top-level path, not /chat/env/action — see
+// controller.py's own clear_action_env for why. Returns the same
+// {stored, action_set, computed} shape as getEnv.
+export function clearActionEnv() {
+  return apiFetch(`${API_URL}/chat/action-env`, {
     method: 'DELETE'
   })
 }

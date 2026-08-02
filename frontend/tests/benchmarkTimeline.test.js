@@ -368,6 +368,39 @@ describe('buildTimeline', () => {
     expect(transitionIds).toEqual([1, 3])
   })
 
+  it('still excludes a plain snapshot (no action fired at all) even with includeSelfLoops', () => {
+    const messages = [message(1, '2026-01-01T10:00:00')]
+    const start = startRow(1, '2026-01-01T09:59:59')
+    const plainSnapshot = transitionRow(2, { timestamp: '2026-01-01T10:00:01' })
+
+    const timeline = buildTimeline(messages, [start, plainSnapshot], 'lobby', { includeSelfLoops: true })
+
+    const transitionIds = timeline.filter((e) => e.kind === 'transition').map((e) => e.transition.id)
+    expect(transitionIds).toEqual([1])
+  })
+
+  it('includes a fired, unannotated self-loop when includeSelfLoops is set', () => {
+    const messages = [message(1, '2026-01-01T10:00:00')]
+    const start = startRow(1, '2026-01-01T09:59:59')
+    const selfLoop = transitionRow(2, { timestamp: '2026-01-01T10:00:01', oldState: 'lobby', newState: 'lobby' })
+
+    const timeline = buildTimeline(messages, [start, selfLoop], 'lobby', { includeSelfLoops: true })
+
+    const transitionIds = timeline.filter((e) => e.kind === 'transition').map((e) => e.transition.id)
+    expect(transitionIds).toEqual([1, 2])
+  })
+
+  it('still excludes an unannotated self-loop by default (includeSelfLoops omitted)', () => {
+    const messages = [message(1, '2026-01-01T10:00:00')]
+    const start = startRow(1, '2026-01-01T09:59:59')
+    const selfLoop = transitionRow(2, { timestamp: '2026-01-01T10:00:01', oldState: 'lobby', newState: 'lobby' })
+
+    const timeline = buildTimeline(messages, [start, selfLoop], 'lobby')
+
+    const transitionIds = timeline.filter((e) => e.kind === 'transition').map((e) => e.transition.id)
+    expect(transitionIds).toEqual([1])
+  })
+
   it('appends the synthetic session-start entry when the session has no real one', () => {
     const messages = [message(1, '2026-01-01T10:00:00')]
 

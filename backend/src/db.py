@@ -102,6 +102,15 @@ class Signals(BaseModel):
       its own docstring): it isn't a real evaluation or transition, just
       a place for the latest known env dict to live, scoped by session ->
       ChatSession the same way everything else here is.
+    - an action-set env update: only `action_env` set, everything else
+      None — same idea as an env-memory update above, but for values an
+      action's own YAML `env:` field set (see Db.get_action_env/
+      set_action_env, automaton_builder.py's _build_action, chat.env.
+      Env.action_set/update_action_set) rather than ones the model itself
+      reported via [env]. Kept in a separate column (and separate rows)
+      so the Inspector Env tab can tell the two apart (badge "AI" vs
+      "SET") even though both feed the same merged dict back into the
+      turn's own prompt (see chat.env.Env.to_dict).
     A row can't reference "the snapshot that caused it" as a separate
     row anymore (there's no second row) — the evaluation and the
     transition it triggered are simply the same row."""
@@ -113,6 +122,10 @@ class Signals(BaseModel):
     # env-memory row (see this class's own docstring), never alongside
     # `values`/old_state/action/new_state on the same row.
     env = TextField(null=True)
+    # JSON dict — see Db.get_action_env/set_action_env. Same dedicated-row
+    # convention as `env` above, just for action-set (not model-reported)
+    # values — never set alongside `env` on the same row either.
+    action_env = TextField(null=True)
     # Expert-provided ground truth for benchmark_metrics (see
     # metrics_framework/benchmark_metrics) — the state an expert says the
     # automaton should be in immediately after this row's own evaluation.
@@ -661,10 +674,15 @@ class Db(object):
         timestamp-nearest guessing). Excludes env-only rows (see Signals'
         own docstring, get_env) — they're internal bookkeeping, never a
         real evaluation or transition, and would satisfy neither of the
-        two shapes every caller here already assumes."""
+        two shapes every caller here already assumes. Excludes
+        action-env-only rows (see get_action_env) for the same reason."""
         rows = (
             Signals.select()
-            .where((Signals.session == session_id) & Signals.env.is_null(True))
+            .where(
+                (Signals.session == session_id)
+                & Signals.env.is_null(True)
+                & Signals.action_env.is_null(True)
+            )
             .order_by(Signals.timestamp.asc(), Signals.id.asc())
         )
         return [
@@ -858,6 +876,37 @@ class Db(object):
         if session is None:
             return
         Signals.create(session=session["id"], env=json.dumps(env))
+
+    def get_action_env(
+        self, project_name: str, user: str = DEFAULT_USER, until: datetime | None = None
+    ) -> dict:
+        """Same convention as get_env, just for the separate `action_env`
+        column (see Signals' own docstring) — values an action's own
+        YAML `env:` field set (see chat.env.Env.action_set), kept apart
+        from get_env's model-reported ones so the Inspector Env tab can
+        badge them differently ("SET" vs "AI")."""
+        query = (
+            Signals.select(Signals.action_env)
+            .join(ChatSession, on=(Signals.session == ChatSession.id))
+            .where(
+                (ChatSession.project_name == project_name)
+                & (ChatSession.username == user)
+                & Signals.action_env.is_null(False)
+            )
+        )
+        if until is not None:
+            query = query.where(Signals.timestamp <= until)
+        row = query.order_by(Signals.timestamp.desc()).first()
+        return json.loads(row.action_env) if row is not None else {}
+
+    def set_action_env(self, project_name: str, action_env: dict, user: str = DEFAULT_USER) -> None:
+        """Inserts a new action-env-only Signals row (see its own
+        docstring) — same mechanics/no-op-without-a-session rule as
+        set_env, just onto the separate `action_env` column."""
+        session = self.get_latest_chat_session(user, project_name)
+        if session is None:
+            return
+        Signals.create(session=session["id"], action_env=json.dumps(action_env))
 
     def reset_project(self, project_name: str) -> None:
         """Wipes every user's sessions/messages/signals (env included —

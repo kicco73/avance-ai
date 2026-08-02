@@ -1,25 +1,34 @@
 <script setup>
 import { computed, nextTick, ref } from 'vue'
-import { clearEnv, deleteEnvValue, getEnv, putEnvValue } from '../../api.js'
+import { clearActionEnv, clearEnv, deleteEnvValue, getEnv, putEnvValue } from '../../api.js'
 
 const props = defineProps({
   // See InspectorMetricsTab.vue's own untilMessageId — when set, this
   // tab shows a historical point-in-time snapshot (see backend's
-  // ChatService.get_env), which is always read-only: edits only ever
-  // apply going forward from "now", there's no "editing history".
-  untilMessageId: { type: [Number, String], default: null }
+  // ChatService.get_env).
+  untilMessageId: { type: [Number, String], default: null },
+  // Whether edits are allowed at this untilMessageId — the caller's
+  // call (see Inspector.vue's own envEditable prop): edits only ever
+  // apply going forward from "now", so this is only ever true when
+  // untilMessageId is null (live) or pinned to the conversation's own
+  // latest message (still "now", nothing happened after it yet).
+  editable: { type: Boolean, default: true }
 })
 
 const envLoading = ref(false)
 const stored = ref({})
+const actionSet = ref({})
 const computedValues = ref({})
-const isLive = computed(() => props.untilMessageId == null)
+const isLive = computed(() => props.editable)
 
-// Stored entries are free-form and editable/deletable; computed ones
-// (see backend's ENV_COMPUTED_KEYS) never are — reported separately by
-// the backend for exactly this reason, not merged (see
-// backend/src/chat/env.py's Env.to_dict vs stored/computed).
+// Stored ("AI") entries are free-form and editable/deletable; action-set
+// ("ACTION" — see automaton_builder.py's action-level `env:` field) and
+// computed (see backend's ENV_COMPUTED_KEYS) never are — all three
+// reported separately by the backend for exactly this reason, not
+// merged (see backend/src/chat/env.py's Env.to_dict vs
+// stored/action_set/computed).
 const storedEntries = computed(() => Object.entries(stored.value))
+const actionSetEntries = computed(() => Object.entries(actionSet.value))
 const computedEntries = computed(() => Object.entries(computedValues.value))
 
 async function loadEnv() {
@@ -27,6 +36,7 @@ async function loadEnv() {
   try {
     const result = await getEnv(props.untilMessageId ?? undefined)
     stored.value = result.stored
+    actionSet.value = result.action_set
     computedValues.value = result.computed
   } catch {
     // already surfaced via apiFetch
@@ -71,6 +81,7 @@ async function commitEditing() {
   try {
     const result = await putEnvValue(key, value)
     stored.value = result.stored
+    actionSet.value = result.action_set
     computedValues.value = result.computed
   } catch {
     // already surfaced via apiFetch
@@ -81,6 +92,7 @@ async function removeKey(key) {
   try {
     const result = await deleteEnvValue(key)
     stored.value = result.stored
+    actionSet.value = result.action_set
     computedValues.value = result.computed
   } catch {
     // already surfaced via apiFetch
@@ -92,6 +104,19 @@ async function clearAll() {
   try {
     const result = await clearEnv()
     stored.value = result.stored
+    actionSet.value = result.action_set
+    computedValues.value = result.computed
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+async function clearActionAll() {
+  if (!window.confirm('Clear all action-set environment values? This cannot be undone.')) return
+  try {
+    const result = await clearActionEnv()
+    stored.value = result.stored
+    actionSet.value = result.action_set
     computedValues.value = result.computed
   } catch {
     // already surfaced via apiFetch
@@ -146,6 +171,23 @@ defineExpose({ loadEnv })
 
       <div class="inspector-signal-block">
         <div class="inspector-signal-header">
+          <span class="inspector-detail-badge inspector-detail-badge-env-action">Action</span>
+          <span class="inspector-signal-name">Set by an action's own env:</span>
+          <button
+            v-if="isLive && actionSetEntries.length"
+            class="inspector-env-clear-btn"
+            title="Clear all action-set values"
+            @click="clearActionAll"
+          >Clear all</button>
+        </div>
+        <p v-if="!actionSetEntries.length" class="inspector-env-empty">No values set by an action yet.</p>
+        <p v-for="[key, value] in actionSetEntries" :key="key" class="inspector-detail-field">
+          <strong>{{ key }}:</strong> {{ value === null ? '—' : value }}
+        </p>
+      </div>
+
+      <div class="inspector-signal-block">
+        <div class="inspector-signal-header">
           <span class="inspector-detail-badge inspector-detail-badge-env-computed">Computed</span>
           <span class="inspector-signal-name">Always up to date</span>
         </div>
@@ -164,6 +206,7 @@ defineExpose({ loadEnv })
 .inspector-signal-header { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem; }
 .inspector-detail-badge { flex-shrink: 0; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.15rem 0.5rem; border-radius: 999px; color: white; }
 .inspector-detail-badge-env { background: #8a5a44; }
+.inspector-detail-badge-env-action { background: #3d6b52; }
 .inspector-detail-badge-env-computed { background: #6b7280; }
 .inspector-signal-name { font-weight: 600; font-size: 0.85rem; color: #333; }
 .inspector-detail-field { margin: 0 0 0.3rem; line-height: 1.4; font-size: 0.8rem; color: #444; word-break: break-word; }
