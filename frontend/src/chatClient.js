@@ -15,6 +15,7 @@ function normalizeResult(data) {
     state_changed: data.state_changed,
     new_state: data.new_state,
     triggered_action: data.triggered_action,
+    'on-enter': data['on-enter'],
     ai_model: data.ai_model,
     session_id: data.session_id
   }

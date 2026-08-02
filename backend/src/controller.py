@@ -418,10 +418,10 @@ class AvanceController(object):
 
     @get("/api/projects/{project_name}/files/{file_name}")
     def get_project_file(self, project_name: str, file_name: str):
-        """{content, version, total_versions} of `file_name`'s latest
-        version, for the "Edit project" view (see
-        ProjectService.get_project_file) — version/total_versions are
-        what its Undo/Redo buttons use to know their own enabled range."""
+        """{content, can_undo, can_redo} of `file_name`'s current
+        content, for the "Edit project" view (see
+        ProjectService.get_project_file) — can_undo/can_redo are what its
+        Undo/Redo buttons use to know whether they're enabled."""
         try:
             return self.project_service.get_project_file(project_name, file_name)
         except FileNotFoundError as exc:
@@ -429,31 +429,43 @@ class AvanceController(object):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_name}/files/{file_name}/versions/{version}")
-    def get_project_file_version(self, project_name: str, file_name: str, version: int):
-        """Same shape as GET .../files/{file_name}, but for exactly
-        `version` — 404 unless that precise version was actually saved
-        for this file."""
+    @post("/api/projects/{project_name}/files/{file_name}/undo")
+    async def undo_project_file(self, project_name: str, file_name: str, request: Request):
+        """Loads a step back into the current user's own undo history for
+        `file_name` (see ProjectService.undo_project_file) — a pure
+        editor preview: nothing is persisted, and the active project/
+        conversation is never reloaded or reconciled; only Save does
+        that. The request body is whatever the editor currently shows,
+        needed so a later redo can bring it back."""
+        content = await request.body()
         try:
-            return self.project_service.get_project_file_at_version(project_name, file_name, version)
+            return await self.project_service.undo_project_file(project_name, file_name, content)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_name}/files/{file_name}/versions")
-    def get_project_file_versions(self, project_name: str, file_name: str):
-        """How many versions of `file_name` are on record — 0 if it (or
-        the project) doesn't exist."""
-        return {"total_versions": self.project_service.count_project_file_versions(project_name, file_name)}
-
-    @delete("/api/projects/{project_name}/versions")
-    def delete_project_versions(self, project_name: str):
-        """Discards every file's older versions for `project_name`,
-        keeping only each one's current/latest (see
-        ProjectService.prune_project_history) — the "Edit project" view
-        calls this itself when closing, so a project's version history
-        never outlives one editing session."""
+    @post("/api/projects/{project_name}/files/{file_name}/redo")
+    async def redo_project_file(self, project_name: str, file_name: str, request: Request):
+        """Mirror of .../undo, replaying the current user's own redo
+        history instead (see ProjectService.redo_project_file)."""
+        content = await request.body()
         try:
-            self.project_service.prune_project_history(project_name)
+            return await self.project_service.redo_project_file(project_name, file_name, content)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @delete("/api/projects/{project_name}/history")
+    def clear_project_history(self, project_name: str):
+        """Deletes the current user's own undo/redo history for every
+        file in `project_name` (see ProjectService.clear_project_history)
+        — the "Edit project" view calls this itself when opening, so a
+        fresh editing session never inherits a previous one's undo/redo
+        trail."""
+        try:
+            self.project_service.clear_project_history(project_name)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         return {"success": True}

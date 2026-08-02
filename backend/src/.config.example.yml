@@ -7,6 +7,13 @@ database:
   # mysql://user:pass@host/dbname for MySQL (requires adding a MySQL driver
   # such as pymysql to requirements.txt — not included by default).
   url: sqlite:///avance.db
+  # Optional, defaults to false. If true, an existing database whose
+  # on-disk schema doesn't match what this code expects (e.g. after an
+  # upgrade that renamed/removed a column) is dropped and recreated from
+  # scratch at startup instead of being left for a human to migrate or
+  # restore by hand. Destructive — every table's data is lost when this
+  # actually triggers. Leave false unless you specifically want that.
+  force-drop-and-create-when-incompatible: false
 
 chat-service:
   # "websocket" or "rest"

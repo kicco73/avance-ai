@@ -71,10 +71,17 @@ export function setCapabilities({ talkAvailable: talk, micAvailable: mic }) {
   micAvailable.value = mic
 }
 
-export function handleStateChange(newState) {
+// `onEnter` is the *fired action's* own "on-enter" (see backend's
+// automaton.Action.on_enter, sent over the wire as "on-enter" — see
+// chat_service.py's apply_manual_action/_process_turn_locked) — not part
+// of `newState` itself, since on-enter now describes how a state was
+// entered, not the state itself. Callers with no actual transition to
+// report (session load, boot ping, reset, restart-from-here) simply omit
+// it — undefined never celebrates.
+export function handleStateChange(newState, onEnter) {
   const changed = state.value?.key !== newState?.key
   state.value = newState
-  if (changed && newState?.on_enter === 'celebrate') {
+  if (changed && onEnter === 'celebrate') {
     celebrate()
   }
 }
@@ -366,7 +373,7 @@ async function submitMessage(message) {
     }
 
     if (result.state) {
-      handleStateChange(result.state)
+      handleStateChange(result.state, result['on-enter'])
     }
     if (result.ai_model) {
       applyAiModelInfo(result.ai_model)
@@ -452,7 +459,7 @@ export async function handleAction(actionName) {
       playMessageChime()
       maybeAutoPlayAudio(result.reply[result.reply.length - 1].id)
     }
-    handleStateChange(result.state)
+    handleStateChange(result.state, result['on-enter'])
     if (result.ai_model) {
       applyAiModelInfo(result.ai_model)
     }

@@ -10,6 +10,15 @@
 // accidentally fires the long-press action in between.
 const LONG_PRESS_MS = 600
 
+defineProps({
+  // True once the state this bubble's own conversation was in has since
+  // been renamed/removed from the project's own definition (see
+  // EditProjectView.vue's validStateKeys/isStateGone) — restarting from
+  // here would have nowhere valid to land, so the gesture is disabled
+  // outright rather than left to fail against the backend.
+  disabled: { type: Boolean, default: false }
+})
+
 const emit = defineEmits(['long-press', 'double-click'])
 
 let timer = null
@@ -34,7 +43,8 @@ function clearTimer() {
   <button
     type="button"
     class="restart-from-here-btn"
-    title="Restart from here: long press to clear, double click to resend"
+    :disabled="disabled"
+    :title="disabled ? 'This bubble\'s own state no longer exists in the project' : 'Restart from here: long press to clear, double click to resend'"
     @pointerdown.stop="startPress"
     @pointerup.stop="clearTimer"
     @pointerleave.stop="clearTimer"
@@ -68,8 +78,13 @@ function clearTimer() {
   user-select: none;
 }
 
-.restart-from-here-btn:hover {
+.restart-from-here-btn:hover:not(:disabled) {
   background: #f0f0f0;
   color: #333;
+}
+
+.restart-from-here-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 </style>

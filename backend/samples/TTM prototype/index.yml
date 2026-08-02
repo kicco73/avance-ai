@@ -150,6 +150,7 @@ states:
         ui-button: "Mark: plan defined"
         target: action
         trigger: "planConcreteness >= 75"
+        on-enter: celebrate
 
   action:
     ui-label: "Action"
@@ -161,7 +162,6 @@ states:
       self-efficacy, acknowledge effort, and help them build concrete coping skills
       for high-risk situations. Watch for signs of an unfolding high-risk situation
       or an acute risk signal in what they write.
-    on-enter: celebrate
 
     actions:
       # order matters: safety-critical actions are evaluated first (FIFO priority)

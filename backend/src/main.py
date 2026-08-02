@@ -57,7 +57,10 @@ try:
     ai_service = AiService.from_config(config.ai_services)
     talk_service = TalkService.from_config(config.talk_services) if config.talk_services is not None else None
     listen_service = ListenService.from_config(config.listen_services) if config.listen_services is not None else None
-    db = Db(config.database_url)
+    db = Db(
+        config.database_url,
+        force_drop_and_create_when_incompatible=config.database_force_drop_and_create_when_incompatible,
+    )
     project_service = ProjectService(db)
     session_manager = ChatSessionManager(db, open_window_minutes=config.max_session_duration_in_minutes)
     chat_service = ChatService(ai_service, project_service, db, session_manager)

@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Compartment } from '@codemirror/state'
 import { EditorView, basicSetup } from 'codemirror'
+import { keymap } from '@codemirror/view'
 import { yaml } from '@codemirror/lang-yaml'
 import ChatWindow from './chat/ChatWindow.vue'
 import ChatTimeline from './chat/ChatTimeline.vue'
@@ -11,13 +12,15 @@ import Inspector from './inspector/Inspector.vue'
 import {
   getProjectFiles,
   getProjectFile,
-  getProjectFileVersion,
   putProjectFile,
+  undoProjectFile,
+  redoProjectFile,
   deleteProjectFile,
-  deleteProjectVersions,
+  clearProjectHistory,
   getSignals,
   getSessionSignals,
   getSessions,
+  getProjectGraph,
   postTriggersPreview
 } from '../api.js'
 import { clearApiError, setApiError } from '../errorStore.js'
@@ -254,6 +257,34 @@ async function refreshSessionStartState() {
   }
 }
 
+// The project's own current set of real state keys (see
+// project_service.py's get_project_graph — nodes only, the reserved ""
+// implicit state is never one of these) — refreshed after every save,
+// since that's the only thing that can change it. Backs isStateGone
+// below: restarting from a bubble whose own state has since been
+// renamed/removed (see backend ProjectService._finalize_project_update,
+// which now keeps the conversation alive across saves that don't touch
+// its own current state) would have nowhere valid to land.
+const validStateKeys = ref(new Set())
+
+async function refreshValidStateKeys() {
+  try {
+    const { nodes } = await getProjectGraph(props.projectName)
+    validStateKeys.value = new Set(nodes.map((n) => n.key))
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+// The state a given message's own turn left the conversation in — same
+// resolution BenchmarkProjectView.vue/this view's own Inspector selection
+// already uses (see highlightedStateKeyFor), just evaluated per-bubble
+// instead of only for whatever's currently selected.
+function isStateGone(message) {
+  const stateKey = highlightedStateKeyFor({ kind: 'message', message }, timeline.value, sessionStartState.value)
+  return stateKey != null && !validStateKeys.value.has(stateKey)
+}
+
 function selectMessage(message) {
   selected.value =
     selected.value?.kind === 'message' && selected.value.message.id === message.id
@@ -340,26 +371,13 @@ const content = ref('')
 const originalContent = ref('')
 const isDirty = computed(() => content.value !== originalContent.value)
 
-// The currently open file's own version history (see backend's Archive
-// versioning — a project-wide counter, so most files share the same
-// range, but one added partway through a project's history can have
-// fewer versions on record than its own version *number* suggests).
-// `latestVersion`/`totalVersions` are set only on load/save (see
-// loadFileContent/saveCurrentFile), never by undo/redo — they're what
-// the file's version numbers actually span, not "where you're currently
-// looking". `currentVersion` is the version presently shown in the
-// editor, which undo/redo do move (see jumpToVersion). Undo/redo
-// navigate purely client-side: they load a past/future version's content
-// into the editor without saving anything — only Save (unchanged) ever
-// persists a new version, of whatever's currently in the editor.
-const currentVersion = ref(0)
-const latestVersion = ref(0)
-const totalVersions = ref(1)
-// The file's own oldest version on record — not necessarily 0: a file
-// added to the project partway through its history starts later.
-const oldestVersion = computed(() => latestVersion.value - totalVersions.value + 1)
-const canUndo = computed(() => currentVersion.value > oldestVersion.value)
-const canRedo = computed(() => currentVersion.value < latestVersion.value)
+// Whether the currently open file's Undo/Redo buttons are enabled — the
+// backend decides this (see db.Db.has_undo/has_redo, scoped to the
+// current user), refreshed from its response on every load/save/undo/redo.
+// The frontend never tracks version numbers or navigates by them: it just
+// asks for undo/redo and the backend returns whatever content that yields.
+const canUndo = ref(false)
+const canRedo = ref(false)
 
 // Set while the unsaved-changes dialog is blocking a switch to this file —
 // resolved one way or another by confirmSwitchSave/Discard/Cancel.
@@ -374,16 +392,16 @@ let dragTarget = null
 let view = null
 const editableCompartment = new Compartment()
 
-// Bumped by every loadFileContent/jumpToVersion call, each of which
-// captures its own value at the start and checks it again after its own
-// await — whichever such call was the *last* one started always wins.
+// Bumped by every loadFileContent/applyHistoryNavigation call, each of
+// which captures its own value at the start and checks it again after its
+// own await — whichever such call was the *last* one started always wins.
 // Without this, clicking a different file (or Undo/Redo) again while a
 // previous fetch for the old one is still in flight let both eventually
 // call createEditor(), each appending its own EditorView into
 // editorHost.value (the constructor never clears the parent — see
 // @codemirror/view's own EditorView), leaving two live, DOM-attached
-// editors at once; or let a stale jumpToVersion response overwrite the
-// now-current file's content/version state after the fact.
+// editors at once; or let a stale undo/redo response overwrite the
+// now-current file's content/undo-redo state after the fact.
 let requestToken = 0
 
 function createEditor(doc, fileName) {
@@ -393,7 +411,20 @@ function createEditor(doc, fileName) {
     editableCompartment.of(EditorView.editable.of(true)),
     EditorView.updateListener.of((update) => {
       if (update.docChanged) content.value = update.state.doc.toString()
-    })
+    }),
+    // Ctrl-S (Cmd-S on Mac, via CodeMirror's own "Mod-" alias) — same
+    // guard as the toolbar's Save button (:disabled), and always swallows
+    // the key itself so the browser's native "Save page as" never opens,
+    // even when there's nothing to save.
+    keymap.of([
+      {
+        key: 'Mod-s',
+        run: () => {
+          if (!loading.value && !saving.value && isDirty.value) saveCurrentFile()
+          return true
+        }
+      }
+    ])
   ]
   if (YAML_PATTERN.test(fileName)) extensions.splice(1, 0, yaml())
   view = new EditorView({ doc, extensions, parent: editorHost.value })
@@ -434,9 +465,8 @@ async function loadFileContent(fileName) {
     if (token !== requestToken) return // superseded by a newer switch/undo/redo
     content.value = file.content
     originalContent.value = file.content
-    currentVersion.value = file.version
-    latestVersion.value = file.version
-    totalVersions.value = file.total_versions
+    canUndo.value = file.can_undo
+    canRedo.value = file.can_redo
   } catch {
     if (token === requestToken) loading.value = false
     return
@@ -496,17 +526,20 @@ async function saveCurrentFile() {
   clearApiError()
   try {
     const result = await putProjectFile(props.projectName, currentFileName.value, content.value)
-    // Refresh from the server's own response (version/total_versions,
-    // plus content for consistency) rather than trusting what was typed.
+    // Refresh from the server's own response (can_undo/can_redo, plus
+    // content for consistency) rather than trusting what was typed.
     setEditorDoc(result.content)
     originalContent.value = result.content
-    currentVersion.value = result.version
-    latestVersion.value = result.version
-    totalVersions.value = result.total_versions
+    canUndo.value = result.can_undo
+    canRedo.value = result.can_redo
     emit('saved')
     // The Inspect panel reflects the last saved state, so a successful
     // save is exactly when it needs to catch up (see toggleInspect).
     if (inspecting.value) await inspectorRef.value?.refresh()
+    // A save is the only thing that can change which states exist at all
+    // — see isStateGone, which every bubble's own restart-from-here
+    // button depends on.
+    refreshValidStateKeys()
     return true
   } catch {
     return false
@@ -515,33 +548,39 @@ async function saveCurrentFile() {
   }
 }
 
-// Undo/redo are pure navigation over the currently open file's own
-// version history — they load a past/future version's content into the
-// editor (marking it dirty relative to `originalContent`, exactly like
-// any other unsaved edit) without persisting anything; Save is still the
-// only thing that ever creates a new version, of whatever ends up in the
-// editor.
-async function jumpToVersion(version) {
+// Undo/redo ask the backend to preview the previous/next content from
+// the current user's own history (see api.js's undoProjectFile/
+// redoProjectFile), sending the editor's own current content along so a
+// later redo/undo can bring it back. Unlike Save, this is a pure editor
+// preview: nothing is persisted, and the active project/conversation is
+// never reloaded or reconciled (no 'saved' emit, no Inspector/valid-
+// state-keys refresh) — only an explicit Save does any of that (see
+// saveCurrentFile). `originalContent` deliberately stays put, so the
+// editor's content now differing from it is exactly what lights the Save
+// button back up. The frontend never navigates by version number, just
+// "undo" / "redo".
+async function applyHistoryNavigation(action) {
   const token = ++requestToken
   try {
-    const file = await getProjectFileVersion(props.projectName, currentFileName.value, version)
+    const file = await action(props.projectName, currentFileName.value, content.value)
     // Superseded by a newer switch/undo/redo (see requestToken's own
-    // docstring) — applying it now would overwrite whichever file/version
-    // is actually open with this now-stale one's content.
+    // docstring) — applying it now would overwrite whichever file is
+    // actually open with this now-stale one's content.
     if (token !== requestToken) return
     setEditorDoc(file.content)
-    currentVersion.value = file.version
+    canUndo.value = file.can_undo
+    canRedo.value = file.can_redo
   } catch {
     // already surfaced via apiFetch
   }
 }
 
 function undo() {
-  if (canUndo.value) jumpToVersion(currentVersion.value - 1)
+  if (canUndo.value) applyHistoryNavigation(undoProjectFile)
 }
 
 function redo() {
-  if (canRedo.value) jumpToVersion(currentVersion.value + 1)
+  if (canRedo.value) applyHistoryNavigation(redoProjectFile)
 }
 
 async function switchFile(fileName) {
@@ -651,17 +690,10 @@ async function handleDeleteFile(fileName) {
 }
 
 // Only prompts when there's actually something to lose — a clean editor
-// (nothing typed, or already saved) closes straight away. The project's
-// whole version history (every file's undo/redo trail) is a bounded,
-// session-scoped undo buffer, not permanent storage — discarded here so
-// it never outlives one "Edit project" visit (see db.prune_archive_history).
-async function handleClose() {
+// (nothing typed, or already saved) closes straight away. Undo/redo
+// history itself is cleared on entry, not here — see onMounted.
+function handleClose() {
   if (isDirty.value && !window.confirm('Discard unsaved changes to this file?')) return
-  try {
-    await deleteProjectVersions(props.projectName)
-  } catch {
-    // already surfaced via apiFetch — must not block closing the editor
-  }
   emit('close')
 }
 
@@ -818,11 +850,20 @@ watch(currentSessionId, () => {
   refreshSignalsLog()
 })
 
-onMounted(() => {
+onMounted(async () => {
+  // A fresh editing session starts with a clean undo/redo slate — cleared
+  // here (entry), not on Back, and awaited before the first file loads so
+  // its own can_undo/can_redo already reflects the cleared state.
+  try {
+    await clearProjectHistory(props.projectName)
+  } catch {
+    // already surfaced via apiFetch — the session still opens either way
+  }
   loadFiles()
   loadFileContent(currentFileName.value)
   refreshSessionStartState()
   refreshSignalsLog()
+  refreshValidStateKeys()
   if (inspecting.value) openInspect()
   window.addEventListener('mousemove', onDrag)
   window.addEventListener('mouseup', stopDrag)
@@ -917,13 +958,13 @@ onBeforeUnmount(() => {
               <div class="edit-project-editor-toolbar-actions">
                 <button
                   class="undo-redo-btn"
-                  title="Undo (previous version)"
+                  title="Undo"
                   :disabled="loading || saving || !canUndo"
                   @click="undo"
                 >↶</button>
                 <button
                   class="undo-redo-btn"
-                  title="Redo (next version)"
+                  title="Redo"
                   :disabled="loading || saving || !canRedo"
                   @click="redo"
                 >↷</button>
@@ -958,12 +999,6 @@ onBeforeUnmount(() => {
                 Dev mode: freeze automatic state transitions
               </label>
               <div class="edit-project-chat-toolbar-actions">
-                <span v-if="selected" class="edit-project-chat-history-badge">
-                  Viewing history
-                  <button type="button" class="edit-project-chat-live-btn" @click="selected = null">
-                    Back to live
-                  </button>
-                </span>
                 <button
                   class="sessions-btn"
                   :class="{ 'sessions-btn-active': sessionsPanelOpen }"
@@ -987,6 +1022,7 @@ onBeforeUnmount(() => {
                   <template #message-actions="{ message }">
                     <RestartFromHereButton
                       v-if="message.role === 'user'"
+                      :disabled="isStateGone(message)"
                       @long-press="restartAndPrefill(message)"
                       @double-click="restartAndResend(message)"
                     />
@@ -1241,32 +1277,6 @@ onBeforeUnmount(() => {
 
 .edit-project-chat-toolbar-actions .sessions-btn-active {
   background: #4a6fa5;
-  color: white;
-}
-
-.edit-project-chat-history-badge {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.2rem 0.6rem;
-  border-radius: 999px;
-  background: #fbf3e6;
-  color: #8a6d3b;
-  font-size: 0.78rem;
-}
-
-.edit-project-chat-live-btn {
-  padding: 0.15rem 0.6rem;
-  border-radius: 999px;
-  border: 1px solid #8a6d3b;
-  background: white;
-  color: #8a6d3b;
-  font-size: 0.75rem;
-  cursor: pointer;
-}
-
-.edit-project-chat-live-btn:hover {
-  background: #8a6d3b;
   color: white;
 }
 

@@ -75,10 +75,13 @@ class ProjectService(object):
         zip upload, just one for a single-file edit) merged onto its
         current ones. Read-only — never writes anything. Returns
         (automaton, to_persist): the second element is the full merged
-        file set to hand to db.save_project_version, or None when nothing
-        actually changed (see _project_update_changed) — the caller's
-        signal to skip persistence (and, likely, resetting the active
-        conversation) entirely."""
+        file set (put_project hands it straight to db.save_project_files;
+        put_project_file only uses its presence as a changed/unchanged
+        signal, since it persists just its own single file via
+        db.save_project_file), or None when nothing actually changed (see
+        _project_update_changed) — the caller's signal to skip
+        persistence (and, likely, resetting the active conversation)
+        entirely."""
         existing = self._db.get_archives(project_name)
         merged = {**existing, **files}
 
@@ -88,31 +91,40 @@ class ProjectService(object):
             return automaton, None
         return automaton, merged
 
-    def _file_version_info(self, project_name: str, file_name: str) -> dict:
-        result = self._db.get_archive(project_name, file_name)
-        if result is None:
+    def _file_undo_redo_info(self, project_name: str, file_name: str) -> dict:
+        content = self._db.get_archive(project_name, file_name)
+        if content is None:
             raise FileNotFoundError(f"File '{file_name}' does not exist in project '{project_name}'.")
-        content, version = result
+        user = Session().user
         return {
             "content": content,
-            "version": version,
-            "total_versions": self._db.count_archive_versions(project_name, file_name),
+            "can_undo": self._db.has_undo(user, project_name, file_name),
+            "can_redo": self._db.has_redo(user, project_name, file_name),
         }
 
     async def _finalize_project_update(
         self, project_name: str, automaton: Automaton, commit: CommitCallback
     ) -> bool:
         """Used by every project-mutating path (put_project/put_project_file/
-        delete_project_file): a deliberate replace, so it wipes `project_name`'s
-        conversation data if it's currently active, before awaiting
-        `commit`. Archive persistence itself is each caller's own
-        responsibility (see db.save_project_version/db.delete_archive) —
-        this only refreshes the in-memory automaton cache and, if
-        `project_name` is the active project, resets its conversation."""
+        undo_project_file/redo_project_file/delete_project_file), before
+        awaiting `commit`. Archive persistence itself is each caller's own
+        responsibility (see db.save_project_files/db.save_project_file/
+        db.delete_archive) — this only refreshes the
+        in-memory automaton cache and, if `project_name` is the active
+        project, reconciles its live conversation against whatever just
+        changed: wiped only if the state it was actually in no longer
+        exists in the new definition (a rename/removal genuinely leaves it
+        nowhere valid to resume from) — an edit that leaves that one state
+        untouched (a wording tweak, a different state entirely, a new
+        state/action added alongside it) lets the conversation carry on
+        exactly where it was, rather than restarting on every single save
+        regardless of whether anything relevant to it actually changed."""
 
         self._automaton_cache[project_name] = automaton
         if project_name == self.get_active_project_name():
-            self._db.reset_project(project_name)
+            current_state_key = self._db.get_current_state(project_name)
+            if current_state_key is None or current_state_key not in automaton.states:
+                self._db.reset_project(project_name)
             await commit(automaton)
             return True
         return False
@@ -281,7 +293,6 @@ class ProjectService(object):
                 "final": state.final,
                 "is_start": state.key == automaton.init_action.target,
                 "chat": state.chat,
-                "on_enter": state.on_enter,
                 "history_cutoff": state.history_cutoff,
                 "transition_log_level": state.transition_log_level,
                 "attachments": list(state.attachments.keys()),
@@ -299,6 +310,7 @@ class ProjectService(object):
                 "trigger": action.trigger,
                 "has_trigger": action.trigger is not None,
                 "action_prompt": action.action_prompt,
+                "on-enter": action.on_enter,
             }
             for state in automaton.states.values()
             for action in state.actions
@@ -358,7 +370,7 @@ class ProjectService(object):
 
         self._db.set_active_project_name(project_name, Session().user)
         if to_persist is not None:
-            self._db.save_project_version(project_name, to_persist)
+            self._db.save_project_files(project_name, to_persist)
         await self._finalize_project_update(project_name, new_automaton, commit)
 
         return {"success": True, "project_name": project_name}
@@ -406,37 +418,11 @@ class ProjectService(object):
         return names
 
     def get_project_file(self, project_name: str, file_name: str) -> dict:
-        """{content, version, total_versions} for `file_name`'s latest
-        version — version/total_versions are what the "Edit project"
-        view's Undo/Redo buttons use to know their own enabled range
-        (see get_project_file_at_version for a specific past version)."""
-        return self._file_version_info(project_name, file_name)
-
-    def get_project_file_at_version(self, project_name: str, file_name: str, version: int) -> dict:
-        """Same shape as get_project_file, but for exactly `version` —
-        404s (via FileNotFoundError) unless that precise version was
-        actually saved for this file."""
-        result = self._db.get_archive(project_name, file_name, version=version)
-        if result is None:
-            raise FileNotFoundError(
-                f"File '{file_name}' in project '{project_name}' has no version {version}."
-            )
-        content, actual_version = result
-        return {
-            "content": content,
-            "version": actual_version,
-            "total_versions": self._db.count_archive_versions(project_name, file_name),
-        }
-
-    def count_project_file_versions(self, project_name: str, file_name: str) -> int:
-        return self._db.count_archive_versions(project_name, file_name)
-
-    def prune_project_history(self, project_name: str) -> None:
-        """Discards every file's older versions for `project_name`,
-        keeping only each one's current/latest — see db.prune_archive_history."""
-        if project_name not in self._db.list_projects():
-            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
-        self._db.prune_archive_history(project_name)
+        """{content, can_undo, can_redo} for `file_name`'s current
+        content — can_undo/can_redo are what the "Edit project" view's
+        Undo/Redo buttons use to know whether they're enabled, scoped to
+        the current user (see db.Db.has_undo/has_redo)."""
+        return self._file_undo_redo_info(project_name, file_name)
 
     async def put_project_file(
         self, project_name: str, file_name: str, content: bytes, commit: CommitCallback
@@ -454,11 +440,68 @@ class ProjectService(object):
             raise ValueError(f"Invalid project update: {exc}") from exc
 
         if to_persist is not None:
-            self._db.save_project_version(project_name, to_persist)
+            self._db.save_project_file(Session().user, project_name, file_name, text_content)
         await self._finalize_project_update(project_name, new_automaton, commit)
 
-        info = self._file_version_info(project_name, file_name)
-        return {"success": True, "project_name": project_name, **info}
+        return {"success": True, "project_name": project_name, **self._file_undo_redo_info(project_name, file_name)}
+
+    async def undo_project_file(self, project_name: str, file_name: str, content: bytes) -> dict:
+        """A pure editor preview, not a persisted change (see db.Db.
+        undo_project_file) — unlike put_project_file, this never touches
+        Archive, never rebuilds/caches the automaton, and never
+        reconciles the active conversation: only an explicit Save does
+        any of that (see put_project_file). `content` is whatever the
+        editor is currently showing (its own live, possibly-unsaved
+        state) — needed so a later redo can bring it back. Raises
+        ValueError if there's nothing to undo."""
+        if project_name not in self._db.list_projects():
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+        self._check_editable_file_name(file_name)
+        text_content = content.decode("utf-8") if isinstance(content, bytes) else content
+
+        user = Session().user
+        previous = self._db.undo_project_file(user, project_name, file_name, text_content)
+        if previous is None:
+            raise ValueError(f"Nothing to undo for file '{file_name}'.")
+
+        return {
+            "success": True,
+            "project_name": project_name,
+            "content": previous,
+            "can_undo": self._db.has_undo(user, project_name, file_name),
+            "can_redo": self._db.has_redo(user, project_name, file_name),
+        }
+
+    async def redo_project_file(self, project_name: str, file_name: str, content: bytes) -> dict:
+        """Mirror of undo_project_file, replaying the current user's own
+        redo history instead (see db.Db.redo_project_file)."""
+        if project_name not in self._db.list_projects():
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+        self._check_editable_file_name(file_name)
+        text_content = content.decode("utf-8") if isinstance(content, bytes) else content
+
+        user = Session().user
+        next_content = self._db.redo_project_file(user, project_name, file_name, text_content)
+        if next_content is None:
+            raise ValueError(f"Nothing to redo for file '{file_name}'.")
+
+        return {
+            "success": True,
+            "project_name": project_name,
+            "content": next_content,
+            "can_undo": self._db.has_undo(user, project_name, file_name),
+            "can_redo": self._db.has_redo(user, project_name, file_name),
+        }
+
+    def clear_project_history(self, project_name: str) -> None:
+        """Deletes the current user's own undo/redo history for every
+        file in `project_name` (see db.Db.clear_history) — called when
+        the "Edit project" view is opened, so a fresh editing session
+        never inherits a previous one's undo/redo trail (see
+        EditProjectView.vue's own onMounted)."""
+        if project_name not in self._db.list_projects():
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+        self._db.clear_history(Session().user, project_name)
 
     async def delete_project_file(
         self, project_name: str, file_name: str, commit: CommitCallback

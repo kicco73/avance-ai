@@ -25,3 +25,31 @@ def test_graph_includes_an_edge_from_the_reserved_state_for_init_action(client, 
     assert init_edges[0]["target"] == "Hello"
     assert init_edges[0]["action_name"] == "init_action"
     assert init_edges[0]["has_trigger"] is False
+
+
+def test_on_enter_is_reported_per_edge_not_per_node(client):
+    """on-enter belongs to the action (edge), not its destination state
+    (node) — see automaton.Action.on_enter."""
+    yml = (
+        "init-action:\n  target: a\n"
+        "states:\n"
+        "  a:\n"
+        "    contextual-prompt: hi\n"
+        "    actions:\n"
+        "      - name: go-quiet\n"
+        "        target: b\n"
+        "      - name: go-loud\n"
+        "        target: b\n"
+        "        on-enter: celebrate\n"
+        "  b:\n"
+        "    contextual-prompt: there\n"
+    )
+    resp = client.put("/api/projects/on-enter-proj", content=yml.encode(), headers={"Content-Type": "application/x-yaml"})
+    assert resp.status_code == 200, resp.text
+
+    graph = client.get("/api/projects/on-enter-proj/graph").json()
+
+    assert "on-enter" not in graph["nodes"][0]
+    edges_by_name = {e["action_name"]: e for e in graph["edges"]}
+    assert edges_by_name["go-quiet"]["on-enter"] is None
+    assert edges_by_name["go-loud"]["on-enter"] == "celebrate"

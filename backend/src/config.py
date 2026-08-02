@@ -79,6 +79,14 @@ class AppConfig:
         return float(value)
 
     @classmethod
+    def _get_optional_bool(cls, raw: dict, section: str, field: str, path: Path, default: bool) -> bool:
+        sub = cls._get_section(raw, section, path)
+        value = sub.get(field, default)
+        if not isinstance(value, bool):
+            raise ConfigError(f"{path}: '{section}.{field}' must be a boolean if present.")
+        return value
+
+    @classmethod
     def _get_providers(cls, raw: dict, section: str, path: Path) -> list:
         sub = cls._get_section(raw, section, path)
         entries = sub.get("providers")
@@ -212,6 +220,13 @@ class AppConfig:
             raise ConfigError(f"{path} must contain a YAML mapping at the top level.")
 
         self.database_url = self._require_str(raw, "database", "url", path)
+        # Off by default — destructive (see db.Db._drop_and_recreate_if_incompatible):
+        # only opt in for an environment where a stale/incompatible schema
+        # should be wiped and rebuilt automatically rather than left for a
+        # human to migrate/restore by hand.
+        self.database_force_drop_and_create_when_incompatible = self._get_optional_bool(
+            raw, "database", "force-drop-and-create-when-incompatible", path, default=False
+        )
         self.chat_transport = self._require_str(raw, "chat-service", "transport", path)
         if self.chat_transport not in self.VALID_TRANSPORTS:
             raise ConfigError(

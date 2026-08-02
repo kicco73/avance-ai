@@ -44,6 +44,7 @@ actions:
     name: results
     ui-button: "Resultats"
     target: unit55-results
+    on-enter: celebrate
   - &home
     name: home
     ui-button: "Inici"
@@ -52,6 +53,7 @@ actions:
     name: unit-subjuntive
     ui-button: "El subjuntiu present"
     target: unit55-subjuntive
+    on-enter: celebrate
   - &grammar
     name: grammar
     ui-button: "Gramàtica"
@@ -68,26 +70,32 @@ actions:
     name: regulars
     ui-button: "1. Verbs regulars"
     target: unit55-regulars
+    on-enter: celebrate
   - &alteracions
     name: alteracions
     ui-button: "2. Regulars amb alteracions"
     target: unit55-regulars-amb-alteracions
+    on-enter: celebrate
   - &alteracions-amb-gu
     name: alteracions-amb-gu
     ui-button: "3. Regulars amb canvi a -gu"
     target: unit55-regulars-amb-gu
+    on-enter: celebrate
   - &irregulars
     name: irregulars
     ui-button: "4. Verbs irregulars"
     target: unit55-irregulars
+    on-enter: celebrate
   - &freetyping
     name: freetyping
     ui-button: "5. Composició llibre"
     target: unit55-D
+    on-enter: celebrate
   - &evaluation
     name: evaluation
     ui-button: "6. Avaluació"
     target: unit55-evaluation
+    on-enter: celebrate
 
 #=======================================================================
 
@@ -118,7 +126,6 @@ states:
       Show in bold: "Unitat 55: subjuntiu"
       Show a short introduction explaining the cases where subjuntive - present tense is used. Use tables.
       Ask the user to pick an exercise among the choices the application is showing (that you don't see). Strictly don't invent anything.
-      on-enter: celebrate
     history-cutoff: true
     chat: false
     actions:
@@ -151,7 +158,6 @@ states:
         - when providing audio, don't ever put the answer in the audio text
       When finished:
         - provide feedback on their progress
-    on-enter: celebrate
     history-cutoff: True
     actions:
       - <<: *results
@@ -170,7 +176,6 @@ states:
     ui-label: "Unitat 55 - Formes amb alteracions"
     ui-description: >
       Verbs regulars en subjuntiu - present amb alteracions ortogràfiques
-    on-enter: celebrate
     contextual-prompt: |
       Unit 55. Exercise 2.
       Before entering the exercise:
@@ -211,7 +216,6 @@ states:
     ui-label: "Unitat 55 - Formes amb -gu-"
     ui-description: >
       Formes de verbs regulars en subjuntiu - present amb -gu
-    on-enter: celebrate
     contextual-prompt: |
       Unit 55. Exercise 3.
       Before entering the exercise:
@@ -247,7 +251,6 @@ states:
     ui-label: "Unitat 55 - Formes irregulars"
     ui-description: >
       Formes irregulars de verbs en subjuntiu - present
-    on-enter: celebrate
     contextual-prompt: |
         Unit 55. Exercise 4.
         Before moving on to the exercise:
@@ -274,7 +277,6 @@ states:
     ui-label: "Unitat 55 - Conjugació lliure"
     ui-description: >
       Conjugar lliurement todas les formes de verbs en subjuntiu - present
-    on-enter: celebrate
     contextual-prompt: |
         Unit 55. Exercise 5.
         Style: fill in the value.
@@ -301,7 +303,6 @@ states:
     ui-description: >
       Competència lingüística
     history-cutoff: True
-    on-enter: celebrate
     contextual-prompt: |
         Unit 55. Exercise 6.
         The user has only 2 attemps per step. There are 5 steps.
@@ -324,7 +325,6 @@ states:
     ui-label: "Unitat 55 - Resultats"
     ui-description: >
       Resum del rendiment global
-    on-enter: celebrate
     chat: False
     contextual-prompt: |
       Unit 55. Summary of the current user performance.

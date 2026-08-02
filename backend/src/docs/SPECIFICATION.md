@@ -155,7 +155,6 @@ states:
       The user is actively chatting.
     contextual-prompt: |
       Continue the conversation naturally.
-    on-enter: celebrate
     chat: true
     history-cutoff: false
     transition-log-level: WARNING
@@ -173,7 +172,6 @@ Each entry (keyed by its state key — see naming rules above):
 | `ui-description` | no | string | `None` | Shown in the frontend; omitted entirely (not even an empty string) when absent. |
 | `actions` | no | list of actions | `[]` | Outgoing actions — see §6. **A state with no actions is automatically `final`** (this isn't a separate field — `final` is derived, never declared). |
 | `chat` | no | boolean | `true` | If `false`, a chat message sent while this is the current state is rejected outright (`409`) — the conversation can only proceed via one of this state's `actions`. Independent of `final`/`fixed-message`: neither implies this. |
-| `on-enter` | no | string | `None` | Passed through to the frontend as-is. Today the **only** value with any actual behavior is `"celebrate"` (a confetti animation) — any other string is inert, forwarded but unused; do not rely on other values doing anything unless the frontend is extended to recognize them. |
 | `history-cutoff` | no | boolean | `false` | If `true`, every message from *before* the most recent transition **into** this state is excluded — both from what the model sees on a normal chat reply, and from what auto-tracking evaluates signals against. Use it on a state that should reason only about what's been said since arriving there. |
 | `transition-log-level` | no | one of `DEBUG`/`INFO`/`WARNING`/`ERROR`/`CRITICAL` | `"WARNING"` | Log level used server-side whenever a transition **lands on** this state (i.e. it's a property of the destination, not the action). Purely operational (server logs), no effect on behavior. |
 | `attachments` | no | list of filenames | `[]` | Sent with **every** model call this state is the "current" or "destination" state for — a normal chat reply (§2), and an `action-prompt` reply for an action landing here (§6.3). Not sent for a `fixed-message` state. |
@@ -200,6 +198,7 @@ actions:
     trigger: "mood >= 70 and engagement >= 20"
     action-prompt: |
       Briefly acknowledge the mood/engagement trigger, then continue.
+    on-enter: celebrate
     attachments: []
 ```
 
@@ -211,6 +210,7 @@ Each entry:
 | `target` | no | string | this action's **own state's key** | The destination state. Omitting it (or setting it explicitly to the current state) is a **self-loop**: the conversation stays in the same state, only the action's own effects (transition logged, `action-prompt` reply if any) happen. Must name a real key under `states:` (or the current state itself). |
 | `trigger` | no | string (expression) | `None` | A boolean expression over signal/metric names — see §6.2. Absent means **manual-only**: reachable only via `POST /api/action`, never fired by auto-tracking. |
 | `action-prompt` | no | string | `None` | An instruction sent to the model **as if it were the user's own message**, to produce an immediate reaction to this action firing — see §6.3. |
+| `on-enter` | no | string | `None` | Passed through to the frontend as-is when this action fires. Today the **only** value with any actual behavior is `"celebrate"` (a confetti animation) — any other string is inert, forwarded but unused; do not rely on other values doing anything unless the frontend is extended to recognize them. A property of the action firing, not of its destination state: two different actions landing on the same state can each carry their own value (or none) — a state reached one way might celebrate, reached another way might not. |
 | `ui-label` | no | string | `name` (also used if `ui-label` is present but empty) | Shown in the frontend. |
 | `ui-button` | no | string | `ui-label`, and transitively `name`, if absent or empty | Button text in the frontend's manual-action bar. |
 | `ui-description` | no | string | `None` | Shown in the frontend. |
@@ -309,6 +309,7 @@ init-action:
 | --- | --- | --- | --- |
 | `target` | **yes** | string | The state the automaton starts in — must name a real key under `states:`. |
 | `action-prompt` | no | string | Same mechanics as any action's (§6.3) — fires once, the first time this project's conversation is opened. |
+| `on-enter` | no | string | Same mechanics as any action's (§6) — sent alongside the very first state, the one time init-action itself fires. |
 
 `init-action` is a mapping, not a list item, and is otherwise exactly
 like a regular action (no `name`/`ui-label`/`trigger`/`attachments` of
@@ -365,7 +366,8 @@ backend. Read either `index.yml` in full alongside this document as a
 concrete, currently-valid reference.
 
 For richer real-world examples: `default/index.yml` uses multiple signals
-with attachments, a `fixed-message` state, `on-enter: celebrate`, and
-per-state `transition-log-level`; `Aprendr català/index.yml` uses
-`history-cutoff` alongside its own `fixed-message` state.
+with attachments, a `fixed-message` state, and per-state
+`transition-log-level`; `Aprendr català/index.yml` uses `history-cutoff`
+alongside its own `fixed-message` state and several actions' own
+`on-enter: celebrate`.
 `Drogodependencia/index.yml` is a further, simpler example with neither.

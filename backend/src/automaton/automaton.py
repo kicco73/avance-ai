@@ -31,6 +31,12 @@ class Action:
     trigger: str | None = None
     action_prompt: str | None = None
     attachments: dict[str, MemoryArchive] = field(default_factory=dict[str, MemoryArchive])
+    # Passed through to the frontend as-is when this action fires — see
+    # Automaton.get_state_payload. Not state-level: two different actions
+    # landing on the same target state can each have their own value (or
+    # none), since it describes *how you got there*, not the destination
+    # itself.
+    on_enter: str | None = None
 
 @dataclass
 class State:
@@ -51,7 +57,6 @@ class State:
     # Log level (name) used when logging a transition landing on this state.
     transition_log_level: str = "WARNING"
     attachments: dict[str, MemoryArchive] = field(default_factory=dict[str, MemoryArchive])
-    on_enter: str | None = None
     # If true, messages from before the transition into this state are kept
     # out of both the AI reply and auto-tracking's signal evaluation.
     history_cutoff: bool = False
@@ -82,19 +87,25 @@ class Signal:
     ui_description: str | None = None
 
 
-class ActionPayload(TypedDict):
-    name: str
-    ui_label: str
-    ui_button: str
-    target: str
-    has_trigger: bool
+# Functional syntax (not the class form the other Payload types use):
+# "on-enter" isn't a valid Python identifier, so a class body couldn't
+# declare it — see Automaton.get_state_payload, the one place this key is
+# actually produced, matching the same "on-enter" spelling the YAML
+# format itself uses (see automaton_builder.py's _build_action).
+ActionPayload = TypedDict("ActionPayload", {
+    "name": str,
+    "ui_label": str,
+    "ui_button": str,
+    "target": str,
+    "has_trigger": bool,
+    "on-enter": str | None,
+})
 
 class StatePayload(TypedDict):
     key: str
     ui_label: str
     ui_description: str | None
     final: bool
-    on_enter: str | None
     chat: bool
     actions: list[ActionPayload]
 
@@ -157,7 +168,6 @@ class Automaton(object):
             "ui_label": state.ui_label,
             "ui_description": state.ui_description,
             "final": state.final,
-            "on_enter": state.on_enter,
             "chat": state.chat,
             "actions": [
                 {
@@ -170,6 +180,7 @@ class Automaton(object):
                     # visibility (see ActionButtons.vue), never to evaluate
                     # anything itself.
                     "has_trigger": a.trigger is not None,
+                    "on-enter": a.on_enter,
                 }
                 for a in state.actions
             ],

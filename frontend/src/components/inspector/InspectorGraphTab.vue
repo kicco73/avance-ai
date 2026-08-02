@@ -86,7 +86,7 @@ function destroyGraph() {
   cyGraph = null
 }
 
-function nodeToCyData(n) { return { id: n.key, uiLabel: n.ui_label, uiDescription: n.ui_description, final: n.final, isStart: n.is_start, chat: n.chat, onEnter: n.on_enter, historyCutoff: n.history_cutoff, transitionLogLevel: n.transition_log_level, attachments: n.attachments } }
+function nodeToCyData(n) { return { id: n.key, uiLabel: n.ui_label, uiDescription: n.ui_description, final: n.final, isStart: n.is_start, chat: n.chat, historyCutoff: n.history_cutoff, transitionLogLevel: n.transition_log_level, attachments: n.attachments } }
 // The one edge with source === "" is the automaton's own init_action (see
 // project_service.py's get_project_graph). Its cytoscape-facing `source`
 // is PSEUDO_START_ID (a real node has to exist there — see
@@ -113,6 +113,7 @@ function edgeToCyData(e, id) {
     trigger: e.trigger,
     hasTrigger: e.has_trigger,
     actionPrompt: e.action_prompt,
+    onEnter: e['on-enter'],
     isInitEdge
   }
 }
@@ -338,7 +339,6 @@ onBeforeUnmount(destroyGraph)
       <div class="inspector-detail-body">
         <template v-if="selectedElement.kind === 'state'">
           <p v-if="selectedElement.data.uiDescription" class="inspector-detail-ui_description">{{ selectedElement.data.uiDescription }}</p>
-          <p v-if="selectedElement.data.onEnter" class="inspector-detail-field"><strong>On enter:</strong> {{ selectedElement.data.onEnter }}</p>
         </template>
         <template v-else>
           <p v-if="selectedElement.data.uiDescription" class="inspector-detail-ui_description">{{ selectedElement.data.uiDescription }}</p>
@@ -346,6 +346,7 @@ onBeforeUnmount(destroyGraph)
           <p v-if="selectedElement.data.buttonText" class="inspector-detail-field"><strong>Button:</strong> {{ selectedElement.data.buttonText }}</p>
           <p v-if="selectedElement.data.trigger" class="inspector-detail-field"><strong>Trigger:</strong><code class="inspector-detail-code">{{ selectedElement.data.trigger }}</code></p>
           <p v-if="selectedElement.data.actionPrompt" class="inspector-detail-field"><strong>Action prompt:</strong> {{ selectedElement.data.actionPrompt }}</p>
+          <p v-if="selectedElement.data.onEnter" class="inspector-detail-field"><strong>On enter:</strong> {{ selectedElement.data.onEnter }}</p>
         </template>
         <div v-if="editableFiles && selectedElement.data.attachments?.length" class="inspector-attachments">
           <button v-for="(fileName, idx) in selectedElement.data.attachments" :key="fileName" class="inspector-attachment-btn" :class="{ 'inspector-attachment-btn-disabled': !editableFiles.includes(fileName) }" :disabled="!editableFiles.includes(fileName)" :title="editableFiles.includes(fileName) ? fileName : `${fileName} (not text-editable)`" @click.stop="selectAttachment(fileName)">{{ attachmentLabel(idx) }}</button>

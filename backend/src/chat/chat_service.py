@@ -642,6 +642,14 @@ class ChatService(object):
             return {
                 "state": state_payload,
                 "reply": reply,
+                # on-enter belongs to the action that was actually fired —
+                # not to whatever's in state_payload's own outgoing
+                # actions list (a different set entirely, the *new*
+                # state's own actions) — see automaton.Action.on_enter.
+                # Kebab-cased to match the YAML field's own spelling (see
+                # automaton_builder.py's _build_action) end to end, unlike
+                # every other snake_case key here.
+                "on-enter": action.on_enter,
                 # A transition can itself call the AI (action_prompt/opening
                 # message, via _messages_for_transition above) — piggyback
                 # the post-turn model status on this same response so the
@@ -766,6 +774,11 @@ class ChatService(object):
             "state_changed": action is not None,
             "new_state": action.target if action else None,
             "triggered_action": action.name if action else None,
+            # The fired action's own on_enter (see automaton.Action.
+            # on_enter) — None both when no transition happened this turn
+            # and when the action that did fire simply has none set.
+            # Kebab-cased key, matching the YAML field's own spelling.
+            "on-enter": action.on_enter if action else None,
             # See apply_manual_action's own "ai_model" for why this rides
             # along with the turn's result instead of a separate call.
             "ai_model": self.get_ai_models_info(),

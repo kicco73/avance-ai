@@ -308,24 +308,11 @@ export function getProjectFiles(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/files`)
 }
 
-// {content, version, total_versions} of fileName's latest version — see
-// getProjectFileVersion for a specific past one.
+// {content, can_undo, can_redo} of fileName's current content —
+// can_undo/can_redo are what the Edit-project view's Undo/Redo buttons
+// use to know whether they're enabled, scoped to the current user.
 export function getProjectFile(projectName, fileName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}`)
-}
-
-// Same shape as getProjectFile, for the highest stored version not
-// exceeding `version` — used by the Edit-project view's Undo/Redo.
-export function getProjectFileVersion(projectName, fileName, version) {
-  return apiFetch(
-    `${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}/versions/${version}`
-  )
-}
-
-export function getProjectFileVersions(projectName, fileName) {
-  return apiFetch(
-    `${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}/versions`
-  )
 }
 
 export function putProjectFile(projectName, fileName, content) {
@@ -336,17 +323,37 @@ export function putProjectFile(projectName, fileName, content) {
   })
 }
 
+// A pure editor preview, not a save: nothing is persisted, the active
+// project/conversation is never reloaded. `content` is whatever the
+// editor currently shows, needed so a later redo/undo can bring it back
+// — the backend still decides which past/future content to restore, the
+// frontend never navigates by version. Response is {content, can_undo,
+// can_redo}.
+export function undoProjectFile(projectName, fileName, content) {
+  return apiFetch(
+    `${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}/undo`,
+    { method: 'POST', headers: { 'Content-Type': 'text/plain; charset=utf-8' }, body: content }
+  )
+}
+
+export function redoProjectFile(projectName, fileName, content) {
+  return apiFetch(
+    `${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}/redo`,
+    { method: 'POST', headers: { 'Content-Type': 'text/plain; charset=utf-8' }, body: content }
+  )
+}
+
 export function deleteProjectFile(projectName, fileName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}`, {
     method: 'DELETE'
   })
 }
 
-// Discards a project's older file versions, keeping only each one's
-// current/latest — called by the Edit-project view when it closes, so a
-// project's undo/redo history never outlives one editing session.
-export function deleteProjectVersions(projectName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/versions`, {
+// Clears the current user's own undo/redo history for every file in the
+// project — called by the Edit-project view when it opens, so a fresh
+// editing session never inherits a previous one's undo/redo trail.
+export function clearProjectHistory(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/history`, {
     method: 'DELETE'
   })
 }

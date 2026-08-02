@@ -153,19 +153,17 @@ class Settings(BaseModel):
 
 
 class Archive(BaseModel):
-    """One row per saved version of a project file — never updated in
-    place, only ever inserted (see Db.save_project_version). `version` is
-    project-wide, not per file: every file in a project is always saved
-    together at the same version number, starting at 0 and always
-    increasing by exactly 1 on the next real change — see
-    Db.next_project_version, the single place that's decided. This is
-    what lets a version number resolve to one complete, self-consistent
-    snapshot across every file, with plain exact-match lookups (see
-    Db.get_archive) instead of a "closest version" fallback."""
+    """One row per project file, holding only its current content — never
+    a history (see History for that). Updated in place on every save/undo/
+    redo (see Db.save_project_files/undo_project_file/redo_project_file),
+    unlike the old version-stamped Archive this replaced. `revision` bumps
+    on every content change; it exists only for optimistic-locking/future
+    use, not as a historical index — there is no way to look up a past
+    revision here."""
     id = AutoField()
     project_name = CharField(index=True, null=False)
     archive_name = CharField(index=True, null=False)
-    version = IntegerField(index=True, null=False)
+    revision = IntegerField(null=False, default=0)
     # Always text (index.yml plus its .md/.txt/.csv attachments — see
     # project_service.TEXT_EDITABLE_EXTENSIONS): TextField so callers get
     # back a plain str, not the bytes a BlobField would hand back
@@ -174,7 +172,31 @@ class Archive(BaseModel):
 
     class Meta:
         indexes = (
-            (("project_name", "archive_name", "version"), True),
+            (("project_name", "archive_name"), True),
+        )
+
+
+class History(BaseModel):
+    """Per-(user, project, file) undo/redo stacks — a bounded, session-
+    scoped editing buffer (see Db.clear_history/ProjectService.
+    clear_project_history, called on "Edit project"'s own Back), not
+    permanent storage like Archive. Each row is one entry in either the
+    undo stack (`kind="undo"`) or the redo stack (`kind="redo"`) for its
+    own (user_id, project_name, archive_name); `seq` orders entries within
+    that group, and the highest `seq` is always the top of that stack (see
+    Db._push_history/_pop_history). `content` is the file content that
+    entry would restore if popped, never the file's current content."""
+    id = AutoField()
+    user_id = CharField(index=True, null=False)
+    project_name = CharField(index=True, null=False)
+    archive_name = CharField(index=True, null=False)
+    kind = CharField(null=False)  # "undo" or "redo"
+    seq = IntegerField(null=False)
+    content = TextField(null=False)
+
+    class Meta:
+        indexes = (
+            (("user_id", "project_name", "archive_name", "kind", "seq"), True),
         )
 
 
@@ -184,12 +206,52 @@ class Db(object):
     # corrupt upload fails loudly instead of clobbering it with garbage.
     _SQLITE_MAGIC = b"SQLite format 3\x00"
 
-    def __init__(self, database_url: str) -> None:
+    def __init__(self, database_url: str, force_drop_and_create_when_incompatible: bool = False) -> None:
         self._database_url = database_url
         database.initialize(connect(database_url))
         database.connect(reuse_if_open=True)
         self._enable_foreign_keys()
-        database.create_tables([ChatSession, Message, Settings, Signals, Archive], safe=True)
+        if force_drop_and_create_when_incompatible:
+            self._drop_and_recreate_if_incompatible()
+        database.create_tables(self._MODELS, safe=True)
+
+    def _drop_and_recreate_if_incompatible(self) -> None:
+        """Only meaningful, and only ever called, when config.yml's own
+        database.force-drop-and-create-when-incompatible is set (see
+        config.AppConfig/main.py) — off by default, since it's
+        destructive: every table on disk is dropped (not just the ones
+        this code still has a model for) so the working file always ends
+        up an exact match, then __init__'s own create_tables(safe=True)
+        rebuilds them from scratch, empty.
+
+        A no-op whenever there's nothing to be incompatible with — the
+        working file doesn't exist yet (first boot) or has no tables at
+        all — since create_tables(safe=True) alone already handles both
+        of those on its own. Otherwise compares the file's actual schema
+        against _expected_schema() the same way restore_backup's own
+        _check_schema does; any difference (most commonly a renamed/
+        removed column create_tables can't fix by itself — e.g. this
+        version's Archive.revision replacing an older version's Archive.
+        version) drops every table it found. Without this flag, the exact
+        same mismatch is left exactly as today's code already leaves it —
+        surfacing as a query error the first time something actually
+        touches the incompatible table, not a startup crash."""
+        path = self.backup_file_path()
+        if not os.path.exists(path):
+            return
+        actual = self._actual_schema(path)
+        if not actual:
+            return
+        if actual == self._expected_schema():
+            return
+        logger.warning(
+            "Database schema at '%s' doesn't match what this code expects — dropping and "
+            "recreating every table from scratch (database.force-drop-and-create-when-incompatible "
+            "is enabled).",
+            path,
+        )
+        for table in actual:
+            database.execute_sql(f'DROP TABLE IF EXISTS "{table}"')
 
     @staticmethod
     def _enable_foreign_keys() -> None:
@@ -212,7 +274,7 @@ class Db(object):
     # The models this Db's schema is made of — the source of truth for
     # both create_tables (above) and the integrity check restore_backup
     # runs against an uploaded file (see _expected_schema/_check_schema).
-    _MODELS = (ChatSession, Message, Settings, Signals, Archive)
+    _MODELS = (ChatSession, Message, Settings, Signals, Archive, History)
 
     @classmethod
     def _expected_schema(cls) -> dict[str, set[str]]:
@@ -768,69 +830,42 @@ class Db(object):
         Message.delete().execute()
         ChatSession.delete().execute()
 
-    def next_project_version(self, project_name: str) -> int:
-        """The version number `project_name`'s *next* save
-        (save_project_version) will get: 0 if it has no archive rows at
-        all yet, else one past its current highest — recomputed fresh
-        from the stored rows every call, never a remembered counter."""
-        latest = Archive.select(fn.MAX(Archive.version)).where(Archive.project_name == project_name).scalar()
-        return 0 if latest is None else latest + 1
-
-    def save_project_version(self, project_name: str, files: dict[str, str]) -> int:
-        """The only way to persist project files: every entry in `files`
-        (every file in the project — changed content or simply carried
-        forward as-is, see ProjectService._prepare_project_update) is
-        written together as one new version — computed here, internally,
-        via next_project_version, and nowhere else. There is deliberately
-        no way for a caller to specify/target a version directly: a save
-        can only ever create a brand new, current version for the whole
-        project, never modify or add to an earlier one. Each file gets
-        its own new row (Archive rows are never updated in place — see
-        its own docstring). Returns the version used."""
-        version = self.next_project_version(project_name)
-        for archive_name, content in files.items():
-            Archive.create(project_name=project_name, archive_name=archive_name, version=version, content=content)
-        return version
-
-    def get_archive(self, project_name: str, archive_name: str, version: int | None = None) -> tuple[str, int] | None:
-        """(content, version) for `archive_name` — its latest version, or
-        (when `version` is given) EXACTLY that version. None if no such
-        row exists — either it was never saved at that version, or that
-        version has since been pruned. No "highest not exceeding"
-        fallback: every file that exists as of a given project version
-        has a real row there (see save_project_version), so an exact
-        match is always correct and a miss always means exactly what it
-        says."""
-        query = Archive.select(Archive.content, Archive.version).where(
+    def get_archive(self, project_name: str, archive_name: str) -> str | None:
+        """`archive_name`'s current content, or None if it doesn't exist
+        (in this project, or at all)."""
+        row = Archive.get_or_none(
             (Archive.project_name == project_name) & (Archive.archive_name == archive_name)
         )
-        if version is not None:
-            query = query.where(Archive.version == version)
-        row = query.order_by(Archive.version.desc()).first()
-        return (row.content, row.version) if row is not None else None
-
-    def count_archive_versions(self, project_name: str, archive_name: str) -> int:
-        return Archive.select().where(
-            (Archive.project_name == project_name) & (Archive.archive_name == archive_name)
-        ).count()
+        return row.content if row is not None else None
 
     def get_archives(self, project_name: str) -> dict:
-        """Every archive's *latest* version content, keyed by name — what
-        AutomatonBuilder/export_project_zip/the file explorer all treat
-        as "the project's current files". Grouping by MAX(id) rather than
-        MAX(version) is equivalent here (rows are only ever inserted, in
-        increasing version order, so a later version always has a later
-        id too) and avoids a second correlated subquery."""
-        latest_ids = (
-            Archive
-                .select(fn.MAX(Archive.id))
-                .where(Archive.project_name == project_name)
-                .group_by(Archive.archive_name)
-        )
+        """Every file's current content, keyed by name — what
+        AutomatonBuilder/export_project_zip/the file explorer all treat as
+        "the project's current files"."""
         return {
             row.archive_name: row.content
-            for row in Archive.select(Archive.archive_name, Archive.content).where(Archive.id.in_(latest_ids))
+            for row in Archive.select(Archive.archive_name, Archive.content).where(
+                Archive.project_name == project_name
+            )
         }
+
+    def save_project_files(self, project_name: str, files: dict[str, str]) -> None:
+        """Upserts each entry in `files` as its own file's new current
+        content, bumping `revision` — in place, never a new row (see
+        Archive's own docstring). No History side effect: this is the bulk
+        path (project upload/replace, see ProjectService.put_project),
+        distinct from save_project_file's own single-file undo/redo
+        bookkeeping."""
+        for archive_name, content in files.items():
+            existing = Archive.get_or_none(
+                (Archive.project_name == project_name) & (Archive.archive_name == archive_name)
+            )
+            if existing is None:
+                Archive.create(project_name=project_name, archive_name=archive_name, revision=0, content=content)
+            else:
+                Archive.update(content=content, revision=Archive.revision + 1).where(
+                    Archive.id == existing.id
+                ).execute()
 
     def list_projects(self) -> list[str]:
         return [
@@ -846,37 +881,145 @@ class Db(object):
             for p in Archive
                 .select(Archive.archive_name)
                 .where(Archive.project_name == project_name)
-                .distinct()
         ]
 
-    def prune_archive_history(self, project_name: str) -> None:
-        """Keeps only each archive's latest version for `project_name`,
-        deleting every older one — the version history is meant to be a
-        bounded, session-scoped undo buffer (see the "Edit project" view's
-        own cleanup on close), not permanent storage like the chat
-        history."""
-        latest_ids = (
-            Archive
-                .select(fn.MAX(Archive.id))
-                .where(Archive.project_name == project_name)
-                .group_by(Archive.archive_name)
-        )
-        Archive.delete().where(
-            (Archive.project_name == project_name) & (Archive.id.not_in(latest_ids))
-        ).execute()
-
     def delete_archive(self, project_name: str, archive_name: str) -> None:
-        """Deletes every version of `archive_name` — the file itself is
-        being removed from the project, so there's nothing left to keep
-        history of."""
+        """Removes `archive_name` from the project along with every user's
+        own undo/redo history for it — the file itself is gone, so there's
+        nothing left to undo/redo back to."""
         Archive.delete().where(
             (Archive.project_name == project_name) &
             (Archive.archive_name == archive_name)
+        ).execute()
+        History.delete().where(
+            (History.project_name == project_name) & (History.archive_name == archive_name)
         ).execute()
 
     def delete_archives(self, project_name: str) -> None:
         Archive.delete().where(
             Archive.project_name == project_name
+        ).execute()
+        History.delete().where(
+            History.project_name == project_name
+        ).execute()
+
+    # --- Undo/redo history --------------------------------------------
+    #
+    # Two stacks per (user, project, file): `undo` holds content to
+    # restore going backward, `redo` holds content to restore going
+    # forward (see History's own docstring). save_project_file/
+    # undo_project_file/redo_project_file below are the only entry points
+    # meant to be used from outside this section — they keep Archive's
+    # current content and these two stacks consistent with each other.
+
+    def _next_history_seq(self, user_id: str, project_name: str, archive_name: str, kind: str) -> int:
+        latest = (
+            History.select(fn.MAX(History.seq))
+            .where(
+                (History.user_id == user_id)
+                & (History.project_name == project_name)
+                & (History.archive_name == archive_name)
+                & (History.kind == kind)
+            )
+            .scalar()
+        )
+        return 0 if latest is None else latest + 1
+
+    def _push_history(self, user_id: str, project_name: str, archive_name: str, kind: str, content: str) -> None:
+        seq = self._next_history_seq(user_id, project_name, archive_name, kind)
+        History.create(
+            user_id=user_id, project_name=project_name, archive_name=archive_name,
+            kind=kind, seq=seq, content=content,
+        )
+
+    def _pop_history(self, user_id: str, project_name: str, archive_name: str, kind: str) -> str | None:
+        row = (
+            History.select()
+            .where(
+                (History.user_id == user_id)
+                & (History.project_name == project_name)
+                & (History.archive_name == archive_name)
+                & (History.kind == kind)
+            )
+            .order_by(History.seq.desc())
+            .first()
+        )
+        if row is None:
+            return None
+        content = row.content
+        row.delete_instance()
+        return content
+
+    def _clear_history_kind(self, user_id: str, project_name: str, archive_name: str, kind: str) -> None:
+        History.delete().where(
+            (History.user_id == user_id)
+            & (History.project_name == project_name)
+            & (History.archive_name == archive_name)
+            & (History.kind == kind)
+        ).execute()
+
+    def has_undo(self, user_id: str, project_name: str, archive_name: str) -> bool:
+        return History.select().where(
+            (History.user_id == user_id)
+            & (History.project_name == project_name)
+            & (History.archive_name == archive_name)
+            & (History.kind == "undo")
+        ).exists()
+
+    def has_redo(self, user_id: str, project_name: str, archive_name: str) -> bool:
+        return History.select().where(
+            (History.user_id == user_id)
+            & (History.project_name == project_name)
+            & (History.archive_name == archive_name)
+            & (History.kind == "redo")
+        ).exists()
+
+    def save_project_file(self, user_id: str, project_name: str, archive_name: str, content: str) -> None:
+        """The single-file edit path (see ProjectService.put_project_file):
+        pushes `archive_name`'s previous content onto `user_id`'s own undo
+        stack (skipped if this is the file's first-ever save — nothing to
+        undo back to yet), clears their redo stack (a normal edit
+        invalidates whatever redo could have replayed), then makes
+        `content` the file's new current content. The only one of the
+        three that ever touches Archive — undo/redo (below) are a pure
+        editor preview, never persisted on their own."""
+        previous = self.get_archive(project_name, archive_name)
+        if previous is not None:
+            self._push_history(user_id, project_name, archive_name, "undo", previous)
+        self._clear_history_kind(user_id, project_name, archive_name, "redo")
+        self.save_project_files(project_name, {archive_name: content})
+
+    def undo_project_file(self, user_id: str, project_name: str, archive_name: str, current_content: str) -> str | None:
+        """Pops `user_id`'s own most recent undo entry for `archive_name`
+        and pushes `current_content` — whatever the editor is showing
+        right now, supplied by the caller (see ProjectService.
+        undo_project_file), not necessarily Archive's own content — onto
+        their redo stack, so a later redo can bring it back. Returns the
+        popped content, or None (no-op, nothing changed) if their undo
+        stack is empty. Never touches Archive: undoing only changes what
+        the editor previews, never what's actually saved."""
+        previous = self._pop_history(user_id, project_name, archive_name, "undo")
+        if previous is None:
+            return None
+        self._push_history(user_id, project_name, archive_name, "redo", current_content)
+        return previous
+
+    def redo_project_file(self, user_id: str, project_name: str, archive_name: str, current_content: str) -> str | None:
+        """Mirror of undo_project_file, replaying `user_id`'s own redo
+        stack instead."""
+        next_content = self._pop_history(user_id, project_name, archive_name, "redo")
+        if next_content is None:
+            return None
+        self._push_history(user_id, project_name, archive_name, "undo", current_content)
+        return next_content
+
+    def clear_history(self, user_id: str, project_name: str) -> None:
+        """Deletes `user_id`'s own undo/redo history for every file in
+        `project_name` — see ProjectService.clear_project_history, called
+        when the "Edit project" view is opened, so a fresh editing session
+        never inherits a previous one's undo/redo trail."""
+        History.delete().where(
+            (History.user_id == user_id) & (History.project_name == project_name)
         ).execute()
 
 

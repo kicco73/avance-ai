@@ -77,7 +77,8 @@ class AutomatonBuilder(object):
             target=raw_action.get("target", key),
             trigger=raw_action.get("trigger"),
             action_prompt=raw_action["action-prompt"].strip() if raw_action.get("action-prompt") else None,
-            attachments=self._extract_required_archives(raw_action.get("attachments", []), all_archives, f"action {raw_action['name']}")
+            attachments=self._extract_required_archives(raw_action.get("attachments", []), all_archives, f"action {raw_action['name']}"),
+            on_enter=raw_action.get("on-enter"),
         )
 
     def _build_state(self, key: str, raw_state: dict, all_archives: dict[str, MemoryArchive]) -> State:
@@ -108,7 +109,6 @@ class AutomatonBuilder(object):
             ui_label=raw_state.get("ui-label", key),
             final=len(actions) == 0,
             ui_description=raw_state["ui-description"].strip() if raw_state.get("ui-description") else None,
-            on_enter=raw_state.get("on-enter"),
             contextual_prompt=contextual_prompt.strip() if contextual_prompt else None,
             actions=actions,
             fixed_message=fixed_message.strip() if fixed_message else None,
@@ -159,6 +159,7 @@ class AutomatonBuilder(object):
             trigger="True",
             target=raw_init_action["target"],
             action_prompt=raw_init_action["action-prompt"].strip() if raw_init_action.get("action-prompt") else None,
+            on_enter=raw_init_action.get("on-enter"),
         )
         return init_action
 
