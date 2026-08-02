@@ -3,11 +3,12 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ChatTimeline from './chat/ChatTimeline.vue'
 import SessionsPanel from './chat/SessionsPanel.vue'
 import Inspector from './inspector/Inspector.vue'
+import ErrorBanner from './ErrorBanner.vue'
 import {
   getMessages, getSessionSignals, getSessions, putMessageExpectedState, putMessageExpectedSignals,
   deleteSessionAnnotations
 } from '../api.js'
-import { currentSessionId, sessions, sessionsLoading, loadSessions, selectSession } from '../chatStore.js'
+import { currentSessionId, sessions, sessionsLoading, loadSessions, refreshSessionsQuietly, selectSession } from '../chatStore.js'
 import {
   buildTimeline, highlightedStateKeyFor, nearestMessageIdAtOrBefore, signalValuesFor
 } from '../benchmarkTimeline.js'
@@ -250,6 +251,14 @@ async function reloadSignalsLog() {
     const match = timeline.value.find((e) => e.kind === 'transition' && e.transition.message_id === messageId)
     selected.value = match ? { kind: 'transition', transition: match.transition } : null
   }
+  // Every caller of this is an annotation write (see onUpdateExpectedState/
+  // onUpdateExpectedSignals/onUnlabelAll) — the Sessions panel's own
+  // has_annotations tag for this exact session (see SessionsPanel.vue) can
+  // only just have flipped either way, and won't otherwise refresh until
+  // the panel is toggled closed and reopened. Quiet: a full loadSessions()
+  // would flash the panel to "Loading…" for something the user never
+  // asked to reload.
+  await refreshSessionsQuietly()
 }
 
 async function onUpdateExpectedState(value) {
@@ -326,7 +335,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="benchmark-overlay">
     <div class="benchmark-header">
-      <h2>Benchmark project — {{ projectName }}</h2>
+      <h2>Label sessions — {{ projectName }}</h2>
       <div class="benchmark-header-actions">
         <button
           class="sessions-toggle-btn"
@@ -338,6 +347,8 @@ onBeforeUnmount(() => {
         <button class="close-btn" @click="emit('close')">Back</button>
       </div>
     </div>
+
+    <ErrorBanner />
 
     <div class="benchmark-body">
       <div class="benchmark-chat-pane">

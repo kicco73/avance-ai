@@ -4,7 +4,7 @@ import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 // The sessions list content (header + rows) shared by every chat surface
 // that lets a user pick a past/present session — the main page and the
 // "Edit project" view's embedded chat (both via ChatWindow.vue) and the
-// "Benchmark project" view (BenchmarkProjectView.vue), which reviews a
+// "Label sessions" view (BenchmarkProjectView.vue), which reviews a
 // session read-only and so never creates/deletes one (see
 // allowCreate/allowDelete). Layout (the sliding wrap, its width, the drag
 // divider) stays each parent's own concern, same as Inspector.vue's own
@@ -239,7 +239,7 @@ const {
   color: #666;
 }
 
-/* "Benchmark project" view's own marker (see session.has_annotations) —
+/* "Label sessions" view's own marker (see session.has_annotations) —
    shown wherever this list is used, since it's just accurate information
    about the session, not something specific to reviewing it. */
 .session-annotation-icon {

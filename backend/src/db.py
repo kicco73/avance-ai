@@ -108,7 +108,7 @@ class Signals(BaseModel):
     # metrics_framework/benchmark_metrics) — the state an expert says the
     # automaton should be in immediately after this row's own evaluation.
     # Set/cleared only via ChatService.set_message_expected_state (the
-    # "Benchmark project" view's States annotation — see Inspector.vue).
+    # "Label sessions" view's States annotation — see Inspector.vue).
     # Only ever meaningful on a row `message` (below) points somewhere —
     # never written on a manual action's row, which was never evaluated
     # and so has nothing to annotate against.
@@ -495,7 +495,7 @@ class Db(object):
     def get_message(self, message_id: int) -> dict | None:
         """A single message by id, with its `session_id` — for resolving
         "what timestamp does this message correspond to" (see the
-        "Benchmark project" view's point-in-time Inspector,
+        "Label sessions" view's point-in-time Inspector,
         ChatService.get_metrics) and for ownership checks against its
         session (ChatService._require_own_message)."""
         message = Message.get_or_none(Message.id == message_id)
@@ -576,7 +576,7 @@ class Db(object):
         which additionally needs
         `expected_values` (expert ground truth, JSON-serialized the same
         way as `values` — see Signals.expected_values) and `message_id`
-        (see Signals.message — the "Benchmark project" view's own way to
+        (see Signals.message — the "Label sessions" view's own way to
         find "the row this message's evaluation produced", with no
         timestamp-nearest guessing)."""
         rows = (
@@ -640,7 +640,7 @@ class Db(object):
     def get_signal_row_by_message(self, message_id: int) -> dict | None:
         """The Signals row `message_id`'s own evaluation produced (see
         Signals.message), or None if this message isn't an evaluation
-        point at all. The "Benchmark project" view's own way to read/write
+        point at all. The "Label sessions" view's own way to read/write
         a signals annotation for a given message without knowing its
         Signals row id."""
         row = Signals.get_or_none(Signals.message == message_id)
@@ -724,6 +724,16 @@ class Db(object):
             conflict_target=[Settings.user],
             update={Settings.project: project_name},
         ).execute()
+
+    def clear_active_project_name(self, user: str = DEFAULT_USER) -> None:
+        """Deletes `user`'s own Settings row outright, rather than leaving
+        `project` pointing at a name that no longer exists (see
+        ProjectService.delete_project, when the deleted project was the
+        active one and nothing was left to fall back to) — reuses the
+        exact same "no Settings row" case get_active_project_name already
+        treats as None, instead of Settings.project needing to become
+        nullable just for this one case."""
+        Settings.delete().where(Settings.user == user).execute()
 
     def reset_project(self, project_name: str) -> None:
         """Wipes every user's sessions/messages/signals for `project_name`

@@ -125,6 +125,20 @@ export async function loadSessions() {
   }
 }
 
+// Same fetch as loadSessions, but never touches sessionsLoading — for a
+// caller that just wants `sessions` (e.g. its own has_annotations flags)
+// brought current in the background, without flashing the shared Sessions
+// panel (main page, EditProjectView, BenchmarkProjectView all read the
+// same sessionsLoading) to its "Loading…" placeholder over something the
+// user never asked to reload.
+export async function refreshSessionsQuietly() {
+  try {
+    sessions.value = await getSessions()
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
 export async function toggleSessionsPanel() {
   sessionsPanelOpen.value = !sessionsPanelOpen.value
   if (sessionsPanelOpen.value) {

@@ -8,7 +8,8 @@
 // "benchmark" vs "live" mode of its own — annotationStatus/signalsAnnotated
 // simply read as null/false wherever the caller's own signalsLog has
 // nothing annotated (a live session's log never does, unless it was
-// annotated from Benchmark project too).
+// annotated from Label sessions too).
+import { nextTick, ref, watch } from 'vue'
 import MessageBubble from './MessageBubble.vue'
 import { messageHasAnnotatedSignals } from '../../benchmarkTimeline.js'
 
@@ -19,6 +20,25 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['select-message', 'select-transition'])
+
+const rootEl = ref(null)
+
+// This root is the actual scroll region (see .chat-timeline's own
+// overflow-y below) — not whatever wraps it. A parent that also happens
+// to be scrollable itself (see ChatWindow.vue's own .messages, when this
+// is slotted into it) never actually overflows once this absorbs its own
+// content instead, so a parent-driven auto-scroll silently no-ops there;
+// this has to own the behavior itself. buildTimeline() (see
+// benchmarkTimeline.js) always returns a fresh array, never mutates one
+// in place, so a shallow watch on the prop reference is enough to catch
+// every change.
+function scrollToBottom() {
+  nextTick(() => {
+    if (rootEl.value) rootEl.value.scrollTop = rootEl.value.scrollHeight
+  })
+}
+
+watch(() => props.timeline, scrollToBottom)
 
 function toBubbleMessage(m) {
   return { role: m.role, content: m.content, audioText: m.audio_text, timestamp: m.timestamp }
@@ -34,7 +54,7 @@ function isTransitionSelected(transition) {
 </script>
 
 <template>
-  <div class="chat-timeline">
+  <div class="chat-timeline" ref="rootEl">
     <template
       v-for="entry in timeline"
       :key="entry.kind + '-' + (entry.kind === 'message' ? entry.message.id : entry.transition.id)"

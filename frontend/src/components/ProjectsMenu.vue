@@ -2,8 +2,6 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { getProjects } from '../api.js'
 
-const DEFAULT_PROJECT_NAME = 'default'
-
 const emit = defineEmits(['select', 'edit', 'benchmark', 'upload', 'download', 'delete', 'download-backup', 'restore-backup'])
 
 const open = ref(false)
@@ -13,16 +11,18 @@ const activeProjectName = ref(null)
 const rootEl = ref(null)
 const restoreInput = ref(null)
 
-// Edit/delete act on the active project — meaningless (and, for delete,
-// actually dangerous: the backend still resolves an "active" project name
-// even with zero projects uploaded) once there's nothing to select at all.
+// Edit/delete act on the active project — meaningless once there's
+// nothing to select at all. No project name (not even "default") is
+// reserved or protected from deletion anymore (see ProjectService.
+// delete_project) — deleting the last one leaves the app on its own
+// "select a project" empty state (see App.vue), not an error.
 const noProjectsAvailable = computed(() => projects.value.length === 0)
 const editDisabled = computed(() => noProjectsAvailable.value)
 // Same condition as Edit — a valid project must be loaded (see the
-// "Benchmark project" spec: "Abilitato solo quando è caricato un progetto
+// "Label sessions" spec: "Abilitato solo quando è caricato un progetto
 // valido, analogamente a 'Edit project'").
 const benchmarkDisabled = computed(() => noProjectsAvailable.value)
-const deleteDisabled = computed(() => noProjectsAvailable.value || activeProjectName.value === DEFAULT_PROJECT_NAME)
+const deleteDisabled = computed(() => noProjectsAvailable.value)
 
 // The single fetch behind both the menu's tick and the button's own label —
 // called on mount (so the button already shows the right name before the
@@ -147,7 +147,7 @@ onBeforeUnmount(() => {
             :disabled="benchmarkDisabled"
             @click="selectBenchmark"
           >
-            Benchmark project
+            Label sessions
           </button>
         </li>
         <li>

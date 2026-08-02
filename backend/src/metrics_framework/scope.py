@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Literal
 
 # The dataset a metric was designed to be meaningful over. Every current
-# consumer (the "Benchmark project"/"Edit project" views, both inherently
+# consumer (the "Label sessions"/"Edit project" views, both inherently
 # about one session at a time, and trigger evaluation, always run within
 # one active session) only ever wants "one_session" — see
 # AnalyticsCalculator/BenchmarkCalculator, which filter their own metrics

@@ -4,7 +4,7 @@ import ActionButtons from './ActionButtons.vue'
 import ChatInput from './ChatInput.vue'
 import MessageBubble from './MessageBubble.vue'
 import SessionsPanel from './SessionsPanel.vue'
-import { errorDetail, errorMessage, setApiError } from '../../errorStore.js'
+import { setApiError } from '../../errorStore.js'
 import { startRecording, stopRecording } from '../../mic.js'
 import {
   state,
@@ -36,7 +36,6 @@ import {
 
 const scrollEl = ref(null)
 const chatInputRef = ref(null)
-const showErrorDetail = ref(false)
 const recording = ref(false)
 const deletingSessionId = ref(null)
 
@@ -67,7 +66,7 @@ const chatDisabled = computed(() => !state.value?.key || !state.value?.chat || !
 // the same situation as no project/state being active at all.
 const chatDisabledReason = computed(() => {
   if (!selectedSessionActive.value) return 'This session is no longer active.'
-  if (!state.value?.key) return 'Please select:'
+  if (!state.value?.key) return 'Please select a project from the menu.'
   return "This state doesn't accept messages; use an action instead."
 })
 
@@ -97,10 +96,6 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('mousemove', onSessionsDrag)
   window.removeEventListener('mouseup', stopSessionsDrag)
-})
-
-watch(errorMessage, () => {
-  showErrorDetail.value = false
 })
 
 function submit() {
@@ -203,29 +198,6 @@ async function onAction(actionName) {
       </slot>
     </div>
 
-    <div
-      v-if="errorMessage"
-      class="chat-error-row"
-    >
-      <p class="chat-error">
-        {{ errorMessage }}
-      </p>
-
-      <button
-        v-if="errorDetail"
-        type="button"
-        class="chat-error-details-btn"
-        @click="showErrorDetail = !showErrorDetail"
-      >
-        {{ showErrorDetail ? 'Hide details' : 'Details' }}
-      </button>
-    </div>
-
-    <pre
-      v-if="errorMessage && errorDetail && showErrorDetail"
-      class="chat-error-detail"
-    >{{ errorDetail }}</pre>
-
     <p
       v-if="chatDisabled"
       class="chat-ended-notice"
@@ -325,139 +297,11 @@ async function onAction(actionName) {
   gap: 0.5rem;
 }
 
-.chat-error-row {
-  display: flex;
-  align-items: baseline;
-  gap: 0.6rem;
-  padding: 0 1rem;
-}
-
-.chat-error {
-  color: #c62828;
-  font-size: 0.85rem;
-  margin: 0;
-}
-
-.chat-error-details-btn {
-  flex: none;
-  border: none;
-  background: none;
-  color: #4a6fa5;
-  font-size: 0.8rem;
-  text-decoration: underline;
-  cursor: pointer;
-  padding: 0;
-}
-
-.chat-error-detail {
-  margin: 0.3rem 1rem 0;
-  padding: 0.5rem 0.75rem;
-  background: #fdecea;
-  color: #7a1f1f;
-  font-size: 0.78rem;
-  border-radius: 6px;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
 .chat-ended-notice {
   color: #444;
   background: #f5f5f7;
   margin: 0;
   padding: 0.5rem 1rem;
   font-size: 0.85rem;
-}
-
-.input-row {
-  display: flex;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  border-top: 1px solid #ddd;
-}
-
-.input-row input {
-  flex: 1;
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
-  border: 1px solid #ccc;
-  font-size: 0.95rem;
-}
-
-.mic-btn,
-.audio-btn,
-.spoken-text-btn {
-  flex: none;
-  width: 2.5rem;
-  border-radius: 6px;
-  border: 1px solid #999;
-  background: white;
-  color: #666;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.mic-btn {
-  touch-action: none;
-  user-select: none;
-}
-
-.mic-btn:hover:not(:disabled) {
-  background: #f0f0f0;
-}
-
-.mic-btn-recording {
-  border-color: #c62828;
-  background: #c62828;
-  color: white;
-  animation: mic-pulse 1.2s ease-in-out infinite;
-}
-
-.mic-btn-recording:hover {
-  background: #a02020;
-}
-
-.mic-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-@keyframes mic-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(198, 40, 40, 0.5); }
-  50% { box-shadow: 0 0 0 6px rgba(198, 40, 40, 0); }
-}
-
-.audio-btn:hover:not(:disabled) {
-  background: #f0f0f0;
-}
-
-.audio-btn-on {
-  border-color: #2e7d32;
-  background: #2e7d32;
-  color: white;
-}
-
-.audio-btn-on:hover:not(:disabled) {
-  background: #256428;
-}
-
-.audio-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.spoken-text-btn:hover:not(:disabled) {
-  background: #f0f0f0;
-}
-
-.spoken-text-btn-on {
-  border-color: #2e7d32;
-  background: #2e7d32;
-  color: white;
-}
-
-.spoken-text-btn-on:hover:not(:disabled) {
-  background: #256428;
 }
 </style>

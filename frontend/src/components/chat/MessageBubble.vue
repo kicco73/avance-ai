@@ -18,10 +18,10 @@ function renderMarkdown(text) {
 const props = defineProps({
   message: { type: Object, required: true },
   spokenTextEnabled: { type: Boolean, default: false },
-  // "Benchmark project" view only (see BenchmarkProjectView.vue) — the
+  // "Label sessions" view only (see BenchmarkProjectView.vue) — the
   // live chat never shows this.
   showTimestamp: { type: Boolean, default: false },
-  // "Benchmark project" view only — whether the Signals row this
+  // "Label sessions" view only — whether the Signals row this
   // message's own evaluation produced has an expert-annotated
   // expected_values (see Signals.expected_values). Shows a small "this
   // bubble has a signal annotation" marker; the live chat never sets this.
@@ -156,7 +156,7 @@ const {
   overflow-wrap: anywhere;
 }
 
-/* "Benchmark project" view only — see the signalsAnnotated prop's own
+/* "Label sessions" view only — see the signalsAnnotated prop's own
    docstring. Same amber used elsewhere for "pay attention, this differs
    from the live default" (see Inspector's own .inspector-detail-badge-current). */
 .bubble-annotation-icon {

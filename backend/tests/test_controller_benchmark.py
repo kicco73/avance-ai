@@ -1,4 +1,4 @@
-"""Integration tests for the backend pieces the "Benchmark project" view
+"""Integration tests for the backend pieces the "Label sessions" view
 relies on: the session-scoped Signals timeline endpoint, and point-in-time
 (message_id-scoped) metrics — see chat/chat_service.py's
 get_session_signals/get_metrics.

@@ -6,6 +6,7 @@ import EditProjectView from './components/EditProjectView.vue'
 import BenchmarkProjectView from './components/BenchmarkProjectView.vue'
 import ProjectsMenu from './components/ProjectsMenu.vue'
 import SplashScreen from './components/SplashScreen.vue'
+import ErrorBanner from './components/ErrorBanner.vue'
 import {
   getState,
   putProject,
@@ -208,9 +209,10 @@ async function handleModelDownload(projectName) {
   }
 }
 
-// Deleting the active model always falls back to "default" backend-side, so
-// this behaves the same as a successful switch/upload — reload state, clear
-// the chat.
+// Deleting the active model falls back to whatever project's left
+// backend-side (or none at all — see the "no-project" splash below), so
+// this behaves the same as a successful switch/upload either way — reload
+// state, clear the chat.
 async function handleModelDelete(projectName) {
   clearChatUi()
   try {
@@ -267,8 +269,8 @@ onBeforeUnmount(() => {
   <!-- 'checking' (the invisible first ping) renders neither branch, on
        purpose: nothing should flash before we know whether the backend was
        already up. -->
-  <SplashScreen v-if="bootStatus === 'waiting'" />
-  <SplashScreen v-else-if="bootStatus === 'failed'" failed @retry="startBootSequence" />
+  <SplashScreen v-if="bootStatus === 'waiting'" variant="connecting" />
+  <SplashScreen v-else-if="bootStatus === 'failed'" variant="failed" @retry="startBootSequence" />
 
   <div v-else-if="bootStatus === 'ready'" class="app">
     <header class="topbar">
@@ -305,8 +307,11 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
+    <ErrorBanner />
+
     <div class="app-body">
-      <ChatWindow />
+      <SplashScreen v-if="!state?.key" variant="no-project" embedded />
+      <ChatWindow v-else />
     </div>
 
     <EditProjectView
@@ -352,6 +357,12 @@ onBeforeUnmount(() => {
 .topbar-actions {
   display: flex;
   gap: 0.5rem;
+  /* StateBar renders nothing at all when there's no active project (see
+     its own v-if="state?.key") — margin-left: auto keeps this pinned to
+     the right on its own, rather than relying on .topbar's
+     justify-content: space-between, which only works with two flex
+     children and collapses to the left with just this one. */
+  margin-left: auto;
 }
 
 .upload-model-input {

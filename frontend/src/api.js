@@ -63,13 +63,13 @@ export function getMessages(sessionId) {
 }
 
 // The full Signals event log for a session (snapshots + transitions,
-// chronological) — for the "Benchmark project" view's timeline.
+// chronological) — for the "Label sessions" view's timeline.
 export function getSessionSignals(sessionId) {
   return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/signals`)
 }
 
 // Sets (expectedState given) or clears (null) messageId's expert-
-// annotated expected state — the "Benchmark project" view's States tab.
+// annotated expected state — the "Label sessions" view's States tab.
 // 409 if messageId isn't an evaluation point, 422 for an unknown state.
 export function putMessageExpectedState(messageId, expectedState) {
   return apiFetch(`${API_URL}/chat/messages/${encodeURIComponent(messageId)}/expected-state`, {
@@ -80,7 +80,7 @@ export function putMessageExpectedState(messageId, expectedState) {
 }
 
 // Sets or clears messageId's expert-annotated expected signal values —
-// the "Benchmark project" view's Signals tab. `expectedValues` is the
+// the "Label sessions" view's Signals tab. `expectedValues` is the
 // whole replacement dict (a signal name missing from it is annotation-
 // cleared for that signal alone); null/{} clears every signal.
 export function putMessageExpectedSignals(messageId, expectedValues) {
@@ -93,7 +93,7 @@ export function putMessageExpectedSignals(messageId, expectedValues) {
 
 // Clears every expert annotation (expected_state and expected_values
 // alike) across sessionId's own Signals rows in one call — the
-// "Benchmark project" view's "Unlabel all" action, after its own
+// "Label sessions" view's "Unlabel all" action, after its own
 // confirmation dialog.
 export function deleteSessionAnnotations(sessionId) {
   return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/annotations`, {
@@ -186,7 +186,7 @@ export function getSignals() {
 
 // `messageId`, when given, computes metrics as of that exact message's
 // own timestamp instead of the live/current history — see the
-// "Benchmark project" view's point-in-time Inspector.
+// "Label sessions" view's point-in-time Inspector.
 export function getMetrics(messageId) {
   const query = messageId != null ? `?message_id=${encodeURIComponent(messageId)}` : ''
   return apiFetch(`${API_URL}/chat/metrics${query}`)
@@ -196,7 +196,7 @@ export function getMetrics(messageId) {
 // metrics_framework/benchmark_metrics) for the active user+project —
 // every annotated session, or (sessionId given) just that one. Same
 // {name, ui_label, ui_description, value} shape as getMetrics, plus
-// sample_count — the "Benchmark project" view's Performance tab.
+// sample_count — the "Label sessions" view's Performance tab.
 export function getBenchmarkMetrics(sessionId) {
   const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
   return apiFetch(`${API_URL}/chat/benchmark-metrics${query}`)

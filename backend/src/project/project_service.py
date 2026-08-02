@@ -19,7 +19,6 @@ from db import Db
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PROJECT_NAME = "default"
 # What the file explorer/editor endpoints will read, write, list, or delete —
 # index.yml plus the text/plain attachment extensions from
 # AutomatonBuilder.EXTENSION_TO_MEDIA_TYPE (binary attachments like .pdf stay
@@ -167,16 +166,17 @@ class ProjectService(object):
 
             zf.extractall(staging_dir)
 
-    def get_active_project_name(self) -> str:
+    def get_active_project_name(self) -> str | None:
         """The current session user's active project name, read fresh from
-        the DB every time. Defaults to (and persists) "default" the first
-        time this user has no Settings row yet."""
-        user = Session().user
-        project_name = self._db.get_active_project_name(user)
-        if project_name is None:
-            project_name = DEFAULT_PROJECT_NAME
-            self._db.set_active_project_name(project_name, user)
-        return project_name
+        the DB every time — None if this user has no Settings row yet
+        (never activated anything), or their last-active project has since
+        been deleted (no project name is reserved/protected from deletion,
+        this one included) and nothing else was left to fall back to (see
+        delete_project). Every caller that resolves an active *automaton*
+        from this (get_active_automaton_and_state, and everything built on
+        it) already degrades gracefully when there's genuinely nothing
+        active — see GET /api/state's own bare except."""
+        return self._db.get_active_project_name(Session().user)
 
     def get_active_automaton_and_state(self) -> tuple[Automaton, State]:
         """The active Automaton paired with its current State — falls back
@@ -185,8 +185,13 @@ class ProjectService(object):
         effect: never returns the reserved implicit state ("") itself, so
         every caller of this (not just ChatService.open_if_needed) always
         sees a real state, whether or not init_action has actually been
-        resolved/persisted yet."""
+        resolved/persisted yet. Raises FileNotFoundError (same exception
+        _load_project itself raises for an unknown project name) when
+        there's no active project at all — see get_active_project_name's
+        own docstring for when that happens."""
         project_name = self.get_active_project_name()
+        if project_name is None:
+            raise FileNotFoundError("No project is currently active.")
         automaton = self._load_project(project_name)
         state_key = self._db.get_current_state(project_name)
         if state_key is None or state_key not in automaton.states:
@@ -324,27 +329,32 @@ class ProjectService(object):
     async def put_project(
         self, project_name: str, content: bytes, content_type: str | None, commit: CommitCallback
     ) -> dict:
-
-        if not self._looks_like_zip(content_type, content):
-            raise ValueError(f"Uploaded file must be zip")
+        """Creates or replaces `project_name` from a raw body — a zip
+        archive, or (see _looks_like_zip) a single bare YAML file, treated
+        as index.yml's own content with no attachments (same one-file
+        convention PUT .../files/index.yml already uses for an edit, just
+        for the initial upload)."""
 
         if not self._is_safe_project_name(project_name):
             raise ValueError(f"Invalid project name: '{project_name}'.")
 
-        with tempfile.TemporaryDirectory() as tmp:
-            try:
-                staging_dir = Path(tmp)
-                self._extract_zip_safely(content, staging_dir)
-                files = {
-                    file.name: file.read_text()
-                    for file in staging_dir.iterdir()
-                }
-                new_automaton, to_persist = self._prepare_project_update(project_name, files)
-            except (zipfile.BadZipFile, ValueError) as exc:
-                raise ValueError(str(exc)) from exc
-            except Exception as exc:
-                logger.exception(exc)
-                raise ValueError(f"Invalid project definition: {exc}") from exc
+        try:
+            if self._looks_like_zip(content_type, content):
+                with tempfile.TemporaryDirectory() as tmp:
+                    staging_dir = Path(tmp)
+                    self._extract_zip_safely(content, staging_dir)
+                    files = {
+                        file.name: file.read_text()
+                        for file in staging_dir.iterdir()
+                    }
+            else:
+                files = {"index.yml": content.decode("utf-8")}
+            new_automaton, to_persist = self._prepare_project_update(project_name, files)
+        except (zipfile.BadZipFile, ValueError) as exc:
+            raise ValueError(str(exc)) from exc
+        except Exception as exc:
+            logger.exception(exc)
+            raise ValueError(f"Invalid project definition: {exc}") from exc
 
         self._db.set_active_project_name(project_name, Session().user)
         if to_persist is not None:
@@ -468,23 +478,19 @@ class ProjectService(object):
         await self._finalize_project_update(project_name, new_automaton, commit)
 
     async def delete_project(self, project_name: str, commit: CommitCallback) -> None:
-
-        if project_name == DEFAULT_PROJECT_NAME:
-            raise PermissionError("The default project cannot be deleted.")
-
         self._db.reset_project(project_name)
         self._db.delete_archives(project_name)
         self._automaton_cache.pop(project_name, None)
 
         if project_name == self.get_active_project_name():
-            # DEFAULT_PROJECT_NAME is just a reserved name (see above) —
-            # not guaranteed to actually exist as an uploaded project (e.g.
-            # a fresh install, or it was never uploaded), so activating it
-            # blindly can 404. Prefer it when it exists, for continuity;
-            # otherwise fall back to whatever project is left, if any —
-            # activating nothing (rather than raising) when the deleted
-            # project was the last one.
+            # No project name is reserved/preferred for continuity anymore
+            # — whatever's left (in whatever order list_projects returns),
+            # or nothing at all (leaving the app on its own "select a
+            # project" empty state, see App.vue) when the deleted project
+            # was the last one.
             remaining = self._db.list_projects()
-            fallback = DEFAULT_PROJECT_NAME if DEFAULT_PROJECT_NAME in remaining else next(iter(remaining), None)
+            fallback = next(iter(remaining), None)
             if fallback is not None:
                 await self.activate_project(fallback, commit)
+            else:
+                self._db.clear_active_project_name(Session().user)

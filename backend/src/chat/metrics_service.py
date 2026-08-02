@@ -35,7 +35,7 @@ class ChatMetrics(object):
     def calculate_all(self, until: datetime | None = None) -> list[dict]:
         """ui_label/ui_description/value per metric, for the "Edit
         project" view's Inspector Metrics tab (live, `until` omitted) and
-        the "Benchmark project" view's point-in-time Inspector (`until`
+        the "Label sessions" view's point-in-time Inspector (`until`
         set to a specific past message's timestamp — see
         ChatService.get_metrics)."""
         return [

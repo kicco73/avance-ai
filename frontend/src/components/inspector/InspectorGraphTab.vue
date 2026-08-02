@@ -17,6 +17,15 @@ const props = defineProps({
 
 const emit = defineEmits(['jump-to-definition', 'select-attachment', 'update-expected-state'])
 
+// Cytoscape rejects an empty string as an element id outright ("Can not
+// create element with invalid string ID ``") — this is the pseudo-node's
+// *graph-wiring* id only (data.id, and the init edge's own data.source/
+// target). The "" chat/Signals.old_state convention (see matchStateKey
+// below) is kept as a separate field, purely for highlight-matching
+// against firedActionEdge/nextActionEdge, never handed to cytoscape
+// itself as an id.
+const PSEUDO_START_ID = '__avance_init_pseudo_node__'
+
 // The dropdown's own "<not labelled>" option — an explicit, distinct
 // choice from every real state key, so leaving it selected never looks
 // like "the expert confirmed this state," only like "nobody has looked
@@ -50,12 +59,12 @@ function attachmentLabel(index) { return String.fromCharCode(97 + index) }
 
 const isSelectedActionNext = computed(() => {
   if (selectedElement.value?.kind !== 'action' || !props.nextActionEdge) return false
-  return selectedElement.value.data.source === props.nextActionEdge.stateKey && selectedElement.value.data.actionName === props.nextActionEdge.actionName
+  return selectedElement.value.data.matchStateKey === props.nextActionEdge.stateKey && selectedElement.value.data.actionName === props.nextActionEdge.actionName
 })
 
 const isSelectedActionFired = computed(() => {
   if (selectedElement.value?.kind !== 'action' || !props.firedActionEdge) return false
-  return selectedElement.value.data.source === props.firedActionEdge.stateKey && selectedElement.value.data.actionName === props.firedActionEdge.actionName
+  return selectedElement.value.data.matchStateKey === props.firedActionEdge.stateKey && selectedElement.value.data.actionName === props.firedActionEdge.actionName
 })
 
 const isSelectedStateCurrent = computed(() => {
@@ -79,27 +88,45 @@ function destroyGraph() {
 
 function nodeToCyData(n) { return { id: n.key, uiLabel: n.ui_label, uiDescription: n.ui_description, final: n.final, isStart: n.is_start, chat: n.chat, onEnter: n.on_enter, historyCutoff: n.history_cutoff, transitionLogLevel: n.transition_log_level, attachments: n.attachments } }
 // The one edge with source === "" is the automaton's own init_action (see
-// project_service.py's get_project_graph) — its own actionName is
-// overridden to "" here (display-only; the backend still reports the
-// real "init_action" name) so it lines up with the exact same "" the
-// chat's own init-transition already uses everywhere else (Signals.
-// action, benchmarkTimeline.js's synthetic entry) — letting
-// applyFiredActionHighlight/isSelectedActionFired match it with no
-// special-casing of their own, the same {stateKey, actionName} shape as
-// every other action.
+// project_service.py's get_project_graph). Its cytoscape-facing `source`
+// is PSEUDO_START_ID (a real node has to exist there — see
+// pseudoStartNodeElements), but `matchStateKey` keeps the exact same ""
+// the chat's own init-transition already uses everywhere else (Signals.
+// action, benchmarkTimeline.js's synthetic entry) — every next/fired-
+// action highlight match (see applyFiredActionHighlight/
+// isSelectedActionFired) reads *that* field, never cytoscape's own
+// source/target, so this one edge needs no special-casing there. Same
+// reasoning for actionName: overridden to "" (display-only — the backend
+// still reports the real "init_action" name) so {stateKey, actionName}
+// lines up with the chat's own transition shape.
 function edgeToCyData(e, id) {
-  return { id, source: e.source, target: e.target, uiLabel: e.ui_label, uiDescription: e.ui_description, actionName: e.source === '' ? '' : e.action_name, buttonText: e.ui_button, trigger: e.trigger, hasTrigger: e.has_trigger, actionPrompt: e.action_prompt, isInitEdge: e.source === '' }
+  const isInitEdge = e.source === ''
+  return {
+    id,
+    source: isInitEdge ? PSEUDO_START_ID : e.source,
+    target: e.target,
+    matchStateKey: e.source,
+    uiLabel: e.ui_label,
+    uiDescription: e.ui_description,
+    actionName: isInitEdge ? '' : e.action_name,
+    buttonText: e.ui_button,
+    trigger: e.trigger,
+    hasTrigger: e.has_trigger,
+    actionPrompt: e.action_prompt,
+    isInitEdge
+  }
 }
 
-// A transparent node for the "" edge's own source — cytoscape needs a
-// real node at each edge endpoint, so the automaton's own "arrow from
-// nowhere" into its start state (see get_project_graph's own docstring)
-// is drawn as an edge from this invisible pseudo-node (styled zero-size,
-// see renderGraph's own style array) rather than a dangling reference.
-// Not selectable/grabbable: it's not a real state, just an anchor point.
+// A transparent node for the init edge's own source — cytoscape needs a
+// real node (with a non-empty id — an empty string is rejected outright)
+// at each edge endpoint, so the automaton's own "arrow from nowhere" into
+// its start state (see get_project_graph's own docstring) is drawn as an
+// edge from this invisible pseudo-node (styled zero-size, see
+// renderGraph's own style array) rather than a dangling reference. Not
+// selectable/grabbable: it's not a real state, just an anchor point.
 function pseudoStartNodeElements(edges) {
   return edges.some((e) => e.source === '')
-    ? [{ data: { id: '', isPseudoStart: true }, selectable: false, grabbable: false }]
+    ? [{ data: { id: PSEUDO_START_ID, isPseudoStart: true }, selectable: false, grabbable: false }]
     : []
 }
 
@@ -123,6 +150,7 @@ function closeGraphDetail() {
 
 function handleNodeTap(evt) {
   const data = evt.target.data()
+  if (data.isPseudoStart) return // not a real state — nothing to select/jump to
   selectGraphElement('state', data)
   emit('jump-to-definition', { kind: 'state', stateKey: data.id })
 }
@@ -130,7 +158,7 @@ function handleNodeTap(evt) {
 function handleEdgeTap(evt) {
   const data = evt.target.data()
   selectGraphElement('action', data)
-  emit('jump-to-definition', { kind: 'action', stateKey: data.source, actionName: data.actionName })
+  emit('jump-to-definition', { kind: 'action', stateKey: data.matchStateKey, actionName: data.actionName })
 }
 
 function selectAttachment(fileName) { emit('select-attachment', fileName) }
@@ -144,7 +172,7 @@ function renderGraph(nodes, edges) {
   // state puts that state one level *into* the tree, so its own incoming
   // arrow reads as entering the graph from outside rather than from a
   // node that's simultaneously a root with nothing above it.
-  const layoutRoot = edges.some((e) => e.source === '') ? '' : startKey
+  const layoutRoot = edges.some((e) => e.source === '') ? PSEUDO_START_ID : startKey
   cyGraph = cytoscape({
     container: graphHost.value,
     elements: graphElements(nodes, edges),
@@ -166,6 +194,21 @@ function renderGraph(nodes, edges) {
     ],
     layout: { name: 'breadthfirst', directed: true, roots: layoutRoot != null ? [layoutRoot] : undefined, padding: 16, spacingFactor: 1.1 }
   })
+  // breadthfirst spaces the pseudo-start node the same one full "level"
+  // away from the real start state as any other parent/child pair — this
+  // halves that distance after the fact (a non-animated layout has
+  // already settled every position by the time the constructor above
+  // returns), so the init arrow itself reads shorter than a normal edge,
+  // not just differently colored/solid.
+  if (startKey != null && layoutRoot === PSEUDO_START_ID) {
+    const pseudoNode = cyGraph.getElementById(PSEUDO_START_ID)
+    const startNode = cyGraph.getElementById(startKey)
+    if (pseudoNode.nonempty() && startNode.nonempty()) {
+      const from = pseudoNode.position()
+      const to = startNode.position()
+      pseudoNode.position({ x: from.x + (to.x - from.x) / 2, y: from.y + (to.y - from.y) / 2 })
+    }
+  }
   cyGraph.on('tap', 'node', handleNodeTap)
   cyGraph.on('tap', 'edge', handleEdgeTap)
   cyGraph.on('tap', (evt) => { if (evt.target === cyGraph) closeGraphDetail() })
@@ -197,13 +240,13 @@ function applyCurrentStateHighlight() {
 function applyNextActionHighlight() {
   if (!cyGraph) return
   cyGraph.edges().removeClass('next-action')
-  if (props.nextActionEdge) cyGraph.edges().filter(e => e.data('source') === props.nextActionEdge.stateKey && e.data('actionName') === props.nextActionEdge.actionName).addClass('next-action')
+  if (props.nextActionEdge) cyGraph.edges().filter(e => e.data('matchStateKey') === props.nextActionEdge.stateKey && e.data('actionName') === props.nextActionEdge.actionName).addClass('next-action')
 }
 
 function applyFiredActionHighlight() {
   if (!cyGraph) return
   cyGraph.edges().removeClass('fired-action')
-  if (props.firedActionEdge) cyGraph.edges().filter(e => e.data('source') === props.firedActionEdge.stateKey && e.data('actionName') === props.firedActionEdge.actionName).addClass('fired-action')
+  if (props.firedActionEdge) cyGraph.edges().filter(e => e.data('matchStateKey') === props.firedActionEdge.stateKey && e.data('actionName') === props.firedActionEdge.actionName).addClass('fired-action')
 }
 
 function syncSelectionToHighlightedState({ emitJump = false } = {}) {

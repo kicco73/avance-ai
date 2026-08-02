@@ -136,7 +136,7 @@ class ChatService(object):
             "active": active,
             # Whether any of this session's own Signals rows carry an
             # expert annotation (see db.session_has_annotations) — the
-            # "Benchmark project" view's own Sessions panel marker.
+            # "Label sessions" view's own Sessions panel marker.
             "has_annotations": has_annotations,
         }
 
@@ -273,7 +273,7 @@ class ChatService(object):
     def get_session_signals(self, session_id: int) -> list[dict]:
         """The full Signals event log for `session_id` (see
         db.get_signals) — every snapshot/transition row, chronological —
-        for the "Benchmark project" view's timeline: state transitions
+        for the "Label sessions" view's timeline: state transitions
         and signal values interleaved with messages, reconstructed
         entirely client-side from this one call."""
         self._require_own_session(session_id)
@@ -295,7 +295,7 @@ class ChatService(object):
         the full current history, or (when `message_id` is given)
         restricted to whatever existed at or before that exact message's
         own timestamp (see ChatMetrics.calculate_all/AnalyticsCalculator's
-        `until`) — for the "Benchmark project" view's point-in-time
+        `until`) — for the "Label sessions" view's point-in-time
         Inspector, keyed by message id rather than a raw timestamp so the
         UI never has to serialize/parse one itself."""
         if message_id is None:
@@ -317,7 +317,7 @@ class ChatService(object):
         (see ChatMetrics.calculate_all), plus `sample_count` (how many
         annotated points fed each metric — see the framework's own
         README on why that must never be discarded alongside the score) —
-        the "Benchmark project" view's Performance tab.
+        the "Label sessions" view's Performance tab.
         max_session_duration_in_minutes comes from the same single source
         ChatSessionManager's own open-session window already uses (see
         config.yml's chat-service.max_session_duration_in_minutes) — never
@@ -370,7 +370,7 @@ class ChatService(object):
         session) — every other session's own start has nothing in the
         database to annotate against at all. Rather than leave every
         later session permanently un-annotatable at its own start point
-        (see the "Benchmark project" view's chat timeline, which shows a
+        (see the "Label sessions" view's chat timeline, which shows a
         synthesized row there precisely because there's nothing real to
         show), lazily creates that row here, the first time an expert
         actually tries to annotate it — same shape open_if_needed's own
@@ -442,7 +442,7 @@ class ChatService(object):
         message_id's own evaluation — see Signals.expected_values's own
         docstring. `expected_values` is the *whole* replacement dict: a
         signal name missing from it is annotation-cleared for that signal
-        alone (the "Benchmark project" view's own sliders send the whole
+        alone (the "Label sessions" view's own sliders send the whole
         dict on every change, never a single-key patch). Every key must
         name a real signal in the active project, every value a plain
         number in [0, 100] (see Inspector.vue's own slider range). Returns
@@ -468,7 +468,7 @@ class ChatService(object):
     def clear_session_annotations(self, session_id: int) -> None:
         """Clears every expert annotation (expected_state and
         expected_values alike) across session_id's own Signals rows in
-        one call — the "Benchmark project" view's "Unlabel all" action,
+        one call — the "Label sessions" view's "Unlabel all" action,
         fired only after its own confirmation dialog."""
         self._require_own_session(session_id)
         self._db.clear_session_annotations(session_id)
@@ -501,7 +501,7 @@ class ChatService(object):
         # thing to "the message whose processing produced this
         # transition" it actually has — without this, a session's very
         # first transition could never be annotated at all in the
-        # "Benchmark project" view (see Signals.message's own docstring),
+        # "Label sessions" view (see Signals.message's own docstring),
         # since every other transition ties back to a real user/assistant
         # message but this one otherwise wouldn't.
         opening_message = await self._generate_opening_message_if_needed(project_name, session_id, automaton, state)
@@ -704,7 +704,7 @@ class ChatService(object):
         # below. Every one of those is a *reaction* to this user message —
         # if it were saved first, they'd all get an earlier timestamp than
         # the very message that caused them, corrupting the persisted
-        # chronological order (not just how the "Benchmark project" view's
+        # chronological order (not just how the "Label sessions" view's
         # timeline happens to display it — every consumer of
         # db.get_messages/get_signals' own timestamp ordering, e.g.
         # chat_history for the next AI call, would see it too).

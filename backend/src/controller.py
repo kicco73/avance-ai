@@ -84,7 +84,7 @@ class AvanceController(object):
         user+project on demand — no caching, see metrics_framework/
         README.md. For the "Edit project" view's Inspector Metrics tab
         (no `message_id`, always the live/current history) and the
-        "Benchmark project" view's point-in-time Inspector (`message_id`
+        "Label sessions" view's point-in-time Inspector (`message_id`
         restricts the history to what existed at or before that exact
         message). ChatServiceError (404 for an unknown/not-yours
         `message_id`) is handled globally, see error_handlers.py."""
@@ -95,7 +95,7 @@ class AvanceController(object):
         """Expert-annotation-vs-actual benchmark metrics (see
         metrics_framework/benchmark_metrics) for the active user+project —
         every annotated session, or (session_id given) just that one. For
-        the "Benchmark project" view's Performance tab. ChatServiceError
+        the "Label sessions" view's Performance tab. ChatServiceError
         (404 for an unknown/not-yours session_id) is handled globally,
         see error_handlers.py."""
         return self.chat_service.get_benchmark_metrics(session_id)
@@ -190,7 +190,7 @@ class AvanceController(object):
     @get("/api/chat/sessions/{session_id}/signals")
     def get_session_signals(self, session_id: int):
         """The full Signals event log for `session_id` (snapshots and
-        transitions alike, chronological) — for the "Benchmark project"
+        transitions alike, chronological) — for the "Label sessions"
         view, which reconstructs state/signal values at any point in the
         session's timeline entirely client-side from this one call."""
         return self.chat_service.get_session_signals(session_id)
@@ -198,7 +198,7 @@ class AvanceController(object):
     @put("/api/chat/messages/{message_id}/expected-state")
     def put_message_expected_state(self, message_id: int, req: ExpectedStateRequest):
         """Sets or (expected_state: null) clears message_id's expert-
-        annotated expected state — the "Benchmark project" view's States
+        annotated expected state — the "Label sessions" view's States
         tab. ChatServiceError (404 unowned/unknown message, 409 not an
         evaluation point, 422 unknown state) is handled globally, see
         error_handlers.py."""
@@ -207,7 +207,7 @@ class AvanceController(object):
     @put("/api/chat/messages/{message_id}/expected-signals")
     def put_message_expected_signals(self, message_id: int, req: ExpectedSignalsRequest):
         """Sets or clears message_id's expert-annotated expected signal
-        values — the "Benchmark project" view's Signals tab. Same error
+        values — the "Label sessions" view's Signals tab. Same error
         handling as put_message_expected_state, plus 422 for an unknown
         signal name or an out-of-range value."""
         return self.chat_service.set_message_expected_signals(message_id, req.expected_values)
@@ -216,7 +216,7 @@ class AvanceController(object):
     def delete_session_annotations(self, session_id: int):
         """Clears every expert annotation (expected_state and
         expected_values alike) across session_id's own Signals rows —
-        the "Benchmark project" view's "Unlabel all" action, fired only
+        the "Label sessions" view's "Unlabel all" action, fired only
         after its own confirmation dialog. ChatServiceError (404 for an
         unknown/not-yours session_id) is handled globally, see
         error_handlers.py."""
@@ -494,8 +494,6 @@ class AvanceController(object):
             await self.project_service.delete_project(project_name, self._activate_project)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
-        except PermissionError as exc:
-            raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail=str(exc)) from exc
         except OSError as exc:
             raise HTTPException(status_code=HTTPStatus.INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
         return {"success": True}

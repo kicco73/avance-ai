@@ -20,7 +20,8 @@ import {
   getSessions,
   postTriggersPreview
 } from '../api.js'
-import { clearApiError, errorDetail, errorMessage, setApiError } from '../errorStore.js'
+import { clearApiError, setApiError } from '../errorStore.js'
+import ErrorBanner from './ErrorBanner.vue'
 import { buildTimeline, highlightedStateKeyFor, nearestMessageIdAtOrBefore, signalValuesFor } from '../benchmarkTimeline.js'
 // Aliased: this file already uses "state" to mean an automaton state node
 // — `liveState` is specifically the live conversation's current state,
@@ -163,7 +164,6 @@ const saving = ref(false)
 const uploading = ref(false)
 const creatingFile = ref(false)
 const deletingFile = ref(null)
-const showErrorDetail = ref(false)
 const editorHost = ref(null)
 const uploadInput = ref(null)
 
@@ -861,18 +861,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div v-if="errorMessage" class="edit-project-error-row">
-      <p class="edit-project-error">{{ errorMessage }}</p>
-      <button
-        v-if="errorDetail"
-        type="button"
-        class="edit-project-error-details-btn"
-        @click="showErrorDetail = !showErrorDetail"
-      >
-        {{ showErrorDetail ? 'Hide details' : 'Details' }}
-      </button>
-    </div>
-    <pre v-if="errorMessage && errorDetail && showErrorDetail" class="edit-project-error-detail">{{ errorDetail }}</pre>
+    <ErrorBanner />
 
     <div class="edit-project-body">
       <div class="edit-project-main-column">
@@ -997,6 +986,7 @@ onBeforeUnmount(() => {
                 >
                   <template #message-actions="{ message }">
                     <RestartFromHereButton
+                      v-if="message.role === 'user'"
                       @long-press="restartAndPrefill(message)"
                       @double-click="restartAndResend(message)"
                     />
@@ -1153,44 +1143,6 @@ onBeforeUnmount(() => {
 
 .inspect-btn-on:hover {
   background: #3d5c8a;
-}
-
-.edit-project-error-row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.6rem 1rem;
-  background: #fdecea;
-  border-bottom: 1px solid #f5c6c2;
-}
-
-.edit-project-error {
-  margin: 0;
-  color: #c62828;
-  font-size: 0.9rem;
-  flex: 1;
-}
-
-.edit-project-error-details-btn {
-  padding: 0.2rem 0.6rem;
-  border-radius: 6px;
-  border: 1px solid #c62828;
-  background: white;
-  color: #c62828;
-  cursor: pointer;
-  font-size: 0.8rem;
-}
-
-.edit-project-error-detail {
-  margin: 0;
-  padding: 0.75rem 1rem;
-  background: #fdecea;
-  border-bottom: 1px solid #f5c6c2;
-  color: #7a1f1f;
-  font-size: 0.8rem;
-  white-space: pre-wrap;
-  max-height: 200px;
-  overflow-y: auto;
 }
 
 .edit-project-body {

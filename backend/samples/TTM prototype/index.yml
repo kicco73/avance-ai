@@ -3,6 +3,7 @@
 # (Prochaska, DiClemente)
 
 init-action:
+  ui-label: new session
   target: Precontemplation
 
 # Fixed instructions appended to every state's contextual_prompt (except
