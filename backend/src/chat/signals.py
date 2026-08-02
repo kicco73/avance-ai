@@ -1,16 +1,18 @@
-"""Computes and reports the monitoring signals defined in the active
-project's YAML. get_active_automaton and db are constructor-injected.
-Instantiated as ChatService's `signals`."""
+"""Signal definitions and payload-building for the active project's YAML
+— get_active_automaton and db are constructor-injected. Instantiated as
+ChatService's `signals`. AI-call-shaped logic (computing signal values,
+either embedded in a normal turn's own reply or via a dedicated fallback
+call) lives in chat/signal_evaluator.py's SignalEvaluator instead — this
+class no longer makes AI calls itself (see its own module docstring for
+why the old standalone prompt here was deprecated in favor of the
+embedded [avance]-tag convention)."""
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime
 from typing import Callable
 
 from automaton.automaton import Automaton, SignalPayload
-from ai.ai_service import AiService
-from ai.llm_provider import AIServiceError
 from db import Db
 
 logger = logging.getLogger(__name__)
@@ -19,22 +21,6 @@ logger = logging.getLogger(__name__)
 # computation call. Kept even so a slice always starts on a "user" turn
 # (history strictly alternates user/assistant, in pairs).
 SIGNALS_HISTORY_WINDOW = 14
-
-SIGNALS_SYSTEM_PROMPT_TEMPLATE = (
-    "You are evaluating a conversation for a set of independent monitoring "
-    "signals. Each conversation message below is prefixed with its ISO 8601 "
-    "timestamp. Evaluate each signal independently and only from what was "
-    "actually said in this excerpt.\n\n"
-    "{signal_definitions}\n\n"
-    "Respond with ONLY a single JSON object mapping each signal name above to "
-    'its json value, in this exact form: {{"signal_name": '
-    "value, ...}}. Include every signal listed above, nothing else — no "
-    "explanation, no markdown formatting, just the JSON object."
-)
-
-# The shape compute_signals() needs to build a priming turn from a list of
-# automaton.Attachment — supplied by the caller (see module docstring).
-BuildPrimingMessages = Callable[[list], list[dict]]
 
 # Supplies the currently-active Automaton — constructor-injected rather
 # than imported: this module doesn't own which project is active.
@@ -55,12 +41,13 @@ class Signals(object):
             raise ValueError("No active project")
         return name
 
-    def _signal_history_window(
+    def history_window(
         self, session_id: int, pending_message: dict | None, since: datetime | None
     ) -> list[dict]:
         """Recent messages as a single 'evaluate this transcript' turn —
         not multi-turn history, which invites the model to keep chatting.
-        `pending_message` is appended locally, unpersisted."""
+        `pending_message` is appended locally, unpersisted. Used by
+        SignalEvaluator.compute_explicitly's own dedicated call."""
         fetch_n = SIGNALS_HISTORY_WINDOW - 1 if pending_message is not None else SIGNALS_HISTORY_WINDOW
         recent = self._db.get_messages(session_id, last_n=fetch_n, since=since)
         if pending_message is not None:
@@ -70,91 +57,12 @@ class Signals(object):
         transcript = "\n".join(f"[{m['timestamp']}] {m['role']}: {m['content']}" for m in recent)
         return [{"role": "user", "content": f"Conversation transcript:\n\n{transcript}"}]
 
-    @staticmethod
-    def _parse_signals_reply(raw_reply: str) -> dict:
-        text = raw_reply.strip()
-        if text.startswith("```"):
-            text = text.strip("`")
-            if "\n" in text:
-                first_line, rest = text.split("\n", 1)
-                if first_line.strip().isalpha():
-                    text = rest
-            text = text.strip()
-        parsed = json.loads(text)
-        if not isinstance(parsed, dict):
-            raise ValueError("Signals response is not a JSON object.")
-        return parsed
-
-    @staticmethod
-    def _validate_signal_value(raw_value: object) -> tuple[int | float | None, bool]:
-        # Signals are unconstrained numbers, int or float: no fixed range
-        # (a signal's own `definition` prompt is free to ask for e.g. 0-100,
-        # but the software itself doesn't enforce it).
-        if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
-            return None, True
-        return raw_value, False
-
-    def _signals_payload(self, error=False) -> list[SignalPayload]:
-        payloads: list[SignalPayload] = [
-            {
-                "name": s.name,
-                "ui_label": s.ui_label,
-                "ui_description": s.ui_description,
-                "definition": s.definition,
-                "attachments": s.attachments,
-                "error": error,
-            } 
-            for s in self.automaton.signals
-        ]
-        return payloads
-    
     def get_definition(self):
         return "- Definition of signals:\n"+"\n\n".join(
             f'\t- Signal "{s.name}":\n{s.definition}' for s in self.automaton.signals
         )
 
-    async def compute(
-        self,
-        ai_service: AiService,
-        build_priming_messages: BuildPrimingMessages,
-        session_id: int,
-        pending_message: dict | None = None,
-        since: datetime | None = None,
-    ) -> dict[str,SignalPayload]:
-        """Calls the AI to (re)compute signal values from the persisted
-        conversation plus `pending_message` (evaluated even though not yet
-        persisted). `since` excludes messages from before a history_cutoff
-        state's entry. Only called from the auto-tracking flow."""
-        automaton = self.automaton
-        signal_definitions = self.get_definition()
-        system_prompt = SIGNALS_SYSTEM_PROMPT_TEMPLATE.format(signal_definitions=signal_definitions)
-        # Each signal brings only its own attachments into this shared call —
-        # never a state's or general_prompt's (different scope entirely).
-        signal_attachments = [a for s in automaton.signals for a in s.attachments.values()]
-        priming_messages = build_priming_messages(signal_attachments)
-        call_history = priming_messages + self._signal_history_window(session_id, pending_message, since)
-
-        try:
-            raw_reply = await ai_service.generate(system_prompt, call_history)
-            parsed = self._parse_signals_reply(raw_reply)
-        except (AIServiceError, json.JSONDecodeError, ValueError) as exc:
-            logger.error("Failed to compute signals: %s", exc)
-            return self._signals_payload(error=True)
-
-        results = []
-        for s in automaton.signals:
-            value, error = self._validate_signal_value(parsed.get(s.name))
-            results.append({
-                "name": s.name,
-                "ui_label": s.ui_label,
-                "ui_description": s.ui_description,
-                "value": value,
-                "error": error,
-            })
-        signal_values = {s["name"]: s["value"] for s in results}
-        return signal_values
-
-    def _snapshot_to_signals_payload(self, snapshot: dict | None) -> list[dict]:
+    def _snapshot_to_signals_payload(self, snapshot: dict | None) -> list[SignalPayload]:
         """Builds the GET /api/signals response from a persisted snapshot
         (or None). A missing/null value means that signal's computation
         failed — distinct from no snapshot at all (auto-tracking hasn't run)."""
@@ -174,7 +82,7 @@ class Signals(object):
             })
         return results
 
-    def get_latest_signals(self) -> [dict]:
+    def get_latest_signals(self) -> list[SignalPayload]:
         """Read-only, never calls the AI — reports the latest snapshot
         persisted through db.py. Signals are only (re)computed via
         compute_signals(), from the auto-tracking flow."""

@@ -43,9 +43,7 @@ import {
   handleSend,
   handleTruncateFrom,
   sessionsPanelOpen,
-  toggleSessionsPanel,
-  aiModels,
-  aiModelCurrentIndex
+  toggleSessionsPanel
 } from '../chatStore.js'
 
 const props = defineProps({
@@ -171,21 +169,15 @@ const editorHost = ref(null)
 const uploadInput = ref(null)
 
 // Inspect panel: the shared Inspector component (see Inspector.vue) shows
-// the last-saved project's state graph, its signal definitions, the
-// metrics_framework's core metrics, and (here only — see
-// inspectorRef/showModelTab below) the chat's currently active AI model.
-// Open by default, see toggleInspect. `inspectorRef` is how this view
-// drives the few things that stay its own responsibility: reloading after
-// a save, refreshing the Metrics tab, and resizing the graph on drag.
+// the last-saved project's state graph, its signal definitions, and the
+// metrics_framework's core metrics. Open by default, see toggleInspect.
+// `inspectorRef` is how this view drives the few things that stay its
+// own responsibility: reloading after a save, refreshing the Metrics
+// tab, and resizing the graph on drag. The active AI model's own info
+// used to be a tab here too — see ModelMenu.vue's own "(?)" button now.
 const inspecting = ref(true)
 const inspectorRef = ref(null)
 const inspectorWidth = ref(360)
-// The model tab shows whichever entry chatStore.js's aiModels/
-// aiModelCurrentIndex currently resolves to — same shared state ModelMenu.vue
-// reads (see chatStore.js), never a second source of truth: auto mode
-// picks a different index as the cascade advances, an explicit choice
-// pins one directly, and either way this just displays it.
-const activeModel = computed(() => aiModels.value[aiModelCurrentIndex.value] ?? null)
 // Live value/error per signal name — fed to the Inspector's signal-values
 // prop, refreshed on its own cadence (see refreshSignalValues), never a
 // concern the Inspector itself resolves (see Inspector.vue's own
@@ -830,14 +822,21 @@ watch(turnCount, () => {
   refreshNextAction()
   refreshSignalValues()
   inspectorRef.value?.refreshMetrics()
+  inspectorRef.value?.refreshEnv()
 })
 
 // Metrics aren't reactive to a prop change on their own (see Inspector.
 // vue's refreshMetrics docstring) — a selection change needs its own
 // explicit nudge, same as BenchmarkProjectView.vue's own watch(selected).
+// Env gets the same nudge: it isn't prop-driven either (it's fetched
+// straight from the db, see InspectorEnvTab.vue's own loadEnv), so
+// switching which message is selected wouldn't otherwise re-pull it.
 watch(selected, () => {
   if (!inspecting.value) return
-  nextTick(() => inspectorRef.value?.refreshMetrics())
+  nextTick(() => {
+    inspectorRef.value?.refreshMetrics()
+    inspectorRef.value?.refreshEnv()
+  })
 })
 
 // A session switch (from this view's own Sessions button, or the main
@@ -1049,8 +1048,6 @@ onBeforeUnmount(() => {
             :fired-action-edge="firedActionEdge"
             :signal-values="effectiveSignalValues"
             :until-message-id="untilMessageId"
-            :show-model-tab="true"
-            :active-model="activeModel"
             :editable-files="files"
             @jump-to-definition="jumpToDefinition"
             @select-attachment="selectFile"

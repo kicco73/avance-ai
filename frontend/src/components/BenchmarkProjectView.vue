@@ -310,7 +310,8 @@ async function onUnlabelAll() {
 
 // Metrics aren't reactive to props on their own (see Inspector.vue's
 // refreshMetrics docstring) — every selection change needs an explicit
-// nudge, same as EditProjectView.vue's turnCount watcher.
+// nudge, same as EditProjectView.vue's turnCount watcher. No Env tab
+// here (see this view's own :show-env-tab="false"), so no matching nudge.
 watch(selected, () => {
   nextTick(() => inspectorRef.value?.refreshMetrics())
 })
@@ -413,6 +414,7 @@ onBeforeUnmount(() => {
           :expected-state="expectedState"
           :expected-values="expectedValues"
           :show-performance-tab="true"
+          :show-env-tab="false"
           :benchmark-session-id="currentSessionId"
           :closable="false"
           @update-expected-state="onUpdateExpectedState"

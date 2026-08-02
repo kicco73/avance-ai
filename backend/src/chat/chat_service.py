@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 
 from datetime import datetime, timezone
 from http import HTTPStatus
-from typing import Awaitable, Callable, Any
+from typing import Awaitable, Callable
 
 from automaton.automaton import Action, Automaton, State, StatePayload
 from db import Db, _utc_iso
@@ -14,10 +13,12 @@ from ai.ai_service import AiService, OnRetry
 from session import Session
 
 from chat.auto_tracker import AutoTracker
+from chat.env import Env
 from chat.metadata_handler import MetadataHandler
 from chat.metrics_service import ChatMetrics
 from chat.priming import build_priming_messages
 from chat.session_manager import ChatSessionManager
+from chat.signal_evaluator import SignalEvaluator
 from chat.signals import Signals
 from metrics_framework import BenchmarkCalculator, BenchmarkConfiguration
 from project.project_service import ProjectService
@@ -35,23 +36,6 @@ FIXED_MESSAGE_INSTRUCTIONS = (
     "not change its meaning or formatting — output just the translation.\n\n"
     "Fixed message:\n{fixed_message}"
 )
-
-def _parse_metadata_tag(metadata_tag: str) -> Any:
-    metadata : dict[str, Any] = {}
-    try:
-        metadata  = json.loads(metadata_tag) or {}
-        assert isinstance(metadata, dict)
-    except Exception as exc:
-        logger.warning(f"_parse_metadata_tag(): {exc}")  
-    return metadata
-    
-
-def _filter_text_and_extract_tags(text: str) -> tuple[str, dict]:
-    filters = ConcatTagFilter('audio', 'avance')
-    return filters.filter_and_flush(text), {
-        'audio': filters.tags['audio'].tag_content,
-        'signals': _parse_metadata_tag(filters.tags['avance'].tag_content)   
-    }
 
 class ChatServiceError(Exception):
 
@@ -82,8 +66,14 @@ class ChatService(object):
         self.metrics = ChatMetrics(
             db, get_username=lambda: Session().user, get_active_project_name=lambda: project_service.get_active_project_name()
         )
+        self.env = Env(
+            db, get_username=lambda: Session().user, get_active_project_name=lambda: project_service.get_active_project_name()
+        )
         self._metadata_handler = MetadataHandler()
-        self._auto_tracker = AutoTracker(db, ai_service, self.signals, self.metrics)
+        self._signal_evaluator = SignalEvaluator(self._metadata_handler)
+        self._auto_tracker = AutoTracker(
+            db, ai_service, self.signals, self.metrics, self.env, self._signal_evaluator
+        )
         self.auto_tracking_enabled = True
 
         # Single-user prototype: serializes chat-turn processing across
@@ -290,24 +280,72 @@ class ChatService(object):
                 return message
         raise ChatServiceError("Message not found.", status_code=HTTPStatus.NOT_FOUND)
 
-    def get_metrics(self, message_id: int | None = None) -> list[dict]:
-        """metrics_framework's core metrics for the active user+project —
-        the full current history, or (when `message_id` is given)
-        restricted to whatever existed at or before that exact message's
-        own timestamp (see ChatMetrics.calculate_all/AnalyticsCalculator's
-        `until`) — for the "Label sessions" view's point-in-time
-        Inspector, keyed by message id rather than a raw timestamp so the
-        UI never has to serialize/parse one itself."""
+    def _until_from_message(self, message_id: int | None) -> datetime | None:
+        """Resolves an optional message_id into a naive-UTC cutoff
+        timestamp — the shared "point-in-time Inspector" convention
+        behind get_metrics/get_env, keyed by message id rather than a
+        raw timestamp so the UI never has to serialize/parse one itself.
+        None (live/current) when `message_id` is None."""
         if message_id is None:
-            return self.metrics.calculate_all()
+            return None
         message = self._require_own_message(message_id)
         # message["timestamp"] is UTC-explicit (see db._utc_iso) for the
         # frontend's own benefit — every DateTimeField column in db.py is
         # naive-but-really-UTC though (default=datetime.utcnow), so the
         # tzinfo must come back off before this is used in a comparison
         # against one, or Python raises on naive-vs-aware comparison.
-        until = datetime.fromisoformat(message["timestamp"]).replace(tzinfo=None)
+        return datetime.fromisoformat(message["timestamp"]).replace(tzinfo=None)
+
+    def get_metrics(self, message_id: int | None = None) -> list[dict]:
+        """metrics_framework's core metrics for the active user+project —
+        the full current history, or (when `message_id` is given)
+        restricted to whatever existed at or before that exact message's
+        own timestamp (see ChatMetrics.calculate_all/AnalyticsCalculator's
+        `until`) — for the "Label sessions" view's point-in-time
+        Inspector."""
+        until = self._until_from_message(message_id)
+        if until is None:
+            return self.metrics.calculate_all()
         return self.metrics.calculate_all(until=until)
+
+    def get_env(self, message_id: int | None = None) -> dict:
+        """{"stored": ..., "computed": ...} — see chat.env.Env.stored/
+        computed, reported separately (not merged, unlike Env.to_dict's
+        own use in the turn prompt) so the Inspector Env tab knows which
+        values are actually editable/deletable (see set_env_value/
+        delete_env_key: only the stored ones are). Live/current, or
+        (`message_id` given) as of that exact message — same
+        point-in-time convention as get_metrics."""
+        until = self._until_from_message(message_id)
+        return {"stored": self.env.stored(until), "computed": self.env.computed(until)}
+
+    def set_env_value(self, key: str, value: str) -> dict:
+        """Edits one stored env key (see chat.env.Env.set_value) — always
+        live, there's no "editing history". Returns the same shape as
+        get_env so the caller can refresh in one round trip. Unlike env
+        updates parsed off a reply (always mid-turn, so a session always
+        already exists by then), this is a direct human edit that can
+        happen before any turn ever ran — db.Db.set_env is otherwise a
+        silent no-op without one (see its own docstring), so this
+        bootstraps one first, same as a real chat turn would."""
+        self.get_or_create_current_session(None)
+        self.env.set_value(key, value)
+        return {"stored": self.env.stored(), "computed": self.env.computed()}
+
+    def delete_env_key(self, key: str) -> dict:
+        """Removes one stored env key outright (see chat.env.Env.
+        delete_key) — always live. Returns the same shape as get_env."""
+        self.get_or_create_current_session(None)
+        self.env.delete_key(key)
+        return {"stored": self.env.stored(), "computed": self.env.computed()}
+
+    def clear_env(self) -> dict:
+        """Wipes every stored env key at once (see chat.env.Env.clear) —
+        the Inspector Env tab's own "clear all" button. Always live.
+        Returns the same shape as get_env."""
+        self.get_or_create_current_session(None)
+        self.env.clear()
+        return {"stored": self.env.stored(), "computed": self.env.computed()}
 
     def get_benchmark_metrics(self, session_id: int | None = None) -> list[dict]:
         """Expert-annotation-vs-actual benchmark metrics (see
@@ -527,8 +565,8 @@ class ChatService(object):
             logger.warning("Translating fixed_message for state '%s'.", state.key)
             return FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message), []
 
-        metadata_prompt = self._metadata_handler.build_prompt(self.signals.get_definition())
-        system_prompt = f"{state.contextual_prompt}\n\n{automaton.general_prompt}\n\n{metadata_prompt}"
+        metadata_prompt = self._metadata_handler.build_prompt(self.signals, self.env)
+        system_prompt = f"{automaton.general_prompt}\n\n{state.contextual_prompt}\n\n{metadata_prompt}"
         return system_prompt, list(automaton.general_attachments.values()) + list(state.attachments.values())
 
     def _should_generate_opening_message(self, project_name: str, session_id: int, state: State) -> bool:
@@ -556,7 +594,8 @@ class ChatService(object):
         )
 
         reply = await self._ai_service.generate(system_prompt, chat_history)
-        visible_text, tags = _filter_text_and_extract_tags(reply)
+        visible_text, tags = self._metadata_handler._filter_text_and_extract_tags(reply)
+        self.env.update(tags['env'])
         message_id = self._db.save_message("assistant", visible_text, session_id, audio_text=tags['audio'])
         return {"id": message_id, "content": visible_text, "audio_text": tags['audio']}
 
@@ -576,7 +615,8 @@ class ChatService(object):
         )
 
         reply = await self._ai_service.generate(system_prompt, chat_history)
-        visible_text, tags = _filter_text_and_extract_tags(reply)
+        visible_text, tags = self._metadata_handler._filter_text_and_extract_tags(reply)
+        self.env.update(tags['env'])
         return {"id": None, "content": visible_text, "audio_text": tags['audio']}
 
     async def _messages_for_transition(
@@ -679,6 +719,17 @@ class ChatService(object):
             reply += chunk
             if chunk:
                 await on_chunk(chunk)
+        # The stream has truly ended — recover anything still stuck
+        # behind a tag the model opened but never closed (see
+        # ConcatTagFilter.flush's own docstring: a real failure mode,
+        # not hypothetical — otherwise the rest of the reply is silently
+        # lost and the user sees an empty bubble). filter() alone, above,
+        # never does this on its own since more of an in-progress tag
+        # could always still be in the next chunk.
+        recovered = filter.flush()
+        if recovered:
+            reply += recovered
+            await on_chunk(recovered)
         return reply
     
     async def _process_turn_locked(
@@ -741,7 +792,7 @@ class ChatService(object):
                 self._db.get_messages(resolved_session_id, since=since)
             )
 
-            filter = ConcatTagFilter('audio', 'avance', audio=on_audio)
+            filter = ConcatTagFilter('audio', 'avance', 'env', audio=on_audio)
 
             if on_chunk is not None:
                 reply = await self._receive_ai_stream_and_sendreply(system_prompt, chat_history, filter, on_chunk)
@@ -749,7 +800,8 @@ class ChatService(object):
                 reply = await self._ai_service.generate(system_prompt, chat_history, on_retry=on_retry)
                 reply = filter.filter_and_flush(reply)
 
-            metadata = _parse_metadata_tag(filter.tags['avance'].tag_content)
+            metadata = self._metadata_handler._parse_metadata_tag(filter.tags['avance'].tag_content)
+            self.env.update(self._metadata_handler._parse_env_tag(filter.tags['env'].tag_content))
             audio_text = filter.tags['audio'].tag_content or None
             assistant_id = self._db.save_message(
                 "assistant", reply, resolved_session_id, audio_text=audio_text

@@ -1,5 +1,6 @@
 init-action:
   target: welcome
+  on-enter: celebrate
 
 general-prompt: |
   You are a language learning assistant for catalan. Your name is Avenç, and if asked you identify as a no-binary female.
@@ -27,15 +28,17 @@ signals:
   progress:
     ui-label: "Progress of the current exercise"
     ui-description: >
-      How many steps of the current exercise have been completed.
+      How many completed steps of the current exercise have been completed.
     definition: |
-      The integer percentage of steps done with respect to the total number of steps that will be presented in the current exercise.
+      The tracked progress as an integer without '%'.
   score:
     ui-label: "Score of the current exercise"
     ui-description: >
-      Evaluation of user performance for this excercise.
+      The score for this exercise as an integer number between 0 and 100.
     definition: |
-      The integer percentage of steps answered correctly by the user so far over the number of attempts, both regardless the exercise they refer to.
+      The tracked score as an integer without '%'.
+    attachments:
+      - definitions.txt
 
 #=======================================================================
 
@@ -43,8 +46,8 @@ actions:
   - &results
     name: results
     ui-button: "Resultats"
-    target: unit55-results
     on-enter: celebrate
+    target: unit55-results
   - &home
     name: home
     ui-button: "Inici"
@@ -53,7 +56,6 @@ actions:
     name: unit-subjuntive
     ui-button: "El subjuntiu present"
     target: unit55-subjuntive
-    on-enter: celebrate
   - &grammar
     name: grammar
     ui-button: "Gramàtica"
@@ -70,32 +72,26 @@ actions:
     name: regulars
     ui-button: "1. Verbs regulars"
     target: unit55-regulars
-    on-enter: celebrate
   - &alteracions
     name: alteracions
     ui-button: "2. Regulars amb alteracions"
     target: unit55-regulars-amb-alteracions
-    on-enter: celebrate
   - &alteracions-amb-gu
     name: alteracions-amb-gu
     ui-button: "3. Regulars amb canvi a -gu"
     target: unit55-regulars-amb-gu
-    on-enter: celebrate
   - &irregulars
     name: irregulars
     ui-button: "4. Verbs irregulars"
     target: unit55-irregulars
-    on-enter: celebrate
   - &freetyping
     name: freetyping
     ui-button: "5. Composició llibre"
     target: unit55-D
-    on-enter: celebrate
   - &evaluation
     name: evaluation
     ui-button: "6. Avaluació"
     target: unit55-evaluation
-    on-enter: celebrate
 
 #=======================================================================
 
@@ -123,7 +119,8 @@ states:
     ui-description: >
       Índex de tots els exercicis d'aquesta unitat
     contextual-prompt: |
-      Show in bold: "Unitat 55: subjuntiu"
+      Don't welcome, not even in audio metadata.
+      Show in bold: "Unitat 55: subjuntiu".
       Show a short introduction explaining the cases where subjuntive - present tense is used. Use tables.
       Ask the user to pick an exercise among the choices the application is showing (that you don't see). Strictly don't invent anything.
     history-cutoff: true
@@ -147,7 +144,7 @@ states:
       Com conjugar verbs regulars en present de subjuntiu
     contextual-prompt: |
       Unit 55 - Exercise 1.
-      Give a warm welcome.
+      Give a warm welcome, but don't introduce yourself.
       Show a short introduction explaining when to use the subjuntive - present tense.
       Style: fill in the value
       Goal: practise only regular verbs that are not of the form -gu 
@@ -252,6 +249,7 @@ states:
     ui-description: >
       Formes irregulars de verbs en subjuntiu - present
     contextual-prompt: |
+        Don't welcome, not even in audio metadata.
         Unit 55. Exercise 4.
         Before moving on to the exercise:
           - mention the most common and important irregular verbs for this conjugation.
@@ -278,6 +276,8 @@ states:
     ui-description: >
       Conjugar lliurement todas les formes de verbs en subjuntiu - present
     contextual-prompt: |
+        Don't welcome.
+
         Unit 55. Exercise 5.
         Style: fill in the value.
         Goal: memorize the conjugation of the most common verbs

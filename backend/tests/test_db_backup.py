@@ -65,7 +65,7 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
         "CREATE TABLE message (id INTEGER PRIMARY KEY, role TEXT, content TEXT, timestamp TEXT, audio_text TEXT)",
         "CREATE TABLE settings (user TEXT PRIMARY KEY, project TEXT)",
         "CREATE TABLE signals (id INTEGER PRIMARY KEY, session_id INTEGER, timestamp TEXT, "
-        "\"values\" TEXT, old_state TEXT, action TEXT, new_state TEXT)",
+        "\"values\" TEXT, old_state TEXT, action TEXT, new_state TEXT, env TEXT)",
         "CREATE TABLE archive (project_name TEXT, archive_name TEXT, revision INTEGER, content BLOB)",
         "CREATE TABLE history (id INTEGER PRIMARY KEY, user_id TEXT, project_name TEXT, "
         "archive_name TEXT, kind TEXT, seq INTEGER, content TEXT)",

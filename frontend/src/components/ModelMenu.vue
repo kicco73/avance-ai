@@ -1,5 +1,6 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
+import { renderMarkdown } from '../markdown.js'
 import {
   aiModels,
   aiModelAuto,
@@ -20,8 +21,14 @@ const panelStyle = ref({})
 // loaded once at boot (App.vue's loadAiModels) and kept in sync by every
 // chat turn/action response (see chatStore.js's submitMessage/handleAction),
 // so this component never fetches on its own.
-const currentLabel = computed(() => aiModels.value[aiModelCurrentIndex.value]?.ui_label ?? 'Model')
+const currentModel = computed(() => aiModels.value[aiModelCurrentIndex.value] ?? null)
+const currentLabel = computed(() => currentModel.value?.ui_label ?? 'Model')
 const buttonLabel = computed(() => (aiModelAuto.value ? `Auto: ${currentLabel.value}` : currentLabel.value))
+
+// The "(?)" info dialog — was the Inspector's own Model tab (see
+// InspectorModelTab.vue's git history), moved here so it lives right
+// next to the control that actually changes which model this describes.
+const infoOpen = ref(false)
 
 // The panel is teleported to <body> (see template) so it can't be clipped
 // by an ancestor's `overflow: hidden` (e.g. EditProjectView's chat panel) —
@@ -94,6 +101,31 @@ onBeforeUnmount(() => {
     <button ref="btnEl" class="model-btn" :title="buttonLabel" @click="toggle">
       {{ buttonLabel }}
     </button>
+    <button
+      class="model-info-btn"
+      title="About the current model"
+      :disabled="!currentModel"
+      @click="infoOpen = true"
+    >?</button>
+
+    <Teleport to="body">
+      <div v-if="infoOpen" class="model-info-overlay" @click.self="infoOpen = false">
+        <div class="model-info-dialog">
+          <div class="model-info-header">
+            <span class="model-info-title">{{ currentModel?.ui_label }}</span>
+            <button class="model-info-close-btn" title="Close" @click="infoOpen = false">×</button>
+          </div>
+          <p class="model-info-field"><strong>Driver:</strong> {{ currentModel?.driver }}</p>
+          <p class="model-info-field"><strong>Model:</strong> {{ currentModel?.model }}</p>
+          <p v-if="currentModel?.url" class="model-info-field"><strong>Url:</strong> {{ currentModel.url }}</p>
+          <div
+            v-if="currentModel?.ui_description"
+            class="model-info-description"
+            v-html="renderMarkdown(currentModel.ui_description)"
+          ></div>
+        </div>
+      </div>
+    </Teleport>
 
     <Teleport to="body">
       <div v-if="open" ref="panelEl" class="model-panel" :style="panelStyle">
@@ -148,12 +180,117 @@ onBeforeUnmount(() => {
   background: #4a6fa5;
   color: white;
 }
+
+.model-info-btn {
+  width: 1.6rem;
+  height: 1.6rem;
+  line-height: 1;
+  margin-left: 0.3rem;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid #4a6fa5;
+  background: white;
+  color: #4a6fa5;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.model-info-btn:hover:not(:disabled) {
+  background: #4a6fa5;
+  color: white;
+}
+
+.model-info-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 </style>
 
 <style>
 /* Unscoped: the panel lives under <body> via Teleport, outside this
    component's normal DOM subtree, so a scoped [data-v-xxx] attribute
    selector would never match it. */
+.model-info-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 1001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.model-info-dialog {
+  background: white;
+  border-radius: 10px;
+  padding: 1rem 1.2rem;
+  max-width: 420px;
+  width: calc(100% - 2rem);
+  max-height: calc(100vh - 4rem);
+  overflow-y: auto;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+}
+
+.model-info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
+.model-info-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #333;
+}
+
+.model-info-close-btn {
+  flex-shrink: 0;
+  width: 1.4rem;
+  height: 1.4rem;
+  line-height: 1;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: #666;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.model-info-close-btn:hover {
+  background: #eee;
+}
+
+.model-info-field {
+  margin: 0 0 0.4rem;
+  line-height: 1.4;
+  font-size: 0.82rem;
+  color: #444;
+}
+
+.model-info-description {
+  margin: 0.6rem 0 0;
+  line-height: 1.4;
+  font-size: 0.82rem;
+  color: #444;
+}
+
+.model-info-description p {
+  margin: 0 0 0.4rem;
+}
+
+.model-info-description p:last-child {
+  margin-bottom: 0;
+}
+
+.model-info-description ul,
+.model-info-description ol {
+  margin: 0 0 0.4rem;
+  padding-left: 1.2rem;
+}
+
 .model-panel {
   position: fixed;
   min-width: 220px;

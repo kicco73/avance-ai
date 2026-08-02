@@ -3,8 +3,8 @@ import { ref, watch, nextTick } from 'vue'
 import InspectorGraphTab from './InspectorGraphTab.vue'
 import InspectorSignalsTab from './InspectorSignalsTab.vue'
 import InspectorMetricsTab from './InspectorMetricsTab.vue'
+import InspectorEnvTab from './InspectorEnvTab.vue'
 import InspectorPerformanceTab from './InspectorPerformanceTab.vue'
-import InspectorModelTab from './InspectorModelTab.vue'
 
 const props = defineProps({
   projectName: { type: String, required: true },
@@ -14,8 +14,6 @@ const props = defineProps({
   firedActionEdge: { type: Object, default: null },
   signalValues: { type: Object, default: () => ({}) },
   untilMessageId: { type: [Number, String], default: null },
-  showModelTab: { type: Boolean, default: false },
-  activeModel: { type: Object, default: null },
   closable: { type: Boolean, default: true },
   editableFiles: { type: Array, default: null },
   annotatable: { type: Boolean, default: false },
@@ -30,7 +28,12 @@ const props = defineProps({
   expectedState: { type: String, default: null },
   expectedValues: { type: Object, default: () => ({}) },
   showPerformanceTab: { type: Boolean, default: false },
-  benchmarkSessionId: { type: [Number, String], default: null }
+  benchmarkSessionId: { type: [Number, String], default: null },
+  // On by default (the "Edit project" view) — BenchmarkProjectView.vue
+  // (the "Label sessions" view) turns it off: env is a live, per-user
+  // memory the model builds up during actual chat, not something that
+  // makes sense to inspect while reviewing a past labeled session.
+  showEnvTab: { type: Boolean, default: true }
 })
 
 const emit = defineEmits([
@@ -42,6 +45,7 @@ const inspectorTab = ref('graph')
 const graphTabRef = ref(null)
 const signalsTabRef = ref(null)
 const metricsTabRef = ref(null)
+const envTabRef = ref(null)
 const performanceTabRef = ref(null)
 
 async function refresh() {
@@ -55,6 +59,16 @@ async function refreshMetrics() {
   if (inspectorTab.value === 'metrics') await metricsTabRef.value?.loadMetrics()
 }
 
+// Unlike refreshMetrics (heavier to compute, only refreshed while its own
+// tab is open), env is cheap — just the latest DB row plus a few date/
+// session lookups — and some of its computed values (time, datetime,
+// current_session_duration_in_minutes, ...) are only ever correct as of
+// "right now", so this always fetches, tab open or not, same as Signals'
+// own unconditional refresh() above.
+async function refreshEnv() {
+  await envTabRef.value?.loadEnv()
+}
+
 async function refreshPerformance() {
   if (inspectorTab.value === 'performance') await performanceTabRef.value?.loadPerformanceMetrics()
 }
@@ -63,7 +77,7 @@ function resize() {
   graphTabRef.value?.resize()
 }
 
-defineExpose({ refresh, refreshMetrics, refreshPerformance, resize })
+defineExpose({ refresh, refreshMetrics, refreshEnv, refreshPerformance, resize })
 
 function setInspectorTab(tab) {
   inspectorTab.value = tab
@@ -74,6 +88,8 @@ function setInspectorTab(tab) {
     })
   } else if (tab === 'metrics') {
     metricsTabRef.value?.loadMetrics()
+  } else if (tab === 'env') {
+    envTabRef.value?.loadEnv()
   } else if (tab === 'performance') {
     performanceTabRef.value?.loadPerformanceMetrics()
   }
@@ -94,8 +110,8 @@ watch(() => props.highlightedStateKey, () => {
     <button class="inspector-tab-btn" :class="{ 'inspector-tab-btn-active': inspectorTab === 'graph' }" @click="setInspectorTab('graph')">States</button>
     <button class="inspector-tab-btn" :class="{ 'inspector-tab-btn-active': inspectorTab === 'signals' }" @click="setInspectorTab('signals')">Signals</button>
     <button class="inspector-tab-btn" :class="{ 'inspector-tab-btn-active': inspectorTab === 'metrics' }" @click="setInspectorTab('metrics')">Metrics</button>
+    <button v-if="showEnvTab" class="inspector-tab-btn" :class="{ 'inspector-tab-btn-active': inspectorTab === 'env' }" @click="setInspectorTab('env')">Env</button>
     <button v-if="showPerformanceTab" class="inspector-tab-btn" :class="{ 'inspector-tab-btn-active': inspectorTab === 'performance' }" @click="setInspectorTab('performance')">Performance</button>
-    <button v-if="showModelTab" class="inspector-tab-btn" :class="{ 'inspector-tab-btn-active': inspectorTab === 'model' }" @click="setInspectorTab('model')">Model</button>
   </div>
 
   <div class="inspector-body">
@@ -128,23 +144,24 @@ watch(() => props.highlightedStateKey, () => {
       @update-expected-signals="emit('update-expected-signals', $event)"
     />
 
-    <InspectorMetricsTab 
+    <InspectorMetricsTab
       v-show="inspectorTab === 'metrics'"
       ref="metricsTabRef"
       :untilMessageId="untilMessageId"
     />
 
-    <InspectorPerformanceTab 
+    <InspectorEnvTab
+      v-if="showEnvTab"
+      v-show="inspectorTab === 'env'"
+      ref="envTabRef"
+      :untilMessageId="untilMessageId"
+    />
+
+    <InspectorPerformanceTab
       v-if="showPerformanceTab"
       v-show="inspectorTab === 'performance'"
       ref="performanceTabRef"
       :benchmarkSessionId="benchmarkSessionId"
-    />
-
-    <InspectorModelTab 
-      v-if="showModelTab"
-      v-show="inspectorTab === 'model'"
-      :activeModel="activeModel"
     />
   </div>
 </template>

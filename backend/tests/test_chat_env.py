@@ -1,0 +1,224 @@
+"""Tests for chat.env.Env — the per-(user, project) "environment"
+memory: free-form values persisted via db.Db.get_env/set_env (a dedicated
+env-only row on the Signals event log — see its own docstring), enriched
+on every read with a fixed set of always-computed keys (see
+automaton_builder.ENV_COMPUTED_KEYS) that are never persisted.
+"""
+from __future__ import annotations
+
+from datetime import datetime, timedelta
+
+from automaton.automaton import Action, Automaton, State
+from chat.env import Env
+
+USERNAME = "user"
+PROJECT_NAME = "proj"
+
+
+def _env(db) -> Env:
+    return Env(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
+
+
+def _session(db, username=USERNAME, project_name=PROJECT_NAME, start=None):
+    # set_env resolves onto the (user, project)'s latest chat session
+    # (see db.Db.set_env) — a no-op without one, so any test that stores
+    # a value (directly or via env.update) needs a session first.
+    start = start or datetime(2026, 1, 1)
+    return db.create_chat_session(
+        username=username, project_name=project_name,
+        datetime_start=start, datetime_end=start,
+        start_state="a", end_state="a",
+    )
+
+
+def _automaton_with_trigger(trigger_expr: str) -> Automaton:
+    action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger=trigger_expr)
+    state_a = State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action])
+    state_b = State(key="b", ui_label="B", final=True, contextual_prompt="bye", actions=[])
+    init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
+    return Automaton(
+        init_action=init_action,
+        states={"": State(key="", ui_label="", final=False, actions=[init_action]), "a": state_a, "b": state_b},
+        general_prompt="",
+        signals=[],
+        attachments={},
+        general_attachments={},
+        autotracking_on_user_message=True,
+        autotracking_on_ai_message=False,
+    )
+
+
+def test_get_reads_a_stored_value(db):
+    _session(db)
+    db.set_env(PROJECT_NAME, {"favorite_color": "blue"}, USERNAME)
+
+    assert _env(db).get("favorite_color") == "blue"
+
+
+def test_get_falls_back_to_default_for_an_unknown_key(db):
+    db.set_active_project_name(PROJECT_NAME, USERNAME)
+    assert _env(db).get("nope", "fallback") == "fallback"
+
+
+def test_update_merges_onto_existing_stored_values(db):
+    _session(db)
+    env = _env(db)
+    env.update({"a": "1"})
+
+    env.update({"b": "2"})
+
+    assert db.get_env(PROJECT_NAME, USERNAME) == {"a": "1", "b": "2"}
+
+
+def test_update_overwrites_a_matching_key(db):
+    _session(db)
+    env = _env(db)
+    env.update({"a": "1"})
+
+    env.update({"a": "2"})
+
+    assert db.get_env(PROJECT_NAME, USERNAME) == {"a": "2"}
+
+
+def test_update_with_empty_values_is_a_noop(db):
+    _session(db)
+    env = _env(db)
+    env.update({"a": "1"})
+
+    env.update({})
+    env.update(None)
+
+    assert db.get_env(PROJECT_NAME, USERNAME) == {"a": "1"}
+
+
+def test_today_and_time_are_computed_fresh_never_stored(db):
+    db.set_active_project_name(PROJECT_NAME, USERNAME)
+    env = _env(db)
+
+    result = env.to_dict()
+
+    assert result["today"].count("-") == 2  # ISO date, YYYY-MM-DD
+    assert result["time"].count(":") == 2  # HH:MM:SS
+    assert "today" not in db.get_env(PROJECT_NAME, USERNAME)
+    assert "time" not in db.get_env(PROJECT_NAME, USERNAME)
+
+
+def test_number_of_user_sessions_counts_every_session_for_the_project(db):
+    db.set_active_project_name(PROJECT_NAME, USERNAME)
+    env = _env(db)
+    assert env.get("number_of_user_sessions") == 0
+
+    db.create_chat_session(
+        username=USERNAME, project_name=PROJECT_NAME,
+        datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
+        start_state="a", end_state="a",
+    )
+    assert env.get("number_of_user_sessions") == 1
+
+    db.create_chat_session(
+        username=USERNAME, project_name=PROJECT_NAME,
+        datetime_start=datetime(2026, 1, 2), datetime_end=datetime(2026, 1, 2),
+        start_state="a", end_state="a",
+    )
+    assert env.get("number_of_user_sessions") == 2
+
+
+def test_current_session_duration_in_minutes_is_zero_with_no_session(db):
+    db.set_active_project_name(PROJECT_NAME, USERNAME)
+    assert _env(db).get("current_session_duration_in_minutes") == 0.0
+
+
+def test_current_session_duration_in_minutes_uses_the_most_recent_session(db):
+    db.set_active_project_name(PROJECT_NAME, USERNAME)
+    ten_minutes_ago = datetime.utcnow() - timedelta(minutes=10)
+    db.create_chat_session(
+        username=USERNAME, project_name=PROJECT_NAME,
+        datetime_start=ten_minutes_ago, datetime_end=ten_minutes_ago,
+        start_state="a", end_state="a",
+    )
+
+    duration = _env(db).get("current_session_duration_in_minutes")
+
+    assert 9.5 <= duration <= 10.5
+
+
+def test_last_user_session_datetime_is_none_for_a_first_ever_session(db):
+    db.set_active_project_name(PROJECT_NAME, USERNAME)
+    db.create_chat_session(
+        username=USERNAME, project_name=PROJECT_NAME,
+        datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
+        start_state="a", end_state="a",
+    )
+
+    assert _env(db).get("last_user_session_datetime") is None
+
+
+def test_last_user_session_datetime_is_the_previous_sessions_start(db):
+    db.set_active_project_name(PROJECT_NAME, USERNAME)
+    db.create_chat_session(
+        username=USERNAME, project_name=PROJECT_NAME,
+        datetime_start=datetime(2026, 1, 1, 9, 0), datetime_end=datetime(2026, 1, 1, 9, 30),
+        start_state="a", end_state="a",
+    )
+    db.create_chat_session(
+        username=USERNAME, project_name=PROJECT_NAME,
+        datetime_start=datetime(2026, 1, 2, 9, 0), datetime_end=datetime(2026, 1, 2, 9, 30),
+        start_state="a", end_state="a",
+    )
+
+    assert _env(db).get("last_user_session_datetime") == "2026-01-01T09:00:00+00:00"
+
+
+def test_state_duration_in_minutes_is_zero_with_no_transition_yet(db):
+    db.set_active_project_name(PROJECT_NAME, USERNAME)
+    assert _env(db).get("state_duration_in_minutes") == 0.0
+
+
+def test_state_duration_in_minutes_since_the_last_real_transition(db):
+    db.set_active_project_name(PROJECT_NAME, USERNAME)
+    session_id = db.create_chat_session(
+        username=USERNAME, project_name=PROJECT_NAME,
+        datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
+        start_state="a", end_state="b",
+    )
+    thirty_minutes_ago = datetime.utcnow() - timedelta(minutes=30)
+    db.save_transition("a", "advance", "b", session_id, transition_log_level="WARNING")
+    # save_transition always timestamps "now" — backdate it directly to
+    # make the duration deterministic for the assertion below.
+    from db import Signals as SignalsModel
+    SignalsModel.update(timestamp=thirty_minutes_ago).where(SignalsModel.session == session_id).execute()
+
+    duration = _env(db).get("state_duration_in_minutes")
+
+    assert 29.5 <= duration <= 30.5
+
+
+def test_env_computed_key_is_usable_in_a_trigger(db):
+    db.set_active_project_name(PROJECT_NAME, USERNAME)
+    automaton = _automaton_with_trigger("number_of_user_sessions >= 1")
+    env = _env(db)
+
+    # No sessions yet — not referenced-check bypassed, merge should be a
+    # no-op result-wise (key present but 0 doesn't satisfy the trigger).
+    names = env.merge_if_referenced(automaton, "a", {})
+    assert names.get("number_of_user_sessions") == 0
+
+    db.create_chat_session(
+        username=USERNAME, project_name=PROJECT_NAME,
+        datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
+        start_state="a", end_state="a",
+    )
+    names = env.merge_if_referenced(automaton, "a", {})
+    assert names["number_of_user_sessions"] == 1
+    assert automaton.evaluate_triggers("a", names) == "advance"
+
+
+def test_merge_if_referenced_is_a_noop_when_no_trigger_mentions_env(db):
+    _session(db)
+    automaton = _automaton_with_trigger("mySignal >= 1")
+    env = _env(db)
+    env.update({"a": "1"})
+
+    names = env.merge_if_referenced(automaton, "a", {"mySignal": 1})
+
+    assert names == {"mySignal": 1}

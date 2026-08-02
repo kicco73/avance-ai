@@ -184,6 +184,42 @@ export function getSignals() {
   return apiFetch(`${API_URL}/chat/signals`)
 }
 
+// The active user+project's current "environment" memory (see backend's
+// chat.env.Env) — {stored, computed}: stored key:values the model has
+// reported via [env]...[/env] (or a person has edited directly, see
+// putEnvValue/deleteEnvValue below) plus every always-computed key,
+// reported separately since only the stored ones are editable/
+// deletable. `messageId`, when given, restricts to values as they stood
+// at or before that exact message (same convention as getMetrics).
+export function getEnv(messageId) {
+  const query = messageId != null ? `?message_id=${encodeURIComponent(messageId)}` : ''
+  return apiFetch(`${API_URL}/chat/env${query}`)
+}
+
+// Edits (or adds) one stored env key — always live, there's no editing
+// history. Returns the same {stored, computed} shape as getEnv.
+export function putEnvValue(key, value) {
+  return apiFetch(`${API_URL}/chat/env/${encodeURIComponent(key)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ value })
+  })
+}
+
+export function deleteEnvValue(key) {
+  return apiFetch(`${API_URL}/chat/env/${encodeURIComponent(key)}`, {
+    method: 'DELETE'
+  })
+}
+
+// Wipes every stored env key at once — always live. Returns the same
+// {stored, computed} shape as getEnv.
+export function clearEnv() {
+  return apiFetch(`${API_URL}/chat/env`, {
+    method: 'DELETE'
+  })
+}
+
 // `messageId`, when given, computes metrics as of that exact message's
 // own timestamp instead of the live/current history — see the
 // "Label sessions" view's point-in-time Inspector.

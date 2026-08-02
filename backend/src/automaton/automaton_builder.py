@@ -14,6 +14,22 @@ EXTENSION_TO_MEDIA_TYPE = {
 
 VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 
+# The fixed set of always-computed keys chat.env.Env provides on every
+# read (never persisted — see its own module docstring), reserved here
+# too so a trigger can reference one (e.g. "state_duration_in_minutes >= 30")
+# without failing the same undefined-name validation signal/metric names
+# already go through below — chat.env.Env imports this constant back,
+# rather than the reverse, to keep automaton/ free of any dependency on
+# chat/ (chat/ already depends on automaton/, never the other way around).
+ENV_COMPUTED_KEYS = (
+    "today",
+    "time",
+    "current_session_duration_in_minutes",
+    "last_user_session_datetime",
+    "number_of_user_sessions",
+    "state_duration_in_minutes",
+)
+
 class AutomatonBuilder(object):
     """Builds an Automaton from a project's index.yml: parses the YAML,
     resolves attachments, validates the result, and constructs the
@@ -120,10 +136,17 @@ class AutomatonBuilder(object):
 
     def _actions_sanity_check(self, key: str, state: State, declared_states: set[str], valid_trigger_names: set[str]):
         """`valid_trigger_names` is every name a trigger expression may
-        reference: this project's own declared signals, plus every core
-        metric name (see metrics_framework.metric_names — a trigger can
-        compare against either kind interchangeably, see automaton.py's
-        Automaton.triggers_reference/evaluate_triggers)."""
+        reference: this project's own declared signals, every core metric
+        name (see metrics_framework.metric_names), and every always-
+        computed env key (see ENV_COMPUTED_KEYS) — a trigger can compare
+        against any of the three interchangeably, see automaton.py's
+        Automaton.triggers_reference/evaluate_triggers. A project's own
+        free-form [env] values (see chat.env.Env/chat.metadata_handler.
+        MetadataHandler) are deliberately not included here: their names
+        are only ever known at runtime (whatever the model has reported
+        so far), never at build time, so they can't be validated the same
+        way — referencing one in a trigger fails this check exactly like
+        referencing any other genuinely undefined name would."""
         for action in state.actions:
                 if action.target not in declared_states:
                     raise ValueError(
@@ -142,7 +165,7 @@ class AutomatonBuilder(object):
                     if unknown_names:
                         raise ValueError(
                             f"Action '{action.name}': "
-                            f"trigger references undefined signal(s)/metric(s): {', '.join(sorted(unknown_names))}"
+                            f"trigger references undefined signal(s)/metric(s)/env value(s): {', '.join(sorted(unknown_names))}"
                         )
 
     def _build_init_action(self, raw: dict) -> Action:
@@ -184,11 +207,12 @@ class AutomatonBuilder(object):
                 "Signal name(s) reserved for core metrics (see metrics_framework) cannot be "
                 f"reused as signal names: {', '.join(sorted(reserved_names))}"
             )
-        # A trigger may reference either a declared signal or a core
-        # metric — see automaton.py's Automaton.evaluate_triggers, whose
-        # caller merges metric values into the same flat `names` dict
-        # (see chat/metrics_service.py's merge_if_referenced).
-        valid_trigger_names = set(signals.keys()) | metric_names()
+        # A trigger may reference a declared signal, a core metric, or an
+        # always-computed env key interchangeably — see automaton.py's
+        # Automaton.evaluate_triggers, whose caller merges metric/env
+        # values into the same flat `names` dict (see chat/metrics_
+        # service.py's merge_if_referenced, chat/env.py's own equivalent).
+        valid_trigger_names = set(signals.keys()) | metric_names() | set(ENV_COMPUTED_KEYS)
 
         raw_states = raw["states"]
         if not isinstance(raw_states, dict):

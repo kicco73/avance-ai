@@ -3,9 +3,12 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
-from automaton.automaton import Action, Automaton, State
+from automaton.automaton import Action, Automaton, Signal, State
 from chat.auto_tracker import AutoTracker
+from chat.env import Env
+from chat.metadata_handler import MetadataHandler
 from chat.metrics_service import ChatMetrics
+from chat.signal_evaluator import SignalEvaluator
 from chat.signals import Signals
 
 USERNAME = "user"
@@ -26,7 +29,11 @@ def _automaton_with_trigger(trigger_expr: str, target: str = "b") -> Automaton:
         init_action=init_action,
         states=states,
         general_prompt="",
-        signals=[],
+        # A real declared signal — SignalEvaluator.validate (see
+        # AutoTracker.run) now coerces signal_values against exactly
+        # this list, dropping anything not declared here, same as the
+        # old explicit-computation path already did.
+        signals=[Signal(name="mySignal", ui_label="My signal", definition="whatever")],
         attachments={},
         general_attachments={},
         autotracking_on_user_message=True,
@@ -37,7 +44,9 @@ def _automaton_with_trigger(trigger_expr: str, target: str = "b") -> Automaton:
 def _tracker(db, automaton: Automaton) -> AutoTracker:
     metrics = ChatMetrics(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
     signals = Signals(get_active_automaton=lambda: automaton, db=db)
-    return AutoTracker(db, ai_service=None, signals=signals, metrics=metrics)
+    env = Env(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
+    signal_evaluator = SignalEvaluator(MetadataHandler())
+    return AutoTracker(db, ai_service=None, signals=signals, metrics=metrics, env=env, signal_evaluator=signal_evaluator)
 
 
 def _session_id(db) -> int:

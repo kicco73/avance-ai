@@ -21,6 +21,7 @@ from schemas import (
     ChatMessageRequest,
     ExpectedSignalsRequest,
     ExpectedStateRequest,
+    SetEnvValueRequest,
     TriggersPreviewRequest,
     TruncateSessionRequest,
 )
@@ -77,6 +78,43 @@ class AvanceController(object):
         the auto-tracking flow (see ChatService._run_auto_tracking); this just
         reports the latest persisted snapshot."""
         return self.chat_service.signals.get_latest_signals()
+
+    @get("/api/chat/env")
+    def get_env(self, message_id: int | None = None):
+        """{"stored": ..., "computed": ...} — the active user+project's
+        current "environment" memory (see chat.env.Env), split so the
+        "Edit project" view's Inspector Env tab knows which values are
+        actually editable/deletable (only the stored ones — see PUT/
+        DELETE below). Live/current, or (`message_id` given) as of that
+        exact message — same point-in-time convention as
+        GET /api/chat/metrics. ChatServiceError (404 for an unknown/
+        not-yours `message_id`) is handled globally, see error_handlers.py."""
+        return self.chat_service.get_env(message_id)
+
+    @delete("/api/chat/env")
+    def clear_env(self):
+        """Wipes every stored env key at once (see ChatService.clear_env)
+        — the Inspector Env tab's own "clear all" button. Always live."""
+        return self.chat_service.clear_env()
+
+    @put("/api/chat/env/{key}")
+    def put_env_value(self, key: str, req: SetEnvValueRequest):
+        """Edits one stored env key (see ChatService.set_env_value) —
+        the Inspector Env tab's own "click a value to edit it". Always
+        live: there's no "editing history"."""
+        try:
+            return self.chat_service.set_env_value(key, req.value)
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @delete("/api/chat/env/{key}")
+    def delete_env_value(self, key: str):
+        """Removes one stored env key outright (see ChatService.
+        delete_env_key) — the Inspector Env tab's own delete button."""
+        try:
+            return self.chat_service.delete_env_key(key)
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
     @get("/api/chat/metrics")
     def get_metrics(self, message_id: int | None = None):

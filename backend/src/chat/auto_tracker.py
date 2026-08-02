@@ -1,4 +1,5 @@
-"""Auto-tracking: computes/falls back on signal values, evaluates
+"""Auto-tracking: gets signal values (embedded in an already-generated
+reply, or via SignalEvaluator's own explicit fallback call), evaluates
 triggers, and applies the resulting transition (self-loops excluded) —
 never generates a message itself. Message generation for a transition
 (action_prompt, opening message) stays in ChatService, since a manual
@@ -10,8 +11,10 @@ import logging
 
 from automaton.automaton import Action, Automaton, State
 from ai.ai_service import AiService
+from chat.env import Env
 from chat.metrics_service import ChatMetrics
 from chat.priming import build_priming_messages
+from chat.signal_evaluator import SignalEvaluator
 from chat.signals import Signals
 from db import Db
 
@@ -19,11 +22,16 @@ logger = logging.getLogger(__name__)
 
 
 class AutoTracker(object):
-    def __init__(self, db: Db, ai_service: AiService, signals: Signals, metrics: ChatMetrics) -> None:
+    def __init__(
+        self, db: Db, ai_service: AiService, signals: Signals, metrics: ChatMetrics, env: Env,
+        signal_evaluator: SignalEvaluator,
+    ) -> None:
         self._db = db
         self._ai_service = ai_service
         self._signals = signals
         self._metrics = metrics
+        self._env = env
+        self._signal_evaluator = signal_evaluator
 
     def _history_cutoff(self, project_name: str, state: State):
         # Same rule as ChatService._history_cutoff: history_cutoff states
@@ -49,20 +57,29 @@ class AutoTracker(object):
         if not state.has_triggerable_actions:
             return None, state, None
 
-        if not signal_values:
-            # fallback, we need to call AI to compute values
+        if signal_values:
+            # Embedded — a reply was already generated for some other
+            # reason and already reported these (see MetadataHandler.
+            # signal_values) — still validated the same way an explicit
+            # computation's own reply would be (see SignalEvaluator).
+            signal_values = self._signal_evaluator.validate(automaton, signal_values)
+        else:
+            # No reply to piggyback on at all — fall back to a dedicated
+            # call, using the exact same prompt/tag convention.
             logger.warning("AutoTracker.run(): signals not found in metadata, falling back to AI")
             since = self._history_cutoff(project_name, state)
-            signal_values = await self._signals.compute(
-                self._ai_service, build_priming_messages, session_id, pending_message, since=since
+            signal_values = await self._signal_evaluator.compute_explicitly(
+                self._ai_service, self._signals, self._env, build_priming_messages,
+                session_id, pending_message, since=since,
             )
-        # Metrics are merged only for this evaluation, never persisted:
+        # Metrics/env are merged only for this evaluation, never persisted:
         # signal_values below (save_signal_snapshot/save_transition) stays
-        # exactly what auto-tracking actually observed — mixing metric
+        # exactly what auto-tracking actually observed — mixing metric/env
         # values into that log would corrupt SignalStabilityMetric's own
         # future readings, which trusts every numeric key there to be a
         # real domain signal (see metrics_framework/metrics/signal_stability.py).
         evaluation_names = self._metrics.merge_if_referenced(automaton, state.key, signal_values)
+        evaluation_names = self._env.merge_if_referenced(automaton, state.key, evaluation_names)
         triggered_action = automaton.evaluate_triggers(state.key, evaluation_names)
         if triggered_action is None:
             # No transition fired — just the evaluation itself is worth

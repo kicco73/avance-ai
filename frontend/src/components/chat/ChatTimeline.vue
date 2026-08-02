@@ -16,7 +16,13 @@ import { messageHasAnnotatedSignals } from '../../benchmarkTimeline.js'
 const props = defineProps({
   timeline: { type: Array, required: true },
   signalsLog: { type: Array, default: () => [] },
-  selected: { type: Object, default: null }
+  selected: { type: Object, default: null },
+  // See MessageBubble.vue's own prop — this component has no opinion of
+  // its own on whether spoken text should show, just forwards whatever
+  // the caller (EditProjectView.vue's chat, via chatStore.js's shared
+  // toggle) decides. Defaults to false so BenchmarkProjectView.vue,
+  // which never passes this at all, is unaffected.
+  spokenTextEnabled: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['select-message', 'select-transition'])
@@ -74,6 +80,7 @@ function isTransitionSelected(transition) {
         <MessageBubble
           :message="toBubbleMessage(entry.message)"
           show-timestamp
+          :spoken-text-enabled="spokenTextEnabled"
           :signals-annotated="messageHasAnnotatedSignals(entry.message, signalsLog)"
         />
       </div>

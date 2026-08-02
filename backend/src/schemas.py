@@ -52,3 +52,9 @@ class TruncateSessionRequest(BaseModel):
     # Message/Signals row at or after this instant is deleted. See
     # ChatService.truncate_session.
     timestamp: str
+
+
+class SetEnvValueRequest(BaseModel):
+    # See ChatService.set_env_value/chat.env.Env.set_value — the
+    # Inspector Env tab's own "click a value to edit it".
+    value: str

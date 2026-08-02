@@ -97,6 +97,11 @@ class Signals(BaseModel):
     - a transition: old_state/action/new_state set. `values` is set when
       auto-tracking's own evaluation caused it, None for a manual action
       or the automaton's initial transition.
+    - an env-memory update: only `env` set, everything else None — see
+      Db.get_env/set_env/chat.env.Env. Never returned by get_signals (see
+      its own docstring): it isn't a real evaluation or transition, just
+      a place for the latest known env dict to live, scoped by session ->
+      ChatSession the same way everything else here is.
     A row can't reference "the snapshot that caused it" as a separate
     row anymore (there's no second row) — the evaluation and the
     transition it triggered are simply the same row."""
@@ -104,6 +109,10 @@ class Signals(BaseModel):
     session = ForeignKeyField(ChatSession, null=False, backref="signals", on_delete="CASCADE")
     timestamp = DateTimeField(index=True, default=datetime.utcnow)
     values = TextField(null=True)  # JSON dict: {"problemRecognition": 42, ...}, or None
+    # JSON dict — see Db.get_env/set_env. Set only on a dedicated
+    # env-memory row (see this class's own docstring), never alongside
+    # `values`/old_state/action/new_state on the same row.
+    env = TextField(null=True)
     # Expert-provided ground truth for benchmark_metrics (see
     # metrics_framework/benchmark_metrics) — the state an expert says the
     # automaton should be in immediately after this row's own evaluation.
@@ -429,26 +438,35 @@ class Db(object):
         session = ChatSession.get_or_none(ChatSession.id == session_id)
         return self._chat_session_to_dict(session) if session is not None else None
 
-    def get_latest_chat_session(self, username: str, project_name: str) -> dict | None:
+    def get_latest_chat_session(
+        self, username: str, project_name: str, until: datetime | None = None
+    ) -> dict | None:
         """The most recently started ChatSession for `username`+`project_name`
         (see ChatSessionManager: this is the only one writes may ever land
-        on), or None if they have none yet."""
-        session = (
-            ChatSession.select()
-            .where((ChatSession.username == username) & (ChatSession.project_name == project_name))
-            .order_by(ChatSession.datetime_start.desc())
-            .first()
+        on), or None if they have none yet. `until` (naive-but-UTC, like
+        every DateTimeField here) restricts to sessions that had already
+        started at or before that point — see chat.env.Env's own
+        point-in-time support."""
+        query = ChatSession.select().where(
+            (ChatSession.username == username) & (ChatSession.project_name == project_name)
         )
+        if until is not None:
+            query = query.where(ChatSession.datetime_start <= until)
+        session = query.order_by(ChatSession.datetime_start.desc()).first()
         return self._chat_session_to_dict(session) if session is not None else None
 
-    def list_chat_sessions(self, username: str, project_name: str) -> list[dict]:
+    def list_chat_sessions(
+        self, username: str, project_name: str, until: datetime | None = None
+    ) -> list[dict]:
         """All of `username`+`project_name`'s sessions, most recently
-        started first — for a session picker (see ChatService.list_sessions)."""
-        sessions = (
-            ChatSession.select()
-            .where((ChatSession.username == username) & (ChatSession.project_name == project_name))
-            .order_by(ChatSession.datetime_start.desc())
+        started first — for a session picker (see ChatService.
+        list_sessions). `until`: see get_latest_chat_session's own."""
+        query = ChatSession.select().where(
+            (ChatSession.username == username) & (ChatSession.project_name == project_name)
         )
+        if until is not None:
+            query = query.where(ChatSession.datetime_start <= until)
+        sessions = query.order_by(ChatSession.datetime_start.desc())
         return [self._chat_session_to_dict(s) for s in sessions]
 
     def session_has_annotations(self, session_id: int) -> bool:
@@ -640,10 +658,13 @@ class Db(object):
         way as `values` — see Signals.expected_values) and `message_id`
         (see Signals.message — the "Label sessions" view's own way to
         find "the row this message's evaluation produced", with no
-        timestamp-nearest guessing)."""
+        timestamp-nearest guessing). Excludes env-only rows (see Signals'
+        own docstring, get_env) — they're internal bookkeeping, never a
+        real evaluation or transition, and would satisfy neither of the
+        two shapes every caller here already assumes."""
         rows = (
             Signals.select()
-            .where(Signals.session == session_id)
+            .where((Signals.session == session_id) & Signals.env.is_null(True))
             .order_by(Signals.timestamp.asc(), Signals.id.asc())
         )
         return [
@@ -757,7 +778,9 @@ class Db(object):
         Signals.update(expected_state=None, expected_values=None).where(Signals.session == session_id).execute()
         Signals.delete().where((Signals.session == session_id) & (Signals.old_state == "")).execute()
 
-    def _latest_transition(self, project_name: str, *, real_only: bool = False) -> Signals | None:
+    def _latest_transition(
+        self, project_name: str, *, real_only: bool = False, until: datetime | None = None
+    ) -> Signals | None:
         query = (
             Signals.select()
             .join(ChatSession, on=(Signals.session == ChatSession.id))
@@ -765,14 +788,16 @@ class Db(object):
         )
         if real_only:
             query = query.where(Signals.old_state != Signals.new_state)
+        if until is not None:
+            query = query.where(Signals.timestamp <= until)
         return query.order_by(Signals.timestamp.desc()).first()
 
     def get_current_state(self, project_name: str) -> str | None:
         transition = self._latest_transition(project_name)
         return transition.new_state if transition else None
 
-    def get_last_transition_timestamp(self, project_name: str) -> datetime | None:
-        transition = self._latest_transition(project_name, real_only=True)
+    def get_last_transition_timestamp(self, project_name: str, until: datetime | None = None) -> datetime | None:
+        transition = self._latest_transition(project_name, real_only=True, until=until)
         return transition.timestamp if transition else None
 
     def get_active_project_name(self, user: str = DEFAULT_USER) -> str | None:
@@ -797,11 +822,49 @@ class Db(object):
         nullable just for this one case."""
         Settings.delete().where(Settings.user == user).execute()
 
+    def get_env(
+        self, project_name: str, user: str = DEFAULT_USER, until: datetime | None = None
+    ) -> dict:
+        """The latest known "environment" dict (see chat.env.Env) for
+        (user, project_name) — read off whichever of their own Signals
+        rows for this project most recently recorded one (see set_env's
+        own dedicated env-only rows, and Signals' own docstring). {} if
+        none exists yet. Scoped by session -> ChatSession like everything
+        else in Signals: deleting a session (a full "Reset conversation",
+        or the whole project) deletes its own env rows right along with
+        it, same as any other Signals row for that session. `until`
+        (naive-but-UTC): restricts to env rows recorded at or before that
+        point — the "Label sessions" view's point-in-time Inspector."""
+        query = (
+            Signals.select(Signals.env)
+            .join(ChatSession, on=(Signals.session == ChatSession.id))
+            .where(
+                (ChatSession.project_name == project_name)
+                & (ChatSession.username == user)
+                & Signals.env.is_null(False)
+            )
+        )
+        if until is not None:
+            query = query.where(Signals.timestamp <= until)
+        row = query.order_by(Signals.timestamp.desc()).first()
+        return json.loads(row.env) if row is not None else {}
+
+    def set_env(self, project_name: str, env: dict, user: str = DEFAULT_USER) -> None:
+        """Inserts a new env-only Signals row (see its own docstring)
+        under (user, project_name)'s latest chat session — a no-op if
+        they have no session at all yet (env is only ever set from
+        within an active chat turn, which always has one by then)."""
+        session = self.get_latest_chat_session(user, project_name)
+        if session is None:
+            return
+        Signals.create(session=session["id"], env=json.dumps(env))
+
     def reset_project(self, project_name: str) -> None:
-        """Wipes every user's sessions/messages/signals for `project_name`
-        — used when the project itself is being deleted (see
-        ProjectService.delete_project), where nothing should survive.
-        For a single user's own "Reset conversation" action, see
+        """Wipes every user's sessions/messages/signals (env included —
+        see Signals' own docstring) for `project_name` — used when the
+        project itself is being deleted (see ProjectService.
+        delete_project), where nothing should survive. For a single
+        user's own "Reset conversation" action, see
         reset_project_for_user — this is deliberately not scoped by user."""
         # Signals/Message before ChatSession: both reference it by FK, and
         # neither carries project_name directly anymore (see Message/Signals).
@@ -812,10 +875,11 @@ class Db(object):
 
     def reset_project_for_user(self, username: str, project_name: str) -> None:
         """Wipes only `username`'s own sessions (all of them, open or
-        closed) — plus their messages/signals — for `project_name`.
-        Other users' data for the same project (if any) is untouched.
-        Used by the "Reset conversation" action (see
-        ProjectService.reset_active_project)."""
+        closed) — plus their messages/signals/env (see Signals' own
+        docstring: an env row is scoped to a session like any other, so
+        it can't outlive one) — for `project_name`. Other users' data for
+        the same project (if any) is untouched. Used by the "Reset
+        conversation" action (see ProjectService.reset_active_project)."""
         session_ids = ChatSession.select(ChatSession.id).where(
             (ChatSession.username == username) & (ChatSession.project_name == project_name)
         )

@@ -77,29 +77,6 @@ class TaggedAiService:
         yield self._reply
 
 
-class JsonAiService:
-    """Like TaggedAiService, but the reply *is* the raw JSON object itself
-    — what AutoTracker.run()'s AI-fallback path (Signals.compute(), see
-    its own _parse_signals_reply) expects for autotracking_on_user_message,
-    which always calls it with signal_values={} (see
-    ChatService._process_turn_locked)."""
-
-    def __init__(self, signals: dict) -> None:
-        self._reply = str(signals).replace("'", '"')
-
-    def get_models_info(self) -> dict:
-        return {"auto": True, "current_index": 0, "models": []}
-
-    def select_model(self, index: int | None) -> None:
-        pass
-
-    async def generate(self, system_prompt, history, on_retry=None) -> str:
-        return self._reply
-
-    async def generate_stream(self, system_prompt, history, on_retry=None):
-        yield self._reply
-
-
 @pytest.fixture
 def chat_service_for(db):
     def make(automaton: Automaton, *, signal_values: dict = {"foo": 1}, ai_service=None) -> ChatService:
@@ -120,8 +97,13 @@ async def _bootstrap_session(chat_service: ChatService) -> int:
 
 
 async def test_user_message_evaluation_is_linked_to_the_user_message(db, chat_service_for):
+    # autotracking_on_user_message always calls with signal_values={}
+    # (see ChatService._process_turn_locked), forcing SignalEvaluator's
+    # explicit fallback — which now uses the exact same [avance]-tag
+    # convention as the embedded path (see chat/signal_evaluator.py),
+    # hence TaggedAiService here too, not a bespoke raw-JSON reply.
     chat_service = chat_service_for(
-        _automaton(autotracking_on_user_message=True), ai_service=JsonAiService({"foo": 1})
+        _automaton(autotracking_on_user_message=True), ai_service=TaggedAiService({"foo": 1})
     )
     session_id = await _bootstrap_session(chat_service)
 
