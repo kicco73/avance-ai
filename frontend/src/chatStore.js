@@ -12,7 +12,8 @@ import {
   postAiModelSelection,
   messageAudioUrl,
   postListenTranscribe,
-  postReset
+  postReset,
+  postTruncateSession
 } from './api.js'
 import { sendMessage as sendChatMessage } from './chatClient.js'
 import { playMessageChime, playMessageAudio } from './audio.js'
@@ -78,6 +79,16 @@ export function handleStateChange(newState) {
   }
 }
 
+// Shape every backend message row (id, role, content, audio_text,
+// timestamp) into what the chat UI actually renders (see MessageBubble.
+// vue/ChatTimeline.vue) — shared by every place that (re)loads a
+// session's full history from scratch (loadMessages/selectSession/
+// reloadMessages), so there's exactly one mapping to keep in sync with
+// the backend's own row shape.
+function toStoreMessage(m) {
+  return { role: m.role, content: m.content, audioText: m.audio_text, timestamp: m.timestamp, failed: false, messageId: m.id }
+}
+
 async function ensureSession() {
   const session = await getCurrentSession(currentSessionId.value)
   currentSessionId.value = session.id
@@ -89,13 +100,7 @@ export async function loadMessages() {
   try {
     const sessionId = await ensureSession()
     const history = await getMessages(sessionId)
-    messages.value = history.map((m) => ({
-      role: m.role,
-      content: m.content,
-      audioText: m.audio_text,
-      failed: false,
-      messageId: m.id
-    }))
+    messages.value = history.map(toStoreMessage)
     // Whichever project just became active, the sessions panel (if open)
     // was still showing the *previous* project's list (or the empty one
     // clearChatUi leaves it in) — without this, switching projects looks
@@ -142,18 +147,46 @@ export async function selectSession(session) {
   historyLoaded.value = false
   try {
     const history = await getMessages(session.id)
-    messages.value = history.map((m) => ({
-      role: m.role,
-      content: m.content,
-      audioText: m.audio_text,
-      failed: false,
-      messageId: m.id
-    }))
+    messages.value = history.map(toStoreMessage)
   } catch {
     // already surfaced via apiFetch
   } finally {
     await nextTick()
     historyLoaded.value = true
+  }
+}
+
+// Re-fetches the current session's own message history from scratch,
+// in place — unlike selectSession, never a no-op for "already the
+// current session" (that's exactly the case this exists for: the
+// session itself hasn't changed, but what's *in* it just did — see
+// handleTruncateFrom).
+export async function reloadMessages() {
+  if (currentSessionId.value == null) return
+  try {
+    messages.value = (await getMessages(currentSessionId.value)).map(toStoreMessage)
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+// "Restart from here" (EditProjectView.vue's own chat only — see
+// RestartFromHereButton.vue): deletes every message at/after `timestamp`
+// in the current session, and rolls the live state back to match, then
+// refreshes every piece of local state that depended on any of it.
+// Callers decide what happens next with the cut-off message's own text
+// (preload into the draft, or resend outright) — this only ever performs
+// the truncation itself.
+export async function handleTruncateFrom(timestamp) {
+  if (currentSessionId.value == null) return
+  try {
+    const newState = await postTruncateSession(currentSessionId.value, timestamp)
+    await reloadMessages()
+    state.value = null
+    handleStateChange(newState)
+    bumpTurn()
+  } catch {
+    // already surfaced via apiFetch
   }
 }
 
@@ -255,7 +288,14 @@ async function submitMessage(message) {
 
   // Creiamo subito la bolla dell'assistente che accoglierà i chunk in tempo reale
   const assistantMsgId = ++nextMessageId
-  const assistantMsg = { id: assistantMsgId, role: 'assistant', content: '', audioText: null, messageId: null }
+  const assistantMsg = {
+    id: assistantMsgId,
+    role: 'assistant',
+    content: '',
+    audioText: null,
+    messageId: null,
+    timestamp: new Date().toISOString()
+  }
   messages.value.push(assistantMsg)
 
   try {
@@ -295,7 +335,13 @@ async function submitMessage(message) {
       // Se la risposta contiene più messaggi (es. cambio di stato)
       for (let i = 1; i < result.reply.length; i++) {
         const { id, content, audio_text } = result.reply[i]
-        messages.value.push({ role: 'assistant', content, audioText: audio_text, messageId: id })
+        messages.value.push({
+          role: 'assistant',
+          content,
+          audioText: audio_text,
+          messageId: id,
+          timestamp: new Date().toISOString()
+        })
       }
     }
 
@@ -336,7 +382,7 @@ async function submitMessage(message) {
 }
 
 export async function handleSend(text) {
-  const message = { id: ++nextMessageId, role: 'user', content: text, failed: false }
+  const message = { id: ++nextMessageId, role: 'user', content: text, failed: false, timestamp: new Date().toISOString() }
   messages.value.push(message)
   await submitMessage(message)
 }
@@ -380,7 +426,13 @@ export async function handleAction(actionName) {
   try {
     const result = await postAction(actionName, currentSessionId.value)
     for (const { id, content, audio_text } of result.reply) {
-      messages.value.push({ role: 'assistant', content, audioText: audio_text, messageId: id })
+      messages.value.push({
+        role: 'assistant',
+        content,
+        audioText: audio_text,
+        messageId: id,
+        timestamp: new Date().toISOString()
+      })
     }
     if (result.reply.length) {
       playMessageChime()

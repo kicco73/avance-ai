@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import MessageBubble from './chat/MessageBubble.vue'
+import ChatTimeline from './chat/ChatTimeline.vue'
 import SessionsPanel from './chat/SessionsPanel.vue'
 import Inspector from './inspector/Inspector.vue'
 import {
@@ -136,26 +136,6 @@ async function loadTimeline() {
 // before belonged to a different session's history.
 watch(currentSessionId, loadTimeline)
 
-function toBubbleMessage(m) {
-  return { role: m.role, content: m.content, audioText: m.audio_text, timestamp: m.timestamp }
-}
-
-// Whether the Signals row this message's own evaluation produced (see
-// Signals.message_id) has at least one expert-annotated expected signal
-// value — drives the message bubble's own "!" marker (see MessageBubble.
-// vue's signalsAnnotated prop). Independent of the transition ✓/✕
-// indicator, which is about expected_state, not expected_values.
-function messageHasAnnotatedSignals(message) {
-  const row = signalsLog.value.find((s) => s.message_id === message.id)
-  if (!row?.expected_values) return false
-  try {
-    const parsed = JSON.parse(row.expected_values)
-    return parsed != null && Object.keys(parsed).length > 0
-  } catch {
-    return false
-  }
-}
-
 // Chronological, merged view of the session's messages and its state
 // transitions — real ones, plus any evaluation point an expert annotated
 // even though nothing actually changed there. See benchmarkTimeline.js
@@ -169,14 +149,6 @@ const timeline = computed(() => buildTimeline(rawMessages.value, signalsLog.valu
 // null until the first click, showing just the project's own definitions
 // with nothing highlighted.
 const selected = ref(null)
-
-function isMessageSelected(message) {
-  return selected.value?.kind === 'message' && selected.value.message.id === message.id
-}
-
-function isTransitionSelected(transition) {
-  return selected.value?.kind === 'transition' && selected.value.transition.id === transition.id
-}
 
 function selectMessage(message) {
   selected.value = { kind: 'message', message }
@@ -402,51 +374,14 @@ onBeforeUnmount(() => {
           </p>
           <p v-else-if="!timeline.length" class="benchmark-status">This session has no messages yet.</p>
 
-          <div v-else class="benchmark-timeline">
-            <template v-for="entry in timeline" :key="entry.kind + '-' + (entry.kind === 'message' ? entry.message.id : entry.transition.id)">
-              <div
-                v-if="entry.kind === 'message'"
-                class="benchmark-row benchmark-message-row"
-                :class="[
-                  entry.message.role === 'user' ? 'benchmark-message-row-user' : 'benchmark-message-row-assistant',
-                  { 'benchmark-row-selected': isMessageSelected(entry.message) }
-                ]"
-                @click="selectMessage(entry.message)"
-              >
-                <MessageBubble
-                  :message="toBubbleMessage(entry.message)"
-                  show-timestamp
-                  :signals-annotated="messageHasAnnotatedSignals(entry.message)"
-                />
-              </div>
-
-              <div
-                v-else
-                class="benchmark-row benchmark-transition-row"
-                :class="[
-                  { 'benchmark-row-selected': isTransitionSelected(entry.transition) },
-                  entry.annotationStatus ? `benchmark-transition-row-${entry.annotationStatus}` : ''
-                ]"
-                @click="selectTransition(entry.transition)"
-              >
-                <span
-                  class="benchmark-transition-arrow"
-                  :title="entry.transition.old_state === entry.transition.new_state ? 'No actual state change here' : ''"
-                >{{ entry.transition.old_state === entry.transition.new_state ? '↻' : '→' }}</span>
-                <span class="benchmark-transition-badge">{{ entry.transition.new_state }}</span>
-                <span
-                  v-if="entry.annotationStatus === 'correct'"
-                  class="benchmark-transition-annotation-icon benchmark-transition-annotation-icon-correct"
-                  title="Matches the expert-annotated expected state"
-                >✓</span>
-                <span
-                  v-else-if="entry.annotationStatus === 'incorrect'"
-                  class="benchmark-transition-annotation-icon benchmark-transition-annotation-icon-incorrect"
-                  title="Differs from the expert-annotated expected state"
-                >✕</span>
-              </div>
-            </template>
-          </div>
+          <ChatTimeline
+            v-else
+            :timeline="timeline"
+            :signals-log="signalsLog"
+            :selected="selected"
+            @select-message="selectMessage"
+            @select-transition="selectTransition"
+          />
         </div>
       </div>
 
@@ -638,118 +573,6 @@ onBeforeUnmount(() => {
 .benchmark-status {
   margin: auto;
   color: #444;
-}
-
-.benchmark-timeline {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-}
-
-.benchmark-row {
-  display: flex;
-  padding: 0.5rem 1rem;
-  cursor: pointer;
-}
-
-.benchmark-row:hover {
-  background: #f7f9fc;
-}
-
-.benchmark-row-selected {
-  background: #e3ebf7;
-}
-
-.benchmark-message-row {
-  justify-content: flex-start;
-}
-
-.benchmark-message-row-user {
-  justify-content: flex-end;
-}
-
-.benchmark-message-row-assistant {
-  justify-content: flex-start;
-}
-
-.benchmark-transition-row {
-  justify-content: center;
-  align-items: center;
-  gap: 0.5rem;
-  background: #fbf3e6;
-}
-
-.benchmark-transition-row:hover {
-  background: #f6e9d2;
-}
-
-.benchmark-transition-row.benchmark-row-selected {
-  background: #f0dcb0;
-}
-
-/* Whether the transition's own expert-annotated expected_state agrees
-   with what actually happened (see transitionAnnotationStatus) — lets a
-   reviewer spot a mismatch across the whole timeline at a glance, not
-   just by opening the Inspector on each one. */
-.benchmark-transition-row-correct {
-  background: #e8f5e9;
-}
-
-.benchmark-transition-row-correct:hover {
-  background: #dcefdd;
-}
-
-.benchmark-transition-row-correct.benchmark-row-selected {
-  background: #c8e6c9;
-}
-
-.benchmark-transition-row-incorrect {
-  background: #fdecea;
-}
-
-.benchmark-transition-row-incorrect:hover {
-  background: #fbdedb;
-}
-
-.benchmark-transition-row-incorrect.benchmark-row-selected {
-  background: #f5c6c2;
-}
-
-.benchmark-transition-arrow {
-  color: #8a6d3b;
-  font-weight: 600;
-}
-
-.benchmark-transition-badge {
-  display: inline-block;
-  padding: 0.15rem 0.7rem;
-  border-radius: 999px;
-  background: #4a6fa5;
-  color: white;
-  font-size: 0.78rem;
-  font-weight: 600;
-}
-
-.benchmark-transition-annotation-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.2rem;
-  height: 1.2rem;
-  border-radius: 50%;
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: white;
-}
-
-.benchmark-transition-annotation-icon-correct {
-  background: #2e7d32;
-}
-
-.benchmark-transition-annotation-icon-incorrect {
-  background: #c62828;
 }
 
 .split-divider {

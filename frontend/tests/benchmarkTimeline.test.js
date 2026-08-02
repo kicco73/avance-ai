@@ -331,6 +331,31 @@ describe('buildTimeline', () => {
     expect(timeline.map((e) => (e.kind === 'message' ? `m${e.message.id}` : 't'))).toEqual(['t', 'm1', 'm2', 't', 'm3'])
   })
 
+  // Regression test: reported against "Aprendr català" — the init
+  // transition ("" -> welcome) is linked to the welcome state's own
+  // *opening* bubble (it's the effect of entering that state, not its
+  // cause — see open_if_needed's own docstring), so it shares that
+  // message's effective timestamp. The general "message reads first"
+  // tie-break is right for an ordinary transition (whose linked message
+  // *caused* it) but backwards here: the transition (arriving at
+  // "welcome") must read before the bubble generated for being there.
+  it('sorts the init transition (real or synthetic) before its own linked opening message, not after', () => {
+    const opening = message(1, '2026-01-01T10:00:00')
+    const real = transitionRow(1, { timestamp: '2026-01-01T10:00:00', oldState: '', newState: 'welcome', messageId: 1 })
+
+    const timeline = buildTimeline([opening], [real], 'welcome')
+
+    expect(timeline.map((e) => e.kind)).toEqual(['transition', 'message'])
+  })
+
+  it('sorts the synthetic session-start entry before the first message too', () => {
+    const opening = message(1, '2026-01-01T10:00:00')
+
+    const timeline = buildTimeline([opening], [], 'welcome')
+
+    expect(timeline.map((e) => e.kind)).toEqual(['transition', 'message'])
+  })
+
   it('excludes an unannotated self-loop/plain snapshot, but includes an annotated one', () => {
     const messages = [message(1, '2026-01-01T10:00:00')]
     const start = startRow(1, '2026-01-01T09:59:59')

@@ -146,8 +146,18 @@ export function buildTimeline(rawMessages, signalsLog, sessionStartState) {
     const tb = effectiveTimestamp(b, rawMessages)
     if (ta !== tb) return ta.localeCompare(tb)
     // The same effective moment only happens when a transition is tied to
-    // this exact message (see effectiveTimestamp) — the message it's
-    // explaining always reads first.
+    // its own linked message. For every ordinary transition that message
+    // is the *cause* (the user message auto-tracking evaluated), so it
+    // reads first, explaining the transition right after it. The
+    // automaton's own init transition (old_state === "", real or
+    // synthetic — see resolveTransitionRow/syntheticSessionStartEntry)
+    // is the one exception: its own linked message is the *opening*
+    // bubble it produced by landing there, not a cause — so there the
+    // transition must read first, right before the very bubble generated
+    // for entering that state.
+    const aIsInit = a.kind === 'transition' && a.transition.old_state === ''
+    const bIsInit = b.kind === 'transition' && b.transition.old_state === ''
+    if (aIsInit !== bIsInit) return aIsInit ? -1 : 1
     return (a.kind === 'message' ? 0 : 1) - (b.kind === 'message' ? 0 : 1)
   })
 }
@@ -175,6 +185,24 @@ export function nearestMessageIdAtOrBefore(rawMessages, timestamp) {
     result = m.id
   }
   return result
+}
+
+// Whether the Signals row a message's own evaluation produced (see
+// Signals.message_id) has at least one expert-annotated expected signal
+// value — drives MessageBubble.vue's "!" marker. Independent of a
+// transition's own ✓/✕ indicator (see transitionAnnotationStatus), which
+// is about expected_state, not expected_values. Pure over any signalsLog
+// (benchmark or live), so ChatTimeline.vue can call it regardless of which
+// view supplied the log.
+export function messageHasAnnotatedSignals(message, signalsLog) {
+  const row = signalsLog.find((s) => s.message_id === message.id)
+  if (!row?.expected_values) return false
+  try {
+    const parsed = JSON.parse(row.expected_values)
+    return parsed != null && Object.keys(parsed).length > 0
+  } catch {
+    return false
+  }
 }
 
 // The state key the Inspector should highlight for the current

@@ -4,6 +4,8 @@ import { Compartment } from '@codemirror/state'
 import { EditorView, basicSetup } from 'codemirror'
 import { yaml } from '@codemirror/lang-yaml'
 import ChatWindow from './chat/ChatWindow.vue'
+import ChatTimeline from './chat/ChatTimeline.vue'
+import RestartFromHereButton from './chat/RestartFromHereButton.vue'
 import ModelMenu from './ModelMenu.vue'
 import Inspector from './inspector/Inspector.vue'
 import {
@@ -14,20 +16,28 @@ import {
   deleteProjectFile,
   deleteProjectVersions,
   getSignals,
+  getSessionSignals,
+  getSessions,
   postTriggersPreview
 } from '../api.js'
 import { clearApiError, errorDetail, errorMessage, setApiError } from '../errorStore.js'
+import { buildTimeline, highlightedStateKeyFor, nearestMessageIdAtOrBefore, signalValuesFor } from '../benchmarkTimeline.js'
 // Aliased: this file already uses "state" to mean an automaton state node
 // — `liveState` is specifically the live conversation's current state,
 // which this view's Inspector highlights as "current" (see the
 // highlighted-state-key binding below).
 import {
   state as liveState,
+  messages,
+  currentSessionId,
+  draft,
   turnCount,
   autoTrackingEnabled,
   autoTrackingLoading,
   toggleAutoTracking,
   handleReset,
+  handleSend,
+  handleTruncateFrom,
   sessionsPanelOpen,
   toggleSessionsPanel,
   aiModels,
@@ -170,6 +180,131 @@ const activeModel = computed(() => aiModels.value[aiModelCurrentIndex.value] ?? 
 // signalValues prop docstring).
 const signalValueByName = ref({})
 
+// The live session's own Signals event log and starting state — the same
+// two ingredients BenchmarkProjectView.vue fetches for a *past* session,
+// fetched here for the *current* one instead (see refreshSignalsLog/
+// refreshSessionStartState) so this view's chat can show the exact same
+// clickable message+transition timeline (see ChatTimeline.vue/
+// benchmarkTimeline.js), just kept live instead of frozen. Independent of
+// `inspecting` — the timeline itself is part of the chat panel, which can
+// be open while the Inspect panel is closed.
+const signalsLog = ref([])
+const sessionStartState = ref(null)
+
+// The point in time the Inspector reflects — null means "follow the live
+// conversation as it happens" (the historical default), a value means
+// "pinned to whatever was clicked in the timeline" (see selectMessage/
+// selectTransition, both a toggle: clicking the same entry again clears
+// this back to null/live). Reset on every session switch — a selection
+// from the previous session's history means nothing in a new one.
+const selected = ref(null)
+
+// chatStore.js's live `messages` shaped like BenchmarkProjectView.vue's
+// own rawMessages (id/timestamp/role/content/audio_text) — the common
+// input shape buildTimeline (and every helper built on it) expects,
+// regardless of whether the log being merged in is historical or live.
+// The in-flight assistant placeholder (see chatStore.js's submitMessage)
+// has no messageId yet — kept in, with `id: null`, so the streaming
+// bubble still shows up in this timeline exactly as it does in the plain
+// chat, just unable (harmlessly) to match any transition by id until it
+// resolves.
+const rawLiveMessages = computed(() =>
+  messages.value.map((m) => ({
+    id: m.messageId ?? null,
+    timestamp: m.timestamp,
+    role: m.role,
+    content: m.content,
+    audio_text: m.audioText
+  }))
+)
+
+const timeline = computed(() => buildTimeline(rawLiveMessages.value, signalsLog.value, sessionStartState.value))
+
+async function refreshSignalsLog() {
+  if (!currentSessionId.value) {
+    signalsLog.value = []
+    return
+  }
+  try {
+    signalsLog.value = await getSessionSignals(currentSessionId.value)
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+async function refreshSessionStartState() {
+  if (!currentSessionId.value) {
+    sessionStartState.value = null
+    return
+  }
+  try {
+    const allSessions = await getSessions()
+    sessionStartState.value = allSessions.find((s) => s.id === currentSessionId.value)?.start_state ?? null
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+function selectMessage(message) {
+  selected.value =
+    selected.value?.kind === 'message' && selected.value.message.id === message.id
+      ? null
+      : { kind: 'message', message }
+}
+
+function selectTransition(transition) {
+  selected.value =
+    selected.value?.kind === 'transition' && selected.value.transition.id === transition.id
+      ? null
+      : { kind: 'transition', transition }
+}
+
+// See benchmarkTimeline.js for the actual logic behind each of these —
+// same helpers BenchmarkProjectView.vue uses for its own selection, just
+// falling back to the *live* current state/signals (rather than null)
+// whenever nothing is selected, since there's always a live conversation
+// here to fall back to.
+const highlightedStateKey = computed(() =>
+  selected.value ? highlightedStateKeyFor(selected.value, timeline.value, sessionStartState.value) : (liveState.value?.key ?? null)
+)
+
+const firedActionEdge = computed(() => {
+  if (selected.value?.kind !== 'transition') return null
+  const t = selected.value.transition
+  return t.old_state ? { stateKey: t.old_state, actionName: t.action } : null
+})
+
+const untilMessageId = computed(() => {
+  if (!selected.value) return null
+  if (selected.value.kind === 'message') return selected.value.message.id
+  return (
+    selected.value.transition.message_id ??
+    nearestMessageIdAtOrBefore(rawLiveMessages.value, selected.value.transition.timestamp)
+  )
+})
+
+const effectiveSignalValues = computed(() =>
+  selected.value ? signalValuesFor(selected.value, signalsLog.value) : signalValueByName.value
+)
+
+// "Restart from here" (RestartFromHereButton.vue, this view's chat only —
+// see ChatTimeline.vue's message-actions slot): both gestures truncate
+// the conversation at this message's own timestamp first (see
+// chatStore.js's handleTruncateFrom, which also rolls the live state
+// back), then differ only in what happens to the message's own text —
+// preloaded for the user to review/edit, or resent immediately as-is.
+async function restartAndPrefill(message) {
+  await handleTruncateFrom(message.timestamp)
+  selected.value = null
+  draft.value = message.content
+}
+
+async function restartAndResend(message) {
+  await handleTruncateFrom(message.timestamp)
+  selected.value = null
+  await handleSend(message.content)
+}
+
 // A definition clicked in the Inspect panel (graph node/edge or signal
 // block) to jump the editor's cursor to, once index.yml is the file open
 // in the editor — see jumpToDefinition/applyPendingCursorTarget. Cleared
@@ -226,6 +361,18 @@ let dragTarget = null
 let view = null
 const editableCompartment = new Compartment()
 
+// Bumped by every loadFileContent/jumpToVersion call, each of which
+// captures its own value at the start and checks it again after its own
+// await — whichever such call was the *last* one started always wins.
+// Without this, clicking a different file (or Undo/Redo) again while a
+// previous fetch for the old one is still in flight let both eventually
+// call createEditor(), each appending its own EditorView into
+// editorHost.value (the constructor never clears the parent — see
+// @codemirror/view's own EditorView), leaving two live, DOM-attached
+// editors at once; or let a stale jumpToVersion response overwrite the
+// now-current file's content/version state after the fact.
+let requestToken = 0
+
 function createEditor(doc, fileName) {
   const extensions = [
     basicSetup,
@@ -245,8 +392,7 @@ function destroyEditor() {
 }
 
 // Replaces the editor's whole document in place (undo/redo, and
-// refreshing after a save that may have changed the content server-side
-// — see _stamp_index_yml) — `content` updates itself via the
+// refreshing after a save) — `content` updates itself via the
 // updateListener already wired in createEditor, so callers never set it
 // directly.
 function setEditorDoc(newContent) {
@@ -266,22 +412,25 @@ async function loadFiles() {
 }
 
 async function loadFileContent(fileName) {
+  const token = ++requestToken
   loading.value = true
   clearApiError()
   destroyEditor()
   try {
     const file = await getProjectFile(props.projectName, fileName)
+    if (token !== requestToken) return // superseded by a newer switch/undo/redo
     content.value = file.content
     originalContent.value = file.content
     currentVersion.value = file.version
     latestVersion.value = file.version
     totalVersions.value = file.total_versions
   } catch {
-    loading.value = false
+    if (token === requestToken) loading.value = false
     return
   }
   loading.value = false
   await nextTick() // editorHost is v-show, but wait a tick anyway for layout to settle
+  if (token !== requestToken) return
   createEditor(content.value, fileName)
   if (fileName === 'index.yml') applyPendingCursorTarget()
 }
@@ -333,10 +482,8 @@ async function saveCurrentFile() {
   clearApiError()
   try {
     const result = await putProjectFile(props.projectName, currentFileName.value, content.value)
-    // The saved content may differ from what was sent (index.yml's
-    // version/last-changed get stamped server-side — see
-    // ProjectService._stamp_index_yml) — refresh the editor to match
-    // exactly what's now actually stored, not just what was typed.
+    // Refresh from the server's own response (version/total_versions,
+    // plus content for consistency) rather than trusting what was typed.
     setEditorDoc(result.content)
     originalContent.value = result.content
     currentVersion.value = result.version
@@ -361,8 +508,13 @@ async function saveCurrentFile() {
 // only thing that ever creates a new version, of whatever ends up in the
 // editor.
 async function jumpToVersion(version) {
+  const token = ++requestToken
   try {
     const file = await getProjectFileVersion(props.projectName, currentFileName.value, version)
+    // Superseded by a newer switch/undo/redo (see requestToken's own
+    // docstring) — applying it now would overwrite whichever file/version
+    // is actually open with this now-stale one's content.
+    if (token !== requestToken) return
     setEditorDoc(file.content)
     currentVersion.value = file.version
   } catch {
@@ -623,16 +775,40 @@ watch(saving, (isSaving) => {
 // are heavier to compute, so unlike signals they're only refreshed while
 // the Inspector's own Metrics tab is the one actually open (see
 // Inspector.vue's refreshMetrics) — never prefetched in the background.
+// signalsLog, unlike those, feeds the chat timeline itself (transition
+// rows, annotation icons) — visible whenever the chat panel is, whether
+// or not Inspect is open, so it refreshes unconditionally.
 watch(turnCount, () => {
+  refreshSignalsLog()
   if (!inspecting.value) return
   refreshNextAction()
   refreshSignalValues()
   inspectorRef.value?.refreshMetrics()
 })
 
+// Metrics aren't reactive to a prop change on their own (see Inspector.
+// vue's refreshMetrics docstring) — a selection change needs its own
+// explicit nudge, same as BenchmarkProjectView.vue's own watch(selected).
+watch(selected, () => {
+  if (!inspecting.value) return
+  nextTick(() => inspectorRef.value?.refreshMetrics())
+})
+
+// A session switch (from this view's own Sessions button, or the main
+// page's — currentSessionId is shared, see chatStore.js's selectSession)
+// always shows *that* session's own timeline from scratch — whatever was
+// selected, or logged, belonged to a different session's history.
+watch(currentSessionId, () => {
+  selected.value = null
+  refreshSessionStartState()
+  refreshSignalsLog()
+})
+
 onMounted(() => {
   loadFiles()
   loadFileContent(currentFileName.value)
+  refreshSessionStartState()
+  refreshSignalsLog()
   if (inspecting.value) openInspect()
   window.addEventListener('mousemove', onDrag)
   window.addEventListener('mouseup', stopDrag)
@@ -748,7 +924,7 @@ onBeforeUnmount(() => {
                   :disabled="loading || saving || !canRedo"
                   @click="redo"
                 >↷</button>
-                <button class="save-btn" :disabled="loading || saving" @click="saveCurrentFile">
+                <button class="save-btn" :disabled="loading || saving || !isDirty" @click="saveCurrentFile">
                   {{ saving ? 'Saving…' : 'Save' }}
                 </button>
               </div>
@@ -779,6 +955,12 @@ onBeforeUnmount(() => {
                 Dev mode: freeze automatic state transitions
               </label>
               <div class="edit-project-chat-toolbar-actions">
+                <span v-if="selected" class="edit-project-chat-history-badge">
+                  Viewing history
+                  <button type="button" class="edit-project-chat-live-btn" @click="selected = null">
+                    Back to live
+                  </button>
+                </span>
                 <button
                   class="sessions-btn"
                   :class="{ 'sessions-btn-active': sessionsPanelOpen }"
@@ -790,7 +972,24 @@ onBeforeUnmount(() => {
                 <ModelMenu />
               </div>
             </div>
-            <ChatWindow />
+            <ChatWindow>
+              <template #timeline>
+                <ChatTimeline
+                  :timeline="timeline"
+                  :signals-log="signalsLog"
+                  :selected="selected"
+                  @select-message="selectMessage"
+                  @select-transition="selectTransition"
+                >
+                  <template #message-actions="{ message }">
+                    <RestartFromHereButton
+                      @long-press="restartAndPrefill(message)"
+                      @double-click="restartAndResend(message)"
+                    />
+                  </template>
+                </ChatTimeline>
+              </template>
+            </ChatWindow>
           </div>
         </div>
         </Transition>
@@ -804,10 +1003,12 @@ onBeforeUnmount(() => {
           <Inspector
             ref="inspectorRef"
             :project-name="projectName"
-            :highlighted-state-key="liveState?.key ?? null"
+            :highlighted-state-key="highlightedStateKey"
             :auto-jump-on-highlight-change="true"
-            :next-action-edge="nextAction"
-            :signal-values="signalValueByName"
+            :next-action-edge="selected ? null : nextAction"
+            :fired-action-edge="firedActionEdge"
+            :signal-values="effectiveSignalValues"
+            :until-message-id="untilMessageId"
             :show-model-tab="true"
             :active-model="activeModel"
             :editable-files="files"
@@ -1074,6 +1275,32 @@ onBeforeUnmount(() => {
 
 .edit-project-chat-toolbar-actions .sessions-btn-active {
   background: #4a6fa5;
+  color: white;
+}
+
+.edit-project-chat-history-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: #fbf3e6;
+  color: #8a6d3b;
+  font-size: 0.78rem;
+}
+
+.edit-project-chat-live-btn {
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid #8a6d3b;
+  background: white;
+  color: #8a6d3b;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.edit-project-chat-live-btn:hover {
+  background: #8a6d3b;
   color: white;
 }
 

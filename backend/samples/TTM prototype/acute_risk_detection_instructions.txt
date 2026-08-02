@@ -1,0 +1,5 @@
+Look only at the most recent user message. Determine whether it contains
+any signal consistent with acute risk (for example, self-harm ideation, a
+crisis in progress, or comparable acute distress). Respond with exactly 0
+(no acute signal) or 100 (an acute signal is present). Bias toward 100 when
+uncertain: a false positive here is far less costly than a false negative.

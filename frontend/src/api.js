@@ -250,6 +250,21 @@ export function postReset() {
   return apiFetch(`${API_URL}/chat/reset`, { method: 'POST' })
 }
 
+// "Restart from here" (EditProjectView.vue only): deletes every message
+// (and its own Signals rows) at or after `timestamp` in `sessionId`, and
+// rolls the live automaton state back to whatever it was immediately
+// before — see backend ChatService.truncate_session. `timestamp` must be
+// one of the UTC-explicit ISO strings the backend itself already handed
+// back (see db._utc_iso), never a client-constructed one. Returns the
+// fresh active state payload, same shape as postReset's.
+export function postTruncateSession(sessionId, timestamp) {
+  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/truncate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ timestamp })
+  })
+}
+
 export function getProjects() {
   return apiFetch(`${API_URL}/projects`)
 }
