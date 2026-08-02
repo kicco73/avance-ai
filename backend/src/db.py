@@ -8,12 +8,25 @@ import json
 import logging
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 
 from peewee import CharField, DateTimeField, ForeignKeyField, IntegerField, Model, Proxy, TextField, AutoField, fn
 from playhouse.db_url import connect, parse as parse_db_url
 
 logger = logging.getLogger(__name__)
+
+
+def _utc_iso(dt: datetime) -> str:
+    """Every DateTimeField in this module is written with
+    `default=datetime.utcnow` — a naive datetime that's really always UTC,
+    never the server's local time. `dt.isoformat()` alone would drop that
+    fact on the floor, and a frontend `new Date(...)` parses a
+    timezone-less ISO string as *local* time, not UTC — silently shifting
+    every timestamp by the browser's own UTC offset. Stamping the
+    timezone explicitly here is what lets the frontend be the only place
+    that ever converts to the user's local time for display (see
+    MessageBubble.vue's formatTimestamp)."""
+    return dt.replace(tzinfo=timezone.utc).isoformat()
 
 # Model classes below bind to this at class-definition time, since Peewee
 # needs a Meta.database then — the real connection only exists once Db()
@@ -422,6 +435,53 @@ class Db(object):
         Message.delete().where(Message.session == session_id).execute()
         ChatSession.delete().where(ChatSession.id == session_id).execute()
 
+    def truncate_session(self, session_id: int, cutoff: datetime) -> None:
+        """"Restart from here" (see ChatService.truncate_session): deletes
+        every Message/Signals row in `session_id` at/after `cutoff`.
+        Nothing here needs to separately roll back "the current state" —
+        get_current_state/_latest_transition already always resolve it
+        fresh as the newest *surviving* Signals row's own new_state, so
+        deleting the trailing rows *is* the rollback. Signals goes first
+        (a surviving Message's own signal_row backref would otherwise
+        dangle at the Python level between these two statements, even
+        though the schema's ON DELETE SET NULL — see Signals.message —
+        would leave it consistent either way).
+
+        Guards against deleting the automaton's own one-time
+        "" -> start_state bookkeeping row (see ChatService.open_if_needed)
+        even if its timestamp happens to fall at/after cutoff: that row is
+        scoped to the *project* (created once, on its literal first
+        session, never per-session), so deleting it would make
+        get_current_state(project_name) fall back to "never initialized"
+        for the whole project, not just roll this one session back."""
+        (
+            Signals.delete()
+            .where(
+                (Signals.session == session_id)
+                & (Signals.timestamp >= cutoff)
+                & (Signals.old_state.is_null(True) | (Signals.old_state != ""))
+            )
+            .execute()
+        )
+        Message.delete().where((Message.session == session_id) & (Message.timestamp >= cutoff)).execute()
+
+    def latest_message_or_signal_timestamp(self, session_id: int) -> datetime | None:
+        """The most recent timestamp still on record for `session_id`,
+        across both Message and Signals — used to roll ChatSession.
+        datetime_end back in step after truncate_session, so a session
+        that's just been cut back doesn't keep reporting "last active" at
+        a moment that no longer has anything behind it. None if the
+        session now has nothing left at all (cut back to before its own
+        first message)."""
+        latest_message = (
+            Message.select(fn.MAX(Message.timestamp)).where(Message.session == session_id).scalar()
+        )
+        latest_signal = (
+            Signals.select(fn.MAX(Signals.timestamp)).where(Signals.session == session_id).scalar()
+        )
+        candidates = [t for t in (latest_message, latest_signal) if t is not None]
+        return max(candidates) if candidates else None
+
     def save_message(
         self, role: str, content: str, session_id: int, audio_text: str | None = None
     ) -> int:
@@ -446,7 +506,7 @@ class Db(object):
             "role": message.role,
             "content": message.content,
             "audio_text": message.audio_text,
-            "timestamp": message.timestamp.isoformat(),
+            "timestamp": _utc_iso(message.timestamp),
             "session_id": message.session_id,
         }
 
@@ -479,7 +539,7 @@ class Db(object):
                 "role": m.role,
                 "content": m.content,
                 "audio_text": m.audio_text,
-                "timestamp": m.timestamp.isoformat(),
+                "timestamp": _utc_iso(m.timestamp),
                 "session_id": session_id,
             }
             for m in rows
@@ -527,7 +587,7 @@ class Db(object):
         return [
             {
                 "id": row.id,
-                "timestamp": row.timestamp.isoformat(),
+                "timestamp": _utc_iso(row.timestamp),
                 "values": row.values,
                 "expected_values": row.expected_values,
                 "expected_state": row.expected_state,
@@ -588,7 +648,7 @@ class Db(object):
             return None
         return {
             "id": row.id,
-            "timestamp": row.timestamp.isoformat(),
+            "timestamp": _utc_iso(row.timestamp),
             "values": row.values,
             "expected_values": row.expected_values,
             "expected_state": row.expected_state,
@@ -702,13 +762,7 @@ class Db(object):
         """The version number `project_name`'s *next* save
         (save_project_version) will get: 0 if it has no archive rows at
         all yet, else one past its current highest — recomputed fresh
-        from the stored rows every call, never a remembered counter. A
-        read-only peek: a caller that needs to know this ahead of
-        actually saving — e.g. to stamp it into index.yml's own content
-        before handing it to save_project_version — calls this first;
-        save_project_version itself always recomputes it independently
-        rather than trusting a caller-supplied value, so there is no way
-        to save at a stale or arbitrary version by mistake."""
+        from the stored rows every call, never a remembered counter."""
         latest = Archive.select(fn.MAX(Archive.version)).where(Archive.project_name == project_name).scalar()
         return 0 if latest is None else latest + 1
 

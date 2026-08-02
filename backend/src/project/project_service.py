@@ -7,10 +7,8 @@ from __future__ import annotations
 
 import io
 import logging
-import re
 import zipfile
 import tempfile
-from datetime import datetime
 from pathlib import Path
 from typing import Awaitable, Callable
 
@@ -66,56 +64,24 @@ class ProjectService(object):
         self._automaton_cache[project_name] = automaton
         return automaton
 
-    @staticmethod
-    def _strip_stamp(content: str) -> str:
-        """Removes any existing root-level `version:`/`last-changed:`
-        line(s) from an index.yml's raw text — used both to rebuild the
-        stamp (see _stamp_index_yml) and to compare index.yml's real body
-        across saves without the stamp itself (which always differs once
-        refreshed) making every save look like a change."""
-        return re.sub(r"(?m)^(?:version|last-changed):[^\n]*\n?", "", content)
-
-    def _stamp_index_yml(self, content: str, version: int) -> str:
-        """Prepends fresh `version`/`last-changed` root fields reflecting
-        `version` — a text-level edit (strip any existing occurrence of
-        either key at the root, then prepend both anew), not a
-        parse+re-dump, so every comment/formatting/key order elsewhere in
-        the file survives untouched. AutomatonBuilder ignores unknown
-        top-level keys, so this never affects validation."""
-        return f"version: {version}\nlast-changed: {datetime.utcnow().isoformat()}\n{self._strip_stamp(content)}"
-
     def _project_update_changed(self, existing: dict[str, str], files: dict[str, str]) -> bool:
         """Whether `files` (new content for some subset of a project's
         own files — see _prepare_project_update) is a genuine change
-        against `existing`. index.yml is compared on its body alone (see
-        _strip_stamp): its stamp always differs once refreshed, which
-        would otherwise make every save of it look like a change even
-        with nothing else edited."""
-        def body(name: str, content: str) -> str:
-            return self._strip_stamp(content) if name == "index.yml" else content
-        return any(body(name, existing.get(name, "")) != body(name, content) for name, content in files.items())
+        against `existing`."""
+        return any(existing.get(name, "") != content for name, content in files.items())
 
     def _prepare_project_update(self, project_name: str, files: dict[str, str]) -> tuple[Automaton, dict[str, str] | None]:
         """Builds+validates the Automaton for `files` (new content for
         some subset of `project_name`'s own files — all of them for a
         zip upload, just one for a single-file edit) merged onto its
-        current ones. index.yml is always freshly re-stamped with the
-        version this update would become (see _stamp_index_yml) before
-        validation, whether or not it's part of `files` itself — a save
-        triggered by any other file still keeps index.yml's own embedded
-        version number in sync with the version its DB row is about to
-        get. Read-only — never writes anything. Returns (automaton,
-        to_persist): the second element is the full merged file set to
-        hand to db.save_project_version, or None when nothing actually
-        changed (see _project_update_changed) — the caller's signal to skip
-        persistence (and, likely, resetting the active conversation)
-        entirely."""
+        current ones. Read-only — never writes anything. Returns
+        (automaton, to_persist): the second element is the full merged
+        file set to hand to db.save_project_version, or None when nothing
+        actually changed (see _project_update_changed) — the caller's
+        signal to skip persistence (and, likely, resetting the active
+        conversation) entirely."""
         existing = self._db.get_archives(project_name)
-        version = self._db.next_project_version(project_name)
-
         merged = {**existing, **files}
-        if "index.yml" in merged:
-            merged["index.yml"] = self._stamp_index_yml(merged["index.yml"], version)
 
         automaton = AutomatonBuilder().build(merged)
 
@@ -289,9 +255,17 @@ class ProjectService(object):
         _load_project cache as get_project_signals, so it reflects the last
         successfully saved index.yml, not any in-progress unsaved edit. The
         reserved implicit state ("", see AutomatonBuilder.build) is never a
-        real state and is excluded; its target (automaton.init_action.target)
-        is exposed as each node's `is_start` flag instead of a synthetic
-        edge from nowhere."""
+        real state and is excluded from `nodes` — each real node's own
+        `is_start` flag (state.key == automaton.init_action.target) is
+        what marks the actual starting state instead. `edges`, unlike
+        `nodes`, is built over *every* state including "" — its own single
+        action is exactly init_action (see AutomatonBuilder._build_init_action/
+        build), so this naturally includes one `source: ""` edge, the
+        automaton's own "arrow from nowhere" into its start state. The
+        frontend (InspectorGraphTab.vue) renders that edge's source as a
+        transparent pseudo-node, same convention "" already has everywhere
+        else (Signals.old_state, benchmarkTimeline.js's own synthetic
+        session-start entry) for "there was no real prior state"."""
         automaton = self._load_project(project_name)
         real_states = [state for state in automaton.states.values() if state.key != ""]
         nodes = [
@@ -321,7 +295,7 @@ class ProjectService(object):
                 "has_trigger": action.trigger is not None,
                 "action_prompt": action.action_prompt,
             }
-            for state in real_states
+            for state in automaton.states.values()
             for action in state.actions
         ]
         return {"nodes": nodes, "edges": edges}

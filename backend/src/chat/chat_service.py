@@ -9,7 +9,7 @@ from http import HTTPStatus
 from typing import Awaitable, Callable, Any
 
 from automaton.automaton import Action, Automaton, State, StatePayload
-from db import Db
+from db import Db, _utc_iso
 from ai.ai_service import AiService, OnRetry
 from session import Session
 
@@ -123,8 +123,8 @@ class ChatService(object):
         return {
             "id": session["id"],
             "project_name": session["project_name"],
-            "datetime_start": session["datetime_start"].isoformat(),
-            "datetime_end": session["datetime_end"].isoformat(),
+            "datetime_start": _utc_iso(session["datetime_start"]),
+            "datetime_end": _utc_iso(session["datetime_end"]),
             "start_state": session["start_state"],
             "end_state": session["end_state"],
             "open": self._session_manager.is_open(session),
@@ -232,6 +232,29 @@ class ChatService(object):
         self._require_own_session(session_id)
         self._db.delete_chat_session(session_id)
 
+    def truncate_session(self, session_id: int, timestamp: str) -> None:
+        """"Restart from here" (EditProjectView.vue's own chat only — see
+        RestartFromHereButton.vue): deletes every message/signal at or
+        after `timestamp` in `session_id` (see db.truncate_session — the
+        live automaton state needs no separate rollback of its own, it's
+        always just recomputed fresh from whatever Signals rows survive).
+        Also refreshes this session's own datetime_end/end_state cache
+        (see db.touch_chat_session) to match what's left, rather than
+        continuing to report "last active" at a moment nothing survives
+        at anymore. `timestamp` is expected to be one of the UTC-explicit
+        strings this same backend already handed back (see db._utc_iso —
+        the tzinfo comes back off before use, same reasoning as
+        get_metrics's own `until`, since every stored column is naive-
+        but-really-UTC)."""
+        self._require_own_session(session_id)
+        cutoff = datetime.fromisoformat(timestamp).replace(tzinfo=None)
+        self._db.truncate_session(session_id, cutoff)
+        session = self._db.get_chat_session(session_id)
+        assert session is not None
+        latest = self._db.latest_message_or_signal_timestamp(session_id)
+        _, state = self._project_service.get_active_automaton_and_state()
+        self._db.touch_chat_session(session_id, latest or session["datetime_start"], state.key)
+
     async def get_messages(self, session_id: int, last_n: int | None = None) -> list[dict]:
         # Checked before open_if_needed (which can write an opening
         # message to session_id): a session can be deleted out from under
@@ -278,7 +301,12 @@ class ChatService(object):
         if message_id is None:
             return self.metrics.calculate_all()
         message = self._require_own_message(message_id)
-        until = datetime.fromisoformat(message["timestamp"])
+        # message["timestamp"] is UTC-explicit (see db._utc_iso) for the
+        # frontend's own benefit — every DateTimeField column in db.py is
+        # naive-but-really-UTC though (default=datetime.utcnow), so the
+        # tzinfo must come back off before this is used in a comparison
+        # against one, or Python raises on naive-vs-aware comparison.
+        until = datetime.fromisoformat(message["timestamp"]).replace(tzinfo=None)
         return self.metrics.calculate_all(until=until)
 
     def get_benchmark_metrics(self, session_id: int | None = None) -> list[dict]:

@@ -6,7 +6,6 @@ project/project_service.py's _prepare_project_update/_persist_project_update.
 from __future__ import annotations
 
 import io
-import re
 import zipfile
 
 
@@ -30,7 +29,7 @@ def _upload(client, project_name: str, files: dict[str, str] | None = None):
     return files
 
 
-def test_uploading_a_project_stamps_index_yml_at_version_0(client):
+def test_uploading_a_project_saves_index_yml_verbatim_at_version_0(client):
     _upload(client, "proj")
 
     response = client.get("/api/projects/proj/files/index.yml")
@@ -39,8 +38,7 @@ def test_uploading_a_project_stamps_index_yml_at_version_0(client):
     body = response.json()
     assert body["version"] == 0
     assert body["total_versions"] == 1
-    assert body["content"].startswith("version: 0\nlast-changed: ")
-    assert "init-action:" in body["content"]
+    assert body["content"] == MINIMAL_YML
 
 
 def test_uploading_a_project_does_not_stamp_a_plain_attachment(client):
@@ -55,7 +53,7 @@ def test_uploading_a_project_does_not_stamp_a_plain_attachment(client):
     assert body["total_versions"] == 1
 
 
-def test_editing_index_yml_increments_its_own_version_and_restamps_it(client):
+def test_editing_index_yml_increments_its_own_version(client):
     _upload(client, "proj")
 
     new_yml = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi again\n"
@@ -65,11 +63,7 @@ def test_editing_index_yml_increments_its_own_version_and_restamps_it(client):
     body = response.json()
     assert body["version"] == 1
     assert body["total_versions"] == 2
-    assert body["content"].startswith("version: 1\nlast-changed: ")
-    assert "hi again" in body["content"]
-    # Exactly one of each stamped field, not accumulated across saves.
-    assert body["content"].count("version:") == 1
-    assert body["content"].count("last-changed:") == 1
+    assert body["content"] == new_yml
 
 
 def test_editing_index_yml_also_bumps_every_sibling_file_to_the_same_version(client):
@@ -86,14 +80,14 @@ def test_editing_index_yml_also_bumps_every_sibling_file_to_the_same_version(cli
     assert notes["content"] == "hello attachment"  # carried forward unchanged
 
 
-def test_editing_an_attachment_also_bumps_index_ymls_version_and_restamps_it(client):
+def test_editing_an_attachment_also_bumps_index_ymls_version(client):
     _upload(client, "proj")
 
     client.put("/api/projects/proj/files/notes.txt", content=b"updated notes")
 
     index = client.get("/api/projects/proj/files/index.yml").json()
     assert index["version"] == 1
-    assert index["content"].startswith("version: 1\nlast-changed: ")
+    assert index["content"] == MINIMAL_YML
 
     notes = client.get("/api/projects/proj/files/notes.txt").json()
     assert notes["content"] == "updated notes"
@@ -112,10 +106,7 @@ def test_saving_a_file_with_unchanged_content_is_a_no_op(client):
     assert client.get("/api/projects/proj/files/index.yml").json()["version"] == 0
 
 
-def test_resaving_index_yml_with_the_same_body_is_a_no_op_despite_the_stamp(client):
-    """index.yml's own stamp (last-changed especially) always differs
-    byte-for-byte on a fresh write — the no-op check must compare its
-    *body*, ignoring the stamp, or every re-save would look like a change."""
+def test_resaving_index_yml_with_the_same_body_is_a_no_op(client):
     _upload(client, "proj")
     unchanged_body = MINIMAL_YML  # identical to what _upload already saved
 
@@ -144,10 +135,10 @@ def test_reuploading_a_zip_with_changed_attachment_content_bumps_the_whole_proje
     assert notes["version"] == 1
     assert notes["content"] == "different content this time"
     # index.yml wasn't in the diff itself, but still moves to version 1
-    # alongside it, and its embedded stamp reflects that.
+    # alongside it, carried forward with its content untouched.
     index = client.get("/api/projects/proj/files/index.yml").json()
     assert index["version"] == 1
-    assert index["content"].startswith("version: 1\n")
+    assert index["content"] == MINIMAL_YML
 
 
 def test_get_file_versions_reports_the_total_count(client):
@@ -159,7 +150,7 @@ def test_get_file_versions_reports_the_total_count(client):
 
     assert response.status_code == 200
     # index.yml itself was never directly re-edited, but was carried
-    # forward (and re-stamped) at each of the two later saves too.
+    # forward at each of the two later saves too.
     assert response.json() == {"total_versions": 3}
 
 
@@ -181,7 +172,7 @@ def test_get_file_at_an_exact_version(client):
     body = response.json()
     assert body["version"] == 0
     assert body["total_versions"] == 2
-    assert "version: 0\n" in body["content"]
+    assert body["content"] == MINIMAL_YML
 
 
 def test_get_file_at_a_version_beyond_the_latest_is_404(client):
@@ -233,16 +224,3 @@ def test_deleting_a_project_file_removes_its_whole_version_history(client):
 
     assert response.status_code == 200
     assert client.get("/api/projects/proj/files/notes.txt/versions").json() == {"total_versions": 0}
-
-
-def test_last_changed_timestamp_is_iso_formatted(client):
-    _upload(client, "proj")
-
-    content = client.get("/api/projects/proj/files/index.yml").json()["content"]
-    match = re.search(r"^last-changed: (.+)$", content, re.MULTILINE)
-
-    assert match is not None
-    # datetime.fromisoformat round-trips iff it's a valid ISO 8601 string.
-    from datetime import datetime
-
-    datetime.fromisoformat(match.group(1))

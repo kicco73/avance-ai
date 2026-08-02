@@ -167,13 +167,15 @@ const highlightedStateKey = computed(() =>
   highlightedStateKeyFor(selected.value, timeline.value, sessionStartState.value)
 )
 
-// Only a transition has "the action that produced it" to highlight — the
-// very first transition's own old_state is "" (see db.py's ChatSessionManager
-// init), which isn't a real graph node, so it's left unhighlighted.
+// Only a transition has "the action that produced it" to highlight.
+// old_state === '' (the automaton's own init transition) is a real,
+// clickable edge in the graph too now — a transparent pseudo-node's own
+// outgoing edge (see InspectorGraphTab.vue's isInitEdge) — so this no
+// longer excludes it: every transition selection highlights *some* edge.
 const firedActionEdge = computed(() => {
   if (selected.value?.kind !== 'transition') return null
   const t = selected.value.transition
-  return t.old_state ? { stateKey: t.old_state, actionName: t.action } : null
+  return { stateKey: t.old_state, actionName: t.action }
 })
 
 const untilMessageId = computed(() => {

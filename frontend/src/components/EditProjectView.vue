@@ -102,6 +102,15 @@ function findSignalLine(lines, signalName) {
   return findTopLevelChildLine(lines, 'signals', signalName)
 }
 
+// The one action with no source state to search under (see
+// InspectorGraphTab.vue's own pseudo-node/isInitEdge) — a bare top-level
+// key, not a states: child, so findActionLine's own state-block scan
+// doesn't apply here at all.
+function findInitActionLine(lines) {
+  const idx = lines.findIndex((line) => lineIndent(line) === 0 && /^init-action\s*:\s*(#.*)?$/.test(line.trim()))
+  return idx === -1 ? null : idx
+}
+
 // Within stateKey's block, finds the line starting the action list item
 // (the `- name: ...` line, wherever `name:` actually falls inside it)
 // whose name matches actionName.
@@ -268,10 +277,14 @@ const highlightedStateKey = computed(() =>
   selected.value ? highlightedStateKeyFor(selected.value, timeline.value, sessionStartState.value) : (liveState.value?.key ?? null)
 )
 
+// old_state === '' (the automaton's own init transition) is a real,
+// clickable edge in the graph too now — a transparent pseudo-node's own
+// outgoing edge (see InspectorGraphTab.vue's isInitEdge) — so this no
+// longer excludes it: every transition selection highlights *some* edge.
 const firedActionEdge = computed(() => {
   if (selected.value?.kind !== 'transition') return null
   const t = selected.value.transition
-  return t.old_state ? { stateKey: t.old_state, actionName: t.action } : null
+  return { stateKey: t.old_state, actionName: t.action }
 })
 
 const untilMessageId = computed(() => {
@@ -446,8 +459,9 @@ function applyPendingCursorTarget() {
   const lines = content.value.split('\n')
   let lineIndex = null
   if (target.kind === 'state') lineIndex = findStateLine(lines, target.stateKey)
-  else if (target.kind === 'action') lineIndex = findActionLine(lines, target.stateKey, target.actionName)
-  else if (target.kind === 'signal') lineIndex = findSignalLine(lines, target.signalName)
+  else if (target.kind === 'action') {
+    lineIndex = target.stateKey === '' ? findInitActionLine(lines) : findActionLine(lines, target.stateKey, target.actionName)
+  } else if (target.kind === 'signal') lineIndex = findSignalLine(lines, target.signalName)
   if (lineIndex === null) return
   const lineInfo = view.state.doc.line(lineIndex + 1) // CodeMirror lines are 1-based
   view.dispatch({

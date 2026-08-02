@@ -22,6 +22,7 @@ from schemas import (
     ExpectedSignalsRequest,
     ExpectedStateRequest,
     TriggersPreviewRequest,
+    TruncateSessionRequest,
 )
 
 
@@ -167,6 +168,20 @@ class AvanceController(object):
         exception handler (see error_handlers.py), no try/except needed here."""
         self.chat_service.delete_session(session_id)
         return {"success": True}
+
+    @post("/api/chat/sessions/{session_id}/truncate")
+    async def post_truncate_session(self, session_id: int, req: TruncateSessionRequest):
+        """"Restart from here" (EditProjectView.vue's chat only) — see
+        ChatService.truncate_session. Same lock/response shape as
+        post_reset: the live state may have just moved backward, so the
+        fresh payload is read back only once the mutation (which a
+        concurrent chat turn also touches) has released the lock."""
+        try:
+            async with self.chat_service.lock:
+                self.chat_service.truncate_session(session_id, req.timestamp)
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return self.project_service.get_active_state_payload()
 
     @get("/api/chat/messages")
     async def get_messages(self, session_id: int):

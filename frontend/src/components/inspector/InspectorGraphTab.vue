@@ -68,7 +68,8 @@ const hasSelectedElementBadges = computed(() => {
     const d = selectedElement.value.data
     return isSelectedStateCurrent.value || d.isStart || d.final || !d.chat || d.historyCutoff
   }
-  return isSelectedActionNext.value || isSelectedActionFired.value || !selectedElement.value.data.hasTrigger
+  const d = selectedElement.value.data
+  return isSelectedActionNext.value || isSelectedActionFired.value || !d.hasTrigger || d.isInitEdge
 })
 
 function destroyGraph() {
@@ -77,10 +78,37 @@ function destroyGraph() {
 }
 
 function nodeToCyData(n) { return { id: n.key, uiLabel: n.ui_label, uiDescription: n.ui_description, final: n.final, isStart: n.is_start, chat: n.chat, onEnter: n.on_enter, historyCutoff: n.history_cutoff, transitionLogLevel: n.transition_log_level, attachments: n.attachments } }
-function edgeToCyData(e, id) { return { id, source: e.source, target: e.target, uiLabel: e.ui_label, uiDescription: e.ui_description, actionName: e.action_name, buttonText: e.ui_button, trigger: e.trigger, hasTrigger: e.has_trigger, actionPrompt: e.action_prompt } }
+// The one edge with source === "" is the automaton's own init_action (see
+// project_service.py's get_project_graph) — its own actionName is
+// overridden to "" here (display-only; the backend still reports the
+// real "init_action" name) so it lines up with the exact same "" the
+// chat's own init-transition already uses everywhere else (Signals.
+// action, benchmarkTimeline.js's synthetic entry) — letting
+// applyFiredActionHighlight/isSelectedActionFired match it with no
+// special-casing of their own, the same {stateKey, actionName} shape as
+// every other action.
+function edgeToCyData(e, id) {
+  return { id, source: e.source, target: e.target, uiLabel: e.ui_label, uiDescription: e.ui_description, actionName: e.source === '' ? '' : e.action_name, buttonText: e.ui_button, trigger: e.trigger, hasTrigger: e.has_trigger, actionPrompt: e.action_prompt, isInitEdge: e.source === '' }
+}
+
+// A transparent node for the "" edge's own source — cytoscape needs a
+// real node at each edge endpoint, so the automaton's own "arrow from
+// nowhere" into its start state (see get_project_graph's own docstring)
+// is drawn as an edge from this invisible pseudo-node (styled zero-size,
+// see renderGraph's own style array) rather than a dangling reference.
+// Not selectable/grabbable: it's not a real state, just an anchor point.
+function pseudoStartNodeElements(edges) {
+  return edges.some((e) => e.source === '')
+    ? [{ data: { id: '', isPseudoStart: true }, selectable: false, grabbable: false }]
+    : []
+}
 
 function graphElements(nodes, edges) {
-  return [...nodes.map(n => ({ data: nodeToCyData(n) })), ...edges.map((e, i) => ({ data: edgeToCyData(e, `edge-${i}`) }))]
+  return [
+    ...pseudoStartNodeElements(edges),
+    ...nodes.map(n => ({ data: nodeToCyData(n) })),
+    ...edges.map((e, i) => ({ data: edgeToCyData(e, `edge-${i}`) }))
+  ]
 }
 
 function selectGraphElement(kind, data) {
@@ -111,6 +139,12 @@ function renderGraph(nodes, edges) {
   destroyGraph()
   if (!graphHost.value) return
   const startKey = nodes.find(n => n.is_start)?.key
+  // Rooting the layout at the pseudo-start node itself (when the init
+  // edge exists — see pseudoStartNodeElements) rather than the real start
+  // state puts that state one level *into* the tree, so its own incoming
+  // arrow reads as entering the graph from outside rather than from a
+  // node that's simultaneously a root with nothing above it.
+  const layoutRoot = edges.some((e) => e.source === '') ? '' : startKey
   cyGraph = cytoscape({
     container: graphHost.value,
     elements: graphElements(nodes, edges),
@@ -119,13 +153,18 @@ function renderGraph(nodes, edges) {
       { selector: 'node[?final]', style: { 'border-width': 4, 'border-color': '#c62828', 'background-color': '#fdecea' } },
       { selector: 'node[?isStart]', style: { 'border-color': '#2e7d32', 'background-color': '#eaf6ea' } },
       { selector: 'node.current-state', style: { 'overlay-color': '#f5a623', 'overlay-opacity': 0.35, 'overlay-padding': 6 } },
+      // The init_action pseudo-node itself is never seen — only the edge
+      // leading out of it (styled below) is, reading as an arrow with no
+      // visible source.
+      { selector: 'node[?isPseudoStart]', style: { width: 1, height: 1, 'background-opacity': 0, 'border-width': 0, label: '' } },
       { selector: 'edge', style: { width: 1.5, 'line-color': '#9ab0cc', 'target-arrow-color': '#9ab0cc', 'target-arrow-shape': 'triangle', 'arrow-scale': 0.8, 'curve-style': 'bezier', label: 'data(uiLabel)', 'font-size': '7px', color: '#666', 'text-background-color': 'white', 'text-background-opacity': 0.85, 'text-background-padding': '2px', 'text-wrap': 'wrap', 'text-max-width': '70px' } },
       { selector: 'edge[!hasTrigger]', style: { 'line-style': 'dashed' } },
+      { selector: 'edge[?isInitEdge]', style: { 'line-color': '#2e7d32', 'target-arrow-color': '#2e7d32' } },
       { selector: 'edge.next-action', style: { 'line-color': '#2e7d32', 'target-arrow-color': '#2e7d32', width: 2.5 } },
       { selector: 'edge.fired-action', style: { 'line-color': '#ad1457', 'target-arrow-color': '#ad1457', width: 3 } },
       { selector: 'edge[source = target]', style: { 'curve-style': 'loop', 'loop-direction': '-45deg', 'loop-sweep': '45deg' } }
     ],
-    layout: { name: 'breadthfirst', directed: true, roots: startKey ? [startKey] : undefined, padding: 16, spacingFactor: 1.1 }
+    layout: { name: 'breadthfirst', directed: true, roots: layoutRoot != null ? [layoutRoot] : undefined, padding: 16, spacingFactor: 1.1 }
   })
   cyGraph.on('tap', 'node', handleNodeTap)
   cyGraph.on('tap', 'edge', handleEdgeTap)
@@ -246,6 +285,7 @@ onBeforeUnmount(destroyGraph)
             <span v-if="selectedElement.data.historyCutoff" class="inspector-detail-badge inspector-detail-badge-neutral">History cutoff</span>
           </template>
           <template v-else>
+            <span v-if="selectedElement.data.isInitEdge" class="inspector-detail-badge inspector-detail-badge-start">Start</span>
             <span v-if="isSelectedActionNext" class="inspector-detail-badge inspector-detail-badge-next">Next</span>
             <span v-if="isSelectedActionFired" class="inspector-detail-badge inspector-detail-badge-fired">Fired</span>
             <span v-if="!selectedElement.data.hasTrigger" class="inspector-detail-badge inspector-detail-badge-manual">Manual</span>
@@ -259,7 +299,7 @@ onBeforeUnmount(destroyGraph)
         </template>
         <template v-else>
           <p v-if="selectedElement.data.uiDescription" class="inspector-detail-ui_description">{{ selectedElement.data.uiDescription }}</p>
-          <p class="inspector-detail-field"><strong>{{ selectedElement.data.source }}</strong> → <strong>{{ selectedElement.data.target }}</strong></p>
+          <p class="inspector-detail-field"><template v-if="!selectedElement.data.isInitEdge"><strong>{{ selectedElement.data.source }}</strong> → </template><strong>{{ selectedElement.data.target }}</strong></p>
           <p v-if="selectedElement.data.buttonText" class="inspector-detail-field"><strong>Button:</strong> {{ selectedElement.data.buttonText }}</p>
           <p v-if="selectedElement.data.trigger" class="inspector-detail-field"><strong>Trigger:</strong><code class="inspector-detail-code">{{ selectedElement.data.trigger }}</code></p>
           <p v-if="selectedElement.data.actionPrompt" class="inspector-detail-field"><strong>Action prompt:</strong> {{ selectedElement.data.actionPrompt }}</p>
