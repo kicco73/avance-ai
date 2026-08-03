@@ -48,6 +48,8 @@ class MetadataHandler(object):
 
     def _parse_metadata_tag(self, metadata_tag: str) -> Any:
         metadata: dict[str, Any] = {}
+        if not metadata_tag:
+            return metadata
         try:
             metadata = json.loads(metadata_tag) or {}
             assert isinstance(metadata, dict)

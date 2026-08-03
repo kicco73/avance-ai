@@ -141,9 +141,9 @@ class TagFilter(StreamingTagFilter):
         return super().filter(text) + self.flush()
 
 class ConcatTagFilter(StreamingTagFilter):
-    def __init__(self, *tag_names, **on_tag):
+    def __init__(self, *tag_names, on_metadata={}):
         self.tags = {
-            tag_name: StreamingTagFilter(f'[{tag_name}]', f'[/{tag_name}]', on_tag=on_tag.get(tag_name)) 
+            tag_name: StreamingTagFilter(f'[{tag_name}]', f'[/{tag_name}]', on_tag=lambda tag_value: on_metadata({tag_name: tag_value})) 
             for tag_name in tag_names
         }
 

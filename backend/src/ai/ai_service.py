@@ -5,7 +5,7 @@ from cascade import OnRetry
 from ai.llm_provider import LLMProvider, AIServiceConfig
 from ai.cascading_llm_provider import CascadingLLMProvider
 from ai.anthropic_provider import AnthropicProvider
-from ai.gemini_provider import GeminiProvider
+from ai.gemini_provider_v2 import GeminiProvider
 from ai.openai_provider import OpenAIProvider
 
 _PROVIDER_CLASSES = {
@@ -13,8 +13,6 @@ _PROVIDER_CLASSES = {
     "gemini": GeminiProvider,
     "openai": OpenAIProvider,
 }
-
-
 class AiService(object):
     """Thin wrapper that always talks to a plain LLMProvider — generate()/
     generate_stream() never know or care whether that's a single concrete
@@ -134,6 +132,7 @@ class AiService(object):
         system_prompt: str,
         history: list[dict],
         on_retry: OnRetry | None = None,
+        on_metadata: MetadataCallback | None = None,
     ) -> AsyncIterator[str]:
         """Yields reply chunks incrementally for `history` (list of {role, content}).
         Raises AIServiceError if the active provider fails."""
