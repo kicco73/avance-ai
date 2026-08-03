@@ -478,12 +478,15 @@ class AvanceController(object):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
     @get("/api/projects/{project_name}/signals")
-    def get_project_signals(self, project_name: str):
+    def get_project_signals(self, project_name: str, state_key: str | None = None):
         """Signal definitions (name/ui_label/description) of `project_name`'s
         last saved index.yml, for the "Edit project" view's Inspect panel —
-        not restricted to the active project."""
+        not restricted to the active project. `state_key`, when given,
+        scopes each signal's own `relevant` field to that state's outgoing
+        actions (see ProjectService.get_project_signals) — the Inspector's
+        own currently selected/highlighted state."""
         try:
-            return {"signals": self.project_service.get_project_signals(project_name)}
+            return {"signals": self.project_service.get_project_signals(project_name, state_key)}
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 

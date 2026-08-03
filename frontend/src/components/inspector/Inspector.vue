@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, nextTick } from 'vue'
+import { computed, ref, watch, nextTick } from 'vue'
 import InspectorGraphTab from './InspectorGraphTab.vue'
 import InspectorSignalsTab from './InspectorSignalsTab.vue'
 import InspectorMetricsTab from './InspectorMetricsTab.vue'
@@ -49,6 +49,26 @@ const emit = defineEmits([
 ])
 
 const inspectorTab = ref('graph')
+
+// Which state the Signals tab's own "relevant" filter is scoped to (see
+// InspectorSignalsTab.vue's stateKey prop) — a graph click overrides the
+// default (props.highlightedStateKey, the live/current state) until the
+// live context itself moves on (see the watch below), same as
+// InspectorGraphTab.vue's own selectedElement already re-syncs itself
+// whenever highlightedStateKey changes. jump-to-definition's own
+// `stateKey` already means exactly this for both kinds it ever carries:
+// the state itself when a node was tapped, or the state a tapped
+// action's own edge originates *from* (see InspectorGraphTab.vue's
+// edgeToCyData/matchStateKey) — never the destination, which is what
+// makes this different from highlightedStateKey's own graph-highlight
+// purpose.
+const selectedStateForSignals = ref(null)
+const relevantSignalsStateKey = computed(() => selectedStateForSignals.value ?? props.highlightedStateKey)
+
+function handleJumpToDefinition(event) {
+  selectedStateForSignals.value = event.stateKey
+  emit('jump-to-definition', event)
+}
 
 const graphTabRef = ref(null)
 const signalsTabRef = ref(null)
@@ -104,7 +124,12 @@ function setInspectorTab(tab) {
 }
 
 watch(() => props.highlightedStateKey, () => {
-  // Sync tab internal states if needed, but handled inside the tab
+  // The live context moved on (a new chat message/transition got
+  // selected, or the conversation itself advanced) — drop any manual
+  // graph-click override so the Signals tab's own relevance follows it
+  // again, same as InspectorGraphTab.vue's own selectedElement already
+  // re-syncs itself whenever this prop changes.
+  selectedStateForSignals.value = null
 })
 </script>
 
@@ -134,12 +159,12 @@ watch(() => props.highlightedStateKey, () => {
       :editableFiles="editableFiles"
       :annotatable="annotatable"
       :expectedState="expectedState"
-      @jump-to-definition="emit('jump-to-definition', $event)"
+      @jump-to-definition="handleJumpToDefinition"
       @select-attachment="emit('select-attachment', $event)"
       @update-expected-state="emit('update-expected-state', $event)"
     />
 
-    <InspectorSignalsTab 
+    <InspectorSignalsTab
       v-show="inspectorTab === 'signals'"
       ref="signalsTabRef"
       :projectName="projectName"
@@ -147,6 +172,7 @@ watch(() => props.highlightedStateKey, () => {
       :editableFiles="editableFiles"
       :annotatable="annotatableSignals"
       :expectedValues="expectedValues"
+      :state-key="relevantSignalsStateKey"
       @jump-to-definition="emit('jump-to-definition', $event)"
       @select-attachment="emit('select-attachment', $event)"
       @update-expected-signals="emit('update-expected-signals', $event)"

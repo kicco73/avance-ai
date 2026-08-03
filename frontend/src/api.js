@@ -349,8 +349,16 @@ export function getProjectGraph(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/graph`)
 }
 
-export function getProjectSignals(projectName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/signals`)
+// `stateKey`, when given, scopes each signal's own `relevant` field (see
+// InspectorSignalsTab.vue's "show only relevant signals" filter) to that
+// state's own outgoing actions (see backend's Automaton.
+// triggerable_signal_names) — the Inspector's own currently selected/
+// highlighted state, or the state a selected action fires *from*.
+// Omitted, every state's triggers combine instead (Automaton.
+// all_triggerable_signal_names).
+export function getProjectSignals(projectName, stateKey) {
+  const query = stateKey != null ? `?state_key=${encodeURIComponent(stateKey)}` : ''
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/signals${query}`)
 }
 
 export function getProjectFiles(projectName) {

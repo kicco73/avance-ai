@@ -8,7 +8,14 @@ const props = defineProps({
   signalValues: { type: Object, default: () => ({}) },
   editableFiles: { type: Array, default: null },
   annotatable: { type: Boolean, default: false },
-  expectedValues: { type: Object, default: () => ({}) }
+  expectedValues: { type: Object, default: () => ({}) },
+  // The state whose own outgoing actions `relevant` is scoped to (see
+  // Inspector.vue's own relevantSignalsStateKey) — the Inspector's
+  // currently selected/highlighted state, or the state a selected
+  // action fires *from*. null means "every state's triggers combined"
+  // (see getProjectSignals/backend's Automaton.
+  // all_triggerable_signal_names).
+  stateKey: { type: String, default: null }
 })
 
 const emit = defineEmits(['jump-to-definition', 'select-attachment', 'update-expected-signals'])
@@ -18,16 +25,18 @@ const signals = ref([])
 const { recentlyChanged: recentlyChangedSignals, markChanged: markSignalsChanged } = useSignalChangeFlash()
 const draggingExpectedValues = ref({})
 
-// "Relevant" per-signal (see Automaton.all_triggerable_signal_names on
-// the backend) — computed server-side, authoritatively, from the same
-// ast-based expression parsing the automaton itself uses to decide
-// what a trigger/env: field can reference, not re-derived here: a
-// client-side regex approximation over raw trigger text turned out to
-// be exactly the kind of thing that's easy to get subtly wrong for no
-// good reason when the server already knows the real answer. On by
-// default (showOnlyRelevant) since a project's own declared signals
-// often include ones no trigger actually reads yet (still mid-
-// authoring, or intentionally advisory/display-only).
+// "Relevant" per-signal, scoped to props.stateKey (see Automaton.
+// triggerable_signal_names/all_triggerable_signal_names on the backend)
+// — computed server-side, authoritatively, from the same ast-based
+// expression parsing the automaton itself uses to decide what a
+// trigger/env: field can reference, not re-derived here: a client-side
+// regex approximation over raw trigger text turned out to be exactly
+// the kind of thing that's easy to get subtly wrong for no good reason
+// when the server already knows the real answer. On by default
+// (showOnlyRelevant) since a project's own declared signals often
+// include ones the currently-selected state's own triggers don't read
+// (still mid-authoring, intentionally advisory/display-only, or simply
+// meaningful only to some *other* state).
 const showOnlyRelevant = ref(true)
 
 const displayedSignals = computed(() =>
@@ -69,11 +78,17 @@ function onClearExpectedSignal(signalName) {
 async function loadSignals() {
   signalsLoading.value = true
   try {
-    signals.value = (await getProjectSignals(props.projectName)).signals
+    signals.value = (await getProjectSignals(props.projectName, props.stateKey)).signals
   } catch {} finally { signalsLoading.value = false }
 }
 
 defineExpose({ loadSignals })
+
+// A graph click (or the live state itself moving on) changes which
+// state's own triggers `relevant` should reflect — refetch rather than
+// filter a stale response, since the server (not this component) is
+// the one deciding relevance now.
+watch(() => props.stateKey, loadSignals)
 
 onMounted(loadSignals)
 </script>

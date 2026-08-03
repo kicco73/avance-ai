@@ -245,7 +245,7 @@ class ProjectService(object):
         # — not every user's, unlike delete_project's full reset_project.
         self._db.reset_project_for_user(Session().user, self.get_active_project_name())
 
-    def get_project_signals(self, project_name: str) -> list[dict]:
+    def get_project_signals(self, project_name: str, state_key: str | None = None) -> list[dict]:
         """Signal definitions (name/ui_label/ui_description/attachments) of
         `project_name`'s last successfully saved index.yml — the source for
         the "Edit project" view's Inspect panel. Reads through
@@ -253,14 +253,25 @@ class ProjectService(object):
         put_project_file/delete_project_file, via _finalize_project_update)
         keeps fresh as of its own last successful save, regardless of which
         project is currently active — so this never reflects an
-        in-progress unsaved edit. `relevant` (see Automaton.
-        all_triggerable_signal_names) is the authoritative, server-computed
-        answer to "is this signal referenced by some action's own trigger
-        (or env: field) anywhere in the project" — the Inspector Signals
-        tab's own "show only relevant signals" filter reads this directly
-        rather than re-deriving it client-side."""
+        in-progress unsaved edit. `relevant` is the authoritative, server-
+        computed answer to "is this signal referenced by some action's own
+        trigger (or env: field)" — the Inspector Signals tab's own "show
+        only relevant signals" filter reads this directly rather than
+        re-deriving it client-side. Scoped to `state_key`'s own outgoing
+        actions (see Automaton.triggerable_signal_names) when given — the
+        Inspector's own currently selected/highlighted state, or (an
+        action selected instead) the state it fires *from* — since that's
+        the only scope actually meaningful for "would this matter for
+        deciding what happens next here." Falls back to every state's
+        triggers combined (see Automaton.all_triggerable_signal_names)
+        when `state_key` is omitted or no longer a real state (e.g. a
+        stale selection from before a rename) — there's always something
+        sensible to report, never a hard error over this."""
         automaton = self._load_project(project_name)
-        relevant_names = automaton.all_triggerable_signal_names()
+        if state_key is not None and state_key in automaton.states:
+            relevant_names = automaton.triggerable_signal_names(state_key)
+        else:
+            relevant_names = automaton.all_triggerable_signal_names()
         return [
             {
                 "name": signal.name,
