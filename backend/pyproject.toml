@@ -12,3 +12,13 @@ py-modules = ["main"]
 
 [tool.setuptools_scm]
 root = ".."
+
+[tool.semantic_release]
+version_type = "scmd" # Usa setuptools-scm to handle tags
+build_command = ""
+version_variables = []
+
+[tool.semantic_release.commit_parser_options]
+allowed_tags = ["build", "chore", "ci", "docs", "feat", "fix", "perf", "style", "refactor", "test"]
+minor_tags = ["feat"]
+patch_tags = ["fix", "perf"]
