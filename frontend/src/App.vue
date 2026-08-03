@@ -10,6 +10,7 @@ import ErrorBanner from './components/ErrorBanner.vue'
 import {
   getState,
   putProject,
+  postNewProject,
   activateProject,
   deleteProject,
   downloadProject,
@@ -139,6 +140,19 @@ async function refreshStateAndProjects() {
   projectsMenu.value?.refresh()
   handleStateChange(newState)
   await loadMessages()
+}
+
+// "New project": same server-side effect as picking samples/Hello
+// world.zip in the upload dialog (see postNewProject), so it reloads
+// state the same way a real upload does.
+async function handleNewProject() {
+  clearChatUi()
+  try {
+    await postNewProject()
+    await refreshStateAndProjects()
+  } catch {
+    // already surfaced via apiFetch
+  }
 }
 
 async function handleModelUploadChange(event) {
@@ -291,6 +305,7 @@ onBeforeUnmount(() => {
           @select="handleProjectSwitch"
           @edit="handleModelEdit"
           @benchmark="handleModelBenchmark"
+          @new-project="handleNewProject"
           @upload="triggerModelUpload"
           @download="handleModelDownload"
           @delete="handleModelDelete"

@@ -112,3 +112,38 @@ def test_uploading_a_project_activates_it_automatically(client):
     )
     assert response.status_code == 200, response.text
     assert client.get("/api/projects").json()["active"] == "second"
+
+
+def test_new_project_creates_and_activates_hello_world(client):
+    """POST /api/projects/new is the "New project" menu option — same
+    effect as uploading samples/Hello world.zip by hand, minus picking a
+    name first."""
+    response = client.post("/api/projects/new")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["project_name"] == "Hello world"
+
+    projects = client.get("/api/projects").json()
+    assert projects["projects"] == ["Hello world"]
+    assert projects["active"] == "Hello world"
+
+    # The template's own content really is what got persisted.
+    files = client.get("/api/projects/Hello world/files/index.yml").json()
+    assert 'hello, world' in files["content"].lower()
+
+    # And it's actually usable, not just a stored blob.
+    assert client.get("/api/chat/session").status_code == 200
+
+
+def test_new_project_de_duplicates_the_name_on_repeat_calls(client):
+    first = client.post("/api/projects/new").json()
+    second = client.post("/api/projects/new").json()
+    third = client.post("/api/projects/new").json()
+
+    assert first["project_name"] == "Hello world"
+    assert second["project_name"] == "Hello world 2"
+    assert third["project_name"] == "Hello world 3"
+    assert client.get("/api/projects").json()["projects"] == [
+        "Hello world", "Hello world 2", "Hello world 3",
+    ]

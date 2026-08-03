@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { getProjects } from '../api.js'
 
-const emit = defineEmits(['select', 'edit', 'benchmark', 'upload', 'download', 'delete', 'download-backup', 'restore-backup'])
+const emit = defineEmits(['select', 'edit', 'benchmark', 'new-project', 'upload', 'download', 'delete', 'download-backup', 'restore-backup'])
 
 const open = ref(false)
 const loading = ref(false)
@@ -69,6 +69,11 @@ function selectBenchmark() {
   if (benchmarkDisabled.value || !activeProjectName.value) return
   open.value = false
   emit('benchmark', activeProjectName.value)
+}
+
+function selectNewProject() {
+  open.value = false
+  emit('new-project')
 }
 
 function selectUpload() {
@@ -149,6 +154,9 @@ onBeforeUnmount(() => {
           >
             Label sessions
           </button>
+        </li>
+        <li>
+          <button class="projects-item projects-upload-item" @click="selectNewProject">New project</button>
         </li>
         <li>
           <button class="projects-item projects-upload-item" @click="selectUpload">Upload project...</button>

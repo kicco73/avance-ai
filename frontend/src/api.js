@@ -318,6 +318,13 @@ export function getProjects() {
   return apiFetch(`${API_URL}/projects`)
 }
 
+// "New project" — same effect server-side as uploading samples/Hello
+// world.zip by hand (see putProject), minus picking a name first (the
+// backend derives/de-duplicates one on its own).
+export function postNewProject() {
+  return apiFetch(`${API_URL}/projects/new`, { method: 'POST' })
+}
+
 export function getBackup() {
   return apiFetch(`${API_URL}/backup`, {}, { parse: 'blob' })
 }

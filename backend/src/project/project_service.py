@@ -29,6 +29,17 @@ TEXT_EDITABLE_EXTENSIONS = {".yml", ".yaml", ".txt", ".md", ".csv"}
 # have committed it.
 CommitCallback = Callable[[Automaton], Awaitable[None]]
 
+# "New project" (see controller.py's POST /api/projects/new) starts from
+# this exact sample zip, exactly as if a user had picked it in the
+# upload file dialog — same repo-relative layout as every other file
+# this module resolves off its own location (see e.g. controller.py's
+# own DOCS_DIR), not the process's current working directory. backend/
+# samples/ ships alongside backend/src/ in every deployment (see the
+# repo's own Dockerfile: `COPY . .` copies the whole repo before src/
+# ever runs), so this never depends on the dev checkout specifically.
+NEW_PROJECT_TEMPLATE = Path(__file__).resolve().parents[2] / "samples" / "Hello world.zip"
+NEW_PROJECT_NAME = "Hello world"
+
 
 class ProjectService(object):
     def __init__(self, db: Db) -> None:
@@ -392,6 +403,30 @@ class ProjectService(object):
         await self._finalize_project_update(project_name, new_automaton, commit)
 
         return {"success": True, "project_name": project_name}
+
+    def _unique_project_name(self, base: str) -> str:
+        """`base` itself if free, else the first "`base` N" (N starting at
+        2) not already in use — same convention a human would fall back
+        to by hand rather than overwrite an existing project of the same
+        name."""
+        existing = set(self._db.list_projects())
+        if base not in existing:
+            return base
+        suffix = 2
+        while f"{base} {suffix}" in existing:
+            suffix += 1
+        return f"{base} {suffix}"
+
+    async def create_new_project(self, commit: CommitCallback) -> dict:
+        """"New project": creates one from NEW_PROJECT_TEMPLATE exactly as
+        if the user had picked that same zip in the upload file dialog —
+        goes through put_project itself, so validation/staging/commit are
+        identical either way. `project_name` is derived from the
+        template's own name and de-duplicated (see _unique_project_name)
+        since nothing here ever asks the user to type one."""
+        content = NEW_PROJECT_TEMPLATE.read_bytes()
+        project_name = self._unique_project_name(NEW_PROJECT_NAME)
+        return await self.put_project(project_name, content, "application/zip", commit)
 
     def export_project_zip(self, project_name: str) -> bytes:
         archives = self._db.get_archives(project_name)
