@@ -74,7 +74,7 @@ class State:
     # out of both the AI reply and auto-tracking's signal evaluation.
     history_cutoff: bool = False
     # If false, chat turns are rejected while this is the current state
-    # (see ChatService._process_turn_locked) — independent of
+    # (see chat.turn_processor.TurnProcessor._begin_turn) — independent of
     # fixed_message/history_cutoff: neither implies this.
     chat: bool = True
 
@@ -83,7 +83,7 @@ class State:
         """Whether any action leaving this state has a trigger — the one
         place that's decided, reused both to skip auto-tracking outright
         when there's nothing it could evaluate (see
-        ChatService._run_auto_tracking) and, per action, for the
+        chat.turn_processor.TurnProcessor._run_auto_tracking) and, per action, for the
         "has_trigger" field get_state_payload sends the frontend (same
         `a.trigger is not None` check, just per-action instead of any())."""
         return any(a.trigger is not None for a in self.actions)

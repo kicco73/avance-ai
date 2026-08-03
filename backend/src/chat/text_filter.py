@@ -141,9 +141,9 @@ class TagFilter(StreamingTagFilter):
         return super().filter(text) + self.flush()
 
 class ConcatTagFilter(StreamingTagFilter):
-    def __init__(self, *tag_names, on_metadata={}):
+    def __init__(self, *tag_names, **on_tag):
         self.tags = {
-            tag_name: StreamingTagFilter(f'[{tag_name}]', f'[/{tag_name}]', on_tag=lambda tag_value: on_metadata({tag_name: tag_value})) 
+            tag_name: StreamingTagFilter(f'[{tag_name}]', f'[/{tag_name}]', on_tag=on_tag.get(tag_name))
             for tag_name in tag_names
         }
 
@@ -164,7 +164,7 @@ class ConcatTagFilter(StreamingTagFilter):
         Chained the same way filter_and_flush already is, not one
         independent flush() per tag: an earlier tag's own recovered
         content can itself contain a later tag (e.g. an unclosed
-        [audio] swallows the real [avance]/[env] tags right along with
+        [audio] swallows the real [signals]/[env] tags right along with
         the visible reply — see its own flush()) — piping each filter's
         output into the next one's filter()+flush() lets a later filter
         still recognize and strip its own tag out of what an earlier one

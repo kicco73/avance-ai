@@ -22,10 +22,9 @@ Definition of audio metadata:
 Always add a [audio]...[/audio] tag at the very beginning of every response:
     - put the audio metadata value between the markups.
 
-Always add a [avance]...[/avance] tag at the end of every response.
+Always add a [signals]...[/signals] tag at the end of every response.
     - Write the content inside it as a dictionary in JSON format.
-        - put a key "signals" as a dictionary
-            - put all of the using their name as the key and their value as the value.
+        - put all of the signals using their name as the key and their value as the value.
 
 Definition of env metadata:
     - a persistent, cross-session memory of free-form facts about the
@@ -33,7 +32,7 @@ Definition of env metadata:
       signals, which are re-evaluated fresh every turn.
 
 Always add a [env]...[/env] tag at the end of every response, after
-[avance]...[/avance]:
+[signals]...[/signals]:
     - Write one "key: value" pair per line (optionally prefixed with "-").
     - Only include a key when you are actually reporting something new or
       changed — omit ones that haven't changed. Never invent values for
@@ -42,10 +41,6 @@ Always add a [env]...[/env] tag at the end of every response, after
 
 
 class MetadataHandler(object):
-    @staticmethod
-    def signal_values(metadata: dict | None) -> dict | None:
-        return (metadata or {}).get("signals")
-
     def _parse_metadata_tag(self, metadata_tag: str) -> Any:
         metadata: dict[str, Any] = {}
         if not metadata_tag:
@@ -58,7 +53,7 @@ class MetadataHandler(object):
         return metadata
 
     def _parse_env_tag(self, env_tag: str) -> dict[str, str]:
-        """[env]...[/env]'s own content isn't JSON like [avance] — one
+        """[env]...[/env]'s own content isn't JSON like [signals] — one
         "key: value" pair per line, each optionally prefixed with "-" (a
         bullet-list style the model sometimes prefers), blank lines and
         anything without a ':' ignored rather than raising. Not a
@@ -78,10 +73,16 @@ class MetadataHandler(object):
         return env
 
     def _filter_text_and_extract_tags(self, text: str) -> tuple[str, dict]:
-        filters = ConcatTagFilter('audio', 'avance', 'env')
+        filters = ConcatTagFilter('audio', 'signals', 'env')
         return filters.filter_and_flush(text), {
             'audio': filters.tags['audio'].tag_content,
-            'signals': self._parse_metadata_tag(filters.tags['avance'].tag_content),
+            # Already the flat {name: value} dict a caller (see
+            # chat.turn_strategy_v1.TurnStrategyV1/tracking.evaluator.
+            # SignalEvaluator.compute_explicitly) can validate directly —
+            # no more outer wrapper key to drill into (see this module's
+            # own EMBED_METADATA_PROMPT: the [signals] tag's own content
+            # *is* that dictionary now, not `{"signals": {...}}`).
+            'signals': self._parse_metadata_tag(filters.tags['signals'].tag_content),
             'env': self._parse_env_tag(filters.tags['env'].tag_content),
         }
 

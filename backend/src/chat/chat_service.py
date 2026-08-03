@@ -5,27 +5,24 @@ import logging
 
 from datetime import datetime, timezone
 from http import HTTPStatus
-from typing import Awaitable, Callable
 
-from automaton.automaton import Action, Automaton, State, StatePayload
+from automaton.automaton import Action, Automaton, State
 from db import Db, _utc_iso
 from ai.ai_service import AiService, OnRetry
-from service_error import ServiceError
 from session import Session
 
 from chat.env import Env
+from chat.errors import ChatServiceError
 from chat.metadata_handler import MetadataHandler
 from chat.priming import build_priming_messages
 from chat.session_manager import ChatSessionManager
+from chat.turn_callbacks import OnChunk, OnMetadata
+from chat.turn_processor import TurnProcessor
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
 from tracking.tracking_service import TrackingService
-from chat.text_filter import TagFilter, ConcatTagFilter
 
 logger = logging.getLogger(__name__)
-
-OnChunk = Callable[[str], Awaitable[None]]
-OnAudio = Callable[[str], Awaitable[None]]
 
 FIXED_MESSAGE_INSTRUCTIONS = (
     "You must reply with ONLY a translation of the fixed message below into "
@@ -34,9 +31,6 @@ FIXED_MESSAGE_INSTRUCTIONS = (
     "not change its meaning or formatting — output just the translation.\n\n"
     "Fixed message:\n{fixed_message}"
 )
-
-class ChatServiceError(ServiceError):
-    pass
 
 
 class ChatService(object):
@@ -64,6 +58,33 @@ class ChatService(object):
         # both transports and against a concurrent reset/activate/upload/
         # delete (main.py's _activate_and_reset awaits this same lock).
         self.lock = asyncio.Lock()
+
+        # The separate "creating a turn" responsibility (see
+        # turn_processor.py's own module docstring) — built here, not in
+        # main.py, since its own callable dependencies below are this
+        # instance's own bound methods (session/message ownership checks,
+        # turn-prompt building, the shared transition-message machinery),
+        # not something main.py has any business wiring up itself.
+        self._turn_processor = TurnProcessor(
+            ai_service,
+            db,
+            tracking_service,
+            session_manager,
+            self.env,
+            # Lambdas, not bound methods directly: some tests construct a
+            # ChatService with project_service=None (paths that never
+            # reach a real turn) — a bound-method attribute access on
+            # None would fail right here, at construction time, instead
+            # of only if a turn actually ran (see this class's own `env`
+            # just above, which already defers project_service the same
+            # way for the same reason).
+            get_active_automaton_and_state=lambda: project_service.get_active_automaton_and_state(),
+            get_active_project_name=lambda: project_service.get_active_project_name(),
+            require_active_session=self._require_active_session,
+            build_turn_prompt=self._build_turn_prompt,
+            history_cutoff=self._history_cutoff,
+            messages_for_transition=self._messages_for_transition,
+        )
 
     @property
     def _active_project_name(self) -> str:
@@ -419,10 +440,6 @@ class ChatService(object):
 
         return init_message
 
-    @staticmethod
-    def _current_state_payload(automaton: Automaton, state: State) -> StatePayload:
-        return automaton.get_state_payload(state)
-
     def _history_cutoff(self, project_name: str, state: State) -> datetime | None:
         """Messages at or before this timestamp must be excluded from both
         the AI reply and auto-tracking's signal evaluation, per `state`'s
@@ -438,7 +455,7 @@ class ChatService(object):
 
         # Only the signals a trigger leaving `state` could actually use
         # (see Automaton.triggerable_signal_names) — the embedded
-        # signals report this same reply's own [avance] tag carries (see
+        # signals report this same reply's own [signals] tag carries (see
         # AutoTracker.run's "Embedded" branch) never needs to ask about
         # anything else, since nothing outside this set could affect
         # which action fires from here.
@@ -512,32 +529,6 @@ class ChatService(object):
             messages.append(await self._generate_opening_message_body(project_name, session_id, automaton, new_state))
         return messages
 
-    async def _run_auto_tracking(
-        self,
-        pending_message: dict | None,
-        project_name: str,
-        session_id: int,
-        automaton: Automaton,
-        state: State,
-        signal_values: dict | None,
-    ) -> tuple[Action | None, State, list[dict], int | None]:
-        """The trailing `int | None` is the id of whatever Tracking row this
-        call's own evaluation persisted (None if auto-tracking is off, or
-        this state has nothing triggerable to evaluate at all — see
-        TrackingService.run_auto_tracking) — the caller links it to the
-        message that caused this call, once that message itself has an
-        id (see _process_turn_locked/link_signal_to_message)."""
-        action, new_state, signal_row_id = await self.tracking_service.run_auto_tracking(
-            pending_message, project_name, session_id, automaton, state, signal_values
-        )
-        if action is None:
-            return None, state, [], signal_row_id
-
-        messages = await self._messages_for_transition(
-            action, project_name, session_id, automaton, new_state, is_self_loop=(action.target == state.key)
-        )
-        return action, new_state, messages, signal_row_id
-
     def _apply_action_env(self, automaton: Automaton, action: Action, signal_values: dict) -> None:
         """A manual action's own version of AutoTracker's own
         _apply_action_env — same expression scope (this call's own
@@ -598,134 +589,9 @@ class ChatService(object):
         session_id: int | None,
         on_retry: OnRetry | None = None,
         on_chunk: OnChunk | None = None,
-        on_audio: OnAudio | None = None,
+        on_metadata: OnMetadata | None = None,
     ) -> dict:
         if self.lock.locked():
             raise ChatServiceError("A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT)
         async with self.lock:
-            return await self._process_turn_locked(text, session_id, on_retry, on_chunk, on_audio)
-
-    async def _receive_ai_stream_and_sendreply(self, system_prompt: str, chat_history, filter, on_chunk) -> str:
-        reply = ""
-        async for chunk in self._ai_service.generate_stream(system_prompt, chat_history):
-            chunk = filter.filter(chunk)
-            reply += chunk
-            if chunk:
-                await on_chunk(chunk)
-        # The stream has truly ended — recover anything still stuck
-        # behind a tag the model opened but never closed (see
-        # ConcatTagFilter.flush's own docstring: a real failure mode,
-        # not hypothetical — otherwise the rest of the reply is silently
-        # lost and the user sees an empty bubble). filter() alone, above,
-        # never does this on its own since more of an in-progress tag
-        # could always still be in the next chunk.
-        recovered = filter.flush()
-        if recovered:
-            reply += recovered
-            await on_chunk(recovered)
-        return reply
-    
-    async def _process_turn_locked(
-        self,
-        text: str,
-        session_id: int | None,
-        on_retry: OnRetry | None,
-        on_chunk: OnChunk | None,
-        on_audio: OnAudio | None,
-    ) -> dict:
-        automaton, state = self._project_service.get_active_automaton_and_state()
-
-        if not state.chat:
-            raise ChatServiceError(
-                "This state doesn't accept messages; use an action instead.", status_code=HTTPStatus.CONFLICT
-            )
-
-        action: Action | None = None
-        project_name = self._active_project_name
-        messages: list[dict] = []
-
-        session = self._require_active_session(session_id, project_name, state.key)
-        resolved_session_id = session["id"]
-
-        # Saved *before* auto-tracking runs — not after (see git history/
-        # PR discussion for why this was briefly reverted and why that was
-        # wrong): auto-tracking's own evaluation for this message can fire
-        # a transition, which can itself generate follow-up messages (an
-        # action_prompt, an opening message — including a fixed_message
-        # translation, see _build_turn_prompt) via _messages_for_transition
-        # below. Every one of those is a *reaction* to this user message —
-        # if it were saved first, they'd all get an earlier timestamp than
-        # the very message that caused them, corrupting the persisted
-        # chronological order (not just how the "Label sessions" view's
-        # timeline happens to display it — every consumer of
-        # db.get_messages/get_signals' own timestamp ordering, e.g.
-        # chat_history for the next AI call, would see it too).
-        # Passing pending_message=None to _run_auto_tracking below (rather
-        # than this message's own not-yet-persisted content) is safe:
-        # _signal_history_window falls back to fetching it straight from
-        # the db instead, and since it's already saved by the time that
-        # runs, the resulting transcript is identical either way.
-        user_message_id = self._db.save_message("user", text, resolved_session_id)
-
-        signal_row_id = None
-        if automaton.autotracking_on_user_message:
-            action, state, transition_messages, signal_row_id = await self._run_auto_tracking(
-                None, project_name, resolved_session_id, automaton, state, {}
-            )
-            messages.extend(transition_messages)
-            if signal_row_id is not None:
-                self._db.link_signal_to_message(signal_row_id, user_message_id)
-
-        if state.chat:
-            system_prompt, turn_attachments = self._build_turn_prompt(automaton, state)
-
-            priming_messages = build_priming_messages(turn_attachments)
-            since = self._history_cutoff(project_name, state)
-            chat_history = priming_messages + self._strip_timestamps(
-                self._db.get_messages(resolved_session_id, since=since)
-            )
-
-            filter = ConcatTagFilter('audio', 'avance', 'env', audio=on_audio)
-
-            if on_chunk is not None:
-                reply = await self._receive_ai_stream_and_sendreply(system_prompt, chat_history, filter, on_chunk)
-            else:
-                reply = await self._ai_service.generate(system_prompt, chat_history, on_retry=on_retry)
-                reply = filter.filter_and_flush(reply)
-
-            metadata = self._metadata_handler._parse_metadata_tag(filter.tags['avance'].tag_content)
-            self.env.update(self._metadata_handler._parse_env_tag(filter.tags['env'].tag_content))
-            audio_text = filter.tags['audio'].tag_content or None
-            assistant_id = self._db.save_message(
-                "assistant", reply, resolved_session_id, audio_text=audio_text
-            )
-            messages.append({"id": assistant_id, "content": reply, "audio_text": audio_text})
-
-            if automaton.autotracking_on_ai_message:
-                last_action, state, transition_messages, signal_row_id = await self._run_auto_tracking(
-                    None, project_name, resolved_session_id, automaton, state, self._metadata_handler.signal_values(metadata)
-                )
-                if last_action:
-                    action = last_action
-                messages.extend(transition_messages)
-                if signal_row_id is not None:
-                    self._db.link_signal_to_message(signal_row_id, assistant_id)
-
-        self._session_manager.touch_session(resolved_session_id, state.key)
-
-        return {
-            "reply": messages,
-            "state": self._current_state_payload(automaton, state),
-            "state_changed": action is not None,
-            "new_state": action.target if action else None,
-            "triggered_action": action.name if action else None,
-            # The fired action's own on_enter (see automaton.Action.
-            # on_enter) — None both when no transition happened this turn
-            # and when the action that did fire simply has none set.
-            # Kebab-cased key, matching the YAML field's own spelling.
-            "on-enter": action.on_enter if action else None,
-            # See apply_manual_action's own "ai_model" for why this rides
-            # along with the turn's result instead of a separate call.
-            "ai_model": self.get_ai_models_info(),
-            "session_id": resolved_session_id,
-        }
+            return await self._turn_processor.process(text, session_id, on_retry, on_chunk, on_metadata)

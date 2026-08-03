@@ -6,7 +6,7 @@ normal turn's own reply or via a dedicated fallback call) lives in
 tracking/evaluator.py's SignalEvaluator instead — this class no longer
 makes AI calls itself (see its own module docstring for why the old
 standalone prompt here was deprecated in favor of the embedded
-[avance]-tag convention)."""
+[signals]-tag convention)."""
 from __future__ import annotations
 
 import logging

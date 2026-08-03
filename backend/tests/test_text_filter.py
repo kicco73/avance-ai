@@ -41,10 +41,10 @@ def test_concat_filter_full_reply_with_all_three_tags():
     reply = (
         '[audio]Ciao, come va?[/audio]'
         'Ecco la mia risposta visibile qui.'
-        '[avance]{"signals": {"foo": 1}}[/avance]'
+        '[signals]{"foo": 1}[/signals]'
         '[env]\nmood: happy\n[/env]'
     )
-    f = ConcatTagFilter("audio", "avance", "env")
+    f = ConcatTagFilter("audio", "signals", "env")
     visible = f.filter_and_flush(reply)
 
     assert visible == "Ecco la mia risposta visibile qui."
@@ -53,16 +53,16 @@ def test_concat_filter_full_reply_with_all_three_tags():
 
 def test_concat_filter_recovers_the_whole_reply_when_audio_never_closes():
     """The actual bug: an unclosed [audio] tag used to swallow the real
-    answer AND the avance/env tags right along with it, leaving an empty
-    visible reply. Now the real answer is recovered, and avance/env
+    answer AND the signals/env tags right along with it, leaving an empty
+    visible reply. Now the real answer is recovered, and signals/env
     (embedded in what [audio] would have swallowed) are still correctly
     found and stripped by the later filters in the same chain."""
     reply = (
         '[audio]Ciao, come va? Ecco la mia risposta visibile qui.'
-        '[avance]{"signals": {"foo": 1}}[/avance]'
+        '[signals]{"foo": 1}[/signals]'
         '[env]\nmood: happy\n[/env]'
     )
-    f = ConcatTagFilter("audio", "avance", "env")
+    f = ConcatTagFilter("audio", "signals", "env")
     visible = f.filter_and_flush(reply)
 
     assert visible == "Ciao, come va? Ecco la mia risposta visibile qui."
@@ -74,15 +74,15 @@ def test_concat_filter_recovers_the_whole_reply_when_audio_never_closes():
 
 def test_concat_filter_recovers_correctly_when_streamed_in_small_chunks():
     """Same scenario as above, but fed one character at a time — the
-    realistic streaming shape (see ChatService._receive_ai_stream_and_
+    realistic streaming shape (see TurnStrategyV1._receive_ai_stream_and_
     sendreply, which calls filter() per chunk and flush() only once, at
     the very end)."""
     reply = (
         '[audio]Ciao, come va? Ecco la mia risposta visibile qui.'
-        '[avance]{"signals": {"foo": 1}}[/avance]'
+        '[signals]{"foo": 1}[/signals]'
         '[env]\nmood: happy\n[/env]'
     )
-    f = ConcatTagFilter("audio", "avance", "env")
+    f = ConcatTagFilter("audio", "signals", "env")
     streamed = ""
     for ch in reply:
         streamed += f.filter(ch)
@@ -95,10 +95,10 @@ def test_concat_filter_well_formed_reply_survives_streaming_too():
     reply = (
         '[audio]Ciao, come va?[/audio]'
         'Ecco la mia risposta visibile qui.'
-        '[avance]{"signals": {"foo": 1}}[/avance]'
+        '[signals]{"foo": 1}[/signals]'
         '[env]\nmood: happy\n[/env]'
     )
-    f = ConcatTagFilter("audio", "avance", "env")
+    f = ConcatTagFilter("audio", "signals", "env")
     streamed = ""
     for ch in reply:
         streamed += f.filter(ch)
@@ -108,17 +108,17 @@ def test_concat_filter_well_formed_reply_survives_streaming_too():
     assert f.tags["audio"].tag_content == "Ciao, come va?"
 
 
-def test_concat_filter_recovers_when_avance_never_closes():
+def test_concat_filter_recovers_when_signals_never_closes():
     """The tail-end equivalent: if a *later* tag never closes, only the
     trailing content after it is affected — earlier visible text and
     earlier tags are unaffected either way."""
     reply = (
         '[audio]Ciao[/audio]'
         'Ecco la mia risposta.'
-        '[avance]{"signals": {"foo": 1}}'  # never closes
+        '[signals]{"foo": 1}'  # never closes
     )
-    f = ConcatTagFilter("audio", "avance", "env")
+    f = ConcatTagFilter("audio", "signals", "env")
     visible = f.filter_and_flush(reply)
 
-    assert visible == 'Ecco la mia risposta.{"signals": {"foo": 1}}'
+    assert visible == 'Ecco la mia risposta.{"foo": 1}'
     assert f.tags["audio"].tag_content == "Ciao"

@@ -17,6 +17,7 @@ from ai.llm_provider import (
 	AIServiceProviderRateLimitedError,
 	AIServiceProviderUnavailableError,
 	LLMProvider,
+	MetadataCallback,
 	content_to_text,
 )
 
@@ -182,7 +183,6 @@ class GeminiProvider(LLMProvider):
 					continue
 
 				accumulated_json += chunk.text
-				# print(f"DEBUG: accumulated_json={accumulated_json}")
 
 				try:
 					parsed = partial_json_parser.parse_json(accumulated_json)

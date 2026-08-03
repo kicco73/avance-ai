@@ -2,15 +2,16 @@ from __future__ import annotations
 
 from typing import AsyncIterator, Sequence
 from cascade import OnRetry
-from ai.llm_provider import LLMProvider, AIServiceConfig
+from ai.llm_provider import LLMProvider, AIServiceConfig, MetadataCallback, supports_on_metadata
 from ai.cascading_llm_provider import CascadingLLMProvider
 from ai.anthropic_provider import AnthropicProvider
-from ai.gemini_provider_v2 import GeminiProvider
+from ai import gemini_provider, gemini_provider_v2
 from ai.openai_provider import OpenAIProvider
 
 _PROVIDER_CLASSES = {
     "anthropic": AnthropicProvider,
-    "gemini": GeminiProvider,
+    "gemini-legacy": gemini_provider.GeminiProvider,
+    "gemini": gemini_provider_v2.GeminiProvider,
     "openai": OpenAIProvider,
 }
 class AiService(object):
@@ -82,6 +83,18 @@ class AiService(object):
             return self._auto_provider
         return self._selectable_providers[self._selected_index]
 
+    @property
+    def _current_leaf_provider(self) -> LLMProvider:
+        """The concrete provider a call would actually reach right now —
+        _active_provider is typically a CascadingLLMProvider (see its own
+        current_provider), but this class's own contract only ever
+        promises a plain LLMProvider (see this class's own docstring), so
+        a hand-built instance wrapping a bare leaf directly is also legal
+        — falls back to _active_provider itself in that case, same
+        defensive getattr as get_models_info's own current_index lookup
+        just below."""
+        return getattr(self._active_provider, "current_provider", self._active_provider)
+
     def select_model(self, index: int | None) -> None:
         """`index=None` selects auto (the cascade's own retry/fallback
         order); an int pins generate()/generate_stream() to that single
@@ -122,10 +135,17 @@ class AiService(object):
         system_prompt: str,
         history: list[dict],
         on_retry: OnRetry | None = None,
+        on_metadata: MetadataCallback | None = None,
     ) -> str:
         """Reply text for `history` (list of {role, content}). Raises
-        AIServiceError if the active provider fails."""
-        return await self._active_provider.generate(system_prompt, history, on_retry=on_retry)
+        AIServiceError if the active provider fails. `on_metadata` is
+        passed straight through to _active_provider (always a
+        CascadingLLMProvider — see its own module docstring), which
+        itself only ever forwards it to a leaf that actually accepts it
+        (see CascadingLLMProvider.generate) — safe to pass unconditionally
+        from here even when the active provider turns out not to support
+        it."""
+        return await self._active_provider.generate(system_prompt, history, on_retry=on_retry, on_metadata=on_metadata)
 
     async def generate_stream(
         self,
@@ -135,6 +155,20 @@ class AiService(object):
         on_metadata: MetadataCallback | None = None,
     ) -> AsyncIterator[str]:
         """Yields reply chunks incrementally for `history` (list of {role, content}).
-        Raises AIServiceError if the active provider fails."""
-        async for chunk in self._active_provider.generate_stream(system_prompt, history, on_retry=on_retry):
+        Raises AIServiceError if the active provider fails. See generate()
+        above for `on_metadata`."""
+        async for chunk in self._active_provider.generate_stream(system_prompt, history, on_retry=on_retry, on_metadata=on_metadata):
             yield chunk
+
+    def supports_metadata_generate(self) -> bool:
+        """Whether the concrete leaf provider generate() would actually
+        call *right now* (see _current_leaf_provider — not this wrapper's
+        own generate(), which always accepts on_metadata regardless)
+        declares support for it — see chat.turn_strategy_builder.
+        build_turn_strategy, the one caller that needs to decide this
+        *before* placing a call, not just pass it through and hope."""
+        return supports_on_metadata(self._current_leaf_provider.generate)
+
+    def supports_metadata_stream(self) -> bool:
+        """See supports_metadata_generate — same idea, for generate_stream."""
+        return supports_on_metadata(self._current_leaf_provider.generate_stream)

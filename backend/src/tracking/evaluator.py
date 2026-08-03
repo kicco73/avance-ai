@@ -2,11 +2,11 @@
 of AutoTracker's two ways of getting them funnel through, sharing the
 exact same prompt/tag convention and validation:
   - `validate(automaton, raw_values)`: the reply was already generated
-    for some other reason (a normal chat turn) and already carries an
-    [avance] tag (see chat.metadata_handler.MetadataHandler) — the caller
-    (AutoTracker.run) has already pulled the raw values out via
-    MetadataHandler.signal_values; this just coerces them against the
-    automaton's own declared signals.
+    for some other reason (a normal chat turn) and already carries a
+    [signals] tag (see chat.metadata_handler.MetadataHandler) — the
+    caller (AutoTracker.run) has already pulled the raw values out via
+    MetadataHandler._parse_metadata_tag; this just coerces them against
+    the automaton's own declared signals.
   - `compute_explicitly(...)`: no reply to piggyback on at all — either
     the embedded one came back empty, or auto-tracking needs to run
     before the AI has replied at all this turn (autotracking_on_user_
@@ -80,7 +80,7 @@ class SignalEvaluator(object):
     ) -> dict[str, int | float | None]:
         """No reply to piggyback on — makes its own dedicated call, using
         the exact same system prompt (MetadataHandler.build_prompt, the
-        same one a normal turn gets) and the exact same [avance]-tag
+        same one a normal turn gets) and the exact same [signals]-tag
         extraction (MetadataHandler._filter_text_and_extract_tags) as the
         embedded path, then validates through the same validate() above.
         `names` (see Automaton.triggerable_signal_names) scopes the
@@ -112,8 +112,8 @@ class SignalEvaluator(object):
             return self.validate(automaton, None, names)
 
         _, tags = self._metadata_handler._filter_text_and_extract_tags(raw_reply)
-        # tags['signals'] is the raw parsed [avance] tag content (see
-        # _filter_text_and_extract_tags) — signal_values() is what
-        # actually drills into its own "signals" key, same as the
-        # embedded path already does in ChatService._process_turn_locked.
-        return self.validate(automaton, self._metadata_handler.signal_values(tags["signals"]), names)
+        # tags['signals'] is already the flat {name: value} dict parsed
+        # straight off the [signals] tag (see _filter_text_and_extract_tags) —
+        # nothing left to unwrap, unlike before this tag's own content
+        # simplified away its outer wrapper key.
+        return self.validate(automaton, tags["signals"], names)

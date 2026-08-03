@@ -1,5 +1,5 @@
 """Integration-ish tests for how a real chat turn links a Tracking row to
-the message that caused it (see ChatService._process_turn_locked/
+the message that caused it (see chat.turn_processor.TurnProcessor.process/
 _run_auto_tracking, db.link_signal_to_message) — and for the
 expected_state/expected_values annotation writes that only a message with
 such a link allows (see ChatService.set_message_expected_state/
@@ -58,13 +58,13 @@ class FakeProjectService:
 
 class TaggedAiService:
     """Like conftest.py's FakeAiService, but the reply embeds a real
-    [avance]{"signals": {...}}[/avance] tag — so AutoTracker.run() gets a
-    genuinely non-empty signal_values dict straight from the metadata
-    (see MetadataHandler.signal_values) and never falls back to actually
+    [signals]{...}[/signals] tag — so AutoTracker.run() gets a genuinely
+    non-empty signal_values dict straight from the metadata (see
+    MetadataHandler._parse_metadata_tag) and never falls back to actually
     calling the AI a second time to compute signals from scratch."""
 
     def __init__(self, signals: dict) -> None:
-        self._reply = f'Hi![avance]{{"signals": {signals!r}}}[/avance]'.replace("'", '"')
+        self._reply = f'Hi![signals]{signals!r}[/signals]'.replace("'", '"')
 
     def get_models_info(self) -> dict:
         return {"auto": True, "current_index": 0, "models": []}
@@ -77,6 +77,12 @@ class TaggedAiService:
 
     async def generate_stream(self, system_prompt, history, on_retry=None):
         yield self._reply
+
+    def supports_metadata_generate(self) -> bool:
+        return False
+
+    def supports_metadata_stream(self) -> bool:
+        return False
 
 
 @pytest.fixture
@@ -113,9 +119,9 @@ async def _bootstrap_session(chat_service: ChatService) -> int:
 
 async def test_user_message_evaluation_is_linked_to_the_user_message(db, chat_service_for):
     # autotracking_on_user_message always calls with signal_values={}
-    # (see ChatService._process_turn_locked), forcing SignalEvaluator's
-    # explicit fallback — which now uses the exact same [avance]-tag
-    # convention as the embedded path (see chat/signal_evaluator.py),
+    # (see chat.turn_processor.TurnProcessor._begin_turn), forcing SignalEvaluator's
+    # explicit fallback — which now uses the exact same [signals]-tag
+    # convention as the embedded path (see tracking/evaluator.py),
     # hence TaggedAiService here too, not a bespoke raw-JSON reply.
     chat_service = chat_service_for(
         _automaton(autotracking_on_user_message=True), ai_service=TaggedAiService({"foo": 1})

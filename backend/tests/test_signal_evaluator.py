@@ -102,7 +102,7 @@ def test_validate_with_an_empty_names_set_returns_nothing():
     assert result == {}
 
 
-async def test_compute_explicitly_extracts_and_validates_from_an_avance_tag(db):
+async def test_compute_explicitly_extracts_and_validates_from_a_signals_tag(db):
     automaton = _automaton([Signal(name="mood", ui_label="Mood", definition="d")])
     signals = Signals(get_active_automaton=lambda: automaton, db=db)
     env = Env(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
@@ -111,7 +111,7 @@ async def test_compute_explicitly_extracts_and_validates_from_an_avance_tag(db):
         datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
         start_state="a", end_state="a",
     )
-    ai_service = FakeAiService(reply='Hi![avance]{"signals": {"mood": 75}}[/avance]')
+    ai_service = FakeAiService(reply='Hi![signals]{"mood": 75}[/signals]')
 
     result = await _evaluator().compute_explicitly(
         ai_service, signals, env, build_priming_messages=lambda attachments: [], session_id=session_id
@@ -157,7 +157,7 @@ async def test_compute_explicitly_with_names_only_prompts_for_that_subset(db):
     class CapturingAiService:
         async def generate(self, system_prompt, history, on_retry=None) -> str:
             captured["system_prompt"] = system_prompt
-            return 'Hi![avance]{"signals": {"mood": 75, "irrelevant": 1}}[/avance]'
+            return 'Hi![signals]{"mood": 75, "irrelevant": 1}[/signals]'
 
     result = await _evaluator().compute_explicitly(
         CapturingAiService(), signals, env, build_priming_messages=lambda attachments: [],
@@ -172,7 +172,7 @@ async def test_compute_explicitly_with_names_only_prompts_for_that_subset(db):
     assert result == {"mood": 75}
 
 
-async def test_compute_explicitly_with_no_avance_tag_at_all_is_all_none(db):
+async def test_compute_explicitly_with_no_signals_tag_at_all_is_all_none(db):
     """A malformed/tagless reply must never crash — same graceful
     degradation as an AI-service failure."""
     automaton = _automaton([Signal(name="mood", ui_label="Mood", definition="d")])

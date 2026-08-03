@@ -44,7 +44,7 @@ def test_parse_env_tag_handles_a_colon_inside_the_value():
 
 
 def test_filter_text_and_extract_tags_extracts_a_parsed_env_dict():
-    reply = "hello [audio]hi there[/audio][avance]{}[/avance][env]mood: happy[/env]"
+    reply = "hello [audio]hi there[/audio][signals]{}[/signals][env]mood: happy[/env]"
     visible, tags = _handler()._filter_text_and_extract_tags(reply)
     assert visible == "hello "
     assert tags["env"] == {"mood": "happy"}

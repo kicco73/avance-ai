@@ -50,6 +50,17 @@ class FakeAiService:
         self.calls.append((system_prompt, history))
         yield "Fake AI reply."
 
+    # Stands in for a "v1" provider (see ai.llm_provider.supports_on_metadata) —
+    # every existing test written against the legacy [audio]/[signals]/[env]
+    # tag convention (see chat.text_filter.ConcatTagFilter) expects
+    # chat.turn_strategy_builder.build_turn_strategy to pick that path,
+    # same as a real Anthropic/OpenAI/plain-Gemini config would today.
+    def supports_metadata_generate(self) -> bool:
+        return False
+
+    def supports_metadata_stream(self) -> bool:
+        return False
+
 
 @pytest.fixture
 def fake_ai_service() -> FakeAiService:
