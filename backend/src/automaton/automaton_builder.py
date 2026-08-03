@@ -216,7 +216,6 @@ class AutomatonBuilder(object):
             name="init-action",
             ui_label=raw_init_action.get("ui-label", "init-action"),
             ui_button="",
-            trigger="True",
             target=raw_init_action["target"],
             action_prompt=raw_init_action["action-prompt"].strip() if raw_init_action.get("action-prompt") else None,
             on_enter=raw_init_action.get("on-enter"),

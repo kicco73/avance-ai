@@ -1,5 +1,5 @@
 """Integration tests for the backend pieces the "Label sessions" view
-relies on: the session-scoped Signals timeline endpoint, and point-in-time
+relies on: the session-scoped Tracking timeline endpoint, and point-in-time
 (message_id-scoped) metrics — see chat/chat_service.py's
 get_session_signals/get_metrics.
 """
@@ -73,7 +73,7 @@ def test_get_metrics_with_an_unknown_message_id_is_404(client, hello_project):
 
 def test_get_messages_response_shape_has_no_annotation_fields(client, hello_project):
     """Annotation-related fields (and the evaluation-point link) live on
-    Signals now (see get_session_signals) — a message row itself is just
+    Tracking now (see get_session_signals) — a message row itself is just
     its own content/metadata."""
     session = client.get("/api/chat/session").json()
     client.post("/api/chat/messages", json={"message": "hi", "session_id": session["id"]})
@@ -135,7 +135,7 @@ def test_get_benchmark_metrics_response_shape(client, hello_project, app_db):
 
 def test_get_benchmark_metrics_reflects_annotations(client, hello_project, app_db):
     """"Hello world" declares no triggers, so there's no real chat-turn
-    path to a linked Signals row here — written directly via app_db,
+    path to a linked Tracking row here — written directly via app_db,
     exactly the way AutoTracker.run() would (see db.save_signal_snapshot's
     own message_id param)."""
     session = client.get("/api/chat/session").json()
@@ -190,7 +190,7 @@ def test_delete_session_annotations_is_404_for_someone_elses_or_unknown_session(
 
 def test_annotating_a_later_sessions_own_start_materializes_a_signals_row(client, hello_project):
     """Only the literal first session ever opened for a project gets a
-    real "" -> start_state Signals row (see the previous test) — every
+    real "" -> start_state Tracking row (see the previous test) — every
     later session has nothing real to annotate against at its own start
     until an expert actually tries (see ChatService.
     _materialize_session_start_row)."""

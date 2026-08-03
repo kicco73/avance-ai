@@ -57,7 +57,7 @@ def test_editing_a_file_that_removes_the_current_state_resets_the_conversation(c
 
 
 def test_editing_a_file_that_renames_the_current_state_resets_the_conversation(client):
-    """A rename is, from the persisted Signals row's point of view,
+    """A rename is, from the persisted Tracking row's point of view,
     exactly the same as a removal — the old key simply isn't a state
     anymore, whether or not something equivalent exists under a new one."""
     _upload_and_reach_b(client)

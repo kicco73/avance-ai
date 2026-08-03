@@ -21,7 +21,7 @@ def test_truncate_rejects_someone_elses_session(client, hello_project):
     session = client.get("/api/chat/session").json()
     # Reassign ownership directly — no endpoint exists to create another
     # user's session.
-    from db import ChatSession
+    from db.models import ChatSession
 
     ChatSession.update(username="someone-else").where(ChatSession.id == session["id"]).execute()
 

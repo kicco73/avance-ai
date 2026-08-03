@@ -1,7 +1,6 @@
 """FastAPI entrypoint for the Avance State Engine prototype — config/wiring
 only. Every endpoint lives on AvanceController (see controller.py)."""
 from __future__ import annotations
-
 import logging
 from http import HTTPStatus
 
@@ -20,13 +19,18 @@ from metrics.metric_service import MetricService
 from project.project_service import ProjectService
 from ai.ai_service import AiService
 from session import Session
-from signals.signal_service import SignalService
+from tracking.tracking_service import TrackingService
 from talk.talk_service import TalkService
 from listen.listen_service import ListenService
 
+try:
+    from _version import __version__
+except ImportError:
+    __version__ = "0.0.0.dev0"
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
-logger.info("Booting avance api server.")
+logger.info(f"Booting avance api server v{__version__}.")
 
 def _build_fallback_app(error: Exception) -> FastAPI:
     """Used only when essential startup wiring below fails: every request,
@@ -77,16 +81,16 @@ try:
     )
     # Architecturally analogous to ai_service/chat_service/... above —
     # instantiated once here, not built by ChatService for itself (see
-    # signals/signal_service.py's own module docstring). Both this and
+    # tracking/tracking_service.py's own module docstring). Both this and
     # ChatService depend on ai_service (and metric_service) directly,
     # never through one another.
-    signal_service = SignalService(
+    tracking_service = TrackingService(
         db, ai_service, metric_service,
         get_active_automaton=lambda: project_service.get_active_automaton_and_state()[0],
         get_username=lambda: Session().user,
         get_active_project_name=lambda: project_service.get_active_project_name(),
     )
-    chat_service = ChatService(ai_service, project_service, db, session_manager, signal_service, metric_service)
+    chat_service = ChatService(ai_service, project_service, db, session_manager, tracking_service, metric_service)
 
     chat_ws_adapter = WsAdapter(chat_service) if config.chat_transport == "websocket" else None
 

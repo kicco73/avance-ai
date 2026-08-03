@@ -1,4 +1,4 @@
-"""SignalService: everything concerning a project's signals lives here —
+"""TrackingService: everything concerning a project's signals lives here —
 definitions, auto-tracking (embedded and explicit computation, trigger
 evaluation, transition persistence), the read-only /api/chat/signals
 payload, and expert annotation (expected_state/expected_values) of a
@@ -27,20 +27,20 @@ from chat.metadata_handler import MetadataHandler
 from db import Db
 from metrics.metric_service import MetricService
 from service_error import ServiceError
-from signals.auto_tracker import AutoTracker
-from signals.definitions import Signals
-from signals.evaluator import SignalEvaluator
+from tracking.auto_tracker import AutoTracker
+from tracking.definitions import Signals
+from tracking.evaluator import SignalEvaluator
 
 GetActiveAutomaton = Callable[[], Automaton]
 GetUsername = Callable[[], str]
 GetActiveProjectName = Callable[[], str]
 
 
-class SignalServiceError(ServiceError):
+class TrackingServiceError(ServiceError):
     pass
 
 
-class SignalService(object):
+class TrackingService(object):
     def __init__(
         self,
         db: Db,
@@ -83,7 +83,7 @@ class SignalService(object):
         return self._definitions.get_latest_signals()
 
     def get_session_signals(self, session_id: int) -> list[dict]:
-        """The full Signals event log for `session_id` (see db.
+        """The full Tracking event log for `session_id` (see db.
         get_signals) — every snapshot/transition row, chronological.
         Ownership of `session_id` is the caller's own responsibility
         (see ChatService.get_session_signals) — this assumes it's
@@ -109,13 +109,13 @@ class SignalService(object):
         return await self._auto_tracker.run(pending_message, project_name, session_id, automaton, state, signal_values)
 
     def _require_annotatable_message(self, message_id: int) -> dict:
-        """Raises (409) for a message with no linked Signals row at all
-        (see Signals.message) — nothing was ever computed for it, so
+        """Raises (409) for a message with no linked Tracking row at all
+        (see Tracking.message) — nothing was ever computed for it, so
         there's nothing to annotate against — *unless* it's the one case
         that's still fair game: message_id is its own session's very
         first message and that session never got its own "session
         started here" row (see _materialize_session_start_row). Returns
-        the Signals row (not the message) — both annotation setters
+        the Tracking row (not the message) — both annotation setters
         below write straight into it. Assumes `message_id`'s own
         ownership has already been checked by the caller (see
         ChatService.set_message_expected_state/set_message_expected_signals)."""
@@ -123,7 +123,7 @@ class SignalService(object):
         if row is None:
             row = self._materialize_session_start_row(message_id)
         if row is None:
-            raise SignalServiceError(
+            raise TrackingServiceError(
                 "This message isn't an evaluation point — nothing to annotate.",
                 status_code=HTTPStatus.CONFLICT,
             )
@@ -132,7 +132,7 @@ class SignalService(object):
     def _materialize_session_start_row(self, message_id: int) -> dict | None:
         """Every session conceptually starts at its own `start_state`, but
         only the literal first session ever opened for a project gets a
-        real Signals row for that (see ChatService.open_if_needed's own
+        real Tracking row for that (see ChatService.open_if_needed's own
         "" -> start_state transition, created once per project, not once
         per session) — every other session's own start has nothing in the
         database to annotate against at all. Rather than leave every
@@ -188,8 +188,8 @@ class SignalService(object):
     def set_message_expected_state(self, message_id: int, expected_state: str | None) -> dict | None:
         """Sets (expected_state given) or clears (None) the expert-
         annotated expected state for message_id's own evaluation — see
-        Signals.expected_state's own docstring. Returns the updated
-        Signals row, or None if clearing it deleted the row entirely (see
+        Tracking.expected_state's own docstring. Returns the updated
+        Tracking row, or None if clearing it deleted the row entirely (see
         _finalize_annotation_write). `expected_state` must name a real
         state in the active project's own automaton — the "Benchmark
         project" view's States dropdown is populated from exactly that
@@ -197,7 +197,7 @@ class SignalService(object):
         row = self._require_annotatable_message(message_id)
         if expected_state is not None:
             if expected_state == "" or expected_state not in self.automaton.states:
-                raise SignalServiceError(
+                raise TrackingServiceError(
                     f"Unknown state '{expected_state}'.", status_code=HTTPStatus.UNPROCESSABLE_ENTITY
                 )
         self._db.set_signal_expected_state(row["id"], expected_state)
@@ -205,25 +205,25 @@ class SignalService(object):
 
     def set_message_expected_signals(self, message_id: int, expected_values: dict | None) -> dict | None:
         """Sets or clears the expert-annotated expected signal values for
-        message_id's own evaluation — see Signals.expected_values's own
+        message_id's own evaluation — see Tracking.expected_values's own
         docstring. `expected_values` is the *whole* replacement dict: a
         signal name missing from it is annotation-cleared for that signal
         alone (the "Label sessions" view's own sliders send the whole
         dict on every change, never a single-key patch). Every key must
         name a real signal in the active project, every value a plain
         number in [0, 100] (see Inspector.vue's own slider range). Returns
-        the updated Signals row, or None if clearing it deleted the row
+        the updated Tracking row, or None if clearing it deleted the row
         entirely (see _finalize_annotation_write)."""
         row = self._require_annotatable_message(message_id)
         if expected_values:
             valid_names = {s.name for s in self.automaton.signals}
             for name, value in expected_values.items():
                 if name not in valid_names:
-                    raise SignalServiceError(
+                    raise TrackingServiceError(
                         f"Unknown signal '{name}'.", status_code=HTTPStatus.UNPROCESSABLE_ENTITY
                     )
                 if isinstance(value, bool) or not isinstance(value, (int, float)) or not (0 <= value <= 100):
-                    raise SignalServiceError(
+                    raise TrackingServiceError(
                         f"Signal '{name}' must be a number between 0 and 100.",
                         status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
                     )
@@ -232,7 +232,7 @@ class SignalService(object):
 
     def clear_session_annotations(self, session_id: int) -> None:
         """Clears every expert annotation (expected_state and
-        expected_values alike) across session_id's own Signals rows in
+        expected_values alike) across session_id's own Tracking rows in
         one call — the "Label sessions" view's "Unlabel all" action.
         Ownership of `session_id` is the caller's own responsibility (see
         ChatService.clear_session_annotations)."""

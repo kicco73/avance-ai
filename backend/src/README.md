@@ -12,7 +12,7 @@ facade remains the only database-access layer.
 ## Required Db facade methods
 
 The current DB implementation needs one additional public method because the
-existing API does not expose the complete Signals event log:
+existing API does not expose the complete Tracking event log:
 
 ```python
 def get_signals(self, session_id: int) -> list[dict]:

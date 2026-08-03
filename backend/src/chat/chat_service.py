@@ -19,7 +19,7 @@ from chat.priming import build_priming_messages
 from chat.session_manager import ChatSessionManager
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
-from signals.signal_service import SignalService
+from tracking.tracking_service import TrackingService
 from chat.text_filter import TagFilter, ConcatTagFilter
 
 logger = logging.getLogger(__name__)
@@ -46,14 +46,14 @@ class ChatService(object):
         project_service: ProjectService,
         db: Db,
         session_manager: ChatSessionManager,
-        signal_service: SignalService,
+        tracking_service: TrackingService,
         metric_service: MetricService,
     ) -> None:
         self._ai_service = ai_service
         self._project_service = project_service
         self._db = db
         self._session_manager = session_manager
-        self.signal_service = signal_service
+        self.tracking_service = tracking_service
         self.metric_service = metric_service
         self.env = Env(
             db, get_username=lambda: Session().user, get_active_project_name=lambda: project_service.get_active_project_name()
@@ -108,7 +108,7 @@ class ChatService(object):
             # trust to decide whether this session still accepts chat
             # turns/manual actions, never computed client-side.
             "active": active,
-            # Whether any of this session's own Signals rows carry an
+            # Whether any of this session's own Tracking rows carry an
             # expert annotation (see db.session_has_annotations) — the
             # "Label sessions" view's own Sessions panel marker.
             "has_annotations": has_annotations,
@@ -163,7 +163,7 @@ class ChatService(object):
         session = self._session_manager.create_session(
             self._username, project_name, automaton.init_action.target
         )
-        # A brand new session has no messages/Signals rows yet at all —
+        # A brand new session has no messages/Tracking rows yet at all —
         # correct by construction, no query needed.
         return self._session_payload(session, active=True, has_annotations=False)
 
@@ -211,7 +211,7 @@ class ChatService(object):
         RestartFromHereButton.vue): deletes every message/signal at or
         after `timestamp` in `session_id` (see db.truncate_session — the
         live automaton state needs no separate rollback of its own, it's
-        always just recomputed fresh from whatever Signals rows survive).
+        always just recomputed fresh from whatever Tracking rows survive).
         Also refreshes this session's own datetime_end/end_state cache
         (see db.touch_chat_session) to match what's left, rather than
         continuing to report "last active" at a moment nothing survives
@@ -245,13 +245,13 @@ class ChatService(object):
         return messages
 
     def get_session_signals(self, session_id: int) -> list[dict]:
-        """The full Signals event log for `session_id` (see
-        SignalService.get_session_signals) — every snapshot/transition
+        """The full Tracking event log for `session_id` (see
+        TrackingService.get_session_signals) — every snapshot/transition
         row, chronological — for the "Label sessions" view's timeline:
         state transitions and signal values interleaved with messages,
         reconstructed entirely client-side from this one call."""
         self._require_own_session(session_id)
-        return self.signal_service.get_session_signals(session_id)
+        return self.tracking_service.get_session_signals(session_id)
 
     def _require_own_message(self, message_id: int) -> dict:
         """Raises (404) unless `message_id` exists and belongs to a
@@ -359,28 +359,28 @@ class ChatService(object):
     def set_message_expected_state(self, message_id: int, expected_state: str | None) -> dict | None:
         """Sets (expected_state given) or clears (None) the expert-
         annotated expected state for message_id's own evaluation (see
-        SignalService.set_message_expected_state) — ownership of
+        TrackingService.set_message_expected_state) — ownership of
         `message_id` is checked here, everything else about resolving/
-        validating/writing the annotation is SignalService's own job."""
+        validating/writing the annotation is TrackingService's own job."""
         self._require_own_message(message_id)
-        return self.signal_service.set_message_expected_state(message_id, expected_state)
+        return self.tracking_service.set_message_expected_state(message_id, expected_state)
 
     def set_message_expected_signals(self, message_id: int, expected_values: dict | None) -> dict | None:
         """Sets or clears the expert-annotated expected signal values for
-        message_id's own evaluation (see SignalService.
+        message_id's own evaluation (see TrackingService.
         set_message_expected_signals) — same ownership-then-delegate
         split as set_message_expected_state above."""
         self._require_own_message(message_id)
-        return self.signal_service.set_message_expected_signals(message_id, expected_values)
+        return self.tracking_service.set_message_expected_signals(message_id, expected_values)
 
     def clear_session_annotations(self, session_id: int) -> None:
         """Clears every expert annotation (expected_state and
-        expected_values alike) across session_id's own Signals rows in
-        one call (see SignalService.clear_session_annotations) — the
+        expected_values alike) across session_id's own Tracking rows in
+        one call (see TrackingService.clear_session_annotations) — the
         "Label sessions" view's "Unlabel all" action, fired only after
         its own confirmation dialog."""
         self._require_own_session(session_id)
-        self.signal_service.clear_session_annotations(session_id)
+        self.tracking_service.clear_session_annotations(session_id)
 
     async def open_if_needed(self, session_id: int) -> dict | None:
         project_name = self._active_project_name
@@ -410,7 +410,7 @@ class ChatService(object):
         # thing to "the message whose processing produced this
         # transition" it actually has — without this, a session's very
         # first transition could never be annotated at all in the
-        # "Label sessions" view (see Signals.message's own docstring),
+        # "Label sessions" view (see Tracking.message's own docstring),
         # since every other transition ties back to a real user/assistant
         # message but this one otherwise wouldn't.
         opening_message = await self._generate_opening_message_if_needed(project_name, session_id, automaton, state)
@@ -443,7 +443,7 @@ class ChatService(object):
         # anything else, since nothing outside this set could affect
         # which action fires from here.
         signal_names = automaton.triggerable_signal_names(state.key)
-        signal_definition = self.signal_service.get_definition(signal_names)
+        signal_definition = self.tracking_service.get_definition(signal_names)
         metadata_prompt = self._metadata_handler.build_prompt(signal_definition, self.env)
         system_prompt = f"{automaton.general_prompt}\n\n{state.contextual_prompt}\n\n{metadata_prompt}"
         return system_prompt, list(automaton.general_attachments.values()) + list(state.attachments.values())
@@ -521,13 +521,13 @@ class ChatService(object):
         state: State,
         signal_values: dict | None,
     ) -> tuple[Action | None, State, list[dict], int | None]:
-        """The trailing `int | None` is the id of whatever Signals row this
+        """The trailing `int | None` is the id of whatever Tracking row this
         call's own evaluation persisted (None if auto-tracking is off, or
         this state has nothing triggerable to evaluate at all — see
-        SignalService.run_auto_tracking) — the caller links it to the
+        TrackingService.run_auto_tracking) — the caller links it to the
         message that caused this call, once that message itself has an
         id (see _process_turn_locked/link_signal_to_message)."""
-        action, new_state, signal_row_id = await self.signal_service.run_auto_tracking(
+        action, new_state, signal_row_id = await self.tracking_service.run_auto_tracking(
             pending_message, project_name, session_id, automaton, state, signal_values
         )
         if action is None:

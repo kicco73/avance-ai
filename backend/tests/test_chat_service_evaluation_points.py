@@ -1,4 +1,4 @@
-"""Integration-ish tests for how a real chat turn links a Signals row to
+"""Integration-ish tests for how a real chat turn links a Tracking row to
 the message that caused it (see ChatService._process_turn_locked/
 _run_auto_tracking, db.link_signal_to_message) — and for the
 expected_state/expected_values annotation writes that only a message with
@@ -13,7 +13,7 @@ from automaton.automaton import Action, Automaton, Signal, State
 from chat.chat_service import ChatService, ChatServiceError
 from chat.session_manager import ChatSessionManager
 from metrics.metric_service import MetricService
-from signals.signal_service import SignalService, SignalServiceError
+from tracking.tracking_service import TrackingService, TrackingServiceError
 
 PROJECT_NAME = "proj"
 
@@ -87,7 +87,7 @@ def chat_service_for(db):
         metric_service = MetricService(
             db, get_username=lambda: "user", get_active_project_name=lambda: PROJECT_NAME,
         )
-        signal_service = SignalService(
+        tracking_service = TrackingService(
             db, ai_service, metric_service,
             get_active_automaton=lambda: project_service.get_active_automaton_and_state()[0],
             get_username=lambda: "user",
@@ -98,7 +98,7 @@ def chat_service_for(db):
             project_service=project_service,
             db=db,
             session_manager=ChatSessionManager(db),
-            signal_service=signal_service,
+            tracking_service=tracking_service,
             metric_service=metric_service,
         )
         return service
@@ -174,7 +174,7 @@ async def test_set_message_expected_state_rejects_an_unknown_state(db, chat_serv
     result = await chat_service.process_turn("hello", session_id)
     message_id = next(m for m in result["reply"] if m.get("id") is not None)["id"]
 
-    with pytest.raises(SignalServiceError):
+    with pytest.raises(TrackingServiceError):
         chat_service.set_message_expected_state(message_id, "not-a-real-state")
 
 
@@ -184,7 +184,7 @@ async def test_set_message_expected_state_rejects_a_non_evaluation_point_message
     result = await chat_service.process_turn("hello", session_id)
     message_id = next(m for m in result["reply"] if m.get("id") is not None)["id"]
 
-    with pytest.raises(SignalServiceError):
+    with pytest.raises(TrackingServiceError):
         chat_service.set_message_expected_state(message_id, "a")
 
 
@@ -209,7 +209,7 @@ async def test_set_message_expected_signals_rejects_an_unknown_signal_name(db, c
     result = await chat_service.process_turn("hello", session_id)
     message_id = next(m for m in result["reply"] if m.get("id") is not None)["id"]
 
-    with pytest.raises(SignalServiceError):
+    with pytest.raises(TrackingServiceError):
         chat_service.set_message_expected_signals(message_id, {"not-a-real-signal": 50})
 
 
@@ -219,5 +219,5 @@ async def test_set_message_expected_signals_rejects_an_out_of_range_value(db, ch
     result = await chat_service.process_turn("hello", session_id)
     message_id = next(m for m in result["reply"] if m.get("id") is not None)["id"]
 
-    with pytest.raises(SignalServiceError):
+    with pytest.raises(TrackingServiceError):
         chat_service.set_message_expected_signals(message_id, {"foo": 150})

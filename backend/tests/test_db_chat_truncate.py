@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from db import Message, Signals
+from db.models import Message, Tracking
 
 
 def _make_session(db, *, username="user", project_name="proj", start, start_state="start"):
@@ -36,7 +36,7 @@ def _signal_at(db, session_id, timestamp, *, old_state=None, new_state=None, mes
         row_id = db.save_transition(
             old_state, "advance", new_state, session_id, transition_log_level="INFO", message_id=message_id
         )
-    Signals.update(timestamp=timestamp).where(Signals.id == row_id).execute()
+    Tracking.update(timestamp=timestamp).where(Tracking.id == row_id).execute()
     return row_id
 
 
@@ -84,7 +84,7 @@ def test_truncate_never_deletes_the_projects_own_init_transition_row(db):
 def test_truncate_rolls_the_current_state_back_for_free(db):
     """No separate "rollback the state" step exists — get_current_state
     always resolves to the newest *surviving* transition, so deleting the
-    trailing Signals rows is the entire rollback (see db.truncate_session's
+    trailing Tracking rows is the entire rollback (see db.truncate_session's
     own docstring)."""
     session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0), start_state="start")
     _signal_at(db, session_id, datetime(2026, 1, 1, 10, 0, 0), old_state="start", new_state="middle")

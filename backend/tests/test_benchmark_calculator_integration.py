@@ -1,8 +1,8 @@
 """Integration tests for BenchmarkCalculator's own DB-integration layer
 (see metrics_framework/benchmark_metrics/calculator.py's _load_messages/
 _load_signals) — specifically that it correctly sources expected_state/
-expected_values from the Signals row a message's evaluation produced (see
-db.py's Signals.message), not from the message itself.
+expected_values from the Tracking row a message's evaluation produced (see
+db.py's Tracking.message), not from the message itself.
 """
 from __future__ import annotations
 
@@ -72,7 +72,7 @@ def test_calculator_reads_expected_values_from_the_linked_signals_row(db):
 def test_unlinked_signals_rows_never_produce_an_observation(db):
     """A manual action's transition (or any row auto-tracking never
     linked to a message) has nothing to annotate against — see
-    Signals.message's own docstring."""
+    Tracking.message's own docstring."""
     session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
     db.save_message("user", "hi", session_id)
     signal_row_id = db.save_transition("", "init", "a", session_id, transition_log_level="INFO")

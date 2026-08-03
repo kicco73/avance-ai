@@ -68,7 +68,7 @@ def test_build_prompt_renders_an_env_block_with_stored_and_computed_values(db):
 
 def test_build_prompt_embeds_the_given_signal_definition_verbatim(db):
     """build_prompt takes the already-rendered definition text directly
-    (see signals.definitions.Signals.get_definition/signals.evaluator.
+    (see tracking.definitions.Signals.get_definition/tracking.evaluator.
     SignalEvaluator.compute_explicitly, which resolve and scope it before
     calling this) — it has no opinion of its own on which signals that
     text describes, just embeds whatever string it's given."""

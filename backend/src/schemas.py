@@ -49,7 +49,7 @@ class ExpectedSignalsRequest(BaseModel):
 class TruncateSessionRequest(BaseModel):
     # ISO 8601, expected to be one of the UTC-explicit strings the
     # backend itself already handed back (see db._utc_iso) — every
-    # Message/Signals row at or after this instant is deleted. See
+    # Message/Tracking row at or after this instant is deleted. See
     # ChatService.truncate_session.
     timestamp: str
 

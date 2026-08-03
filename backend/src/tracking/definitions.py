@@ -1,9 +1,9 @@
 """Signal definitions and payload-building for the active project's YAML
 — get_active_automaton and db are constructor-injected. Instantiated as
-SignalService's own internal `_definitions` (see signal_service.py).
+TrackingService's own internal `_definitions` (see tracking_service.py).
 AI-call-shaped logic (computing signal values, either embedded in a
 normal turn's own reply or via a dedicated fallback call) lives in
-signals/evaluator.py's SignalEvaluator instead — this class no longer
+tracking/evaluator.py's SignalEvaluator instead — this class no longer
 makes AI calls itself (see its own module docstring for why the old
 standalone prompt here was deprecated in favor of the embedded
 [avance]-tag convention)."""
@@ -61,7 +61,7 @@ class Signals(object):
     def get_definition(self, names: set[str] | None = None) -> str:
         """`names` (see Automaton.triggerable_signal_names) restricts the
         definitions actually included — the auto-tracking prompt's own
-        scoping optimization (see signals/evaluator.py): a signal the
+        scoping optimization (see tracking/evaluator.py): a signal the
         current state's own outgoing triggers could never use is simply
         never asked for, saving both the definition's own tokens and
         whatever the model would otherwise spend computing it. Omitted

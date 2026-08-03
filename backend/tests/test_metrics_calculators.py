@@ -241,7 +241,7 @@ class TestSignalStabilityMetric:
 
     def test_values_stored_as_a_plain_dict_are_parsed_same_as_json_strings(self):
         # The real DB always stores `values` as a JSON string (see
-        # Signals.values), but the Timeline layer accepts either shape (see
+        # Tracking.values), but the Timeline layer accepts either shape (see
         # Timeline._parse_values) — exercised directly here since
         # signal_row() always JSON-encodes.
         signals = [

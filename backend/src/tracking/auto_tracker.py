@@ -14,8 +14,8 @@ from ai.ai_service import AiService
 from chat.env import Env
 from chat.priming import build_priming_messages
 from metrics.metric_service import MetricService
-from signals.definitions import Signals
-from signals.evaluator import SignalEvaluator
+from tracking.definitions import Signals
+from tracking.evaluator import SignalEvaluator
 from db import Db
 
 logger = logging.getLogger(__name__)
@@ -51,8 +51,8 @@ class AutoTracker(object):
     ) -> tuple[Action | None, State, int | None]:
         """Returns (None, state, None) if nothing was even evaluated (no
         triggerable action to check), else (action or None, the resulting
-        state, the id of the Signals row the evaluation itself persisted —
-        see SignalService.run_auto_tracking, which links that row back to
+        state, the id of the Tracking row the evaluation itself persisted —
+        see TrackingService.run_auto_tracking, which links that row back to
         whichever message caused this call)."""
         if not state.has_triggerable_actions:
             return None, state, None
@@ -91,7 +91,7 @@ class AutoTracker(object):
         triggered_action = automaton.evaluate_triggers(state.key, evaluation_names)
         if triggered_action is None:
             # No transition fired — just the evaluation itself is worth
-            # keeping (see db.get_latest_signal_snapshot, Signals.values).
+            # keeping (see db.get_latest_signal_snapshot, Tracking.values).
             signal_row_id = self._db.save_signal_snapshot(signal_values, session_id)
             return None, state, signal_row_id
 
@@ -100,7 +100,7 @@ class AutoTracker(object):
         # worth a history entry either way. A self-loop just never bumps
         # history_cutoff's timestamp (see db.get_last_transition_timestamp).
         # The full evaluated values ride along on this same row (see
-        # db.py's Signals) instead of a separate snapshot row to link to.
+        # db.py's Tracking) instead of a separate snapshot row to link to.
         signal_row_id = self._db.save_transition(
             state.key,
             triggered_action,

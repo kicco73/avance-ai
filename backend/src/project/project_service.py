@@ -299,7 +299,7 @@ class ProjectService(object):
         automaton's own "arrow from nowhere" into its start state. The
         frontend (InspectorGraphTab.vue) renders that edge's source as a
         transparent pseudo-node, same convention "" already has everywhere
-        else (Signals.old_state, benchmarkTimeline.js's own synthetic
+        else (Tracking.old_state, benchmarkTimeline.js's own synthetic
         session-start entry) for "there was no real prior state"."""
         automaton = self._load_project(project_name)
         real_states = [state for state in automaton.states.values() if state.key != ""]

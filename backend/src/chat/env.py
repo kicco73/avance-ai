@@ -1,16 +1,17 @@
 """Per-(user, project) "environment" memory — free-form key:value facts
 the model can extend at will via [env]...[/env] (see chat.
 metadata_handler.MetadataHandler), persisted as a dedicated env-only row
-on the db.py Signals event log (see db.Db.get_env/set_env, and Signals'
-own docstring) — every project a user has ever talked to keeps its own
-independent one, just like an automaton instance's own live state.
-Scoped through the same session -> ChatSession relationship as the rest
-of Signals: a "Reset conversation" or project deletion wipes it right
-along with everything else, exactly like any other Signals row for that
-session. Every read is additionally enriched with a fixed set of values
-this class always computes fresh, never persisted, since they're only
-ever true "right now" — see ENV_COMPUTED_KEYS/_compute. Instantiated as
-ChatService's `env`, same DI style as chat/signals.py's Signals and
+on the db.py Tracking event log (see db.Db.get_env/set_env, and
+Tracking's own docstring) — every project a user has ever talked to
+keeps its own independent one, just like an automaton instance's own
+live state. Scoped through the same session -> ChatSession relationship
+as the rest of Tracking: a "Reset conversation" or project deletion
+wipes it right along with everything else, exactly like any other
+Tracking row for that session. Every read is additionally enriched with
+a fixed set of values this class always computes fresh, never
+persisted, since they're only ever true "right now" — see
+ENV_COMPUTED_KEYS/_compute. Instantiated as ChatService's `env`, same DI
+style as tracking/definitions.py's Signals and
 metrics/metric_service.py's MetricService.
 """
 from __future__ import annotations

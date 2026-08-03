@@ -152,7 +152,7 @@ def test_foreign_key_cascade_is_enforced_at_the_sqlite_level(db):
     entirely) must cascade to Message on its own, proving PRAGMA
     foreign_keys + ON DELETE CASCADE (see db._enable_foreign_keys and
     Message.session) are actually both in effect for this connection."""
-    from db import ChatSession, Message
+    from db.models import ChatSession, Message
 
     session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
     db.save_message("user", "hello", session_id)

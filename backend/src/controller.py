@@ -100,9 +100,9 @@ class AvanceController(object):
     @get("/api/chat/signals")
     def get_signals(self):
         """Read-only: never calls the AI. Signals are only (re)computed inside
-        the auto-tracking flow (see SignalService.run_auto_tracking); this just
+        the auto-tracking flow (see TrackingService.run_auto_tracking); this just
         reports the latest persisted snapshot."""
-        return self.chat_service.signal_service.get_latest_signals()
+        return self.chat_service.tracking_service.get_latest_signals()
 
     @get("/api/chat/env")
     def get_env(self, message_id: int | None = None):
@@ -270,7 +270,7 @@ class AvanceController(object):
 
     @get("/api/chat/sessions/{session_id}/signals")
     def get_session_signals(self, session_id: int):
-        """The full Signals event log for `session_id` (snapshots and
+        """The full Tracking event log for `session_id` (snapshots and
         transitions alike, chronological) — for the "Label sessions"
         view, which reconstructs state/signal values at any point in the
         session's timeline entirely client-side from this one call."""
@@ -296,7 +296,7 @@ class AvanceController(object):
     @delete("/api/chat/sessions/{session_id}/annotations")
     def delete_session_annotations(self, session_id: int):
         """Clears every expert annotation (expected_state and
-        expected_values alike) across session_id's own Signals rows —
+        expected_values alike) across session_id's own Tracking rows —
         the "Label sessions" view's "Unlabel all" action, fired only
         after its own confirmation dialog. ChatServiceError (404 for an
         unknown/not-yours session_id) is handled globally, see
@@ -320,12 +320,12 @@ class AvanceController(object):
 
     @get("/api/chat/autotracking")
     def get_autotracking(self):
-        return {"enabled": self.chat_service.signal_service.auto_tracking_enabled}
+        return {"enabled": self.chat_service.tracking_service.auto_tracking_enabled}
 
     @post("/api/chat/autotracking")
     def post_autotracking(self, req: AutoTrackingRequest):
-        self.chat_service.signal_service.auto_tracking_enabled = req.enabled
-        return {"enabled": self.chat_service.signal_service.auto_tracking_enabled}
+        self.chat_service.tracking_service.auto_tracking_enabled = req.enabled
+        return {"enabled": self.chat_service.tracking_service.auto_tracking_enabled}
 
     @get("/api/chat/messages/{message_id}/audio")
     def get_message_audio(self, message_id: int, request: Request):
@@ -389,7 +389,7 @@ class AvanceController(object):
     async def post_reset(self):
         async with self.chat_service.lock:
             self.project_service.reset_active_project()
-            self.chat_service.signal_service.auto_tracking_enabled = True
+            self.chat_service.tracking_service.auto_tracking_enabled = True
         return self.project_service.get_active_state_payload()
 
     @get("/api/backup")
@@ -418,7 +418,7 @@ class AvanceController(object):
                 self.db.restore_backup(content)
             except ValueError as exc:
                 raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-            self.chat_service.signal_service.auto_tracking_enabled = True
+            self.chat_service.tracking_service.auto_tracking_enabled = True
         return {"success": True}
 
     @get("/api/projects")
@@ -597,4 +597,4 @@ class AvanceController(object):
     async def _activate_project(self, new_automaton: Automaton) -> None:
         # Unused: kept only to match ProjectService's CommitCallback shape.
         async with self.chat_service.lock:
-            self.chat_service.signal_service.auto_tracking_enabled = True
+            self.chat_service.tracking_service.auto_tracking_enabled = True

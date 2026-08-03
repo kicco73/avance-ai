@@ -14,7 +14,7 @@ from chat.env import Env
 from chat.session_manager import ChatSessionManager
 from conftest import FakeAiService
 from metrics.metric_service import MetricService
-from signals.signal_service import SignalService
+from tracking.tracking_service import TrackingService
 
 PROJECT_NAME = "proj"
 
@@ -61,7 +61,7 @@ def _chat_service(db, automaton: Automaton) -> ChatService:
     metric_service = MetricService(
         db, get_username=lambda: "user", get_active_project_name=lambda: PROJECT_NAME,
     )
-    signal_service = SignalService(
+    tracking_service = TrackingService(
         db, ai_service, metric_service,
         get_active_automaton=lambda: project_service.get_active_automaton_and_state()[0],
         get_username=lambda: "user",
@@ -72,7 +72,7 @@ def _chat_service(db, automaton: Automaton) -> ChatService:
         project_service=project_service,
         db=db,
         session_manager=ChatSessionManager(db),
-        signal_service=signal_service,
+        tracking_service=tracking_service,
         metric_service=metric_service,
     )
 

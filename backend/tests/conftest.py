@@ -14,7 +14,7 @@ from error_handlers import register_error_handlers
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
 from session import Session
-from signals.signal_service import SignalService
+from tracking.tracking_service import TrackingService
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples"
 
@@ -82,14 +82,14 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
         get_username=lambda: Session().user,
         get_active_project_name=lambda: project_service.get_active_project_name(),
     )
-    signal_service = SignalService(
+    tracking_service = TrackingService(
         app_db, fake_ai_service, metric_service,
         get_active_automaton=lambda: project_service.get_active_automaton_and_state()[0],
         get_username=lambda: Session().user,
         get_active_project_name=lambda: project_service.get_active_project_name(),
     )
     chat_service = ChatService(
-        fake_ai_service, project_service, app_db, session_manager, signal_service, metric_service
+        fake_ai_service, project_service, app_db, session_manager, tracking_service, metric_service
     )
 
     fastapi_app = FastAPI(title="Avance State Engine (test)")

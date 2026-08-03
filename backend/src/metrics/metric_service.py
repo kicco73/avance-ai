@@ -1,11 +1,11 @@
 """MetricService: everything concerning a project's metrics lives here —
 both metrics.metrics_framework's core, always-on metrics (engagement,
 retention, ...) and its expert-annotation-vs-actual benchmark metrics.
-Architecturally analogous to AiService/ChatService/SignalService
+Architecturally analogous to AiService/ChatService/TrackingService
 (instantiated once in main.py, constructor-injected everywhere it's
 needed — see main.py's own wiring) rather than something another service
 builds for itself. A leaf service: depends only on `db` and metrics.
-metrics_framework, never on ChatService or SignalService — SignalService
+metrics_framework, never on ChatService or TrackingService — TrackingService
 (via its own AutoTracker, for trigger-evaluation's merge_if_referenced)
 and ChatService (for the Inspector Metrics tab / benchmark Performance
 tab / an action's own `env:` field eval scope) both consume this
@@ -84,7 +84,7 @@ class MetricService(object):
         """Flat {name: value} — for merging into trigger-evaluation's
         `names` dict alongside signal values (see merge_if_referenced),
         and into an action's own `env:` field eval scope (see
-        chat_service.py's/signals/auto_tracker.py's own
+        chat_service.py's/tracking/auto_tracker.py's own
         _apply_action_env)."""
         return {metric.name: result.value for metric, result in self._calculate()}
 

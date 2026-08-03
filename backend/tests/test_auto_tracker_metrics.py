@@ -4,12 +4,12 @@ import json
 from datetime import datetime
 
 from automaton.automaton import Action, Automaton, Signal, State
-from signals.auto_tracker import AutoTracker
+from tracking.auto_tracker import AutoTracker
 from chat.env import Env
 from chat.metadata_handler import MetadataHandler
 from metrics.metric_service import MetricService
-from signals.evaluator import SignalEvaluator
-from signals.definitions import Signals
+from tracking.evaluator import SignalEvaluator
+from tracking.definitions import Signals
 
 USERNAME = "user"
 PROJECT_NAME = "proj"
@@ -121,7 +121,7 @@ async def test_metric_values_used_for_evaluation_are_never_persisted(db):
     persisted = db.get_signals(session_id)
     assert len(persisted) == 1
     # Only the real signal is stored — "engagement" (or any other metric)
-    # must never leak into the Signals log, or SignalStabilityMetric would
+    # must never leak into the Tracking log, or SignalStabilityMetric would
     # start treating metric values as if they were domain signals.
     assert json.loads(persisted[0]["values"]) == {"mySignal": 42}
 

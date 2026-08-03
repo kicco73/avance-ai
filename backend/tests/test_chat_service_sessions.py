@@ -7,25 +7,25 @@ import pytest
 from chat.chat_service import ChatService, ChatServiceError
 from chat.session_manager import ChatSessionManager
 from metrics.metric_service import MetricService
-from signals.signal_service import SignalService
+from tracking.tracking_service import TrackingService
 
 
 @pytest.fixture
 def chat_service(db):
     # ai_service/project_service are never touched by the paths under test
     # here: _require_own_session raises before either would be used —
-    # signal_service's/metric_service's own get_active_automaton/
+    # tracking_service's/metric_service's own get_active_automaton/
     # get_active_project_name likewise never fire.
     metric_service = MetricService(
         db, get_username=lambda: "user", get_active_project_name=lambda: None,
     )
-    signal_service = SignalService(
+    tracking_service = TrackingService(
         db, ai_service=None, metric_service=metric_service, get_active_automaton=lambda: None,
         get_username=lambda: "user", get_active_project_name=lambda: None,
     )
     return ChatService(
         ai_service=None, project_service=None, db=db, session_manager=ChatSessionManager(db),
-        signal_service=signal_service, metric_service=metric_service,
+        tracking_service=tracking_service, metric_service=metric_service,
     )
 
 

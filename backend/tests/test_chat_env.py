@@ -1,12 +1,12 @@
 """Tests for chat.env.Env — the per-(user, project) "environment"
 memory: free-form values persisted via db.Db.get_env/set_env (a dedicated
-env-only row on the Signals event log — see its own docstring), enriched
+env-only row on the Tracking event log — see its own docstring), enriched
 on every read with a fixed set of always-computed keys (see
 automaton_builder.ENV_COMPUTED_KEYS) that are never persisted.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from automaton.automaton import Action, Automaton, State
 from chat.env import Env
@@ -229,7 +229,16 @@ def test_last_user_session_datetime_is_the_previous_sessions_start(db):
         start_state="a", end_state="a",
     )
 
-    assert _env(db).get("last_user_session_datetime") == "2026-01-01T09:00:00+00:00"
+    last_session_datetime = _env(db).get("last_user_session_datetime")
+    assert last_session_datetime is not None
+
+    if isinstance(last_session_datetime, str):
+        last_session_datetime = datetime.fromisoformat(last_session_datetime.replace("Z", "+00:00"))
+
+    if last_session_datetime.tzinfo is not None:
+        last_session_datetime = last_session_datetime.astimezone(timezone.utc).replace(tzinfo=None)
+
+    assert last_session_datetime == datetime(2026, 1, 1, 9, 0)
 
 
 def test_state_duration_in_minutes_is_zero_with_no_transition_yet(db):
@@ -248,8 +257,8 @@ def test_state_duration_in_minutes_since_the_last_real_transition(db):
     db.save_transition("a", "advance", "b", session_id, transition_log_level="WARNING")
     # save_transition always timestamps "now" — backdate it directly to
     # make the duration deterministic for the assertion below.
-    from db import Signals as SignalsModel
-    SignalsModel.update(timestamp=thirty_minutes_ago).where(SignalsModel.session == session_id).execute()
+    from db.models import Tracking as TrackingModel
+    TrackingModel.update(timestamp=thirty_minutes_ago).where(TrackingModel.session == session_id).execute()
 
     duration = _env(db).get("state_duration_in_minutes")
 

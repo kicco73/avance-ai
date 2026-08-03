@@ -109,7 +109,7 @@ def test_get_signals_on_a_session_with_no_signals_is_empty(db):
 
 
 def test_get_signals_includes_expected_values_field(db):
-    """Nothing writes expected_values yet (see Signals.expected_values'
+    """Nothing writes expected_values yet (see Tracking.expected_values's
     own docstring) — it's just always present, currently always None."""
     session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
     db.save_signal_snapshot({"foo": 1}, session_id)
@@ -134,7 +134,7 @@ def test_get_signals_includes_message_id_field(db):
 
 def test_get_signals_includes_expected_state_field(db):
     """Nothing writes expected_state yet in this test (see
-    Signals.expected_state's own docstring) — it's just always present,
+    Tracking.expected_state's own docstring) — it's just always present,
     currently always None."""
     session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
     db.save_signal_snapshot({"foo": 1}, session_id)

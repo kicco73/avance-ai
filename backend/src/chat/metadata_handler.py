@@ -85,12 +85,12 @@ class MetadataHandler(object):
 
     def build_prompt(self, signal_definition: str, env: "Env") -> str:
         """`signal_definition` is the already-rendered "Definition of
-        signals:" block (see signals.definitions.Signals.get_definition,
+        signals:" block (see tracking.definitions.Signals.get_definition,
         typically scoped down to a state's own triggerable signals — see
         Automaton.triggerable_signal_names) — a plain string, not a
         Signals object, so this module never needs to depend on the
-        signals package (chat/ depends on signals/, never the reverse;
-        see signals/evaluator.py's own compute_explicitly, which resolves
+        tracking package (chat/ depends on tracking/, never the reverse;
+        see tracking/evaluator.py's own compute_explicitly, which resolves
         the string before calling this)."""
         env_block = "\n".join(f"{key}: {value}" for key, value in env.to_dict().items())
         return "\n".join([

@@ -1,5 +1,5 @@
-"""Db-level tests for action-env-only Signals rows (see
-db.Db.get_action_env/set_action_env, and Signals' own docstring) — the
+"""Db-level tests for action-env-only Tracking rows (see
+db.Db.get_action_env/set_action_env, and Tracking's own docstring) — the
 persisted half of chat.env.Env's action_set/update_action_set, for values
 an action's own YAML `env:` field sets (see automaton_builder.py's
 _build_action/Automaton.eval_action_env), kept apart from get_env/set_env's
@@ -56,7 +56,7 @@ def test_action_env_is_scoped_per_user_and_project(db):
 
 
 def test_action_env_is_independent_of_env(db):
-    """The two stores (see Signals' own docstring — `env` vs
+    """The two stores (see Tracking's own docstring — `env` vs
     `action_env` columns) never leak into each other, even for the same
     (user, project)."""
     _session(db)

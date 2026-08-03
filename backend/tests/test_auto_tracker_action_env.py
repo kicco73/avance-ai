@@ -11,12 +11,12 @@ from __future__ import annotations
 from datetime import datetime
 
 from automaton.automaton import Action, Automaton, Signal, State
-from signals.auto_tracker import AutoTracker
+from tracking.auto_tracker import AutoTracker
 from chat.env import Env
 from chat.metadata_handler import MetadataHandler
 from metrics.metric_service import MetricService
-from signals.evaluator import SignalEvaluator
-from signals.definitions import Signals
+from tracking.evaluator import SignalEvaluator
+from tracking.definitions import Signals
 
 USERNAME = "user"
 PROJECT_NAME = "proj"

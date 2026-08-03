@@ -80,11 +80,11 @@ class BenchmarkCalculator(object):
     def _build_observations(self):
         sessions = self._load_sessions()
         session_ids = [int(row["id"]) for row in sessions]
-        # Signals loaded once per session and reused for both frames: a
-        # message's own expected_state now lives on whichever Signals row
-        # its evaluation produced (see db.py's Signals.message), not on
-        # the message itself — refetching per frame would just double the
-        # db calls for the exact same rows.
+        # Tracking rows loaded once per session and reused for both frames:
+        # a message's own expected_state now lives on whichever Tracking
+        # row its evaluation produced (see db.py's Tracking.message), not
+        # on the message itself — refetching per frame would just double
+        # the db calls for the exact same rows.
         signal_rows_by_session = {session_id: self._db.get_signals(session_id) for session_id in session_ids}
         messages = self._load_messages(session_ids, signal_rows_by_session)
         signals = self._load_signals(session_ids, signal_rows_by_session)
