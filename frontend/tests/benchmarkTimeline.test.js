@@ -6,9 +6,9 @@ import {
   highlightedStateKeyFor,
   nearestMessageIdAtOrBefore,
   resolveTransitionRow,
+  resultingStateKeyFor,
   signalValuesAsOf,
   signalValuesFor,
-  sourceStateKeyFor,
   stateAsOf,
   syntheticSessionStartEntry,
   transitionAnnotationStatus,
@@ -119,9 +119,11 @@ describe('signalValuesFor — the off-by-one bug this session found and fixed', 
 })
 
 describe('highlightedStateKeyFor — same off-by-one, for state highlighting', () => {
-  it("prefers the state a directly-linked transition produced over the raw-timestamp fallback", () => {
+  it("a message stays in the state active when it was written, even when its own evaluation later causes a transition", () => {
+    const earlier = transitionRow(1, { timestamp: '2026-01-01T09:00:00', oldState: 'lobby', newState: 'action' })
     const riskyMessage = message(3, '2026-01-01T10:00:02.000')
     const timeline = [
+      { kind: 'transition', timestamp: earlier.timestamp, transition: earlier },
       { kind: 'message', timestamp: riskyMessage.timestamp, message: riskyMessage },
       {
         kind: 'transition',
@@ -131,7 +133,7 @@ describe('highlightedStateKeyFor — same off-by-one, for state highlighting', (
     ]
     const selected = { kind: 'message', message: riskyMessage }
 
-    expect(highlightedStateKeyFor(selected, timeline, 'lobby')).toBe('crisis')
+    expect(highlightedStateKeyFor(selected, timeline, 'lobby')).toBe('action')
   })
 
   it('falls back to stateAsOf when no transition is linked to the selected message', () => {
@@ -155,8 +157,8 @@ describe('highlightedStateKeyFor — same off-by-one, for state highlighting', (
   })
 })
 
-describe('sourceStateKeyFor — old_state, not new_state (the Signals tab\'s own relevance scope)', () => {
-  it("uses the state a directly-linked transition *left*, not the one it landed on", () => {
+describe('resultingStateKeyFor — where a message\'s own turn ultimately left things', () => {
+  it("prefers the state a directly-linked transition produced over the raw-timestamp fallback", () => {
     const riskyMessage = message(3, '2026-01-01T10:00:02.000')
     const timeline = [
       { kind: 'message', timestamp: riskyMessage.timestamp, message: riskyMessage },
@@ -168,7 +170,7 @@ describe('sourceStateKeyFor — old_state, not new_state (the Signals tab\'s own
     ]
     const selected = { kind: 'message', message: riskyMessage }
 
-    expect(sourceStateKeyFor(selected, timeline, 'lobby')).toBe('action')
+    expect(resultingStateKeyFor(selected, timeline, 'lobby')).toBe('crisis')
   })
 
   it('falls back to stateAsOf when no transition is linked to the selected message', () => {
@@ -177,18 +179,18 @@ describe('sourceStateKeyFor — old_state, not new_state (the Signals tab\'s own
     const unlinkedMessage = message(9, '2026-01-01T09:30:00')
     const selected = { kind: 'message', message: unlinkedMessage }
 
-    expect(sourceStateKeyFor(selected, timeline, 'lobby')).toBe('action')
+    expect(resultingStateKeyFor(selected, timeline, 'lobby')).toBe('action')
   })
 
-  it('a selected transition always resolves to its own old_state', () => {
+  it('a selected transition always resolves to its own new_state', () => {
     const t = transitionRow(1, { timestamp: '2026-01-01T09:00:00', oldState: 'lobby', newState: 'action' })
     const selected = { kind: 'transition', transition: t }
 
-    expect(sourceStateKeyFor(selected, [], 'lobby')).toBe('lobby')
+    expect(resultingStateKeyFor(selected, [], 'lobby')).toBe('action')
   })
 
   it('returns null with nothing selected', () => {
-    expect(sourceStateKeyFor(null, [], 'lobby')).toBeNull()
+    expect(resultingStateKeyFor(null, [], 'lobby')).toBeNull()
   })
 })
 

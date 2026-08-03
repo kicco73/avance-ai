@@ -217,7 +217,7 @@ function renderGraph(nodes, edges) {
   applyCurrentStateHighlight()
   applyNextActionHighlight()
   applyFiredActionHighlight()
-  syncSelectionToHighlightedState()
+  syncSelectionToSelection()
 }
 
 async function loadGraph() {
@@ -250,7 +250,25 @@ function applyFiredActionHighlight() {
   if (props.firedActionEdge) cyGraph.edges().filter(e => e.data('matchStateKey') === props.firedActionEdge.stateKey && e.data('actionName') === props.firedActionEdge.actionName).addClass('fired-action')
 }
 
-function syncSelectionToHighlightedState({ emitJump = false } = {}) {
+// A selected transition should open the *action* that fired it, not the
+// state it landed on — firedActionEdge (set only while a transition is
+// selected, see EditProjectView.vue/BenchmarkProjectView.vue's own
+// firedActionEdge computed) takes priority over highlightedStateKey here.
+// Reads the edge straight off cyGraph (already carrying the same
+// PSEUDO_START_ID/isInitEdge-normalized shape handleEdgeTap hands to a
+// real click) rather than re-deriving it from the raw edge list, so a
+// programmatic selection looks identical to a manual one.
+function syncSelectionToSelection({ emitJump = false } = {}) {
+  if (props.firedActionEdge && cyGraph) {
+    const edge = cyGraph.edges().filter(
+      (e) => e.data('matchStateKey') === props.firedActionEdge.stateKey && e.data('actionName') === props.firedActionEdge.actionName
+    )
+    if (edge.nonempty()) {
+      selectGraphElement('action', edge.data())
+      if (emitJump) emit('jump-to-definition', { kind: 'action', stateKey: props.firedActionEdge.stateKey, actionName: props.firedActionEdge.actionName })
+      return
+    }
+  }
   const key = props.highlightedStateKey
   const node = key == null ? null : graphNodes.value.find((n) => n.key === key)
   if (!node) return selectedElement.value = null
@@ -261,9 +279,9 @@ function syncSelectionToHighlightedState({ emitJump = false } = {}) {
 function resize() { cyGraph?.resize() }
 function fit() { cyGraph?.fit() }
 
-watch(() => props.highlightedStateKey, () => { applyCurrentStateHighlight(); syncSelectionToHighlightedState({ emitJump: props.autoJumpOnHighlightChange }) })
+watch(() => props.highlightedStateKey, () => { applyCurrentStateHighlight(); syncSelectionToSelection({ emitJump: props.autoJumpOnHighlightChange }) })
 watch(() => props.nextActionEdge, applyNextActionHighlight, { deep: true })
-watch(() => props.firedActionEdge, applyFiredActionHighlight, { deep: true })
+watch(() => props.firedActionEdge, () => { applyFiredActionHighlight(); syncSelectionToSelection({ emitJump: props.autoJumpOnHighlightChange }) }, { deep: true })
 
 defineExpose({ loadGraph, resize, fit })
 
