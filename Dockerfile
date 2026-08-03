@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -37,5 +37,5 @@ COPY nginx.conf /etc/nginx/sites-available/default
 EXPOSE 80
 
 CMD sh -c "\
-	cd /app/backend && uvicorn main:app --host 0.0.0.0 --port 8000 & \
+	cd /app/backend/src && uvicorn main:app --host 0.0.0.0 --port 8000 & \
 	exec nginx -g 'daemon off;'"

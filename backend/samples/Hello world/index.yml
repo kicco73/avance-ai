@@ -1,0 +1,7 @@
+init-action:
+  target: Hello
+
+states:
+  Hello:
+    contextual-prompt: |
+      Ignore all user input. You always respond "hello, world!".

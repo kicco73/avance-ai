@@ -8,7 +8,7 @@ async function apiFetch(url, options, { parse = 'json' } = {}) {
   try {
     res = await fetch(url, options)
   } catch (err) {
-    if (err.name === 'AbortError') throw err // caller-driven timeout/cancel, not a user-facing failure
+    if (err.name === 'AbortError') throw err
     setApiError('Unable to reach the backend.', err.message)
     throw err
   }
@@ -23,7 +23,7 @@ async function apiFetch(url, options, { parse = 'json' } = {}) {
         detail = body.error.detail ?? ''
       }
     } catch {
-      // ignore non-JSON body
+      
     }
     setApiError(message, detail)
     const err = new Error(message)
@@ -37,40 +37,140 @@ async function apiFetch(url, options, { parse = 'json' } = {}) {
   return res.json()
 }
 
-// Also used as the initial-boot ping (see App.vue): `signal` lets that
-// caller bound each attempt with a timeout, since a plain fetch() never
-// times out on its own against a hung connection.
 export function getState(signal) {
   return apiFetch(`${API_URL}/state`, { signal })
 }
 
-export function getMessages() {
-  return apiFetch(`${API_URL}/chat/messages`)
+export function getCurrentSession(sessionId) {
+  const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
+  return apiFetch(`${API_URL}/chat/session${query}`)
 }
 
-// Chat normally runs over a websocket: the backend pushes status updates
-// (retrying, done, error) as they happen instead of the client polling for
-// them. See chatClient.js for the transport choice + fallback.
+export function postCreateSession() {
+  return apiFetch(`${API_URL}/chat/sessions`, { method: 'POST' })
+}
+
+export function getSessions() {
+  return apiFetch(`${API_URL}/chat/sessions`)
+}
+
+export function deleteSession(sessionId) {
+  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
+}
+
+export function getMessages(sessionId) {
+  return apiFetch(`${API_URL}/chat/messages?session_id=${encodeURIComponent(sessionId)}`)
+}
+
+// The full Signals event log for a session (snapshots + transitions,
+// chronological) — for the "Label sessions" view's timeline.
+export function getSessionSignals(sessionId) {
+  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/signals`)
+}
+
+// Sets (expectedState given) or clears (null) messageId's expert-
+// annotated expected state — the "Label sessions" view's States tab.
+// 409 if messageId isn't an evaluation point, 422 for an unknown state.
+export function putMessageExpectedState(messageId, expectedState) {
+  return apiFetch(`${API_URL}/chat/messages/${encodeURIComponent(messageId)}/expected-state`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expected_state: expectedState })
+  })
+}
+
+// Sets or clears messageId's expert-annotated expected signal values —
+// the "Label sessions" view's Signals tab. `expectedValues` is the
+// whole replacement dict (a signal name missing from it is annotation-
+// cleared for that signal alone); null/{} clears every signal.
+export function putMessageExpectedSignals(messageId, expectedValues) {
+  return apiFetch(`${API_URL}/chat/messages/${encodeURIComponent(messageId)}/expected-signals`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expected_values: expectedValues })
+  })
+}
+
+// Clears every expert annotation (expected_state and expected_values
+// alike) across sessionId's own Signals rows in one call — the
+// "Label sessions" view's "Unlabel all" action, after its own
+// confirmation dialog.
+export function deleteSessionAnnotations(sessionId) {
+  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/annotations`, {
+    method: 'DELETE'
+  })
+}
+
 export function createChatSocket() {
   return new WebSocket(WS_URL)
 }
 
-// Synchronous REST alternative to the websocket, for one chat turn — used
-// by chatClient.js once the websocket is confirmed unavailable. No
-// intermediate "retrying" notifications: the backend still retries
-// server-side, just silently from this transport's point of view.
-export function postChatMessage(text) {
-  return apiFetch(`${API_URL}/chat/messages`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: text })
+export function sendWebSocketMessage(payload, { onChunk, onStatus, onDone, onError } = {}) {
+  return new Promise((resolve, reject) => {
+    let ws
+    try {
+      ws = createChatSocket()
+    } catch (err) {
+      if (onError) onError(err)
+      reject(err)
+      return
+    }
+
+    ws.onopen = () => {
+      const messageData = typeof payload === 'string' ? { message: payload } : payload
+      ws.send(JSON.stringify(messageData))
+    }
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+
+        if (data.type === 'status' || data.status) {
+          if (onStatus) onStatus(data.status || data.message)
+        }
+        if (data.type === 'chunk' || data.chunk || data.delta || data.content) {
+          const chunkText = data.chunk ?? data.delta ?? data.content ?? ''
+          if (onChunk) onChunk(chunkText)
+        }
+        if (data.type === 'done' || data.done || data.finished) {
+          if (onDone) onDone(data)
+          ws.close()
+          resolve(data)
+        }
+        if (data.type === 'error' || data.error) {
+          const errMsg = data.error?.message || data.error || 'WebSocket Streaming Error'
+          setApiError(errMsg, data.error?.detail || '')
+          const err = new Error(errMsg)
+          if (onError) onError(err)
+          ws.close()
+          reject(err)
+        }
+      } catch (e) {
+        if (onChunk) onChunk(event.data)
+      }
+    }
+
+    ws.onerror = (evt) => {
+      const err = new Error('WebSocket connection error')
+      setApiError('WebSocket connection error', '')
+      if (onError) onError(err)
+      reject(err)
+    }
+
+    ws.onclose = () => {
+      
+    }
   })
 }
 
-// `audioBlob` goes up as multipart/form-data — no Content-Type header set
-// here, so fetch() derives the correct boundary itself from the FormData
-// body. Routed through apiFetch like everything else: a transcription
-// failure surfaces in the same shared error area as any other REST call.
+export function postChatMessage(text, sessionId) {
+  return apiFetch(`${API_URL}/chat/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: text, session_id: sessionId })
+  })
+}
+
 export function postListenTranscribe(audioBlob) {
   const formData = new FormData()
   formData.append('file', audioBlob, 'recording.webm')
@@ -84,11 +184,90 @@ export function getSignals() {
   return apiFetch(`${API_URL}/chat/signals`)
 }
 
-export function postAction(actionName) {
+// The active user+project's current "environment" memory (see backend's
+// chat.env.Env) — {stored, action_set, computed}: `stored` key:values the
+// model has reported via [env]...[/env] (or a person has edited directly,
+// see putEnvValue/deleteEnvValue below), `action_set` ones an action's own
+// YAML `env:` field set (see automaton_builder.py's _build_action — never
+// editable/deletable through this API, only ever a side effect of an
+// action firing), and every always-computed key — reported separately so
+// InspectorEnvTab.vue knows which section ("AI"/"SET"/"COMPUTED") each
+// value belongs in. `messageId`, when given, restricts to values as they
+// stood at or before that exact message (same convention as getMetrics).
+export function getEnv(messageId) {
+  const query = messageId != null ? `?message_id=${encodeURIComponent(messageId)}` : ''
+  return apiFetch(`${API_URL}/chat/env${query}`)
+}
+
+// Edits (or adds) one stored env key — always live, there's no editing
+// history. Returns the same {stored, computed} shape as getEnv.
+export function putEnvValue(key, value) {
+  return apiFetch(`${API_URL}/chat/env/${encodeURIComponent(key)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ value })
+  })
+}
+
+export function deleteEnvValue(key) {
+  return apiFetch(`${API_URL}/chat/env/${encodeURIComponent(key)}`, {
+    method: 'DELETE'
+  })
+}
+
+// Wipes every stored ("AI" section) env key at once — always live.
+// Returns the same {stored, action_set, computed} shape as getEnv.
+export function clearEnv() {
+  return apiFetch(`${API_URL}/chat/env`, {
+    method: 'DELETE'
+  })
+}
+
+// Wipes every action-set ("ACTION" section) env key at once — always
+// live. A distinct top-level path, not /chat/env/action — see
+// controller.py's own clear_action_env for why. Returns the same
+// {stored, action_set, computed} shape as getEnv.
+export function clearActionEnv() {
+  return apiFetch(`${API_URL}/chat/action-env`, {
+    method: 'DELETE'
+  })
+}
+
+// `messageId`, when given, computes metrics as of that exact message's
+// own timestamp instead of the live/current history — see the
+// "Label sessions" view's point-in-time Inspector.
+export function getMetrics(messageId) {
+  const query = messageId != null ? `?message_id=${encodeURIComponent(messageId)}` : ''
+  return apiFetch(`${API_URL}/chat/metrics${query}`)
+}
+
+// Expert-annotation-vs-actual benchmark metrics (see backend's
+// metrics_framework/benchmark_metrics) for the active user+project —
+// every annotated session, or (sessionId given) just that one. Same
+// {name, ui_label, ui_description, value} shape as getMetrics, plus
+// sample_count — the "Label sessions" view's Performance tab.
+export function getBenchmarkMetrics(sessionId) {
+  const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
+  return apiFetch(`${API_URL}/chat/benchmark-metrics${query}`)
+}
+
+export function postAction(actionName, sessionId) {
   return apiFetch(`${API_URL}/action`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action_name: actionName })
+    body: JSON.stringify({ action_name: actionName, session_id: sessionId })
+  })
+}
+
+export function getAiModels() {
+  return apiFetch(`${API_URL}/ai/models`)
+}
+
+export function postAiModelSelection(index) {
+  return apiFetch(`${API_URL}/ai/models/selection`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ index })
   })
 }
 
@@ -104,10 +283,6 @@ export function postAutoTracking(enabled) {
   })
 }
 
-// Not fetched through apiFetch: a missing audio (404, e.g. purged or never
-// generated) must be silent, not routed through the shared error store —
-// see audio.js's playMessageAudio, which just points a plain <audio>-style
-// element at this URL and lets a 404 fail quietly on its own.
 export function messageAudioUrl(messageId) {
   return `${API_URL}/chat/messages/${messageId}/audio`
 }
@@ -124,8 +299,35 @@ export function postReset() {
   return apiFetch(`${API_URL}/chat/reset`, { method: 'POST' })
 }
 
+// "Restart from here" (EditProjectView.vue only): deletes every message
+// (and its own Signals rows) at or after `timestamp` in `sessionId`, and
+// rolls the live automaton state back to whatever it was immediately
+// before — see backend ChatService.truncate_session. `timestamp` must be
+// one of the UTC-explicit ISO strings the backend itself already handed
+// back (see db._utc_iso), never a client-constructed one. Returns the
+// fresh active state payload, same shape as postReset's.
+export function postTruncateSession(sessionId, timestamp) {
+  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/truncate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ timestamp })
+  })
+}
+
 export function getProjects() {
   return apiFetch(`${API_URL}/projects`)
+}
+
+export function getBackup() {
+  return apiFetch(`${API_URL}/backup`, {}, { parse: 'blob' })
+}
+
+export function postRestoreBackup(file) {
+  return apiFetch(`${API_URL}/backup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream' },
+    body: file
+  })
 }
 
 export function activateProject(projectName) {
@@ -147,20 +349,36 @@ export function getProjectGraph(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/graph`)
 }
 
-export function getProjectSignals(projectName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/signals`)
+// `stateKey`, when given, scopes each signal's own `relevant` field (see
+// InspectorSignalsTab.vue's "show only relevant signals" filter) to that
+// state's own outgoing actions (see backend's Automaton.
+// triggerable_signal_names) — the Inspector's own currently selected/
+// highlighted state, or the state a selected action fires *from*.
+// Omitted, every state's triggers combine instead (Automaton.
+// all_triggerable_signal_names).
+export function getProjectSignals(projectName, stateKey) {
+  const query = stateKey != null ? `?state_key=${encodeURIComponent(stateKey)}` : ''
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/signals${query}`)
 }
 
 export function getProjectFiles(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/files`)
 }
 
+// Raw markdown content of one of backend/src/docs' fixed reference docs
+// (see controller.py's own DOC_FILES) — backs each "(?)" documentation
+// button (EditProjectView.vue's own, next to Save; the Inspector's
+// Metrics/Performance tabs). `name` is one of 'project-specs' /
+// 'metrics' / 'benchmark'.
+export function getDoc(name) {
+  return apiFetch(`${API_URL}/docs/${encodeURIComponent(name)}`)
+}
+
+// {content, can_undo, can_redo} of fileName's current content —
+// can_undo/can_redo are what the Edit-project view's Undo/Redo buttons
+// use to know whether they're enabled, scoped to the current user.
 export function getProjectFile(projectName, fileName) {
-  return apiFetch(
-    `${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}`,
-    {},
-    { parse: 'text' }
-  )
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}`)
 }
 
 export function putProjectFile(projectName, fileName, content) {
@@ -171,8 +389,37 @@ export function putProjectFile(projectName, fileName, content) {
   })
 }
 
+// A pure editor preview, not a save: nothing is persisted, the active
+// project/conversation is never reloaded. `content` is whatever the
+// editor currently shows, needed so a later redo/undo can bring it back
+// — the backend still decides which past/future content to restore, the
+// frontend never navigates by version. Response is {content, can_undo,
+// can_redo}.
+export function undoProjectFile(projectName, fileName, content) {
+  return apiFetch(
+    `${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}/undo`,
+    { method: 'POST', headers: { 'Content-Type': 'text/plain; charset=utf-8' }, body: content }
+  )
+}
+
+export function redoProjectFile(projectName, fileName, content) {
+  return apiFetch(
+    `${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}/redo`,
+    { method: 'POST', headers: { 'Content-Type': 'text/plain; charset=utf-8' }, body: content }
+  )
+}
+
 export function deleteProjectFile(projectName, fileName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}`, {
+    method: 'DELETE'
+  })
+}
+
+// Clears the current user's own undo/redo history for every file in the
+// project — called by the Edit-project view when it opens, so a fresh
+// editing session never inherits a previous one's undo/redo trail.
+export function clearProjectHistory(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/history`, {
     method: 'DELETE'
   })
 }

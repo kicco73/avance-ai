@@ -1,0 +1,290 @@
+// Pure, framework-agnostic timeline/signal logic for BenchmarkProjectView.vue
+// — extracted so the bugs each function exists to prevent (see their own
+// docstrings; found and fixed by hand this session) have a real,
+// repo-resident regression test instead of only ever having been
+// eyeballed. Every function takes its data explicitly (signalsLog,
+// rawMessages, sessionStartState, ...) rather than closing over Vue refs,
+// so the component just wraps these with `.value` at each call site.
+
+// Reshapes a Signals row's own raw `values` JSON (or null) into
+// Inspector's own { [name]: { value, error } } signalValues prop shape
+// (see AutoTracker.run — a persisted snapshot is always a plain
+// {name: value} dict, never {value, error}, so error is always null
+// here). Shared by every "what were the signals right here" lookup below.
+export function valuesToSignalValues(raw) {
+  if (raw == null) return {}
+  const parsed = JSON.parse(raw)
+  return Object.fromEntries(Object.entries(parsed).map(([name, value]) => [name, { value, error: null }]))
+}
+
+// The latest Signals row that actually carries values (a plain snapshot,
+// or a transition that had signal_values — see db.py's Signals.values) at
+// or before `timestamp` — only a fallback for a message with no
+// evaluation of its own (see signalValuesFor); a row's own evaluation can
+// be timestamped fractionally *after* the message that caused it (see
+// effectiveTimestamp's own docstring), so this would otherwise always
+// land one point behind for a message that does have one.
+export function signalValuesAsOf(signalsLog, timestamp) {
+  let latest = null
+  for (const row of signalsLog) {
+    if (row.timestamp > timestamp || row.values == null) continue
+    if (latest == null || row.timestamp >= latest.timestamp) latest = row
+  }
+  return latest ? valuesToSignalValues(latest.values) : {}
+}
+
+// The state genuinely in effect at or before `timestamp`, per only the
+// *real* transitions in signalsLog (own new_state !== own old_state) —
+// used to resolve what a no-real-change row (see resolveTransitionRow)
+// should display as its own old/new state. signalsLog is already
+// chronological (see db.get_signals), so a single forward scan is enough.
+export function actualStateAtOrBefore(signalsLog, sessionStartState, timestamp) {
+  let result = sessionStartState
+  for (const row of signalsLog) {
+    if (row.timestamp > timestamp) break
+    if (row.new_state != null && row.new_state !== row.old_state) result = row.new_state
+  }
+  return result
+}
+
+// An expert can annotate expected_state on *any* evaluation point, not
+// just one that happened to fire a real transition — e.g. "the state
+// should have changed here, but didn't" is exactly the kind of miss
+// state_accuracy exists to catch (see metrics_framework/benchmark_metrics).
+// A row with no real transition of its own (a plain auto-tracking
+// snapshot, old_state/new_state both null, or a fired self-loop,
+// old_state === new_state) has nothing of its own to show as "old_state
+// -> new_state" though, so both are filled in with whatever state was
+// actually in effect at that point — same value on both sides, same as
+// a self-loop reads today, so transitionAnnotationStatus's own
+// expected_state/new_state comparison still means the right thing.
+export function resolveTransitionRow(row, signalsLog, sessionStartState) {
+  if (row.new_state != null && row.new_state !== row.old_state) return row
+  const actualState = actualStateAtOrBefore(signalsLog, sessionStartState, row.timestamp)
+  return { ...row, old_state: actualState, new_state: actualState }
+}
+
+// Whether a transition's own expert-annotated expected_state (see
+// Signals.expected_state — lives directly on the transition's own row
+// now, no message lookup needed) agrees with what actually happened —
+// null when unannotated (the timeline shows no verdict either way, same
+// as the Inspector's own States tab).
+export function transitionAnnotationStatus(transition) {
+  if (transition.expected_state == null) return null
+  return transition.expected_state === transition.new_state ? 'correct' : 'incorrect'
+}
+
+// A transition linked to a message (see Signals.message) is positioned as
+// if it happened exactly when that message did, not by its own raw
+// timestamp: auto-tracking's own evaluation for a user message runs
+// *before* that message is saved (see backend ChatService.
+// _process_turn_locked), so the transition's own row can end up
+// timestamped slightly earlier than the very message that caused it —
+// which would otherwise show the state change before the message that
+// produced it. A manual action's transition (no linked message) has
+// nothing to correct against, so it keeps its own raw timestamp.
+export function effectiveTimestamp(entry, rawMessages) {
+  if (entry.kind === 'message') return entry.message.timestamp
+  const messageId = entry.transition.message_id
+  const linkedMessage = messageId != null ? rawMessages.find((m) => m.id === messageId) : null
+  return linkedMessage ? linkedMessage.timestamp : entry.transition.timestamp
+}
+
+// Only the literal first session ever opened for a project gets a real
+// "" -> start_state Signals row (see backend ChatService.open_if_needed) —
+// every other session genuinely has no such row, so there's nothing here
+// to build a real transitionEntries row from. A synthetic one is added
+// instead purely so the reviewer can see (and annotate) where the
+// conversation began — annotating it materializes the real row backend-
+// side (see ChatService._materialize_session_start_row), which replaces
+// this synthetic entry on the next reload; clearing that annotation
+// deletes the row again (see _finalize_annotation_write), bringing this
+// synthetic entry right back.
+export function syntheticSessionStartEntry(signalsLog, rawMessages, sessionStartState) {
+  const hasOwnStartRow = signalsLog.some((s) => s.old_state === '')
+  const firstMessage = rawMessages[0]
+  if (hasOwnStartRow || !firstMessage || sessionStartState == null) return null
+  return {
+    kind: 'transition',
+    timestamp: firstMessage.timestamp,
+    transition: {
+      id: null,
+      old_state: '',
+      action: '',
+      new_state: sessionStartState,
+      expected_state: null,
+      expected_values: null,
+      message_id: firstMessage.id
+    },
+    annotationStatus: null
+  }
+}
+
+// Chronological, merged view of the session's messages and its state
+// transitions — real ones, plus any evaluation point an expert annotated
+// even though nothing actually changed there (see resolveTransitionRow).
+// An unannotated *plain snapshot* (old_state/new_state both null — no
+// action fired at all, just an auto-tracking evaluation) still has
+// nothing worth showing on its own, same exclusion db.
+// get_last_transition_timestamp already applies for history-cutoff
+// purposes — that one's never included, annotated or not.
+// A fired *self-loop* (old_state === new_state, both real) is a
+// different case: `includeSelfLoops` (EditProjectView.vue's own live
+// chat, where the reviewer wants to see every action actually fire, not
+// just the ones that moved somewhere) includes it unconditionally, same
+// as an annotated one already was for BenchmarkProjectView.vue's
+// "Label sessions" review (unannotated ones stay excluded there, by
+// omitting this flag — self-loops the model already didn't get flagged
+// on aren't worth the clutter for that view's own purpose).
+export function buildTimeline(rawMessages, signalsLog, sessionStartState, { includeSelfLoops = false } = {}) {
+  const messageEntries = rawMessages.map((m) => ({ kind: 'message', timestamp: m.timestamp, message: m }))
+  const transitionEntries = signalsLog
+    .filter((s) => {
+      if (s.new_state == null) return s.expected_state != null
+      const isSelfLoop = s.new_state === s.old_state
+      return !isSelfLoop || includeSelfLoops || s.expected_state != null
+    })
+    .map((s) => {
+      const transition = resolveTransitionRow(s, signalsLog, sessionStartState)
+      return {
+        kind: 'transition',
+        timestamp: s.timestamp,
+        transition,
+        annotationStatus: transitionAnnotationStatus(transition)
+      }
+    })
+  const synthetic = syntheticSessionStartEntry(signalsLog, rawMessages, sessionStartState)
+  if (synthetic) transitionEntries.push(synthetic)
+  return [...messageEntries, ...transitionEntries].sort((a, b) => {
+    const ta = effectiveTimestamp(a, rawMessages)
+    const tb = effectiveTimestamp(b, rawMessages)
+    if (ta !== tb) return ta.localeCompare(tb)
+    // The same effective moment only happens when a transition is tied to
+    // its own linked message. For every ordinary transition that message
+    // is the *cause* (the user message auto-tracking evaluated), so it
+    // reads first, explaining the transition right after it. The
+    // automaton's own init transition (old_state === "", real or
+    // synthetic — see resolveTransitionRow/syntheticSessionStartEntry)
+    // is the one exception: its own linked message is the *opening*
+    // bubble it produced by landing there, not a cause — so there the
+    // transition must read first, right before the very bubble generated
+    // for entering that state.
+    const aIsInit = a.kind === 'transition' && a.transition.old_state === ''
+    const bIsInit = b.kind === 'transition' && b.transition.old_state === ''
+    if (aIsInit !== bIsInit) return aIsInit ? -1 : 1
+    return (a.kind === 'message' ? 0 : 1) - (b.kind === 'message' ? 0 : 1)
+  })
+}
+
+// The state active immediately after the latest transition at or before
+// `timestamp`, or the session's own starting state if none has fired yet.
+export function stateAsOf(timeline, sessionStartState, timestamp) {
+  let result = sessionStartState
+  for (const entry of timeline) {
+    if (entry.kind !== 'transition' || entry.timestamp > timestamp) continue
+    result = entry.transition.new_state
+  }
+  return result
+}
+
+// A transition has no message_id of its own, but point-in-time metrics
+// can only be pinned to one (see api.js's getMetrics/chat_service.py's
+// get_metrics — "Message.timestamp", per the message_id it resolves
+// internally) — so a transition's own metrics use whichever message most
+// recently preceded it.
+export function nearestMessageIdAtOrBefore(rawMessages, timestamp) {
+  let result = null
+  for (const m of rawMessages) {
+    if (m.timestamp > timestamp) break
+    result = m.id
+  }
+  return result
+}
+
+// Whether the Signals row a message's own evaluation produced (see
+// Signals.message_id) has at least one expert-annotated expected signal
+// value — drives MessageBubble.vue's "!" marker. Independent of a
+// transition's own ✓/✕ indicator (see transitionAnnotationStatus), which
+// is about expected_state, not expected_values. Pure over any signalsLog
+// (benchmark or live), so ChatTimeline.vue can call it regardless of which
+// view supplied the log.
+export function messageHasAnnotatedSignals(message, signalsLog) {
+  const row = signalsLog.find((s) => s.message_id === message.id)
+  if (!row?.expected_values) return false
+  try {
+    const parsed = JSON.parse(row.expected_values)
+    return parsed != null && Object.keys(parsed).length > 0
+  } catch {
+    return false
+  }
+}
+
+// The state key the Inspector (every tab alike — the Graph tab's own
+// highlight and the Signals tab's own "relevant" filter both read this
+// exact same value, deliberately: they must never disagree) should
+// treat as current for the selection — a message or a transition
+// clicked in the timeline. A message ALWAYS resolves to whatever state
+// was genuinely active when it was written/received, even when its own
+// evaluation went on to cause a transition: buildTimeline's own sort
+// always places a message before its own linked transition (they tie on
+// effective timestamp, and the tie-break reads message-first — see
+// buildTimeline's own comment on why, and effectiveTimestamp's), so
+// visually the message still sits in the *previous* block, with the
+// transition marker as the actual boundary where the new state begins —
+// showing the new state already at the message itself would highlight
+// something that, from that message's own point of view, hadn't
+// happened yet. Only a transition (the marker itself, or anything
+// timestamped after it) ever resolves to new_state. For the different
+// (and unrelated) question of "what did this message's own turn
+// ultimately leave the conversation in" — e.g. RestartFromHereButton's
+// own validity check — see resultingStateKeyFor instead, which keeps
+// the old preference this function itself used to have.
+export function highlightedStateKeyFor(selected, timeline, sessionStartState) {
+  if (!selected) return null
+  if (selected.kind === 'transition') return selected.transition.new_state
+  return stateAsOf(timeline, sessionStartState, selected.message.timestamp)
+}
+
+// "What state did this message's own turn ultimately leave the
+// conversation in" — unlike highlightedStateKeyFor, this DOES prefer a
+// transition *directly linked* to this exact message (see Signals.
+// message) over the raw-timestamp fallback below, since here the
+// question being asked is different: not "what was true when this
+// message arrived" but "once this message was fully processed,
+// including whatever it caused, where did things end up" — e.g.
+// RestartFromHereButton's own isStateGone check, which needs to know
+// the *resulting* state to tell whether it still exists in the current
+// project, not the state the message merely arrived into. That
+// transition's own row is timestamped fractionally *after* the message
+// that caused it (auto-tracking's own evaluation runs once the message
+// is already saved — see effectiveTimestamp's own docstring), so
+// stateAsOf(message.timestamp) alone would always land one step behind.
+export function resultingStateKeyFor(selected, timeline, sessionStartState) {
+  if (!selected) return null
+  if (selected.kind === 'transition') return selected.transition.new_state
+  const message = selected.message
+  const ownTransition = timeline.find(
+    (entry) => entry.kind === 'transition' && entry.transition.message_id === message.id
+  )
+  return ownTransition ? ownTransition.transition.new_state : stateAsOf(timeline, sessionStartState, message.timestamp)
+}
+
+// The signal values the Inspector should show for the current selection.
+export function signalValuesFor(selected, signalsLog) {
+  if (!selected) return {}
+  if (selected.kind === 'transition') {
+    // Whatever this row itself observed — never a timestamp lookup,
+    // which risks landing on the *previous* row instead (see
+    // signalValuesAsOf's own docstring). A row with nothing real behind
+    // it (the synthetic session-start entry, a manual action, an
+    // unfired self-loop) correctly has no values of its own, so this
+    // reads as n/a rather than falling back to "whatever came before".
+    return valuesToSignalValues(selected.transition.values)
+  }
+  const linked = signalsLog.find((s) => s.message_id === selected.message.id)
+  if (linked) return valuesToSignalValues(linked.values)
+  // This message was never itself an evaluation point (e.g. an assistant
+  // reply auto-tracking didn't run for) — the closest thing still true
+  // is whatever the latest real evaluation showed strictly before it.
+  return signalValuesAsOf(signalsLog, selected.message.timestamp)
+}

@@ -2,32 +2,50 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Compartment } from '@codemirror/state'
 import { EditorView, basicSetup } from 'codemirror'
+import { keymap } from '@codemirror/view'
 import { yaml } from '@codemirror/lang-yaml'
-import cytoscape from 'cytoscape'
-import ChatWindow from './ChatWindow.vue'
+import ChatWindow from './chat/ChatWindow.vue'
+import ChatTimeline from './chat/ChatTimeline.vue'
+import RestartFromHereButton from './chat/RestartFromHereButton.vue'
+import ModelMenu from './ModelMenu.vue'
+import Inspector from './inspector/Inspector.vue'
+import DocInfoButton from './DocInfoButton.vue'
 import {
   getProjectFiles,
   getProjectFile,
   putProjectFile,
+  undoProjectFile,
+  redoProjectFile,
   deleteProjectFile,
-  getProjectSignals,
-  getProjectGraph,
+  clearProjectHistory,
   getSignals,
+  getSessionSignals,
+  getSessions,
+  getProjectGraph,
   postTriggersPreview
 } from '../api.js'
-import { clearApiError, errorDetail, errorMessage, setApiError } from '../errorStore.js'
-import { hasSignalValue, useSignalChangeFlash } from '../signalDisplay.js'
+import { clearApiError, setApiError } from '../errorStore.js'
+import ErrorBanner from './ErrorBanner.vue'
+import { buildTimeline, highlightedStateKeyFor, nearestMessageIdAtOrBefore, resultingStateKeyFor, signalValuesFor } from '../benchmarkTimeline.js'
 // Aliased: this file already uses "state" to mean an automaton state node
-// (see the graph/signals data below) — `liveState` is specifically the
-// live conversation's current state, the single source of truth this
-// view's Inspector syncs itself to (see syncSelectionToCurrentState).
+// — `liveState` is specifically the live conversation's current state,
+// which this view's Inspector highlights as "current" (see the
+// highlighted-state-key binding below).
 import {
   state as liveState,
+  messages,
+  currentSessionId,
+  draft,
   turnCount,
   autoTrackingEnabled,
   autoTrackingLoading,
   toggleAutoTracking,
-  handleReset
+  handleReset,
+  handleSend,
+  handleTruncateFrom,
+  sessionsPanelOpen,
+  toggleSessionsPanel,
+  spokenTextEnabled
 } from '../chatStore.js'
 
 const props = defineProps({
@@ -37,17 +55,10 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['close', 'saved'])
+const emit = defineEmits(['close', 'saved', 'download'])
 
 const UPLOADABLE_PATTERN = /\.(txt|ya?ml)$/i
 const YAML_PATTERN = /\.ya?ml$/i
-
-// [a] [b] [c] ... labels for the Inspect panel's attachment buttons —
-// position within a single state/signal's own attachments list, not a
-// project-wide index.
-function attachmentLabel(index) {
-  return String.fromCharCode(97 + index)
-}
 
 function lineIndent(line) {
   const m = line.match(/^[ \t]*/)
@@ -93,6 +104,15 @@ function findStateLine(lines, stateKey) {
 
 function findSignalLine(lines, signalName) {
   return findTopLevelChildLine(lines, 'signals', signalName)
+}
+
+// The one action with no source state to search under (see
+// InspectorGraphTab.vue's own pseudo-node/isInitEdge) — a bare top-level
+// key, not a states: child, so findActionLine's own state-block scan
+// doesn't apply here at all.
+function findInitActionLine(lines) {
+  const idx = lines.findIndex((line) => lineIndent(line) === 0 && /^init-action\s*:\s*(#.*)?$/.test(line.trim()))
+  return idx === -1 ? null : idx
 }
 
 // Within stateKey's block, finds the line starting the action list item
@@ -147,26 +167,202 @@ const saving = ref(false)
 const uploading = ref(false)
 const creatingFile = ref(false)
 const deletingFile = ref(null)
-const showErrorDetail = ref(false)
 const editorHost = ref(null)
 const uploadInput = ref(null)
 
-// Inspect panel: shows the last-saved project's state machine graph and
-// signal definitions as two tabs (each gets the panel's full space), see
-// toggleInspect/setInspectorTab. Open by default.
+// Inspect panel: the shared Inspector component (see Inspector.vue) shows
+// the last-saved project's state graph, its signal definitions, and the
+// metrics_framework's core metrics. Open by default, see toggleInspect.
+// `inspectorRef` is how this view drives the few things that stay its
+// own responsibility: reloading after a save, refreshing the Metrics
+// tab, and resizing the graph on drag. The active AI model's own info
+// used to be a tab here too — see ModelMenu.vue's own "(?)" button now.
 const inspecting = ref(true)
-const inspectorTab = ref('graph') // 'graph' | 'signals'
-const signalsLoading = ref(true)
-const signals = ref([])
-// Live value/error per signal name, keyed separately from `signals` (the
-// project's saved definitions) since they come from a different source
-// (getSignals(), the same live conversation ChatWindow reads) and refresh
-// on a different cadence — see refreshSignalValues.
-const signalValueByName = ref({})
-const { recentlyChanged: recentlyChangedSignals, markChanged: markSignalsChanged } = useSignalChangeFlash()
-const graphLoading = ref(true)
-const graphHost = ref(null)
+const inspectorRef = ref(null)
 const inspectorWidth = ref(360)
+// Live value/error per signal name — fed to the Inspector's signal-values
+// prop, refreshed on its own cadence (see refreshSignalValues), never a
+// concern the Inspector itself resolves (see Inspector.vue's own
+// signalValues prop docstring).
+const signalValueByName = ref({})
+
+// The live session's own Signals event log and starting state — the same
+// two ingredients BenchmarkProjectView.vue fetches for a *past* session,
+// fetched here for the *current* one instead (see refreshSignalsLog/
+// refreshSessionStartState) so this view's chat can show the exact same
+// clickable message+transition timeline (see ChatTimeline.vue/
+// benchmarkTimeline.js), just kept live instead of frozen. Independent of
+// `inspecting` — the timeline itself is part of the chat panel, which can
+// be open while the Inspect panel is closed.
+const signalsLog = ref([])
+const sessionStartState = ref(null)
+
+// The point in time the Inspector reflects — null means "follow the live
+// conversation as it happens" (the historical default), a value means
+// "pinned to whatever was clicked in the timeline" (see selectMessage/
+// selectTransition, both a toggle: clicking the same entry again clears
+// this back to null/live). Reset on every session switch — a selection
+// from the previous session's history means nothing in a new one.
+const selected = ref(null)
+
+// chatStore.js's live `messages` shaped like BenchmarkProjectView.vue's
+// own rawMessages (id/timestamp/role/content/audio_text) — the common
+// input shape buildTimeline (and every helper built on it) expects,
+// regardless of whether the log being merged in is historical or live.
+// The in-flight assistant placeholder (see chatStore.js's submitMessage)
+// has no messageId yet — kept in, with `id: null`, so the streaming
+// bubble still shows up in this timeline exactly as it does in the plain
+// chat, just unable (harmlessly) to match any transition by id until it
+// resolves.
+const rawLiveMessages = computed(() =>
+  messages.value.map((m) => ({
+    id: m.messageId ?? null,
+    timestamp: m.timestamp,
+    role: m.role,
+    content: m.content,
+    audio_text: m.audioText
+  }))
+)
+
+// includeSelfLoops: true — unlike BenchmarkProjectView.vue's own review
+// timeline, the live chat here should show every action that actually
+// fired, including a self-loop that left the state unchanged (see
+// ChatTimeline.vue's own dimmed styling for these) — not just the ones
+// an expert happened to annotate.
+const timeline = computed(() =>
+  buildTimeline(rawLiveMessages.value, signalsLog.value, sessionStartState.value, { includeSelfLoops: true })
+)
+
+async function refreshSignalsLog() {
+  if (!currentSessionId.value) {
+    signalsLog.value = []
+    return
+  }
+  try {
+    signalsLog.value = await getSessionSignals(currentSessionId.value)
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+async function refreshSessionStartState() {
+  if (!currentSessionId.value) {
+    sessionStartState.value = null
+    return
+  }
+  try {
+    const allSessions = await getSessions()
+    sessionStartState.value = allSessions.find((s) => s.id === currentSessionId.value)?.start_state ?? null
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+// The project's own current set of real state keys (see
+// project_service.py's get_project_graph — nodes only, the reserved ""
+// implicit state is never one of these) — refreshed after every save,
+// since that's the only thing that can change it. Backs isStateGone
+// below: restarting from a bubble whose own state has since been
+// renamed/removed (see backend ProjectService._finalize_project_update,
+// which now keeps the conversation alive across saves that don't touch
+// its own current state) would have nowhere valid to land.
+const validStateKeys = ref(new Set())
+
+async function refreshValidStateKeys() {
+  try {
+    const { nodes } = await getProjectGraph(props.projectName)
+    validStateKeys.value = new Set(nodes.map((n) => n.key))
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+// The state a given message's own turn left the conversation in — see
+// resultingStateKeyFor's own docstring for why that's a different
+// question than highlightedStateKeyFor's (used for the Inspector
+// selection below), and thus a different function.
+function isStateGone(message) {
+  const stateKey = resultingStateKeyFor({ kind: 'message', message }, timeline.value, sessionStartState.value)
+  return stateKey != null && !validStateKeys.value.has(stateKey)
+}
+
+function selectMessage(message) {
+  selected.value =
+    selected.value?.kind === 'message' && selected.value.message.id === message.id
+      ? null
+      : { kind: 'message', message }
+}
+
+function selectTransition(transition) {
+  selected.value =
+    selected.value?.kind === 'transition' && selected.value.transition.id === transition.id
+      ? null
+      : { kind: 'transition', transition }
+}
+
+// See benchmarkTimeline.js for the actual logic behind each of these —
+// same helpers BenchmarkProjectView.vue uses for its own selection, just
+// falling back to the *live* current state/signals (rather than null)
+// whenever nothing is selected, since there's always a live conversation
+// here to fall back to.
+const highlightedStateKey = computed(() =>
+  selected.value ? highlightedStateKeyFor(selected.value, timeline.value, sessionStartState.value) : (liveState.value?.key ?? null)
+)
+
+// old_state === '' (the automaton's own init transition) is a real,
+// clickable edge in the graph too now — a transparent pseudo-node's own
+// outgoing edge (see InspectorGraphTab.vue's isInitEdge) — so this no
+// longer excludes it: every transition selection highlights *some* edge.
+const firedActionEdge = computed(() => {
+  if (selected.value?.kind !== 'transition') return null
+  const t = selected.value.transition
+  return { stateKey: t.old_state, actionName: t.action }
+})
+
+const untilMessageId = computed(() => {
+  if (!selected.value) return null
+  if (selected.value.kind === 'message') return selected.value.message.id
+  return (
+    selected.value.transition.message_id ??
+    nearestMessageIdAtOrBefore(rawLiveMessages.value, selected.value.transition.timestamp)
+  )
+})
+
+// The Env tab's own "is this still 'now'?" (see Inspector.vue's
+// envEditable prop): true with nothing selected (the live view), and
+// also true when the selected bubble is the conversation's own latest
+// message — nothing happened after it yet, so it's effectively "now"
+// too, unlike every earlier bubble which is genuine history.
+const latestMessageId = computed(() => {
+  const msgs = rawLiveMessages.value
+  return msgs.length ? msgs[msgs.length - 1].id : null
+})
+const envEditable = computed(() =>
+  !selected.value ||
+  (selected.value.kind === 'message' && selected.value.message.id === latestMessageId.value)
+)
+
+const effectiveSignalValues = computed(() =>
+  selected.value ? signalValuesFor(selected.value, signalsLog.value) : signalValueByName.value
+)
+
+// "Restart from here" (RestartFromHereButton.vue, this view's chat only —
+// see ChatTimeline.vue's message-actions slot): both gestures truncate
+// the conversation at this message's own timestamp first (see
+// chatStore.js's handleTruncateFrom, which also rolls the live state
+// back), then differ only in what happens to the message's own text —
+// preloaded for the user to review/edit, or resent immediately as-is.
+async function restartAndPrefill(message) {
+  await handleTruncateFrom(message.timestamp)
+  selected.value = null
+  draft.value = message.content
+}
+
+async function restartAndResend(message) {
+  await handleTruncateFrom(message.timestamp)
+  selected.value = null
+  await handleSend(message.content)
+}
 
 // A definition clicked in the Inspect panel (graph node/edge or signal
 // block) to jump the editor's cursor to, once index.yml is the file open
@@ -181,6 +377,14 @@ const pendingCursorTarget = ref(null)
 const chatOpen = ref(true)
 const chatHeight = ref(280)
 
+// File explorer + editor row: v-show, not v-if (see toggleEditor) — the
+// CodeMirror view is mounted once, imperatively, straight into
+// editorHost.value (see mountEditor's own `parent:` below); an v-if here
+// would tear that DOM node down and leave the EditorView pointing at a
+// detached node on the next open, exactly the same reason editorHost's
+// own v-show (below) exists. Open by default, toggled like Chat/Inspect.
+const editorOpen = ref(true)
+
 // The editor's own doc is the source of truth for content while it's
 // mounted — this ref only mirrors it (via the updateListener below) so
 // save() has something to send without querying the view directly.
@@ -189,6 +393,14 @@ const content = ref('')
 // `content` to decide whether switching/closing needs a confirmation.
 const originalContent = ref('')
 const isDirty = computed(() => content.value !== originalContent.value)
+
+// Whether the currently open file's Undo/Redo buttons are enabled — the
+// backend decides this (see db.Db.has_undo/has_redo, scoped to the
+// current user), refreshed from its response on every load/save/undo/redo.
+// The frontend never tracks version numbers or navigates by them: it just
+// asks for undo/redo and the backend returns whatever content that yields.
+const canUndo = ref(false)
+const canRedo = ref(false)
 
 // Set while the unsaved-changes dialog is blocking a switch to this file —
 // resolved one way or another by confirmSwitchSave/Discard/Cancel.
@@ -203,6 +415,18 @@ let dragTarget = null
 let view = null
 const editableCompartment = new Compartment()
 
+// Bumped by every loadFileContent/applyHistoryNavigation call, each of
+// which captures its own value at the start and checks it again after its
+// own await — whichever such call was the *last* one started always wins.
+// Without this, clicking a different file (or Undo/Redo) again while a
+// previous fetch for the old one is still in flight let both eventually
+// call createEditor(), each appending its own EditorView into
+// editorHost.value (the constructor never clears the parent — see
+// @codemirror/view's own EditorView), leaving two live, DOM-attached
+// editors at once; or let a stale undo/redo response overwrite the
+// now-current file's content/undo-redo state after the fact.
+let requestToken = 0
+
 function createEditor(doc, fileName) {
   const extensions = [
     basicSetup,
@@ -210,7 +434,20 @@ function createEditor(doc, fileName) {
     editableCompartment.of(EditorView.editable.of(true)),
     EditorView.updateListener.of((update) => {
       if (update.docChanged) content.value = update.state.doc.toString()
-    })
+    }),
+    // Ctrl-S (Cmd-S on Mac, via CodeMirror's own "Mod-" alias) — same
+    // guard as the toolbar's Save button (:disabled), and always swallows
+    // the key itself so the browser's native "Save page as" never opens,
+    // even when there's nothing to save.
+    keymap.of([
+      {
+        key: 'Mod-s',
+        run: () => {
+          if (!loading.value && !saving.value && isDirty.value) saveCurrentFile()
+          return true
+        }
+      }
+    ])
   ]
   if (YAML_PATTERN.test(fileName)) extensions.splice(1, 0, yaml())
   view = new EditorView({ doc, extensions, parent: editorHost.value })
@@ -219,6 +456,15 @@ function createEditor(doc, fileName) {
 function destroyEditor() {
   view?.destroy()
   view = null
+}
+
+// Replaces the editor's whole document in place (undo/redo, and
+// refreshing after a save) — `content` updates itself via the
+// updateListener already wired in createEditor, so callers never set it
+// directly.
+function setEditorDoc(newContent) {
+  if (!view) return
+  view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: newContent } })
 }
 
 async function loadFiles() {
@@ -233,18 +479,24 @@ async function loadFiles() {
 }
 
 async function loadFileContent(fileName) {
+  const token = ++requestToken
   loading.value = true
   clearApiError()
   destroyEditor()
   try {
-    content.value = await getProjectFile(props.projectName, fileName)
-    originalContent.value = content.value
+    const file = await getProjectFile(props.projectName, fileName)
+    if (token !== requestToken) return // superseded by a newer switch/undo/redo
+    content.value = file.content
+    originalContent.value = file.content
+    canUndo.value = file.can_undo
+    canRedo.value = file.can_redo
   } catch {
-    loading.value = false
+    if (token === requestToken) loading.value = false
     return
   }
   loading.value = false
   await nextTick() // editorHost is v-show, but wait a tick anyway for layout to settle
+  if (token !== requestToken) return
   createEditor(content.value, fileName)
   if (fileName === 'index.yml') applyPendingCursorTarget()
 }
@@ -260,8 +512,9 @@ function applyPendingCursorTarget() {
   const lines = content.value.split('\n')
   let lineIndex = null
   if (target.kind === 'state') lineIndex = findStateLine(lines, target.stateKey)
-  else if (target.kind === 'action') lineIndex = findActionLine(lines, target.stateKey, target.actionName)
-  else if (target.kind === 'signal') lineIndex = findSignalLine(lines, target.signalName)
+  else if (target.kind === 'action') {
+    lineIndex = target.stateKey === '' ? findInitActionLine(lines) : findActionLine(lines, target.stateKey, target.actionName)
+  } else if (target.kind === 'signal') lineIndex = findSignalLine(lines, target.signalName)
   if (lineIndex === null) return
   const lineInfo = view.state.doc.line(lineIndex + 1) // CodeMirror lines are 1-based
   view.dispatch({
@@ -295,18 +548,62 @@ async function saveCurrentFile() {
   saving.value = true
   clearApiError()
   try {
-    await putProjectFile(props.projectName, currentFileName.value, content.value)
-    originalContent.value = content.value
+    const result = await putProjectFile(props.projectName, currentFileName.value, content.value)
+    // Refresh from the server's own response (can_undo/can_redo, plus
+    // content for consistency) rather than trusting what was typed.
+    setEditorDoc(result.content)
+    originalContent.value = result.content
+    canUndo.value = result.can_undo
+    canRedo.value = result.can_redo
     emit('saved')
     // The Inspect panel reflects the last saved state, so a successful
     // save is exactly when it needs to catch up (see toggleInspect).
-    if (inspecting.value) await Promise.all([loadSignals(), loadGraph()])
+    if (inspecting.value) await inspectorRef.value?.refresh()
+    // A save is the only thing that can change which states exist at all
+    // — see isStateGone, which every bubble's own restart-from-here
+    // button depends on.
+    refreshValidStateKeys()
     return true
   } catch {
     return false
   } finally {
     saving.value = false
   }
+}
+
+// Undo/redo ask the backend to preview the previous/next content from
+// the current user's own history (see api.js's undoProjectFile/
+// redoProjectFile), sending the editor's own current content along so a
+// later redo/undo can bring it back. Unlike Save, this is a pure editor
+// preview: nothing is persisted, and the active project/conversation is
+// never reloaded or reconciled (no 'saved' emit, no Inspector/valid-
+// state-keys refresh) — only an explicit Save does any of that (see
+// saveCurrentFile). `originalContent` deliberately stays put, so the
+// editor's content now differing from it is exactly what lights the Save
+// button back up. The frontend never navigates by version number, just
+// "undo" / "redo".
+async function applyHistoryNavigation(action) {
+  const token = ++requestToken
+  try {
+    const file = await action(props.projectName, currentFileName.value, content.value)
+    // Superseded by a newer switch/undo/redo (see requestToken's own
+    // docstring) — applying it now would overwrite whichever file is
+    // actually open with this now-stale one's content.
+    if (token !== requestToken) return
+    setEditorDoc(file.content)
+    canUndo.value = file.can_undo
+    canRedo.value = file.can_redo
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+function undo() {
+  if (canUndo.value) applyHistoryNavigation(undoProjectFile)
+}
+
+function redo() {
+  if (canRedo.value) applyHistoryNavigation(redoProjectFile)
 }
 
 async function switchFile(fileName) {
@@ -416,353 +713,34 @@ async function handleDeleteFile(fileName) {
 }
 
 // Only prompts when there's actually something to lose — a clean editor
-// (nothing typed, or already saved) closes straight away.
+// (nothing typed, or already saved) closes straight away. Undo/redo
+// history itself is cleared on entry, not here — see onMounted.
 function handleClose() {
   if (isDirty.value && !window.confirm('Discard unsaved changes to this file?')) return
   emit('close')
 }
 
-async function loadSignals() {
-  signalsLoading.value = true
-  try {
-    signals.value = (await getProjectSignals(props.projectName)).signals
-  } catch {
-    // already surfaced via apiFetch
-  } finally {
-    signalsLoading.value = false
-  }
-}
-
 // Live values for whatever signals the active conversation currently has
 // (see chatStore.js's shared state — the same getSignals() ChatWindow's
-// own Signals concerns already rely on via SignalsView). Kept separate
-// from loadSignals()'s definitions so either can refresh on its own
-// cadence — definitions rarely change; values do on every turn (see the
-// turnCount watcher below).
+// own Signals concerns already rely on via SignalsView). Just the values —
+// the flash-on-change animation is Inspector.vue's own concern (it watches
+// this prop internally, see its signalValues prop docstring).
 async function refreshSignalValues() {
   try {
     const nextValues = await getSignals()
-    const previousValues = Object.entries(signalValueByName.value).map(([name, v]) => ({ name, ...v }))
-    markSignalsChanged(previousValues, nextValues)
     signalValueByName.value = Object.fromEntries(nextValues.map((s) => [s.name, { value: s.value, error: s.error }]))
   } catch {
     // already surfaced via apiFetch
   }
 }
 
-let cyGraph = null
-
-// The state or action last tapped in the graph — { kind: 'state'|'action',
-// data } or null. Non-null shrinks the graph box to make room for its
-// detail card below (see .inspector-graph-section's flex layout).
-const selectedElement = ref(null)
-
-// Raw graph data (as fetched, not the cytoscape-shaped elements) — kept
-// around so syncSelectionToCurrentState can look a live state key up by
-// key without re-fetching, the same way a click already has its node's
-// data on hand via evt.target.data().
-const graphNodes = ref([])
-const graphEdges = ref([])
-
 // { stateKey, actionName } of the action the engine would fire next from
 // the live current state, or null — see refreshNextAction. Reuses
 // postTriggersPreview (already computed for SignalsView's own "Next
 // triggerable action" section) instead of re-deriving trigger evaluation
-// here.
+// here. Fed to the Inspector as its next-action-edge prop, which draws and
+// highlights the corresponding edge itself.
 const nextAction = ref(null)
-
-// Whether the currently selected detail card is showing exactly that
-// action — drives the green "Next" badge (see the action detail template).
-const isSelectedActionNext = computed(() => {
-  if (selectedElement.value?.kind !== 'action' || !nextAction.value) return false
-  return (
-    selectedElement.value.data.source === nextAction.value.stateKey &&
-    selectedElement.value.data.actionName === nextAction.value.actionName
-  )
-})
-
-// Whether the currently selected detail card is showing the live
-// conversation's current state — drives the "Current" badge, in the same
-// amber used for the graph's own current-state highlight (see
-// .node.current-state in renderGraph and .inspector-detail-badge-current).
-const isSelectedStateCurrent = computed(() => {
-  return selectedElement.value?.kind === 'state' && selectedElement.value.data.id === liveState.value?.key
-})
-
-// Whether the detail card has any non-type badge to show at all — an
-// action that's neither Next nor Manual (a plain triggered action) has
-// none, and the badges row should collapse rather than render empty.
-const hasSelectedElementBadges = computed(() => {
-  if (!selectedElement.value) return false
-  if (selectedElement.value.kind === 'state') {
-    const d = selectedElement.value.data
-    return isSelectedStateCurrent.value || d.isStart || d.final || !d.chat || d.historyCutoff
-  }
-  return isSelectedActionNext.value || !selectedElement.value.data.hasTrigger
-})
-
-function destroyGraph() {
-  cyGraph?.destroy()
-  cyGraph = null
-}
-
-// The cytoscape-data shape for a state node — camelCase, one place this
-// mapping is decided so a tap handler (which reads it straight off
-// evt.target.data()) and the current-state auto-sync (which builds it
-// from the raw fetched node instead) never drift apart.
-function nodeToCyData(n) {
-  return {
-    id: n.key,
-    label: n.label,
-    description: n.description,
-    final: n.final,
-    isStart: n.is_start,
-    chat: n.chat,
-    onEnter: n.on_enter,
-    historyCutoff: n.history_cutoff,
-    transitionLogLevel: n.transition_log_level,
-    attachments: n.attachments
-  }
-}
-
-// Same idea as nodeToCyData, for an action edge.
-function edgeToCyData(e, id) {
-  return {
-    id,
-    source: e.source,
-    target: e.target,
-    label: e.label,
-    actionName: e.action_name,
-    buttonText: e.ui_button,
-    trigger: e.trigger,
-    hasTrigger: e.has_trigger,
-    actionPrompt: e.action_prompt
-  }
-}
-
-function graphElements(nodes, edges) {
-  return [
-    ...nodes.map((n) => ({ data: nodeToCyData(n) })),
-    ...edges.map((e, i) => ({ data: edgeToCyData(e, `edge-${i}`) }))
-  ]
-}
-
-// Selecting/deselecting resizes the graph box (see .inspector-graph-section),
-// so Cytoscape needs a nudge once the layout settles.
-function selectGraphElement(kind, data) {
-  selectedElement.value = { kind, data }
-  nextTick(() => cyGraph?.resize())
-}
-
-function closeGraphDetail() {
-  selectedElement.value = null
-  nextTick(() => cyGraph?.resize())
-}
-
-// A tap on a node/edge both opens its detail card and jumps the editor's
-// cursor to its definition — see selectGraphElement/jumpToDefinition.
-function handleNodeTap(evt) {
-  const data = evt.target.data()
-  selectGraphElement('state', data)
-  jumpToDefinition({ kind: 'state', stateKey: data.id })
-}
-
-function handleEdgeTap(evt) {
-  const data = evt.target.data()
-  selectGraphElement('action', data)
-  jumpToDefinition({ kind: 'action', stateKey: data.source, actionName: data.actionName })
-}
-
-// Renders the state machine into graphHost with Cytoscape — a fresh
-// instance every time (cheap for graphs this size), rooted breadthfirst on
-// the start state so the flow reads top-to-bottom/left-to-right like a
-// diagram instead of a force-directed tangle.
-function renderGraph(nodes, edges) {
-  destroyGraph()
-  if (!graphHost.value) return
-  const startKey = nodes.find((n) => n.is_start)?.key
-  cyGraph = cytoscape({
-    container: graphHost.value,
-    elements: graphElements(nodes, edges),
-    style: [
-      {
-        selector: 'node',
-        style: {
-          'background-color': '#eef2f9',
-          'border-width': 2,
-          'border-color': '#4a6fa5',
-          label: 'data(label)',
-          'text-valign': 'center',
-          'text-halign': 'center',
-          'font-size': '9px',
-          color: '#333',
-          shape: 'round-rectangle',
-          width: 'label',
-          height: 'label',
-          padding: '8px',
-          'text-wrap': 'wrap',
-          'text-max-width': '80px'
-        }
-      },
-      {
-        selector: 'node[?final]',
-        style: {
-          'border-width': 4,
-          'border-color': '#c62828',
-          'background-color': '#fdecea'
-        }
-      },
-      {
-        selector: 'node[?isStart]',
-        style: {
-          'border-color': '#2e7d32',
-          'background-color': '#eaf6ea'
-        }
-      },
-      {
-        // The live conversation's current state — an overlay glow rather
-        // than a border/background change, so it composes cleanly with
-        // final/start's own colors instead of fighting them for the same
-        // visual channel (see syncSelectionToCurrentState/
-        // applyCurrentStateHighlight).
-        selector: 'node.current-state',
-        style: {
-          'overlay-color': '#f5a623',
-          'overlay-opacity': 0.35,
-          'overlay-padding': 6
-        }
-      },
-      {
-        selector: 'edge',
-        style: {
-          width: 1.5,
-          'line-color': '#9ab0cc',
-          'target-arrow-color': '#9ab0cc',
-          'target-arrow-shape': 'triangle',
-          'arrow-scale': 0.8,
-          'curve-style': 'bezier',
-          label: 'data(label)',
-          'font-size': '7px',
-          color: '#666',
-          'text-background-color': 'white',
-          'text-background-opacity': 0.85,
-          'text-background-padding': '2px',
-          'text-wrap': 'wrap',
-          'text-max-width': '70px'
-        }
-      },
-      {
-        // No trigger = manual-only action (see AutomatonBuilder) — dashed
-        // to set it apart from the default solid line, which therefore
-        // reads as "automatic" (has a trigger) without needing its own
-        // rule. Never inferred from YAML text — `hasTrigger` comes
-        // straight from the backend's graph endpoint.
-        selector: 'edge[!hasTrigger]',
-        style: {
-          'line-style': 'dashed'
-        }
-      },
-      {
-        // The action postTriggersPreview says would fire next from the
-        // live current state — see refreshNextAction/
-        // applyNextActionHighlight. Always a triggered (solid) edge, since
-        // only triggered actions are ever candidates.
-        selector: 'edge.next-action',
-        style: {
-          'line-color': '#2e7d32',
-          'target-arrow-color': '#2e7d32',
-          width: 2.5
-        }
-      },
-      {
-        selector: 'edge[source = target]',
-        style: {
-          'curve-style': 'loop',
-          'loop-direction': '-45deg',
-          'loop-sweep': '45deg'
-        }
-      }
-    ],
-    layout: {
-      name: 'breadthfirst',
-      directed: true,
-      roots: startKey ? [startKey] : undefined,
-      padding: 16,
-      spacingFactor: 1.1
-    }
-  })
-  cyGraph.on('tap', 'node', handleNodeTap)
-  cyGraph.on('tap', 'edge', handleEdgeTap)
-  cyGraph.on('tap', (evt) => {
-    if (evt.target === cyGraph) closeGraphDetail()
-  })
-
-  // A (re)build can rename/remove whatever was selected before, and is
-  // also the moment a freshly opened Inspector needs to catch up with
-  // reality — re-sync to the live current state either way. No cursor
-  // jump here: unlike an actual state change (see the liveState watcher
-  // below), a reload triggered by an unrelated file save must not yank
-  // focus away from whatever the user is doing.
-  applyCurrentStateHighlight()
-  applyNextActionHighlight()
-  syncSelectionToCurrentState()
-}
-
-async function loadGraph() {
-  graphLoading.value = true
-  try {
-    const { nodes, edges } = await getProjectGraph(props.projectName)
-    graphNodes.value = nodes
-    graphEdges.value = edges
-    renderGraph(nodes, edges)
-  } catch {
-    // already surfaced via apiFetch
-  } finally {
-    graphLoading.value = false
-  }
-}
-
-// Recolors the live current state's node — see the node.current-state
-// style rule in renderGraph. A no-op while the graph isn't built
-// (Inspector closed) or the live state doesn't belong to this project's
-// graph (e.g. editing a project other than the currently active one).
-function applyCurrentStateHighlight() {
-  if (!cyGraph) return
-  cyGraph.nodes().removeClass('current-state')
-  const key = liveState.value?.key
-  if (key == null) return
-  cyGraph.nodes().filter((n) => n.id() === key).addClass('current-state')
-}
-
-// Recolors the edge postTriggersPreview says would fire next — see the
-// edge.next-action style rule in renderGraph.
-function applyNextActionHighlight() {
-  if (!cyGraph) return
-  cyGraph.edges().removeClass('next-action')
-  if (!nextAction.value) return
-  cyGraph
-    .edges()
-    .filter((edge) => edge.data('source') === nextAction.value.stateKey && edge.data('actionName') === nextAction.value.actionName)
-    .addClass('next-action')
-}
-
-// Mirrors what tapping the live current state's node in the graph would
-// do — same selection (and, when `jumpCursor` is true, the same editor
-// cursor jump) — so the Inspector automatically tracks whatever the
-// actual conversation is doing (autotracking, manual actions, reset, ...),
-// not just clicks made inside the graph itself. `jumpCursor` is only true
-// for an actual state-change event (see the liveState watcher below); a
-// routine graph reload (renderGraph) re-syncs the selection without it.
-function syncSelectionToCurrentState({ jumpCursor = false } = {}) {
-  const key = liveState.value?.key
-  const node = key == null ? null : graphNodes.value.find((n) => n.key === key)
-  if (!node) {
-    selectedElement.value = null
-    return
-  }
-  selectGraphElement('state', nodeToCyData(node))
-  if (jumpCursor) jumpToDefinition({ kind: 'state', stateKey: node.key })
-}
 
 // Reuses the same triggers-preview endpoint SignalsView already calls for
 // its own "Next triggerable action" section — no separate client-side
@@ -773,7 +751,6 @@ async function refreshNextAction() {
   const stateKeyAtFetch = liveState.value?.key
   if (stateKeyAtFetch == null) {
     nextAction.value = null
-    applyNextActionHighlight()
     return
   }
   try {
@@ -786,36 +763,23 @@ async function refreshNextAction() {
     // already surfaced via apiFetch — the graph just shows no "next" edge
     nextAction.value = null
   }
-  applyNextActionHighlight()
-}
-
-// Switching to the graph tab can make graphHost visible again after being
-// hidden (v-show) while the panel had its cytoscape instance already
-// built — a resize/fit is enough to make it render correctly since the
-// breadthfirst layout's node positions never depended on container size.
-function setInspectorTab(tab) {
-  inspectorTab.value = tab
-  if (tab === 'graph') {
-    nextTick(() => {
-      cyGraph?.resize()
-      cyGraph?.fit()
-    })
-  }
 }
 
 // Shared by the initial mount (Inspect is open by default) and every
-// later re-open via toggleInspect.
+// later re-open via toggleInspect. Inspector.vue loads its own graph/
+// signals definitions on mount (see its own onMounted) — this view only
+// owns the live/point-in-time pieces layered on top of them.
 async function openInspect() {
-  await nextTick() // graphHost only exists once the v-if block above mounts
-  await Promise.all([loadSignals(), loadGraph(), refreshNextAction(), refreshSignalValues()])
+  await nextTick() // Inspector only exists once the v-if block above mounts
+  await Promise.all([refreshNextAction(), refreshSignalValues()])
 }
 
 // Toggled by the Inspect button and by the panel's own Close button, same
-// as SignalsView's autotracking/close pair.
-async function toggleInspect() {
+// as SignalsView's autotracking/close pair. Inspector.vue's own
+// onBeforeUnmount handles its cytoscape cleanup when it unmounts (v-if).
+function toggleInspect() {
   inspecting.value = !inspecting.value
-  if (inspecting.value) await openInspect()
-  else destroyGraph()
+  if (inspecting.value) openInspect()
 }
 
 // The embedded chat has no data of its own to load/unload — it's just a
@@ -823,6 +787,18 @@ async function toggleInspect() {
 // so toggling it is nothing more than showing/hiding the panel.
 function toggleChat() {
   chatOpen.value = !chatOpen.value
+}
+
+// See editorOpen's own docstring for why this is a plain visibility
+// flip (v-show) rather than the mount/unmount toggleChat/toggleInspect
+// otherwise use (v-if) — nothing here needs loading or tearing down.
+function toggleEditor() {
+  editorOpen.value = !editorOpen.value
+}
+
+function handleDownload() {
+  emit('download', props.projectName)
+  alert("Project " + props.projectName + " downloaded to your local folder.")
 }
 
 function startExplorerDrag(event) {
@@ -847,7 +823,7 @@ function onDrag(event) {
     // The inspector's divider sits on its left edge, so dragging it left
     // (negative movementX) needs to grow the panel, not shrink it.
     inspectorWidth.value = Math.min(560, Math.max(240, inspectorWidth.value - event.movementX))
-    cyGraph?.resize()
+    inspectorRef.value?.resize()
   } else if (dragTarget === 'chat') {
     // The chat divider sits above the chat panel, so dragging it up
     // (negative movementY) needs to grow the panel, not shrink it.
@@ -863,42 +839,74 @@ function stopDrag() {
 // and with the viewport (narrow-screen full-takeover breakpoint, window
 // resize) — Cytoscape needs an explicit nudge to notice either.
 function handleWindowResize() {
-  cyGraph?.resize()
+  inspectorRef.value?.resize()
 }
 
 watch(saving, (isSaving) => {
   view?.dispatch({ effects: editableCompartment.reconfigure(EditorView.editable.of(!isSaving)) })
 })
 
-// The live conversation's current state changing — autotracking, a manual
-// action, a reset, anything — is treated exactly like the user clicking
-// that state in the graph: same selection, same cursor jump. Gated on the
-// Inspector being open since there's no graph to highlight/click-equivalent
-// otherwise, and jumping the editor's cursor while the user isn't even
-// looking at the Inspector would be pure disruption.
-watch(
-  () => liveState.value?.key,
-  () => {
-    if (!inspecting.value) return
-    applyCurrentStateHighlight()
-    syncSelectionToCurrentState({ jumpCursor: true })
-  }
-)
-
 // A turn can shift signal values enough to change which action would fire
-// next even without a state change — see chatStore.js's turnCount. The
-// Signals tab's bars need the same refresh to stay live regardless of
-// which tab is actually visible right now (v-show, not v-if — see
-// setInspectorTab).
+// next even without a state change — see chatStore.js's turnCount. Metrics
+// are heavier to compute, so unlike signals they're only refreshed while
+// the Inspector's own Metrics tab is the one actually open (see
+// Inspector.vue's refreshMetrics) — never prefetched in the background.
+// signalsLog, unlike those, feeds the chat timeline itself (transition
+// rows, annotation icons) — visible whenever the chat panel is, whether
+// or not Inspect is open, so it refreshes unconditionally.
 watch(turnCount, () => {
+  // A completed turn always adds a new message — whatever was selected
+  // before now belongs to older history, so the Inspector should follow
+  // the conversation's own newest message again (same reasoning as the
+  // currentSessionId watch below going back to null on a session switch),
+  // rather than staying pinned on a bubble that's no longer the latest.
+  selected.value = null
+  refreshSignalsLog()
   if (!inspecting.value) return
   refreshNextAction()
   refreshSignalValues()
+  inspectorRef.value?.refreshMetrics()
+  inspectorRef.value?.refreshEnv()
 })
 
-onMounted(() => {
+// Metrics aren't reactive to a prop change on their own (see Inspector.
+// vue's refreshMetrics docstring) — a selection change needs its own
+// explicit nudge, same as BenchmarkProjectView.vue's own watch(selected).
+// Env gets the same nudge: it isn't prop-driven either (it's fetched
+// straight from the db, see InspectorEnvTab.vue's own loadEnv), so
+// switching which message is selected wouldn't otherwise re-pull it.
+watch(selected, () => {
+  if (!inspecting.value) return
+  nextTick(() => {
+    inspectorRef.value?.refreshMetrics()
+    inspectorRef.value?.refreshEnv()
+  })
+})
+
+// A session switch (from this view's own Sessions button, or the main
+// page's — currentSessionId is shared, see chatStore.js's selectSession)
+// always shows *that* session's own timeline from scratch — whatever was
+// selected, or logged, belonged to a different session's history.
+watch(currentSessionId, () => {
+  selected.value = null
+  refreshSessionStartState()
+  refreshSignalsLog()
+})
+
+onMounted(async () => {
+  // A fresh editing session starts with a clean undo/redo slate — cleared
+  // here (entry), not on Back, and awaited before the first file loads so
+  // its own can_undo/can_redo already reflects the cleared state.
+  try {
+    await clearProjectHistory(props.projectName)
+  } catch {
+    // already surfaced via apiFetch — the session still opens either way
+  }
   loadFiles()
   loadFileContent(currentFileName.value)
+  refreshSessionStartState()
+  refreshSignalsLog()
+  refreshValidStateKeys()
   if (inspecting.value) openInspect()
   window.addEventListener('mousemove', onDrag)
   window.addEventListener('mouseup', stopDrag)
@@ -906,7 +914,6 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   destroyEditor()
-  destroyGraph()
   window.removeEventListener('mousemove', onDrag)
   window.removeEventListener('mouseup', stopDrag)
   window.removeEventListener('resize', handleWindowResize)
@@ -918,6 +925,13 @@ onBeforeUnmount(() => {
     <div class="edit-project-header">
       <h2>Edit project — {{ projectName }}</h2>
       <div class="edit-project-header-actions">
+        <button
+          class="chat-toggle-btn"
+          :class="{ 'chat-toggle-btn-on': editorOpen }"
+          @click="toggleEditor"
+        >
+          Edit
+        </button>
         <button
           class="chat-toggle-btn"
           :class="{ 'chat-toggle-btn-on': chatOpen }"
@@ -932,26 +946,17 @@ onBeforeUnmount(() => {
         >
           Inspect
         </button>
+        <button class="inspect-btn" @click="handleDownload">Download</button>
+        <button class="reset-btn" @click="handleReset">Reset</button>
         <button class="close-btn" @click="handleClose">Back</button>
       </div>
     </div>
 
-    <div v-if="errorMessage" class="edit-project-error-row">
-      <p class="edit-project-error">{{ errorMessage }}</p>
-      <button
-        v-if="errorDetail"
-        type="button"
-        class="edit-project-error-details-btn"
-        @click="showErrorDetail = !showErrorDetail"
-      >
-        {{ showErrorDetail ? 'Hide details' : 'Details' }}
-      </button>
-    </div>
-    <pre v-if="errorMessage && errorDetail && showErrorDetail" class="edit-project-error-detail">{{ errorDetail }}</pre>
+    <ErrorBanner />
 
     <div class="edit-project-body">
       <div class="edit-project-main-column">
-        <div class="edit-project-top-row">
+        <div v-show="editorOpen" class="edit-project-top-row">
           <div class="file-explorer" :style="{ width: explorerWidth + 'px' }">
             <div class="file-explorer-header">
               <span class="file-explorer-title">Files</span>
@@ -1000,9 +1005,24 @@ onBeforeUnmount(() => {
           <div class="edit-project-editor-pane">
             <div class="edit-project-editor-toolbar">
               <span class="edit-project-editor-filename">{{ currentFileName }}</span>
-              <button class="save-btn" :disabled="loading || saving" @click="saveCurrentFile">
-                {{ saving ? 'Saving…' : 'Save' }}
-              </button>
+              <div class="edit-project-editor-toolbar-actions">
+                <button
+                  class="undo-redo-btn"
+                  title="Undo"
+                  :disabled="loading || saving || !canUndo"
+                  @click="undo"
+                >↶</button>
+                <button
+                  class="undo-redo-btn"
+                  title="Redo"
+                  :disabled="loading || saving || !canRedo"
+                  @click="redo"
+                >↷</button>
+                <button class="save-btn" :disabled="loading || saving || !isDirty" @click="saveCurrentFile">
+                  {{ saving ? 'Saving…' : 'Save' }}
+                </button>
+                <DocInfoButton doc-name="project-specs" title="Project format specification" />
+              </div>
             </div>
             <div class="edit-project-editor-content">
               <p v-if="loading" class="edit-project-status">Loading…</p>
@@ -1011,204 +1031,90 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <template v-if="chatOpen">
-          <div class="split-divider-horizontal" @mousedown="startChatDrag"></div>
+        <Transition name="panel-slide-bottom">
+        <div v-if="chatOpen" class="edit-project-chat-wrap" :class="{ 'edit-project-chat-wrap-full': !editorOpen }">
+          <!-- Nothing to split against once the editor row is hidden (see
+               editorOpen) — the divider drags the boundary between it and
+               chat, which no longer exists, and the chat panel below
+               switches to filling the whole column instead of its own
+               fixed, drag-adjusted chatHeight. -->
+          <div v-if="editorOpen" class="split-divider-horizontal" @mousedown="startChatDrag"></div>
 
-          <div class="edit-project-chat-panel" :style="{ height: chatHeight + 'px' }">
+          <div class="edit-project-chat-panel" :style="editorOpen ? { height: chatHeight + 'px' } : null">
             <div class="edit-project-chat-toolbar">
-              <button class="reset-btn" @click="handleReset">Reset</button>
-              <button class="close-x-btn" title="Close" @click="toggleChat">×</button>
+              <label
+                class="dev-mode-toggle"
+                :class="{ 'dev-mode-toggle-active': !autoTrackingEnabled, 'dev-mode-toggle-disabled': autoTrackingLoading }"
+              >
+                <input
+                  type="checkbox"
+                  :checked="!autoTrackingEnabled"
+                  :disabled="autoTrackingLoading"
+                  @change="toggleAutoTracking"
+                />
+                Dev mode: freeze automatic state transitions
+              </label>
+              <div class="edit-project-chat-toolbar-actions">
+                <button
+                  class="sessions-btn"
+                  :class="{ 'sessions-btn-active': sessionsPanelOpen }"
+                  title="Sessions"
+                  @click="toggleSessionsPanel"
+                >
+                  Sessions
+                </button>
+                <ModelMenu />
+              </div>
             </div>
-            <ChatWindow />
+            <ChatWindow>
+              <template #timeline>
+                <ChatTimeline
+                  :timeline="timeline"
+                  :signals-log="signalsLog"
+                  :selected="selected"
+                  :spoken-text-enabled="spokenTextEnabled"
+                  @select-message="selectMessage"
+                  @select-transition="selectTransition"
+                >
+                  <template #message-actions="{ message }">
+                    <RestartFromHereButton
+                      v-if="message.role === 'user'"
+                      :disabled="isStateGone(message)"
+                      @long-press="restartAndPrefill(message)"
+                      @double-click="restartAndResend(message)"
+                    />
+                  </template>
+                </ChatTimeline>
+              </template>
+            </ChatWindow>
           </div>
-        </template>
+        </div>
+        </Transition>
       </div>
 
-      <template v-if="inspecting">
+      <Transition name="panel-slide-right">
+      <div v-if="inspecting" class="inspector-wrap">
         <div class="split-divider inspector-divider" @mousedown="startInspectorDrag"></div>
 
         <div class="inspector-panel" :style="{ '--inspector-width': inspectorWidth + 'px' }">
-          <div class="inspector-header">
-            <button
-              class="autotracking-btn"
-              :class="{ 'autotracking-btn-on': autoTrackingEnabled }"
-              :disabled="autoTrackingLoading"
-              @click="toggleAutoTracking"
-            >
-              Autotracking
-            </button>
-            <button class="close-x-btn" title="Close" @click="toggleInspect">×</button>
-          </div>
-          <div class="inspector-tabs">
-            <button
-              class="inspector-tab-btn"
-              :class="{ 'inspector-tab-btn-active': inspectorTab === 'graph' }"
-              @click="setInspectorTab('graph')"
-            >
-              State machine
-            </button>
-            <button
-              class="inspector-tab-btn"
-              :class="{ 'inspector-tab-btn-active': inspectorTab === 'signals' }"
-              @click="setInspectorTab('signals')"
-            >
-              Signals
-            </button>
-          </div>
-
-          <div class="inspector-body">
-            <div v-show="inspectorTab === 'graph'" class="inspector-graph-section">
-              <div class="inspector-graph-host-wrap">
-                <p v-if="graphLoading" class="signals-status inspector-graph-status">Loading…</p>
-                <div ref="graphHost" class="inspector-graph-host"></div>
-              </div>
-
-              <div v-if="selectedElement" class="inspector-detail-card">
-                <div class="inspector-detail-header">
-                  <div class="inspector-detail-header-top">
-                    <!-- Type badge sits right next to the title, same as
-                         Signal's own badge+name pairing (.inspector-signal-header)
-                         — only the type tag lives here, everything else
-                         (Current, Start, Final, Next, Manual, ...) is below. -->
-                    <span
-                      class="inspector-detail-badge"
-                      :class="selectedElement.kind === 'state' ? 'inspector-detail-badge-state' : 'inspector-detail-badge-action'"
-                    >
-                      {{ selectedElement.kind === 'state' ? 'State' : 'Action' }}
-                    </span>
-                    <span class="inspector-detail-title">{{ selectedElement.data.label }}</span>
-                    <button class="close-x-btn" title="Close" @click="closeGraphDetail">×</button>
-                  </div>
-
-                  <!-- One badge language for every other tag a state/action
-                       can carry (Current, Start, Final, Next, Manual, ...) —
-                       see .inspector-detail-badge and its color variants below. -->
-                  <div v-if="hasSelectedElementBadges" class="inspector-detail-badges">
-                    <template v-if="selectedElement.kind === 'state'">
-                      <span v-if="isSelectedStateCurrent" class="inspector-detail-badge inspector-detail-badge-current">
-                        Current
-                      </span>
-                      <span v-if="selectedElement.data.isStart" class="inspector-detail-badge inspector-detail-badge-start">
-                        Start
-                      </span>
-                      <span v-if="selectedElement.data.final" class="inspector-detail-badge inspector-detail-badge-final">
-                        Final
-                      </span>
-                      <span v-if="!selectedElement.data.chat" class="inspector-detail-badge inspector-detail-badge-neutral">
-                        No chat
-                      </span>
-                      <span v-if="selectedElement.data.historyCutoff" class="inspector-detail-badge inspector-detail-badge-neutral">
-                        History cutoff
-                      </span>
-                    </template>
-                    <template v-else>
-                      <span v-if="isSelectedActionNext" class="inspector-detail-badge inspector-detail-badge-next">
-                        Next
-                      </span>
-                      <span v-if="!selectedElement.data.hasTrigger" class="inspector-detail-badge inspector-detail-badge-manual">
-                        Manual
-                      </span>
-                    </template>
-                  </div>
-                </div>
-
-                <div class="inspector-detail-body">
-                  <template v-if="selectedElement.kind === 'state'">
-                    <p v-if="selectedElement.data.description" class="inspector-detail-description">
-                      {{ selectedElement.data.description }}
-                    </p>
-                    <p v-if="selectedElement.data.onEnter" class="inspector-detail-field">
-                      <strong>On enter:</strong> {{ selectedElement.data.onEnter }}
-                    </p>
-                  </template>
-                  <template v-else>
-                    <p class="inspector-detail-field">
-                      <strong>{{ selectedElement.data.source }}</strong> → <strong>{{ selectedElement.data.target }}</strong>
-                    </p>
-                    <p v-if="selectedElement.data.buttonText" class="inspector-detail-field">
-                      <strong>Button:</strong> {{ selectedElement.data.buttonText }}
-                    </p>
-                    <p v-if="selectedElement.data.trigger" class="inspector-detail-field">
-                      <strong>Trigger:</strong>
-                      <code class="inspector-detail-code">{{ selectedElement.data.trigger }}</code>
-                    </p>
-                    <p v-if="selectedElement.data.actionPrompt" class="inspector-detail-field">
-                      <strong>Action prompt:</strong> {{ selectedElement.data.actionPrompt }}
-                    </p>
-                  </template>
-
-                  <!-- Actions never carry attachments (only states/signals
-                       do — see automaton.py's Action dataclass), so this is
-                       naturally absent there; no separate branch needed. -->
-                  <div v-if="selectedElement.data.attachments?.length" class="inspector-attachments">
-                    <button
-                      v-for="(fileName, idx) in selectedElement.data.attachments"
-                      :key="fileName"
-                      class="inspector-attachment-btn"
-                      :class="{ 'inspector-attachment-btn-disabled': !files.includes(fileName) }"
-                      :disabled="!files.includes(fileName)"
-                      :title="files.includes(fileName) ? fileName : `${fileName} (not text-editable)`"
-                      @click.stop="selectFile(fileName)"
-                    >
-                      {{ attachmentLabel(idx) }}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div v-show="inspectorTab === 'signals'" class="inspector-signals-section">
-              <p v-if="signalsLoading" class="signals-status">Loading…</p>
-              <p v-else-if="!signals.length" class="signals-status">No signals defined.</p>
-              <div v-else class="inspector-signal-list">
-                <div
-                  v-for="signal in signals"
-                  :key="signal.name"
-                  class="inspector-signal-block inspector-signal-block-clickable"
-                  title="Jump to definition"
-                  @click="jumpToDefinition({ kind: 'signal', signalName: signal.name })"
-                >
-                  <div class="inspector-signal-header">
-                    <span class="inspector-detail-badge inspector-detail-badge-signal">Signal</span>
-                    <span class="inspector-signal-name">{{ signal.ui_label || signal.name }}</span>
-                  </div>
-                  <span v-if="signal.description" class="inspector-signal-description">
-                    {{ signal.description }}
-                  </span>
-
-                  <div v-if="signal.attachments?.length" class="inspector-attachments">
-                    <button
-                      v-for="(fileName, idx) in signal.attachments"
-                      :key="fileName"
-                      class="inspector-attachment-btn"
-                      :class="{ 'inspector-attachment-btn-disabled': !files.includes(fileName) }"
-                      :disabled="!files.includes(fileName)"
-                      :title="files.includes(fileName) ? fileName : `${fileName} (not text-editable)`"
-                      @click.stop="selectFile(fileName)"
-                    >
-                      {{ attachmentLabel(idx) }}
-                    </button>
-                  </div>
-
-                  <div class="inspector-signal-bar-track">
-                    <div
-                      v-if="hasSignalValue(signalValueByName[signal.name])"
-                      class="inspector-signal-bar-fill"
-                      :class="{ 'inspector-signal-bar-changed': recentlyChangedSignals.has(signal.name) }"
-                      :style="{ width: signalValueByName[signal.name].value + '%' }"
-                    ></div>
-                    <div
-                      v-else
-                      class="inspector-signal-bar-fill inspector-signal-bar-na"
-                      :class="{ 'inspector-signal-bar-changed': recentlyChangedSignals.has(signal.name) }"
-                    ></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <Inspector
+            ref="inspectorRef"
+            :project-name="projectName"
+            :highlighted-state-key="highlightedStateKey"
+            :auto-jump-on-highlight-change="true"
+            :next-action-edge="selected ? null : nextAction"
+            :fired-action-edge="firedActionEdge"
+            :signal-values="effectiveSignalValues"
+            :until-message-id="untilMessageId"
+            :env-editable="envEditable"
+            :editable-files="files"
+            @jump-to-definition="jumpToDefinition"
+            @select-attachment="selectFile"
+            @close="toggleInspect"
+          />
         </div>
-      </template>
+      </div>
+      </Transition>
     </div>
 
     <div v-if="pendingFileName" class="switch-dialog-overlay">
@@ -1331,44 +1237,6 @@ onBeforeUnmount(() => {
   background: #3d5c8a;
 }
 
-.edit-project-error-row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.6rem 1rem;
-  background: #fdecea;
-  border-bottom: 1px solid #f5c6c2;
-}
-
-.edit-project-error {
-  margin: 0;
-  color: #c62828;
-  font-size: 0.9rem;
-  flex: 1;
-}
-
-.edit-project-error-details-btn {
-  padding: 0.2rem 0.6rem;
-  border-radius: 6px;
-  border: 1px solid #c62828;
-  background: white;
-  color: #c62828;
-  cursor: pointer;
-  font-size: 0.8rem;
-}
-
-.edit-project-error-detail {
-  margin: 0;
-  padding: 0.75rem 1rem;
-  background: #fdecea;
-  border-bottom: 1px solid #f5c6c2;
-  color: #7a1f1f;
-  font-size: 0.8rem;
-  white-space: pre-wrap;
-  max-height: 200px;
-  overflow-y: auto;
-}
-
 .edit-project-body {
   flex: 1;
   display: flex;
@@ -1403,6 +1271,36 @@ onBeforeUnmount(() => {
   background: #dbe4f0;
 }
 
+.edit-project-chat-wrap {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* editorOpen is false — see the v-if/v-else... above: no fixed
+   chatHeight to honor anymore, so this (and its own chat-panel) grow to
+   fill whatever space the now-hidden top-row would have used instead. */
+.edit-project-chat-wrap-full {
+  flex: 1;
+}
+
+.edit-project-chat-wrap-full .edit-project-chat-panel {
+  flex: 1;
+  min-height: 0;
+}
+
+.panel-slide-bottom-enter-active,
+.panel-slide-bottom-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.panel-slide-bottom-enter-from,
+.panel-slide-bottom-leave-to {
+  opacity: 0;
+  transform: translateY(16px);
+}
+
 .edit-project-chat-panel {
   flex-shrink: 0;
   display: flex;
@@ -1416,7 +1314,7 @@ onBeforeUnmount(() => {
 .edit-project-chat-toolbar {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
   background: #f5f5f7;
@@ -1424,7 +1322,33 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 
-.edit-project-chat-toolbar .reset-btn {
+.edit-project-chat-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.edit-project-chat-toolbar-actions .sessions-btn {
+  padding: 0.35rem 0.9rem;
+  border-radius: 6px;
+  border: 1px solid #4a6fa5;
+  background: white;
+  color: #4a6fa5;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.edit-project-chat-toolbar-actions .sessions-btn:hover {
+  background: #4a6fa5;
+  color: white;
+}
+
+.edit-project-chat-toolbar-actions .sessions-btn-active {
+  background: #4a6fa5;
+  color: white;
+}
+
+.edit-project-header-actions .reset-btn {
   padding: 0.4rem 1rem;
   border-radius: 6px;
   border: 1px solid #c62828;
@@ -1433,7 +1357,7 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-.edit-project-chat-toolbar .reset-btn:hover {
+.edit-project-header-actions .reset-btn:hover {
   background: #c62828;
   color: white;
 }
@@ -1632,6 +1556,35 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
+.edit-project-editor-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.undo-redo-btn {
+  width: 1.8rem;
+  height: 1.8rem;
+  line-height: 1;
+  border-radius: 6px;
+  border: 1px solid #4a6fa5;
+  background: white;
+  color: #4a6fa5;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.undo-redo-btn:hover:not(:disabled) {
+  background: #eef2f9;
+}
+
+.undo-redo-btn:disabled {
+  border-color: #ccc;
+  color: #ccc;
+  cursor: not-allowed;
+}
+
 .edit-project-editor-content {
   flex: 1;
   min-height: 0;
@@ -1673,6 +1626,23 @@ onBeforeUnmount(() => {
   }
 }
 
+.inspector-wrap {
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+}
+
+.panel-slide-right-enter-active,
+.panel-slide-right-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.panel-slide-right-enter-from,
+.panel-slide-right-leave-to {
+  opacity: 0;
+  transform: translateX(16px);
+}
+
 .inspector-panel {
   position: fixed;
   inset: 0;
@@ -1698,389 +1668,34 @@ onBeforeUnmount(() => {
   }
 }
 
-.inspector-header {
+.dev-mode-toggle {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  background: #f5f5f7;
-  border-bottom: 1px solid #ddd;
-  flex-shrink: 0;
-}
-
-.inspector-tabs {
-  display: flex;
-  gap: 0.25rem;
-  padding: 0.5rem 1rem 0;
-  border-bottom: 1px solid #ddd;
-  flex-shrink: 0;
-}
-
-.inspector-tab-btn {
-  padding: 0.45rem 0.9rem;
-  border: none;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  background: none;
-  cursor: pointer;
+  gap: 0.4rem;
   font-size: 0.82rem;
   color: #666;
-}
-
-.inspector-tab-btn:hover {
-  color: #333;
-}
-
-.inspector-tab-btn-active {
-  color: #2c4d7a;
-  font-weight: 600;
-  border-bottom-color: #4a6fa5;
-}
-
-.inspector-body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  padding: 1rem;
-}
-
-.signals-status {
-  margin: 0;
-  color: #444;
-  font-size: 0.9rem;
-}
-
-.inspector-graph-section {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.inspector-graph-host-wrap {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  background: #fcfcfd;
-  overflow: hidden;
-}
-
-.inspector-graph-host {
-  width: 100%;
-  height: 100%;
-}
-
-.inspector-graph-status {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.inspector-detail-card {
-  flex-shrink: 0;
-  margin-top: 0.75rem;
-  max-height: 45%;
-  display: flex;
-  flex-direction: column;
-  border-radius: 8px;
-  border: 1px solid #eee;
-  background: #fafafa;
-  overflow: hidden;
-}
-
-.inspector-detail-header {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  padding: 0.5rem 0.6rem;
-  border-bottom: 1px solid #eee;
-  flex-shrink: 0;
-}
-
-.inspector-detail-header-top {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-/* Every tag a state/action can carry (type, Current, Start, Final, Next,
-   Manual, ...) lives in this one row, using the one badge component below
-   — same structure/alignment/position regardless of which tag it is. */
-.inspector-detail-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
-.inspector-detail-badge {
-  flex-shrink: 0;
-  font-size: 0.68rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
-  color: white;
-}
-
-.inspector-detail-badge-state {
-  background: #4a6fa5;
-}
-
-.inspector-detail-badge-action {
-  background: #8a6d3b;
-}
-
-.inspector-detail-badge-signal {
-  background: #6a4c93;
-}
-
-.inspector-detail-badge-current {
-  /* Same amber as node.current-state's overlay in renderGraph — this is
-     the one other place "this is the live current state" is shown. */
-  background: #f5a623;
-  color: #3a2600;
-}
-
-.inspector-detail-badge-start,
-.inspector-detail-badge-next {
-  /* Both read as "green = this is where the flow is/begins" — never on
-     the same card (Start is state-only, Next is action-only), so sharing
-     the hue reinforces one language instead of splitting it. */
-  background: #2e7d32;
-}
-
-.inspector-detail-badge-final {
-  background: #c62828;
-}
-
-.inspector-detail-badge-manual {
-  background: #5c6b7a;
-}
-
-.inspector-detail-badge-neutral {
-  /* Minor informational flags (No chat, History cutoff) — same component,
-     deliberately unsaturated so they read as secondary to the semantic
-     (colored) badges. */
-  background: #8a8a8a;
-}
-
-.inspector-detail-title {
-  flex: 1;
-  min-width: 0;
-  font-weight: 600;
-  font-size: 0.85rem;
-  color: #333;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* The one "×" close-panel button style, reused everywhere a panel needs
-   to close itself: the detail card (below), the Inspector's own header,
-   and the embedded chat panel's toolbar — one visual language instead of
-   a different button per panel. */
-.close-x-btn {
-  flex-shrink: 0;
-  width: 1.4rem;
-  height: 1.4rem;
-  line-height: 1;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  color: #666;
   cursor: pointer;
-  font-size: 1rem;
+  user-select: none;
 }
 
-.close-x-btn:hover {
-  background: #eee;
-}
-
-.inspector-detail-body {
-  padding: 0.6rem 0.75rem;
-  overflow-y: auto;
-  font-size: 0.8rem;
-  color: #444;
-}
-
-.inspector-detail-description {
-  margin: 0 0 0.5rem;
-  line-height: 1.4;
-}
-
-.inspector-detail-field {
-  margin: 0 0 0.4rem;
-  line-height: 1.4;
-}
-
-.inspector-detail-code {
-  font-size: 0.75rem;
-  background: #eee;
-  border-radius: 4px;
-  padding: 0.1rem 0.4rem;
-}
-
-/* Always the last thing in a box (state/action detail body, signal
-   block), left-aligned — see attachmentLabel/selectFile. */
-.inspector-attachments {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-  margin-top: 0.5rem;
-}
-
-.inspector-attachment-btn {
-  width: 1.5rem;
-  height: 1.5rem;
-  line-height: 1;
-  border-radius: 4px;
-  border: 1px solid #4a6fa5;
-  background: white;
-  color: #4a6fa5;
+.dev-mode-toggle input {
   cursor: pointer;
-  font-size: 0.72rem;
+}
+
+.dev-mode-toggle-active {
+  /* Same amber used elsewhere for "this changes normal behavior, pay
+     attention" (see .inspector-detail-badge-current) — freezing
+     transitions is a deliberate, temporary override, not the default. */
+  color: #b06a00;
   font-weight: 600;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-.inspector-attachment-btn:hover:not(:disabled) {
-  background: #4a6fa5;
-  color: white;
-}
-
-.inspector-attachment-btn-disabled {
-  border-color: #ccc;
-  color: #aaa;
+.dev-mode-toggle-disabled {
+  opacity: 0.6;
   cursor: not-allowed;
 }
 
-.inspector-attachment-btn-disabled:hover {
-  background: white;
-  color: #aaa;
-}
-
-.inspector-signals-section {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.inspector-signal-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-}
-
-.inspector-signal-block {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  padding: 0.6rem 0.75rem;
-  border-radius: 8px;
-  border: 1px solid #eee;
-  background: #fafafa;
-}
-
-.inspector-signal-block-clickable {
-  cursor: pointer;
-}
-
-.inspector-signal-block-clickable:hover {
-  border-color: #c9d6e8;
-  background: #f0f4fa;
-}
-
-.inspector-signal-header {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.inspector-signal-name {
-  font-weight: 600;
-  font-size: 0.85rem;
-  color: #333;
-}
-
-.inspector-signal-description {
-  font-size: 0.78rem;
-  color: #666;
-  line-height: 1.4;
-}
-
-.inspector-signal-bar-track {
-  margin-top: 0.4rem;
-  height: 10px;
-  border-radius: 999px;
-  background: #eee;
-  overflow: hidden;
-}
-
-.inspector-signal-bar-fill {
-  height: 100%;
-  background: #4a6fa5;
-  border-radius: 999px;
-  transition: width 0.3s ease;
-}
-
-.inspector-signal-bar-na {
-  width: 100%;
-  background: repeating-linear-gradient(45deg, #ccc, #ccc 6px, #ddd 6px, #ddd 12px);
-}
-
-@keyframes inspector-signal-bar-flash {
-  0% {
-    box-shadow: 0 0 0 0 rgba(74, 111, 165, 0.7);
-    filter: brightness(1.35);
-  }
-
-  70% {
-    box-shadow: 0 0 0 5px rgba(74, 111, 165, 0);
-  }
-
-  100% {
-    box-shadow: 0 0 0 0 rgba(74, 111, 165, 0);
-    filter: brightness(1);
-  }
-}
-
-.inspector-signal-bar-changed {
-  animation: inspector-signal-bar-flash 0.9s ease-out;
-}
-
-.autotracking-btn {
-  padding: 0.4rem 1rem;
-  border-radius: 6px;
-  border: 1px solid #999;
-  background: white;
-  color: #666;
-  cursor: pointer;
-  font-size: 0.82rem;
-}
-
-.autotracking-btn:hover:not(:disabled) {
-  background: #f0f0f0;
-}
-
-.autotracking-btn-on {
-  border-color: #2e7d32;
-  background: #2e7d32;
-  color: white;
-}
-
-.autotracking-btn-on:hover:not(:disabled) {
-  background: #256428;
-}
-
-.autotracking-btn:disabled {
-  opacity: 0.6;
+.dev-mode-toggle-disabled input {
   cursor: not-allowed;
 }
 

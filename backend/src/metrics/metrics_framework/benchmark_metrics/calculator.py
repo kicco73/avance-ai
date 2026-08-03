@@ -1,0 +1,157 @@
+from __future__ import annotations
+
+import json
+from collections.abc import Iterable
+from typing import Any
+
+import pandas as pd
+
+from .dto import BenchmarkConfiguration, BenchmarkMetricResult
+from .interfaces import BenchmarkMetric
+from .metrics import (
+    BenchmarkAccuracyMetric,
+    BenchmarkConsistencyMetric,
+    BenchmarkStabilityMetric,
+    SignalAccuracyMetric,
+    StateAccuracyMetric,
+    TransitionResponsivenessMetric,
+)
+from .observations import BenchmarkData, BenchmarkObservationBuilder
+
+
+class BenchmarkCalculator(object):
+    """Public facade for expert-ground-truth benchmark metrics."""
+
+    def __init__(
+        self,
+        db: Any,
+        username: str,
+        project_name: str,
+        configuration: BenchmarkConfiguration | None = None,
+        session_id: int | None = None,
+        metrics: Iterable[BenchmarkMetric] | None = None,
+    ) -> None:
+        """The *default* metric set is filtered down to whatever's
+        meaningful in a "one_session" context (see BenchmarkMetric.scope)
+        — every current caller (ChatService.get_benchmark_metrics, for
+        both the "Benchmark"/"Edit project" views' own Performance tabs)
+        only ever wants that, session_id given or not. An explicitly
+        passed `metrics` is used as-is, unfiltered — the caller's own
+        explicit choice, not this calculator's to second-guess."""
+        self._db = db
+        self._username = username
+        self._project_name = project_name
+        self._session_id = session_id
+        self._configuration = configuration or BenchmarkConfiguration()
+        if metrics is not None:
+            self._metrics = tuple(metrics)
+        else:
+            self._metrics = tuple(m for m in self.default_metrics() if "one_session" in m.scope)
+
+    def default_metrics(self) -> tuple[BenchmarkMetric, ...]:
+        return (
+            StateAccuracyMetric(),
+            SignalAccuracyMetric(),
+            TransitionResponsivenessMetric(),
+            BenchmarkAccuracyMetric(),
+            BenchmarkStabilityMetric(),
+            BenchmarkConsistencyMetric(self._configuration),
+        )
+
+    @property
+    def metrics(self) -> tuple[BenchmarkMetric, ...]:
+        """The metric instances calculate_all() evaluates, in the same
+        order as its own results — lets a caller (see ChatService.
+        get_benchmark_metrics) pair each BenchmarkMetricResult with its
+        own name/ui_label/ui_description without re-deriving the registry
+        itself (mirrors metrics_framework's own AnalyticsCalculator.metrics)."""
+        return self._metrics
+
+    def calculate_all(self) -> list[BenchmarkMetricResult]:
+        observations = self._build_observations()
+        return [metric.calculate(observations) for metric in self._metrics]
+
+    def calculate(self, metric: BenchmarkMetric) -> BenchmarkMetricResult:
+        return metric.calculate(self._build_observations())
+
+    def observations(self):
+        return self._build_observations()
+
+    def _build_observations(self):
+        sessions = self._load_sessions()
+        session_ids = [int(row["id"]) for row in sessions]
+        # Tracking rows loaded once per session and reused for both frames:
+        # a message's own expected_state now lives on whichever Tracking
+        # row its evaluation produced (see db.py's Tracking.message), not
+        # on the message itself — refetching per frame would just double
+        # the db calls for the exact same rows.
+        signal_rows_by_session = {session_id: self._db.get_signals(session_id) for session_id in session_ids}
+        messages = self._load_messages(session_ids, signal_rows_by_session)
+        signals = self._load_signals(session_ids, signal_rows_by_session)
+        data = BenchmarkData(
+            messages=messages,
+            sessions=self._frame(sessions, [
+                "id", "username", "project_name", "datetime_start", "datetime_end", "start_state", "end_state"
+            ]),
+            signals=signals,
+            transitions=signals.loc[signals["new_state"].notna()].copy() if not signals.empty else self._empty_signals(),
+        )
+        return BenchmarkObservationBuilder(self._configuration).build(data)
+
+    def _load_sessions(self) -> list[dict[str, object]]:
+        sessions = self._db.list_chat_sessions(self._username, self._project_name)
+        if self._session_id is None:
+            return sessions
+        return [row for row in sessions if int(row["id"]) == self._session_id]
+
+    def _load_messages(
+        self, session_ids: list[int], signal_rows_by_session: dict[int, list[dict[str, Any]]]
+    ) -> pd.DataFrame:
+        columns = ["id", "role", "content", "audio_text", "timestamp", "expected_state", "session_id"]
+        rows: list[dict[str, Any]] = []
+        for session_id in session_ids:
+            expected_state_by_message = {
+                row["message_id"]: row["expected_state"]
+                for row in signal_rows_by_session[session_id]
+                if row["message_id"] is not None
+            }
+            for message in self._db.get_messages(session_id):
+                rows.append({**message, "expected_state": expected_state_by_message.get(message["id"])})
+        if not rows:
+            return pd.DataFrame(columns=columns)
+        frame = pd.DataFrame.from_records(rows)
+        frame["session_id"] = [int(row.get("session_id", 0)) for row in rows]
+        for column in columns:
+            if column not in frame.columns:
+                frame[column] = None
+        frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True)
+        return frame[columns].sort_values(["session_id", "timestamp", "id"], kind="stable")
+
+    def _load_signals(
+        self, session_ids: list[int], signal_rows_by_session: dict[int, list[dict[str, Any]]]
+    ) -> pd.DataFrame:
+        rows: list[dict[str, Any]] = []
+        for session_id in session_ids:
+            for row in signal_rows_by_session[session_id]:
+                copied = dict(row)
+                copied["session_id"] = session_id
+                rows.append(copied)
+        columns = ["id", "timestamp", "values", "expected_values", "old_state", "action", "new_state", "session_id"]
+        if not rows:
+            return pd.DataFrame(columns=columns)
+        frame = pd.DataFrame.from_records(rows)
+        for column in columns:
+            if column not in frame.columns:
+                frame[column] = None
+        frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True)
+        return frame[columns].sort_values(["session_id", "timestamp", "id"], kind="stable")
+
+    @staticmethod
+    def _frame(rows: list[dict[str, object]], columns: list[str]) -> pd.DataFrame:
+        if not rows:
+            return pd.DataFrame(columns=columns)
+        return pd.DataFrame.from_records(rows, columns=columns)
+
+    @staticmethod
+    def _empty_signals() -> pd.DataFrame:
+        return pd.DataFrame(columns=["id", "timestamp", "values", "expected_values", "old_state", "action", "new_state", "session_id"])

@@ -1,0 +1,142 @@
+"""GET /api/projects/{name}/signals — see ProjectService.get_project_signals.
+Each signal's own `relevant` field is what the Inspector Signals tab's "show
+only relevant signals" filter reads directly, rather than re-deriving it
+client-side from raw trigger text. Scoped to `state_key`'s own outgoing
+actions (see Automaton.triggerable_signal_names) when given — the Inspector's
+own currently selected/highlighted state (or the state a selected action
+fires *from*) — falling back to every state's triggers combined (Automaton.
+all_triggerable_signal_names) otherwise.
+"""
+from __future__ import annotations
+
+import io
+import zipfile
+
+PROJECT = """
+init-action:
+  target: a
+
+signals:
+  progress:
+    definition: "How far along the exercise the user is, 0-100."
+  score:
+    definition: "The user's own score for this exercise, 0-100."
+
+states:
+  a:
+    contextual-prompt: "hi"
+    actions:
+      - name: advance
+        ui-label: Advance
+        target: b
+        trigger: "progress == 100"
+  b:
+    contextual-prompt: "bye"
+"""
+
+# Two states, each with a trigger referencing a *different* signal — the
+# minimum shape needed to prove state_key actually changes which signal
+# comes back `relevant`, not just whether the endpoint accepts the param.
+TWO_STATE_PROJECT = """
+init-action:
+  target: a
+
+signals:
+  progressSignal:
+    definition: "Relevant only to state a's own trigger."
+  moodSignal:
+    definition: "Relevant only to state b's own trigger."
+  unusedSignal:
+    definition: "Never referenced anywhere."
+
+states:
+  a:
+    contextual-prompt: "hi"
+    actions:
+      - name: advance
+        ui-label: Advance
+        target: b
+        trigger: "progressSignal == 100"
+  b:
+    contextual-prompt: "middle"
+    actions:
+      - name: finish
+        ui-label: Finish
+        target: c
+        trigger: "moodSignal >= 50"
+  c:
+    contextual-prompt: "bye"
+"""
+
+
+def _zip_of(yaml_text: str) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("index.yml", yaml_text)
+    return buffer.getvalue()
+
+
+def _upload(client, name: str, yaml_text: str):
+    response = client.put(
+        f"/api/projects/{name}", content=_zip_of(yaml_text), headers={"Content-Type": "application/zip"}
+    )
+    assert response.status_code == 200, response.text
+
+
+def test_signals_report_whether_a_trigger_references_them(client):
+    _upload(client, "relevance-test", PROJECT)
+
+    response = client.get("/api/projects/relevance-test/signals")
+
+    assert response.status_code == 200
+    by_name = {s["name"]: s for s in response.json()["signals"]}
+    assert by_name["progress"]["relevant"] is True
+    assert by_name["score"]["relevant"] is False
+
+
+def test_a_signal_referenced_only_via_env_field_is_also_relevant(client):
+    project = PROJECT.replace(
+        'trigger: "progress == 100"',
+        'trigger: "progress == 100"\n        env:\n          last_score: score',
+    )
+    _upload(client, "relevance-env-test", project)
+
+    response = client.get("/api/projects/relevance-env-test/signals")
+
+    by_name = {s["name"]: s for s in response.json()["signals"]}
+    assert by_name["score"]["relevant"] is True
+
+
+def test_without_state_key_relevance_is_every_states_triggers_combined(client):
+    _upload(client, "two-state-test", TWO_STATE_PROJECT)
+
+    response = client.get("/api/projects/two-state-test/signals")
+
+    by_name = {s["name"]: s for s in response.json()["signals"]}
+    assert by_name["progressSignal"]["relevant"] is True
+    assert by_name["moodSignal"]["relevant"] is True
+    assert by_name["unusedSignal"]["relevant"] is False
+
+
+def test_state_key_scopes_relevance_to_that_states_own_outgoing_triggers(client):
+    _upload(client, "two-state-scoped-test", TWO_STATE_PROJECT)
+
+    response_a = client.get("/api/projects/two-state-scoped-test/signals?state_key=a")
+    by_name_a = {s["name"]: s for s in response_a.json()["signals"]}
+    assert by_name_a["progressSignal"]["relevant"] is True
+    assert by_name_a["moodSignal"]["relevant"] is False
+
+    response_b = client.get("/api/projects/two-state-scoped-test/signals?state_key=b")
+    by_name_b = {s["name"]: s for s in response_b.json()["signals"]}
+    assert by_name_b["progressSignal"]["relevant"] is False
+    assert by_name_b["moodSignal"]["relevant"] is True
+
+
+def test_an_unknown_state_key_falls_back_to_every_states_triggers_combined(client):
+    _upload(client, "unknown-state-key-test", TWO_STATE_PROJECT)
+
+    response = client.get("/api/projects/unknown-state-key-test/signals?state_key=not-a-real-state")
+
+    by_name = {s["name"]: s for s in response.json()["signals"]}
+    assert by_name["progressSignal"]["relevant"] is True
+    assert by_name["moodSignal"]["relevant"] is True

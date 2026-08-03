@@ -1,0 +1,87 @@
+"""POST /api/chat/sessions/{id}/truncate — "Restart from here" (see
+ChatService.truncate_session, frontend's RestartFromHereButton.vue). The
+persistence-level cutoff behavior itself (>=, the init-row guard, the
+free state rollback) is covered by test_db_chat_truncate.py — these
+exercise the real HTTP surface: ownership, the response shape, and an
+end-to-end scenario against a real automaton.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples"
+
+
+def test_truncate_rejects_an_unknown_session(client, hello_project):
+    response = client.post("/api/chat/sessions/999999/truncate", json={"timestamp": "2026-01-01T00:00:00+00:00"})
+    assert response.status_code == 404
+
+
+def test_truncate_rejects_someone_elses_session(client, hello_project):
+    session = client.get("/api/chat/session").json()
+    # Reassign ownership directly — no endpoint exists to create another
+    # user's session.
+    from db.models import ChatSession
+
+    ChatSession.update(username="someone-else").where(ChatSession.id == session["id"]).execute()
+
+    response = client.post(f"/api/chat/sessions/{session['id']}/truncate", json={"timestamp": "2026-01-01T00:00:00+00:00"})
+    assert response.status_code == 404
+
+
+def test_truncate_rejects_a_malformed_timestamp(client, hello_project):
+    session = client.get("/api/chat/session").json()
+
+    response = client.post(f"/api/chat/sessions/{session['id']}/truncate", json={"timestamp": "not-a-timestamp"})
+
+    assert response.status_code == 400
+
+
+def test_truncate_response_shape_matches_reset(client, hello_project):
+    """Same expression as post_reset's own return (project_service.
+    get_active_state_payload()) — a StatePayload, not GET /api/state's
+    superset (which also carries the talk/listen capability flags)."""
+    session = client.get("/api/chat/session").json()
+
+    response = client.post(
+        f"/api/chat/sessions/{session['id']}/truncate", json={"timestamp": "2099-01-01T00:00:00+00:00"}
+    )
+    reset_response = client.post("/api/chat/reset")
+
+    assert response.status_code == 200
+    assert set(response.json().keys()) == set(reset_response.json().keys())
+
+
+def test_truncate_deletes_trailing_turns_and_rolls_the_live_state_back(client):
+    """End-to-end: move a real automaton away from its initial state via
+    a manual action (same project/action as test_controller_sessions.py's
+    own regression test), then truncate right at that transition's own
+    timestamp — the transition, and the state it produced, must both be
+    gone afterward, exactly as if the action had never been taken."""
+    content = (SAMPLES_DIR / "Aprendr català.zip").read_bytes()
+    resp = client.put("/api/projects/cat", content=content, headers={"Content-Type": "application/zip"})
+    assert resp.status_code == 200, resp.text
+    client.put("/api/projects/cat/activate")
+
+    session = client.get("/api/chat/session").json()
+    assert session["start_state"] == "welcome"
+
+    action_response = client.post(
+        "/api/action", json={"action_name": "unit-subjuntive", "session_id": session["id"]}
+    )
+    assert action_response.status_code == 200
+    moved_state = action_response.json()["state"]["key"]
+    assert moved_state != "welcome"
+
+    signals = client.get(f"/api/chat/sessions/{session['id']}/signals").json()
+    transition = next(s for s in signals if s["new_state"] == moved_state)
+
+    truncate_response = client.post(
+        f"/api/chat/sessions/{session['id']}/truncate", json={"timestamp": transition["timestamp"]}
+    )
+    assert truncate_response.status_code == 200
+    assert truncate_response.json()["key"] == "welcome"
+
+    assert client.get("/api/state").json()["key"] == "welcome"
+    remaining_signals = client.get(f"/api/chat/sessions/{session['id']}/signals").json()
+    assert all(s["new_state"] != moved_state for s in remaining_signals)

@@ -1,0 +1,71 @@
+# Application configuration for the Avance backend (replaces the old .env).
+# Copy this file to .config.yml and fill in your values.
+# .config.yml is gitignored (it holds secrets); this example file is not.
+
+database:
+  # Peewee connection URL (see backend/db.py). sqlite:///path.db for SQLite,
+  # mysql://user:pass@host/dbname for MySQL (requires adding a MySQL driver
+  # such as pymysql to requirements.txt — not included by default).
+  url: sqlite:///avance.db
+  # Optional, defaults to false. If true, an existing database whose
+  # on-disk schema doesn't match what this code expects (e.g. after an
+  # upgrade that renamed/removed a column) is dropped and recreated from
+  # scratch at startup instead of being left for a human to migrate or
+  # restore by hand. Destructive — every table's data is lost when this
+  # actually triggers. Leave false unless you specifically want that.
+  force-drop-and-create-when-incompatible: false
+
+chat-service:
+  # "websocket" or "rest"
+  transport: websocket
+  # Optional, defaults to 60. How long (in minutes) a chat session stays
+  # "open" — i.e. still writable — after its last activity (see
+  # chat/session_manager.py's ChatSessionManager). The single source of
+  # truth for this duration; nothing else hardcodes it.
+  max_session_duration_in_minutes: 60
+
+ai-service:
+  providers:
+    # Always a list, even with a single entry. Cascades in order (see
+    # ai/ai_service.py's AiService): the first provider is tried first,
+    # later ones are only used as a fallback if an earlier one becomes
+    # unavailable (rate limit/quota, or an outage that outlasts retries).
+    - driver: gemini
+      model: gemini-flash-lite-latest
+      key: <your-gemini-api-key>
+      # Both optional. ui-label is what the frontend's model menu shows for
+      # this entry — falls back to `driver` (e.g. "gemini") if omitted.
+      # ui-description is an optional longer blurb shown alongside it.
+      # ui-label: Gemini Flash Lite
+      # ui-description: Google's fastest Gemini model.
+
+talk-service:
+  # Optional, defaults to false (and the whole section can be omitted
+  # entirely). If not true, no TalkService is built: audio endpoints
+  # respond with TalkServiceNotAvailableError (see controller.py) instead
+  # of failing to boot for lack of a TTS provider. `providers` is only
+  # required when true.
+  enabled: true
+  providers:
+    # Same shape/cascade as ai-service, but a fully independent provider
+    # roster and fallback pointer (see talk/talk_service.py's
+    # TalkService) — even when it happens to reuse the same key as
+    # ai-service, as here. `key` is optional: a future local provider
+    # (e.g. Piper) won't need one.
+    - driver: gemini
+      model: gemini-2.5-flash-preview-tts
+      key: <your-gemini-api-key>
+      # ui-label/ui-description: same optional fields as ai-service above.
+
+listen-service:
+  # Same optional, default-off shape as talk-service.enabled — see above.
+  enabled: true
+  providers:
+    # Same shape/cascade as ai-service/talk-service. faster-whisper is
+    # fully local (no key needed) and downloads/caches its own model on
+    # first use — nothing to place by hand. `language` is optional: if
+    # given, skips faster-whisper's own autodetect.
+    - driver: faster-whisper
+      model: small
+      language: ca
+      # ui-label/ui-description: same optional fields as ai-service above.

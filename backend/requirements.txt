@@ -9,3 +9,9 @@ faster-whisper>=1.0
 simpleeval>=1.0
 peewee>=3.17
 python-multipart>=0.0.9
+openai
+pandas>=2.2
+numpy>=1.26
+pytest>=8.0
+pytest-asyncio>=0.24
+partial_json_parser

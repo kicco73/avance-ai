@@ -1,16 +1,20 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import ChatWindow from './components/ChatWindow.vue'
+import ChatWindow from './components/chat/ChatWindow.vue'
 import StateBar from './components/StateBar.vue'
 import EditProjectView from './components/EditProjectView.vue'
+import BenchmarkProjectView from './components/BenchmarkProjectView.vue'
 import ProjectsMenu from './components/ProjectsMenu.vue'
 import SplashScreen from './components/SplashScreen.vue'
+import ErrorBanner from './components/ErrorBanner.vue'
 import {
   getState,
   putProject,
   activateProject,
   deleteProject,
-  downloadProject
+  downloadProject,
+  getBackup,
+  postRestoreBackup
 } from './api.js'
 import { disconnect as disconnectChat } from './chatClient.js'
 import { clearApiError } from './errorStore.js'
@@ -20,11 +24,16 @@ import {
   handleStateChange,
   loadMessages,
   loadAutoTracking,
-  clearChatUi
+  loadAiModels,
+  clearChatUi,
+  sessionsPanelOpen,
+  toggleSessionsPanel
 } from './chatStore.js'
 
 const showEditProject = ref(false)
 const editProjectName = ref(null)
+const showBenchmarkProject = ref(false)
+const benchmarkProjectName = ref(null)
 const modelUploadInput = ref(null)
 const projectsMenu = ref(null)
 
@@ -77,6 +86,7 @@ function bootSucceeded() {
   clearApiError()
   loadMessages()
   loadAutoTracking()
+  loadAiModels()
   // No proactive chat-socket connect here: chatClient.js connects lazily
   // on the first sendMessage() call, and the opening message (if any) is
   // already covered by loadMessages() above — it's persisted server-side
@@ -151,6 +161,11 @@ function handleModelEdit(projectName) {
   showEditProject.value = true
 }
 
+function handleModelBenchmark(projectName) {
+  benchmarkProjectName.value = projectName
+  showBenchmarkProject.value = true
+}
+
 async function handleModelEditSaved() {
   clearChatUi()
   try {
@@ -194,13 +209,49 @@ async function handleModelDownload(projectName) {
   }
 }
 
-// Deleting the active model always falls back to "default" backend-side, so
-// this behaves the same as a successful switch/upload — reload state, clear
-// the chat.
+// Deleting the active model falls back to whatever project's left
+// backend-side (or none at all — see the "no-project" splash below), so
+// this behaves the same as a successful switch/upload either way — reload
+// state, clear the chat.
 async function handleModelDelete(projectName) {
   clearChatUi()
   try {
     await deleteProject(projectName)
+    await refreshStateAndProjects()
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+// Whole-database download (every project, session, message, signal — not
+// scoped to the active project), unlike handleModelDownload's per-project
+// zip. No UI state changes on success, same reasoning as that one.
+async function handleDownloadBackup() {
+  try {
+    const blob = await getBackup()
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'avance-backup.sqlite'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+    alert('Backup downloaded to your local folder.')
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+// Replaces the entire working database server-side — every project,
+// session, and message the server currently has is gone either way, so
+// this needs the same explicit confirmation as handleReset (chatStore.js),
+// then the same reload-everything path as switch/upload/delete.
+async function handleRestoreBackup(file) {
+  if (!window.confirm('Restore this backup? This replaces the entire working database (all projects, sessions, and messages) and cannot be undone.')) return
+  clearChatUi()
+  try {
+    await postRestoreBackup(file)
     await refreshStateAndProjects()
   } catch {
     // already surfaced via apiFetch
@@ -218,20 +269,33 @@ onBeforeUnmount(() => {
   <!-- 'checking' (the invisible first ping) renders neither branch, on
        purpose: nothing should flash before we know whether the backend was
        already up. -->
-  <SplashScreen v-if="bootStatus === 'waiting'" />
-  <SplashScreen v-else-if="bootStatus === 'failed'" failed @retry="startBootSequence" />
+  <SplashScreen v-if="bootStatus === 'waiting'" variant="connecting" />
+  <SplashScreen v-else-if="bootStatus === 'failed'" variant="failed" @retry="startBootSequence" />
 
   <div v-else-if="bootStatus === 'ready'" class="app">
     <header class="topbar">
       <StateBar :state="state" />
       <div class="topbar-actions">
+        <button
+          type="button"
+          class="sessions-btn"
+          :class="{ 'sessions-btn-active': sessionsPanelOpen }"
+          :disabled="!state?.key"
+          title="Sessions"
+          @click="toggleSessionsPanel"
+        >
+          Sessions
+        </button>
         <ProjectsMenu
           ref="projectsMenu"
           @select="handleProjectSwitch"
           @edit="handleModelEdit"
+          @benchmark="handleModelBenchmark"
           @upload="triggerModelUpload"
           @download="handleModelDownload"
           @delete="handleModelDelete"
+          @download-backup="handleDownloadBackup"
+          @restore-backup="handleRestoreBackup"
         />
         <input
           ref="modelUploadInput"
@@ -243,8 +307,11 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
+    <ErrorBanner />
+
     <div class="app-body">
-      <ChatWindow />
+      <SplashScreen v-if="!state?.key" variant="no-project" embedded />
+      <ChatWindow v-else />
     </div>
 
     <EditProjectView
@@ -252,6 +319,13 @@ onBeforeUnmount(() => {
       :project-name="editProjectName"
       @close="showEditProject = false"
       @saved="handleModelEditSaved"
+      @download="handleModelDownload"
+    />
+
+    <BenchmarkProjectView
+      v-if="showBenchmarkProject"
+      :project-name="benchmarkProjectName"
+      @close="showBenchmarkProject = false"
     />
   </div>
 </template>
@@ -283,9 +357,39 @@ onBeforeUnmount(() => {
 .topbar-actions {
   display: flex;
   gap: 0.5rem;
+  /* StateBar renders nothing at all when there's no active project (see
+     its own v-if="state?.key") — margin-left: auto keeps this pinned to
+     the right on its own, rather than relying on .topbar's
+     justify-content: space-between, which only works with two flex
+     children and collapses to the left with just this one. */
+  margin-left: auto;
 }
 
 .upload-model-input {
   display: none;
+}
+
+.sessions-btn {
+  padding: 0.4rem 1rem;
+  border-radius: 6px;
+  border: 1px solid #4a6fa5;
+  background: white;
+  color: #4a6fa5;
+  cursor: pointer;
+}
+
+.sessions-btn:hover:not(:disabled) {
+  background: #4a6fa5;
+  color: white;
+}
+
+.sessions-btn-active {
+  background: #4a6fa5;
+  color: white;
+}
+
+.sessions-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>

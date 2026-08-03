@@ -2,17 +2,27 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { getProjects } from '../api.js'
 
-const DEFAULT_PROJECT_NAME = 'default'
-
-const emit = defineEmits(['select', 'edit', 'upload', 'download', 'delete'])
+const emit = defineEmits(['select', 'edit', 'benchmark', 'upload', 'download', 'delete', 'download-backup', 'restore-backup'])
 
 const open = ref(false)
 const loading = ref(false)
 const projects = ref([])
 const activeProjectName = ref(null)
 const rootEl = ref(null)
+const restoreInput = ref(null)
 
-const deleteDisabled = computed(() => activeProjectName.value === DEFAULT_PROJECT_NAME)
+// Edit/delete act on the active project — meaningless once there's
+// nothing to select at all. No project name (not even "default") is
+// reserved or protected from deletion anymore (see ProjectService.
+// delete_project) — deleting the last one leaves the app on its own
+// "select a project" empty state (see App.vue), not an error.
+const noProjectsAvailable = computed(() => projects.value.length === 0)
+const editDisabled = computed(() => noProjectsAvailable.value)
+// Same condition as Edit — a valid project must be loaded (see the
+// "Label sessions" spec: "Abilitato solo quando è caricato un progetto
+// valido, analogamente a 'Edit project'").
+const benchmarkDisabled = computed(() => noProjectsAvailable.value)
+const deleteDisabled = computed(() => noProjectsAvailable.value)
 
 // The single fetch behind both the menu's tick and the button's own label —
 // called on mount (so the button already shows the right name before the
@@ -49,13 +59,16 @@ function selectProject(name) {
   open.value = false
   emit('select', name)
 }
-
-// Edits the active project, same target as selectDownload() — there's no
-// other project selected in this menu to edit instead.
 function selectEdit() {
-  if (!activeProjectName.value) return
+  if (editDisabled.value || !activeProjectName.value) return
   open.value = false
   emit('edit', activeProjectName.value)
+}
+
+function selectBenchmark() {
+  if (benchmarkDisabled.value || !activeProjectName.value) return
+  open.value = false
+  emit('benchmark', activeProjectName.value)
 }
 
 function selectUpload() {
@@ -63,10 +76,21 @@ function selectUpload() {
   emit('upload')
 }
 
-function selectDownload() {
-  if (!activeProjectName.value) return
+function selectDownloadBackup() {
   open.value = false
-  emit('download', activeProjectName.value)
+  emit('download-backup')
+}
+
+function selectRestoreBackup() {
+  open.value = false
+  restoreInput.value?.click()
+}
+
+function handleRestoreFileChange(event) {
+  const file = event.target.files?.[0]
+  event.target.value = '' // allow re-selecting the same file afterward
+  if (!file) return
+  emit('restore-backup', file)
 }
 
 // Destructive and irreversible, so confirm via the browser's own dialog
@@ -109,13 +133,25 @@ onBeforeUnmount(() => {
           </button>
         </li>
         <li>
-          <button class="projects-item projects-edit-item" @click="selectEdit">Edit project</button>
+          <button
+            class="projects-item projects-edit-item"
+            :disabled="editDisabled"
+            @click="selectEdit"
+          >
+            Edit project
+          </button>
+        </li>
+        <li>
+          <button
+            class="projects-item projects-edit-item"
+            :disabled="benchmarkDisabled"
+            @click="selectBenchmark"
+          >
+            Label sessions
+          </button>
         </li>
         <li>
           <button class="projects-item projects-upload-item" @click="selectUpload">Upload project...</button>
-        </li>
-        <li>
-          <button class="projects-item projects-download-item" @click="selectDownload">Download project</button>
         </li>
         <li>
           <button
@@ -126,8 +162,26 @@ onBeforeUnmount(() => {
             Delete project
           </button>
         </li>
+        <li>
+          <button class="projects-item projects-backup-item" @click="selectDownloadBackup">
+            Download backup
+          </button>
+        </li>
+        <li>
+          <button class="projects-item projects-restore-item" @click="selectRestoreBackup">
+            Restore backup...
+          </button>
+        </li>
       </ul>
     </div>
+
+    <input
+      ref="restoreInput"
+      type="file"
+      accept=".sqlite"
+      class="restore-backup-input"
+      @change="handleRestoreFileChange"
+    />
   </div>
 </template>
 
@@ -208,11 +262,12 @@ onBeforeUnmount(() => {
   color: #4a6fa5;
 }
 
-.projects-upload-item {
-  color: #4a6fa5;
+.projects-edit-item:disabled {
+  color: #ccc;
+  cursor: not-allowed;
 }
 
-.projects-download-item {
+.projects-upload-item {
   color: #4a6fa5;
 }
 
@@ -223,5 +278,18 @@ onBeforeUnmount(() => {
 .projects-delete-item:disabled {
   color: #ccc;
   cursor: not-allowed;
+}
+
+.projects-backup-item {
+  border-top: 1px solid #eee;
+  color: #4a6fa5;
+}
+
+.projects-restore-item {
+  color: #4a6fa5;
+}
+
+.restore-backup-input {
+  display: none;
 }
 </style>

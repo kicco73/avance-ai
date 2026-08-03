@@ -1,24 +1,44 @@
 import { nextTick, ref } from 'vue'
 import {
+  getCurrentSession,
+  postCreateSession,
+  getSessions,
+  deleteSession,
   getMessages,
   postAction,
   getAutoTracking,
   postAutoTracking,
+  getAiModels,
+  postAiModelSelection,
   messageAudioUrl,
   postListenTranscribe,
-  postReset
+  postReset,
+  postTruncateSession
 } from './api.js'
 import { sendMessage as sendChatMessage } from './chatClient.js'
 import { playMessageChime, playMessageAudio } from './audio.js'
 import { celebrate } from './confetti.js'
 import { clearApiError } from './errorStore.js'
 
-// The single shared conversation — every chat view (the main app's, see
-// App.vue, and the "Edit project" view's embedded one, see
-// EditProjectView.vue) is just a render of this same state: ChatWindow.vue
-// reads everything here directly instead of taking it as props, so a
-// message/action/reset from either view is instantly reflected in both.
 export const state = ref(null)
+// The chat conversation's current session_id (see backend's
+// ChatSessionManager) — null until the first loadMessages()/ensureSession()
+// bootstrap. Every write call must carry it; the backend still resolves
+// the true writable session itself and this is kept in sync from each
+// response's own session_id (see submitMessage/handleAction).
+export const currentSessionId = ref(null)
+// Whether the session currently displayed accepts new messages — always
+// true after the normal bootstrap/send/new-session flows (a session that
+// was just touched is the active one by definition — see
+// ChatSessionManager: at most one session is ever active per project, the
+// most recently started *open* one, so "active" and "open" aren't the
+// same thing), set to the backend's own `active` flag only when the user
+// picks a session from the sessions panel (see selectSession) — never
+// computed client-side.
+export const selectedSessionActive = ref(true)
+export const sessions = ref([])
+export const sessionsLoading = ref(false)
+export const sessionsPanelOpen = ref(false)
 export const messages = ref([])
 export const historyLoaded = ref(false)
 export const chatLoading = ref(false)
@@ -26,30 +46,18 @@ export const chatStatus = ref('')
 export const actionLoading = ref(false)
 export const autoTrackingEnabled = ref(true)
 export const autoTrackingLoading = ref(false)
-// The chat input box's own draft text — shared like everything else above,
-// so typing in one view's input shows up in the other's too.
+
+export const aiModels = ref([])
+export const aiModelAuto = ref(true)
+export const aiModelCurrentIndex = ref(0)
+export const aiModelSelectionLoading = ref(false)
 export const draft = ref('')
 
-// Pure frontend state — the backend generates audio on demand whenever
-// this is on, no persisted toggle server-side (see maybeAutoPlayAudio).
 export const audioEnabled = ref(false)
-// Whether the server actually has talk-service/listen-service configured
-// (see backend/.config.yml's `enabled`) — set once via setCapabilities()
-// from App.vue's boot ping and never touched again: unlike `state`, this
-// isn't per-turn data, so it must not be overwritten by a later chat/
-// action response that doesn't carry these fields at all.
 export const talkAvailable = ref(true)
 export const micAvailable = ref(true)
-// When on, assistant bubbles show audio_text (the short narrated phrase,
-// see backend's [audio] tag) instead of the full reply — purely a display
-// switch, no playback triggered (see toggleSpokenText).
 export const spokenTextEnabled = ref(false)
 
-// Bumped at the end of every turn (chat/action/reset), even one that
-// didn't change `state` — a signal value can shift without a transition.
-// External UI that needs to react to "something happened" (e.g.
-// EditProjectView.vue's Inspector, keeping its graph/signals live) watches
-// this instead of the store reaching into that UI directly.
 export const turnCount = ref(0)
 
 let nextMessageId = 0
@@ -63,45 +71,161 @@ export function setCapabilities({ talkAvailable: talk, micAvailable: mic }) {
   micAvailable.value = mic
 }
 
-export function handleStateChange(newState) {
-  const changed = state.value?.key !== newState.key
+// `onEnter` is the *fired action's* own "on-enter" (see backend's
+// automaton.Action.on_enter, sent over the wire as "on-enter" — see
+// chat_service.py's apply_manual_action/_process_turn_locked) — not part
+// of `newState` itself, since on-enter now describes how a state was
+// entered, not the state itself. Callers with no actual transition to
+// report (session load, boot ping, reset, restart-from-here) simply omit
+// it — undefined never celebrates.
+export function handleStateChange(newState, onEnter) {
+  const changed = state.value?.key !== newState?.key
   state.value = newState
-  // Only on an actual transition into the state, never on a redundant
-  // re-fetch of the one we're already in (e.g. the boot ping, or any other
-  // GET /api/state call that happens to return the same state) — otherwise
-  // celebrate() would refire every time this runs.
-  if (changed && newState?.on_enter === 'celebrate') {
+  if (changed && onEnter === 'celebrate') {
     celebrate()
   }
 }
 
-// Redisplays whatever conversation the backend already persisted (e.g.
-// across a backend restart) — session.history server-side is otherwise only
-// ever used internally to build LLM calls, never pushed to the client.
+// Shape every backend message row (id, role, content, audio_text,
+// timestamp) into what the chat UI actually renders (see MessageBubble.
+// vue/ChatTimeline.vue) — shared by every place that (re)loads a
+// session's full history from scratch (loadMessages/selectSession/
+// reloadMessages), so there's exactly one mapping to keep in sync with
+// the backend's own row shape.
+function toStoreMessage(m) {
+  return { role: m.role, content: m.content, audioText: m.audio_text, timestamp: m.timestamp, failed: false, messageId: m.id }
+}
+
+async function ensureSession() {
+  const session = await getCurrentSession(currentSessionId.value)
+  currentSessionId.value = session.id
+  selectedSessionActive.value = session.active
+  return session.id
+}
+
 export async function loadMessages() {
   try {
-    const history = await getMessages()
-    messages.value = history.map((m) => ({
-      role: m.role,
-      content: m.content,
-      audioText: m.audio_text,
-      failed: false,
-      messageId: m.id
-    }))
+    const sessionId = await ensureSession()
+    const history = await getMessages(sessionId)
+    messages.value = history.map(toStoreMessage)
+    // Whichever project just became active, the sessions panel (if open)
+    // was still showing the *previous* project's list (or the empty one
+    // clearChatUi leaves it in) — without this, switching projects looks
+    // like it wiped the sessions, when nothing server-side was touched.
+    if (sessionsPanelOpen.value) await loadSessions()
   } catch {
     // already surfaced via apiFetch
   } finally {
-    // Gates ChatWindow's bump-in animation (see its historyLoaded usage):
-    // this hydration is async, so it lands well after ChatWindow has
-    // already mounted — without this flag every history row would still
-    // read as "just added" the moment it arrives. Setting `messages` and
-    // `historyLoaded` in the very same tick isn't enough on its own: Vue
-    // batches both changes into one render, so TransitionGroup would see
-    // the *new* name already in effect for the very update that adds the
-    // history rows. Waiting a tick lets that first render (still gated by
-    // the old, unstyled name) flush before the flag flips.
     await nextTick()
     historyLoaded.value = true
+  }
+}
+
+export async function loadSessions() {
+  sessionsLoading.value = true
+  try {
+    sessions.value = await getSessions()
+  } catch {
+    // already surfaced via apiFetch
+  } finally {
+    sessionsLoading.value = false
+  }
+}
+
+// Same fetch as loadSessions, but never touches sessionsLoading — for a
+// caller that just wants `sessions` (e.g. its own has_annotations flags)
+// brought current in the background, without flashing the shared Sessions
+// panel (main page, EditProjectView, BenchmarkProjectView all read the
+// same sessionsLoading) to its "Loading…" placeholder over something the
+// user never asked to reload.
+export async function refreshSessionsQuietly() {
+  try {
+    sessions.value = await getSessions()
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+export async function toggleSessionsPanel() {
+  sessionsPanelOpen.value = !sessionsPanelOpen.value
+  if (sessionsPanelOpen.value) {
+    await loadSessions()
+  }
+}
+
+// Switches the chat view to a specific past/present session, read directly
+// (never through ensureSession/get_or_create_current_session — picking an
+// old session must show *that* session's own history, not silently land
+// on whichever one the backend considers "current"). `active` comes
+// straight off the sessions-list entry the user clicked — the backend's
+// own verdict, never recomputed here (a session can be individually
+// "open" without being the active one — see ChatSessionManager).
+export async function selectSession(session) {
+  if (session.id === currentSessionId.value) return
+  currentSessionId.value = session.id
+  selectedSessionActive.value = session.active
+  messages.value = []
+  historyLoaded.value = false
+  try {
+    const history = await getMessages(session.id)
+    messages.value = history.map(toStoreMessage)
+  } catch {
+    // already surfaced via apiFetch
+  } finally {
+    await nextTick()
+    historyLoaded.value = true
+  }
+}
+
+// Re-fetches the current session's own message history from scratch,
+// in place — unlike selectSession, never a no-op for "already the
+// current session" (that's exactly the case this exists for: the
+// session itself hasn't changed, but what's *in* it just did — see
+// handleTruncateFrom).
+export async function reloadMessages() {
+  if (currentSessionId.value == null) return
+  try {
+    messages.value = (await getMessages(currentSessionId.value)).map(toStoreMessage)
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+// "Restart from here" (EditProjectView.vue's own chat only — see
+// RestartFromHereButton.vue): deletes every message at/after `timestamp`
+// in the current session, and rolls the live state back to match, then
+// refreshes every piece of local state that depended on any of it.
+// Callers decide what happens next with the cut-off message's own text
+// (preload into the draft, or resend outright) — this only ever performs
+// the truncation itself.
+export async function handleTruncateFrom(timestamp) {
+  if (currentSessionId.value == null) return
+  try {
+    const newState = await postTruncateSession(currentSessionId.value, timestamp)
+    await reloadMessages()
+    state.value = null
+    handleStateChange(newState)
+    bumpTurn()
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+// Deletes a session and everything in it server-side (see
+// db.delete_chat_session). If it was the one currently displayed, falls
+// back to the same bootstrap loadMessages() uses on first load — there's
+// no specific session left to keep showing.
+export async function handleDeleteSession(session) {
+  if (!window.confirm(`Delete this session (${session.end_state})? This cannot be undone.`)) return
+  try {
+    await deleteSession(session.id)
+    if (session.id === currentSessionId.value) {
+      currentSessionId.value = null
+      await loadMessages()
+    }
+    await loadSessions()
+  } catch {
+    // already surfaced via apiFetch
   }
 }
 
@@ -126,6 +250,36 @@ export async function toggleAutoTracking() {
   }
 }
 
+// Applies the {auto, current_index, models} shape returned by both
+// GET /api/ai/models and POST /api/ai/models/selection, and — piggybacked
+// on every chat-turn/action response as `ai_model` (see chat_service.py) —
+// keeps this in sync whenever a turn's own AI call causes the backend's
+// cascade to fall back to a different model, with no extra round trip.
+function applyAiModelInfo(info) {
+  aiModels.value = info.models
+  aiModelAuto.value = info.auto
+  aiModelCurrentIndex.value = info.current_index
+}
+
+export async function loadAiModels() {
+  try {
+    applyAiModelInfo(await getAiModels())
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+export async function selectAiModel(index) {
+  aiModelSelectionLoading.value = true
+  try {
+    applyAiModelInfo(await postAiModelSelection(index))
+  } catch {
+    // already surfaced via apiFetch
+  } finally {
+    aiModelSelectionLoading.value = false
+  }
+}
+
 export function toggleAudio() {
   audioEnabled.value = !audioEnabled.value
   if (audioEnabled.value) {
@@ -134,25 +288,15 @@ export function toggleAudio() {
   }
 }
 
-// Purely a display switch — flipping it doesn't touch playback, only
-// which text ChatWindow renders for assistant bubbles. Reactivity alone
-// re-renders every bubble in every open view.
 export function toggleSpokenText() {
   spokenTextEnabled.value = !spokenTextEnabled.value
 }
 
-// Fires the automatic narration for the last message a turn produced —
-// same call regardless of which transport delivered it and a no-op if the
-// toggle is off or the message has no id to look up.
 function maybeAutoPlayAudio(messageId) {
   if (!audioEnabled.value || messageId == null) return
   playMessageAudio(messageAudioUrl(messageId))
 }
 
-// Looks the message back up by id through the reactive `messages` array
-// (rather than mutating whatever reference the caller passed in) so the
-// assignment goes through Vue's reactive proxy and updates the UI
-// immediately in every open view.
 function setMessageFailed(id, failed) {
   const target = messages.value.find((m) => m.id === id)
   if (target) target.failed = failed
@@ -162,34 +306,122 @@ async function submitMessage(message) {
   clearApiError()
   setMessageFailed(message.id, false)
   chatLoading.value = true
+
+  // Creiamo subito la bolla dell'assistente che accoglierà i chunk in tempo reale
+  const assistantMsgId = ++nextMessageId
+  const assistantMsg = {
+    id: assistantMsgId,
+    role: 'assistant',
+    content: '',
+    audioText: null,
+    messageId: null,
+    timestamp: new Date().toISOString()
+  }
+  messages.value.push(assistantMsg)
+
   try {
-    // sendChatMessage() (chatClient.js) tries the websocket first and falls
-    // back to REST transparently — this code never knows which one ran.
-    const result = await sendChatMessage(message.content, {
-      onStatus: (text) => { chatStatus.value = text }
+    // Passiamo le callback onStatus e onChunk a sendChatMessage
+    const result = await sendChatMessage(message.content, currentSessionId.value, {
+      onStatus: (text) => {
+        chatStatus.value = text
+      },
+      onChunk: (chunkText) => {
+        // Troviamo l'indice del messaggio e aggiorniamo il valore creando un nuovo oggetto per scatenare la reattività di Vue
+        const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
+        if (idx !== -1) {
+          messages.value[idx] = {
+            ...messages.value[idx],
+            content: messages.value[idx].content + chunkText
+          }
+        }
+      }
     })
-    // result.reply is an array of {id, content}: normally one bubble, but
-    // a mid-turn auto-tracking transition into a fresh state can
-    // prepend/append that state's own opening message alongside the
-    // turn's own reply — one bubble per element, in the order the
-    // backend produced them.
-    for (const { id, content, audio_text } of result.reply) {
-      messages.value.push({ role: 'assistant', content, audioText: audio_text, messageId: id })
+
+    // Correla questa bolla con il suo vero id lato backend — serve a
+    // ChatTimeline/benchmarkTimeline.js's effectiveTimestamp per
+    // posizionare una transizione pre-turno (autotracking_on_user_
+    // message) esattamente su questo messaggio invece di ricadere sul
+    // timestamp grezzo lato server, confrontato — a torto — con
+    // l'orologio client della bolla assistant (vedi EditProjectView.vue's
+    // rawLiveMessages).
+    if (result.user_message_id != null) message.messageId = result.user_message_id
+
+    // Alla ricezione del frame 'done':
+    if (result.reply && result.reply.length > 0) {
+      // Solo l'entry a cui punta esplicitamente il backend (se c'è — una
+      // transizione pre-turno può spostarsi in uno stato che non chatta
+      // affatto, vedi TurnProcessor.process's own early exit) è *la*
+      // risposta AI già trasmessa in streaming in questa bolla;
+      // qualunque altra entry in result.reply è un messaggio di
+      // transizione separato (action_prompt/opening message) e merita
+      // una propria bolla nuova — reply[0] non è affidabile: una
+      // transizione pre-turno può precedere la vera risposta AI
+      // nell'array.
+      const liveReplyIndex = result.reply.findIndex((r) => r.id === result.assistant_message_id)
+      const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
+
+      if (idx !== -1) {
+        if (liveReplyIndex !== -1) {
+          const liveReply = result.reply[liveReplyIndex]
+          // Assegniamo l'ID definitivo e l'audio_text alla bolla che ha raccolto lo streaming
+          messages.value[idx] = {
+            ...messages.value[idx],
+            messageId: liveReply.id,
+            audioText: liveReply.audio_text,
+            // Sincronizziamo con il contenuto restituito dal server se fornito
+            content: liveReply.content || messages.value[idx].content
+          }
+        } else {
+          // Nessuna risposta AI live questo turno — niente è mai stato
+          // trasmesso in questa bolla, quindi la rimuoviamo invece di
+          // lasciarla vuota e orfana.
+          messages.value.splice(idx, 1)
+        }
+      }
+
+      // Ogni altro messaggio nella risposta (es. cambio di stato) diventa una bolla propria
+      result.reply.forEach((entry, i) => {
+        if (i === liveReplyIndex) return
+        messages.value.push({
+          role: 'assistant',
+          content: entry.content,
+          audioText: entry.audio_text,
+          messageId: entry.id,
+          timestamp: new Date().toISOString()
+        })
+      })
     }
-    // Only for a freshly arrived AI reply — never for the user's own sent
-    // message, and never for history loaded at boot/reset (this only ever
-    // runs from a live chat turn just completing).
+
     playMessageChime()
-    // Narrates only the LAST bubble of the turn — only that one can have
-    // an [audio] tag (see backend/chat/chat_service.py's _extract_audio_tag).
-    if (result.reply.length) maybeAutoPlayAudio(result.reply[result.reply.length - 1].id)
-    handleStateChange(result.state)
+
+    if (result.reply && result.reply.length > 0) {
+      maybeAutoPlayAudio(result.reply[result.reply.length - 1].id)
+    }
+
+    if (result.state) {
+      handleStateChange(result.state, result['on-enter'])
+    }
+    if (result.ai_model) {
+      applyAiModelInfo(result.ai_model)
+    }
+    if (result.session_id != null) {
+      // A turn always lands on a session it just touched (see
+      // ChatSessionManager) — open by definition.
+      currentSessionId.value = result.session_id
+      selectedSessionActive.value = true
+    }
+    if (sessionsPanelOpen.value) loadSessions()
     bumpTurn()
-  } catch {
-    // Already surfaced via the websocket handler or apiFetch (see
-    // chatClient.js) — this only has to update this specific message's
-    // own status, synchronously with the outcome.
+  } catch (err) {
+    // In caso di errore durante l'invio, rimuoviamo la bolla vuota/incompleta
+    const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
+    if (idx !== -1) messages.value.splice(idx, 1)
+
     setMessageFailed(message.id, true)
+    // 409 = the backend rejected this exact session_id as closed (see
+    // ChatSessionManager.require_open_session) — reflect that immediately
+    // so the input disables and action buttons hide without a reload.
+    if (err.status === 409) selectedSessionActive.value = false
   } finally {
     chatLoading.value = false
     chatStatus.value = ''
@@ -197,24 +429,16 @@ async function submitMessage(message) {
 }
 
 export async function handleSend(text) {
-  const message = { id: ++nextMessageId, role: 'user', content: text, failed: false }
+  const message = { id: ++nextMessageId, role: 'user', content: text, failed: false, timestamp: new Date().toISOString() }
   messages.value.push(message)
   await submitMessage(message)
 }
 
-// Removes the placeholder bubble outright (rather than marking it
-// failed): with no transcribed text there's nothing a resend could
-// retry, so the existing failed/resend affordance doesn't fit here.
 function dropVoicePlaceholder(id) {
   const idx = messages.value.findIndex((m) => m.id === id)
   if (idx !== -1) messages.value.splice(idx, 1)
 }
 
-// The mic button's whole point: the transcribed text is never staged in
-// `draft` for review — a user-side placeholder (same waiting style as the
-// assistant's own, see ChatWindow's bubble-loading) stands in for it while
-// transcription runs, then becomes the real sent message in place, same
-// id and same failed/resend lifecycle as a typed one (see submitMessage).
 export async function handleVoiceMessage(audioBlob) {
   const message = { id: ++nextMessageId, role: 'user', content: '', failed: false, transcribing: true }
   messages.value.push(message)
@@ -224,7 +448,6 @@ export async function handleVoiceMessage(audioBlob) {
     const result = await postListenTranscribe(audioBlob)
     text = result.text?.trim()
   } catch {
-    // Already surfaced via apiFetch.
     dropVoicePlaceholder(message.id)
     return
   }
@@ -248,35 +471,49 @@ export async function handleResend(index) {
 export async function handleAction(actionName) {
   actionLoading.value = true
   try {
-    // {state, reply}: reply is the destination state's own opening
-    // message, same {id, content} array shape as a normal turn's (see
-    // submitMessage) — empty if it already had something to say since
-    // its own cutoff.
-    const result = await postAction(actionName)
+    const result = await postAction(actionName, currentSessionId.value)
     for (const { id, content, audio_text } of result.reply) {
-      messages.value.push({ role: 'assistant', content, audioText: audio_text, messageId: id })
+      messages.value.push({
+        role: 'assistant',
+        content,
+        audioText: audio_text,
+        messageId: id,
+        timestamp: new Date().toISOString()
+      })
     }
     if (result.reply.length) {
       playMessageChime()
       maybeAutoPlayAudio(result.reply[result.reply.length - 1].id)
     }
-    handleStateChange(result.state)
+    handleStateChange(result.state, result['on-enter'])
+    if (result.ai_model) {
+      applyAiModelInfo(result.ai_model)
+    }
+    if (result.session_id != null) {
+      currentSessionId.value = result.session_id
+      selectedSessionActive.value = true
+    }
+    if (sessionsPanelOpen.value) loadSessions()
     bumpTurn()
-  } catch {
+  } catch (err) {
     // already surfaced via apiFetch
+    if (err.status === 409) selectedSessionActive.value = false
   } finally {
     actionLoading.value = false
   }
 }
 
-// Optimistic UI clear shared by every path that's about to leave the
-// backend with a freshly reset active project — a manual reset (below) and
-// every project switch/upload/delete driven by App.vue.
 export function clearChatUi() {
   messages.value = []
   clearApiError()
   chatStatus.value = ''
   autoTrackingEnabled.value = true
+  // reset_project/reset_all wipe ChatSession rows too (see db.py) — a
+  // stale id here would just be ignored server-side, but a project
+  // switch is exactly when "the current session" should be re-resolved.
+  currentSessionId.value = null
+  selectedSessionActive.value = true
+  sessions.value = []
 }
 
 export async function handleReset() {
@@ -287,6 +524,29 @@ export async function handleReset() {
     state.value = null
     handleStateChange(newState)
     await loadMessages()
+    bumpTurn()
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+export async function handleNewSession() {
+  // Only one session is ever active per project (see ChatSessionManager) —
+  // starting a new one always supersedes whichever one was current, so
+  // this is a real "close the current session" action, not just an addition.
+  if (!window.confirm('Start a new session? This will close the current session for this project — only one can be active at a time.')) return
+  try {
+    const session = await postCreateSession()
+    currentSessionId.value = session.id
+    selectedSessionActive.value = session.active
+    clearApiError()
+    messages.value = []
+    await loadMessages()
+    // Opened unconditionally (not just refreshed when already open) so the
+    // new session is actually visible right away, wherever this was
+    // triggered from — not dependent on the sessions panel already being open.
+    sessionsPanelOpen.value = true
+    await loadSessions()
     bumpTurn()
   } catch {
     // already surfaced via apiFetch

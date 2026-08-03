@@ -1,8 +1,22 @@
 <script setup>
-import { errorDetail, errorMessage } from '../errorStore.js'
+import { errorMessage } from '../errorStore.js'
+import ErrorBanner from './ErrorBanner.vue'
 
+// 'connecting'/'failed': App.vue's own boot-ping sequence, a full-page
+// overlay shown *before* the topbar itself ever renders (see App.vue's
+// bootStatus). 'no-project': the app is up and the topbar is showing —
+// this fills the content area below it instead (see the `embedded` prop),
+// for whenever there's no active project to display (none ever
+// uploaded, or the last/only one was just deleted — "default" is no
+// longer protected from that, see ProjectsMenu.vue).
 defineProps({
-  failed: {
+  variant: {
+    type: String,
+    default: 'connecting' // 'connecting' | 'failed' | 'no-project'
+  },
+  // Fills its parent flex container instead of covering the viewport —
+  // set whenever the topbar must stay visible/interactive alongside it.
+  embedded: {
     type: Boolean,
     default: false
   }
@@ -12,21 +26,28 @@ const emit = defineEmits(['retry'])
 </script>
 
 <template>
-  <div class="splash">
+  <div class="splash" :class="{ 'splash-embedded': embedded }">
     <div class="splash-content">
-      <h1 class="splash-title">Avance</h1>
+      <h1 v-if="!embedded" class="splash-title">Avance</h1>
 
-      <template v-if="!failed">
+      <template v-if="variant === 'connecting'">
         <div class="splash-pulse" aria-hidden="true"></div>
         <p class="splash-message">Connecting to the backend…</p>
       </template>
 
-      <template v-else>
-        <p class="splash-error">
-          {{ errorMessage || "Unable to reach the backend — check that it's running." }}
-        </p>
-        <pre v-if="errorDetail" class="splash-error-detail">{{ errorDetail }}</pre>
+      <template v-else-if="variant === 'failed'">
+        <!-- A boot-ping timeout never reaches apiFetch's own setApiError
+             (see App.vue's pingBackend — an AbortError is deliberately
+             rethrown silently), so errorMessage can be empty even after
+             every retry is exhausted — this fallback covers that case;
+             ErrorBanner covers every other one uniformly. -->
+        <ErrorBanner v-if="errorMessage" />
+        <p v-else class="splash-error">Unable to reach the backend — check that it's running.</p>
         <button class="splash-retry" @click="emit('retry')">Retry</button>
+      </template>
+
+      <template v-else>
+        <p class="splash-message">Select a project from the menu to get started.</p>
       </template>
     </div>
   </div>
@@ -45,6 +66,18 @@ const emit = defineEmits(['retry'])
   background: white;
   font-family: system-ui, -apple-system, sans-serif;
   z-index: 1000;
+}
+
+/* Embedded (see the `embedded` prop): fills whatever flex slot it's
+   given (App.vue's own .app-body, alongside the still-visible topbar)
+   instead of covering the whole viewport. */
+.splash-embedded {
+  position: static;
+  inset: auto;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  z-index: auto;
 }
 
 .splash-content {
@@ -95,19 +128,6 @@ const emit = defineEmits(['retry'])
   max-width: 320px;
   font-size: 0.9rem;
   color: #c62828;
-}
-
-.splash-error-detail {
-  margin: 0;
-  max-width: 320px;
-  padding: 0.5rem 0.75rem;
-  background: #fdecea;
-  color: #7a1f1f;
-  font-size: 0.78rem;
-  border-radius: 6px;
-  white-space: pre-wrap;
-  word-break: break-word;
-  text-align: left;
 }
 
 .splash-retry {

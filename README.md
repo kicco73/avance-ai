@@ -1,266 +1,191 @@
 # Avance — State Engine Prototype
 
-Full-stack prototype of a conversational system driven by a deterministic finite
-automaton (DFA) for an alcohol-related harm-reduction pathway (Prochaska &
-DiClemente's TTM + Marlatt & Gordon's Relapse Prevention).
+Full-stack prototype of a conversational system driven by a finite-state
+automaton ("project"): each state carries its own prompt for the LLM, and
+actions move the conversation between states — either manually (a button in
+the UI) or automatically, when the model's own assessment of the
+conversation (a set of numeric "signals") crosses a threshold declared on
+an action ("trigger").
 
-State transitions are triggered manually by the user via buttons, not inferred by
-the AI. No authentication, no persistence: everything lives in memory and resets
-on backend restart or on clicking "Reset".
+A project is just a `.zip` (an `index.yml` plus optional attachment files);
+the format itself — states, actions, signals, triggers, attachments — is
+documented separately in [`backend/samples/README.md`](backend/samples/README.md),
+not here. This file covers the technical solution and how to install and
+configure it.
+
+## Architecture at a glance
+
+```text
+frontend/   Vue 3 SPA (Vite) — chat window, session panel, and an "Edit
+            project" view with a YAML editor, a state-graph inspector, and
+            live Signals/Metrics tabs.
+backend/
+  src/      FastAPI app.
+    main.py                 entrypoint: wires everything below, exposes
+                             the REST API (and an optional /ws/chat socket)
+    controller.py            every REST route (AvanceController)
+    chat/                    turn processing, auto-tracking, sessions
+    automaton/                index.yml parsing + the DFA itself
+    project/                  project CRUD/activation/validation
+    ai/, talk/, listen/       LLM / text-to-speech / speech-to-text providers
+    metrics_framework/       domain-agnostic analytics over the stored
+                             conversation history (engagement, retention,
+                             activity consistency, state/signal stability)
+    db.py                    single point of DB access (Peewee/SQLite)
+  samples/  example projects for local development — see below
+```
+
+**Storage**: everything is a single SQLite database (`database.url` in
+`.config.yml`) — chat sessions, messages, signal/transition history, and
+every uploaded **project itself** (as a zip blob, keyed by name). There is
+no `projects/` directory on disk: a project only exists once it has been
+uploaded through the API/UI, or restored from a backup. `backend/samples/`
+is not read by the running app at all — it's example content you upload
+yourself to get started (see below), and fixtures used by the backend's
+own test suite.
+
+**Users**: single-user prototype, no authentication (`session.py`'s
+`Session()` is a process-wide placeholder). No concurrency between
+conversations beyond what `ChatSessionManager` does within that one user
+(see its module docstring for the "open" vs "active" session distinction).
 
 ## Starting the backend
 
 ```bash
 cd backend
-python3 -m venv .venv
-source .venv/bin/activate        # on Windows: .venv\Scripts\activate
+python3.11 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-cp .config.example.yml .config.yml
 
-# open .config.yml: set ai-service[0].name (anthropic or gemini) and its matching model/key
+cd src
+cp .config.example.yml .config.yml   # then edit it — see "Configuring" below
 uvicorn main:app --reload
 ```
 
-The backend starts on `http://localhost:8000`.
+The backend starts on `http://localhost:8000`. If `.config.yml` is missing
+or invalid, the process still starts (so the frontend gets a clear error
+instead of a connection failure) but every request fails with a
+"backend is not configured correctly" response — check the console log for
+the actual `ConfigError`.
 
 ## Starting the frontend
 
-In another terminal:
-
 ```bash
+cp frontend/.env.dev frontend/.env
 cd frontend
 npm install
 npm run dev
 ```
 
-The frontend starts on `http://localhost:5173` (the backend only accepts CORS
-requests from this origin).
+The frontend starts on `http://localhost:5173` (the backend only accepts
+CORS requests from this origin — see `main.py`).
 
-## Usage
+## Getting started
 
-1. Open `http://localhost:5173`.
-2. Chat freely in the central window: every message is sent to the backend over a
-   websocket connection, which builds the system prompt by combining the current
-   state's `contextual_prompt` with `general_prompt` (both read from the
-   active project YAML — see [Editing the automaton](#editing-the-automaton)),
-   and calls the configured LLM provider (see
-   [Switching LLM provider](#switching-llm-provider)) with the full conversation
-   history. If the provider reports a transient overload (HTTP 503), the backend
-   retries automatically with exponential backoff (up to 5 retries) and pushes
-   live status over the socket instead of the frontend polling for it; if all
-   retries are exhausted, the failed message gets a resend icon so you can retry
-   it without retyping.
-3. When you judge that the conversation indicates a state change, click the
-   corresponding button in the action bar: the transition is applied immediately
-   and the state bar at the bottom updates. The chat is **not** touched by this
-   action.
-4. "Reset" clears state and conversation and returns everything to the initial
-   state (`precontemplation`).
+A fresh database has no project in it. Open the app, use the **"Projects"**
+menu's **Upload...**, and pick one of the examples under `backend/samples/`
+(e.g. `Hello world.zip`, `Metrics Playground.zip`) — that also activates it.
+From there:
 
-## Switching LLM provider
+1. Chat freely in the central window.
+2. If the active project declares manual actions, use the buttons in the
+   action bar to move between states yourself; actions with a `trigger`
+   can also fire on their own once the referenced signal(s)/metric(s)
+   cross their threshold (see auto-tracking below).
+3. **"Reset"** clears your own conversation history for the active project
+   and starts a fresh session at its initial state.
+4. **"Edit project"** opens a YAML editor plus an Inspector: the state
+   graph, the project's declared Signals (with live values), the core
+   Metrics (see `metrics_framework/`), and the AI model currently in
+   effect.
 
-The backend abstracts the model call behind a common interface
-(`backend/llm_provider.py`), with two interchangeable implementations in
-`backend/providers/`: `anthropic_provider.py` (Claude) and `gemini_provider.py`
-(Google Gemini).
+## Configuring (`.config.yml`)
 
-To switch provider:
+Copied from `backend/src/.config.example.yml`, gitignored (it holds
+secrets). Top-level sections:
 
-1. In `backend/.config.yml`, edit the first entry of the `ai-service` list:
-   set `name` (`anthropic` or `gemini`), `model`, and `key` to match.
-   `ai-service` is a list to support a future provider-fallback cascade, but
-   today only the first entry is used. See `.config.example.yml`. To use a
-   lighter/cheaper Gemini model such as `gemini-flash-lite-latest`, just set
-   `model` to it — it's the same API, only the model name changes.
-2. Restart the backend.
+- **`database.url`** — a Peewee connection URL. `sqlite:///avance.db` by
+  default; anything else requires adding the matching driver to
+  `requirements.txt` (not included).
+- **`chat-service.transport`** — `"rest"` or `"websocket"`. REST
+  (`POST /api/chat/messages`) returns the full reply in one response;
+  `websocket` (`/ws/chat`, only registered when selected) streams it
+  chunk-by-chunk and pushes retry/backoff status frames live instead of
+  the client polling for them. Either way, the turn logic itself
+  (`ChatService.process_turn`) is identical.
+- **`ai-service.providers`** — a non-empty, ordered list. The first entry
+  is used; later ones are an automatic fallback if it becomes unavailable
+  (rate limit, quota, outage — see `ai/cascading_llm_provider.py`).
+  `driver` is one of `anthropic`, `gemini`, `openai` (the `openai` driver
+  also accepts any OpenAI-compatible endpoint via `url`, e.g. a local
+  llama.cpp server). `model` and `key` are provider-specific; `ui-label`/
+  `ui-description` (both optional) are what the frontend's model-selector
+  menu shows.
+- **`talk-service`** / **`listen-service`** — optional (`enabled: false`
+  or the whole section omitted by default). Same `providers` list shape
+  as `ai-service`, but independent rosters, for text-to-speech and
+  speech-to-text respectively. `listen-service`'s `faster-whisper` driver
+  is fully local (no `key`, downloads/caches its own model on first use).
+  When disabled, the corresponding endpoints respond with a clear
+  "service not available" error instead of the backend failing to boot.
 
-No other change is needed: the provider is instantiated exactly once at server
-startup, and if `ai-service[0].name` is not a recognized value the server
-fails to start, with an explicit error in the console.
+Restart the backend after any change (`--reload` does this automatically
+when `.config.yml`'s containing files change, but `.config.yml` itself is
+only read once at process start).
 
-The `crisis` state stays non-generative regardless of the selected provider
-(see [Exception: the `crisis` state](#exception-the-crisis-state) below): the
-model is still called, but only to translate a fixed message, never to
-generate free-form content.
+## What the API covers
 
-For Gemini's free tier, get a free API key from
-[Google AI Studio](https://aistudio.google.com/apikey) — no credit card
-required.
+The full, authoritative route list is `backend/src/controller.py`
+(`AvanceController`) — grouped here by area:
 
-## Editing the automaton
+| Area | Examples |
+| --- | --- |
+| Chat | `GET/POST /api/chat/session(s)`, `DELETE /api/chat/sessions/{id}`, `GET/POST /api/chat/messages`, `POST /api/action`, `GET/POST /api/chat/autotracking`, `POST /api/chat/reset` |
+| Live analytics | `GET /api/chat/signals` (last computed signal values), `GET /api/chat/metrics` (metrics_framework, computed on demand), `POST /api/triggers/preview` |
+| AI model | `GET /api/ai/models`, `POST /api/ai/models/selection` |
+| Voice | `GET /api/chat/messages/{id}/audio` (TTS), `POST /api/listen/transcribe` (STT) |
+| Projects | `GET /api/projects`, `PUT /api/projects/{name}/activate`, `GET/PUT/DELETE /api/projects/{name}`, `GET /api/projects/{name}/graph`, `GET /api/projects/{name}/signals` |
+| Project files | `GET /api/projects/{name}/files(/{file})`, `PUT/DELETE /api/projects/{name}/files/{file}` — the "Edit project" view's file explorer |
+| Backup | `GET/POST /api/backup` — the whole database (every project, every user's sessions) as a single restorable `.sqlite` file |
+| Status | `GET /api/state` |
+| Chat (optional) | `WS /ws/chat` — only when `chat-service.transport: websocket` |
 
-`backend/projects/default/index.yml` is the **single source of truth** for
-states, actions, and contextual prompts — it's always what the backend loads
-at boot, regardless of any project uploaded via the UI in a previous session
-(see below; uploads are never persisted as "the new default"). Attachments
-referenced from it (see `backend/projects/README.md`) live alongside it in
-`projects/default/`. To add or modify a state:
+Every error response shares one shape, `{"error": {"message", "detail"}}`
+(see `error_handlers.py`).
 
-1. Add/edit an entry under `states:` with `label`, `description`,
-   `contextual_prompt`, and the list of `actions` (each with `name`, `label`,
-   `ui_button`, `target`). `final` isn't a field: a state is final
-   automatically when it has no actions.
-2. Make sure every `target` referenced by an action matches an existing state
-   key — the backend validates this constraint at startup and won't start if the
-   YAML is inconsistent.
-3. Restart the backend (`--reload` does this automatically when the file is
-   saved).
+## Auto-tracking, signals and metrics
 
-No Python code needs to change for these edits.
+A project's `index.yml` can declare **signals** — numeric values the model
+itself estimates from the conversation on each turn (auto-tracking) — and
+give any action a **trigger**, an expression over those signals (evaluated
+via `simpleeval`). Separately, `metrics_framework/` computes five
+domain-agnostic metrics from the stored history (engagement, retention,
+activity consistency, state stability, signal stability; see its own
+README) — a trigger may reference either a declared signal or one of
+these metric names, or combine both in the same expression. Metric names
+are reserved: a project can't declare a signal that shadows one.
 
-### Switching projects at runtime
+None of this — signal/state/action/trigger syntax — is described here; see
+[`backend/samples/README.md`](backend/samples/README.md) for the complete
+project-format specification, and `backend/samples/` for worked examples
+(including `Metrics Playground.zip` and its state-based sibling
+`Metrics Playground (states).zip`, both built specifically to exercise
+trigger expressions over every metric).
 
-The **"Projects"** menu in the UI lists every project already present under
-`backend/projects/` (from `GET /api/projects`, which also reports the active
-one — a ✓ marks it in the menu); clicking one calls
-`PUT /api/projects/{project_name}/activate` and, on success, makes it the
-active automaton — the app resets (same as clicking "Reset") since a
-different automaton makes prior states/actions/signals meaningless. Nothing
-on disk is touched by activating a project — it was already there — so a
-failed validation (malformed `index.yml`) just reports the error and leaves
-the active automaton untouched. Activating the project that's *already*
-active is idempotent: it's still validated, but doesn't repeat the reset.
+## Docker
 
-The menu also has **"Upload..."**, which adds a new project (or replaces an
-existing one) without restarting the backend, via
-`PUT /api/projects/{project_name}` — the project's name is decided by the
-request URL, not by anything in the uploaded file. The frontend derives it
-from the picked file's name (without extension); the raw file body is sent
-directly as the request payload, in either of two formats:
-
-- A lone `.yml`/`.yaml` file — becomes `projects/<project_name>/index.yml`. It
-  can't carry attachments of its own; if it references `attachments:`, those
-  files must already exist in that directory (e.g. left there by a previous
-  zip upload of the same project).
-- A `.zip` archive containing exactly one `index.yml` at its root, plus zero
-  or more attachment files alongside it (flat, no subdirectories) — becomes
-  `projects/<project_name>/` in full. PUTting a zip under an existing
-  project's name fully replaces that directory, unlike the lone-file case.
-
-The body's format is told apart by the request's `Content-Type` header
-(falling back to sniffing the zip file signature if it's missing or
-ambiguous) — this is a separate concern from the project's name, which always
-comes from the URL. Either way, the upload is validated with the exact same
-logic used at boot and by activate (state/action/trigger/signal/attachment
-checks, plus — for zips — path-safety and structure checks before anything
-is extracted). If validation fails, nothing changes — the staged content is
-discarded (and its target directory too, if this upload is what created it)
-— the current automaton and all state stay exactly as they were. If it
-succeeds, it becomes the active automaton and the app resets, exactly like
-activating it. This is in-memory only for the running process — the next
-backend restart always reloads `projects/default/index.yml`, never the last
-active project.
-
-**"Download"** fetches the *currently active* project back as a zip via
-`GET /api/projects/{project_name}` — the read side of the same resource `PUT`
-writes to, in the exact same flat layout (`index.yml` plus attachments,
-no subdirectories) that `PUT` already requires, so a downloaded zip is
-accepted back by `PUT` with zero transformation either way. Always a zip,
-even for a project with no attachments, so there's exactly one export format.
-
-Finally, **"Delete"** (with an inline confirm step) removes the *currently
-active* project via `DELETE /api/projects/{project_name}`. Both `GET` and
-`DELETE` on this path are general-purpose — they work for any listed
-project, not just the active one, even though the menu only ever calls them
-on the active project; deleting (or downloading) one that isn't active has
-no effect on the running session at all. Deleting the active project falls
-back to `default` and resets, the same as activating it. `default` itself
-can never be deleted (enforced server-side, not just by the menu graying the
-option out).
-
-### Exception: the `crisis` state
-
-The `crisis` state (and any other state you mark the same way) is
-**non-generative** for safety reasons: instead of `contextual_prompt`, its
-YAML entry sets a `fixed_message` field. When the current state has one, the
-backend never lets the model generate free-form content — it only asks it to
-translate `fixed_message` verbatim into whatever language the user is
-writing in, and returns that translation as the reply.
-
-**Important**: the crisis resources in `crisis.fixed_message`
-(`backend/projects/default/index.yml`) are a **prototype placeholder** (Spanish
-emergency numbers used as an example) and are explicitly marked
-`TO BE REPLACED`. Before any real-world use they must be replaced with
-resources verified, up to date, and validated by a qualified clinical team
-for the app's target territory/country.
-
-## Project structure
-
-```
-avance-prototype/
-├── backend/
-│   ├── main.py                        # FastAPI entrypoint: REST endpoints + /ws/chat websocket
-│   ├── automaton.py                   # YAML parsing + DFA logic
-│   ├── llm_provider.py                # abstract interface shared by LLM providers
-│   ├── providers/
-│   │   ├── factory.py                 # selects the provider from LLM_PROVIDER
-│   │   ├── anthropic_provider.py      # Anthropic API (Claude) call wrapper
-│   │   └── gemini_provider.py         # Google Gemini API call wrapper
-│   ├── projects/                      # each subdir is a project: index.yml + its own attachments (see projects/README.md)
-│   │   └── default/                   # boot default; PUT /api/projects/{project_name} can add more here at runtime
-│   │       ├── index.yml              # automaton definition + general_prompt + contextual/fixed prompts
-│   │       └── *.txt                  # attachments referenced from index.yml
-│   ├── requirements.txt
-│   └── .config.example.yml
-├── frontend/
-│   ├── src/
-│   │   ├── App.vue
-│   │   ├── components/
-│   │   │   ├── ChatWindow.vue
-│   │   │   ├── StateBar.vue
-│   │   │   └── ActionButtons.vue
-│   │   └── api.js                     # REST calls + /ws/chat websocket client
-│   ├── package.json
-│   └── vite.config.js
-└── README.md
+```bash
+docker build -t avance .
+docker run --name avance-ai -v $(pwd)/backend/src/.config.yml:/app/backend/src/.config.yml -p 8080:80 avance
 ```
 
-## API endpoints
-
-| Method | Path                                 | Description                                                                                                                        |
-|--------|--------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|
-| GET    | `/api/state`                         | Current state, label, description, available actions                                                                             |
-| WS     | `/ws/chat`                           | Chat channel — see below                                                                                                          |
-| POST   | `/api/action`                        | `{action_name}` → applies the transition if valid for the current state                                                           |
-| GET    | `/api/projects`                        | `{projects: [...], active: "..."}` — project directory names under `backend/projects/` with an `index.yml` present, plus the active one |
-| PUT    | `/api/projects/{project_name}/activate`  | Validates and activates an already-present project (see above); idempotent — resets only if it's a different project, still validates either way |
-| GET    | `/api/projects/{project_name}`           | Downloads that project as a zip (flat, `index.yml` + attachments) — round-trips with the PUT below with no transformation           |
-| PUT    | `/api/projects/{project_name}`           | Raw file body (`Content-Type` says the format) → creates/replaces that project, then validates and activates it (see above)         |
-| DELETE | `/api/projects/{project_name}`           | Removes that project from disk; falls back to `default` (and resets) only if it was the active one; `default` itself can't be deleted |
-| POST   | `/api/reset`                         | Resets state and history to the initial condition                                                                                 |
-
-`/ws/chat` replaces a plain request/response: the client sends `{message}`,
-and the backend pushes one or more JSON frames back as the turn progresses —
-
-- `{type: "retrying", attempt, max_attempts, retry_in}` — sent once per second
-  while backing off after a transient (HTTP 503) provider failure; the client
-  only renders these, it never decides whether/when to retry.
-- `{type: "done", reply, state}` — the turn succeeded; `state` is the same
-  shape as `GET /api/state`.
-- `{type: "failed", error}` — non-retryable error, retries exhausted, or the
-  current state is `final: true` (the model is never called for a message
-  sent once the conversation has ended — see below).
-- `{type: "error", error}` — rejected because a turn is already in flight on
-  this connection (the server processes one message at a time).
-
-A state with `final: true` is terminal: the frontend disables the chat input
-once there (with an explanation, `Reset` stays available), and the backend
-independently rejects any message that reaches it anyway — regardless of
-whether the state was entered manually or via auto-tracking. Currently only
-`crisis` is final; `maintenance` still has outgoing transitions (`relapse`,
-`crisis`) so the conversation must stay open there.
+Single container: `nginx` serves the built frontend and proxies to
+`uvicorn` (see `Dockerfile`/`nginx.conf`), which listens on `:8000`
+internally. `.config.yml` is mounted in, never baked into the image.
 
 ## Known limitations of the prototype
 
-- Single user, in-memory state: one backend process, no concurrency between
-  sessions.
-- No persistence: restarting the backend clears everything.
-- Transitions are manual; automatic inference of transitions from the
-  conversation is planned as a later phase, not implemented here.
-- The `crisis` state's resources are placeholders (see above) and are not
-  suitable for real-world use as they are.
-
-DOCKER COMMANDS
-
-docker build -t avance . ;
-docker run --name avance-ai -v $(pwd)/backend/.config.yml:/app/backend/.config.yml -p 8080:80 avance
+- Single user, single process: no real authentication, no concurrency
+  model beyond one user's own sessions.
+- Everything lives in one SQLite file; switching to another database
+  engine requires adding its Peewee driver yourself.

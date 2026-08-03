@@ -3,9 +3,14 @@
 
 .env
 .venv
-__pycache__
 *.pyc
 
+__pycache__/
 frontend/node_modules
 frontend/dist
-backend/*.db
+backend/src/*.db
+
+./ai/
+#!ai/llama.cpp/
+#!ai/llama.cpp/build/
+#!ai/models/
