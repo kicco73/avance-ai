@@ -219,19 +219,49 @@ export function messageHasAnnotatedSignals(message, signalsLog) {
   }
 }
 
-// The state key the Inspector should highlight for the current
-// selection — a message or a transition clicked in the timeline.
+// The state key the Inspector (every tab alike — the Graph tab's own
+// highlight and the Signals tab's own "relevant" filter both read this
+// exact same value, deliberately: they must never disagree) should
+// treat as current for the selection — a message or a transition
+// clicked in the timeline. A message ALWAYS resolves to whatever state
+// was genuinely active when it was written/received, even when its own
+// evaluation went on to cause a transition: buildTimeline's own sort
+// always places a message before its own linked transition (they tie on
+// effective timestamp, and the tie-break reads message-first — see
+// buildTimeline's own comment on why, and effectiveTimestamp's), so
+// visually the message still sits in the *previous* block, with the
+// transition marker as the actual boundary where the new state begins —
+// showing the new state already at the message itself would highlight
+// something that, from that message's own point of view, hadn't
+// happened yet. Only a transition (the marker itself, or anything
+// timestamped after it) ever resolves to new_state. For the different
+// (and unrelated) question of "what did this message's own turn
+// ultimately leave the conversation in" — e.g. RestartFromHereButton's
+// own validity check — see resultingStateKeyFor instead, which keeps
+// the old preference this function itself used to have.
 export function highlightedStateKeyFor(selected, timeline, sessionStartState) {
   if (!selected) return null
   if (selected.kind === 'transition') return selected.transition.new_state
-  // Prefer the state a transition *directly linked* to this exact
-  // message produced (see Signals.message) over the raw-timestamp
-  // fallback below: that transition's own row is timestamped fractionally
-  // *after* the message that caused it (auto-tracking's own evaluation
-  // runs once the message is already saved — see effectiveTimestamp's own
-  // docstring), so stateAsOf(message.timestamp) would otherwise always
-  // land one step behind, showing the state as it was *before* this
-  // message instead of what it became because of it.
+  return stateAsOf(timeline, sessionStartState, selected.message.timestamp)
+}
+
+// "What state did this message's own turn ultimately leave the
+// conversation in" — unlike highlightedStateKeyFor, this DOES prefer a
+// transition *directly linked* to this exact message (see Signals.
+// message) over the raw-timestamp fallback below, since here the
+// question being asked is different: not "what was true when this
+// message arrived" but "once this message was fully processed,
+// including whatever it caused, where did things end up" — e.g.
+// RestartFromHereButton's own isStateGone check, which needs to know
+// the *resulting* state to tell whether it still exists in the current
+// project, not the state the message merely arrived into. That
+// transition's own row is timestamped fractionally *after* the message
+// that caused it (auto-tracking's own evaluation runs once the message
+// is already saved — see effectiveTimestamp's own docstring), so
+// stateAsOf(message.timestamp) alone would always land one step behind.
+export function resultingStateKeyFor(selected, timeline, sessionStartState) {
+  if (!selected) return null
+  if (selected.kind === 'transition') return selected.transition.new_state
   const message = selected.message
   const ownTransition = timeline.find(
     (entry) => entry.kind === 'transition' && entry.transition.message_id === message.id

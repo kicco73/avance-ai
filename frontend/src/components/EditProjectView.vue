@@ -26,7 +26,7 @@ import {
 } from '../api.js'
 import { clearApiError, setApiError } from '../errorStore.js'
 import ErrorBanner from './ErrorBanner.vue'
-import { buildTimeline, highlightedStateKeyFor, nearestMessageIdAtOrBefore, signalValuesFor } from '../benchmarkTimeline.js'
+import { buildTimeline, highlightedStateKeyFor, nearestMessageIdAtOrBefore, resultingStateKeyFor, signalValuesFor } from '../benchmarkTimeline.js'
 // Aliased: this file already uses "state" to mean an automaton state node
 // — `liveState` is specifically the live conversation's current state,
 // which this view's Inspector highlights as "current" (see the
@@ -277,12 +277,12 @@ async function refreshValidStateKeys() {
   }
 }
 
-// The state a given message's own turn left the conversation in — same
-// resolution BenchmarkProjectView.vue/this view's own Inspector selection
-// already uses (see highlightedStateKeyFor), just evaluated per-bubble
-// instead of only for whatever's currently selected.
+// The state a given message's own turn left the conversation in — see
+// resultingStateKeyFor's own docstring for why that's a different
+// question than highlightedStateKeyFor's (used for the Inspector
+// selection below), and thus a different function.
 function isStateGone(message) {
-  const stateKey = highlightedStateKeyFor({ kind: 'message', message }, timeline.value, sessionStartState.value)
+  const stateKey = resultingStateKeyFor({ kind: 'message', message }, timeline.value, sessionStartState.value)
   return stateKey != null && !validStateKeys.value.has(stateKey)
 }
 

@@ -8,6 +8,7 @@ import {
   resolveTransitionRow,
   signalValuesAsOf,
   signalValuesFor,
+  sourceStateKeyFor,
   stateAsOf,
   syntheticSessionStartEntry,
   transitionAnnotationStatus,
@@ -151,6 +152,43 @@ describe('highlightedStateKeyFor — same off-by-one, for state highlighting', (
 
   it('returns null with nothing selected', () => {
     expect(highlightedStateKeyFor(null, [], 'lobby')).toBeNull()
+  })
+})
+
+describe('sourceStateKeyFor — old_state, not new_state (the Signals tab\'s own relevance scope)', () => {
+  it("uses the state a directly-linked transition *left*, not the one it landed on", () => {
+    const riskyMessage = message(3, '2026-01-01T10:00:02.000')
+    const timeline = [
+      { kind: 'message', timestamp: riskyMessage.timestamp, message: riskyMessage },
+      {
+        kind: 'transition',
+        timestamp: '2026-01-01T10:00:02.100',
+        transition: transitionRow(2, { timestamp: '2026-01-01T10:00:02.100', oldState: 'action', newState: 'crisis', messageId: 3 })
+      }
+    ]
+    const selected = { kind: 'message', message: riskyMessage }
+
+    expect(sourceStateKeyFor(selected, timeline, 'lobby')).toBe('action')
+  })
+
+  it('falls back to stateAsOf when no transition is linked to the selected message', () => {
+    const earlier = transitionRow(1, { timestamp: '2026-01-01T09:00:00', oldState: 'lobby', newState: 'action' })
+    const timeline = [{ kind: 'transition', timestamp: earlier.timestamp, transition: earlier }]
+    const unlinkedMessage = message(9, '2026-01-01T09:30:00')
+    const selected = { kind: 'message', message: unlinkedMessage }
+
+    expect(sourceStateKeyFor(selected, timeline, 'lobby')).toBe('action')
+  })
+
+  it('a selected transition always resolves to its own old_state', () => {
+    const t = transitionRow(1, { timestamp: '2026-01-01T09:00:00', oldState: 'lobby', newState: 'action' })
+    const selected = { kind: 'transition', transition: t }
+
+    expect(sourceStateKeyFor(selected, [], 'lobby')).toBe('lobby')
+  })
+
+  it('returns null with nothing selected', () => {
+    expect(sourceStateKeyFor(null, [], 'lobby')).toBeNull()
   })
 })
 
