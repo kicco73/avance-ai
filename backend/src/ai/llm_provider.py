@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import inspect
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -20,22 +19,44 @@ logger = logging.getLogger(__name__)
 # legacy tag-filtering path this replaces.
 MetadataCallback = Callable[[str, Any], None]
 
+# This application's own structured-metadata contract — every "v2"
+# provider's own build_schema() (see LLMProvider.build_schema below) is
+# wired up with exactly these fields, both when actually configuring one
+# (see AiService._build_provider) and when merely probing whether it
+# supports this at all (see supports_structured_metadata) — the two
+# calls share the same field definitions on purpose, so probing is a
+# harmless, idempotent no-op wherever the provider's already configured.
+# "audio" is a priority tag (reported *before* 'text' — see
+# LLMProvider.build_schema's own docstring), "signals"/"env" are not
+# (reported after, and optional/nullable).
 
-def supports_on_metadata(bound_method: Callable) -> bool:
-    """Whether `bound_method` (a provider's own generate/generate_stream)
-    declares an `on_metadata` parameter — the one signal this codebase
-    uses to tell a "v2" provider (real-time audio/signals/env callbacks,
-    see gemini_provider_v2.py) apart from a "v1" one (plain text only;
-    metadata is instead recovered by tag-filtering the raw reply — see
-    chat.text_filter.ConcatTagFilter). A plain signature inspection
-    rather than a marker base class/attribute: it reads directly off
-    whatever a concrete provider actually implements, so a provider
-    can't accidentally claim v2 support it doesn't really have."""
+METADATA_PRIORITY_TAGS: dict[str, tuple[type, str]] = {
+    "audio": (str, "Short textual version for text-to-speech. Generated first."),
+}
+
+METADATA_TAGS: dict[str, tuple[type, str]] = {
+    "env": (str, "Updated memory state. Include all current context keys in the form key: value, one per line"),
+    "signals": (str, "JSON dictionary containing required calculated signal values."),
+}
+
+
+def supports_structured_metadata(provider: LLMProvider) -> bool:
+    """Whether `provider` actually supports reporting audio/signals/env
+    as structured metadata (see gemini_provider_v2.py's own build_schema)
+    rather than embedded [audio]/[signals]/[env] tags in plain text (see
+    chat.text_filter.ConcatTagFilter) — probed by calling build_schema
+    itself with this module's own METADATA_PRIORITY_TAGS/METADATA_TAGS
+    and watching whether it raises NotImplementedError (LLMProvider's own
+    default body below, never overridden by a "v1" provider) rather than
+    inspecting generate()/generate_stream()'s own signatures separately:
+    build_schema succeeding or not is the single source of truth for
+    both, since a "v2" provider (see gemini_provider_v2.py) always
+    accepts on_metadata on either once it's configured at all."""
     try:
-        params = inspect.signature(bound_method).parameters
-    except (TypeError, ValueError):
+        provider.build_schema(METADATA_PRIORITY_TAGS, METADATA_TAGS)
+    except NotImplementedError:
         return False
-    return "on_metadata" in params or any(p.kind == p.VAR_KEYWORD for p in params.values())
+    return True
 
 @dataclass(frozen=True)
 class AIServiceConfig:
@@ -92,35 +113,55 @@ class LLMProvider(ABC):
     through __init__, so forcing one constructor shape on every
     implementation would only get in the way."""
 
-    @abstractmethod
-    def generate(
-        self, system_prompt: str, history: list[dict], on_retry: OnRetry | None = None
+    async def generate(
+        self, system_prompt: str, history: list[dict], on_retry: OnRetry | None = None, on_metadata: MetadataCallback | None = None
     ) -> str:
-        """Returns the complete reply text for `history` (list of {role, content}).
-        Raises AIServiceError on failure, never an unhandled exception.
-        `on_retry` is awaited before each backoff sleep — only ever called
-        by a provider that itself retries (see CascadingLLMProvider); a
-        leaf provider accepts it purely so callers can treat any
-        LLMProvider uniformly, and simply never calls it.
-        Not declared with an `on_metadata` parameter here — unlike
-        generate_stream below, most concrete providers don't accept one at
-        all (see supports_on_metadata/chat.turn_strategy_builder.
-        build_turn_strategy, which decide whether it's even safe to pass
-        one before ever calling this). A "v2" provider (see gemini_provider_v2.py) is free
-        to add it as its own extra keyword-only parameter regardless — an
-        ABC only enforces that the method exists, never that every
-        override shares one exact signature."""
-        raise NotImplementedError
+        """Returns the complete reply text for `history` (list of {role, content}),
+        built by collecting every chunk generate_stream() below yields and
+        joining them — every concrete provider today has real streaming
+        support (see AnthropicProvider/OpenAIProvider/gemini_provider(_v2).py),
+        so there's no separate non-streaming call left to hand-maintain
+        per provider; this one, shared implementation is enough. Not
+        declared abstract: a provider is free to override this directly
+        if it ever has a genuinely cheaper way to get a single blocking
+        reply, but none does today. Raises AIServiceError on failure,
+        never an unhandled exception — generate_stream's own docstring
+        covers this; whatever it raises propagates through unchanged."""
+        chunks: list[str] = []
+        async for chunk in self.generate_stream(system_prompt, history, on_retry=on_retry, on_metadata=on_metadata):
+            chunks.append(chunk)
+        return "".join(chunks)
 
     @abstractmethod
     async def generate_stream(
         self, system_prompt: str, history: list[dict], on_retry: OnRetry | None = None, on_metadata: MetadataCallback | None = None
     ) -> AsyncIterator[str]:
-        """Yields response text chunks incrementally as they are generated by the model.
-        Raises AIServiceError on failure, never an unhandled exception.
-        See generate() above for `on_retry`. `on_metadata` is declared here
-        (unlike generate()) purely for documentation/discoverability — a
-        "v1" provider is free to ignore it in its own override, same
-        reasoning as generate()'s own docstring."""
+        """Yields response text chunks incrementally as they are generated
+        by the model — the one method every concrete provider must
+        actually implement (see generate() above, built entirely on top
+        of this). Raises AIServiceError on failure, never an unhandled
+        exception. `on_retry` is awaited before each backoff sleep — only
+        ever called by a provider that itself retries (see
+        CascadingLLMProvider); a leaf provider accepts it purely so
+        callers can treat any LLMProvider uniformly, and simply never
+        calls it. `on_metadata` is accepted by every concrete provider
+        (even a "v1" one, which simply never calls it) precisely so
+        generate()'s own shared default above can always forward it
+        without checking first — see ai.llm_provider.
+        supports_structured_metadata for the real capability signal."""
         raise NotImplementedError
         yield ""  # Satisfies type generators
+
+    def build_schema(self, priority_tags: dict[str, tuple[type, str]], tags: dict[str, tuple[type, str]]) -> dict:
+        """Configures this provider to report the given fields as
+        structured metadata alongside its own reply — e.g. audio/signals/
+        env, see METADATA_PRIORITY_TAGS/METADATA_TAGS above — instead of
+        via embedded [audio]/[signals]/[env] tags in plain text (see
+        chat.text_filter.ConcatTagFilter). Not declared abstract: the
+        default here (never overridden) is itself the "v1" contract —
+        raising NotImplementedError is exactly how supports_structured_metadata
+        above tells a "v1" provider apart from a "v2" one (see
+        gemini_provider_v2.py's own override) — and how
+        AiService._build_provider knows there's simply nothing to wire up
+        for a provider that doesn't support this at all."""
+        raise NotImplementedError

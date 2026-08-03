@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from typing import AsyncIterator, Sequence
 from cascade import OnRetry
-from ai.llm_provider import LLMProvider, AIServiceConfig, MetadataCallback, supports_on_metadata
+from ai.llm_provider import (
+    LLMProvider,
+    AIServiceConfig,
+    MetadataCallback,
+    METADATA_PRIORITY_TAGS,
+    METADATA_TAGS,
+    supports_structured_metadata,
+)
 from ai.cascading_llm_provider import CascadingLLMProvider
 from ai.anthropic_provider import AnthropicProvider
 from ai import gemini_provider, gemini_provider_v2
@@ -75,7 +82,21 @@ class AiService(object):
                 f"Invalid provider driver: {service.driver!r}. Must be one of: "
                 f"{', '.join(_PROVIDER_CLASSES.keys())}"
             )
-        return _PROVIDER_CLASSES[service.driver](service)
+        provider = _PROVIDER_CLASSES[service.driver](service)
+        # The "external" build_schema call (see ai.llm_provider.
+        # METADATA_PRIORITY_TAGS/METADATA_TAGS/LLMProvider.build_schema's
+        # own docstring) — this application's own audio/signals/env
+        # contract lives here, once, rather than baked into each
+        # individual provider's own __init__ (see gemini_provider_v2.py's
+        # own bare build_schema({}, {}) default). A "v1" provider simply
+        # hasn't overridden build_schema at all, so this is a no-op for
+        # it (see supports_structured_metadata's own docstring for why
+        # that's also how capability is detected later).
+        try:
+            provider.build_schema(METADATA_PRIORITY_TAGS, METADATA_TAGS)
+        except NotImplementedError:
+            pass
+        return provider
 
     @property
     def _active_provider(self) -> LLMProvider:
@@ -160,15 +181,16 @@ class AiService(object):
         async for chunk in self._active_provider.generate_stream(system_prompt, history, on_retry=on_retry, on_metadata=on_metadata):
             yield chunk
 
-    def supports_metadata_generate(self) -> bool:
-        """Whether the concrete leaf provider generate() would actually
-        call *right now* (see _current_leaf_provider — not this wrapper's
-        own generate(), which always accepts on_metadata regardless)
-        declares support for it — see chat.turn_strategy_builder.
-        build_turn_strategy, the one caller that needs to decide this
-        *before* placing a call, not just pass it through and hope."""
-        return supports_on_metadata(self._current_leaf_provider.generate)
-
-    def supports_metadata_stream(self) -> bool:
-        """See supports_metadata_generate — same idea, for generate_stream."""
-        return supports_on_metadata(self._current_leaf_provider.generate_stream)
+    def supports_metadata(self) -> bool:
+        """Whether the concrete leaf provider that would actually be
+        called *right now* (see _current_leaf_provider — not this
+        wrapper's own generate()/generate_stream(), which always accept
+        on_metadata regardless) supports reporting audio/signals/env as
+        structured metadata at all — see ai.llm_provider.
+        supports_structured_metadata's own docstring for why this is a
+        single, build_schema-based check covering both generate() and
+        generate_stream() uniformly, not two independent ones. The one
+        caller that needs to decide this *before* placing a call (see
+        chat.turn_strategy_builder.build_turn_strategy), not just pass it
+        through and hope."""
+        return supports_structured_metadata(self._current_leaf_provider)

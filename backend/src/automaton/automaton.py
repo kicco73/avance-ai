@@ -229,10 +229,11 @@ class Automaton(object):
         signal can drive an env update — e.g. `last_mood: mood` — without
         ever gating a transition itself). The exact subset a
         signals-computation call actually needs for this state (see
-        chat/signal_evaluator.py's validate/compute_explicitly and
-        chat_service.py's _build_turn_prompt, which all scope their own
-        prompt/definitions/validation down to this set instead of every
-        declared signal). Reuses trigger_signal_names — the same
+        tracking/evaluator.py's validate, chat.turn_strategy.TurnStrategy.
+        compute_explicitly, and chat_service.py's _build_turn_prompt,
+        which all scope their own prompt/definitions/validation down to
+        this set instead of every declared signal). Reuses
+        trigger_signal_names — the same
         ast-based free-variable extraction _actions_sanity_check and
         triggers_reference already rely on, since simpleeval's own
         expression grammar is just a restricted subset of what ast.parse

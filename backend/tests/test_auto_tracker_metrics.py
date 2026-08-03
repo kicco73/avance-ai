@@ -6,7 +6,6 @@ from datetime import datetime
 from automaton.automaton import Action, Automaton, Signal, State
 from tracking.auto_tracker import AutoTracker
 from chat.env import Env
-from chat.metadata_handler import MetadataHandler
 from metrics.metric_service import MetricService
 from tracking.evaluator import SignalEvaluator
 from tracking.definitions import Signals
@@ -45,7 +44,7 @@ def _tracker(db, automaton: Automaton) -> AutoTracker:
     metrics = MetricService(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
     signals = Signals(get_active_automaton=lambda: automaton, db=db)
     env = Env(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
-    signal_evaluator = SignalEvaluator(MetadataHandler())
+    signal_evaluator = SignalEvaluator()
     return AutoTracker(db, ai_service=None, signals=signals, metrics=metrics, env=env, signal_evaluator=signal_evaluator)
 
 

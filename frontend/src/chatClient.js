@@ -11,6 +11,8 @@ let pendingTurn = null // { resolve, reject, onStatus, onChunk }
 function normalizeResult(data) {
   return {
     reply: data.reply || [],
+    user_message_id: data.user_message_id,
+    assistant_message_id: data.assistant_message_id,
     state: data.state,
     state_changed: data.state_changed,
     new_state: data.new_state,

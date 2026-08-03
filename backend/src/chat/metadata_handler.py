@@ -34,9 +34,7 @@ Definition of env metadata:
 Always add a [env]...[/env] tag at the end of every response, after
 [signals]...[/signals]:
     - Write one "key: value" pair per line (optionally prefixed with "-").
-    - Only include a key when you are actually reporting something new or
-      changed — omit ones that haven't changed. Never invent values for
-      the keys shown to you below — those are inputs supplied to you.
+    - Never invent values for the keys shown to you below — those are inputs supplied to you.
 """
 
 
@@ -93,8 +91,9 @@ class MetadataHandler(object):
         Automaton.triggerable_signal_names) — a plain string, not a
         Signals object, so this module never needs to depend on the
         tracking package (chat/ depends on tracking/, never the reverse;
-        see tracking/evaluator.py's own compute_explicitly, which resolves
-        the string before calling this)."""
+        see chat.turn_strategy_v1.TurnStrategyV1.compute_explicitly and
+        tracking.auto_tracker.AutoTracker.run, which resolves the string
+        before calling this)."""
         env_block = "\n".join(f"{key}: {value}" for key, value in env.to_dict().items())
         return "\n".join([
             signal_definition,

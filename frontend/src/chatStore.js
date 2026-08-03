@@ -337,33 +337,59 @@ async function submitMessage(message) {
       }
     })
 
+    // Correla questa bolla con il suo vero id lato backend — serve a
+    // ChatTimeline/benchmarkTimeline.js's effectiveTimestamp per
+    // posizionare una transizione pre-turno (autotracking_on_user_
+    // message) esattamente su questo messaggio invece di ricadere sul
+    // timestamp grezzo lato server, confrontato — a torto — con
+    // l'orologio client della bolla assistant (vedi EditProjectView.vue's
+    // rawLiveMessages).
+    if (result.user_message_id != null) message.messageId = result.user_message_id
+
     // Alla ricezione del frame 'done':
     if (result.reply && result.reply.length > 0) {
-      const firstReply = result.reply[0]
+      // Solo l'entry a cui punta esplicitamente il backend (se c'è — una
+      // transizione pre-turno può spostarsi in uno stato che non chatta
+      // affatto, vedi TurnProcessor.process's own early exit) è *la*
+      // risposta AI già trasmessa in streaming in questa bolla;
+      // qualunque altra entry in result.reply è un messaggio di
+      // transizione separato (action_prompt/opening message) e merita
+      // una propria bolla nuova — reply[0] non è affidabile: una
+      // transizione pre-turno può precedere la vera risposta AI
+      // nell'array.
+      const liveReplyIndex = result.reply.findIndex((r) => r.id === result.assistant_message_id)
       const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
-      
+
       if (idx !== -1) {
-        // Assegniamo l'ID definitivo e l'audio_text alla bolla che ha raccolto lo streaming
-        messages.value[idx] = {
-          ...messages.value[idx],
-          messageId: firstReply.id,
-          audioText: firstReply.audio_text,
-          // Sincronizziamo con il contenuto restituito dal server se fornito
-          content: firstReply.content || messages.value[idx].content
+        if (liveReplyIndex !== -1) {
+          const liveReply = result.reply[liveReplyIndex]
+          // Assegniamo l'ID definitivo e l'audio_text alla bolla che ha raccolto lo streaming
+          messages.value[idx] = {
+            ...messages.value[idx],
+            messageId: liveReply.id,
+            audioText: liveReply.audio_text,
+            // Sincronizziamo con il contenuto restituito dal server se fornito
+            content: liveReply.content || messages.value[idx].content
+          }
+        } else {
+          // Nessuna risposta AI live questo turno — niente è mai stato
+          // trasmesso in questa bolla, quindi la rimuoviamo invece di
+          // lasciarla vuota e orfana.
+          messages.value.splice(idx, 1)
         }
       }
 
-      // Se la risposta contiene più messaggi (es. cambio di stato)
-      for (let i = 1; i < result.reply.length; i++) {
-        const { id, content, audio_text } = result.reply[i]
+      // Ogni altro messaggio nella risposta (es. cambio di stato) diventa una bolla propria
+      result.reply.forEach((entry, i) => {
+        if (i === liveReplyIndex) return
         messages.value.push({
           role: 'assistant',
-          content,
-          audioText: audio_text,
-          messageId: id,
+          content: entry.content,
+          audioText: entry.audio_text,
+          messageId: entry.id,
           timestamp: new Date().toISOString()
         })
-      }
+      })
     }
 
     playMessageChime()

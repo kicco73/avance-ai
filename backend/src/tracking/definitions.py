@@ -48,7 +48,9 @@ class Signals(object):
         """Recent messages as a single 'evaluate this transcript' turn —
         not multi-turn history, which invites the model to keep chatting.
         `pending_message` is appended locally, unpersisted. Used by
-        SignalEvaluator.compute_explicitly's own dedicated call."""
+        tracking.auto_tracker.AutoTracker.run's own explicit-fallback
+        branch, feeding whichever TurnStrategy's own compute_explicitly
+        the resulting call_history."""
         fetch_n = SIGNALS_HISTORY_WINDOW - 1 if pending_message is not None else SIGNALS_HISTORY_WINDOW
         recent = self._db.get_messages(session_id, last_n=fetch_n, since=since)
         if pending_message is not None:

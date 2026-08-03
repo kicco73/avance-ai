@@ -1,9 +1,10 @@
 """Auto-tracking: gets signal values (embedded in an already-generated
-reply, or via SignalEvaluator's own explicit fallback call), evaluates
-triggers, and applies the resulting transition (self-loops excluded) —
-never generates a message itself. Message generation for a transition
-(action_prompt, opening message) stays in ChatService, since a manual
-action needs it too and never runs through here.
+reply, or via a TurnStrategy's own explicit fallback call, see chat.
+turn_strategy.TurnStrategy.compute_explicitly), evaluates triggers, and
+applies the resulting transition (self-loops excluded) — never generates
+a message itself. Message generation for a transition (action_prompt,
+opening message) stays in ChatService, since a manual action needs it
+too and never runs through here.
 """
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ from automaton.automaton import Action, Automaton, State
 from ai.ai_service import AiService
 from chat.env import Env
 from chat.priming import build_priming_messages
+from chat.turn_strategy_builder import build_turn_strategy
 from metrics.metric_service import MetricService
 from tracking.definitions import Signals
 from tracking.evaluator import SignalEvaluator
@@ -64,7 +66,6 @@ class AutoTracker(object):
         # declares, since anything outside it can't affect
         # evaluate_triggers below no matter what value it takes.
         needed_signal_names = automaton.triggerable_signal_names(state.key)
-
         if signal_values:
             # Embedded — a reply was already generated for some other
             # reason and already reported these (see MetadataHandler.
@@ -73,13 +74,27 @@ class AutoTracker(object):
             signal_values = self._signal_evaluator.validate(automaton, signal_values, needed_signal_names)
         else:
             # No reply to piggyback on at all — fall back to a dedicated
-            # call, using the exact same prompt/tag convention.
+            # call, in whichever concrete TurnStrategy's own dialect is
+            # currently active (tags for v1, on_metadata for v2 — see
+            # TurnStrategy.compute_explicitly's own docstring for why
+            # this can't be provider-agnostic the way validate() above
+            # is; a v1 provider's own reply never carries structured
+            # metadata, a v2 provider's own reply never carries tags).
             logger.warning("AutoTracker.run(): signals not found in metadata, falling back to AI")
             since = self._history_cutoff(project_name, state)
-            signal_values = await self._signal_evaluator.compute_explicitly(
-                self._ai_service, self._signals, self._env, build_priming_messages,
-                session_id, pending_message, since=since, names=needed_signal_names,
+            signal_definition = self._signals.get_definition(needed_signal_names)
+            relevant_signals = (
+                automaton.signals if needed_signal_names is None
+                else [s for s in automaton.signals if s.name in needed_signal_names]
             )
+            # Each signal brings only its own attachments into this call —
+            # never a state's or general_prompt's (different scope entirely).
+            signal_attachments = [a for s in relevant_signals for a in s.attachments.values()]
+            priming_messages = build_priming_messages(signal_attachments)
+            call_history = priming_messages + self._signals.history_window(session_id, pending_message, since)
+            strategy = build_turn_strategy(self._ai_service, wants_streaming=False)
+            raw_values = await strategy.compute_explicitly(signal_definition, self._env, call_history)
+            signal_values = self._signal_evaluator.validate(automaton, raw_values, needed_signal_names)
         # Metrics/env are merged only for this evaluation, never persisted:
         # signal_values below (save_signal_snapshot/save_transition) stays
         # exactly what auto-tracking actually observed — mixing metric/env

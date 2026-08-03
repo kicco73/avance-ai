@@ -8,4 +8,9 @@
 __pycache__/
 frontend/node_modules
 frontend/dist
-*.db
+backend/src/*.db
+
+./ai/
+#!ai/llama.cpp/
+#!ai/llama.cpp/build/
+#!ai/models/

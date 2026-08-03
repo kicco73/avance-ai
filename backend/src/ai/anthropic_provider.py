@@ -15,6 +15,7 @@ from ai.llm_provider import (
     AIServiceProviderRateLimitedError,
     AIServiceProviderUnavailableError,
     LLMProvider,
+    MetadataCallback,
 )
 
 CLAUDE_DEFAULT_MODEL: str = "claude-sonnet-5"
@@ -78,35 +79,24 @@ def _build_messages(history: list[dict[str, Any]]) -> list[MessageParam]:
 class AnthropicProvider(LLMProvider):
     def __init__(self, config: AIServiceConfig) -> None:
         self._claude_model: str = config.model or CLAUDE_DEFAULT_MODEL
-        self._client: anthropic.Anthropic = anthropic.Anthropic(
-            api_key=config.key, timeout=REQUEST_TIMEOUT_SECONDS
-        )
+        # Async only — generate() no longer has a separate blocking call
+        # of its own (see LLMProvider.generate's own shared default,
+        # built on top of generate_stream below), so there's nothing left
+        # here that ever needs the sync client.
         self._async_client: anthropic.AsyncAnthropic = anthropic.AsyncAnthropic(
             api_key=config.key, timeout=REQUEST_TIMEOUT_SECONDS
         )
 
-    def generate(
-        self, system_prompt: str, history: list[dict[str, Any]], on_retry: OnRetry | None = None
-    ) -> str:
-        # on_retry: unused — a leaf provider never retries on its own (see LLMProvider.generate).
-        system_blocks: list[TextBlockParam] = [
-            {"type": "text", "text": system_prompt, "cache_control": CACHE_CONTROL}
-        ]
-        with _handle_anthropic_errors():
-            response = self._client.messages.create(
-                model=self._claude_model,
-                max_tokens=MAX_TOKENS,
-                system=system_blocks,
-                messages=_build_messages(history),
-            )
-            text_parts: list[str] = [
-                block.text for block in response.content if block.type == "text"
-            ]
-            return "".join(text_parts)
-
     async def generate_stream(
-        self, system_prompt: str, history: list[dict[str, Any]], on_retry: OnRetry | None = None
+        self,
+        system_prompt: str,
+        history: list[dict[str, Any]],
+        on_retry: OnRetry | None = None,
+        on_metadata: MetadataCallback | None = None,
     ) -> AsyncIterator[str]:
+        # on_metadata: unused — a "v1" provider never calls it (see
+        # LLMProvider.generate_stream's own docstring for why it's still
+        # accepted here regardless).
         system_blocks: list[TextBlockParam] = [
             {"type": "text", "text": system_prompt, "cache_control": CACHE_CONTROL}
         ]

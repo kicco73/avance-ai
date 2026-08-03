@@ -11,7 +11,6 @@ from openai import (
     APIError,
     APIStatusError,
     AsyncOpenAI,
-    OpenAI,
     RateLimitError,
 )
 from openai.types.chat import ChatCompletionMessageParam
@@ -23,6 +22,7 @@ from ai.llm_provider import (
     AIServiceProviderRateLimitedError,
     AIServiceProviderUnavailableError,
     LLMProvider,
+    MetadataCallback,
     content_to_text,
 )
 
@@ -79,27 +79,23 @@ def _format_messages(
 
 class OpenAIProvider(LLMProvider):
     def __init__(self, config: AIServiceConfig) -> None:
-        self._client: OpenAI = OpenAI(api_key=config.key, base_url=config.url)
+        # Async only — generate() no longer has a separate blocking call
+        # of its own (see LLMProvider.generate's own shared default,
+        # built on top of generate_stream below), so there's nothing left
+        # here that ever needs the sync client.
         self._async_client: AsyncOpenAI = AsyncOpenAI(api_key=config.key, base_url=config.url)
         self._model: str = config.model
 
-    def generate(
-        self, system_prompt: str, history: list[dict[str, Any]], on_retry: OnRetry | None = None
-    ) -> str:
-        # on_retry: unused — a leaf provider never retries on its own (see LLMProvider.generate).
-        messages: list[ChatCompletionMessageParam] = _format_messages(system_prompt, history)
-
-        with _handle_openai_errors():
-            response = self._client.chat.completions.create(
-                model=self._model,
-                messages=messages,
-                max_tokens=MAX_OUTPUT_TOKENS,
-            )
-            return response.choices[0].message.content or ""
-
     async def generate_stream(
-        self, system_prompt: str, history: list[dict[str, Any]], on_retry: OnRetry | None = None
+        self,
+        system_prompt: str,
+        history: list[dict[str, Any]],
+        on_retry: OnRetry | None = None,
+        on_metadata: MetadataCallback | None = None,
     ) -> AsyncIterator[str]:
+        # on_metadata: unused — a "v1" provider never calls it (see
+        # LLMProvider.generate_stream's own docstring for why it's still
+        # accepted here regardless).
         messages: list[ChatCompletionMessageParam] = _format_messages(system_prompt, history)
 
         try:

@@ -81,7 +81,7 @@ class ChatService(object):
             get_active_automaton_and_state=lambda: project_service.get_active_automaton_and_state(),
             get_active_project_name=lambda: project_service.get_active_project_name(),
             require_active_session=self._require_active_session,
-            build_turn_prompt=self._build_turn_prompt,
+            build_turn_prompt_parts=self._build_turn_prompt_parts,
             history_cutoff=self._history_cutoff,
             messages_for_transition=self._messages_for_transition,
         )
@@ -448,10 +448,29 @@ class ChatService(object):
             return None
         return self._db.get_last_transition_timestamp(project_name)
 
-    def _build_turn_prompt(self, automaton: Automaton, state: State) -> tuple[str, list]:
+    def _build_turn_prompt_parts(self, automaton: Automaton, state: State) -> tuple[str, str | None, list]:
+        """Like _build_turn_prompt below, but split into (base_prompt,
+        signal_definition, turn_attachments) instead of one already-
+        combined string — used only by TurnProcessor/TurnStrategy (see
+        chat.turn_strategy.TurnStrategy's own module docstring): a v1
+        provider's own metadata section asks for [audio]/[signals]/[env]
+        tags (see MetadataHandler.build_prompt/EMBED_METADATA_PROMPT), but
+        a v2 one's own structured JSON schema (see gemini_provider_v2.py)
+        makes those tag instructions actively counterproductive — giving
+        the model two conflicting output formats to satisfy at once (see
+        this session's own integration-test finding: a real v2 model
+        tried to honor both, embedding literal [audio]/[signals]/[env]
+        markup *inside* its own JSON "text" field). Each concrete
+        TurnStrategy builds its own metadata section from these raw parts
+        instead of getting one already baked in.
+
+        `signal_definition` is None exactly when there's no metadata
+        section needed at all (state.fixed_message — a plain translation
+        turn, see FIXED_MESSAGE_INSTRUCTIONS) — every TurnStrategy treats
+        that the same way: `base_prompt` alone, untouched."""
         if state.fixed_message:
             logger.warning("Translating fixed_message for state '%s'.", state.key)
-            return FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message), []
+            return FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message), None, []
 
         # Only the signals a trigger leaving `state` could actually use
         # (see Automaton.triggerable_signal_names) — the embedded
@@ -461,9 +480,23 @@ class ChatService(object):
         # which action fires from here.
         signal_names = automaton.triggerable_signal_names(state.key)
         signal_definition = self.tracking_service.get_definition(signal_names)
+        base_prompt = f"{automaton.general_prompt}\n\n{state.contextual_prompt}"
+        return base_prompt, signal_definition, list(automaton.general_attachments.values()) + list(state.attachments.values())
+
+    def _build_turn_prompt(self, automaton: Automaton, state: State) -> tuple[str, list]:
+        """The full, already-combined v1-style prompt (base prompt plus a
+        tag-instructed metadata section — see _build_turn_prompt_parts
+        above) — still used as-is by _generate_opening_message_body/
+        _generate_action_prompt_message below, neither of which goes
+        through a TurnStrategy (see process_turn/TurnProcessor instead):
+        an opening/action-prompt message always uses the classic tag
+        convention regardless of which provider generation is otherwise
+        active for the turn itself."""
+        base_prompt, signal_definition, turn_attachments = self._build_turn_prompt_parts(automaton, state)
+        if signal_definition is None:
+            return base_prompt, turn_attachments
         metadata_prompt = self._metadata_handler.build_prompt(signal_definition, self.env)
-        system_prompt = f"{automaton.general_prompt}\n\n{state.contextual_prompt}\n\n{metadata_prompt}"
-        return system_prompt, list(automaton.general_attachments.values()) + list(state.attachments.values())
+        return f"{base_prompt}\n\n{metadata_prompt}", turn_attachments
 
     def _should_generate_opening_message(self, project_name: str, session_id: int, state: State) -> bool:
         content_since = self._history_cutoff(project_name, state)

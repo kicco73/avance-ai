@@ -16,6 +16,7 @@ from ai.llm_provider import (
     AIServiceProviderRateLimitedError,
     AIServiceProviderUnavailableError,
     LLMProvider,
+    MetadataCallback,
     content_to_text,
 )
 
@@ -79,23 +80,16 @@ class GeminiProvider(LLMProvider):
 
         return contents, gen_config
 
-    def generate(
-        self, system_prompt: str, history: list[dict[str, Any]], on_retry: OnRetry | None = None
-    ) -> str:
-        # on_retry: unused — a leaf provider never retries on its own (see LLMProvider.generate).
-        contents, config = self._format_history_and_config(system_prompt, history)
-
-        with _handle_gemini_errors():
-            response = self._client.models.generate_content(
-                model=self._model_name,
-                contents=contents,
-                config=config,
-            )
-            return response.text or ""
-
     async def generate_stream(
-        self, system_prompt: str, history: list[dict[str, Any]], on_retry: OnRetry | None = None
+        self,
+        system_prompt: str,
+        history: list[dict[str, Any]],
+        on_retry: OnRetry | None = None,
+        on_metadata: MetadataCallback | None = None,
     ) -> AsyncIterator[str]:
+        # on_metadata: unused — a "v1" provider never calls it (see
+        # LLMProvider.generate_stream's own docstring for why it's still
+        # accepted here regardless).
         contents, config = self._format_history_and_config(system_prompt, history)
 
         with _handle_gemini_errors():

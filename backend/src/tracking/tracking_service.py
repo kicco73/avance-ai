@@ -23,7 +23,6 @@ from typing import Callable
 from automaton.automaton import Action, Automaton, State, SignalPayload
 from ai.ai_service import AiService
 from chat.env import Env
-from chat.metadata_handler import MetadataHandler
 from db import Db
 from metrics.metric_service import MetricService
 from service_error import ServiceError
@@ -62,8 +61,7 @@ class TrackingService(object):
         # instance ChatService itself uses) — see this module's own
         # docstring for why that dependency only ever points one way.
         env = Env(db, get_username, get_active_project_name)
-        metadata_handler = MetadataHandler()
-        evaluator = SignalEvaluator(metadata_handler)
+        evaluator = SignalEvaluator()
         self._auto_tracker = AutoTracker(db, ai_service, self._definitions, metric_service, env, evaluator)
         self.auto_tracking_enabled = True
 

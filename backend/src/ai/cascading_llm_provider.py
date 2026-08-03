@@ -16,7 +16,6 @@ from ai.llm_provider import (
     AIServiceProviderUnavailableError,
     LLMProvider,
     MetadataCallback,
-    supports_on_metadata,
 )
 
 
@@ -30,44 +29,30 @@ class CascadingLLMProvider(LLMProvider):
 
     # Whichever concrete leaf the cascade would call *right now* — reading
     # this is the only way anything above this wrapper (see AiService.
-    # supports_metadata_generate/supports_metadata_stream) can tell what
-    # it's actually talking to, since generate()/generate_stream() below
-    # otherwise hide that entirely, cascading between leaves on failure
-    # (see cascade.py) with no visible seam. Purely a read: never advances
-    # or otherwise mutates the cascade's own position.
+    # supports_metadata) can tell what it's actually talking to, since
+    # generate_stream below otherwise hides that entirely, cascading
+    # between leaves on failure (see cascade.py) with no visible seam.
+    # Purely a read: never advances or otherwise mutates the cascade's
+    # own position.
     @property
     def current_provider(self) -> LLMProvider:
         return self._cascade.current
 
-    async def generate(
-        self, system_prompt: str, history: list[dict], on_retry: OnRetry | None = None, on_metadata: MetadataCallback | None = None
-    ) -> str:
-        def call(provider: LLMProvider) -> str:
-            # Checked per attempt, not once up front — a failed leaf can
-            # cascade to a *different* one mid-call (see cascade.py's own
-            # advance()), which might not share the same on_metadata
-            # support the caller originally chose this mode for. Passing
-            # it to a "v1" leaf that doesn't accept it as a keyword would
-            # otherwise raise a plain TypeError instead of the clean
-            # AIServiceError this whole cascade exists to guarantee.
-            if on_metadata is not None and supports_on_metadata(provider.generate):
-                return provider.generate(system_prompt, history, on_metadata=on_metadata)
-            return provider.generate(system_prompt, history)
-
-        return await self._cascade.call_with_retry(
-            call,
-            unavailable=AIServiceProviderUnavailableError,
-            rate_limited=AIServiceProviderRateLimitedError,
-            on_retry=on_retry,
-        )
-
+    # generate() has no override here — LLMProvider's own shared default
+    # (see its own docstring) calls self.generate_stream, which correctly
+    # resolves to this class's own override below via normal polymorphic
+    # dispatch, so it's already cascade/retry-aware without needing a
+    # second, separate implementation of that here.
     async def generate_stream(
         self, system_prompt: str, history: list[dict], on_retry: OnRetry | None = None, on_metadata: MetadataCallback | None = None
     ) -> AsyncIterator[str]:
+        # Every concrete provider now accepts on_metadata unconditionally
+        # (see LLMProvider.generate_stream's own docstring) — a "v1" leaf
+        # simply never calls it — so this can pass it straight through to
+        # whichever leaf the cascade is currently on, with no per-leaf
+        # capability check needed first.
         def call(provider: LLMProvider) -> AsyncIterator[str]:
-            if on_metadata is not None and supports_on_metadata(provider.generate_stream):
-                return provider.generate_stream(system_prompt, history, on_metadata=on_metadata)
-            return provider.generate_stream(system_prompt, history)
+            return provider.generate_stream(system_prompt, history, on_metadata=on_metadata)
 
         stream = await self._cascade.call_with_retry(
             call,
