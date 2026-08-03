@@ -1,9 +1,12 @@
-__pycache__/
-*.pyc
-
 .env
 .config.yml
+
+
+__pycache__/
+*.pyc
 .venv
+backend/src/_version.py
+
 
 frontend/dist/
 frontend/node_modules/

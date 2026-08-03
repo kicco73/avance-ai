@@ -11,5 +11,4 @@ package-dir = {"" = "src"}
 py-modules = ["main"]
 
 [tool.setuptools_scm]
-write_to = "src/_version.py"
 root = ".."

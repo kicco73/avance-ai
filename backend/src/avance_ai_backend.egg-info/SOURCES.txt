@@ -29,6 +29,10 @@ src/main.py
 src/schemas.py
 src/service_error.py
 src/session.py
+src/UNKNOWN.egg-info/PKG-INFO
+src/UNKNOWN.egg-info/SOURCES.txt
+src/UNKNOWN.egg-info/dependency_links.txt
+src/UNKNOWN.egg-info/top_level.txt
 src/ai/__init__.py
 src/ai/ai_service.py
 src/ai/anthropic_provider.py
@@ -53,6 +57,16 @@ src/chat/priming.py
 src/chat/session_manager.py
 src/chat/text_filter.py
 src/chat/ws_adapter.py
+src/db/__init__.py
+src/db/db.py
+src/db/history.py
+src/db/messages.py
+src/db/models.py
+src/db/projects.py
+src/db/sessions.py
+src/db/settings.py
+src/db/tracking.py
+src/db/utils.py
 src/docs/BENCHMARK.md
 src/docs/METRICS.md
 src/docs/PROJECT_SPECS.md

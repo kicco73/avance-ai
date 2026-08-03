@@ -1,6 +1,7 @@
 """FastAPI entrypoint for the Avance State Engine prototype — config/wiring
 only. Every endpoint lives on AvanceController (see controller.py)."""
 from __future__ import annotations
+from importlib.metadata import PackageNotFoundError, version
 import logging
 from http import HTTPStatus
 
@@ -24,8 +25,8 @@ from talk.talk_service import TalkService
 from listen.listen_service import ListenService
 
 try:
-    from _version import __version__
-except ImportError:
+    __version__ = version("avance-ai-backend")
+except PackageNotFoundError:
     __version__ = "0.0.0.dev0"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
