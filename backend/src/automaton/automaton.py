@@ -252,6 +252,18 @@ class Automaton(object):
                     referenced |= trigger_signal_names(expression)
         return referenced & {s.name for s in self.signals}
 
+    def all_triggerable_signal_names(self) -> set[str]:
+        """triggerable_signal_names, unioned across every state — not
+        scoped to wherever the conversation currently happens to be. The
+        project-wide "is this signal used by anything at all" view (see
+        project_service.py's get_project_signals, whose own `relevant`
+        field this backs — the Inspector Signals tab's "show only
+        relevant signals" filter): a signal only some *other* state's
+        actions reference is still meaningfully "relevant" from that
+        vantage point, unlike the single-state scope autotracking itself
+        needs for its own prompt/computation scoping."""
+        return {name for state_key in self.states for name in self.triggerable_signal_names(state_key)}
+
     def evaluate_triggers(self, state_key: str, signals: dict[str, Any]) -> str | None:
         """Returns the first action (YAML order) whose trigger evaluates
         true — FIFO priority — or None. Actions without `trigger` stay

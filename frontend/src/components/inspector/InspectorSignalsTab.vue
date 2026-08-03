@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, watch, onMounted } from 'vue'
-import { getProjectGraph, getProjectSignals } from '../../api.js'
+import { getProjectSignals } from '../../api.js'
 import { hasSignalValue, useSignalChangeFlash } from './signalDisplay.js'
 
 const props = defineProps({
@@ -18,44 +18,20 @@ const signals = ref([])
 const { recentlyChanged: recentlyChangedSignals, markChanged: markSignalsChanged } = useSignalChangeFlash()
 const draggingExpectedValues = ref({})
 
-// "Relevant" (see Automaton.triggerable_signal_names on the backend,
-// the same idea this mirrors client-side for display purposes only —
-// nothing here affects what's actually computed) — a signal referenced
-// by at least one action's own `trigger` anywhere in the project, not
-// just the currently highlighted state: this tab lists every declared
-// signal regardless of which state is selected, so relevance here is
-// project-wide. On by default (showOnlyRelevant) since a project's own
-// declared signals often include ones no trigger actually reads yet
-// (still mid-authoring, or intentionally advisory/display-only).
+// "Relevant" per-signal (see Automaton.all_triggerable_signal_names on
+// the backend) — computed server-side, authoritatively, from the same
+// ast-based expression parsing the automaton itself uses to decide
+// what a trigger/env: field can reference, not re-derived here: a
+// client-side regex approximation over raw trigger text turned out to
+// be exactly the kind of thing that's easy to get subtly wrong for no
+// good reason when the server already knows the real answer. On by
+// default (showOnlyRelevant) since a project's own declared signals
+// often include ones no trigger actually reads yet (still mid-
+// authoring, or intentionally advisory/display-only).
 const showOnlyRelevant = ref(true)
-const relevantSignalNames = ref(new Set())
-
-// A small stand-in for Automaton.trigger_signal_names' own ast-based
-// free-variable extraction (see automaton.py) — good enough for this
-// display-only purpose without shipping a real Python-expression parser
-// to the browser: any identifier-shaped token, minus the handful of
-// simpleeval-supported keywords that could never be a signal's own name.
-const EXPRESSION_KEYWORDS = new Set(['and', 'or', 'not', 'in', 'is', 'True', 'False', 'None'])
-function referencedNames(expression) {
-  return (expression.match(/[A-Za-z_][A-Za-z0-9_]*/g) || []).filter((name) => !EXPRESSION_KEYWORDS.has(name))
-}
-
-async function loadRelevantSignalNames() {
-  try {
-    const { edges } = await getProjectGraph(props.projectName)
-    const names = new Set()
-    for (const edge of edges) {
-      if (!edge.trigger) continue
-      for (const name of referencedNames(edge.trigger)) names.add(name)
-    }
-    relevantSignalNames.value = names
-  } catch {
-    // already surfaced via apiFetch — worst case the filter shows nothing
-  }
-}
 
 const displayedSignals = computed(() =>
-  showOnlyRelevant.value ? signals.value.filter((s) => relevantSignalNames.value.has(s.name)) : signals.value
+  showOnlyRelevant.value ? signals.value.filter((s) => s.relevant) : signals.value
 )
 
 function attachmentLabel(index) { return String.fromCharCode(97 + index) }
@@ -94,7 +70,6 @@ async function loadSignals() {
   signalsLoading.value = true
   try {
     signals.value = (await getProjectSignals(props.projectName)).signals
-    await loadRelevantSignalNames()
   } catch {} finally { signalsLoading.value = false }
 }
 

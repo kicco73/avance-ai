@@ -253,14 +253,21 @@ class ProjectService(object):
         put_project_file/delete_project_file, via _finalize_project_update)
         keeps fresh as of its own last successful save, regardless of which
         project is currently active — so this never reflects an
-        in-progress unsaved edit."""
+        in-progress unsaved edit. `relevant` (see Automaton.
+        all_triggerable_signal_names) is the authoritative, server-computed
+        answer to "is this signal referenced by some action's own trigger
+        (or env: field) anywhere in the project" — the Inspector Signals
+        tab's own "show only relevant signals" filter reads this directly
+        rather than re-deriving it client-side."""
         automaton = self._load_project(project_name)
+        relevant_names = automaton.all_triggerable_signal_names()
         return [
             {
                 "name": signal.name,
                 "ui_label": signal.ui_label,
                 "ui_description": signal.ui_description,
                 "attachments": [a.filename for a in signal.attachments.values()],
+                "relevant": signal.name in relevant_names,
             }
             for signal in automaton.signals
         ]

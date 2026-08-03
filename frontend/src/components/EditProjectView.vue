@@ -9,6 +9,7 @@ import ChatTimeline from './chat/ChatTimeline.vue'
 import RestartFromHereButton from './chat/RestartFromHereButton.vue'
 import ModelMenu from './ModelMenu.vue'
 import Inspector from './inspector/Inspector.vue'
+import DocInfoButton from './DocInfoButton.vue'
 import {
   getProjectFiles,
   getProjectFile,
@@ -1020,6 +1021,7 @@ onBeforeUnmount(() => {
                 <button class="save-btn" :disabled="loading || saving || !isDirty" @click="saveCurrentFile">
                   {{ saving ? 'Saving…' : 'Save' }}
                 </button>
+                <DocInfoButton doc-name="project-specs" title="Project format specification" />
               </div>
             </div>
             <div class="edit-project-editor-content">

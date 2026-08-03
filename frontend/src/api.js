@@ -357,6 +357,15 @@ export function getProjectFiles(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/files`)
 }
 
+// Raw markdown content of one of backend/src/docs' fixed reference docs
+// (see controller.py's own DOC_FILES) — backs each "(?)" documentation
+// button (EditProjectView.vue's own, next to Save; the Inspector's
+// Metrics/Performance tabs). `name` is one of 'project-specs' /
+// 'metrics' / 'benchmark'.
+export function getDoc(name) {
+  return apiFetch(`${API_URL}/docs/${encodeURIComponent(name)}`)
+}
+
 // {content, can_undo, can_redo} of fileName's current content —
 // can_undo/can_redo are what the Edit-project view's Undo/Redo buttons
 // use to know whether they're enabled, scoped to the current user.

@@ -122,3 +122,45 @@ def test_a_literal_env_expression_with_no_references_contributes_nothing():
     automaton = _automaton([action], [Signal(name="mood", ui_label="Mood", definition="d")])
 
     assert automaton.triggerable_signal_names("a") == set()
+
+
+def _multi_state_automaton(signals: list[Signal], actions_a: list[Action], actions_b: list[Action]) -> Automaton:
+    init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
+    states = {
+        "": State(key="", ui_label="", final=False, actions=[init_action]),
+        "a": State(key="a", ui_label="A", final=not actions_a, contextual_prompt="hi", actions=actions_a),
+        "b": State(key="b", ui_label="B", final=not actions_b, contextual_prompt="bye", actions=actions_b),
+    }
+    return Automaton(
+        init_action=init_action, states=states, general_prompt="", signals=signals,
+        attachments={}, general_attachments={},
+        autotracking_on_user_message=True, autotracking_on_ai_message=False,
+    )
+
+
+def test_all_triggerable_signal_names_unions_across_every_state():
+    action_a = Action(name="a1", ui_label="A1", ui_button="A1", target="a", trigger="mood >= 50")
+    action_b = Action(name="b1", ui_label="B1", ui_button="B1", target="b", trigger="stability >= 1")
+    automaton = _multi_state_automaton(
+        [Signal(name="mood", ui_label="Mood", definition="d"), Signal(name="stability", ui_label="Stability", definition="d")],
+        [action_a], [action_b],
+    )
+
+    assert automaton.all_triggerable_signal_names() == {"mood", "stability"}
+
+
+def test_all_triggerable_signal_names_excludes_a_signal_no_state_references():
+    action_a = Action(name="a1", ui_label="A1", ui_button="A1", target="a", trigger="mood >= 50")
+    automaton = _multi_state_automaton(
+        [Signal(name="mood", ui_label="Mood", definition="d"), Signal(name="unused", ui_label="Unused", definition="d")],
+        [action_a], [],
+    )
+
+    assert automaton.all_triggerable_signal_names() == {"mood"}
+
+
+def test_all_triggerable_signal_names_empty_when_nothing_anywhere_references_a_signal():
+    action_a = Action(name="a1", ui_label="A1", ui_button="A1", target="a")
+    automaton = _multi_state_automaton([Signal(name="mood", ui_label="Mood", definition="d")], [action_a], [])
+
+    assert automaton.all_triggerable_signal_names() == set()

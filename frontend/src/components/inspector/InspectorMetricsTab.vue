@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { getMetrics } from '../../api.js'
+import DocInfoButton from '../DocInfoButton.vue'
 import { useSignalChangeFlash } from './signalDisplay.js'
 
 const props = defineProps({
@@ -27,6 +28,9 @@ defineExpose({ loadMetrics })
 
 <template>
   <div class="inspector-metrics-section">
+    <div class="inspector-metrics-header">
+      <DocInfoButton doc-name="metrics" title="Core metrics" />
+    </div>
     <p v-if="metricsLoading" class="signals-status">Loading…</p>
     <p v-else-if="!metrics.length" class="signals-status">No metrics computed yet.</p>
     <div v-else class="inspector-signal-list">
@@ -45,7 +49,8 @@ defineExpose({ loadMetrics })
 </template>
 
 <style scoped>
-.inspector-metrics-section { flex: 1; min-height: 0; overflow-y: auto; }
+.inspector-metrics-section { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+.inspector-metrics-header { display: flex; justify-content: flex-end; margin-bottom: 0.5rem; flex-shrink: 0; }
 .signals-status { margin: 0; color: #444; font-size: 0.9rem; }
 .inspector-signal-list { display: flex; flex-direction: column; gap: 0.6rem; }
 .inspector-signal-block { display: flex; flex-direction: column; gap: 0.2rem; padding: 0.6rem 0.75rem; border-radius: 8px; border: 1px solid #eee; background: #fafafa; }
