@@ -189,7 +189,7 @@ class ProjectService(object):
 
             zf.extractall(staging_dir)
 
-    def get_active_project_name(self) -> str | None:
+    def get_active_project_name(self) -> str:
         """The current session user's active project name, read fresh from
         the DB every time — None if this user has no Settings row yet
         (never activated anything), or their last-active project has since
@@ -199,8 +199,11 @@ class ProjectService(object):
         from this (get_active_automaton_and_state, and everything built on
         it) already degrades gracefully when there's genuinely nothing
         active — see GET /api/state's own bare except."""
-        return self._db.get_active_project_name(Session().user)
-
+        name = self._db.get_active_project_name(Session().user)
+        if name is None:
+            raise FileNotFoundError("No project is currently active.")
+        return name
+    
     def get_active_automaton_and_state(self) -> tuple[Automaton, State]:
         """The active Automaton paired with its current State — falls back
         to init_action.target if none is persisted yet, or the persisted

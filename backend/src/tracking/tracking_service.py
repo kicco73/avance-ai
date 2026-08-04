@@ -23,6 +23,7 @@ from typing import Callable
 from automaton.automaton import Action, Automaton, State, SignalPayload
 from ai.ai_service import AiService
 from chat.env import Env
+from chat.metadata_handler import MetadataHandler
 from db import Db
 from metrics.metric_service import MetricService
 from service_error import ServiceError
@@ -235,3 +236,4 @@ class TrackingService(object):
         Ownership of `session_id` is the caller's own responsibility (see
         ChatService.clear_session_annotations)."""
         self._db.clear_session_annotations(session_id)
+

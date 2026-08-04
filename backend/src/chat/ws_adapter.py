@@ -43,38 +43,27 @@ class WsAdapter(object):
                         "retry_in": retry_in,
                     })
 
-                async def _push_chunk(chunk: str) -> None:
-                    await websocket.send_json({
-                        "type": "chunk",
-                        "content": chunk,
-                    })
-
-                # ChatService reports every metadata key it learns about
-                # this way now (see chat.turn_callbacks.OnMetadata/
-                # chat.turn_strategy_builder.build_turn_strategy) —
-                # "audio" is the only one this adapter's own wire protocol
-                # has ever pushed live (a dedicated "audio_text" frame,
-                # unchanged), so every other key (e.g. "signals", "env" —
-                # only ever populated live by a v2-capable provider, see
-                # gemini_provider_v2.py) is silently ignored here: they
-                # already reach the frontend via the final "done" frame's
-                # own `result`, same as the legacy tag-filtered path's
-                # signals/env always have.
+        
                 async def _push_metadata(key: str, value) -> None:
                     if key == "audio":
                         await websocket.send_json({
                             "type": "audio_text",
                             "content": value,
                         })
+                    elif key == "chunk":
+                        await websocket.send_json({
+                            "type": "chunk",
+                            "content": value,
+                        })
 
                 try:
+                    
                     result = await self._chat_service.process_turn(
                         text,
                         session_id,
-                        on_retry=_push_retrying,
-                        on_chunk=_push_chunk,
                         on_metadata=_push_metadata,
                     )
+                    
                 except (ChatServiceError, AIServiceError) as exc:
                     await websocket.send_json({
                         "type": "error",

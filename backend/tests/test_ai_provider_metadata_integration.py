@@ -1,34 +1,10 @@
-"""Integration tests against whatever real AI provider(s) are actually
-configured in backend/.config.yml (see config.AppConfig/main.py — the
-exact same config the real server boots from, so no separate API key
-env var to keep in sync). Rather than hardcoding a driver name, this
-scans every configured provider (see AiService.select_model) for one
-whose current capability (see AiService.supports_metadata) is "v2"
-(on_metadata-native, e.g. gemini_provider_v2.py) and one that's "v1" (plain text, [audio]/
-[signals]/[env] tags — see chat.text_filter.ConcatTagFilter) — auto mode
-itself may cascade across several providers on failure, but *which*
-configured entry ends up being v1 vs v2 depends entirely on what's
-actually in the config, never assumed here.
-
-Exercises the exact same TurnStrategy.generate_reply contract ChatService
-itself calls (see chat.turn_strategy_builder.build_turn_strategy) — for
-both generate() (on_chunk=None) and generate_stream() (on_chunk given) —
-rather than poking a raw provider directly, so a pass here is real
-end-to-end confidence the whole audio/signals/env extraction pipeline
-works, not just that some SDK call doesn't crash.
-
-Skipped entirely if backend/.config.yml doesn't exist or has no usable
-ai-service config; skipped per-test if the config has no provider of the
-needed capability. These make real, billed calls to whatever's
-configured and must never run unattended in CI.
-"""
 from __future__ import annotations
 
 import pytest
 
 from ai.ai_service import AiService
-from chat.turn_strategy_v1 import TurnStrategyV1
-from chat.turn_strategy_v2 import TurnStrategyV2
+from chat.turn_protocol_using_text_extraction import TurnProcotolUsingTextExtraction
+from chat.turn_protocol_using_schema import TurnProtocolUsingSchema
 from config import AppConfig, ConfigError
 
 try:
@@ -55,7 +31,7 @@ PROMPT = (
     "'last_win' with the value 'promotion'."
 )
 
-STRATEGY_FOR = {"v1": TurnStrategyV1, "v2": TurnStrategyV2}
+STRATEGY_FOR = {"v1": TurnProcotolUsingTextExtraction, "v2": TurnProtocolUsingSchema}
 
 
 class _StubEnv:
@@ -76,7 +52,7 @@ def _history() -> list[dict]:
 
 
 def _classify(ai_service: AiService) -> str:
-    return "v2" if ai_service.supports_metadata() else "v1"
+    return "v2" if ai_service.supports_schema() else "v1"
 
 
 def _strategy_for(wanted: str):

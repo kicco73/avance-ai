@@ -12,8 +12,8 @@ from __future__ import annotations
 
 from ai.llm_provider import AIServiceError
 from chat.env import Env
-from chat.turn_strategy_v1 import TurnStrategyV1
-from chat.turn_strategy_v2 import TurnStrategyV2
+from chat.turn_protocol_using_text_extraction import TurnProcotolUsingTextExtraction
+from chat.turn_protocol_using_schema import TurnProtocolUsingSchema
 
 USERNAME = "user"
 PROJECT_NAME = "proj"
@@ -53,7 +53,7 @@ class FakeAiServiceV2:
 
 
 async def test_v1_compute_explicitly_extracts_from_a_signals_tag(db):
-    strategy = TurnStrategyV1(FakeAiServiceV1(reply='Hi![signals]{"mood": 75}[/signals]'))
+    strategy = TurnProcotolUsingTextExtraction(FakeAiServiceV1(reply='Hi![signals]{"mood": 75}[/signals]'))
 
     result = await strategy.compute_explicitly("- Definition of signals: ...", _env(db), [])
 
@@ -61,7 +61,7 @@ async def test_v1_compute_explicitly_extracts_from_a_signals_tag(db):
 
 
 async def test_v1_compute_explicitly_degrades_to_empty_dict_on_ai_failure(db):
-    strategy = TurnStrategyV1(FakeAiServiceV1(error=AIServiceError("boom")))
+    strategy = TurnProcotolUsingTextExtraction(FakeAiServiceV1(error=AIServiceError("boom")))
 
     result = await strategy.compute_explicitly("- Definition of signals: ...", _env(db), [])
 
@@ -69,7 +69,7 @@ async def test_v1_compute_explicitly_degrades_to_empty_dict_on_ai_failure(db):
 
 
 async def test_v1_compute_explicitly_with_no_signals_tag_at_all_is_empty(db):
-    strategy = TurnStrategyV1(FakeAiServiceV1(reply="just a plain reply, no tags"))
+    strategy = TurnProcotolUsingTextExtraction(FakeAiServiceV1(reply="just a plain reply, no tags"))
 
     result = await strategy.compute_explicitly("- Definition of signals: ...", _env(db), [])
 
@@ -77,7 +77,7 @@ async def test_v1_compute_explicitly_with_no_signals_tag_at_all_is_empty(db):
 
 
 async def test_v2_compute_explicitly_json_parses_the_signals_field(db):
-    strategy = TurnStrategyV2(FakeAiServiceV2(metadata={"signals": '{"mood": 75}'}))
+    strategy = TurnProtocolUsingSchema(FakeAiServiceV2(metadata={"signals": '{"mood": 75}'}))
 
     result = await strategy.compute_explicitly("- Definition of signals: ...", _env(db), [])
 
@@ -85,7 +85,7 @@ async def test_v2_compute_explicitly_json_parses_the_signals_field(db):
 
 
 async def test_v2_compute_explicitly_ignores_audio_and_env(db):
-    strategy = TurnStrategyV2(
+    strategy = TurnProtocolUsingSchema(
         FakeAiServiceV2(metadata={"audio": "hi", "env": '{"x": "y"}', "signals": '{"mood": 1}'})
     )
 
@@ -95,7 +95,7 @@ async def test_v2_compute_explicitly_ignores_audio_and_env(db):
 
 
 async def test_v2_compute_explicitly_degrades_to_empty_dict_on_ai_failure(db):
-    strategy = TurnStrategyV2(FakeAiServiceV2(error=AIServiceError("boom")))
+    strategy = TurnProtocolUsingSchema(FakeAiServiceV2(error=AIServiceError("boom")))
 
     result = await strategy.compute_explicitly("- Definition of signals: ...", _env(db), [])
 
@@ -103,7 +103,7 @@ async def test_v2_compute_explicitly_degrades_to_empty_dict_on_ai_failure(db):
 
 
 async def test_v2_compute_explicitly_with_no_signals_field_at_all_is_empty(db):
-    strategy = TurnStrategyV2(FakeAiServiceV2(metadata={"audio": "hi"}))
+    strategy = TurnProtocolUsingSchema(FakeAiServiceV2(metadata={"audio": "hi"}))
 
     result = await strategy.compute_explicitly("- Definition of signals: ...", _env(db), [])
 
@@ -111,7 +111,7 @@ async def test_v2_compute_explicitly_with_no_signals_field_at_all_is_empty(db):
 
 
 async def test_v2_compute_explicitly_degrades_to_empty_dict_on_malformed_json(db):
-    strategy = TurnStrategyV2(FakeAiServiceV2(metadata={"signals": "not valid json"}))
+    strategy = TurnProtocolUsingSchema(FakeAiServiceV2(metadata={"signals": "not valid json"}))
 
     result = await strategy.compute_explicitly("- Definition of signals: ...", _env(db), [])
 

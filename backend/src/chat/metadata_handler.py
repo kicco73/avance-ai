@@ -2,12 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, TYPE_CHECKING
+from typing import Any
 
 from chat.text_filter import ConcatTagFilter
-
-if TYPE_CHECKING:
-    from chat.env import Env
 
 logger = logging.getLogger(__name__)
 
@@ -36,29 +33,29 @@ Always add a [env]...[/env] tag at the end of every response, after
     - Write one "key: value" pair per line (optionally prefixed with "-").
     - Never invent values for the keys shown to you below — those are inputs supplied to you.
 """
-
-
 class MetadataHandler(object):
-    def _parse_metadata_tag(self, metadata_tag: str) -> Any:
-        metadata: dict[str, Any] = {}
-        if not metadata_tag:
-            return metadata
+    @staticmethod
+    def parse_raw_signals(raw_signals: str) -> dict[str,float]:
+        signals: dict[str, Any] = {}
+        if not raw_signals:
+            return signals
         try:
-            metadata = json.loads(metadata_tag) or {}
-            assert isinstance(metadata, dict)
+            signals = json.loads(raw_signals) or {}
+            assert isinstance(signals, dict)
         except Exception as exc:
-            logger.warning(f"_parse_metadata_tag(): {exc}")
-        return metadata
+            logger.warning(f"parse_raw_signals(): {exc}")
+        return signals
 
-    def _parse_env_tag(self, env_tag: str) -> dict[str, str]:
-        """[env]...[/env]'s own content isn't JSON like [signals] — one
+    @staticmethod
+    def parse_raw_env(raw_env: str) -> dict[str, str]:
+        """Env`own content isn't JSON like [signals] — one
         "key: value" pair per line, each optionally prefixed with "-" (a
         bullet-list style the model sometimes prefers), blank lines and
         anything without a ':' ignored rather than raising. Not a
         strict-YAML parse: this format is deliberately more forgiving,
         since it's model output, not hand-authored config."""
         env: dict[str, str] = {}
-        for line in (env_tag or "").splitlines():
+        for line in (raw_env or "").splitlines():
             line = line.strip()
             if line.startswith("-"):
                 line = line[1:].strip()
@@ -70,34 +67,17 @@ class MetadataHandler(object):
                 env[key] = value.strip()
         return env
 
+    def parse(self, key: str, value: str) -> str | dict[str, float | str]:
+        parser = {
+            'signals': self.parse_raw_signals,
+            'env': self.parse_raw_env,
+        }
+        return parser.get(key, lambda x: x)(value)
+
     def _filter_text_and_extract_tags(self, text: str) -> tuple[str, dict]:
         filters = ConcatTagFilter('audio', 'signals', 'env')
         return filters.filter_and_flush(text), {
             'audio': filters.tags['audio'].tag_content,
-            # Already the flat {name: value} dict a caller (see
-            # chat.turn_strategy_v1.TurnStrategyV1/tracking.evaluator.
-            # SignalEvaluator.compute_explicitly) can validate directly —
-            # no more outer wrapper key to drill into (see this module's
-            # own EMBED_METADATA_PROMPT: the [signals] tag's own content
-            # *is* that dictionary now, not `{"signals": {...}}`).
-            'signals': self._parse_metadata_tag(filters.tags['signals'].tag_content),
-            'env': self._parse_env_tag(filters.tags['env'].tag_content),
+            'signals': self.parse_raw_signals(filters.tags['signals'].tag_content),
+            'env': self.parse_raw_env(filters.tags['env'].tag_content),
         }
-
-    def build_prompt(self, signal_definition: str, env: "Env") -> str:
-        """`signal_definition` is the already-rendered "Definition of
-        signals:" block (see tracking.definitions.Signals.get_definition,
-        typically scoped down to a state's own triggerable signals — see
-        Automaton.triggerable_signal_names) — a plain string, not a
-        Signals object, so this module never needs to depend on the
-        tracking package (chat/ depends on tracking/, never the reverse;
-        see chat.turn_strategy_v1.TurnStrategyV1.compute_explicitly and
-        tracking.auto_tracker.AutoTracker.run, which resolves the string
-        before calling this)."""
-        env_block = "\n".join(f"{key}: {value}" for key, value in env.to_dict().items())
-        return "\n".join([
-            signal_definition,
-            EMBED_METADATA_PROMPT,
-            f"[env]\n{env_block}\n[/env]",
-        ])
-

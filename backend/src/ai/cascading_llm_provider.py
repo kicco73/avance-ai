@@ -44,7 +44,7 @@ class CascadingLLMProvider(LLMProvider):
     # dispatch, so it's already cascade/retry-aware without needing a
     # second, separate implementation of that here.
     async def generate_stream(
-        self, system_prompt: str, history: list[dict], on_retry: OnRetry | None = None, on_metadata: MetadataCallback | None = None
+        self, system_prompt: str, history: list[dict]
     ) -> AsyncIterator[str]:
         # Every concrete provider now accepts on_metadata unconditionally
         # (see LLMProvider.generate_stream's own docstring) — a "v1" leaf
@@ -52,13 +52,12 @@ class CascadingLLMProvider(LLMProvider):
         # whichever leaf the cascade is currently on, with no per-leaf
         # capability check needed first.
         def call(provider: LLMProvider) -> AsyncIterator[str]:
-            return provider.generate_stream(system_prompt, history, on_metadata=on_metadata)
+            return provider.generate_stream(system_prompt, history)
 
         stream = await self._cascade.call_with_retry(
             call,
             unavailable=AIServiceProviderUnavailableError,
             rate_limited=AIServiceProviderRateLimitedError,
-            on_retry=on_retry,
         )
         async for chunk in stream:
             yield chunk
