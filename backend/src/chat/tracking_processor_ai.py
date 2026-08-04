@@ -25,6 +25,6 @@ class TrackingProcessorAfterAiMessage(TrackingProcessor):
 			reply += chunk
 			self.metadata.on_metadata('chunk', chunk)
 
-		action, state, transition_messages, tracking_id = await self._run_auto_tracking(None)
+		action, state, transition_messages, tracking_id = await self._run_auto_tracking()
 
 		return OutVariables(reply, transition_messages, tracking_id, state, action)

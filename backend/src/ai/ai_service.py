@@ -150,8 +150,8 @@ class AiService(object):
 
 			if len(parsed):
 				emitting = set(parsed.keys()) - emitted
-				last_inserted = next(reversed(parsed))
-				completed = emitting - set(last_inserted)
+				potentially_incomplete = next(reversed(parsed))
+				completed = emitting - {potentially_incomplete}
 
 				for name in completed:
 					if name != "text":
@@ -173,3 +173,5 @@ class AiService(object):
 		last_inserted = next(reversed(final_parsed))
 		if last_inserted != 'text' and last_inserted not in emitted:
 			on_metadata(last_inserted, final_parsed[last_inserted]) 
+			print("EN FIN", last_inserted, final_parsed[last_inserted])
+		print("JSON", final_parsed)

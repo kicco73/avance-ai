@@ -80,12 +80,6 @@ class State:
 
     @property
     def has_triggerable_actions(self) -> bool:
-        """Whether any action leaving this state has a trigger — the one
-        place that's decided, reused both to skip auto-tracking outright
-        when there's nothing it could evaluate (see
-        chat.turn_processor.TurnProcessor._run_auto_tracking) and, per action, for the
-        "has_trigger" field get_state_payload sends the frontend (same
-        `a.trigger is not None` check, just per-action instead of any())."""
         return any(a.trigger is not None for a in self.actions)
 
 
@@ -222,27 +216,6 @@ class Automaton(object):
         )
 
     def triggerable_signal_names(self, state_key: str) -> set[str]:
-        """Every declared signal name referenced by at least one action
-        leaving `state_key` — either in its own `trigger`, or in one of
-        its `env` field's expressions (see automaton_builder.py's
-        _build_action/eval_action_env: same scope as a trigger, so a
-        signal can drive an env update — e.g. `last_mood: mood` — without
-        ever gating a transition itself). The exact subset a
-        signals-computation call actually needs for this state (see
-        tracking/evaluator.py's validate, chat.turn_strategy.TurnStrategy.
-        compute_explicitly, and chat_service.py's _build_turn_prompt,
-        which all scope their own prompt/definitions/validation down to
-        this set instead of every declared signal). Reuses
-        trigger_signal_names — the same
-        ast-based free-variable extraction _actions_sanity_check and
-        triggers_reference already rely on, since simpleeval's own
-        expression grammar is just a restricted subset of what ast.parse
-        already accepts, so no separate parser is needed here either —
-        rather than a fresh regex/hand-rolled extraction. Either source
-        can also reference a core metric or an env key, neither of which
-        is a signal a computation call could ever produce, so the result
-        is intersected against this automaton's own declared signal
-        names."""
         state = self.states[state_key]
         referenced: set[str] = set()
         for action in state.actions:

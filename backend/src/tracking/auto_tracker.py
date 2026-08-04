@@ -45,66 +45,22 @@ class AutoTracker(object):
 
 	async def run(
 		self,
-		pending_message: dict | None,
-		project_name: str,
 		session_id: int,
 		automaton: Automaton,
 		state: State,
 		signal_values: dict | None,
 	) -> tuple[Action | None, State, int | None]:
-		"""Returns (None, state, None) if nothing was even evaluated (no
-		triggerable action to check), else (action or None, the resulting
-		state, the id of the Tracking row the evaluation itself persisted —
-		see TrackingService.run_auto_tracking, which links that row back to
-		whichever message caused this call)."""
+
 		if not state.has_triggerable_actions:
 			return None, state, None
 
-		# The only signals a trigger leaving this state could ever use —
-		# see Automaton.triggerable_signal_names. Scopes both the
-		# embedded validation and the explicit fallback call below down
-		# to exactly this set, instead of every signal the project
-		# declares, since anything outside it can't affect
-		# evaluate_triggers below no matter what value it takes.
 		needed_signal_names = automaton.triggerable_signal_names(state.key)
-		if signal_values:
-			# Embedded — a reply was already generated for some other
-			# reason and already reported these (see MetadataHandler.
-			# signal_values) — still validated the same way an explicit
-			# computation's own reply would be (see SignalEvaluator).
-			signal_values = self._signal_evaluator.validate(automaton, signal_values, needed_signal_names)
-		else:
-			# No reply to piggyback on at all — fall back to a dedicated
-			# call, in whichever concrete TurnStrategy's own dialect is
-			# currently active (tags for v1, on_metadata for v2 — see
-			# TurnStrategy.compute_explicitly's own docstring for why
-			# this can't be provider-agnostic the way validate() above
-			# is; a v1 provider's own reply never carries structured
-			# metadata, a v2 provider's own reply never carries tags).
-			logger.warning("AutoTracker.run(): signals not found in metadata, falling back to AI")
-			since = self._history_cutoff(project_name, state)
-			signal_definition = self._signals.get_definition(needed_signal_names)
-			relevant_signals = (
-				automaton.signals if needed_signal_names is None
-				else [s for s in automaton.signals if s.name in needed_signal_names]
-			)
-			# Each signal brings only its own attachments into this call —
-			# never a state's or general_prompt's (different scope entirely).
-			signal_attachments = [a for s in relevant_signals for a in s.attachments.values()]
-			priming_messages = build_priming_messages(signal_attachments)
-			call_history = priming_messages + self._signals.history_window(session_id, pending_message, since)
-			protocol = self._build_turn_protocol(self._ai_service)
-			raw_values = await protocol.compute_explicitly(signal_definition, self._env, call_history)
-			signal_values = self._signal_evaluator.validate(automaton, raw_values, needed_signal_names)
-		# Metrics/env are merged only for this evaluation, never persisted:
-		# signal_values below (save_signal_snapshot/save_transition) stays
-		# exactly what auto-tracking actually observed — mixing metric/env
-		# values into that log would corrupt SignalStabilityMetric's own
-		# future readings, which trusts every numeric key there to be a
-		# real domain signal (see metrics_framework/metrics/signal_stability.py).
+		signal_values = self._signal_evaluator.validate(automaton, signal_values, needed_signal_names)
+
 		evaluation_names = self._metrics.merge_if_referenced(automaton, state.key, signal_values)
 		evaluation_names = self._env.merge_if_referenced(automaton, state.key, evaluation_names)
 		triggered_action = automaton.evaluate_triggers(state.key, evaluation_names)
+
 		if triggered_action is None:
 			# No transition fired — just the evaluation itself is worth
 			# keeping (see db.get_latest_signal_snapshot, Tracking.values).

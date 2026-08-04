@@ -73,27 +73,6 @@ class Env(object):
         return {key: self._compute(key, until) for key in ENV_COMPUTED_KEYS}
 
     def update(self, values: dict[str, Any]) -> None:
-        """Merges `values` (freshly parsed from an incoming [env] tag —
-        see MetadataHandler._parse_env_tag) onto whatever's already
-        persisted for the current user+project, overwriting matching
-        keys — a no-op for an empty/falsy `values` (most turns don't
-        report any, and there's nothing to persist or query for). Always
-        live: there's no "editing history" here, only ever the current
-        value going forward.
-
-        Silently drops any key that isn't genuinely the model's own to
-        report: a computed one (ENV_COMPUTED_KEYS), or one currently
-        action-set (see action_set/update_action_set) — both are shown to
-        the model as part of the very same [env] block it's asked to
-        mirror back (see MetadataHandler.build_prompt's env.to_dict()),
-        and despite being told to "only include a key when reporting
-        something new", a model will often echo the whole block back
-        verbatim regardless. Without this filter that echo would
-        re-land here and show up duplicated under the Inspector's "AI"
-        section even though it's really computed/action-set — see the
-        bug this was written to fix, reported against
-        WRONG_ANSWERS_ON_CURRENT_STEP (an action-set key) showing up
-        under "AI" too."""
         if not values:
             return
         action_set = self.action_set()
@@ -101,6 +80,7 @@ class Env(object):
         if not filtered:
             return
         merged = {**self.stored(), **filtered}
+        print("SAVING ENV TO DB", self._get_active_project_name(), self._get_username(), merged)
         self._db.set_env(self._get_active_project_name(), merged, self._get_username())
 
     def set_value(self, key: str, value: str) -> None:

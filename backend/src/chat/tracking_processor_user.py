@@ -15,7 +15,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 		signal_row_id: State
 
 	async def on_signals_async(self):
-		guessed_action, new_state, transition_messages, tracking_id = await self._run_auto_tracking(None)
+		guessed_action, new_state, transition_messages, tracking_id = await self._run_auto_tracking()
 		if tracking_id is not None:
 			self.db.link_signal_to_message(tracking_id, self.user.message_id)
 

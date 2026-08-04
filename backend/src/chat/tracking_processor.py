@@ -195,10 +195,10 @@ class TrackingProcessor(object):
 	def _current_state_payload(automaton: Automaton, state: State) -> StatePayload:
 		return automaton.get_state_payload(state)
 
-	async def _run_auto_tracking(self, pending_message: dict | None) -> tuple[Action | None, State, list[dict], int | None]:
+	async def _run_auto_tracking(self) -> tuple[Action | None, State, list[dict], int | None]:
 		v = self.user
 		action, new_state, signal_row_id = await self.tracking_service.run_auto_tracking(
-			pending_message, v.project_name, v.session_id, v.automaton, v.state, self.metadata.signals
+			v.session_id, v.automaton, v.state, self.metadata.signals
 		)
 		if action is None:
 			return None, v.state, [], signal_row_id

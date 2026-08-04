@@ -91,8 +91,6 @@ class TrackingService(object):
 
     async def run_auto_tracking(
         self,
-        pending_message: dict | None,
-        project_name: str,
         session_id: int,
         automaton: Automaton,
         state: State,
@@ -105,7 +103,7 @@ class TrackingService(object):
         itself finds nothing triggerable to evaluate."""
         if not self.auto_tracking_enabled:
             return None, state, None
-        return await self._auto_tracker.run(pending_message, project_name, session_id, automaton, state, signal_values)
+        return await self._auto_tracker.run(session_id, automaton, state, signal_values)
 
     def _require_annotatable_message(self, message_id: int) -> dict:
         """Raises (409) for a message with no linked Tracking row at all

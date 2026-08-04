@@ -27,7 +27,7 @@ PRIORITY_SCHEMA_TAGS: dict[str, tuple[type, str]] = {
 
 SCHEMA_TAGS: dict[str, tuple[type, str]] = {
 	"env": (str, "Updated memory state. Include all current context keys in the form key: value, one per line"),
-	"signals": (str, "JSON dictionary containing required calculated signal values."),
+	"signals": (dict, "JSON dictionary containing required calculated signal values."),
 }
 @dataclass(frozen=True)
 class AIServiceConfig:
