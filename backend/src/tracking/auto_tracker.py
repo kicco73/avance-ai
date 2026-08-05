@@ -87,26 +87,6 @@ class AutoTracker(object):
 		new_state = automaton.get_state(action.target)
 		return action, new_state, signal_row_id
 
-	def _apply_action_env(self, automaton: Automaton, action: Action, signal_values: dict) -> None:
-		"""The fired action's own `env` field (see automaton_builder.py's
-		_build_action/Automaton.eval_action_env), evaluated and merged
-		onto chat.env.Env's persisted store — a no-op, at no extra cost,
-		for the overwhelmingly common action with no `env` field at all.
-		Rebuilt fresh rather than reusing `evaluation_names` (this run's
-		own merge_if_referenced calls above, gated on the *state's*
-		triggers referencing metrics/env): an env expression can
-		reference either even when nothing in this state's triggers do,
-		and needs the current *stored* env values too (e.g. `count + 1`
-		reading `count`'s own previous value) which trigger evaluation
-		itself never merges in."""
-		if not action.env:
-			return
-		scope = {**signal_values, **self._metrics.calculate_values(), **self._env.to_dict()}
-		updates = automaton.eval_action_env(action, scope)
-		if updates:
-			self._env.update_action_set(updates)
-
-
 	async def track_on_user_message_signals(
 			self,
 			automaton: Automaton,
@@ -164,8 +144,3 @@ class AutoTracker(object):
 		if updates:
 			self._env.update_action_set(updates)
 
-
-	def _build_turn_protocol(self) -> TurnProtocol:
-		supports_schema = self._ai_service.supports_schema()
-		protocol = TurnProtocolUsingSchema if supports_schema else TurnProcotolUsingTextExtraction
-		return protocol(self._ai_service)    

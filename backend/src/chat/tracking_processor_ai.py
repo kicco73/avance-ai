@@ -21,7 +21,7 @@ class TrackingProcessorAfterAiMessage(TrackingProcessor):
 	async def _get_ai_reply(self) -> OutVariables:
 
 		reply = ""
-		async for chunk in await self.generate_reply(self.on_receiving_metadata_when_ai_message):
+		async for chunk in self.generate_reply(self.on_receiving_metadata_when_ai_message):
 			reply += chunk
 			self.metadata.on_metadata('chunk', chunk)
 

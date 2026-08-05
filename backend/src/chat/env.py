@@ -206,3 +206,6 @@ class Env(object):
         for key in ENV_COMPUTED_KEYS:
             merged[key] = self._compute(key)
         return {**names, **merged}
+    
+    def serialise_as_text(self) -> str:
+        return"\n".join(f"{key}: {value}" for key, value in self.to_dict().items())

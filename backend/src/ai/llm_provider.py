@@ -5,7 +5,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Callable
 
-import partial_json_parser
 
 from cascade import OnRetry, ProviderError, ProviderRateLimitedError, ProviderUnavailableError
 
@@ -20,15 +19,6 @@ logger = logging.getLogger(__name__)
 # chat.text_filter.StreamingTagFilter's own on_tag already does for the
 # legacy tag-filtering path this replaces.
 MetadataCallback = Callable[[str, Any], None]
-
-PRIORITY_SCHEMA_TAGS: dict[str, tuple[type, str]] = {
-	"audio": (str, "Short textual version for text-to-speech. Generated first."),
-}
-
-SCHEMA_TAGS: dict[str, tuple[type, str]] = {
-	"env": (str, "Updated memory state. Include all current context keys in the form key: value, one per line"),
-	"signals": (dict, "JSON dictionary containing required calculated signal values."),
-}
 @dataclass(frozen=True)
 class AIServiceConfig:
 	driver: str
@@ -95,7 +85,9 @@ class LLMProvider(ABC):
 class LLMProviderWithSchema(ABC):
 
 	@abstractmethod
-	def build_schema(self, priority_tags: dict[str, tuple[type, str]], tags: dict[str, tuple[type, str]]) -> dict:
+	async def generate_stream_with_schema(
+		self, system_prompt: str, history: list[dict], schema: dict[str, str]
+	) -> AsyncIterator[str]:
 		raise NotImplementedError
+		yield
 
-	

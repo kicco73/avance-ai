@@ -52,7 +52,7 @@ def _history() -> list[dict]:
 
 
 def _classify(ai_service: AiService) -> str:
-    return "v2" if ai_service.supports_schema() else "v1"
+    return "v2" if ai_service.is_provider_with_schema() else "v1"
 
 
 def _strategy_for(wanted: str):

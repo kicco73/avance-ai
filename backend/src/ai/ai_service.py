@@ -8,8 +8,6 @@ from ai.llm_provider import (
 	AIServiceConfig,
 	LLMProviderWithSchema,
 	MetadataCallback,
-	PRIORITY_SCHEMA_TAGS,
-	SCHEMA_TAGS,
 )
 from ai.cascading_llm_provider import CascadingLLMProvider
 from ai.anthropic_provider import AnthropicProvider
@@ -59,9 +57,6 @@ class AiService(object):
 				f"{', '.join(_PROVIDER_CLASSES.keys())}"
 			)
 		provider : LLMProvider = _PROVIDER_CLASSES[service.driver](service)
-		if isinstance(provider, LLMProviderWithSchema):
-			provider.build_schema(PRIORITY_SCHEMA_TAGS, SCHEMA_TAGS)
-
 		return provider
 
 	@property
@@ -83,10 +78,6 @@ class AiService(object):
 		return getattr(self._active_provider, "current_provider", self._active_provider)
 
 	def select_model(self, index: int | None) -> None:
-		"""`index=None` selects auto (the cascade's own retry/fallback
-		order); an int pins generate()/generate_stream() to that single
-		configured model directly. Raises ValueError for an out-of-range
-		index."""
 		if index is not None and not (0 <= index < len(self._selectable_providers)):
 			raise ValueError(f"Invalid model index: {index!r}.")
 		self._selected_index = index
@@ -125,22 +116,22 @@ class AiService(object):
 	) -> AsyncIterator[str]:
 		return self._active_provider.generate_stream(system_prompt, history)
 
-	def supports_schema(self) -> bool:
+	def is_provider_with_schema(self) -> bool:
 		return isinstance(self._current_leaf_provider, LLMProviderWithSchema)
 
 	async def generate_stream_with_metadata(
 		self,
 		system_prompt: str,
 		history: list[dict[str, Any]],
-		on_metadata: MetadataCallback
+		on_metadata: MetadataCallback,
+		schema: dict[str, str]
 	) -> AsyncIterator[str]:
 
 		accumulated_json = ""
 		emitted: set[str] = set()
 		last_text_length = 0
 
-
-		response_stream = self._active_provider.generate_stream(system_prompt, history)
+		response_stream = self._active_provider.generate_stream_with_schema(system_prompt, history, schema=schema)
 
 		async for chunk in response_stream:
 			accumulated_json += chunk

@@ -44,7 +44,8 @@ class UserVariables:
 	state: State
 	project_name: str
 	session_id: int
-	message_id: int
+	message_id: int | None
+	has_ai_started_conversation: bool
 
 @dataclass
 class OutVariables:
@@ -79,11 +80,11 @@ class TrackingProcessor(object):
 	async def _get_ai_reply(self) -> OutVariables:
 		raise NotImplementedError
 
-	async def process(self, text: str, session_id, on_metadata: MetadataCallback) -> dict:
+	async def process(self, text: str | None, session_id, on_metadata: MetadataCallback) -> dict:
 
 		self.metadata = Metadata(on_metadata, {}, {}, "", None)
 
-		self.user = await self._save_user_message(text, session_id)
+		self.user = await self._save_user_message_if_not_none(text, session_id)
 		self.out = await self._get_ai_reply()
 
 		self.env.update(self.metadata.env)
@@ -93,10 +94,14 @@ class TrackingProcessor(object):
 			self.db.link_signal_to_message(self.out.tracking_id, assistant_id)
 
 		self.session_manager.touch_session(self.user.session_id, self.user.state.key)
+
+		if self.user.has_ai_started_conversation and self.user.message_id:
+			self.db.delete_message(self.user.message_id)
+
 		return self._build_turn_response(assistant_id)
 
-	async def _save_user_message(
-		self, text: str, session_id: int | None
+	async def _save_user_message_if_not_none(
+		self, text: str | None, session_id: int | None
 	) -> UserVariables:
 
 		automaton, state = self.project_service.get_active_automaton_and_state()
@@ -110,11 +115,11 @@ class TrackingProcessor(object):
 		session = self.chat_service._require_active_session(session_id, project_name, state.key)
 		resolved_session_id = session["id"]
 
-		user_message_id = self.db.save_message("user", text, resolved_session_id)
+		user_message_id = self.db.save_message("user", text or '...', resolved_session_id)
 
-		return UserVariables(automaton, state, project_name, resolved_session_id, user_message_id)
+		return UserVariables(automaton, state, project_name, resolved_session_id, user_message_id, not text)
 
-	async def generate_reply(self, on_metadata: MetadataCallback,
+	def generate_reply(self, on_metadata: MetadataCallback,
 	) -> AsyncIterator[str]:
 		base_prompt, signal_definition, turn_attachments = self._build_turn_prompt_parts(self.user.automaton, self.user.state)
 
@@ -130,9 +135,10 @@ class TrackingProcessor(object):
 		)
 
 	def build_turn_protocol(self) -> TurnProtocol:
-		supports_schema = self.ai_service.supports_schema()
-		protocol = TurnProtocolUsingSchema if supports_schema else TurnProcotolUsingTextExtraction
-		return protocol(self.ai_service)    
+		supports_schema = self.ai_service.is_provider_with_schema()
+		has_to_evaluate_signals_before_ai_reply = self.user.automaton.autotracking_on_user_message
+		Protocol = TurnProtocolUsingSchema if supports_schema else TurnProcotolUsingTextExtraction
+		return Protocol(self.ai_service, has_to_evaluate_signals_before_ai_reply)    
 
 	def _build_turn_prompt_parts(self, automaton: Automaton, state: State) -> tuple[str, str | None, list]:
 		if state.fixed_message:
@@ -149,15 +155,6 @@ class TrackingProcessor(object):
 		signal_definition = self.tracking_service.get_definition(signal_names)
 		base_prompt = f"{automaton.general_prompt}\n\n{state.contextual_prompt}"
 		return base_prompt, signal_definition, list(automaton.general_attachments.values()) + list(state.attachments.values())
-
-	def _build_turn_prompt(self, automaton: Automaton, state: State) -> tuple[str, list]:
-		base_prompt, signal_definition, turn_attachments = self._build_turn_prompt_parts(automaton, state)
-		if signal_definition is None:
-			return base_prompt, turn_attachments
-
-		turn_protocol = self.build_turn_protocol()
-		prompt = turn_protocol._build_prompt(base_prompt, signal_definition, self.env)
-		return prompt, turn_attachments
 
 
 	def _history_cutoff(self, project_name: str, state: State) -> datetime | None:

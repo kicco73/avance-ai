@@ -415,20 +415,7 @@ class ChatService(object):
 					action, project_name, session_id, automaton, state
 				)
 
-		# init_action's action_prompt reply (if any, see above) is
-		# deliberately never persisted (see get_messages' own docstring)
-		# — there's no message to link the init transition to there. Its
-		# own *opening* message (a real, persisted one) is the closest
-		# thing to "the message whose processing produced this
-		# transition" it actually has — without this, a session's very
-		# first transition could never be annotated at all in the
-		# "Label sessions" view (see Tracking.message's own docstring),
-		# since every other transition ties back to a real user/assistant
-		# message but this one otherwise wouldn't.
-		opening_message = await self._generate_opening_message_if_needed(project_name, session_id, automaton, state)
-		if signal_row_id is not None and opening_message is not None:
-			self._db.link_signal_to_message(signal_row_id, opening_message["id"])
-
+		await self._generate_opening_message_if_needed(project_name, session_id, automaton, state)
 		return init_message
 
 	def _history_cutoff(self, project_name: str, state: State) -> datetime | None:
@@ -456,20 +443,11 @@ class ChatService(object):
 	async def _generate_opening_message_body(
 		self, project_name: str, session_id: int, automaton: Automaton, state: State
 	) -> dict:
-		content_since = self._history_cutoff(project_name, state)
-		system_prompt, turn_attachments = self._tracking_processor._build_turn_prompt(automaton, state)
-		chat_history = (
-			build_priming_messages(turn_attachments)
-			+ self._strip_timestamps(self._db.get_messages(session_id, since=content_since))
-			+ [{"role": "user", "content": "..."}]
-		)
 
-		reply = await self._ai_service.generate(system_prompt, chat_history)
-		visible_text, tags = self._metadata_handler._filter_text_and_extract_tags(reply)
-		self.env.update(tags['env'])
-		message_id = self._db.save_message("assistant", visible_text, session_id, audio_text=tags['audio'])
-		return {"id": message_id, "content": visible_text, "audio_text": tags['audio']}
+		def on_metadata(key: str, value: str) -> None:
+			print('_generate_opening_message_body.on_metadata: null call')
 
+		return await self._tracking_processor.process(None, session_id, on_metadata=on_metadata)
 
 	async def _generate_action_prompt_message(
 		self, action: Action, project_name: str, session_id: int, automaton: Automaton, state: State
@@ -502,7 +480,7 @@ class ChatService(object):
 				await self._generate_action_prompt_message(action, project_name, session_id, automaton, new_state)
 			)
 		if should_open:
-			messages.append(await self.process_turn('...'))
+			messages.append(await self.process_turn())
 		return messages
 
 	def _apply_action_env(self, automaton: Automaton, action: Action, signal_values: dict) -> None:
@@ -553,7 +531,7 @@ class ChatService(object):
 
 	async def process_turn(
 		self,
-		text: str,
+		text: str | None = None,
 		session_id: int | None = None,
 		on_metadata: OnMetadata | None = None,
 	) -> dict:
@@ -567,9 +545,3 @@ class ChatService(object):
 		
 		return await self._tracking_processor.process(text, session_id, on_sync_metadata)
 
-	
-	def _build_turn_protocol(self) -> TurnProtocol:
-		supports_metadata = self._ai_service.supports_schema()
-		strategy = TurnProtocolUsingSchema if supports_metadata else TurnProcotolUsingTextExtraction
-		logger.info(f"Turn strategy: {strategy.__name__}")
-		return strategy(self._ai_service)    

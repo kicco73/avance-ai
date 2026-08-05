@@ -1,11 +1,10 @@
-"""LLM provider backed by OpenAI (or any OpenAI-compatible API like llama.cpp)."""
+"""LLM provider backed by OpenAI (or any OpenAI-compatible API)."""
 
 from __future__ import annotations
 
-import logging
 from contextlib import contextmanager
 from http import HTTPStatus
-from typing import Any, AsyncIterator, Generator, cast
+from typing import Any, AsyncIterator, Generator
 
 from openai import (
 	APIConnectionError,
@@ -14,9 +13,11 @@ from openai import (
 	AsyncOpenAI,
 	RateLimitError,
 )
-from openai.types.chat import ChatCompletionMessageParam
+from openai.types.responses.response_input_param import ResponseInputParam
+from openai.types.responses.response_text_config_param import (
+	ResponseTextConfigParam,
+)
 
-from cascade import OnRetry
 from ai.llm_provider import (
 	AIServiceConfig,
 	AIServiceError,
@@ -25,8 +26,6 @@ from ai.llm_provider import (
 	LLMProviderWithSchema,
 	content_to_text,
 )
-
-logger = logging.getLogger(__name__)
 
 MAX_OUTPUT_TOKENS: int = 1024
 
@@ -81,77 +80,31 @@ class OpenAIProvider(LLMProviderWithSchema):
 			api_key=config.key,
 			base_url=config.url,
 		)
-		self._model: str = config.model
+		self._model_name: str = config.model
 
-		self.build_schema({}, {})
-
-	def build_schema(
-		self,
-		priority_tags: dict[str, tuple[type, str]],
-		tags: dict[str, tuple[type, str]],
-	) -> None:
-		"""Build the JSON schema used for structured responses."""
+	def build_schema(self, tags: dict[str, str]) -> dict[str, Any]:
 		properties: dict[str, dict[str, Any]] = {}
 		required: list[str] = []
 
-		for name, (_python_type, description) in priority_tags.items():
+		for name, description in tags.items():
 			properties[name] = {
 				"type": "string",
 				"description": description,
 			}
 			required.append(name)
 
-		properties["text"] = {
-			"type": "string",
-			"description": "Extended textual response for the user.",
-		}
-		required.append("text")
-
-		for name, (_python_type, description) in tags.items():
-			properties[name] = {
-				"type": "string",
-				"description": description,
-			}
-			required.append(name)
-
-		self._app_response_schema: dict[str, Any] = {
+		return {
 			"type": "object",
 			"properties": properties,
 			"required": required,
 			"additionalProperties": False,
 		}
 
-	def _field_order(self) -> list[str]:
-		return list(self._app_response_schema["properties"].keys())
-
-	def _format_messages(
+	def _format_history(
 		self,
-		system_prompt: str,
 		history: list[dict[str, Any]],
-	) -> list[ChatCompletionMessageParam]:
-		"""Format system prompt and history for OpenAI Chat Completions."""
-		field_order: list[str] = self._field_order()
-
-		order_instruction: str = (
-			"Respond with the structured JSON object described by the response "
-			"schema, filling in its fields in this order: "
-			+ ", ".join(f"'{name}'" for name in field_order)
-			+ "."
-		)
-
-		full_system_prompt: str = (
-			f"{system_prompt}\n\n{order_instruction}"
-		)
-
-		messages: list[ChatCompletionMessageParam] = [
-			cast(
-				ChatCompletionMessageParam,
-				{
-					"role": "system",
-					"content": full_system_prompt,
-				},
-			)
-		]
+	) -> ResponseInputParam:
+		input_messages: ResponseInputParam = []
 
 		for message in history:
 			role: str = message["role"]
@@ -164,63 +117,59 @@ class OpenAIProvider(LLMProviderWithSchema):
 				"OpenAI",
 			)
 
-			messages.append(
-				cast(
-					ChatCompletionMessageParam,
-					{
-						"role": role,
-						"content": text_content,
-					},
-				)
+			input_messages.append(
+				{
+					"role": role,
+					"content": text_content,
+				}
 			)
 
-		return messages
+		return input_messages
 
-	def _response_format(self) -> Any:
-		"""
-		Build the structured-output response format.
+	def _response_text_config(
+		self,
+		schema: dict[str, str],
+	) -> ResponseTextConfigParam:
+		response_schema: dict[str, Any] = self.build_schema(schema)
 
-		The OpenAI SDK accepts a JSON Schema response format here.
-		The schema itself is dynamic, so keeping this value as Any avoids
-		fighting the generated SDK overloads with Pylance.
-		"""
 		return {
-			"type": "json_schema",
-			"json_schema": {
+			"format": {
+				"type": "json_schema",
 				"name": "ai_service_response",
 				"strict": True,
-				"schema": self._app_response_schema,
-			},
+				"schema": response_schema,
+			}
 		}
 
-	async def generate_stream(
+	async def generate_stream_with_schema(
 		self,
 		system_prompt: str,
 		history: list[dict[str, Any]],
-		on_retry: OnRetry | None = None,
+		schema: dict[str, str] | None = None,
 	) -> AsyncIterator[str]:
-		messages: list[ChatCompletionMessageParam] = self._format_messages(
-			system_prompt,
-			history,
+		input_messages: ResponseInputParam = self._format_history(
+			history
 		)
 
-		response_format: Any = self._response_format()
+		text_config: ResponseTextConfigParam = (
+			self._response_text_config(schema or {})
+		)
 
 		with _handle_openai_errors():
-			response_stream = await self._async_client.chat.completions.create(
-				model=self._model,
-				messages=messages,
-				max_tokens=MAX_OUTPUT_TOKENS,
-				response_format=response_format,
+			response_stream = await self._async_client.responses.create(
+				model=self._model_name,
+				instructions=system_prompt,
+				input=input_messages,
+				max_output_tokens=MAX_OUTPUT_TOKENS,
+				text=text_config,
 				stream=True,
 			)
 
-			async for chunk in response_stream:
-				if not chunk.choices:
+			async for event in response_stream:
+				if event.type != "response.output_text.delta":
 					continue
 
-				content: str | None = chunk.choices[0].delta.content
+				if not event.delta:
+					continue
 
-				if content:
-					yield content
-
+				yield event.delta

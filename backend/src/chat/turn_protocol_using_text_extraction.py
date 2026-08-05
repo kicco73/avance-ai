@@ -4,13 +4,12 @@ import logging
 from typing import AsyncIterator
 
 from ai.llm_provider import MetadataCallback
-from chat.env import Env
 from chat.text_filter import ConcatTagFilter
 from chat.turn_protocol import TurnProtocol
 
 logger = logging.getLogger(__name__)
 
-EMBED_METADATA_PROMPT = """
+EMBED_AUDIO_TAG_PROMPT = """
 Definition of audio metadata:
     - a string designed for text-to-speech, not for reading.
     - Assume the user cannot see the screen at all.
@@ -20,11 +19,15 @@ Definition of audio metadata:
 
 Always add a [audio]...[/audio] tag at the very beginning of every response:
     - put the audio metadata value between the markups.
+"""
 
+EMBED_SIGNAL_TAG_PROMPT = """"
 Always add a [signals]...[/signals] tag at the end of every response.
     - Write the content inside it as a dictionary in JSON format.
         - put all of the signals using their name as the key and their value as the value.
+"""
 
+EMBED_ENV_TAG_PROMPT = """"     
 Definition of env metadata:
     - a persistent, cross-session memory of free-form facts about the
       user/conversation (e.g. preferences, ongoing goals) — distinct from
@@ -36,34 +39,23 @@ Always add a [env]...[/env] tag at the end of every response:
 """
 class TurnProcotolUsingTextExtraction(TurnProtocol):
 
-    async def generate_reply(
-        self,
-        base_prompt: str,
-        signal_definition: str | None,
-        env: Env,
-        chat_history: list[dict],
-        on_metadata: MetadataCallback,
-    ) -> AsyncIterator[str]:
-        system_prompt = self._build_prompt(base_prompt, signal_definition, env)
+    prompt_preambles = {
+        'env': EMBED_ENV_TAG_PROMPT,
+        'audio': EMBED_AUDIO_TAG_PROMPT,
+        'signals': EMBED_SIGNAL_TAG_PROMPT,
+        'text': ''
+    }
 
-        tags = ('audio', 'signals', 'env')
-        metadata_handlers = {tag: lambda value: on_metadata(tag, value) for tag in tags}
-        filter = ConcatTagFilter(*tags, **metadata_handlers)
+    async def _generate_reply(self, prompt: str, chat_history: list[dict], on_metadata: MetadataCallback,) -> AsyncIterator[str]:
 
-        async for chunk in self._ai_service.generate_stream(system_prompt, chat_history):
+        metadata_handlers = {tag: lambda value: on_metadata(tag, value) for tag in self.include_tags}
+        filter = ConcatTagFilter(*self.include_tags, **metadata_handlers)
+
+        async for chunk in self._ai_service.generate_stream(prompt, chat_history):
             chunk = filter.filter(chunk)
             yield chunk
 
         recovered = filter.flush()
         if recovered:
             yield recovered
-
-    def _build_prompt(self, base_prompt: str, signal_definition: str | None, env: Env) -> str:
-        env_block = "\n".join(f"{key}: {value}" for key, value in env.to_dict().items())
-        return "\n\n".join([
-            base_prompt,
-            signal_definition or "No signals are defined so far.",
-            EMBED_METADATA_PROMPT,
-            f"[env]\n{env_block}\n[/env]",
-        ])
 

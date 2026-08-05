@@ -45,6 +45,7 @@ def _handle_gemini_errors() -> Generator[None, None, None]:
 	except Exception as exc:
 		raise AIServiceError(f"Unexpected error from the Gemini API: {exc}") from exc
 
+	dict[str, tuple[type, str]]
 
 class GeminiProvider(LLMProviderWithSchema):
 	def __init__(self, config: AIServiceConfig) -> None:
@@ -53,27 +54,13 @@ class GeminiProvider(LLMProviderWithSchema):
 			http_options={"base_url": config.url} if config.url else None,
 		)
 		self._model_name: str = config.model
-		self.build_schema({}, {})
 
-	def build_schema(self, priority_tags: dict[str, tuple[type, str]], tags: dict[str, tuple[type, str]]) -> None:
+	def build_schema(self, tags: dict[str, str]) -> dict:
 
 		properties: dict[str, dict] = {}
 		required: list[str] = []
 
-		for name, (_python_type, description) in priority_tags.items():
-			properties[name] = {
-				"type": "STRING",
-				"description": description,
-			}
-			required.append(name)
-
-		properties["text"] = {
-			"type": "STRING",
-			"description": "Extended textual response for the user.",
-		}
-		required.append("text")
-
-		for name, (_python_type, description) in tags.items():
+		for name, description in tags.items():
 			properties[name] = {
 				"type": "STRING",
 				"description": description,
@@ -81,14 +68,14 @@ class GeminiProvider(LLMProviderWithSchema):
 			}
 			required.append(name)
 
-		self._app_response_schema = {
+		return {
 			"type": "OBJECT",
 			"properties": properties,
 			"required": required,
 		}
 
 	def _format_history_and_config(
-		self, system_prompt: str, history: list[dict[str, Any]]
+		self, system_prompt: str, history: list[dict[str, Any]], schema: dict[str, str]
 	) -> tuple[list[types.Content], types.GenerateContentConfig]:
 		contents: list[types.Content] = []
 
@@ -103,34 +90,23 @@ class GeminiProvider(LLMProviderWithSchema):
 				)
 			)
 
-		field_order = self._field_order()
-		order_instruction = (
-			"Respond with the structured JSON object described by the response "
-			"schema, filling in its fields in this order: "
-			+ ", ".join(f"'{name}'" for name in field_order) + "."
-		)
-		full_system_prompt = f"{system_prompt}\n\n{order_instruction}"
-
 		gen_config: types.GenerateContentConfig = types.GenerateContentConfig(
-			system_instruction=full_system_prompt,
+			system_instruction=system_prompt,
 			max_output_tokens=MAX_OUTPUT_TOKENS,
 			response_mime_type="application/json",
-			response_schema=self._app_response_schema,
+			response_schema=self.build_schema(schema),
 		)
 
 		return contents, gen_config
 
-	def _field_order(self) -> list[str]:
-		return list(self._app_response_schema["properties"].keys())
-
-	async def generate_stream(
+	async def generate_stream_with_schema(
 		self,
 		system_prompt: str,
 		history: list[dict[str, Any]],
-		on_retry: OnRetry | None = None,
+		schema: dict[str, str] | None = None
 	) -> AsyncIterator[str]:
 
-		contents, config = self._format_history_and_config(system_prompt, history)
+		contents, config = self._format_history_and_config(system_prompt, history, schema or {})
 
 		with _handle_gemini_errors():
 			response_stream = await self._client.aio.models.generate_content_stream(

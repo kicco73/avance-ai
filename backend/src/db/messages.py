@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime
+import logging
 
 from .models import Message
 from .utils import _utc_iso
 
+logger = logging.getLogger(__name__)
 
 class MessageMixin:
 
@@ -15,6 +17,10 @@ class MessageMixin:
     def get_message_audio_text(self, message_id: int) -> str | None:
         message = Message.get_or_none(Message.id == message_id)
         return message.audio_text if message is not None else None
+
+    def delete_message(self, message_id: int) ->  None:
+        logging.warning(f"deleting message id {message_id}")
+        Message.delete().where(Message.id == message_id).execute()
 
     def get_message(self, message_id: int) -> dict | None:
         message = Message.get_or_none(Message.id == message_id)

@@ -9,7 +9,7 @@ faster-whisper>=1.0
 simpleeval>=1.0
 peewee>=3.17
 python-multipart>=0.0.9
-openai
+openai>=2.45.0
 pandas>=2.2
 numpy>=1.26
 pytest>=8.0

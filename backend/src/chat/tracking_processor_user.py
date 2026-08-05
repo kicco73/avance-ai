@@ -16,7 +16,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 
 	async def on_signals_async(self):
 		guessed_action, new_state, transition_messages, tracking_id = await self._run_auto_tracking()
-		if tracking_id is not None:
+		if tracking_id is not None and self.user.message_id:
 			self.db.link_signal_to_message(tracking_id, self.user.message_id)
 
 		self.out.action = guessed_action
@@ -55,7 +55,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 		# docstring) — the common case (no transition) needed exactly
 		# this one call anyway.
 
-		async for chunk in await self.generate_reply(self.on_receiving_metadata_that_may_trigger_status_change):
+		async for chunk in self.generate_reply(self.on_receiving_metadata_that_may_trigger_status_change):
 			if self.user.state == self.out.state:
 				self.out.reply += chunk
 				self.metadata.on_metadata('chunk', chunk)
@@ -72,7 +72,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 
 			self.out.reply = ""
 
-			async for chunk in await self.generate_reply(self.on_receiving_metadata_when_repeating_the_call):
+			async for chunk in self.generate_reply(self.on_receiving_metadata_when_repeating_the_call):
 				self.out.reply += chunk
 				self.metadata.on_metadata('chunk', chunk)
 

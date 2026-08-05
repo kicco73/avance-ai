@@ -46,13 +46,21 @@ class CascadingLLMProvider(LLMProvider):
     async def generate_stream(
         self, system_prompt: str, history: list[dict]
     ) -> AsyncIterator[str]:
-        # Every concrete provider now accepts on_metadata unconditionally
-        # (see LLMProvider.generate_stream's own docstring) — a "v1" leaf
-        # simply never calls it — so this can pass it straight through to
-        # whichever leaf the cascade is currently on, with no per-leaf
-        # capability check needed first.
+
         def call(provider: LLMProvider) -> AsyncIterator[str]:
             return provider.generate_stream(system_prompt, history)
+
+        stream = await self._cascade.call_with_retry(
+            call,
+            unavailable=AIServiceProviderUnavailableError,
+            rate_limited=AIServiceProviderRateLimitedError,
+        )
+        async for chunk in stream:
+            yield chunk
+
+    async def generate_stream_with_schema(self, system_prompt: str , history: list[dict], schema: dict[str,str]):
+        def call(provider: LLMProvider) -> AsyncIterator[str]:
+            return provider.generate_stream_with_schema(system_prompt, history, schema=schema)
 
         stream = await self._cascade.call_with_retry(
             call,
