@@ -55,6 +55,11 @@ class WsAdapter(object):
                             "type": "chunk",
                             "content": value,
                         })
+                    elif key == "text":
+                        await websocket.send_json({
+                            "type": "text",
+                            "content": value,
+                        })
 
                 try:
                     
@@ -63,7 +68,7 @@ class WsAdapter(object):
                         session_id,
                         on_metadata=_push_metadata,
                     )
-                    
+
                 except (ChatServiceError, AIServiceError) as exc:
                     await websocket.send_json({
                         "type": "error",

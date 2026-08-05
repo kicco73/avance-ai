@@ -1,14 +1,3 @@
-"""Tests for chat.text_filter.StreamingTagFilter/ConcatTagFilter.
-
-Regression coverage for a real observed bug: a model reply that opens a
-tag (most commonly [audio], since it's meant to come "at the very
-beginning" of every reply — see MetadataHandler.EMBED_METADATA_PROMPT)
-but never closes it used to silently swallow everything after it,
-including the actual visible answer, leaving the user with an empty chat
-bubble while e.g. audio_text ended up holding a garbled dump of
-everything that came after. flush() now recovers that leftover content
-instead of discarding it.
-"""
 from __future__ import annotations
 
 from chat.text_filter import ConcatTagFilter, StreamingTagFilter

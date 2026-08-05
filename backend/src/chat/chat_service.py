@@ -67,7 +67,7 @@ class ChatService(object):
 		else: 
 			TrackingProcessor = TrackingProcessorAfterAiMessage
 
-		self._tracking_processor = TrackingProcessorAfterAiMessage(
+		self._tracking_processor = TrackingProcessor(
 			self,
 			ai_service,
 			project_service,
@@ -407,13 +407,11 @@ class ChatService(object):
 		signal_row_id = None
 		if self._db.get_current_state(project_name) is None:
 			action = automaton.init_action
-			signal_row_id = self._db.save_transition(
+			self._db.save_transition(
 				"", action.name, state.key, session_id, transition_log_level=state.transition_log_level
 			)
 			if action.action_prompt:
-				init_message = await self._generate_action_prompt_message(
-					action, project_name, session_id, automaton, state
-				)
+				init_message = await self._generate_action_prompt_message(action, session_id)
 
 		await self._generate_opening_message_if_needed(project_name, session_id, automaton, state)
 		return init_message
@@ -438,46 +436,26 @@ class ChatService(object):
 		if not self._should_generate_opening_message(project_name, session_id, state):
 			return None
 
-		return await self._generate_opening_message_body(project_name, session_id, automaton, state)
+		return await self._generate_opening_message_body(session_id)
 
-	async def _generate_opening_message_body(
-		self, project_name: str, session_id: int, automaton: Automaton, state: State
-	) -> dict:
+	async def _generate_opening_message_body(self, session_id: int) -> dict:
+		return await self._tracking_processor.process(None, session_id)
 
-		def on_metadata(key: str, value: str) -> None:
-			print('_generate_opening_message_body.on_metadata: null call')
-
-		return await self._tracking_processor.process(None, session_id, on_metadata=on_metadata)
-
-	async def _generate_action_prompt_message(
-		self, action: Action, project_name: str, session_id: int, automaton: Automaton, state: State
-	) -> dict:
+	async def _generate_action_prompt_message(self, action: Action, session_id: int) -> dict:
 		logger.warning("Executing action_prompt for action '%s'.", action.name)
-
-		system_prompt = automaton.general_prompt
-		turn_attachments = list(automaton.general_attachments.values()) + list(state.attachments.values())
-
-		since = self._history_cutoff(project_name, state)
-		chat_history = (
-			build_priming_messages(turn_attachments)
-			+ self._strip_timestamps(self._db.get_messages(session_id, since=since))
-			+ [{"role": "user", "content": action.action_prompt}]
-		)
-
-		reply = await self._ai_service.generate(system_prompt, chat_history)
-		visible_text, tags = self._metadata_handler._filter_text_and_extract_tags(reply)
-		self.env.update(tags['env'])
-		return {"id": None, "content": visible_text, "audio_text": tags['audio']}
+		#FIXME : needs to remove action_prompt from history and put it in the system prompt!
+		# we require another entry point, it's not a turn from the user
+		return await self.process_turn(action.action_prompt, session_id)
 
 	async def _messages_for_transition(
-		self, action: Action, project_name: str, session_id: int, automaton: Automaton, new_state: State, *, is_self_loop: bool
+		self, action: Action, project_name: str, session_id: int, new_state: State, *, is_self_loop: bool
 	) -> list[dict]:
 		should_open = not is_self_loop and self._should_generate_opening_message(project_name, session_id, new_state)
 
 		messages = []
 		if action.action_prompt:
 			messages.append(
-				await self._generate_action_prompt_message(action, project_name, session_id, automaton, new_state)
+				await self._generate_action_prompt_message(action, session_id)
 			)
 		if should_open:
 			messages.append(await self.process_turn())
@@ -506,25 +484,13 @@ class ChatService(object):
 			automaton, state = self._project_service.get_active_automaton_and_state()
 			self._apply_action_env(automaton, action, {})
 			reply = await self._messages_for_transition(
-				action, project_name, session["id"], automaton, state, is_self_loop=(action.target == source_state_key)
+				action, project_name, session["id"], state, is_self_loop=(action.target == source_state_key)
 			)
 			self._session_manager.touch_session(session["id"], state.key)
 			return {
 				"state": state_payload,
 				"reply": reply,
-				# on-enter belongs to the action that was actually fired —
-				# not to whatever's in state_payload's own outgoing
-				# actions list (a different set entirely, the *new*
-				# state's own actions) — see automaton.Action.on_enter.
-				# Kebab-cased to match the YAML field's own spelling (see
-				# automaton_builder.py's _build_action) end to end, unlike
-				# every other snake_case key here.
 				"on-enter": action.on_enter,
-				# A transition can itself call the AI (action_prompt/opening
-				# message, via _messages_for_transition above) — piggyback
-				# the post-turn model status on this same response so the
-				# frontend's model button stays in sync without a separate
-				# round trip (see controller.py's GET /api/ai/models).
 				"ai_model": self.get_ai_models_info(),
 				"session_id": session["id"],
 			}

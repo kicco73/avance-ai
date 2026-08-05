@@ -8,31 +8,6 @@ from chat.text_filter import ConcatTagFilter
 
 logger = logging.getLogger(__name__)
 
-EMBED_METADATA_PROMPT = """
-Definition of audio metadata:
-    - a string designed for text-to-speech, not for reading.
-    - Assume the user cannot see the screen at all.
-    - Never refer to anything written on screen.
-    - Use a nice, warm, human, non-robotic, constructive tone.
-    - Keep the audio metadata always concise (ideally under 5 seconds), but never omit information required to solve the task.
-
-Always add a [audio]...[/audio] tag at the very beginning of every response:
-    - put the audio metadata value between the markups.
-
-Always add a [signals]...[/signals] tag at the end of every response.
-    - Write the content inside it as a dictionary in JSON format.
-        - put all of the signals using their name as the key and their value as the value.
-
-Definition of env metadata:
-    - a persistent, cross-session memory of free-form facts about the
-      user/conversation (e.g. preferences, ongoing goals) — distinct from
-      signals, which are re-evaluated fresh every turn.
-
-Always add a [env]...[/env] tag at the end of every response, after
-[signals]...[/signals]:
-    - Write one "key: value" pair per line (optionally prefixed with "-").
-    - Never invent values for the keys shown to you below — those are inputs supplied to you.
-"""
 class MetadataHandler(object):
     @staticmethod
     def parse_raw_signals(raw_signals: str) -> dict[str,float]:

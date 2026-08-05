@@ -26,7 +26,7 @@ class MessageMixin:
         message = Message.get_or_none(Message.id == message_id)
         if message is None:
             return None
-        return {'id': message.id, 'role': message.role, 'content': message.content, 'audio_text': message.audio_text, 'timestamp': _utc_iso(message.timestamp), 'session_id': message.session_id}
+        return {'id': message.id, 'role': message.role, 'content': message.content, 'audio_text': message.audio_text, 'timestamp': _utc_iso(message.timestamp), 'session_id': message.session.id}
 
     def get_messages(self, session_id: int, last_n: int | None=None, since: datetime | None=None) -> list[dict]:
         query = Message.select().where(Message.session == session_id).order_by(Message.timestamp.desc())

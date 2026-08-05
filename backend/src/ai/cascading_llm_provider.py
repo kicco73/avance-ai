@@ -60,7 +60,7 @@ class CascadingLLMProvider(LLMProvider):
 
     async def generate_stream_with_schema(self, system_prompt: str , history: list[dict], schema: dict[str,str]):
         def call(provider: LLMProvider) -> AsyncIterator[str]:
-            return provider.generate_stream_with_schema(system_prompt, history, schema=schema)
+            return provider.generate_stream_with_schema(system_prompt, history, schema=schema) # type: ignore
 
         stream = await self._cascade.call_with_retry(
             call,

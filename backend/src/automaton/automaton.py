@@ -239,15 +239,19 @@ class Automaton(object):
         return {name for state_key in self.states for name in self.triggerable_signal_names(state_key)}
 
     def evaluate_triggers(self, state_key: str, signals: dict[str, Any]) -> str | None:
+        action = self.evaluate_triggers_action(state_key, signals)
+        return action.name if action else None
+
+    def evaluate_triggers_action(self, state_key: str, signals: dict[str, Any]) -> Action | None:
         """Returns the first action (YAML order) whose trigger evaluates
         true — FIFO priority — or None. Actions without `trigger` stay
         manual-only, never returned here."""
         state = self.states[state_key]
         for action in state.actions:
             if action.trigger and self._eval_trigger(action.trigger, signals):
-                return action.name
+                return action
         return None
-
+    
     def preview_triggers(self, state_key: str, signals: dict[str, Any]) -> list:
         """Every triggerable action in `state_key` with its expression and
         evaluation result, in FIFO priority order — for UI display only,

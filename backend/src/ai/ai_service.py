@@ -56,7 +56,7 @@ class AiService(object):
 				f"Invalid provider driver: {service.driver!r}. Must be one of: "
 				f"{', '.join(_PROVIDER_CLASSES.keys())}"
 			)
-		provider : LLMProvider = _PROVIDER_CLASSES[service.driver](service)
+		provider : LLMProvider = _PROVIDER_CLASSES[service.driver](service) # type: ignore
 		return provider
 
 	@property
@@ -131,7 +131,7 @@ class AiService(object):
 		emitted: set[str] = set()
 		last_text_length = 0
 
-		response_stream = self._active_provider.generate_stream_with_schema(system_prompt, history, schema=schema)
+		response_stream = self._active_provider.generate_stream_with_schema(system_prompt, history, schema=schema) # type: ignore
 
 		async for chunk in response_stream:
 			accumulated_json += chunk
@@ -146,7 +146,6 @@ class AiService(object):
 
 				for name in completed:
 					if name != "text":
-						print("SENDING", name, parsed[name])
 						on_metadata(name, parsed[name])
 						emitted.add(name)
 

@@ -14,21 +14,14 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 	class Parameters:
 		signal_row_id: State
 
-	async def on_signals_async(self):
-		guessed_action, new_state, transition_messages, tracking_id = await self._run_auto_tracking()
-		if tracking_id is not None and self.user.message_id:
-			self.db.link_signal_to_message(tracking_id, self.user.message_id)
-
-		self.out.action = guessed_action
-		self.out.state = new_state
-		self.out.messages = transition_messages
-		self.out.tracking_id = None 
-
 	def on_receiving_metadata_that_may_trigger_status_change(self, key: str, value: str):
 		rv = value
 		if key == 'signals':
 			rv = self.metadata.signals = self.metadata_processor.parse_raw_signals(value)
-			asyncio.create_task(self.on_signals_async())
+			self.out.action = self._FIXME_would_trigger_action()
+			if self.out.action:
+				self.out.state = self.user.automaton.get_state(self.out.action.target)
+
 		elif key == 'env':
 			rv = self.metadata.env = self.metadata_processor.parse_raw_env(value)
 		elif key == 'audio':
@@ -55,7 +48,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 		# docstring) — the common case (no transition) needed exactly
 		# this one call anyway.
 
-		async for chunk in self.generate_reply(self.on_receiving_metadata_that_may_trigger_status_change):
+		async for chunk in self.generate_reply(self.user.state, self.on_receiving_metadata_that_may_trigger_status_change):
 			if self.user.state == self.out.state:
 				self.out.reply += chunk
 				self.metadata.on_metadata('chunk', chunk)
@@ -64,15 +57,14 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			# Wrong guess — the async method moved the automaton.
 			# We need to regenerate the answer
 			
-			if not self.user.state.chat:
-				# Same early exit as ever for a transition landing on
-				# a state that doesn't accept chat at all — nothing
-				# left to regenerate a reply for.
-				self.session_manager.touch_session(self.user.session_id, self.out.state.key)
-
 			self.out.reply = ""
+			self.metadata.on_metadata('text', "")
 
-			async for chunk in self.generate_reply(self.on_receiving_metadata_when_repeating_the_call):
+			# need to save state transition
+
+			self.out.tracking_id = self._FIXME_move_automaton()
+
+			async for chunk in self.generate_reply(self.out.state, self.on_receiving_metadata_when_repeating_the_call):
 				self.out.reply += chunk
 				self.metadata.on_metadata('chunk', chunk)
 

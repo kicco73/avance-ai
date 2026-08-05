@@ -16,6 +16,7 @@ from chat.turn_protocol_using_schema import TurnProtocolUsingSchema
 from chat.turn_protocol_using_text_extraction import TurnProcotolUsingTextExtraction
 from db.db import Db
 from project.project_service import ProjectService
+from tracking.evaluator import SignalEvaluator
 from tracking.tracking_service import TrackingService
 from .metadata_handler import MetadataHandler
 from .session_manager import ChatSessionManager
@@ -60,7 +61,6 @@ class TrackingProcessor(object):
 	user: UserVariables
 	out: OutVariables
 
-
 	def __init__(self, 
 			  chat_service,
 			  ai_service: AiService, 
@@ -71,7 +71,11 @@ class TrackingProcessor(object):
 			  session_manager: ChatSessionManager):
 		self.project_service = project_service
 		self.ai_service = ai_service
-		self.chat_service = chat_service
+
+		#FIXME 
+		from .chat_service import ChatService
+
+		self.chat_service : ChatService = chat_service 
 		self.tracking_service = tracking_service
 		self.env = env
 		self.db = db
@@ -80,11 +84,14 @@ class TrackingProcessor(object):
 	async def _get_ai_reply(self) -> OutVariables:
 		raise NotImplementedError
 
-	async def process(self, text: str | None, session_id, on_metadata: MetadataCallback) -> dict:
+	async def process(self, text: str | None, session_id, on_metadata: MetadataCallback | None = None) -> dict:
 
-		self.metadata = Metadata(on_metadata, {}, {}, "", None)
+		def dummy_on_metadata(key: str, value: str) -> None:
+			print(f'process.on_metadata: null call key {key} = {value}')
 
-		self.user = await self._save_user_message_if_not_none(text, session_id)
+		self.metadata = Metadata(on_metadata or dummy_on_metadata, {}, {}, "", None)
+
+		self.user = await self._save_user_message(text, session_id)
 		self.out = await self._get_ai_reply()
 
 		self.env.update(self.metadata.env)
@@ -100,13 +107,13 @@ class TrackingProcessor(object):
 
 		return self._build_turn_response(assistant_id)
 
-	async def _save_user_message_if_not_none(
+	async def _save_user_message(
 		self, text: str | None, session_id: int | None
 	) -> UserVariables:
 
 		automaton, state = self.project_service.get_active_automaton_and_state()
 
-		if not state.chat:
+		if not state.chat and text not in (None, "", "..."): # FIXME
 			raise ChatServiceError(
 				"This state doesn't accept messages; use an action instead.", status_code=HTTPStatus.CONFLICT
 			)
@@ -119,9 +126,9 @@ class TrackingProcessor(object):
 
 		return UserVariables(automaton, state, project_name, resolved_session_id, user_message_id, not text)
 
-	def generate_reply(self, on_metadata: MetadataCallback,
+	def generate_reply(self, state: State, on_metadata: MetadataCallback,
 	) -> AsyncIterator[str]:
-		base_prompt, signal_definition, turn_attachments = self._build_turn_prompt_parts(self.user.automaton, self.user.state)
+		base_prompt, signal_definition, turn_attachments = self.__build_turn_prompt_parts(self.user.automaton, state)
 
 		priming_messages = build_priming_messages(turn_attachments)
 		since = self._history_cutoff(self.user.project_name, self.user.state)
@@ -140,16 +147,12 @@ class TrackingProcessor(object):
 		Protocol = TurnProtocolUsingSchema if supports_schema else TurnProcotolUsingTextExtraction
 		return Protocol(self.ai_service, has_to_evaluate_signals_before_ai_reply)    
 
-	def _build_turn_prompt_parts(self, automaton: Automaton, state: State) -> tuple[str, str | None, list]:
+	def __build_turn_prompt_parts(self, automaton: Automaton, state: State) -> tuple[str, str | None, list]:
+
 		if state.fixed_message:
 			logger.warning("Translating fixed_message for state '%s'.", state.key)
 			return FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message), None, []
 
-		# Only the signals a trigger leaving `state` could actually use
-		# (see Automaton.triggerable_signal_names) — the embedded
-		# signals report this same reply's own [signals] tag carries (see
-		# AutoTracker.run's "Embedded" branch) never needs to ask about
-		# anything else, since nothing outside this set could affect
 		# which action fires from here.
 		signal_names = automaton.triggerable_signal_names(state.key)
 		signal_definition = self.tracking_service.get_definition(signal_names)
@@ -201,6 +204,75 @@ class TrackingProcessor(object):
 			return None, v.state, [], signal_row_id
 
 		messages = await self.chat_service._messages_for_transition(
-			action, v.project_name, v.session_id, v.automaton, new_state, is_self_loop=(action.target == v.state.key)
+			action, v.project_name, v.session_id, new_state, is_self_loop=(action.target == v.state.key)
 		)
 		return action, new_state, messages, signal_row_id
+
+
+	def _FIXME_would_trigger_action(self) -> Action | None:
+
+		signal_evaluator = SignalEvaluator()
+		metrics = self.chat_service.metric_service
+
+		state = self.user.state
+		automaton = self.user.automaton
+		signal_values = self.metadata.signals
+
+		if not state.has_triggerable_actions:
+			return None
+
+		needed_signal_names = automaton.triggerable_signal_names(state.key)
+		signal_values = signal_evaluator.validate(automaton, signal_values, needed_signal_names)
+
+		evaluation_names = metrics.merge_if_referenced(automaton, state.key, signal_values)
+		evaluation_names = self.env.merge_if_referenced(automaton, state.key, evaluation_names)
+		triggered_action = automaton.evaluate_triggers_action(state.key, evaluation_names)
+
+		return triggered_action
+	
+	def _FIXME_move_automaton(self) -> int:
+		automaton = self.user.automaton
+		state = self.user.state
+		triggered_action = self.out.action.name if self.out.action else None
+		signal_values = self.metadata.signals
+		session_id = self.user.session_id
+
+		if triggered_action is None:
+			# No transition fired — just the evaluation itself is worth
+			# keeping (see db.get_latest_signal_snapshot, Tracking.values).
+			tracking_id = self.db.save_signal_snapshot(signal_values, session_id)
+			return tracking_id
+
+		action = automaton.move(state.key, triggered_action)
+
+		# Always saved, self-loop or not — a fired trigger is a real event
+		# worth a history entry either way. A self-loop just never bumps
+		# history_cutoff's timestamp (see db.get_last_transition_timestamp).
+		# The full evaluated values ride along on this same row (see
+		# db.py's Tracking) instead of a separate snapshot row to link to.
+
+		self.__FIXME_apply_action_env(action)
+		tracking_id = self.db.save_transition(
+			state.key,
+			triggered_action,
+			action.target,
+			session_id,
+			transition_log_level=automaton.get_state(action.target).transition_log_level,
+			signal_values=signal_values,
+		)
+
+		return tracking_id
+
+
+	def __FIXME_apply_action_env(self, action: Action) -> None:
+		signal_values = self.metadata.signals
+		metrics = self.chat_service.metric_service
+		automaton = self.user.automaton
+
+		if not action.env:
+			return
+		scope = {**signal_values, **metrics.calculate_values(), **self.env.to_dict()}
+		updates = automaton.eval_action_env(action, scope)
+		if updates:
+			self.env.update_action_set(updates)
+
