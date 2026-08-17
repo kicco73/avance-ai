@@ -37,7 +37,6 @@ def _automaton_with_trigger(trigger_expr: str) -> Automaton:
         signals=[],
         attachments={},
         general_attachments={},
-        autotracking_on_user_message=True,
         autotracking_on_ai_message=False,
     )
 

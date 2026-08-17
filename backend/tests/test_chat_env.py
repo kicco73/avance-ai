@@ -11,22 +11,23 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from automaton.automaton import Action, Automaton, State
-from tracking.env import Env
+from tracking.env import PersistedEnv
 
-# tracking/env.py is unchanged in shape by this refactor — every method
-# used below (get/update/update_action_set/action_set/stored/
-# clear_action_set/computed/to_dict/merge_if_referenced) matches the
-# current source exactly. Classified per-test below: a structural/
-# precedence guarantee between the stored/action_set/computed layers is
-# `contract`, a specific computed value or one-off edge case is
-# `regression`.
+# tracking/env.py now splits Env (in-memory base, for a benchmark replay
+# not introduced yet) from PersistedEnv (production's own, DB-backed) —
+# every method used below (get/update/update_action_set/action_set/
+# stored/clear_action_set/computed/to_dict/merge_if_referenced) keeps the
+# exact same signature/behavior on PersistedEnv as Env had before the
+# split. Classified per-test below: a structural/precedence guarantee
+# between the stored/action_set/computed layers is `contract`, a
+# specific computed value or one-off edge case is `regression`.
 
 USERNAME = "user"
 PROJECT_NAME = "proj"
 
 
-def _env(db) -> Env:
-    return Env(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
+def _env(db) -> PersistedEnv:
+    return PersistedEnv(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
 
 
 def _session(db, username=USERNAME, project_name=PROJECT_NAME, start=None):
@@ -53,7 +54,6 @@ def _automaton_with_trigger(trigger_expr: str) -> Automaton:
         signals=[],
         attachments={},
         general_attachments={},
-        autotracking_on_user_message=True,
         autotracking_on_ai_message=False,
     )
 

@@ -11,7 +11,7 @@ from db import Db, _utc_iso
 from ai.ai_service import AiService
 from session import Session
 
-from tracking.env import Env
+from tracking.env import PersistedEnv
 from chat.errors import ChatServiceError
 from tracking.metadata_handler import MetadataHandler
 from chat.session_manager import ChatSessionManager
@@ -39,7 +39,7 @@ class ChatService(object):
 		self._session_manager = session_manager
 		self.tracking_service = tracking_service
 		self.metric_service = metric_service
-		self.env = Env(
+		self.env = PersistedEnv(
 			db, get_username=lambda: Session().user, get_active_project_name=lambda: project_service.get_active_project_name()
 		)
 		self._metadata_handler = MetadataHandler()
@@ -280,18 +280,23 @@ class ChatService(object):
 
 	def get_env(self, message_id: int | None = None) -> dict:
 		"""{"stored": ..., "action_set": ..., "computed": ...} — see
-		chat.env.Env.stored/action_set/computed, reported separately (not
-		merged, unlike Env.to_dict's own use in the turn prompt) so the
-		Inspector Env tab knows which section each value belongs in
-		("AI"/"SET"/"COMPUTED") and which are actually editable/deletable
-		(see set_env_value/delete_env_key: only the stored — "AI" — ones
-		are). Live/current, or (`message_id` given) as of that exact
-		message — same point-in-time convention as get_metrics."""
+		tracking.env.PersistedEnv.stored/action_set/Env.computed,
+		reported separately (not merged, unlike Env.to_dict's own use in
+		the turn prompt) so the Inspector Env tab knows which section
+		each value belongs in ("AI"/"SET"/"COMPUTED") and which are
+		actually editable/deletable (see set_env_value/delete_env_key:
+		only the stored — "AI" — ones are). `stored`/`action_set`:
+		live/current, or (`message_id` given) as of that exact message —
+		same point-in-time convention as get_metrics. `computed`: always
+		live — Env.computed() no longer takes a point-in-time bound (see
+		its own docstring: that's now an internal, per-turn replay-only
+		concept, set via set_replay_instant/set_last_transition_instant,
+		never wired up to a `message_id` read like this one)."""
 		until = self._until_from_message(message_id)
 		return {
 			"stored": self.env.stored(until),
 			"action_set": self.env.action_set(until),
-			"computed": self.env.computed(until),
+			"computed": self.env.computed(),
 		}
 
 	def set_env_value(self, key: str, value: str) -> dict:
@@ -378,16 +383,30 @@ class ChatService(object):
 		# first) — never on a later call for an already-bootstrapped
 		# session, even if that call still generates its own opening
 		# message for some other reason (see _should_generate_opening_message).
-		signal_row_id = None
+		init_transition_id = None
 		if self._db.get_current_state(project_name) is None:
 			action = automaton.init_action
-			self._db.save_transition(
+			init_transition_id = self._db.save_transition(
 				"", action.name, state.key, session_id, transition_log_level=state.transition_log_level
 			)
 			if action.action_prompt:
 				init_message = await self._generate_action_prompt_message(action, session_id)
 
-		await self._generate_opening_message_if_needed(project_name, session_id, automaton, state)
+		opening_message = await self._generate_opening_message_if_needed(project_name, session_id, automaton, state)
+
+		if init_transition_id is not None:
+			# Whichever message this bootstrap actually produced —
+			# action_prompt's own, or the plain opening message — is what
+			# the "" -> start_state transition must be linked to, so a
+			# domain expert can annotate this earliest evaluation point
+			# too (see TrackingService.set_message_expected_state and its
+			# own _materialize_session_start_row, which only exists for
+			# every *later* session precisely because this one already
+			# gets a real linked row here).
+			linked_message = init_message or opening_message
+			if linked_message is not None:
+				self._db.link_signal_to_message(init_transition_id, linked_message["assistant_message_id"])
+
 		return init_message
 
 	def _history_cutoff(self, project_name: str, state: State) -> datetime | None:
@@ -466,6 +485,9 @@ class ChatService(object):
 		on_metadata: OnMetadata | None = None,
 		extra_prompt: str | None = None,
 	) -> dict:
+		project_name = self._active_project_name
+		_, state = self._project_service.get_active_automaton_and_state()
+		self._require_active_session(session_id, project_name, state.key)
 		reply = await self.tracking_service.process(session_id, text, on_metadata, extra_prompt=extra_prompt)
 		self._session_manager.touch_session(reply['session_id'], reply['state'])
 		return reply

@@ -23,7 +23,6 @@ def _automaton(signals: list[Signal]) -> Automaton:
         signals=signals,
         attachments={},
         general_attachments={},
-        autotracking_on_user_message=True,
         autotracking_on_ai_message=False,
     )
 

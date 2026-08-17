@@ -35,7 +35,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 async def file_not_found_error_handler(request: Request, exc: FileNotFoundError) -> JSONResponse:
     error_msg = "\n".join(exc.args) if exc.args else "File not found"
-    logger.exception(f"API: {request.method} {request.url.path}: {error_msg}", request.method, request.url.path)
+    logger.exception(f"API: {request.method} {request.url.path}: {error_msg}")
     return JSONResponse(status_code=HTTPStatus.INTERNAL_SERVER_ERROR, content=_error_body(error_msg, f"API: {request.method} {request.url.path}"))
 
 async def ai_service_error_handler(request: Request, exc: AIServiceError) -> JSONResponse:

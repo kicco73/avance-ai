@@ -17,13 +17,15 @@ file's own git history for the probe script used):
   - Whichever mode produced it, that row is always linked to the
     **assistant's** message (tracking_processor.py:100-101 — always
     `link_signal_to_message(tracking_id, assistant_id)`), never to the
-    user's own message — even when it was `autotracking_on_user_message`'s
-    own optimistic pre-reply guess that decided the transition fired.
-  - `automaton.autotracking_on_ai_message` is not actually consulted for
-    processor selection (tracking_service.py:193-196): only
-    `autotracking_on_user_message` picks between the two mutually
-    exclusive processors, so there is no configuration that disables
-    auto-tracking altogether — one of the two processors always runs.
+    user's own message — even when it was the "before" mode's own
+    optimistic pre-reply guess that decided the transition fired.
+  - `Automaton` now carries a single flag, `autotracking_on_ai_message`
+    (the old, separate `autotracking_on_user_message` flag was removed —
+    see tracking_service.py:193, `if not automaton.autotracking_on_ai_message`):
+    `False` (default) selects `TrackingProcessorAfterUserMessage` ("before"
+    mode, the optimistic pre-reply guess), `True` selects
+    `TrackingProcessorAfterAiMessage` ("after" mode) — always exactly one
+    of the two processors, never neither.
   - At most one transition can ever fire per `process()` call: the
     optimistic guess's own regenerated-reply pass uses a callback
     (`on_receiving_metadata_when_repeating_the_call`) that never calls
@@ -50,9 +52,7 @@ pytestmark = pytest.mark.asyncio
 PROJECT_NAME = "proj"
 
 
-def _automaton(
-    *, autotracking_on_user_message=False, autotracking_on_ai_message=False, trigger="foo >= 0"
-) -> Automaton:
+def _automaton(*, autotracking_on_ai_message=False, trigger="foo >= 0") -> Automaton:
     action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger=trigger)
     state_a = State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action])
     state_b = State(key="b", ui_label="B", final=True, actions=[])
@@ -69,7 +69,6 @@ def _automaton(
         signals=[Signal(name="foo", ui_label="Foo", definition="foo definition")],
         attachments={},
         general_attachments={},
-        autotracking_on_user_message=autotracking_on_user_message,
         autotracking_on_ai_message=autotracking_on_ai_message,
     )
 
@@ -160,18 +159,19 @@ async def _bootstrap_session(chat_service: ChatService) -> int:
 
 @pytest.mark.contract
 async def test_transition_from_optimistic_guess_links_the_resulting_assistant_message(db, chat_service_for):
-    # autotracking_on_user_message is optimistic (see tracking_processor_
-    # user.py's own module docstring): the reply is generated once, using
-    # the *current* state's own context, and its own embedded signals
-    # decide whether a transition fires — here foo=1 satisfies "foo >= 0",
-    # so the guess turns out wrong and a second, regenerated reply
-    # (against state "b"'s own context) is what actually gets used. Only
-    # 2 calls, never a 3rd/cascading one: chat_service.process_turn
-    # (chat/chat_service.py:470-478) never calls _messages_for_transition
-    # for an ordinary chat turn — that's only reachable from
-    # apply_manual_action/session bootstrap, not from here.
+    # "before" mode (autotracking_on_ai_message=False) is optimistic (see
+    # tracking_processor_user.py's own module docstring): the reply is
+    # generated once, using the *current* state's own context, and its
+    # own embedded signals decide whether a transition fires — here foo=1
+    # satisfies "foo >= 0", so the guess turns out wrong and a second,
+    # regenerated reply (against state "b"'s own context) is what
+    # actually gets used. Only 2 calls, never a 3rd/cascading one:
+    # chat_service.process_turn (chat/chat_service.py:470-478) never
+    # calls _messages_for_transition for an ordinary chat turn — that's
+    # only reachable from apply_manual_action/session bootstrap, not from
+    # here.
     ai_service = FakeSchemaAiService([{"signals": '{"foo": 1}'}, {"signals": '{"foo": 1}'}])
-    chat_service = chat_service_for(_automaton(autotracking_on_user_message=True), ai_service=ai_service)
+    chat_service = chat_service_for(_automaton(autotracking_on_ai_message=False), ai_service=ai_service)
     session_id = await _bootstrap_session(chat_service)
     ai_service.call_count = 0  # bootstrap's own init-action opening message doesn't count
 
@@ -195,7 +195,7 @@ async def test_user_message_autotracking_makes_a_single_ai_call_when_the_optimis
     # fires and the one reply already generated (with the current state's
     # own context) is simply used as-is — no second, wasted call.
     ai_service = FakeSchemaAiService([{"signals": '{"foo": -1}'}])
-    chat_service = chat_service_for(_automaton(autotracking_on_user_message=True), ai_service=ai_service)
+    chat_service = chat_service_for(_automaton(autotracking_on_ai_message=False), ai_service=ai_service)
     session_id = await _bootstrap_session(chat_service)
     ai_service.call_count = 0  # bootstrap's own init-action opening message doesn't count
 
@@ -208,27 +208,6 @@ async def test_user_message_autotracking_makes_a_single_ai_call_when_the_optimis
     # either message (tracking_processor_user.py's _get_ai_reply only
     # calls it inside its own "state changed" branch).
     assert db.get_signal_row_by_message(result["user_message_id"]) is None
-    assert db.get_signal_row_by_message(result["assistant_message_id"]) is None
-
-
-@pytest.mark.contract
-async def test_autotracking_on_ai_message_flag_is_ignored_when_user_message_flag_is_set(db, chat_service_for):
-    # Row #4 of this refactor's own ground truth: processor selection
-    # (tracking_service.py:193-196) consults only
-    # autotracking_on_user_message — autotracking_on_ai_message is never
-    # read there at all, so setting both True behaves identically to only
-    # the user-message flag being True; nothing "extra" evaluates the
-    # assistant's own message a second time.
-    ai_service = FakeSchemaAiService([{"signals": '{"foo": -1}'}])
-    chat_service = chat_service_for(
-        _automaton(autotracking_on_user_message=True, autotracking_on_ai_message=True), ai_service=ai_service
-    )
-    session_id = await _bootstrap_session(chat_service)
-    ai_service.call_count = 0  # bootstrap's own init-action opening message doesn't count
-
-    result = await chat_service.process_turn(session_id, "hello")
-
-    assert ai_service.call_count == 1
     assert db.get_signal_row_by_message(result["assistant_message_id"]) is None
 
 

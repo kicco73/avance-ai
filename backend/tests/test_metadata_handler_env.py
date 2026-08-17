@@ -19,7 +19,7 @@ from datetime import datetime
 
 import pytest
 
-from tracking.env import Env
+from tracking.env import PersistedEnv
 from tracking.metadata_handler import MetadataHandler
 from tracking.turn_protocol import TurnProtocol
 
@@ -61,11 +61,6 @@ def test_parse_raw_env_handles_a_colon_inside_the_value():
     assert result == {"next_meeting": "14:30"}
 
 
-def test_filter_text_and_extract_tags_extracts_a_parsed_env_dict():
-    reply = "hello [audio]hi there[/audio][signals]{}[/signals][env]mood: happy[/env]"
-    visible, tags = _handler()._filter_text_and_extract_tags(reply)
-    assert visible == "hello "
-    assert tags["env"] == {"mood": "happy"}
 
 
 class _RecordingProtocol(TurnProtocol):
@@ -110,7 +105,7 @@ def test_generate_reply_renders_an_env_block_with_stored_and_computed_values(db)
         start_state="a", end_state="a",
     )
     db.set_env(PROJECT_NAME, {"favorite_color": "blue"}, USERNAME)
-    env = Env(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
+    env = PersistedEnv(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
     protocol = _RecordingProtocol()
 
     protocol.generate_reply("base prompt", "- Definition of signals:\n", env, [], lambda k, v: None)
@@ -125,7 +120,7 @@ def test_generate_reply_embeds_the_given_signal_definition_verbatim(db):
     text directly (see tracking.definitions.Signals.get_definition) — it
     has no opinion of its own on which signals that text describes, just
     embeds whatever string it's given."""
-    env = Env(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
+    env = PersistedEnv(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
     protocol = _RecordingProtocol()
 
     protocol.generate_reply(

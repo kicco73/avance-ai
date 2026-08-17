@@ -53,6 +53,8 @@ class StateStabilityMetric(BaseMetric):
             })
 
         start, end = self._observation_bounds(data, transitions)
+        if pd.isna(start) or pd.isna(end):
+            return self.unavailable(self.name, "no real elapsed time available")
         days = max((end - start).total_seconds() / 86400.0, 1.0 / 24.0)
         density = count / days * 30.0
         score = Normalizer.inverse_linear(

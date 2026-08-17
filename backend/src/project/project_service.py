@@ -351,7 +351,11 @@ class ProjectService(object):
 
     def list_projects(self) -> dict:
         names = self._db.list_projects()
-        return {"projects": names, "active": self.get_active_project_name()}
+        try:
+            active = self.get_active_project_name()
+        except FileNotFoundError:
+            active = None
+        return {"projects": names, "active": active}
 
     async def activate_project(self, project_name: str, commit: CommitCallback) -> Automaton:
         """Validates via _load_and_validate(), persists `project_name` as

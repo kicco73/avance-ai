@@ -13,7 +13,7 @@ from metrics.metric_service import MetricService
 
 from .errors import TrackingServiceError
 from .turn_callbacks import OnMetadata
-from .env import Env
+from .env import PersistedEnv
 from .definitions import Signals
 from .tracking_processor import UserVariables
 from .tracking_processor_ai import TrackingProcessorAfterAiMessage
@@ -196,8 +196,8 @@ class TrackingService(object):
 		else:
 			TrackingProcessor = TrackingProcessorAfterAiMessage
 
-		env = Env(
-			self._db, get_username=lambda: Session().user, 
+		env = PersistedEnv(
+			self._db, get_username=lambda: Session().user,
 			get_active_project_name=self._project_service.get_active_project_name
 		)
 

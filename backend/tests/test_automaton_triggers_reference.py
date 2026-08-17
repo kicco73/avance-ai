@@ -19,7 +19,6 @@ def _automaton(actions_by_state: dict[str, list[Action]]) -> Automaton:
         signals=[],
         attachments={},
         general_attachments={},
-        autotracking_on_user_message=True,
         autotracking_on_ai_message=False,
     )
 

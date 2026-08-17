@@ -10,11 +10,10 @@ Replaced by TrackingProcessorAfterUserMessage/TrackingProcessorAfterAiMessage
 (see tracking/tracking_processor.py's _would_trigger_action/_move_automaton),
 constructed by TrackingService.process(). These tests now drive the same
 behavior through TrackingService.process() directly, in
-autotracking_on_ai_message mode (autotracking_on_user_message=False,
-which is what tracking_service.py:193-196 actually consults for
-processor selection) — a single, deterministic AI call per turn, the
-closest current equivalent to AutoTracker.run's own single-shot
-semantics.
+autotracking_on_ai_message mode (autotracking_on_ai_message=True, the
+single flag tracking_service.py:193 actually consults for processor
+selection) — a single, deterministic AI call per turn, the closest
+current equivalent to AutoTracker.run's own single-shot semantics.
 """
 from __future__ import annotations
 
@@ -60,7 +59,6 @@ def _automaton_with_trigger(trigger_expr: str, target: str = "b") -> Automaton:
         signals=[Signal(name="mySignal", ui_label="My signal", definition="whatever")],
         attachments={},
         general_attachments={},
-        autotracking_on_user_message=False,
         autotracking_on_ai_message=True,
     )
 

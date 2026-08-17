@@ -101,7 +101,7 @@ determined with confidence against the actual current source.
 from double-counting parametrized cases — the authoritative totals are the ones in §1, taken
 directly from `pytest --collect-only`.)
 
-## 6. Raw suite outcome (baseline for future debugging)
+## 6. Raw suite outcome — original baseline (superseded, see §7)
 
 ```
 $ pytest -q
@@ -149,3 +149,51 @@ is still valid is exactly the material later debugging prompts should use). Appl
 + 2 (bug 5) accounts for all 37 failures. (Bug 2 is the exception-handling path that all three
 `test_controller_projects.py` failures pass through; bug 3 is the actual root cause of those same
 3 — bug 2 just makes the resulting error response malformed on top of the underlying 500.)
+
+## 7. Current suite outcome — full pass
+
+All 5 bugs from §6 are now fixed in `backend/src/`, plus one more found afterward. Later refactor
+prompts also deliberately changed some of the contracts these tests originally pinned (most
+prominently `Automaton`'s constructor losing `autotracking_on_user_message` — see each prompt's own
+`DEBUG_REPORT_*.md`), which needed the affected tests themselves updated or removed to match. All of
+that is applied now:
+
+```
+$ pytest -q
+...
+498 passed, 1 skipped, 1 warning in 26.66s
+```
+
+The 1 skip is `test_ai_provider_metadata_integration.py`'s `[v1]` case — environment-gated
+(`pytest.mark.skipif`), skips whenever no local `.config.yml` configures a non-schema AI provider;
+not a failure.
+
+**A 6th bug, found while chasing these down (not in §6's original 5):**
+`ChatService.open_if_needed` (`chat/chat_service.py`) created the automaton's very first
+(`"" -> start_state`) transition via `save_transition(...)` but never captured its own return value
+(the tracking row id) — a `signal_row_id = None` local variable was declared for exactly this, with
+a comment describing the intent, but never actually assigned or used. The row was therefore never
+linked to the session's own opening message, unlike every later transition (which always links via
+`db.link_signal_to_message`) — silently leaving a project's very first evaluation point
+un-annotatable. Fixed: the transition's id is now captured and linked to whichever message the
+bootstrap actually produced (the `action_prompt`'s own, or the plain opening message).
+
+**Test-side changes made to reach full pass** (mechanical contract updates / removals for tests
+whose own feature had changed or been deleted — never for tests whose underlying contract was still
+valid and failing only because of an application bug):
+- ~9 files still constructed `Automaton(...)` with the removed `autotracking_on_user_message`
+  kwarg (flagged as expected fallout in `DEBUG_REPORT_TRACKING_A.md`) — updated to the current
+  single-flag (`autotracking_on_ai_message`) constructor.
+- `test_chat_service_evaluation_points.py::test_autotracking_on_ai_message_flag_is_ignored_when_user_message_flag_is_set`
+  — deleted. Its entire premise (two independent flags, one silently overriding the other) is
+  structurally impossible now that there is only one flag; not a case of "update to match", the
+  scenario itself no longer exists.
+- `test_metadata_handler_env.py::test_filter_text_and_extract_tags_extracts_a_parsed_env_dict` —
+  deleted. Tested `MetadataHandler._filter_text_and_extract_tags`, deleted as dead code in an
+  earlier prompt (confirmed no `backend/src/` call site ever existed).
+- `test_controller_benchmark.py` (5 call sites) / `test_controller_env.py` (1) — updated
+  `turn["reply"][0]["id"]` → `turn["assistant_message_id"]`. `process_turn`'s `"reply"` key
+  (`OutVariables.messages`) is never populated by either tracking processor and never was during
+  this refactor — `assistant_message_id`/`user_message_id` are the actual, documented, populated
+  way to get a turn's message ids (ground-truth table row #6), already used this way elsewhere
+  (e.g. `test_controller_sessions.py`, updated the same way earlier).

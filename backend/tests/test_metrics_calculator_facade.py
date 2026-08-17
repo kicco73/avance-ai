@@ -48,7 +48,9 @@ class TestUserAnalyticsDataBuilder:
         assert data.signals.empty
         assert data.transitions.empty
         assert list(data.messages.columns) == ["id", "role", "content", "audio_text", "timestamp"]
-        assert list(data.transitions.columns) == ["id", "timestamp", "values", "old_state", "action", "new_state"]
+        assert list(data.transitions.columns) == [
+            "id", "timestamp", "values", "old_state", "action", "new_state", "message_id",
+        ]
 
     @pytest.mark.contract
     def test_messages_are_pooled_across_every_session_and_sorted_chronologically(self):
