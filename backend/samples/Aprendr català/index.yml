@@ -21,7 +21,6 @@ attachments:
   - definitions.txt
   - exercise_template.txt
   
-signal-tracking-on-user-message: false
 signal-tracking-on-ai-message: true
 
 signals:

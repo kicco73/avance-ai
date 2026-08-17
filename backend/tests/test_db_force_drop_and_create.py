@@ -14,6 +14,11 @@ import pytest
 
 from db import Db
 
+# Every test in this file verifies a specific behavioral fact about the
+# force-drop-and-create flag (on/off, noop cases) rather than a response
+# shape — all regression.
+pytestmark = pytest.mark.regression
+
 
 def _make_sqlite_file(path, ddl_statements):
     conn = sqlite3.connect(path)

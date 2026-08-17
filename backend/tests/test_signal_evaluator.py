@@ -6,8 +6,12 @@ signals.
 """
 from __future__ import annotations
 
+import pytest
+
 from automaton.automaton import Action, Automaton, Signal, State
 from tracking.evaluator import SignalEvaluator
+
+pytestmark = pytest.mark.contract
 
 
 def _automaton(signals=None) -> Automaton:
@@ -20,7 +24,6 @@ def _automaton(signals=None) -> Automaton:
         signals=signals or [],
         attachments={},
         general_attachments={},
-        autotracking_on_user_message=False,
         autotracking_on_ai_message=False,
     )
 

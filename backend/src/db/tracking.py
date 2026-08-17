@@ -82,11 +82,11 @@ class TrackingMixin:
         row = query.order_by(Tracking.timestamp.desc()).first()
         return json.loads(row.env) if row is not None else {}
 
-    def set_env(self, project_name: str, env: dict, user: str=DEFAULT_USER) -> None:
+    def set_env(self, project_name: str, env: dict, user: str=DEFAULT_USER, message_id: int | None=None) -> None:
         session = self.get_latest_chat_session(user, project_name)
         if session is None:
             return
-        Tracking.create(session=session['id'], env=json.dumps(env))
+        Tracking.create(session=session['id'], env=json.dumps(env), message=message_id)
 
     def get_action_env(self, project_name: str, user: str=DEFAULT_USER, until: datetime | None=None) -> dict:
         query = Tracking.select(Tracking.action_env).join(ChatSession, on=Tracking.session == ChatSession.id).where((ChatSession.project_name == project_name) & (ChatSession.username == user) & Tracking.action_env.is_null(False))

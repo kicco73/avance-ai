@@ -7,7 +7,11 @@ which action fires from there.
 """
 from __future__ import annotations
 
+import pytest
+
 from automaton.automaton import Action, Automaton, Signal, State
+
+pytestmark = pytest.mark.contract
 
 
 def _automaton(actions: list[Action], signals: list[Signal]) -> Automaton:
@@ -23,7 +27,6 @@ def _automaton(actions: list[Action], signals: list[Signal]) -> Automaton:
         signals=signals,
         attachments={},
         general_attachments={},
-        autotracking_on_user_message=True,
         autotracking_on_ai_message=False,
     )
 
@@ -134,7 +137,7 @@ def _multi_state_automaton(signals: list[Signal], actions_a: list[Action], actio
     return Automaton(
         init_action=init_action, states=states, general_prompt="", signals=signals,
         attachments={}, general_attachments={},
-        autotracking_on_user_message=True, autotracking_on_ai_message=False,
+        autotracking_on_ai_message=False,
     )
 
 

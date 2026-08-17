@@ -8,13 +8,22 @@ _apply_action_env's own docstring).
 """
 from __future__ import annotations
 
+import pytest
+
 from automaton.automaton import Action, Automaton, State
 from chat.chat_service import ChatService
-from chat.env import Env
+from tracking.env import PersistedEnv
 from chat.session_manager import ChatSessionManager
 from conftest import FakeAiService
 from metrics.metric_service import MetricService
 from tracking.tracking_service import TrackingService
+
+# Every test here verifies a specific, punctual fact about the action-
+# level `env` feature (persisted, self-referencing, ordered before the
+# next prompt) — still real current behavior, verified against
+# chat_service.py's apply_manual_action/_apply_action_env and tracking/
+# tracking_processor.py's _apply_action_env.
+pytestmark = pytest.mark.regression
 
 PROJECT_NAME = "proj"
 
@@ -31,7 +40,6 @@ def _automaton(action_env: dict, target: str = "b") -> Automaton:
         signals=[],
         attachments={},
         general_attachments={},
-        autotracking_on_user_message=False,
         autotracking_on_ai_message=False,
     )
 
@@ -61,11 +69,11 @@ def _chat_service(db, automaton: Automaton) -> ChatService:
     metric_service = MetricService(
         db, get_username=lambda: "user", get_active_project_name=lambda: PROJECT_NAME,
     )
+    # TrackingService.__init__ now takes project_service directly, not
+    # get_active_automaton/get_username/get_active_project_name callables
+    # (see tracking/tracking_service.py).
     tracking_service = TrackingService(
-        db, ai_service, metric_service,
-        get_active_automaton=lambda: project_service.get_active_automaton_and_state()[0],
-        get_username=lambda: "user",
-        get_active_project_name=lambda: PROJECT_NAME,
+        db, ai_service, project_service, metric_service,
     )
     return ChatService(
         ai_service=ai_service,
@@ -77,8 +85,8 @@ def _chat_service(db, automaton: Automaton) -> ChatService:
     )
 
 
-def _env_for(db) -> Env:
-    return Env(db, get_username=lambda: "user", get_active_project_name=lambda: PROJECT_NAME)
+def _env_for(db) -> PersistedEnv:
+    return PersistedEnv(db, get_username=lambda: "user", get_active_project_name=lambda: PROJECT_NAME)
 
 
 async def test_a_manually_fired_actions_env_is_persisted(db):

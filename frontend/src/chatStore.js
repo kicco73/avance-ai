@@ -343,59 +343,46 @@ async function submitMessage(message) {
     // message) esattamente su questo messaggio invece di ricadere sul
     // timestamp grezzo lato server, confrontato — a torto — con
     // l'orologio client della bolla assistant (vedi EditProjectView.vue's
-    // rawLiveMessages).
+    // rawLiveMessages). Usa direttamente assistant_message_id/
+    // user_message_id — non result.reply, che chat_service.py's
+    // process_turn non popola mai (OutVariables.messages resta sempre
+    // [], vedi backend tests/test_chat_service_evaluation_points.py) —
+    // prima si leggeva da lì e la bolla non veniva mai correlata al suo
+    // vero id, perdendo la linea di separazione/i segnali per ogni turno.
     if (result.user_message_id != null) message.messageId = result.user_message_id
 
-    // Alla ricezione del frame 'done':
-    if (result.reply && result.reply.length > 0) {
-      // Solo l'entry a cui punta esplicitamente il backend (se c'è — una
-      // transizione pre-turno può spostarsi in uno stato che non chatta
-      // affatto, vedi TurnProcessor.process's own early exit) è *la*
-      // risposta AI già trasmessa in streaming in questa bolla;
-      // qualunque altra entry in result.reply è un messaggio di
-      // transizione separato (action_prompt/opening message) e merita
-      // una propria bolla nuova — reply[0] non è affidabile: una
-      // transizione pre-turno può precedere la vera risposta AI
-      // nell'array.
-      const liveReplyIndex = result.reply.findIndex((r) => r.id === result.assistant_message_id)
-      const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
-
-      if (idx !== -1) {
-        if (liveReplyIndex !== -1) {
-          const liveReply = result.reply[liveReplyIndex]
-          // Assegniamo l'ID definitivo e l'audio_text alla bolla che ha raccolto lo streaming
-          messages.value[idx] = {
-            ...messages.value[idx],
-            messageId: liveReply.id,
-            audioText: liveReply.audio_text,
-            // Sincronizziamo con il contenuto restituito dal server se fornito
-            content: liveReply.content || messages.value[idx].content
-          }
-        } else {
-          // Nessuna risposta AI live questo turno — niente è mai stato
-          // trasmesso in questa bolla, quindi la rimuoviamo invece di
-          // lasciarla vuota e orfana.
-          messages.value.splice(idx, 1)
-        }
-      }
-
-      // Ogni altro messaggio nella risposta (es. cambio di stato) diventa una bolla propria
-      result.reply.forEach((entry, i) => {
-        if (i === liveReplyIndex) return
-        messages.value.push({
-          role: 'assistant',
-          content: entry.content,
-          audioText: entry.audio_text,
-          messageId: entry.id,
+    const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
+    if (idx !== -1) {
+      if (result.assistant_message_id != null) {
+        // Anche il timestamp va ristampato qui, non solo messageId: quello
+        // originale risale a quando questa bolla placeholder è stata
+        // creata (submitMessage's own push, sostanzialmente lo stesso
+        // istante del messaggio utente che l'ha innescata), mai aggiornato
+        // con quanto la risposta ha davvero impiegato — così il prossimo
+        // turno, se inviato in fretta, può ricevere un timestamp locale
+        // vicinissimo (o persino coincidente) a quello di questa bolla.
+        // Un pareggio timestamp fa sì che buildTimeline's own tie-break
+        // (un messaggio precede sempre una transizione allo stesso istante
+        // effettivo) spinga la transizione oltre bolle successive che in
+        // realtà dovrebbe precedere.
+        messages.value[idx] = {
+          ...messages.value[idx],
+          messageId: result.assistant_message_id,
           timestamp: new Date().toISOString()
-        })
-      })
+        }
+      } else {
+        // Nessuna risposta AI generata questo turno (es. una transizione
+        // pre-turno è atterrata in uno stato che non chatta affatto) —
+        // niente è mai stato trasmesso in questa bolla, quindi la
+        // rimuoviamo invece di lasciarla vuota e orfana.
+        messages.value.splice(idx, 1)
+      }
     }
 
     playMessageChime()
 
-    if (result.reply && result.reply.length > 0) {
-      maybeAutoPlayAudio(result.reply[result.reply.length - 1].id)
+    if (result.assistant_message_id != null) {
+      maybeAutoPlayAudio(result.assistant_message_id)
     }
 
     if (result.state) {
@@ -472,13 +459,20 @@ export async function handleAction(actionName) {
   actionLoading.value = true
   try {
     const result = await postAction(actionName, currentSessionId.value)
-    for (const { id, content, audio_text } of result.reply) {
+    for (const { id, content, audio_text, timestamp } of result.reply) {
       messages.value.push({
         role: 'assistant',
         content,
         audioText: audio_text,
         messageId: id,
-        timestamp: new Date().toISOString()
+        // The backend's own real timestamp (see ChatService.
+        // _messages_for_transition/db.get_message) — not the client's
+        // clock: two entries can land here from the very same action
+        // (an action_prompt reply plus a separate opening message), and
+        // stamping both with "now" risks the exact same tie/near-tie
+        // buildTimeline's own tie-break mishandled for submitMessage's
+        // assistant bubble (see its own comment there).
+        timestamp
       })
     }
     if (result.reply.length) {

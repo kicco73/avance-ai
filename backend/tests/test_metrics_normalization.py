@@ -4,6 +4,11 @@ import pytest
 
 from metrics.metrics_framework.normalization import Normalizer
 
+# Every test here pins the exact numeric output of a pure math utility
+# for specific inputs — punctual facts, not a structural/interface
+# guarantee — so uniformly regression.
+pytestmark = pytest.mark.regression
+
 
 def test_clamp_bounds_the_value_to_0_100():
     assert Normalizer.clamp(-10) == 0.0

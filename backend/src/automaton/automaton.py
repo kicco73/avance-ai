@@ -80,12 +80,6 @@ class State:
 
     @property
     def has_triggerable_actions(self) -> bool:
-        """Whether any action leaving this state has a trigger — the one
-        place that's decided, reused both to skip auto-tracking outright
-        when there's nothing it could evaluate (see
-        chat.turn_processor.TurnProcessor._run_auto_tracking) and, per action, for the
-        "has_trigger" field get_state_payload sends the frontend (same
-        `a.trigger is not None` check, just per-action instead of any())."""
         return any(a.trigger is not None for a in self.actions)
 
 
@@ -148,7 +142,6 @@ class Automaton(object):
         signals: list[Signal],
         attachments: dict[str, MemoryArchive],
         general_attachments: dict[str, MemoryArchive],
-        autotracking_on_user_message: bool,
         autotracking_on_ai_message: bool,
     ):
         # Replaces the old bare `initial_state: str` field: same
@@ -161,7 +154,10 @@ class Automaton(object):
         self.signals = signals
         self.general_attachments = general_attachments
         self.attachments = attachments
-        self.autotracking_on_user_message = autotracking_on_user_message
+        # The two auto-tracking modes (before/after the AI reply) are
+        # mutually exclusive — a single flag selects between them, see
+        # tracking/tracking_service.py's TrackingService.process() and
+        # tracking/tracking_processor.py's build_turn_protocol().
         self.autotracking_on_ai_message = autotracking_on_ai_message
 
     def get_state(self, state_key: str) -> State:
@@ -222,27 +218,6 @@ class Automaton(object):
         )
 
     def triggerable_signal_names(self, state_key: str) -> set[str]:
-        """Every declared signal name referenced by at least one action
-        leaving `state_key` — either in its own `trigger`, or in one of
-        its `env` field's expressions (see automaton_builder.py's
-        _build_action/eval_action_env: same scope as a trigger, so a
-        signal can drive an env update — e.g. `last_mood: mood` — without
-        ever gating a transition itself). The exact subset a
-        signals-computation call actually needs for this state (see
-        tracking/evaluator.py's validate, chat.turn_strategy.TurnStrategy.
-        compute_explicitly, and chat_service.py's _build_turn_prompt,
-        which all scope their own prompt/definitions/validation down to
-        this set instead of every declared signal). Reuses
-        trigger_signal_names — the same
-        ast-based free-variable extraction _actions_sanity_check and
-        triggers_reference already rely on, since simpleeval's own
-        expression grammar is just a restricted subset of what ast.parse
-        already accepts, so no separate parser is needed here either —
-        rather than a fresh regex/hand-rolled extraction. Either source
-        can also reference a core metric or an env key, neither of which
-        is a signal a computation call could ever produce, so the result
-        is intersected against this automaton's own declared signal
-        names."""
         state = self.states[state_key]
         referenced: set[str] = set()
         for action in state.actions:
@@ -266,15 +241,19 @@ class Automaton(object):
         return {name for state_key in self.states for name in self.triggerable_signal_names(state_key)}
 
     def evaluate_triggers(self, state_key: str, signals: dict[str, Any]) -> str | None:
+        action = self.evaluate_triggers_action(state_key, signals)
+        return action.name if action else None
+
+    def evaluate_triggers_action(self, state_key: str, signals: dict[str, Any]) -> Action | None:
         """Returns the first action (YAML order) whose trigger evaluates
         true — FIFO priority — or None. Actions without `trigger` stay
         manual-only, never returned here."""
         state = self.states[state_key]
         for action in state.actions:
             if action.trigger and self._eval_trigger(action.trigger, signals):
-                return action.name
+                return action
         return None
-
+    
     def preview_triggers(self, state_key: str, signals: dict[str, Any]) -> list:
         """Every triggerable action in `state_key` with its expression and
         evaluation result, in FIFO priority order — for UI display only,

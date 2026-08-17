@@ -48,15 +48,20 @@ class FakeAiService:
 
     async def generate_stream(self, system_prompt: str, history: list[dict], on_retry=None):
         self.calls.append((system_prompt, history))
+        # Must actually be an async generator (an `async def` with no
+        # `yield` is just a coroutine, not iterable via `async for` —
+        # see tracking/turn_protocol_using_text_extraction.py's own
+        # `async for chunk in self._ai_service.generate_stream(...)`).
         yield "Fake AI reply."
 
-    # Stands in for a "v1" provider (see ai.llm_provider.
-    # supports_structured_metadata) — every existing test written against
-    # the legacy [audio]/[signals]/[env] tag convention (see chat.
-    # text_filter.ConcatTagFilter) expects chat.turn_strategy_builder.
-    # build_turn_strategy to pick that path, same as a real Anthropic/
-    # OpenAI/plain-Gemini config would today.
     def supports_metadata(self) -> bool:
+        return False
+
+    def is_provider_with_schema(self) -> bool:
+        # Routes TrackingProcessor.build_turn_protocol() to
+        # TurnProcotolUsingTextExtraction (see tracking/tracking_processor.py),
+        # which only calls generate_stream() — the one this fake actually
+        # implements.
         return False
 
 
@@ -92,13 +97,10 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
         get_active_project_name=lambda: project_service.get_active_project_name(),
     )
     tracking_service = TrackingService(
-        app_db, fake_ai_service, metric_service,
-        get_active_automaton=lambda: project_service.get_active_automaton_and_state()[0],
-        get_username=lambda: Session().user,
-        get_active_project_name=lambda: project_service.get_active_project_name(),
+        app_db, fake_ai_service, project_service, metric_service,
     )
     chat_service = ChatService(
-        fake_ai_service, project_service, app_db, session_manager, tracking_service, metric_service
+        app_db, fake_ai_service, project_service, session_manager, tracking_service, metric_service
     )
 
     fastapi_app = FastAPI(title="Avance State Engine (test)")

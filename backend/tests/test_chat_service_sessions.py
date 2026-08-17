@@ -10,6 +10,14 @@ from metrics.metric_service import MetricService
 from tracking.tracking_service import TrackingService
 
 
+# Every test here verifies a specific, punctual fact: a stale/deleted/
+# someone-else's session_id must be rejected (404) before any write
+# happens — still real current behavior (ChatService._require_own_session/
+# _require_active_session), unaffected by this refactor's TrackingService/
+# ChatService constructor changes below.
+pytestmark = pytest.mark.regression
+
+
 @pytest.fixture
 def chat_service(db):
     # ai_service/project_service are never touched by the paths under test
@@ -19,9 +27,12 @@ def chat_service(db):
     metric_service = MetricService(
         db, get_username=lambda: "user", get_active_project_name=lambda: None,
     )
+    # TrackingService.__init__ now takes project_service directly, not
+    # get_active_automaton/get_username/get_active_project_name callables
+    # (see tracking/tracking_service.py) — None is fine here since these
+    # tests never reach any path that reads it.
     tracking_service = TrackingService(
-        db, ai_service=None, metric_service=metric_service, get_active_automaton=lambda: None,
-        get_username=lambda: "user", get_active_project_name=lambda: None,
+        db, ai_service=None, project_service=None, metrics_service=metric_service,
     )
     return ChatService(
         ai_service=None, project_service=None, db=db, session_manager=ChatSessionManager(db),

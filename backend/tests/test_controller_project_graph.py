@@ -5,6 +5,10 @@ attached to any real state) alongside every state's real outgoing edges.
 """
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.contract
+
 
 def test_graph_excludes_the_reserved_implicit_state_from_nodes(client, hello_project):
     graph = client.get("/api/projects/hello/graph").json()

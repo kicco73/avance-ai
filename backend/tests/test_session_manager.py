@@ -12,15 +12,18 @@ def manager(db) -> ChatSessionManager:
     return ChatSessionManager(db)
 
 
+@pytest.mark.contract
 def test_open_window_defaults_to_60_minutes(manager):
     assert manager.open_window == timedelta(minutes=60)
 
 
+@pytest.mark.contract
 def test_open_window_is_configurable(db):
     manager = ChatSessionManager(db, open_window_minutes=5)
     assert manager.open_window == timedelta(minutes=5)
 
 
+@pytest.mark.contract
 def test_creates_a_new_session_when_none_exists(manager):
     session = manager.get_or_create_current_session("user", "proj", None, "start")
 
@@ -31,6 +34,7 @@ def test_creates_a_new_session_when_none_exists(manager):
     assert manager.is_open(session)
 
 
+@pytest.mark.contract
 def test_reuses_open_session_and_refreshes_end_state(manager):
     first = manager.get_or_create_current_session("user", "proj", None, "start")
 
@@ -41,6 +45,7 @@ def test_reuses_open_session_and_refreshes_end_state(manager):
     assert second["end_state"] == "next"
 
 
+@pytest.mark.contract
 def test_ignores_a_stale_or_unknown_session_id_from_the_caller(manager):
     first = manager.get_or_create_current_session("user", "proj", None, "start")
 
@@ -52,6 +57,7 @@ def test_ignores_a_stale_or_unknown_session_id_from_the_caller(manager):
     assert second["id"] == first["id"]
 
 
+@pytest.mark.regression
 def test_creates_a_new_session_once_the_current_one_has_gone_idle(manager, monkeypatch):
     first = manager.get_or_create_current_session("user", "proj", None, "start")
     stale_now = first["datetime_end"] + manager.open_window + timedelta(seconds=1)
@@ -69,6 +75,7 @@ def test_creates_a_new_session_once_the_current_one_has_gone_idle(manager, monke
     assert second["start_state"] == "start"
 
 
+@pytest.mark.contract
 def test_manual_create_session_supersedes_a_still_open_one(manager):
     """The core constraint this manager enforces: at most one writable
     session per user+project, the one with the latest datetime_start. An
@@ -83,6 +90,7 @@ def test_manual_create_session_supersedes_a_still_open_one(manager):
     assert resolved["id"] == manual["id"]
 
 
+@pytest.mark.contract
 def test_sessions_for_different_projects_are_independent(manager):
     proj_a = manager.get_or_create_current_session("user", "proj-a", None, "start")
     proj_b = manager.get_or_create_current_session("user", "proj-b", None, "start")
@@ -91,10 +99,12 @@ def test_sessions_for_different_projects_are_independent(manager):
     assert manager.get_or_create_current_session("user", "proj-a", None, "next")["id"] == proj_a["id"]
 
 
+@pytest.mark.contract
 def test_get_session_returns_none_for_unknown_id(manager):
     assert manager.get_session(999999) is None
 
 
+@pytest.mark.contract
 def test_touch_session_refreshes_end_state(manager):
     session = manager.create_session("user", "proj", "start")
 
@@ -104,6 +114,7 @@ def test_touch_session_refreshes_end_state(manager):
     assert touched["end_state"] == "next"
 
 
+@pytest.mark.contract
 def test_require_active_session_accepts_and_touches_an_open_session(manager):
     session = manager.create_session("user", "proj", "start")
 
@@ -113,16 +124,19 @@ def test_require_active_session_accepts_and_touches_an_open_session(manager):
     assert result["end_state"] == "next"
 
 
+@pytest.mark.contract
 def test_require_active_session_rejects_none(manager):
     with pytest.raises(ValueError):
         manager.require_active_session("user", "proj", None, "start")
 
 
+@pytest.mark.contract
 def test_require_active_session_rejects_unknown_session(manager):
     with pytest.raises(ValueError):
         manager.require_active_session("user", "proj", 999999, "start")
 
 
+@pytest.mark.contract
 def test_require_active_session_rejects_someone_elses_session(manager):
     theirs = manager.create_session("other-user", "proj", "start")
 
@@ -130,6 +144,7 @@ def test_require_active_session_rejects_someone_elses_session(manager):
         manager.require_active_session("user", "proj", theirs["id"], "start")
 
 
+@pytest.mark.contract
 def test_require_active_session_rejects_a_different_projects_session(manager):
     session = manager.create_session("user", "proj-a", "start")
 
@@ -137,6 +152,7 @@ def test_require_active_session_rejects_a_different_projects_session(manager):
         manager.require_active_session("user", "proj-b", session["id"], "start")
 
 
+@pytest.mark.contract
 def test_require_active_session_rejects_a_closed_session_no_auto_rotation(manager, monkeypatch):
     """The behavior this reinforces: unlike get_or_create_current_session,
     a closed session is never silently swapped for a new one here — the
@@ -158,10 +174,12 @@ def test_require_active_session_rejects_a_closed_session_no_auto_rotation(manage
     assert manager.get_session(session["id"])["end_state"] == "start"
 
 
+@pytest.mark.contract
 def test_get_active_session_is_none_when_none_exist(manager):
     assert manager.get_active_session("user", "proj") is None
 
 
+@pytest.mark.contract
 def test_get_active_session_is_the_most_recently_started_open_one(manager):
     manager.create_session("user", "proj", "start")
     newer = manager.create_session("user", "proj", "start")
@@ -171,6 +189,7 @@ def test_get_active_session_is_the_most_recently_started_open_one(manager):
     assert active["id"] == newer["id"]
 
 
+@pytest.mark.regression
 def test_require_active_session_rejects_an_open_but_superseded_session(manager):
     """The exact bug this guards against: an older session that is still
     individually open (not expired) must NOT be usable for writes once a

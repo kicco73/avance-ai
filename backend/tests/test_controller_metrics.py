@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 # GET /api/chat/metrics always evaluates in a one_session context (see
 # AnalyticsCalculator's own default-metric filtering) — retention/
 # activity_consistency's own scope is {all_sessions_per_user, all_sessions},
@@ -9,6 +11,7 @@ from pathlib import Path
 EXPECTED_METRIC_NAMES = {"engagement", "state_stability", "signal_stability"}
 
 
+@pytest.mark.contract
 def test_metrics_endpoint_returns_every_core_metric_with_ui_metadata(client, hello_project):
     response = client.get("/api/chat/metrics")
 
@@ -21,6 +24,7 @@ def test_metrics_endpoint_returns_every_core_metric_with_ui_metadata(client, hel
         assert 0.0 <= metric["value"] <= 100.0
 
 
+@pytest.mark.regression
 def test_metrics_reflect_an_empty_conversation_at_baseline(client, hello_project):
     # Bootstrapping alone (no messages sent yet) still creates one session,
     # so engagement's session component is non-zero — only its message
@@ -33,6 +37,7 @@ def test_metrics_reflect_an_empty_conversation_at_baseline(client, hello_project
     assert by_name["signal_stability"] == 0.0
 
 
+@pytest.mark.regression
 def test_engagement_rises_after_sending_messages(client, hello_project):
     session = client.get("/api/chat/session").json()
     baseline = {m["name"]: m["value"] for m in client.get("/api/chat/metrics").json()}["engagement"]
@@ -45,6 +50,7 @@ def test_engagement_rises_after_sending_messages(client, hello_project):
     assert after > baseline
 
 
+@pytest.mark.contract
 def test_metrics_are_scoped_to_the_active_project(client):
     samples_dir = Path(__file__).resolve().parent.parent / "samples"
     for name, sample in (("hello", "Hello world.zip"), ("cat", "Aprendr català.zip")):

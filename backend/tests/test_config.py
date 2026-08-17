@@ -4,6 +4,8 @@ import pytest
 
 from config import AppConfig, ConfigError
 
+pytestmark = pytest.mark.contract
+
 MINIMAL_CONFIG = """
 database:
   url: "sqlite:///:memory:"

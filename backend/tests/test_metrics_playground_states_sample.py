@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples"
 
 
@@ -20,6 +22,7 @@ def _upload_and_activate(client, name: str = "metrics-playground-states"):
     return name
 
 
+@pytest.mark.contract
 def test_the_sample_loads_and_starts_at_lobby(client):
     _upload_and_activate(client)
 
@@ -28,6 +31,7 @@ def test_the_sample_loads_and_starts_at_lobby(client):
     assert session["start_state"] == "lobby"
 
 
+@pytest.mark.regression
 def test_firing_notice_mood_actually_moves_to_its_own_dedicated_state(client):
     _upload_and_activate(client)
     session = client.get("/api/chat/session").json()
@@ -45,6 +49,7 @@ def test_firing_notice_mood_actually_moves_to_its_own_dedicated_state(client):
     assert response.json()["state"]["final"] is True
 
 
+@pytest.mark.contract
 def test_every_engaged_branch_targets_its_own_distinct_final_state(client):
     _upload_and_activate(client)
     session = client.get("/api/chat/session").json()

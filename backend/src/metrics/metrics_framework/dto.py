@@ -10,7 +10,12 @@ import pandas as pd
 @dataclass(frozen=True)
 class MetricResult(object):
     name: str
-    value: float
+    # None when this metric has no meaningful value in the current
+    # context (see BaseMetric.unavailable) — e.g. no real elapsed time
+    # to normalize against. A missing name, exactly like a signal that
+    # was never estimated — see MetricService.calculate_values/
+    # merge_if_referenced.
+    value: float | None
     components: dict[str, float] = field(default_factory=dict)
     calculated_at: datetime | None = None
     metadata: dict[str, Any] = field(default_factory=dict)

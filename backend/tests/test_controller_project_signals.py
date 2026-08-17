@@ -12,6 +12,10 @@ from __future__ import annotations
 import io
 import zipfile
 
+import pytest
+
+pytestmark = pytest.mark.regression
+
 PROJECT = """
 init-action:
   target: a

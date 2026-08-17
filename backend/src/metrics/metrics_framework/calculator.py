@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from datetime import datetime
 
-from .dto import MetricResult
+from .dto import MetricResult, UserAnalyticsData
 from .interfaces import AnalyticsDb, MetricCalculator
 from .metrics import (
     ActivityConsistencyMetric,
@@ -49,10 +49,30 @@ class AnalyticsCalculator(object):
         passed `metrics` is used as-is, unfiltered — the caller's own
         explicit choice, not this calculator's to second-guess."""
         self._data = UserAnalyticsDataBuilder(db, username, project_name).build(until=until)
+        self._metrics = self._select_metrics(metrics)
+
+    @classmethod
+    def from_data(
+        cls, data: UserAnalyticsData, metrics: Iterable[MetricCalculator] | None = None,
+    ) -> "AnalyticsCalculator":
+        """Skips the usual UserAnalyticsDataBuilder(...).build(...) step
+        the normal constructor takes — builds directly from an
+        already-ready UserAnalyticsData (e.g.
+        UserAnalyticsDataBuilder.build_for_session's own single-session
+        one, for a benchmark replay not introduced here). Same scope
+        filter as the normal constructor (see _select_metrics):
+        `metrics` explicit if given, otherwise only the default metrics
+        meaningful in a "one_session" context."""
+        instance = cls.__new__(cls)
+        instance._data = data
+        instance._metrics = cls._select_metrics(metrics)
+        return instance
+
+    @staticmethod
+    def _select_metrics(metrics: Iterable[MetricCalculator] | None) -> tuple[MetricCalculator, ...]:
         if metrics is not None:
-            self._metrics = tuple(metrics)
-        else:
-            self._metrics = tuple(m for m in self.default_metrics() if "one_session" in m.scope)
+            return tuple(metrics)
+        return tuple(m for m in AnalyticsCalculator.default_metrics() if "one_session" in m.scope)
 
     @property
     def metrics(self) -> tuple[MetricCalculator, ...]:

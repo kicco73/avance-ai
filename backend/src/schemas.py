@@ -23,7 +23,7 @@ class TriggersPreviewRequest(BaseModel):
 class ChatMessageRequest(BaseModel):
     message: str
     # See ActionRequest.session_id.
-    session_id: int | None = None
+    session_id: int
 
 
 class AiModelSelectionRequest(BaseModel):

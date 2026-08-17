@@ -16,6 +16,8 @@ from __future__ import annotations
 import io
 import zipfile
 
+import pytest
+
 
 def _zip_of(files: dict[str, str]) -> bytes:
     buffer = io.BytesIO()
@@ -37,6 +39,7 @@ def _upload(client, project_name: str, files: dict[str, str] | None = None):
     return files
 
 
+@pytest.mark.contract
 def test_uploading_a_project_saves_index_yml_with_no_undo_or_redo_yet(client):
     _upload(client, "proj")
 
@@ -49,6 +52,7 @@ def test_uploading_a_project_saves_index_yml_with_no_undo_or_redo_yet(client):
     assert body["can_redo"] is False
 
 
+@pytest.mark.regression
 def test_editing_a_file_enables_undo(client):
     _upload(client, "proj")
 
@@ -62,6 +66,7 @@ def test_editing_a_file_enables_undo(client):
     assert body["can_redo"] is False
 
 
+@pytest.mark.regression
 def test_editing_one_file_does_not_touch_a_siblings_undo_state(client):
     """No more project-wide version counter: editing index.yml alone must
     not enable undo for notes.txt, which was never itself re-saved."""
@@ -75,6 +80,7 @@ def test_editing_one_file_does_not_touch_a_siblings_undo_state(client):
     assert notes["can_undo"] is False
 
 
+@pytest.mark.regression
 def test_saving_a_file_with_unchanged_content_is_a_no_op(client):
     _upload(client, "proj")
 
@@ -84,6 +90,7 @@ def test_saving_a_file_with_unchanged_content_is_a_no_op(client):
     assert response.json()["can_undo"] is False
 
 
+@pytest.mark.regression
 def test_undo_previews_the_previous_content_without_saving_it(client):
     _upload(client, "proj")
     v1_yml = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: v1\n"
@@ -100,6 +107,7 @@ def test_undo_previews_the_previous_content_without_saving_it(client):
     assert client.get("/api/projects/proj/files/index.yml").json()["content"] == v1_yml
 
 
+@pytest.mark.contract
 def test_undo_with_nothing_to_undo_is_a_400(client):
     _upload(client, "proj")
 
@@ -108,6 +116,7 @@ def test_undo_with_nothing_to_undo_is_a_400(client):
     assert response.status_code == 400
 
 
+@pytest.mark.regression
 def test_redo_previews_the_undone_content_without_saving_it(client):
     _upload(client, "proj")
     v1_yml = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: v1\n"
@@ -125,6 +134,7 @@ def test_redo_previews_the_undone_content_without_saving_it(client):
     assert client.get("/api/projects/proj/files/index.yml").json()["content"] == v1_yml
 
 
+@pytest.mark.contract
 def test_redo_with_nothing_to_redo_is_a_400(client):
     _upload(client, "proj")
 
@@ -133,6 +143,7 @@ def test_redo_with_nothing_to_redo_is_a_400(client):
     assert response.status_code == 400
 
 
+@pytest.mark.regression
 def test_a_fresh_edit_after_undo_clears_redo(client):
     _upload(client, "proj")
     v1_yml = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: v1\n"
@@ -146,11 +157,13 @@ def test_a_fresh_edit_after_undo_clears_redo(client):
     assert client.post("/api/projects/proj/files/index.yml/redo", content=MINIMAL_YML.encode()).status_code == 400
 
 
+@pytest.mark.contract
 def test_undo_for_an_unknown_project_is_404(client):
     response = client.post("/api/projects/does-not-exist/files/index.yml/undo")
     assert response.status_code == 404
 
 
+@pytest.mark.regression
 def test_clear_history_disables_undo_and_redo_but_keeps_current_content(client):
     _upload(client, "proj")
     v1_yml = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: v1\n"
@@ -166,11 +179,13 @@ def test_clear_history_disables_undo_and_redo_but_keeps_current_content(client):
     assert client.post("/api/projects/proj/files/index.yml/undo", content=v1_yml.encode()).status_code == 400
 
 
+@pytest.mark.contract
 def test_clear_history_for_an_unknown_project_is_404(client):
     response = client.delete("/api/projects/does-not-exist/history")
     assert response.status_code == 404
 
 
+@pytest.mark.regression
 def test_deleting_a_project_file_removes_its_undo_history_too(client):
     _upload(client, "proj")
     client.put("/api/projects/proj/files/notes.txt", content=b"v1")
@@ -181,6 +196,7 @@ def test_deleting_a_project_file_removes_its_undo_history_too(client):
     assert client.get("/api/projects/proj/files/notes.txt").status_code == 404
 
 
+@pytest.mark.regression
 def test_reuploading_an_identical_zip_is_a_no_op(client):
     files = _upload(client, "proj")
 
@@ -204,6 +220,7 @@ TWO_STATE_YML = (
 )
 
 
+@pytest.mark.regression
 def test_undo_does_not_reset_or_reload_the_active_conversation(client):
     """Regression test: undo (and, by the same code path, redo) must
     never trigger the active-conversation reconciliation a real Save

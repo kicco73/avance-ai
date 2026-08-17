@@ -334,6 +334,52 @@ describe('syntheticSessionStartEntry', () => {
   })
 })
 
+describe('autotracking_on_ai_message=False — the reported separator/signal misplacement bug', () => {
+  // Reproduces the exact scenario reported against Edit Project's live
+  // chat: "before" mode (autotracking_on_ai_message=False) decides its
+  // trigger from the *user's* message, before the assistant even replies
+  // — so the backend now links the resulting Tracking row to the user
+  // message (see backend tests/test_chat_service_evaluation_points.py's
+  // test_transition_from_optimistic_guess_links_the_causing_user_message),
+  // not the assistant's. This locks down that, given that correct link,
+  // both the separator's position and the Inspector's signal values come
+  // out right without this module needing any change of its own — the
+  // bug was backend-side (the wrong message_id), not in this sorting/
+  // lookup logic.
+  const userMsg = message(2, '2026-01-01T10:00:05', 'user')
+  const aiMsg = message(3, '2026-01-01T10:00:07', 'assistant')
+  // A real "" -> a session-start row, same as buildTimeline's other tests
+  // use, so syntheticSessionStartEntry doesn't add its own extra one.
+  const start = transitionRow(9, { timestamp: '2026-01-01T09:59:59', oldState: '', newState: 'a' })
+  const transition = transitionRow(10, {
+    timestamp: '2026-01-01T10:00:05.500', // after the user message, before the AI reply
+    oldState: 'a',
+    newState: 'b',
+    values: JSON.stringify({ mySignal: 1 }),
+    messageId: userMsg.id // linked to the CAUSING (user) message, not the AI one
+  })
+  const log = [start, transition]
+  const messages = [userMsg, aiMsg]
+
+  it('places the state-change separator right after the user message, before the AI reply', () => {
+    const timeline = buildTimeline(messages, log, 'a')
+
+    expect(timeline.map((e) => (e.kind === 'message' ? `m${e.message.id}` : 't'))).toEqual(['t', 'm2', 't', 'm3'])
+  })
+
+  it("the Inspector shows the transition's own signal values when the separator is selected", () => {
+    const selected = { kind: 'transition', transition }
+
+    expect(signalValuesFor(selected, log)).toEqual({ mySignal: { value: 1, error: null } })
+  })
+
+  it("the Inspector shows the same signal values when the causing user message is selected directly", () => {
+    const selected = { kind: 'message', message: userMsg }
+
+    expect(signalValuesFor(selected, log)).toEqual({ mySignal: { value: 1, error: null } })
+  })
+})
+
 describe('buildTimeline', () => {
   // Every log below includes its own real "" -> start_state row so
   // syntheticSessionStartEntry never adds an extra one — that entry has

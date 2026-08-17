@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import pytest
+
 from metrics.metrics_framework import BenchmarkCalculator
 
 
@@ -22,6 +24,7 @@ def _make_session(db, *, username="user", project_name="proj", start, start_stat
     )
 
 
+@pytest.mark.regression
 def test_calculator_reads_expected_state_from_the_linked_signals_row(db):
     session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
     message_id = db.save_message("user", "hi", session_id)
@@ -35,6 +38,7 @@ def test_calculator_reads_expected_state_from_the_linked_signals_row(db):
     assert observations[0].message_id == message_id
 
 
+@pytest.mark.regression
 def test_unannotated_messages_alongside_an_annotated_one_produce_no_spurious_points(db):
     """Regression test: a `messages` DataFrame mixing a real annotated
     expected_state with several missing ones (pandas represents the
@@ -57,6 +61,7 @@ def test_unannotated_messages_alongside_an_annotated_one_produce_no_spurious_poi
     assert observations[0].expected_state == "a"
 
 
+@pytest.mark.regression
 def test_calculator_reads_expected_values_from_the_linked_signals_row(db):
     session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
     message_id = db.save_message("user", "hi", session_id)
@@ -69,6 +74,7 @@ def test_calculator_reads_expected_values_from_the_linked_signals_row(db):
     assert observations[0].signal_agreements == {"foo": 100.0}
 
 
+@pytest.mark.regression
 def test_unlinked_signals_rows_never_produce_an_observation(db):
     """A manual action's transition (or any row auto-tracking never
     linked to a message) has nothing to annotate against — see
@@ -83,6 +89,7 @@ def test_unlinked_signals_rows_never_produce_an_observation(db):
     assert observations == ()
 
 
+@pytest.mark.contract
 def test_calculator_is_scoped_to_one_session_when_given(db):
     session_a = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
     session_b = _make_session(db, start=datetime(2026, 1, 2, 10, 0, 0))
@@ -99,12 +106,14 @@ def test_calculator_is_scoped_to_one_session_when_given(db):
     assert observations[0].session_id == session_a
 
 
+@pytest.mark.contract
 def test_metrics_property_matches_calculate_all_order(db):
     calculator = BenchmarkCalculator(db, "user", "proj")
     results = calculator.calculate_all()
     assert [m.name for m in calculator.metrics] == [r.name for r in results]
 
 
+@pytest.mark.regression
 def test_unannotated_data_produces_zero_sample_metrics(db):
     session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
     db.save_message("user", "hi", session_id)

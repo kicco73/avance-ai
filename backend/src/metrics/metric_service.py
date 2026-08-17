@@ -15,7 +15,7 @@ ever points one way.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Callable
+from typing import Any, Callable, Protocol
 
 from automaton.automaton import Automaton
 from chat.session_manager import DEFAULT_OPEN_WINDOW_MINUTES
@@ -26,12 +26,38 @@ from metrics.metrics_framework import (
     BenchmarkConfiguration,
     MetricCalculator,
     MetricResult,
+    UserAnalyticsDataBuilder,
 )
 from metrics.metrics_framework import metric_names as _metric_names
 
 GetUsername = Callable[[], str]
 GetActiveProjectName = Callable[[], str]
 GetMaxSessionDurationInMinutes = Callable[[], float]
+
+
+class MetricsProvider(Protocol):
+    """Whatever a caller needs from a metrics source to evaluate
+    triggers/action env — MetricService satisfies this today purely by
+    having the same two methods with the same signatures (structural,
+    duck-typed — no explicit inheritance needed); a benchmark-replay
+    equivalent (not introduced here) will satisfy it too, without either
+    one depending on the other."""
+
+    def calculate_values(self) -> dict[str, float]:
+        ...
+
+    def merge_if_referenced(self, automaton: Automaton, state_key: str, names: dict[str, Any]) -> dict[str, Any]:
+        ...
+
+
+def _values_dict(pairs: list[tuple[MetricCalculator, MetricResult]]) -> dict[str, float]:
+    """Flat {name: value}, omitting any metric whose result.value is
+    None (see BaseMetric.unavailable) — a trigger referencing an
+    omitted name simply evaluates False (Automaton._eval_trigger), like
+    any other signal never estimated. Shared by MetricService.
+    calculate_values and BenchmarkMetricsProvider.calculate_values, so
+    the filtering itself is never duplicated between them."""
+    return {metric.name: result.value for metric, result in pairs if result.value is not None}
 
 
 class MetricService(object):
@@ -84,9 +110,12 @@ class MetricService(object):
         """Flat {name: value} — for merging into trigger-evaluation's
         `names` dict alongside signal values (see merge_if_referenced),
         and into an action's own `env:` field eval scope (see
-        chat_service.py's/tracking/auto_tracker.py's own
-        _apply_action_env)."""
-        return {metric.name: result.value for metric, result in self._calculate()}
+        tracking/tracking_engine.py's own apply_action_env). A metric
+        with no meaningful value in the current context (result.value is
+        None — see BaseMetric.unavailable) is omitted entirely, exactly
+        like a signal that was never estimated: a trigger referencing it
+        simply evaluates False (Automaton._eval_trigger), never crashes."""
+        return _values_dict(self._calculate())
 
     def merge_if_referenced(self, automaton: Automaton, state_key: str, names: dict[str, Any]) -> dict[str, Any]:
         """`names` (signal values headed for trigger evaluation — see
@@ -130,3 +159,55 @@ class MetricService(object):
             }
             for metric, result in zip(calculator.metrics, results)
         ]
+
+
+class BenchmarkMetricsProvider:
+    """MetricsProvider (see above) for a benchmark replay (not
+    introduced here) — same calculate_values/merge_if_referenced shape
+    as MetricService, just choosing its own analytical dataset per turn
+    (advance_to) instead of always the full live cross-session history.
+
+    Two data sources, picked per-turn by whether a real timestamp is
+    available (see advance_to): a real (non-imported) session still has
+    its own genuine chronology, so metrics can be computed the exact
+    same way production would at that instant (full cross-session
+    history, `until=real_timestamp`); an imported session (or any turn
+    with no real timestamp to anchor to) instead scopes to just the one
+    session being replayed, truncated by message id (see
+    UserAnalyticsDataBuilder.build_for_session) — an id is always
+    available and meaningful, a real elapsed-time comparison isn't."""
+
+    def __init__(self, db: Db, username: str, project_name: str, session_id: int) -> None:
+        self._db = db
+        self._username = username
+        self._project_name = project_name
+        self._session_id = session_id
+        # Set once per turn by advance_to, before calculate_values/
+        # merge_if_referenced are ever called for that turn — no
+        # default bound: a replay orchestrator that forgets to call it
+        # first should fail loudly (AttributeError), not silently fall
+        # back to "no bound at all".
+
+    def advance_to(self, message_id: int, real_timestamp: datetime | None) -> None:
+        self._message_id = message_id
+        self._real_timestamp = real_timestamp
+
+    def _calculate(self) -> list[tuple[MetricCalculator, MetricResult]]:
+        if self._real_timestamp is not None:
+            calculator = AnalyticsCalculator(
+                self._db, self._username, self._project_name, until=self._real_timestamp
+            )
+        else:
+            data = UserAnalyticsDataBuilder(self._db, self._username, self._project_name).build_for_session(
+                self._session_id, until_message_id=self._message_id
+            )
+            calculator = AnalyticsCalculator.from_data(data)
+        return list(zip(calculator.metrics, calculator.calculate_all()))
+
+    def calculate_values(self) -> dict[str, float]:
+        return _values_dict(self._calculate())
+
+    def merge_if_referenced(self, automaton: Automaton, state_key: str, names: dict[str, Any]) -> dict[str, Any]:
+        if not automaton.triggers_reference(state_key, _metric_names()):
+            return names
+        return {**names, **self.calculate_values()}

@@ -4,6 +4,10 @@ when the state it was actually in doesn't survive the edit.
 """
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.regression
+
 TWO_STATE_YML = (
     "init-action:\n  target: a\n"
     "states:\n"

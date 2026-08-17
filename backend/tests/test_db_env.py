@@ -10,6 +10,13 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import pytest
+
+# Every test in this file verifies a specific persistence behavior/fact
+# (round-tripping, scoping, no-op semantics) rather than a response shape —
+# all regression.
+pytestmark = pytest.mark.regression
+
 
 def _session(db, username="user", project_name="proj", start=None):
     start = start or datetime(2026, 1, 1)

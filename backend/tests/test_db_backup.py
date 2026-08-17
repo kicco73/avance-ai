@@ -29,15 +29,18 @@ def file_db(tmp_path):
     return Db(f"sqlite:///{db_path}")
 
 
+@pytest.mark.contract
 def test_backup_file_path_resolves_to_the_real_file(file_db, tmp_path):
     assert file_db.backup_file_path() == str(tmp_path / "test.db")
 
 
+@pytest.mark.contract
 def test_export_backup_returns_sqlite_bytes(file_db):
     content = file_db.export_backup()
     assert content.startswith(b"SQLite format 3\x00")
 
 
+@pytest.mark.regression
 def test_restore_backup_rejects_non_sqlite_content(file_db):
     with pytest.raises(ValueError):
         file_db.restore_backup(b"not a sqlite file")
@@ -46,6 +49,7 @@ def test_restore_backup_rejects_non_sqlite_content(file_db):
     assert file_db.export_backup().startswith(b"SQLite format 3\x00")
 
 
+@pytest.mark.regression
 def test_restore_backup_rejects_a_completely_unrelated_schema(file_db, tmp_path):
     wrong = _make_sqlite_bytes(tmp_path, "wrong.db", ["CREATE TABLE unrelated_thing (id INTEGER PRIMARY KEY)"])
 
@@ -56,6 +60,7 @@ def test_restore_backup_rejects_a_completely_unrelated_schema(file_db, tmp_path)
     assert file_db.export_backup().startswith(b"SQLite format 3\x00")
 
 
+@pytest.mark.regression
 def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
     """Same five tables, but 'message' is missing its session_id column —
     the exact same-tables-wrong-columns case a naive "tables only" check
@@ -79,6 +84,7 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
     assert file_db.export_backup().startswith(b"SQLite format 3\x00")
 
 
+@pytest.mark.regression
 def test_restore_backup_accepts_a_schema_matching_backup(file_db):
     """The normal case: a real export from a Db with the identical schema
     must pass the integrity check and actually restore."""
@@ -87,6 +93,7 @@ def test_restore_backup_accepts_a_schema_matching_backup(file_db):
     assert file_db.export_backup().startswith(b"SQLite format 3\x00")
 
 
+@pytest.mark.regression
 def test_restore_backup_rebuilds_the_proxy_target_not_just_reconnects(file_db):
     """The actual fix, not just its effect: restore_backup() must hand
     the shared `database` Proxy a brand new Database object rather than
@@ -106,6 +113,7 @@ def test_restore_backup_rebuilds_the_proxy_target_not_just_reconnects(file_db):
     assert database.obj is not target_before
 
 
+@pytest.mark.regression
 def test_restore_backup_preserves_the_working_files_permissions(file_db):
     """Regression test: a freshly written temp file gets whatever mode the
     process umask allows, which isn't necessarily the working file's own
@@ -121,6 +129,7 @@ def test_restore_backup_preserves_the_working_files_permissions(file_db):
     assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
 
 
+@pytest.mark.regression
 def test_restore_backup_replaces_data_and_reconnects(file_db):
     kept_id = file_db.create_chat_session(
         username="user",

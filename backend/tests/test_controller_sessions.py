@@ -3,9 +3,12 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from db import Db
 
 
+@pytest.mark.contract
 def test_bootstrap_creates_a_session(client, hello_project):
     response = client.get("/api/chat/session")
 
@@ -17,10 +20,17 @@ def test_bootstrap_creates_a_session(client, hello_project):
     assert body["has_annotations"] is False
 
 
+@pytest.mark.regression
 def test_sessions_list_reflects_has_annotations_per_session(client, hello_project, app_db: Db):
     session = client.get("/api/chat/session").json()
     turn = client.post("/api/chat/messages", json={"message": "hi", "session_id": session["id"]}).json()
-    message_id = turn["reply"][0]["id"]
+    # process_turn's own "reply" key is always [] (see tracking/
+    # tracking_processor.py's _build_turn_response) — the assistant
+    # message id for a plain chat turn is the top-level
+    # "assistant_message_id" key instead. apply_manual_action's own
+    # "reply" is the one that's a list of {id, role, content, audio_text,
+    # ...} message dicts (see ChatService._messages_for_transition).
+    message_id = turn["assistant_message_id"]
     signal_row_id = app_db.save_signal_snapshot({"foo": 1}, session["id"], message_id=message_id)
 
     before = {s["id"]: s for s in client.get("/api/chat/sessions").json()}
@@ -34,6 +44,7 @@ def test_sessions_list_reflects_has_annotations_per_session(client, hello_projec
     assert client.get(f"/api/chat/session?session_id={session['id']}").json()["has_annotations"] is True
 
 
+@pytest.mark.regression
 def test_manual_new_session_supersedes_the_bootstrap_one(client, hello_project):
     older = client.get("/api/chat/session").json()
 
@@ -52,6 +63,13 @@ def test_manual_new_session_supersedes_the_bootstrap_one(client, hello_project):
     assert sessions[newer["id"]]["active"] is True
 
 
+@pytest.mark.regression
+# Currently failing against a real app bug: ChatService.process_turn() (see
+# chat/chat_service.py:470-478, called directly by controller.py's
+# post_message) never calls _require_active_session — unlike
+# apply_manual_action (chat_service.py:452) — so a superseded-but-open
+# session's chat turns are not rejected. Left failing per the task's own
+# "leave a genuine app bug failing" rule.
 def test_chat_turn_rejects_an_open_but_inactive_session(client, hello_project):
     older = client.get("/api/chat/session").json()
     client.post("/api/chat/sessions")  # supersedes `older`
@@ -62,6 +80,7 @@ def test_chat_turn_rejects_an_open_but_inactive_session(client, hello_project):
     assert "not active" in response.json()["error"]["message"].lower()
 
 
+@pytest.mark.regression
 def test_chat_turn_succeeds_against_the_active_session(client, hello_project):
     session = client.get("/api/chat/session").json()
 
@@ -70,6 +89,7 @@ def test_chat_turn_succeeds_against_the_active_session(client, hello_project):
     assert response.status_code == 200
 
 
+@pytest.mark.regression
 def test_manual_action_rejects_an_open_but_inactive_session(client, hello_project):
     older = client.get("/api/chat/session").json()
     client.post("/api/chat/sessions")  # supersedes `older`
@@ -80,6 +100,11 @@ def test_manual_action_rejects_an_open_but_inactive_session(client, hello_projec
     assert "not active" in response.json()["error"]["message"].lower()
 
 
+@pytest.mark.regression
+# Currently failing against the same real app bug as
+# test_chat_turn_rejects_an_open_but_inactive_session above: process_turn
+# never validates session_id is still the active/open one for text chat
+# turns (only apply_manual_action does, via _require_active_session).
 def test_chat_turn_rejects_a_closed_session_without_auto_rotating(client, hello_project, app_db: Db):
     session = client.get("/api/chat/session").json()
     stale_end = datetime.utcnow() - timedelta(hours=2)
@@ -94,6 +119,7 @@ def test_chat_turn_rejects_a_closed_session_without_auto_rotating(client, hello_
     assert [s["id"] for s in sessions] == [session["id"]]
 
 
+@pytest.mark.regression
 def test_delete_session_removes_it(client, hello_project):
     session = client.get("/api/chat/session").json()
 
@@ -103,11 +129,13 @@ def test_delete_session_removes_it(client, hello_project):
     assert client.get("/api/chat/sessions").json() == []
 
 
+@pytest.mark.contract
 def test_delete_session_rejects_unknown_id(client, hello_project):
     response = client.delete("/api/chat/sessions/999999")
     assert response.status_code == 404
 
 
+@pytest.mark.regression
 def test_manual_new_session_starts_at_the_automatons_initial_state_not_the_current_one(client):
     """Regression test: a brand new session represents starting the
     conversation over, so it must be recorded as starting at the
@@ -136,6 +164,7 @@ def test_manual_new_session_starts_at_the_automatons_initial_state_not_the_curre
     assert new_session["start_state"] == "welcome"
 
 
+@pytest.mark.regression
 def test_switching_projects_does_not_delete_the_previous_projects_sessions(client, app_db: Db):
     # Uploads both sample projects directly (avoids depending on a
     # single-project fixture, since this test needs two).

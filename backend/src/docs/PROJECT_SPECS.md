@@ -50,8 +50,7 @@ the file format.
 | `signals` | no | mapping (name → signal) | `{}` | Numeric values the model estimates from the conversation each turn. See §4. |
 | `general-prompt` | no | string | `""` | Appended to every state's `contextual-prompt` when building the system prompt for a normal chat reply (never for a `fixed-message` state, and used *alone*, without the state's own prompt, when generating an `action-prompt` reply — see §6.3). |
 | `attachments` | no | list of filenames | `[]` | Global attachments, sent with **every** model call that also sends `general-prompt` (i.e. every normal chat turn and every `action-prompt`). See §7. |
-| `signal-tracking-on-user-message` | no | boolean | `true` | Whether auto-tracking (signal computation + trigger evaluation) runs right after the user's message, before the model replies. |
-| `signal-tracking-on-ai-message` | no | boolean | `false` | Whether auto-tracking runs again after the model's reply (using signal values the model itself may have reported inline — see §4.3). |
+| `signal-tracking-on-ai-message` | no | boolean | `false` | Selects one of two mutually exclusive auto-tracking modes: `false` (default) runs auto-tracking (signal computation + trigger evaluation) right after the user's message, before the model replies; `true` runs it instead after the model's reply (using signal values the model itself may have reported inline — see §4.3). |
 
 Any other top-level key is ignored (not an error).
 
@@ -119,8 +118,7 @@ Each entry (keyed by the signal's name — see naming rules above):
 ### 4.1 How signals are computed
 
 Signals are **not** computed on every field access — only during
-"auto-tracking" (gated by `signal-tracking-on-user-message`/
-`signal-tracking-on-ai-message`, §2). When it runs, every declared
+"auto-tracking" (gated by `signal-tracking-on-ai-message`, §2). When it runs, every declared
 signal is evaluated **in one single model call**: the system prompt lists
 every signal's `name` and `definition`, the user turn is a transcript of
 the recent conversation (plus whatever attachments that turn's signals

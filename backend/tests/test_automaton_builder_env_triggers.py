@@ -10,6 +10,8 @@ import pytest
 
 from automaton.automaton_builder import ENV_COMPUTED_KEYS, AutomatonBuilder
 
+pytestmark = pytest.mark.contract
+
 
 @pytest.mark.parametrize("env_key", ENV_COMPUTED_KEYS)
 def test_a_trigger_may_reference_any_env_computed_key(env_key):

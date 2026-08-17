@@ -14,6 +14,8 @@ import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
 
+pytestmark = pytest.mark.contract
+
 
 def _build(action_yaml: str):
     content = f"""

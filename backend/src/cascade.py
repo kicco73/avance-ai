@@ -104,7 +104,10 @@ class ProviderCascade(Generic[Provider]):
             except (rate_limited, unavailable) as exc:
                 last_error = exc
                 self.advance()
-        raise last_error
+        if last_error is None:
+            # Defensive: should not happen, but satisfy type checkers.
+            raise 
+        raise last_error or RuntimeError(f"{self._kind} cascade failed without exception")
 
     async def _call_with_backoff(
         self,

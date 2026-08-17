@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import sqlite3
 
+import pytest
+
 
 def _make_sqlite_bytes(tmp_path, name, ddl_statements):
     path = tmp_path / name
@@ -13,6 +15,7 @@ def _make_sqlite_bytes(tmp_path, name, ddl_statements):
     return path.read_bytes()
 
 
+@pytest.mark.contract
 def test_download_backup_returns_a_sqlite_file(client):
     response = client.get("/api/backup")
 
@@ -21,6 +24,7 @@ def test_download_backup_returns_a_sqlite_file(client):
     assert response.headers["content-disposition"].endswith('.sqlite"')
 
 
+@pytest.mark.contract
 def test_restore_a_valid_backup_succeeds(client):
     backup = client.get("/api/backup").content
 
@@ -32,6 +36,7 @@ def test_restore_a_valid_backup_succeeds(client):
     assert response.json()["success"] is True
 
 
+@pytest.mark.contract
 def test_restore_rejects_a_schema_mismatch(client, tmp_path):
     wrong = _make_sqlite_bytes(tmp_path, "wrong.db", ["CREATE TABLE unrelated (id INTEGER PRIMARY KEY)"])
 
@@ -43,6 +48,7 @@ def test_restore_rejects_a_schema_mismatch(client, tmp_path):
     assert "schema" in response.json()["error"]["message"].lower()
 
 
+@pytest.mark.regression
 def test_app_keeps_working_after_a_rejected_restore(client, tmp_path):
     wrong = _make_sqlite_bytes(tmp_path, "wrong.db", ["CREATE TABLE unrelated (id INTEGER PRIMARY KEY)"])
     client.post("/api/backup", content=wrong, headers={"Content-Type": "application/octet-stream"})
@@ -50,6 +56,7 @@ def test_app_keeps_working_after_a_rejected_restore(client, tmp_path):
     assert client.get("/api/state").status_code == 200
 
 
+@pytest.mark.regression
 def test_switching_projects_right_after_a_restore_does_not_crash(client, hello_project):
     """Regression test for the exact reported bug: restoring from an
     (effectively) empty db works and responds fine, but the very next

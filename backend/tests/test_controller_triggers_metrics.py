@@ -3,7 +3,11 @@ from __future__ import annotations
 import io
 import zipfile
 
+import pytest
+
 from metrics.metrics_framework import metric_names
+
+pytestmark = pytest.mark.regression
 
 METRIC_TRIGGER_PROJECT = """
 init-action:

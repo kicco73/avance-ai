@@ -13,7 +13,11 @@ message — same point-in-time convention as GET /api/chat/metrics.
 """
 from __future__ import annotations
 
+import pytest
+
 from automaton.automaton_builder import ENV_COMPUTED_KEYS
+
+pytestmark = pytest.mark.contract
 
 
 def test_env_endpoint_reports_every_computed_key_even_with_nothing_stored(client, hello_project):
@@ -88,7 +92,7 @@ def test_delete_env_value_rejects_a_computed_key(client, hello_project):
 def test_env_with_a_message_id_restricts_to_a_point_in_time(client, hello_project):
     session = client.get("/api/chat/session").json()
     resp = client.post("/api/chat/messages", json={"message": "hello", "session_id": session["id"]})
-    message_id = next(m["id"] for m in resp.json()["reply"] if m.get("id") is not None)
+    message_id = resp.json()["assistant_message_id"]
 
     # A value set *after* that message must not show up in its own
     # point-in-time snapshot.

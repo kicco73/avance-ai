@@ -14,7 +14,7 @@ from metrics.metrics_framework.dto import UserAnalyticsData
 
 SESSION_COLUMNS = ["id", "username", "project_name", "datetime_start", "datetime_end", "start_state", "end_state"]
 MESSAGE_COLUMNS = ["id", "role", "content", "audio_text", "timestamp"]
-SIGNAL_COLUMNS = ["id", "timestamp", "values", "old_state", "action", "new_state"]
+SIGNAL_COLUMNS = ["id", "timestamp", "values", "old_state", "action", "new_state", "message_id"]
 
 
 def messages_frame(rows: list[dict]) -> pd.DataFrame:
@@ -66,7 +66,7 @@ def session_row(id_, start, end, start_state="a", end_state="a") -> dict:
     }
 
 
-def signal_row(id_, ts, values=None, old_state=None, action=None, new_state=None) -> dict:
+def signal_row(id_, ts, values=None, old_state=None, action=None, new_state=None, message_id=None) -> dict:
     return {
         "id": id_,
         "timestamp": ts,
@@ -74,4 +74,10 @@ def signal_row(id_, ts, values=None, old_state=None, action=None, new_state=None
         "old_state": old_state,
         "action": action,
         "new_state": new_state,
+        # Defaults to id_ itself when not given — preserves the same
+        # relative ordering every existing call site already relies on
+        # (ascending id_ already matches intended chronological order),
+        # now that Timeline.signal_series orders by message_id rather
+        # than timestamp.
+        "message_id": id_ if message_id is None else message_id,
     }

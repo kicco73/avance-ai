@@ -35,3 +35,16 @@ class BaseMetric(object):
             components=components or {},
             calculated_at=datetime.now(timezone.utc),
         )
+
+    @staticmethod
+    def unavailable(name: str, reason: str | None = None) -> MetricResult:
+        """A metric that has no meaningful value to report in the
+        current context (e.g. no real elapsed time to normalize
+        against) — never a fabricated number. `reason`, if given, is
+        recorded under `metadata` for whoever's debugging why."""
+        return MetricResult(
+            name=name,
+            value=None,
+            metadata={"reason": reason} if reason else {},
+            calculated_at=datetime.now(timezone.utc),
+        )

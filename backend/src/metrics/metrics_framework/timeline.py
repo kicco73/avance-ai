@@ -43,6 +43,35 @@ class UserAnalyticsDataBuilder(object):
             if not signals.empty:
                 signals = signals.loc[signals["timestamp"] <= until_ts].copy()
 
+        return self._assemble(sessions, messages, signals)
+
+    def build_for_session(self, session_id: int, until_message_id: int | None = None) -> UserAnalyticsData:
+        """Like build(), but scoped to exactly one session — a single
+        session's own data, never the user's whole cross-session
+        history (see build's own `list_chat_sessions`/session_ids call,
+        not used here at all). `until_message_id` (an id, never a
+        timestamp — always available and meaningful regardless of
+        whether the session has real timestamps at all) truncates
+        messages by `id <= until_message_id` and signals by
+        `message_id <= until_message_id` (see _load_signals' own
+        message_id column), mirroring build()'s own `until` truncation
+        but scoped by event order instead of by real elapsed time."""
+        session = self._db.get_chat_session(session_id)
+        sessions = [session] if session is not None else []
+
+        messages = self._load_messages([session_id])
+        signals = self._load_signals([session_id])
+        if until_message_id is not None:
+            if not messages.empty:
+                messages = messages.loc[messages["id"] <= until_message_id].copy()
+            if not signals.empty:
+                signals = signals.loc[signals["message_id"] <= until_message_id].copy()
+
+        return self._assemble(sessions, messages, signals)
+
+    def _assemble(
+        self, sessions: list[dict[str, Any]], messages: pd.DataFrame, signals: pd.DataFrame,
+    ) -> UserAnalyticsData:
         if signals.empty:
             transitions = self._empty_transitions()
             signal_snapshots = self._empty_signals()
@@ -79,7 +108,7 @@ class UserAnalyticsDataBuilder(object):
             rows.extend(self._db.get_signals(session_id))
         frame = self._frame(
             rows,
-            ["id", "timestamp", "values", "old_state", "action", "new_state"],
+            ["id", "timestamp", "values", "old_state", "action", "new_state", "message_id"],
         )
         if not frame.empty:
             frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True)
@@ -94,11 +123,11 @@ class UserAnalyticsDataBuilder(object):
 
     @staticmethod
     def _empty_signals() -> pd.DataFrame:
-        return pd.DataFrame(columns=["id", "timestamp", "values", "old_state", "action", "new_state"])
+        return pd.DataFrame(columns=["id", "timestamp", "values", "old_state", "action", "new_state", "message_id"])
 
     @staticmethod
     def _empty_transitions() -> pd.DataFrame:
-        return pd.DataFrame(columns=["id", "timestamp", "values", "old_state", "action", "new_state"])
+        return pd.DataFrame(columns=["id", "timestamp", "values", "old_state", "action", "new_state", "message_id"])
 
 
 class Timeline(object):
@@ -108,24 +137,28 @@ class Timeline(object):
         self._data = data
 
     def signal_series(self, signal_name: str) -> pd.Series:
+        """Indexed/ordered by message_id, not timestamp — this measures
+        variation between consecutive values, which only ever needs the
+        correct order of events, never the real elapsed time between
+        them (see message_id's own addition to _load_signals)."""
         if self._data.signals.empty:
             return pd.Series(dtype="float64", name=signal_name)
 
-        values: list[tuple[pd.Timestamp, float]] = []
-        for timestamp, raw_values in zip(
-            self._data.signals["timestamp"], self._data.signals["values"]
+        values: list[tuple[int, float]] = []
+        for message_id, raw_values in zip(
+            self._data.signals["message_id"], self._data.signals["values"]
         ):
             parsed = self._parse_values(raw_values)
             value = parsed.get(signal_name)
             if isinstance(value, (int, float)) and not isinstance(value, bool):
-                values.append((timestamp, float(value)))
+                values.append((message_id, float(value)))
 
         if not values:
             return pd.Series(dtype="float64", name=signal_name)
 
         series = pd.Series(
             [value for _, value in values],
-            index=pd.DatetimeIndex([timestamp for timestamp, _ in values]),
+            index=pd.Index([message_id for message_id, _ in values], name="message_id"),
             name=signal_name,
         )
         return series.sort_index()

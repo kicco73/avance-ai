@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import pytest
+
 from automaton.automaton import Action, Automaton, State
+
+pytestmark = pytest.mark.contract
 
 
 def _automaton(actions_by_state: dict[str, list[Action]]) -> Automaton:
@@ -15,7 +19,6 @@ def _automaton(actions_by_state: dict[str, list[Action]]) -> Automaton:
         signals=[],
         attachments={},
         general_attachments={},
-        autotracking_on_user_message=True,
         autotracking_on_ai_message=False,
     )
 
