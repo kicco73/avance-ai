@@ -5,6 +5,8 @@ import pytest
 from automaton.automaton_builder import AutomatonBuilder
 from metrics.metrics_framework import metric_names
 
+pytestmark = pytest.mark.contract
+
 
 def test_a_signal_named_after_a_metric_is_rejected():
     reserved = sorted(metric_names())[0]

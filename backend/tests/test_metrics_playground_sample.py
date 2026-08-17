@@ -17,6 +17,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples"
 
 
@@ -41,6 +43,7 @@ def _enter_engaged(client, session: dict):
     assert response.json()["state"]["key"] == "engaged"
 
 
+@pytest.mark.contract
 def test_the_sample_loads_and_starts_at_lobby(client):
     _upload_and_activate(client)
 
@@ -49,6 +52,7 @@ def test_the_sample_loads_and_starts_at_lobby(client):
     assert session["start_state"] == "lobby"
 
 
+@pytest.mark.regression
 def test_warm_up_fires_on_engagement_alone_right_after_bootstrap(client):
     _upload_and_activate(client)
     # A freshly bootstrapped session (one session, no messages yet) already
@@ -65,6 +69,7 @@ def test_warm_up_fires_on_engagement_alone_right_after_bootstrap(client):
     assert _metric_values(client)["engagement"] >= 4
 
 
+@pytest.mark.regression
 def test_every_engaged_branch_matches_its_own_live_metric_or_signal_value(client):
     _upload_and_activate(client)
     session = client.get("/api/chat/session").json()
@@ -82,6 +87,7 @@ def test_every_engaged_branch_matches_its_own_live_metric_or_signal_value(client
     assert results["notice_signal_stability"] == (values["signal_stability"] >= 1)
 
 
+@pytest.mark.contract
 def test_metric_values_never_include_a_non_session_scoped_metric(client):
     """retention/activity_consistency's own scope is
     {all_sessions_per_user, all_sessions} (see MetricCalculator.scope) —
@@ -99,6 +105,7 @@ def test_metric_values_never_include_a_non_session_scoped_metric(client):
     assert "activity_consistency" not in values
 
 
+@pytest.mark.regression
 def test_notice_combo_needs_both_the_signal_and_the_metric_side_true(client):
     _upload_and_activate(client)
     session = client.get("/api/chat/session").json()
@@ -116,6 +123,7 @@ def test_notice_combo_needs_both_the_signal_and_the_metric_side_true(client):
     assert results["notice_combo"] is False
 
 
+@pytest.mark.regression
 def test_more_sessions_raise_engagement_without_any_ai_call(client):
     _upload_and_activate(client)
     session = client.get("/api/chat/session").json()

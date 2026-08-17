@@ -9,7 +9,14 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import pytest
+
 from db.models import Message, Tracking
+
+# Every test in this file verifies a specific cutoff/rollback behavioral
+# fact (boundary semantics, cascade-free rollback) rather than a response
+# shape — all regression.
+pytestmark = pytest.mark.regression
 
 
 def _make_session(db, *, username="user", project_name="proj", start, start_state="start"):

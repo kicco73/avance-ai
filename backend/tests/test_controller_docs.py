@@ -9,6 +9,8 @@ import pytest
 
 from controller import DOC_FILES
 
+pytestmark = pytest.mark.contract
+
 
 @pytest.mark.parametrize("name", list(DOC_FILES))
 def test_get_doc_returns_the_files_own_content(client, name):

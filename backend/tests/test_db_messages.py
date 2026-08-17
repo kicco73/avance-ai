@@ -2,6 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import pytest
+
+# Every test in this file checks the shape of what Db returns (dict keys,
+# types, None for unknown ids) rather than a specific behavioral fact —
+# all contract.
+pytestmark = pytest.mark.contract
+
 
 def _make_session(db, *, username="user", project_name="proj", start=datetime(2026, 1, 1)):
     return db.create_chat_session(

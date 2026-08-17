@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+import pytest
+
 from automaton.automaton import Action, Automaton, State
 from metrics.metric_service import MetricService
 from metrics.metrics_framework import AnalyticsCalculator
+
+# Every test here verifies MetricService's own interface guarantees
+# (calculate_values' shape, its consistency with calculate_all,
+# merge_if_referenced's opt-in/no-mutation behavior) rather than a
+# punctual numeric fact — uniformly contract.
+pytestmark = pytest.mark.contract
 
 # MetricService always evaluates in a one_session context (a chat turn
 # only ever runs within one session) — metric_names() itself stays the

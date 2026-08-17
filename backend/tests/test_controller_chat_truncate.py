@@ -9,14 +9,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples"
 
 
+@pytest.mark.contract
 def test_truncate_rejects_an_unknown_session(client, hello_project):
     response = client.post("/api/chat/sessions/999999/truncate", json={"timestamp": "2026-01-01T00:00:00+00:00"})
     assert response.status_code == 404
 
 
+@pytest.mark.contract
 def test_truncate_rejects_someone_elses_session(client, hello_project):
     session = client.get("/api/chat/session").json()
     # Reassign ownership directly — no endpoint exists to create another
@@ -29,6 +33,7 @@ def test_truncate_rejects_someone_elses_session(client, hello_project):
     assert response.status_code == 404
 
 
+@pytest.mark.contract
 def test_truncate_rejects_a_malformed_timestamp(client, hello_project):
     session = client.get("/api/chat/session").json()
 
@@ -37,6 +42,7 @@ def test_truncate_rejects_a_malformed_timestamp(client, hello_project):
     assert response.status_code == 400
 
 
+@pytest.mark.contract
 def test_truncate_response_shape_matches_reset(client, hello_project):
     """Same expression as post_reset's own return (project_service.
     get_active_state_payload()) — a StatePayload, not GET /api/state's
@@ -52,6 +58,7 @@ def test_truncate_response_shape_matches_reset(client, hello_project):
     assert set(response.json().keys()) == set(reset_response.json().keys())
 
 
+@pytest.mark.regression
 def test_truncate_deletes_trailing_turns_and_rolls_the_live_state_back(client):
     """End-to-end: move a real automaton away from its initial state via
     a manual action (same project/action as test_controller_sessions.py's

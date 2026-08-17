@@ -5,7 +5,7 @@ from typing import AsyncIterator
 
 from ai.ai_service import AiService
 from ai.llm_provider import MetadataCallback
-from chat.env import Env
+from tracking.env import Env
 
 class TurnProtocol(ABC):
 
@@ -35,7 +35,13 @@ class TurnProtocol(ABC):
 	@abstractmethod
 	def _generate_reply(self, prompt: str, chat_history: list[dict], on_metadata: MetadataCallback,) -> AsyncIterator[str]:
 		raise NotImplementedError
-   
+
+	@abstractmethod
+	def generate_reply_with_schema(
+		self, base_prompt: str, tag_specs: list[tuple[str, str]], chat_history: list[dict], on_metadata: MetadataCallback,
+	) -> AsyncIterator[str]:
+		raise NotImplementedError
+
 	def __build_prompt(self, **kw) -> str:
 
 		content = []

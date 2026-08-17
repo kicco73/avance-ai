@@ -13,7 +13,11 @@ message — same point-in-time convention as GET /api/chat/metrics.
 """
 from __future__ import annotations
 
+import pytest
+
 from automaton.automaton_builder import ENV_COMPUTED_KEYS
+
+pytestmark = pytest.mark.contract
 
 
 def test_env_endpoint_reports_every_computed_key_even_with_nothing_stored(client, hello_project):

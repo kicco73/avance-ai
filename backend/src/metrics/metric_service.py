@@ -15,7 +15,7 @@ ever points one way.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Callable
+from typing import Any, Callable, Protocol
 
 from automaton.automaton import Automaton
 from chat.session_manager import DEFAULT_OPEN_WINDOW_MINUTES
@@ -32,6 +32,21 @@ from metrics.metrics_framework import metric_names as _metric_names
 GetUsername = Callable[[], str]
 GetActiveProjectName = Callable[[], str]
 GetMaxSessionDurationInMinutes = Callable[[], float]
+
+
+class MetricsProvider(Protocol):
+    """Whatever a caller needs from a metrics source to evaluate
+    triggers/action env — MetricService satisfies this today purely by
+    having the same two methods with the same signatures (structural,
+    duck-typed — no explicit inheritance needed); a benchmark-replay
+    equivalent (not introduced here) will satisfy it too, without either
+    one depending on the other."""
+
+    def calculate_values(self) -> dict[str, float]:
+        ...
+
+    def merge_if_referenced(self, automaton: Automaton, state_key: str, names: dict[str, Any]) -> dict[str, Any]:
+        ...
 
 
 class MetricService(object):

@@ -309,7 +309,7 @@ class AvanceController(object):
         text = req.message.strip()
         if not text:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Message cannot be empty.")
-        return await self.chat_service.process_turn(text, req.session_id)
+        return await self.chat_service.process_turn(req.session_id, text)
 
     @post("/api/action")
     async def post_action(self, req: ActionRequest):

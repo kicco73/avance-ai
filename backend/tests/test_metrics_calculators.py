@@ -14,6 +14,12 @@ from metrics.metrics_framework.metrics import (
 
 from metrics_helpers import analytics_data, message_row, session_row, signal_row
 
+# Every test in this file exercises one metric's calculate() against a
+# fixed, hand-built dataset and asserts a specific numeric/component
+# outcome — punctual facts about behavior, not a shape/schema/ordering
+# guarantee — so uniformly regression.
+pytestmark = pytest.mark.regression
+
 
 class TestEngagementMetric:
     def test_empty_history_scores_zero(self):

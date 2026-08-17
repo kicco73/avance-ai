@@ -1,7 +1,5 @@
 import logging
 
-from automaton.automaton import Automaton, State
-
 from .tracking_processor import OutVariables, TrackingProcessor
 
 logger = logging.getLogger(__name__)
@@ -12,7 +10,9 @@ class TrackingProcessorAfterAiMessage(TrackingProcessor):
 		rv = value
 		if key == 'signals':
 			rv = self.metadata.signals = self.metadata_processor.parse_raw_signals(value)
-			self.out.action = self._FIXME_would_trigger_action()
+			self.out.action = self._tracking_engine.evaluate_triggered_action(
+				self.user.automaton, self.user.state, self.metadata.signals
+			)
 
 		elif key == 'env':
 			rv = self.metadata.env = self.metadata_processor.parse_raw_env(value)
@@ -22,14 +22,17 @@ class TrackingProcessorAfterAiMessage(TrackingProcessor):
 	
 	async def _get_ai_reply(self) -> OutVariables:
 
-		self.out = OutVariables("", [], None, self.user.state, None)
+		self.out = OutVariables(reply="", messages=[], tracking_id=None, state=self.user.state, action=None)
+		("", [], None, self.user.state, None)
 
 		async for chunk in self.generate_reply(self.user.state, self.on_receiving_metadata_when_ai_message):
 			self.out.reply += chunk
 			self.metadata.on_metadata('chunk', chunk)
 
 		if self.out.action:
-			self.out.tracking_id = self._FIXME_move_automaton()
+			self.out.tracking_id = self._tracking_engine.apply_transition(
+				self.user.automaton, self.user.state, self.out.action, self.metadata.signals, self.user.session_id
+			)
 			self.out.state = self.user.automaton.get_state(self.out.action.target)
 
 		return self.out

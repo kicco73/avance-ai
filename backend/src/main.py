@@ -82,13 +82,8 @@ try:
     # tracking/tracking_service.py's own module docstring). Both this and
     # ChatService depend on ai_service (and metric_service) directly,
     # never through one another.
-    tracking_service = TrackingService(
-        db, ai_service, metric_service,
-        get_active_automaton=lambda: project_service.get_active_automaton_and_state()[0],
-        get_username=lambda: Session().user,
-        get_active_project_name=lambda: project_service.get_active_project_name(),
-    )
-    chat_service = ChatService(ai_service, project_service, db, session_manager, tracking_service, metric_service)
+    tracking_service = TrackingService(db, ai_service, project_service, metric_service)
+    chat_service = ChatService(db, ai_service, project_service, session_manager, tracking_service, metric_service)
 
     chat_ws_adapter = WsAdapter(chat_service) if config.chat_transport == "websocket" else None
 

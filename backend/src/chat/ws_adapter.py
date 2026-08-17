@@ -1,16 +1,11 @@
-"""Thin /ws/chat adapter over ChatService (see chat_service.py): receives
-{message}, calls ChatService.process_turn(), and translates the result
-into the existing retrying/done/error frame protocol. No chat-turn domain
-logic lives here — only the websocket-specific plumbing around it.
-"""
 from __future__ import annotations
 
 import logging
 
 from fastapi import WebSocket, WebSocketDisconnect
 
-from ai.llm_provider import AIServiceError
-from chat.chat_service import ChatService, ChatServiceError
+from service_error import ServiceError
+from .chat_service import ChatService
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +26,7 @@ class WsAdapter(object):
             while True:
                 data = await websocket.receive_json()
                 text = (data or {}).get("message", "").strip()
-                session_id = (data or {}).get("session_id")
+                session_id = (data or {})["session_id"]
                 if not text:
                     continue
 
@@ -64,12 +59,12 @@ class WsAdapter(object):
                 try:
                     
                     result = await self._chat_service.process_turn(
-                        text,
                         session_id,
+                        text,
                         on_metadata=_push_metadata,
                     )
 
-                except (ChatServiceError, AIServiceError) as exc:
+                except ServiceError as exc:
                     await websocket.send_json({
                         "type": "error",
                         "error": {"message": exc.message, "detail": getattr(exc, "detail", str(exc))},

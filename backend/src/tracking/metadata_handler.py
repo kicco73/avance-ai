@@ -4,8 +4,6 @@ import json
 import logging
 from typing import Any
 
-from chat.text_filter import ConcatTagFilter
-
 logger = logging.getLogger(__name__)
 
 class MetadataHandler(object):
@@ -41,18 +39,3 @@ class MetadataHandler(object):
             if key:
                 env[key] = value.strip()
         return env
-
-    def parse(self, key: str, value: str) -> str | dict[str, float | str]:
-        parser = {
-            'signals': self.parse_raw_signals,
-            'env': self.parse_raw_env,
-        }
-        return parser.get(key, lambda x: x)(value)
-
-    def _filter_text_and_extract_tags(self, text: str) -> tuple[str, dict]:
-        filters = ConcatTagFilter('audio', 'signals', 'env')
-        return filters.filter_and_flush(text), {
-            'audio': filters.tags['audio'].tag_content,
-            'signals': self.parse_raw_signals(filters.tags['signals'].tag_content),
-            'env': self.parse_raw_env(filters.tags['env'].tag_content),
-        }

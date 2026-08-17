@@ -4,8 +4,9 @@ import logging
 from typing import AsyncIterator
 
 from ai.llm_provider import MetadataCallback
-from chat.text_filter import ConcatTagFilter
-from chat.turn_protocol import TurnProtocol
+from tracking.tag_prompt_builder import TagPromptBuilder
+from tracking.text_filter import ConcatTagFilter
+from tracking.turn_protocol import TurnProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -46,10 +47,25 @@ class TurnProcotolUsingTextExtraction(TurnProtocol):
         'text': ''
     }
 
-    async def _generate_reply(self, prompt: str, chat_history: list[dict], on_metadata: MetadataCallback,) -> AsyncIterator[str]:
+    def _generate_reply(self, prompt: str, chat_history: list[dict], on_metadata: MetadataCallback,) -> AsyncIterator[str]:
+        return self._stream_and_filter(prompt, chat_history, list(self.include_tags), on_metadata)
 
-        metadata_handlers = {tag: lambda value: on_metadata(tag, value) for tag in self.include_tags}
-        filter = ConcatTagFilter(*self.include_tags, **metadata_handlers)
+    def generate_reply_with_schema(
+        self, base_prompt: str, tag_specs: list[tuple[str, str]], chat_history: list[dict], on_metadata: MetadataCallback,
+    ) -> AsyncIterator[str]:
+        preambles = TagPromptBuilder().build(tag_specs, self.prompt_preambles)
+        tag_names = [tag for tag, _ in tag_specs]
+
+        content = [preambles[tag] for tag in tag_names] + [base_prompt]
+        prompt = "\n\n".join(content)
+
+        return self._stream_and_filter(prompt, chat_history, tag_names, on_metadata)
+
+    async def _stream_and_filter(
+        self, prompt: str, chat_history: list[dict], tag_names: list[str], on_metadata: MetadataCallback,
+    ) -> AsyncIterator[str]:
+        metadata_handlers = {tag: lambda value, tag=tag: on_metadata(tag, value) for tag in tag_names}
+        filter = ConcatTagFilter(*tag_names, **metadata_handlers)
 
         async for chunk in self._ai_service.generate_stream(prompt, chat_history):
             chunk = filter.filter(chunk)

@@ -8,7 +8,11 @@ from __future__ import annotations
 
 import logging
 
+import pytest
+
 from automaton.automaton import Action, Automaton
+
+pytestmark = pytest.mark.contract
 
 
 def test_no_env_field_returns_an_empty_dict():

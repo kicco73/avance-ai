@@ -142,7 +142,6 @@ class Automaton(object):
         signals: list[Signal],
         attachments: dict[str, MemoryArchive],
         general_attachments: dict[str, MemoryArchive],
-        autotracking_on_user_message: bool,
         autotracking_on_ai_message: bool,
     ):
         # Replaces the old bare `initial_state: str` field: same
@@ -155,7 +154,10 @@ class Automaton(object):
         self.signals = signals
         self.general_attachments = general_attachments
         self.attachments = attachments
-        self.autotracking_on_user_message = autotracking_on_user_message
+        # The two auto-tracking modes (before/after the AI reply) are
+        # mutually exclusive — a single flag selects between them, see
+        # tracking/tracking_service.py's TrackingService.process() and
+        # tracking/tracking_processor.py's build_turn_protocol().
         self.autotracking_on_ai_message = autotracking_on_ai_message
 
     def get_state(self, state_key: str) -> State:

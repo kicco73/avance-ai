@@ -7,21 +7,16 @@ from datetime import datetime, timezone
 from http import HTTPStatus
 
 from automaton.automaton import Action, Automaton, State
-from chat.tracking_processor_ai import TrackingProcessorAfterAiMessage
-from chat.tracking_processor_user import TrackingProcessorAfterUserMessage
-from chat.turn_protocol import TurnProtocol
-from chat.turn_protocol_using_text_extraction import TurnProcotolUsingTextExtraction
-from chat.turn_protocol_using_schema import TurnProtocolUsingSchema
 from db import Db, _utc_iso
 from ai.ai_service import AiService
 from session import Session
 
-from chat.env import Env
+from tracking.env import Env
 from chat.errors import ChatServiceError
-from chat.metadata_handler import MetadataHandler
-from chat.priming import build_priming_messages
+from tracking.metadata_handler import MetadataHandler
 from chat.session_manager import ChatSessionManager
-from chat.turn_callbacks import OnMetadata
+from tracking.tracking_engine import DbTrackingSink, TrackingEngine
+from tracking.turn_callbacks import OnMetadata
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
 from tracking.tracking_service import TrackingService
@@ -31,16 +26,16 @@ logger = logging.getLogger(__name__)
 class ChatService(object):
 	def __init__(
 		self,
+		db: Db,
 		ai_service: AiService,
 		project_service: ProjectService,
-		db: Db,
 		session_manager: ChatSessionManager,
 		tracking_service: TrackingService,
 		metric_service: MetricService,
 	) -> None:
+		self._db = db
 		self._ai_service = ai_service
 		self._project_service = project_service
-		self._db = db
 		self._session_manager = session_manager
 		self.tracking_service = tracking_service
 		self.metric_service = metric_service
@@ -48,34 +43,13 @@ class ChatService(object):
 			db, get_username=lambda: Session().user, get_active_project_name=lambda: project_service.get_active_project_name()
 		)
 		self._metadata_handler = MetadataHandler()
+		self._tracking_engine = TrackingEngine(DbTrackingSink(db), self.env, metric_service)
 
 		# Single-user prototype: serializes chat-turn processing across
 		# both transports and against a concurrent reset/activate/upload/
 		# delete (main.py's _activate_and_reset awaits this same lock).
 		self.lock = asyncio.Lock()
 
-		# The separate "creating a turn" responsibility (see
-		# turn_processor.py's own module docstring) — built here, not in
-		# main.py, since its own callable dependencies below are this
-		# instance's own bound methods (session/message ownership checks,
-		# turn-prompt building, the shared transition-message machinery),
-		# not something main.py has any business wiring up itself.\\
-
-		automaton, state = project_service.get_active_automaton_and_state()
-		if automaton.autotracking_on_user_message:
-			TrackingProcessor = TrackingProcessorAfterUserMessage 
-		else: 
-			TrackingProcessor = TrackingProcessorAfterAiMessage
-
-		self._tracking_processor = TrackingProcessor(
-			self,
-			ai_service,
-			project_service,
-			tracking_service,
-			self.env,
-			db,
-			session_manager,
-		)
 
 	@property
 	def _active_project_name(self) -> str:
@@ -439,13 +413,11 @@ class ChatService(object):
 		return await self._generate_opening_message_body(session_id)
 
 	async def _generate_opening_message_body(self, session_id: int) -> dict:
-		return await self._tracking_processor.process(None, session_id)
+		return await self.process_turn(session_id)
 
 	async def _generate_action_prompt_message(self, action: Action, session_id: int) -> dict:
 		logger.warning("Executing action_prompt for action '%s'.", action.name)
-		#FIXME : needs to remove action_prompt from history and put it in the system prompt!
-		# we require another entry point, it's not a turn from the user
-		return await self.process_turn(action.action_prompt, session_id)
+		return await self.process_turn(session_id, None, extra_prompt=action.action_prompt)
 
 	async def _messages_for_transition(
 		self, action: Action, project_name: str, session_id: int, new_state: State, *, is_self_loop: bool
@@ -458,16 +430,8 @@ class ChatService(object):
 				await self._generate_action_prompt_message(action, session_id)
 			)
 		if should_open:
-			messages.append(await self.process_turn())
+			messages.append(await self.process_turn(session_id))
 		return messages
-
-	def _apply_action_env(self, automaton: Automaton, action: Action, signal_values: dict) -> None:
-		if not action.env:
-			return
-		scope = {**signal_values, **self.metric_service.calculate_values(), **self.env.to_dict()}
-		updates = automaton.eval_action_env(action, scope)
-		if updates:
-			self.env.update_action_set(updates)
 
 	async def apply_manual_action(self, action_name: str, session_id: int | None) -> dict:
 		if self.lock.locked():
@@ -482,7 +446,7 @@ class ChatService(object):
 				action_name, session["id"]
 			)
 			automaton, state = self._project_service.get_active_automaton_and_state()
-			self._apply_action_env(automaton, action, {})
+			self._tracking_engine.apply_action_env(automaton, action, {})
 			reply = await self._messages_for_transition(
 				action, project_name, session["id"], state, is_self_loop=(action.target == source_state_key)
 			)
@@ -497,17 +461,12 @@ class ChatService(object):
 
 	async def process_turn(
 		self,
+		session_id: int,
 		text: str | None = None,
-		session_id: int | None = None,
 		on_metadata: OnMetadata | None = None,
+		extra_prompt: str | None = None,
 	) -> dict:
-		if self.lock.locked():
-			raise ChatServiceError("A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT)
-		async with self.lock:
-			on_metadata = on_metadata if on_metadata else lambda _, __: asyncio.sleep(0)
-
-			def on_sync_metadata(key, value):
-				asyncio.ensure_future(on_metadata(key, value))
-		
-		return await self._tracking_processor.process(text, session_id, on_sync_metadata)
+		reply = await self.tracking_service.process(session_id, text, on_metadata, extra_prompt=extra_prompt)
+		self._session_manager.touch_session(reply['session_id'], reply['state'])
+		return reply
 

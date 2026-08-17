@@ -278,7 +278,6 @@ class AutomatonBuilder(object):
             self._actions_sanity_check(key, states[key], set(raw_states.keys()), valid_trigger_names)
 
         general_attachments = self._extract_required_archives(raw.get('attachments', []), all_archives, for_field="global")
-        autotracking_on_user_message = raw.get("signal-tracking-on-user-message", True)
         autotracking_on_ai_message = raw.get("signal-tracking-on-ai-message", False)
 
         return Automaton(
@@ -288,6 +287,5 @@ class AutomatonBuilder(object):
             signals=list(signals.values()),
             general_attachments=general_attachments,
             attachments=all_archives,
-            autotracking_on_user_message=autotracking_on_user_message,
             autotracking_on_ai_message=autotracking_on_ai_message,
         )

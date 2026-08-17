@@ -5,7 +5,11 @@ the same state reached by a different action doesn't.
 """
 from __future__ import annotations
 
+import pytest
+
 from automaton.automaton_builder import AutomatonBuilder
+
+pytestmark = pytest.mark.contract
 
 
 def test_on_enter_is_read_from_an_action_not_its_target_state():

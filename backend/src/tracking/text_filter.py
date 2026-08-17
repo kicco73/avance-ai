@@ -1,7 +1,6 @@
 from typing import Callable, Optional
 from abc import ABC, abstractmethod
 import logging
-import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +91,7 @@ class StreamingTagFilter(Filter):
                 if not self.on_tag:
                     self._default_on_tag(self.tag_content)
                 else:
-                    asyncio.create_task(self.on_tag(self.tag_content))
+                    self.on_tag(self.tag_content)
                 
                 self.state = "NORMAL"
 

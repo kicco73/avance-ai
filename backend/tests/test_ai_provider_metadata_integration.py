@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 
 from ai.ai_service import AiService
-from chat.turn_protocol_using_text_extraction import TurnProcotolUsingTextExtraction
-from chat.turn_protocol_using_schema import TurnProtocolUsingSchema
+from tracking.turn_protocol_using_text_extraction import TurnProcotolUsingTextExtraction
+from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
 from config import AppConfig, ConfigError
 
 try:
@@ -35,13 +35,14 @@ STRATEGY_FOR = {"v1": TurnProcotolUsingTextExtraction, "v2": TurnProtocolUsingSc
 
 
 class _StubEnv:
-    """A throwaway Env-shaped object — each TurnStrategy's own metadata-
-    prompt builder only ever reads to_dict() off of whatever it's given,
-    and a real chat.env.Env needs a real Db/session, more than this test
-    needs just to build a system prompt."""
+    """A throwaway Env-shaped object — TurnProtocol.generate_reply only
+    ever reads serialise_as_text() off of whatever it's given (see
+    tracking/turn_protocol.py:32), and a real tracking.env.Env needs a
+    real Db/session, more than this test needs just to build a system
+    prompt."""
 
-    def to_dict(self) -> dict:
-        return {}
+    def serialise_as_text(self) -> str:
+        return ""
 
 
 BASE_PROMPT = "You are a helpful assistant."
@@ -65,69 +66,69 @@ def _strategy_for(wanted: str):
     for index in range(len(_APP_CONFIG.ai_services)):
         ai_service.select_model(index)
         if _classify(ai_service) == wanted:
-            return STRATEGY_FOR[wanted](ai_service)
+            # TurnProtocol.__init__ now takes a required second positional
+            # arg, evaluate_signals_first (see tracking/turn_protocol.py)
+            # — True just picks one of the two valid tag/field orderings,
+            # irrelevant to what this test actually checks.
+            return STRATEGY_FOR[wanted](ai_service, True)
     pytest.skip(
         f"No configured provider is '{wanted}' (see backend/.config.yml's ai-service.providers)."
     )
 
 
-async def _run(wanted: str, *, streaming: bool):
+async def _run(wanted: str):
     strategy = _strategy_for(wanted)
     chunks: list[str] = []
     live_metadata: dict[str, object] = {}
 
-    async def on_chunk(chunk: str) -> None:
-        chunks.append(chunk)
-
-    async def on_metadata(key: str, value) -> None:
+    def on_metadata(key: str, value) -> None:
+        # Called sync, fire-and-forget (see ai.llm_provider.
+        # MetadataCallback's own docstring) — never awaited by a provider.
         live_metadata[key] = value
 
-    reply, audio_text, signal_values, env_updates = await strategy.generate_reply(
-        BASE_PROMPT, SIGNAL_DEFINITION, _StubEnv(), _history(), None, on_chunk if streaming else None, on_metadata
-    )
-    return reply, audio_text, signal_values, env_updates, chunks, live_metadata
+    async for chunk in strategy.generate_reply(BASE_PROMPT, SIGNAL_DEFINITION, _StubEnv(), _history(), on_metadata):
+        chunks.append(chunk)
+
+    return "".join(chunks), chunks, live_metadata
 
 
-def _assert_extracted_metadata(reply, audio_text, signal_values, env_updates) -> None:
-    # No leftover tag markup either way — TurnStrategyV1 strips its own
-    # [audio]/[signals]/[env] tags via ConcatTagFilter, TurnStrategyV2's
-    # provider never embeds them in the visible text to begin with.
+def _assert_extracted_metadata(reply, live_metadata) -> None:
+    # No leftover tag markup either way — TurnProcotolUsingTextExtraction
+    # strips its own [audio]/[signals]/[env] tags via ConcatTagFilter,
+    # TurnProtocolUsingSchema's provider never embeds them in the visible
+    # text to begin with (see ai.ai_service.AiService.
+    # generate_stream_with_metadata, which only ever yields the "text"
+    # field's own delta).
     assert reply.strip()
     for marker in ("[audio]", "[/audio]", "[signals]", "[/signals]", "[env]", "[/env]"):
         assert marker not in reply
 
-    assert audio_text
-    assert isinstance(audio_text, str)
+    assert isinstance(live_metadata.get("audio"), str) and live_metadata["audio"]
 
-    assert signal_values is not None
-    assert isinstance(signal_values.get("mood"), (int, float))
+    # "signals" arrives through on_metadata as a raw, still-JSON-encoded
+    # string here — see tracking.metadata_handler.MetadataHandler.
+    # parse_raw_signals, which is what actually turns this into a
+    # {name: value} dict one layer up, inside TrackingProcessor's own
+    # on_metadata wrapper (tracking/tracking_processor_user.py's/_ai.py's
+    # on_receiving_metadata_*), never inside TurnProtocol itself.
+    assert isinstance(live_metadata.get("signals"), str)
+    assert "mood" in live_metadata["signals"]
 
-    assert isinstance(env_updates, dict)
 
-
+@pytest.mark.contract
 @pytest.mark.parametrize("wanted", ["v1", "v2"])
-async def test_generate_extracts_metadata(wanted):
-    """Blocking call (on_chunk=None) — TurnStrategyV1.generate_reply's own
-    non-streaming branch (AiService.generate), or TurnStrategyV2's."""
-    reply, audio_text, signal_values, env_updates, chunks, live_metadata = await _run(wanted, streaming=False)
+async def test_generate_reply_streams_chunks_and_reports_metadata(wanted):
+    """OLD contract: TurnStrategy.generate_reply was awaited once and
+    returned a (reply, audio_text, signal_values, env_updates) tuple, with
+    a separate blocking/streaming call shape (on_chunk given or not).
 
-    _assert_extracted_metadata(reply, audio_text, signal_values, env_updates)
-    # Never streamed — on_chunk was never given, so nothing to have collected.
-    assert chunks == []
+    NEW contract (tracking/turn_protocol.py's TurnProtocol.generate_reply):
+    always an AsyncIterator[str] of visible text chunks — no blocking
+    mode exists anymore — with metadata delivered live through the
+    on_metadata callback's own raw (string) values, never in a final
+    return tuple."""
+    reply, chunks, live_metadata = await _run(wanted)
 
-
-@pytest.mark.parametrize("wanted", ["v1", "v2"])
-async def test_generate_stream_extracts_metadata(wanted):
-    """Streaming call (on_chunk given) — TurnStrategyV1's own
-    _receive_ai_stream_and_sendreply, or TurnStrategyV2's generate_stream
-    branch. Also checks the streamed chunks reassemble into the exact
-    same visible reply, and that "audio" (the one key ever forwarded live
-    — see TurnStrategyV1/V2's own on_metadata handling) actually arrived
-    through on_metadata during the call, not just in the final return
-    value."""
-    reply, audio_text, signal_values, env_updates, chunks, live_metadata = await _run(wanted, streaming=True)
-
-    _assert_extracted_metadata(reply, audio_text, signal_values, env_updates)
-    assert chunks, "generate_stream produced no chunks at all"
+    _assert_extracted_metadata(reply, live_metadata)
+    assert chunks, "generate_reply produced no chunks at all"
     assert "".join(chunks) == reply
-    assert live_metadata.get("audio") == audio_text

@@ -7,7 +7,11 @@ which action fires from there.
 """
 from __future__ import annotations
 
+import pytest
+
 from automaton.automaton import Action, Automaton, Signal, State
+
+pytestmark = pytest.mark.contract
 
 
 def _automaton(actions: list[Action], signals: list[Signal]) -> Automaton:

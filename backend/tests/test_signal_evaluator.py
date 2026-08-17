@@ -6,8 +6,12 @@ signals.
 """
 from __future__ import annotations
 
+import pytest
+
 from automaton.automaton import Action, Automaton, Signal, State
 from tracking.evaluator import SignalEvaluator
+
+pytestmark = pytest.mark.contract
 
 
 def _automaton(signals=None) -> Automaton:

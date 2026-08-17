@@ -1,6 +1,14 @@
 from __future__ import annotations
 
-from chat.text_filter import ConcatTagFilter, StreamingTagFilter
+import pytest
+
+from tracking.text_filter import ConcatTagFilter, StreamingTagFilter
+
+# tracking/text_filter.py is unchanged by this refactor (still exists,
+# same API) — every test here verifies a specific, punctual parsing/
+# recovery behavior of StreamingTagFilter/ConcatTagFilter, still valid
+# as-is.
+pytestmark = pytest.mark.regression
 
 
 def test_well_formed_tag_is_extracted_and_stripped():

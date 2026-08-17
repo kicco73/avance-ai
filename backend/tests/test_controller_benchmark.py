@@ -5,7 +5,10 @@ get_session_signals/get_metrics.
 """
 from __future__ import annotations
 
+import pytest
 
+
+@pytest.mark.contract
 def test_get_session_signals_returns_the_full_event_log(client, hello_project):
     session = client.get("/api/chat/session").json()
 
@@ -15,11 +18,13 @@ def test_get_session_signals_returns_the_full_event_log(client, hello_project):
     assert response.json() == []  # "Hello world" declares no signals/triggers
 
 
+@pytest.mark.contract
 def test_get_session_signals_is_404_for_someone_elses_or_unknown_session(client, hello_project):
     response = client.get("/api/chat/sessions/999999/signals")
     assert response.status_code == 404
 
 
+@pytest.mark.contract
 def test_get_metrics_without_message_id_is_the_live_current_history(client, hello_project):
     session = client.get("/api/chat/session").json()
     for text in ("hi", "again"):
@@ -30,6 +35,7 @@ def test_get_metrics_without_message_id_is_the_live_current_history(client, hell
     assert live["engagement"] > 0.0
 
 
+@pytest.mark.contract
 def test_get_metrics_with_message_id_restricts_to_that_points_history(client, hello_project):
     session = client.get("/api/chat/session").json()
     first_turn = client.post(
@@ -48,6 +54,7 @@ def test_get_metrics_with_message_id_restricts_to_that_points_history(client, he
     assert at_first["engagement"] <= live["engagement"]
 
 
+@pytest.mark.contract
 def test_get_metrics_response_shape_is_unchanged_by_message_id(client, hello_project):
     session = client.get("/api/chat/session").json()
     turn = client.post("/api/chat/messages", json={"message": "hi", "session_id": session["id"]}).json()
@@ -65,12 +72,14 @@ def test_get_metrics_response_shape_is_unchanged_by_message_id(client, hello_pro
         assert set(metric) == {"name", "ui_label", "ui_description", "value"}
 
 
+@pytest.mark.contract
 def test_get_metrics_with_an_unknown_message_id_is_404(client, hello_project):
     client.get("/api/chat/session")
     response = client.get("/api/chat/metrics?message_id=999999")
     assert response.status_code == 404
 
 
+@pytest.mark.contract
 def test_get_messages_response_shape_has_no_annotation_fields(client, hello_project):
     """Annotation-related fields (and the evaluation-point link) live on
     Tracking now (see get_session_signals) — a message row itself is just
@@ -85,6 +94,7 @@ def test_get_messages_response_shape_has_no_annotation_fields(client, hello_proj
         assert set(row) == {"id", "role", "content", "audio_text", "timestamp", "session_id"}
 
 
+@pytest.mark.contract
 def test_put_expected_state_is_409_for_a_non_evaluation_point_message(client, hello_project):
     session = client.get("/api/chat/session").json()
     turn = client.post("/api/chat/messages", json={"message": "hi", "session_id": session["id"]}).json()
@@ -95,6 +105,7 @@ def test_put_expected_state_is_409_for_a_non_evaluation_point_message(client, he
     assert response.status_code == 409
 
 
+@pytest.mark.contract
 def test_put_expected_signals_is_409_for_a_non_evaluation_point_message(client, hello_project):
     session = client.get("/api/chat/session").json()
     turn = client.post("/api/chat/messages", json={"message": "hi", "session_id": session["id"]}).json()
@@ -107,16 +118,19 @@ def test_put_expected_signals_is_409_for_a_non_evaluation_point_message(client, 
     assert response.status_code == 409
 
 
+@pytest.mark.contract
 def test_put_expected_state_is_404_for_an_unknown_message(client, hello_project):
     response = client.put("/api/chat/messages/999999/expected-state", json={"expected_state": "start"})
     assert response.status_code == 404
 
 
+@pytest.mark.contract
 def test_put_expected_signals_is_404_for_an_unknown_message(client, hello_project):
     response = client.put("/api/chat/messages/999999/expected-signals", json={"expected_values": {"foo": 50}})
     assert response.status_code == 404
 
 
+@pytest.mark.contract
 def test_get_benchmark_metrics_response_shape(client, hello_project, app_db):
     response = client.get("/api/chat/benchmark-metrics")
 
@@ -133,6 +147,7 @@ def test_get_benchmark_metrics_response_shape(client, hello_project, app_db):
         assert set(metric) == {"name", "ui_label", "ui_description", "value", "sample_count"}
 
 
+@pytest.mark.regression
 def test_get_benchmark_metrics_reflects_annotations(client, hello_project, app_db):
     """"Hello world" declares no triggers, so there's no real chat-turn
     path to a linked Tracking row here — written directly via app_db,
@@ -153,17 +168,20 @@ def test_get_benchmark_metrics_reflects_annotations(client, hello_project, app_d
     assert after["state_accuracy"]["value"] == 100.0
 
 
+@pytest.mark.contract
 def test_get_benchmark_metrics_can_be_scoped_to_one_session(client, hello_project):
     session = client.get("/api/chat/session").json()
     response = client.get(f"/api/chat/benchmark-metrics?session_id={session['id']}")
     assert response.status_code == 200
 
 
+@pytest.mark.contract
 def test_get_benchmark_metrics_is_404_for_someone_elses_or_unknown_session(client, hello_project):
     response = client.get("/api/chat/benchmark-metrics?session_id=999999")
     assert response.status_code == 404
 
 
+@pytest.mark.contract
 def test_delete_session_annotations_clears_everything_in_that_session(client, hello_project, app_db):
     session = client.get("/api/chat/session").json()
     turn = client.post("/api/chat/messages", json={"message": "hi", "session_id": session["id"]}).json()
@@ -183,11 +201,13 @@ def test_delete_session_annotations_clears_everything_in_that_session(client, he
     assert row["values"] is not None
 
 
+@pytest.mark.contract
 def test_delete_session_annotations_is_404_for_someone_elses_or_unknown_session(client, hello_project):
     response = client.delete("/api/chat/sessions/999999/annotations")
     assert response.status_code == 404
 
 
+@pytest.mark.regression
 def test_annotating_a_later_sessions_own_start_materializes_a_signals_row(client, hello_project):
     """Only the literal first session ever opened for a project gets a
     real "" -> start_state Tracking row (see the previous test) — every
@@ -215,6 +235,7 @@ def test_annotating_a_later_sessions_own_start_materializes_a_signals_row(client
     assert signals[0]["expected_state"] == "Hello"
 
 
+@pytest.mark.regression
 def test_clearing_the_only_annotation_on_a_materialized_start_row_deletes_it(client, hello_project):
     first = client.get("/api/chat/session").json()
     client.get(f"/api/chat/messages?session_id={first['id']}")
@@ -231,6 +252,7 @@ def test_clearing_the_only_annotation_on_a_materialized_start_row_deletes_it(cli
     assert client.get(f"/api/chat/sessions/{second['id']}/signals").json() == []
 
 
+@pytest.mark.regression
 def test_init_transition_is_linked_to_the_opening_message_and_becomes_annotatable(client, hello_project):
     """Regression test: the automaton's very first ("" -> start_state)
     transition, created by ChatService.open_if_needed before any user

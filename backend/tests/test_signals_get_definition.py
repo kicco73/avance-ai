@@ -5,8 +5,12 @@ signal_evaluator.py, chat_service.py's _build_turn_prompt).
 """
 from __future__ import annotations
 
+import pytest
+
 from automaton.automaton import Action, Automaton, Signal, State
 from tracking.definitions import Signals
+
+pytestmark = pytest.mark.contract
 
 
 def _automaton(signals: list[Signal]) -> Automaton:

@@ -37,6 +37,7 @@ def _iso(dt: datetime) -> str:
 
 
 class TestUserAnalyticsDataBuilder:
+    @pytest.mark.contract
     def test_empty_db_builds_empty_frames_with_the_expected_columns(self):
         data = UserAnalyticsDataBuilder(FakeAnalyticsDb(), "user", "proj").build()
 
@@ -49,6 +50,7 @@ class TestUserAnalyticsDataBuilder:
         assert list(data.messages.columns) == ["id", "role", "content", "audio_text", "timestamp"]
         assert list(data.transitions.columns) == ["id", "timestamp", "values", "old_state", "action", "new_state"]
 
+    @pytest.mark.contract
     def test_messages_are_pooled_across_every_session_and_sorted_chronologically(self):
         db = FakeAnalyticsDb(
             sessions=[
@@ -64,6 +66,7 @@ class TestUserAnalyticsDataBuilder:
 
         assert list(data.messages["content"]) == ["first", "second"]
 
+    @pytest.mark.contract
     def test_signals_split_into_snapshots_and_transitions_by_new_state(self):
         db = FakeAnalyticsDb(
             sessions=[session_row(1, datetime(2026, 1, 1), datetime(2026, 1, 1))],
@@ -81,6 +84,7 @@ class TestUserAnalyticsDataBuilder:
         assert len(data.transitions) == 1
         assert data.transitions.iloc[0]["id"] == 2
 
+    @pytest.mark.contract
     def test_until_excludes_messages_after_the_cutoff(self):
         db = FakeAnalyticsDb(
             sessions=[session_row(1, datetime(2026, 1, 1), datetime(2026, 1, 1))],
@@ -95,6 +99,7 @@ class TestUserAnalyticsDataBuilder:
 
         assert list(data.messages["content"]) == ["before"]
 
+    @pytest.mark.contract
     def test_until_excludes_signals_after_the_cutoff(self):
         db = FakeAnalyticsDb(
             sessions=[session_row(1, datetime(2026, 1, 1), datetime(2026, 1, 1))],
@@ -110,6 +115,7 @@ class TestUserAnalyticsDataBuilder:
         assert len(data.signals) == 1
         assert data.signals.iloc[0]["id"] == 1
 
+    @pytest.mark.contract
     def test_until_excludes_sessions_that_had_not_started_yet(self):
         db = FakeAnalyticsDb(
             sessions=[
@@ -121,6 +127,7 @@ class TestUserAnalyticsDataBuilder:
 
         assert list(data.sessions["id"]) == [1]
 
+    @pytest.mark.contract
     def test_until_none_behaves_exactly_like_the_full_history(self):
         db = FakeAnalyticsDb(
             sessions=[session_row(1, datetime(2026, 1, 1), datetime(2026, 1, 1))],
@@ -133,6 +140,7 @@ class TestUserAnalyticsDataBuilder:
 
         assert list(with_none.messages["content"]) == list(without_arg.messages["content"])
 
+    @pytest.mark.contract
     def test_user_messages_property_filters_by_role(self):
         db = FakeAnalyticsDb(
             sessions=[session_row(1, datetime(2026, 1, 1), datetime(2026, 1, 1))],
@@ -149,11 +157,13 @@ class TestUserAnalyticsDataBuilder:
 
 
 class TestTimelineSignalSeries:
+    @pytest.mark.contract
     def test_no_signals_returns_an_empty_series(self):
         data = UserAnalyticsDataBuilder(FakeAnalyticsDb(), "user", "proj").build()
         series = Timeline(data).signal_series("x")
         assert series.empty
 
+    @pytest.mark.contract
     def test_parses_json_string_and_dict_values_the_same_way(self):
         db = FakeAnalyticsDb(
             sessions=[session_row(1, datetime(2026, 1, 1), datetime(2026, 1, 1))],
@@ -168,6 +178,7 @@ class TestTimelineSignalSeries:
         series = Timeline(data).signal_series("x")
         assert list(series.values) == [10.0, 20.0]
 
+    @pytest.mark.contract
     def test_ignores_missing_and_non_numeric_entries(self):
         db = FakeAnalyticsDb(
             sessions=[session_row(1, datetime(2026, 1, 1), datetime(2026, 1, 1))],
@@ -184,32 +195,38 @@ class TestTimelineSignalSeries:
 
 
 class TestAnalyticsCalculator:
+    @pytest.mark.contract
     def test_default_metrics_covers_all_five_core_metrics(self):
         names = {m.name for m in AnalyticsCalculator.default_metrics()}
         assert names == {"engagement", "retention", "activity_consistency", "state_stability", "signal_stability"}
 
+    @pytest.mark.contract
     def test_every_default_metric_exposes_a_ui_label_and_description(self):
         for metric in AnalyticsCalculator.default_metrics():
             assert isinstance(metric.ui_label, str) and metric.ui_label
             assert isinstance(metric.ui_description, str) and metric.ui_description
 
+    @pytest.mark.contract
     def test_calculate_all_returns_one_result_per_metric_in_order(self):
         calculator = AnalyticsCalculator(FakeAnalyticsDb(), "user", "proj")
         results = calculator.calculate_all()
         assert [r.name for r in results] == [m.name for m in calculator.metrics]
 
+    @pytest.mark.contract
     def test_calculate_evaluates_a_single_metric_against_the_shared_dataset(self):
         calculator = AnalyticsCalculator(FakeAnalyticsDb(), "user", "proj")
         metric = calculator.metrics[0]
         result = calculator.calculate(metric)
         assert result.name == metric.name
 
+    @pytest.mark.contract
     def test_custom_metrics_override_the_defaults(self):
         custom = AnalyticsCalculator.default_metrics()[:1]
         calculator = AnalyticsCalculator(FakeAnalyticsDb(), "user", "proj", metrics=custom)
         assert calculator.metrics == custom
         assert len(calculator.calculate_all()) == 1
 
+    @pytest.mark.regression
     def test_until_restricts_metrics_to_the_history_at_or_before_it(self):
         db = FakeAnalyticsDb(
             sessions=[session_row(1, datetime(2026, 1, 1), datetime(2026, 1, 1))],
@@ -228,6 +245,7 @@ class TestAnalyticsCalculator:
 
         assert cutoff_engagement < full_engagement
 
+    @pytest.mark.regression
     def test_empty_history_scores_every_metric_at_or_near_the_floor(self):
         calculator = AnalyticsCalculator(FakeAnalyticsDb(), "user", "proj")
         results = {r.name: r.value for r in calculator.calculate_all()}
@@ -235,6 +253,7 @@ class TestAnalyticsCalculator:
         assert results["state_stability"] == 100.0  # "no evidence of instability" reads as stable
         assert results["signal_stability"] == 0.0
 
+    @pytest.mark.contract
     def test_default_metrics_are_filtered_to_a_one_session_context(self):
         """Every current caller (metrics/metric_service.py's MetricService, for
         both the "Benchmark"/"Edit project" views' own metrics displays and

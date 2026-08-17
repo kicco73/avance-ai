@@ -7,6 +7,10 @@ same state can disagree on whether entering it celebrates.
 """
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.contract
+
 YML = (
     "init-action:\n  target: a\n"
     "states:\n"

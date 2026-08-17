@@ -4,7 +4,8 @@ import logging
 from typing import AsyncIterator
 
 from ai.llm_provider import MetadataCallback
-from chat.turn_protocol import TurnProtocol
+from tracking.tag_prompt_builder import TagPromptBuilder
+from tracking.turn_protocol import TurnProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,23 @@ class TurnProtocolUsingSchema(TurnProtocol):
 	def _generate_reply(self, prompt: str, chat_history: list[dict], on_metadata: MetadataCallback,) -> AsyncIterator[str]:
 
 		schema = {tag: self.schema[tag] for tag in self.include_tags}
+		order_list = [f'\t- {tag}' for tag in schema.keys()]
+		order = '\n'.join(order_list)
+		prompt = f"{prompt}\n\n{SCHEMA_ORDER_PROMPT}\n{order}"
+
+		return self._ai_service.generate_stream_with_metadata(
+			prompt, chat_history, on_metadata=on_metadata, schema=schema
+		)
+
+	def generate_reply_with_schema(
+		self, base_prompt: str, tag_specs: list[tuple[str, str]], chat_history: list[dict], on_metadata: MetadataCallback,
+	) -> AsyncIterator[str]:
+		preambles = TagPromptBuilder().build(tag_specs, self.prompt_preambles)
+		schema = TagPromptBuilder().build(tag_specs, self.schema)
+
+		content = [preambles[tag] for tag, _ in tag_specs] + [base_prompt]
+		prompt = "\n\n".join(content)
+
 		order_list = [f'\t- {tag}' for tag in schema.keys()]
 		order = '\n'.join(order_list)
 		prompt = f"{prompt}\n\n{SCHEMA_ORDER_PROMPT}\n{order}"
