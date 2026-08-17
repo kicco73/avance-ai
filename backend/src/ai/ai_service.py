@@ -10,15 +10,11 @@ from ai.llm_provider import (
 	MetadataCallback,
 )
 from ai.cascading_llm_provider import CascadingLLMProvider
-from ai.anthropic_provider import AnthropicProvider
-from ai import gemini_provider, gemini_provider_v2
-from ai import openai_provider, openai_provider_v2
+from ai import gemini_provider_v2, openai_provider_v2, anthropic_provider_v2
 
 _PROVIDER_CLASSES : dict[str, object] = {
-	"anthropic": AnthropicProvider,
-	"gemini-legacy": gemini_provider.GeminiProvider,
+	"anthropic": anthropic_provider_v2.AnthropicProvider,
 	"gemini": gemini_provider_v2.GeminiProvider,
-	"openai-legacy": openai_provider.OpenAIProvider,
 	"openai": openai_provider_v2.OpenAIProvider,
 }
 class AiService(object):

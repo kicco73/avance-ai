@@ -1,10 +1,16 @@
-"""LLM provider backed by OpenAI (or any OpenAI-compatible API)."""
+"""LLM provider backed by OpenAI-compatible Chat Completions APIs.
+
+Compatible with:
+- OpenAI
+- llama.cpp / llama-server
+- other OpenAI-compatible Chat Completions endpoints
+"""
 
 from __future__ import annotations
 
 from contextlib import contextmanager
 from http import HTTPStatus
-from typing import Any, AsyncIterator, Generator
+from typing import Any, AsyncIterator, Generator, cast
 
 from openai import (
 	APIConnectionError,
@@ -13,10 +19,8 @@ from openai import (
 	AsyncOpenAI,
 	RateLimitError,
 )
-from openai.types.responses.response_input_param import ResponseInputParam
-from openai.types.responses.response_text_config_param import (
-	ResponseTextConfigParam,
-)
+from openai.types.chat import ChatCompletionMessageParam
+from openai.types.chat.completion_create_params import ResponseFormat
 
 from ai.llm_provider import (
 	AIServiceConfig,
@@ -82,7 +86,10 @@ class OpenAIProvider(LLMProviderWithSchema):
 		)
 		self._model_name: str = config.model
 
-	def build_schema(self, tags: dict[str, str]) -> dict[str, Any]:
+	def build_schema(
+		self,
+		tags: dict[str, str],
+	) -> dict[str, Any]:
 		properties: dict[str, dict[str, Any]] = {}
 		required: list[str] = []
 
@@ -100,11 +107,17 @@ class OpenAIProvider(LLMProviderWithSchema):
 			"additionalProperties": False,
 		}
 
-	def _format_history(
+	def _format_messages(
 		self,
+		system_prompt: str,
 		history: list[dict[str, Any]],
-	) -> ResponseInputParam:
-		input_messages: ResponseInputParam = []
+	) -> list[ChatCompletionMessageParam]:
+		messages: list[ChatCompletionMessageParam] = [
+			{
+				"role": "system",
+				"content": system_prompt,
+			}
+		]
 
 		for message in history:
 			role: str = message["role"]
@@ -117,29 +130,42 @@ class OpenAIProvider(LLMProviderWithSchema):
 				"OpenAI",
 			)
 
-			input_messages.append(
-				{
-					"role": role,
-					"content": text_content,
-				}
-			)
+			if role == "user":
+				messages.append(
+					{
+						"role": "user",
+						"content": text_content,
+					}
+				)
+			else:
+				messages.append(
+					{
+						"role": "assistant",
+						"content": text_content,
+					}
+				)
 
-		return input_messages
+		return messages
 
-	def _response_text_config(
+	def _response_format(
 		self,
 		schema: dict[str, str],
-	) -> ResponseTextConfigParam:
+	) -> ResponseFormat:
+		"""
+		Build a schema-constrained JSON response format.
+
+		Using json_object + schema is intentionally chosen because it is
+		supported by llama.cpp and is also accepted by OpenAI-compatible
+		Chat Completions implementations.
+		"""
 		response_schema: dict[str, Any] = self.build_schema(schema)
 
-		return {
-			"format": {
-				"type": "json_schema",
-				"name": "ai_service_response",
-				"strict": True,
-				"schema": response_schema,
-			}
+		response_format: dict[str, Any] = {
+			"type": "json_object",
+			"schema": response_schema,
 		}
+
+		return cast(ResponseFormat, response_format)
 
 	async def generate_stream_with_schema(
 		self,
@@ -147,29 +173,29 @@ class OpenAIProvider(LLMProviderWithSchema):
 		history: list[dict[str, Any]],
 		schema: dict[str, str] | None = None,
 	) -> AsyncIterator[str]:
-		input_messages: ResponseInputParam = self._format_history(
-			history
+		messages: list[ChatCompletionMessageParam] = self._format_messages(
+			system_prompt,
+			history,
 		)
 
-		text_config: ResponseTextConfigParam = (
-			self._response_text_config(schema or {})
+		response_format: ResponseFormat = self._response_format(
+			schema or {}
 		)
 
 		with _handle_openai_errors():
-			response_stream = await self._async_client.responses.create(
+			response_stream = await self._async_client.chat.completions.create(
 				model=self._model_name,
-				instructions=system_prompt,
-				input=input_messages,
-				max_output_tokens=MAX_OUTPUT_TOKENS,
-				text=text_config,
+				messages=messages,
+				max_tokens=MAX_OUTPUT_TOKENS,
+				response_format=response_format,
 				stream=True,
 			)
 
-			async for event in response_stream:
-				if event.type != "response.output_text.delta":
+			async for chunk in response_stream:
+				if not chunk.choices:
 					continue
 
-				if not event.delta:
-					continue
+				content: str | None = chunk.choices[0].delta.content
 
-				yield event.delta
+				if content:
+					yield content
