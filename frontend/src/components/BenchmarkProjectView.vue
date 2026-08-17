@@ -3,6 +3,10 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ChatTimeline from './chat/ChatTimeline.vue'
 import SessionsPanel from './chat/SessionsPanel.vue'
 import Inspector from './inspector/Inspector.vue'
+import InspectorGraphTab from './inspector/InspectorGraphTab.vue'
+import InspectorSignalsTab from './inspector/InspectorSignalsTab.vue'
+import InspectorMetricsTab from './inspector/InspectorMetricsTab.vue'
+import InspectorPerformanceTab from './inspector/InspectorPerformanceTab.vue'
 import ErrorBanner from './ErrorBanner.vue'
 import {
   getMessages, getSessionSignals, getSessions, putMessageExpectedState, putMessageExpectedSignals,
@@ -39,6 +43,16 @@ const sessionStartState = ref(null)
 
 const inspectorRef = ref(null)
 const inspectorWidth = ref(360)
+// This view's own tab set — Performance instead of Env (see Inspector.
+// vue's own slot-based contract; EditProjectView.vue passes a different
+// set for its own live chat).
+const inspectorTabs = [
+  { id: 'states', label: 'States' },
+  { id: 'signals', label: 'Signals' },
+  { id: 'metrics', label: 'Metrics' },
+  { id: 'performance', label: 'Performance' }
+]
+const inspectorActiveTab = ref('states')
 // The Sessions panel starts open — reviewing a specific session is the
 // point of this view, so the picker should always be immediately visible
 // rather than tucked behind a toggle.
@@ -115,15 +129,14 @@ async function loadTimeline() {
     // now" — a stale point-in-time cutoff from the previous session's
     // own selection would otherwise linger) and the session-scoped
     // Performance tab need a fresh fetch for *this* session — neither
-    // reactively recomputes on its own (see Inspector.vue's own
-    // refreshMetrics/refreshPerformance, each a no-op unless its own tab
-    // is the one currently showing). Relying on the `selected` reset
-    // above alone isn't enough: switching sessions while nothing was
-    // ever selected leaves `selected` at null both before and after,
-    // so that watcher never fires at all.
+    // reactively recomputes on its own (see InspectorMetricsTab.vue/
+    // InspectorPerformanceTab.vue's own refresh(active), each a no-op
+    // unless its own tab is the one currently showing). Relying on the
+    // `selected` reset above alone isn't enough: switching sessions
+    // while nothing was ever selected leaves `selected` at null both
+    // before and after, so that watcher never fires at all.
     await nextTick()
-    inspectorRef.value?.refreshMetrics()
-    inspectorRef.value?.refreshPerformance()
+    inspectorRef.value?.refresh()
   } catch {
     // already surfaced via apiFetch
   } finally {
@@ -267,7 +280,7 @@ async function onUpdateExpectedState(value) {
   try {
     await putMessageExpectedState(messageId, value)
     await reloadSignalsLog()
-    inspectorRef.value?.refreshPerformance()
+    inspectorRef.value?.refresh()
   } catch {
     // already surfaced via apiFetch
   }
@@ -279,7 +292,7 @@ async function onUpdateExpectedSignals(values) {
   try {
     await putMessageExpectedSignals(messageId, values)
     await reloadSignalsLog()
-    inspectorRef.value?.refreshPerformance()
+    inspectorRef.value?.refresh()
   } catch {
     // already surfaced via apiFetch
   }
@@ -300,7 +313,7 @@ async function onUnlabelAll() {
   try {
     await deleteSessionAnnotations(currentSessionId.value)
     await reloadSignalsLog()
-    inspectorRef.value?.refreshPerformance()
+    inspectorRef.value?.refresh()
   } catch {
     // already surfaced via apiFetch
   } finally {
@@ -308,12 +321,13 @@ async function onUnlabelAll() {
   }
 }
 
-// Metrics aren't reactive to props on their own (see Inspector.vue's
-// refreshMetrics docstring) — every selection change needs an explicit
-// nudge, same as EditProjectView.vue's turnCount watcher. No Env tab
-// here (see this view's own :show-env-tab="false"), so no matching nudge.
+// Metrics aren't reactive to props on their own (see
+// InspectorMetricsTab.vue's own refresh(active) docstring) — every
+// selection change needs an explicit nudge, same as EditProjectView.vue's
+// turnCount watcher. No Env tab here (see this view's own tabs, below),
+// so no matching nudge.
 watch(selected, () => {
-  nextTick(() => inspectorRef.value?.refreshMetrics())
+  nextTick(() => inspectorRef.value?.refresh())
 })
 
 onMounted(() => {
@@ -404,22 +418,39 @@ onBeforeUnmount(() => {
       <div class="benchmark-inspector-panel" :style="{ '--inspector-width': inspectorWidth + 'px' }">
         <Inspector
           ref="inspectorRef"
-          :project-name="projectName"
-          :highlighted-state-key="highlightedStateKey"
-          :fired-action-edge="firedActionEdge"
-          :signal-values="signalValues"
-          :until-message-id="untilMessageId"
-          :annotatable="annotatableSignalsRow != null"
-          :annotatable-signals="annotatableExpectedSignals"
-          :expected-state="expectedState"
-          :expected-values="expectedValues"
-          :show-performance-tab="true"
-          :show-env-tab="false"
-          :benchmark-session-id="currentSessionId"
+          :tabs="inspectorTabs"
+          v-model:active-tab="inspectorActiveTab"
           :closable="false"
-          @update-expected-state="onUpdateExpectedState"
-          @update-expected-signals="onUpdateExpectedSignals"
-        />
+        >
+          <template #tab-states="{ registerTab }">
+            <InspectorGraphTab
+              :ref="registerTab('states')"
+              :project-name="projectName"
+              :highlighted-state-key="highlightedStateKey"
+              :fired-action-edge="firedActionEdge"
+              :annotatable="annotatableSignalsRow != null"
+              :expected-state="expectedState"
+              @update-expected-state="onUpdateExpectedState"
+            />
+          </template>
+          <template #tab-signals="{ registerTab }">
+            <InspectorSignalsTab
+              :ref="registerTab('signals')"
+              :project-name="projectName"
+              :signal-values="signalValues"
+              :annotatable="annotatableExpectedSignals"
+              :expected-values="expectedValues"
+              :state-key="highlightedStateKey"
+              @update-expected-signals="onUpdateExpectedSignals"
+            />
+          </template>
+          <template #tab-metrics="{ registerTab }">
+            <InspectorMetricsTab :ref="registerTab('metrics')" :until-message-id="untilMessageId" />
+          </template>
+          <template #tab-performance="{ registerTab }">
+            <InspectorPerformanceTab :ref="registerTab('performance')" :benchmark-session-id="currentSessionId" />
+          </template>
+        </Inspector>
       </div>
     </div>
   </div>

@@ -1,28 +1,39 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Compartment } from '@codemirror/state'
-import { EditorView, basicSetup } from 'codemirror'
-import { keymap } from '@codemirror/view'
-import { yaml } from '@codemirror/lang-yaml'
 import ChatWindow from './chat/ChatWindow.vue'
 import ChatTimeline from './chat/ChatTimeline.vue'
 import RestartFromHereButton from './chat/RestartFromHereButton.vue'
 import ModelMenu from './ModelMenu.vue'
 import Inspector from './inspector/Inspector.vue'
+import InspectorGraphTab from './inspector/InspectorGraphTab.vue'
+import InspectorSignalsTab from './inspector/InspectorSignalsTab.vue'
+import InspectorMetricsTab from './inspector/InspectorMetricsTab.vue'
+import InspectorEnvTab from './inspector/InspectorEnvTab.vue'
+import InspectorStateTab from './inspector/InspectorStateTab.vue'
+import InspectorActionsTab from './inspector/InspectorActionsTab.vue'
+import CodeEditor from './CodeEditor.vue'
+import IndexYmlEditorView from './IndexYmlEditorView.vue'
 import DocInfoButton from './DocInfoButton.vue'
 import {
   getProjectFiles,
-  getProjectFile,
   putProjectFile,
-  undoProjectFile,
-  redoProjectFile,
   deleteProjectFile,
   clearProjectHistory,
   getSignals,
   getSessionSignals,
   getSessions,
   getProjectGraph,
-  postTriggersPreview
+  postTriggersPreview,
+  postAddState,
+  postAddSignal,
+  postAddAction,
+  putStateField,
+  putActionField,
+  putSignalField,
+  putActionOrder,
+  deleteState,
+  deleteProjectAction,
+  deleteProjectSignal
 } from '../api.js'
 import { clearApiError, setApiError } from '../errorStore.js'
 import ErrorBanner from './ErrorBanner.vue'
@@ -58,7 +69,6 @@ const props = defineProps({
 const emit = defineEmits(['close', 'saved', 'download'])
 
 const UPLOADABLE_PATTERN = /\.(txt|ya?ml)$/i
-const YAML_PATTERN = /\.ya?ml$/i
 
 function lineIndent(line) {
   const m = line.match(/^[ \t]*/)
@@ -162,13 +172,21 @@ const filesLoading = ref(true)
 const files = ref([])
 const currentFileName = ref('index.yml')
 
-const loading = ref(true)
-const saving = ref(false)
 const uploading = ref(false)
 const creatingFile = ref(false)
 const deletingFile = ref(null)
-const editorHost = ref(null)
 const uploadInput = ref(null)
+
+// Whichever one of these is actually mounted right now (see the editor
+// pane's own v-if/v-else, keyed off currentFileName === 'index.yml') —
+// CodeEditor.vue/IndexYmlEditorView.vue each own their own loading/
+// saving/isDirty state internally now (see activeEditorIsDirty below,
+// the closest thing this view has to the old shared isDirty ref).
+const codeEditorRef = ref(null)
+const indexYmlEditorRef = ref(null)
+const activeEditorIsDirty = computed(() =>
+  currentFileName.value === 'index.yml' ? (indexYmlEditorRef.value?.isDirty ?? false) : (codeEditorRef.value?.isDirty ?? false)
+)
 
 // Inspect panel: the shared Inspector component (see Inspector.vue) shows
 // the last-saved project's state graph, its signal definitions, and the
@@ -180,6 +198,64 @@ const uploadInput = ref(null)
 const inspecting = ref(true)
 const inspectorRef = ref(null)
 const inspectorWidth = ref(360)
+// The Graph/State-tab/Actions-tab shared selection ({kind, data} | null)
+// — while editorOpen is on, index.yml's own dedicated graph (see
+// IndexYmlEditorView.vue) is the one producing it instead of the
+// Inspector's own "States" tab (which the tab set below drops entirely
+// in that case) — same shape either way (see InspectorGraph.vue's own
+// 'select' emit), so stateTabElement/actionsTabList below don't care
+// which one it actually came from.
+const selectedGraphElement = ref(null)
+
+// The state key "State"/"Actions" should reflect — the selection itself
+// when it's already a state, or the state an already-selected action
+// belongs to (see InspectorGraph.vue's own edgeToCyData: matchStateKey).
+const selectedStateKey = computed(() => {
+  if (!selectedGraphElement.value) return null
+  return selectedGraphElement.value.kind === 'state'
+    ? selectedGraphElement.value.data.id
+    : selectedGraphElement.value.data.matchStateKey
+})
+
+// Resolved off index.yml's own already-loaded graph data (see
+// IndexYmlEditorView.vue's own stateElementFor/actionsForState,
+// delegating to InspectorGraph.vue) rather than a second fetch of their
+// own — null/[] whenever nothing is selected, or the dedicated view
+// isn't even mounted (editorOpen off, or some other file open).
+const stateTabElement = computed(() => {
+  const key = selectedStateKey.value
+  return key == null ? null : (indexYmlEditorRef.value?.stateElementFor(key) ?? null)
+})
+const actionsTabList = computed(() => {
+  const key = selectedStateKey.value
+  return key == null ? [] : (indexYmlEditorRef.value?.actionsForState(key) ?? [])
+})
+
+// The tab set this view's own Inspector shows — see Inspector.vue's own
+// slot-based contract (BenchmarkProjectView.vue passes a different set,
+// including Performance and excluding Env — see its own tabs). "States"
+// (Graph + its own detail card, see InspectorGraphTab.vue) only while
+// editorOpen is off; while it's on, index.yml's own dedicated view (see
+// IndexYmlEditorView.vue) is the one showing the graph instead, and
+// "State"/"Actions" take its place here — together, or neither, per
+// whether anything is currently selected there.
+const inspectorTabs = computed(() => {
+  if (!editorOpen.value) {
+    return [
+      { id: 'states', label: 'States' },
+      { id: 'signals', label: 'Signals' },
+      { id: 'metrics', label: 'Metrics' },
+      { id: 'env', label: 'Env' }
+    ]
+  }
+  const tabs = []
+  if (selectedGraphElement.value) {
+    tabs.push({ id: 'state', label: 'State' }, { id: 'actions', label: 'Actions' })
+  }
+  tabs.push({ id: 'signals', label: 'Signals' }, { id: 'metrics', label: 'Metrics' }, { id: 'env', label: 'Env' })
+  return tabs
+})
+const inspectorActiveTab = ref('states')
 // Live value/error per signal name — fed to the Inspector's signal-values
 // prop, refreshed on its own cadence (see refreshSignalValues), never a
 // concern the Inspector itself resolves (see Inspector.vue's own
@@ -378,29 +454,13 @@ const chatOpen = ref(true)
 const chatHeight = ref(280)
 
 // File explorer + editor row: v-show, not v-if (see toggleEditor) — the
-// CodeMirror view is mounted once, imperatively, straight into
-// editorHost.value (see mountEditor's own `parent:` below); an v-if here
-// would tear that DOM node down and leave the EditorView pointing at a
-// detached node on the next open, exactly the same reason editorHost's
-// own v-show (below) exists. Open by default, toggled like Chat/Inspect.
+// mounted CodeEditor/IndexYmlEditorView (see the editor pane's own
+// v-if/v-else, keyed off currentFileName) stays alive underneath, so
+// toggling this never interrupts an in-progress load or loses unsaved
+// content the way tearing it down would. Open by default, toggled like
+// Chat/Inspect. Also gates the Inspector's own tab set — see
+// inspectorTabs above.
 const editorOpen = ref(true)
-
-// The editor's own doc is the source of truth for content while it's
-// mounted — this ref only mirrors it (via the updateListener below) so
-// save() has something to send without querying the view directly.
-const content = ref('')
-// What was last loaded/saved for the current file — compared against
-// `content` to decide whether switching/closing needs a confirmation.
-const originalContent = ref('')
-const isDirty = computed(() => content.value !== originalContent.value)
-
-// Whether the currently open file's Undo/Redo buttons are enabled — the
-// backend decides this (see db.Db.has_undo/has_redo, scoped to the
-// current user), refreshed from its response on every load/save/undo/redo.
-// The frontend never tracks version numbers or navigates by them: it just
-// asks for undo/redo and the backend returns whatever content that yields.
-const canUndo = ref(false)
-const canRedo = ref(false)
 
 // Set while the unsaved-changes dialog is blocking a switch to this file —
 // resolved one way or another by confirmSwitchSave/Discard/Cancel.
@@ -412,59 +472,8 @@ const explorerWidth = ref(220)
 // 'inspector' — read by the single shared onDrag/stopDrag pair below.
 let dragTarget = null
 
-let view = null
-const editableCompartment = new Compartment()
-
-// Bumped by every loadFileContent/applyHistoryNavigation call, each of
-// which captures its own value at the start and checks it again after its
-// own await — whichever such call was the *last* one started always wins.
-// Without this, clicking a different file (or Undo/Redo) again while a
-// previous fetch for the old one is still in flight let both eventually
-// call createEditor(), each appending its own EditorView into
-// editorHost.value (the constructor never clears the parent — see
-// @codemirror/view's own EditorView), leaving two live, DOM-attached
-// editors at once; or let a stale undo/redo response overwrite the
-// now-current file's content/undo-redo state after the fact.
-let requestToken = 0
-
-function createEditor(doc, fileName) {
-  const extensions = [
-    basicSetup,
-    EditorView.lineWrapping,
-    editableCompartment.of(EditorView.editable.of(true)),
-    EditorView.updateListener.of((update) => {
-      if (update.docChanged) content.value = update.state.doc.toString()
-    }),
-    // Ctrl-S (Cmd-S on Mac, via CodeMirror's own "Mod-" alias) — same
-    // guard as the toolbar's Save button (:disabled), and always swallows
-    // the key itself so the browser's native "Save page as" never opens,
-    // even when there's nothing to save.
-    keymap.of([
-      {
-        key: 'Mod-s',
-        run: () => {
-          if (!loading.value && !saving.value && isDirty.value) saveCurrentFile()
-          return true
-        }
-      }
-    ])
-  ]
-  if (YAML_PATTERN.test(fileName)) extensions.splice(1, 0, yaml())
-  view = new EditorView({ doc, extensions, parent: editorHost.value })
-}
-
-function destroyEditor() {
-  view?.destroy()
-  view = null
-}
-
-// Replaces the editor's whole document in place (undo/redo, and
-// refreshing after a save) — `content` updates itself via the
-// updateListener already wired in createEditor, so callers never set it
-// directly.
-function setEditorDoc(newContent) {
-  if (!view) return
-  view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: newContent } })
+function activeEditor() {
+  return currentFileName.value === 'index.yml' ? indexYmlEditorRef.value : codeEditorRef.value
 }
 
 async function loadFiles() {
@@ -478,144 +487,59 @@ async function loadFiles() {
   }
 }
 
-async function loadFileContent(fileName) {
-  const token = ++requestToken
-  loading.value = true
-  clearApiError()
-  destroyEditor()
-  try {
-    const file = await getProjectFile(props.projectName, fileName)
-    if (token !== requestToken) return // superseded by a newer switch/undo/redo
-    content.value = file.content
-    originalContent.value = file.content
-    canUndo.value = file.can_undo
-    canRedo.value = file.can_redo
-  } catch {
-    if (token === requestToken) loading.value = false
-    return
-  }
-  loading.value = false
-  await nextTick() // editorHost is v-show, but wait a tick anyway for layout to settle
-  if (token !== requestToken) return
-  createEditor(content.value, fileName)
-  if (fileName === 'index.yml') applyPendingCursorTarget()
-}
-
 // Moves the editor's cursor to a definition clicked in the Inspect panel
-// (see jumpToDefinition). Best-effort: a target that findStateLine/
-// findActionLine/findSignalLine can't locate (e.g. hand-edited YAML with
-// unusual indentation) just leaves the cursor where it was.
+// (see jumpToDefinition), once index.yml's own dedicated view has
+// actually finished loading its own code buffer. Best-effort: a target
+// that findStateLine/findActionLine/findSignalLine can't locate (e.g.
+// hand-edited YAML with unusual indentation) just leaves the cursor
+// where it was.
 function applyPendingCursorTarget() {
-  if (!pendingCursorTarget.value || !view) return
+  if (!pendingCursorTarget.value) return
+  const text = indexYmlEditorRef.value?.content
+  if (!text) return
   const target = pendingCursorTarget.value
   pendingCursorTarget.value = null
-  const lines = content.value.split('\n')
+  const lines = text.split('\n')
   let lineIndex = null
   if (target.kind === 'state') lineIndex = findStateLine(lines, target.stateKey)
   else if (target.kind === 'action') {
     lineIndex = target.stateKey === '' ? findInitActionLine(lines) : findActionLine(lines, target.stateKey, target.actionName)
   } else if (target.kind === 'signal') lineIndex = findSignalLine(lines, target.signalName)
   if (lineIndex === null) return
-  const lineInfo = view.state.doc.line(lineIndex + 1) // CodeMirror lines are 1-based
-  view.dispatch({
-    selection: { anchor: lineInfo.from, head: lineInfo.from },
-    effects: EditorView.scrollIntoView(lineInfo.from, { y: 'center' })
-  })
-  view.focus()
+  indexYmlEditorRef.value?.jumpToLine(lineIndex)
 }
 
-// Entry point for the graph's node/edge taps and the Signals tab's rows.
-// index.yml is the only file definitions ever live in — if it isn't the
-// one open, routes through the normal (possibly dialog-gated) file switch
-// and applies once loadFileContent finishes; already on it, applies right
-// away since content/view are already current.
-function jumpToDefinition(target) {
+// Entry point for the graph's node/edge taps, the Signals tab's rows, and
+// the Inspector's own "State"/"Actions" tabs. index.yml is the only file
+// definitions ever live in — if it isn't the one open, routes through
+// the normal (possibly dialog-gated) file switch first; either way,
+// waits for IndexYmlEditorView's own code buffer to actually have
+// content before looking up a line in it (its own CodeEditor loads
+// asynchronously on mount, unlike the old single shared editor this
+// replaced, which was always already loaded whenever index.yml was
+// already the open file).
+async function jumpToDefinition(target) {
   pendingCursorTarget.value = target
-  if (currentFileName.value === 'index.yml') {
-    applyPendingCursorTarget()
-  } else {
-    selectFile('index.yml')
+  if (currentFileName.value !== 'index.yml') {
+    await selectFile('index.yml')
+    if (currentFileName.value !== 'index.yml') return // blocked by the unsaved-changes dialog
   }
-}
-
-// Saves whatever file is currently open, in place — purely persistence,
-// never navigation: the editor toolbar's own Save button calls this
-// directly and stays open regardless of outcome, same as the switch-file
-// dialog's "Save" choice. Only Back (see handleClose) ever leaves the
-// editor. Returns whether it succeeded; on failure the shared error store
-// already has the message.
-async function saveCurrentFile() {
-  saving.value = true
-  clearApiError()
-  try {
-    const result = await putProjectFile(props.projectName, currentFileName.value, content.value)
-    // Refresh from the server's own response (can_undo/can_redo, plus
-    // content for consistency) rather than trusting what was typed.
-    setEditorDoc(result.content)
-    originalContent.value = result.content
-    canUndo.value = result.can_undo
-    canRedo.value = result.can_redo
-    emit('saved')
-    // The Inspect panel reflects the last saved state, so a successful
-    // save is exactly when it needs to catch up (see toggleInspect).
-    if (inspecting.value) await inspectorRef.value?.refresh()
-    // A save is the only thing that can change which states exist at all
-    // — see isStateGone, which every bubble's own restart-from-here
-    // button depends on.
-    refreshValidStateKeys()
-    return true
-  } catch {
-    return false
-  } finally {
-    saving.value = false
+  await nextTick()
+  while (indexYmlEditorRef.value && !indexYmlEditorRef.value.content) {
+    await new Promise((resolve) => setTimeout(resolve, 20))
   }
-}
-
-// Undo/redo ask the backend to preview the previous/next content from
-// the current user's own history (see api.js's undoProjectFile/
-// redoProjectFile), sending the editor's own current content along so a
-// later redo/undo can bring it back. Unlike Save, this is a pure editor
-// preview: nothing is persisted, and the active project/conversation is
-// never reloaded or reconciled (no 'saved' emit, no Inspector/valid-
-// state-keys refresh) — only an explicit Save does any of that (see
-// saveCurrentFile). `originalContent` deliberately stays put, so the
-// editor's content now differing from it is exactly what lights the Save
-// button back up. The frontend never navigates by version number, just
-// "undo" / "redo".
-async function applyHistoryNavigation(action) {
-  const token = ++requestToken
-  try {
-    const file = await action(props.projectName, currentFileName.value, content.value)
-    // Superseded by a newer switch/undo/redo (see requestToken's own
-    // docstring) — applying it now would overwrite whichever file is
-    // actually open with this now-stale one's content.
-    if (token !== requestToken) return
-    setEditorDoc(file.content)
-    canUndo.value = file.can_undo
-    canRedo.value = file.can_redo
-  } catch {
-    // already surfaced via apiFetch
-  }
-}
-
-function undo() {
-  if (canUndo.value) applyHistoryNavigation(undoProjectFile)
-}
-
-function redo() {
-  if (canRedo.value) applyHistoryNavigation(redoProjectFile)
+  applyPendingCursorTarget()
 }
 
 async function switchFile(fileName) {
   currentFileName.value = fileName
-  await loadFileContent(fileName)
 }
 
 // Entry point for both explorer clicks and post-upload auto-open — routes
 // through the unsaved-changes dialog when there's something to lose.
 async function selectFile(fileName) {
   if (fileName === currentFileName.value) return
-  if (isDirty.value) {
+  if (activeEditorIsDirty.value) {
     pendingFileName.value = fileName
     return
   }
@@ -625,7 +549,7 @@ async function selectFile(fileName) {
 async function confirmSwitchSave() {
   const target = pendingFileName.value
   pendingFileName.value = null
-  if (await saveCurrentFile()) await switchFile(target)
+  if (await activeEditor()?.save?.()) await switchFile(target)
 }
 
 async function confirmSwitchDiscard() {
@@ -639,6 +563,172 @@ function confirmSwitchCancel() {
   // A cursor jump that triggered this switch is moot once the switch
   // itself is declined — don't let it fire on some later, unrelated switch.
   pendingCursorTarget.value = null
+}
+
+// Shared guard for every index.yml structural edit (Add state/action/
+// signal, a field edit, a delete, a drag-and-drop reorder) — all of them
+// write index.yml directly through AutomatonYamlEditor, bypassing
+// whatever's currently sitting unsaved in the code editor's own buffer.
+// A later Save there would silently clobber the structural edit right
+// back out, so this asks first, the same way switching files with
+// unsaved changes already does (see selectFile), just without a target
+// file of its own to name — true means "go ahead", already resolved
+// (nothing to lose) or the user confirmed anyway.
+function guardUnsavedChanges() {
+  if (!activeEditorIsDirty.value) return true
+  return window.confirm(
+    'You have unsaved changes in the code editor. Continuing will discard them — proceed?'
+  )
+}
+
+// Common tail for every Add/edit/delete/reorder handler below: the
+// backend already persisted the change (through put_project_file, same
+// as a normal Save), so both index.yml's own dedicated view (graph +
+// code buffer) and the Inspector need to catch up — same two refreshes
+// a normal Save already triggers (see handleFileSaved).
+async function refreshAfterProjectEdit() {
+  await indexYmlEditorRef.value?.refresh(false)
+  await indexYmlEditorRef.value?.reloadCode()
+  if (inspecting.value) await inspectorRef.value?.refresh()
+  refreshValidStateKeys()
+}
+
+async function handleAddState() {
+  if (!guardUnsavedChanges()) return
+  try {
+    const state = await postAddState(props.projectName)
+    await refreshAfterProjectEdit()
+    selectedGraphElement.value = indexYmlEditorRef.value?.stateElementFor(state.key) ?? null
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+async function handleAddSignal() {
+  if (!guardUnsavedChanges()) return
+  try {
+    await postAddSignal(props.projectName)
+    await refreshAfterProjectEdit()
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+async function handleAddAction() {
+  const stateKey = selectedStateKey.value
+  if (!stateKey || !guardUnsavedChanges()) return
+  try {
+    await postAddAction(props.projectName, stateKey)
+    await refreshAfterProjectEdit()
+    selectedGraphElement.value = indexYmlEditorRef.value?.stateElementFor(stateKey) ?? null
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+async function handleSetStateField(stateName, field, value) {
+  if (!guardUnsavedChanges()) return
+  try {
+    await putStateField(props.projectName, stateName, field, value)
+    await refreshAfterProjectEdit()
+    selectedGraphElement.value = indexYmlEditorRef.value?.stateElementFor(stateName) ?? null
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+async function handleSetActionField(stateName, actionName, field, value) {
+  if (!guardUnsavedChanges()) return
+  try {
+    await putActionField(props.projectName, stateName, actionName, field, value)
+    await refreshAfterProjectEdit()
+    selectedGraphElement.value = indexYmlEditorRef.value?.actionsForState(stateName).find(
+      (a) => a.data.actionName === actionName
+    ) ?? null
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+async function handleSetSignalField(signalName, field, value) {
+  if (!guardUnsavedChanges()) return
+  try {
+    await putSignalField(props.projectName, signalName, field, value)
+    await refreshAfterProjectEdit()
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+async function handleDeleteState(stateName) {
+  if (!guardUnsavedChanges()) return
+  try {
+    await deleteState(props.projectName, stateName)
+    selectedGraphElement.value = null
+    await refreshAfterProjectEdit()
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+async function handleDeleteAction(stateName, actionName) {
+  if (!guardUnsavedChanges()) return
+  try {
+    await deleteProjectAction(props.projectName, stateName, actionName)
+    // The containing state is still selected — only the action itself
+    // (if it happened to be the literal selection) is now gone.
+    if (selectedGraphElement.value?.kind === 'action' && selectedGraphElement.value.data.actionName === actionName) {
+      selectedGraphElement.value = indexYmlEditorRef.value?.stateElementFor(stateName) ?? null
+    }
+    await refreshAfterProjectEdit()
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+async function handleDeleteSignal(signalName) {
+  if (!guardUnsavedChanges()) return
+  try {
+    await deleteProjectSignal(props.projectName, signalName)
+    await refreshAfterProjectEdit()
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+async function handleReorderAction({ actionName, position }) {
+  const stateKey = selectedStateKey.value
+  if (!stateKey || !guardUnsavedChanges()) return
+  try {
+    await putActionOrder(props.projectName, stateKey, actionName, position)
+    await refreshAfterProjectEdit()
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+// Common tail for a successful Save on either kind of editor (see
+// CodeEditor.vue/IndexYmlEditorView.vue's own 'saved' emit) — re-emitted
+// up (see App.vue's own listener) plus the same two refreshes a
+// structural edit's own refreshAfterProjectEdit triggers, minus
+// reloading the buffer that was just the one doing the saving.
+async function handleFileSaved() {
+  emit('saved')
+  if (inspecting.value) await inspectorRef.value?.refresh()
+  refreshValidStateKeys()
+}
+
+// The Inspector's own "State"/"Actions" tabs share the exact same
+// selection the Graph itself drives (see selectedGraphElement above),
+// but unlike a direct Graph click (see InspectorGraph.vue's own
+// handleNodeTap/handleEdgeTap, which already emit jump-to-definition
+// separately alongside their own 'select') a row click here only ever
+// emits the one event — this is the tab-side equivalent of both at once.
+function handleTabSelect(element) {
+  selectedGraphElement.value = element
+  if (!element) return
+  if (element.kind === 'state') jumpToDefinition({ kind: 'state', stateKey: element.data.id })
+  else jumpToDefinition({ kind: 'action', stateKey: element.data.matchStateKey, actionName: element.data.actionName })
 }
 
 function triggerUpload() {
@@ -716,7 +806,7 @@ async function handleDeleteFile(fileName) {
 // (nothing typed, or already saved) closes straight away. Undo/redo
 // history itself is cleared on entry, not here — see onMounted.
 function handleClose() {
-  if (isDirty.value && !window.confirm('Discard unsaved changes to this file?')) return
+  if (activeEditorIsDirty.value && !window.confirm('Discard unsaved changes to this file?')) return
   emit('close')
 }
 
@@ -842,18 +932,15 @@ function handleWindowResize() {
   inspectorRef.value?.resize()
 }
 
-watch(saving, (isSaving) => {
-  view?.dispatch({ effects: editableCompartment.reconfigure(EditorView.editable.of(!isSaving)) })
-})
-
 // A turn can shift signal values enough to change which action would fire
 // next even without a state change — see chatStore.js's turnCount. Metrics
 // are heavier to compute, so unlike signals they're only refreshed while
 // the Inspector's own Metrics tab is the one actually open (see
-// Inspector.vue's refreshMetrics) — never prefetched in the background.
-// signalsLog, unlike those, feeds the chat timeline itself (transition
-// rows, annotation icons) — visible whenever the chat panel is, whether
-// or not Inspect is open, so it refreshes unconditionally.
+// InspectorMetricsTab.vue's own refresh(active)) — never prefetched in
+// the background. signalsLog, unlike those, feeds the chat timeline
+// itself (transition rows, annotation icons) — visible whenever the chat
+// panel is, whether or not Inspect is open, so it refreshes
+// unconditionally (see InspectorSignalsTab.vue's own refresh()).
 watch(turnCount, () => {
   // A completed turn always adds a new message — whatever was selected
   // before now belongs to older history, so the Inspector should follow
@@ -865,21 +952,25 @@ watch(turnCount, () => {
   if (!inspecting.value) return
   refreshNextAction()
   refreshSignalValues()
-  inspectorRef.value?.refreshMetrics()
-  inspectorRef.value?.refreshEnv()
+  inspectorRef.value?.refresh()
+  // The Inspector's own "States" tab (and its own graph) only exists
+  // while editorOpen is off (see inspectorTabs) — while it's on,
+  // index.yml's own dedicated view holds the one graph there is, so
+  // it's the one that needs the same nudge instead.
+  if (editorOpen.value) indexYmlEditorRef.value?.refresh(false)
 })
 
-// Metrics aren't reactive to a prop change on their own (see Inspector.
-// vue's refreshMetrics docstring) — a selection change needs its own
-// explicit nudge, same as BenchmarkProjectView.vue's own watch(selected).
-// Env gets the same nudge: it isn't prop-driven either (it's fetched
-// straight from the db, see InspectorEnvTab.vue's own loadEnv), so
-// switching which message is selected wouldn't otherwise re-pull it.
+// Metrics aren't reactive to a prop change on their own (see
+// InspectorMetricsTab.vue's own refresh(active) docstring) — a selection
+// change needs its own explicit nudge, same as BenchmarkProjectView.vue's
+// own watch(selected). Env gets the same nudge: it isn't prop-driven
+// either (it's fetched straight from the db, see InspectorEnvTab.vue's
+// own loadEnv), so switching which message is selected wouldn't
+// otherwise re-pull it.
 watch(selected, () => {
   if (!inspecting.value) return
   nextTick(() => {
-    inspectorRef.value?.refreshMetrics()
-    inspectorRef.value?.refreshEnv()
+    inspectorRef.value?.refresh()
   })
 })
 
@@ -893,17 +984,18 @@ watch(currentSessionId, () => {
   refreshSignalsLog()
 })
 
+// Gates mounting CodeEditor/IndexYmlEditorView in the template below —
+// each one loads its own content as soon as it mounts, so without this
+// they could start (and finish) that fetch concurrently with, or even
+// before, the clearProjectHistory call two lines down, leaving their
+// very first can_undo/can_redo reflecting pre-clear history instead of
+// the fresh slate a just-opened editing session is supposed to start
+// from (see the old, single-shared-editor code this replaced, which
+// sequenced the same two calls explicitly for exactly this reason).
+const historyCleared = ref(false)
+
 onMounted(async () => {
-  // A fresh editing session starts with a clean undo/redo slate — cleared
-  // here (entry), not on Back, and awaited before the first file loads so
-  // its own can_undo/can_redo already reflects the cleared state.
-  try {
-    await clearProjectHistory(props.projectName)
-  } catch {
-    // already surfaced via apiFetch — the session still opens either way
-  }
   loadFiles()
-  loadFileContent(currentFileName.value)
   refreshSessionStartState()
   refreshSignalsLog()
   refreshValidStateKeys()
@@ -911,9 +1003,17 @@ onMounted(async () => {
   window.addEventListener('mousemove', onDrag)
   window.addEventListener('mouseup', stopDrag)
   window.addEventListener('resize', handleWindowResize)
+  // A fresh editing session starts with a clean undo/redo slate — cleared
+  // here (entry), not on Back.
+  try {
+    await clearProjectHistory(props.projectName)
+  } catch {
+    // already surfaced via apiFetch — the session still opens either way
+  } finally {
+    historyCleared.value = true
+  }
 })
 onBeforeUnmount(() => {
-  destroyEditor()
   window.removeEventListener('mousemove', onDrag)
   window.removeEventListener('mouseup', stopDrag)
   window.removeEventListener('resize', handleWindowResize)
@@ -1003,31 +1103,57 @@ onBeforeUnmount(() => {
           <div class="split-divider" @mousedown="startExplorerDrag"></div>
 
           <div class="edit-project-editor-pane">
-            <div class="edit-project-editor-toolbar">
-              <span class="edit-project-editor-filename">{{ currentFileName }}</span>
-              <div class="edit-project-editor-toolbar-actions">
-                <button
-                  class="undo-redo-btn"
-                  title="Undo"
-                  :disabled="loading || saving || !canUndo"
-                  @click="undo"
-                >↶</button>
-                <button
-                  class="undo-redo-btn"
-                  title="Redo"
-                  :disabled="loading || saving || !canRedo"
-                  @click="redo"
-                >↷</button>
-                <button class="save-btn" :disabled="loading || saving || !isDirty" @click="saveCurrentFile">
-                  {{ saving ? 'Saving…' : 'Save' }}
-                </button>
-                <DocInfoButton doc-name="project-specs" title="Project format specification" />
+            <p v-if="!historyCleared" class="edit-project-status">Loading…</p>
+            <IndexYmlEditorView
+              v-else-if="currentFileName === 'index.yml'"
+              ref="indexYmlEditorRef"
+              :project-name="projectName"
+              :highlighted-state-key="highlightedStateKey"
+              :auto-jump-on-highlight-change="true"
+              :next-action-edge="selected ? null : nextAction"
+              :fired-action-edge="firedActionEdge"
+              :selected-state-key="selectedStateKey"
+              @jump-to-definition="jumpToDefinition"
+              @select="selectedGraphElement = $event"
+              @saved="handleFileSaved"
+              @add-state="handleAddState"
+              @add-signal="handleAddSignal"
+              @add-action="handleAddAction"
+            />
+            <template v-else>
+              <div class="edit-project-editor-toolbar">
+                <span class="edit-project-editor-filename">{{ currentFileName }}</span>
+                <div class="edit-project-editor-toolbar-actions">
+                  <button
+                    class="undo-redo-btn"
+                    title="Undo"
+                    :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.canUndo"
+                    @click="codeEditorRef?.undo()"
+                  >↶</button>
+                  <button
+                    class="undo-redo-btn"
+                    title="Redo"
+                    :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.canRedo"
+                    @click="codeEditorRef?.redo()"
+                  >↷</button>
+                  <button
+                    class="save-btn"
+                    :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.isDirty"
+                    @click="codeEditorRef?.save()"
+                  >{{ codeEditorRef?.saving ? 'Saving…' : 'Save' }}</button>
+                  <DocInfoButton doc-name="project-specs" title="Project format specification" />
+                </div>
               </div>
-            </div>
-            <div class="edit-project-editor-content">
-              <p v-if="loading" class="edit-project-status">Loading…</p>
-              <div v-show="!loading" ref="editorHost" class="edit-project-editor"></div>
-            </div>
+              <div class="edit-project-editor-content">
+                <CodeEditor
+                  :key="currentFileName"
+                  ref="codeEditorRef"
+                  :project-name="projectName"
+                  :file-name="currentFileName"
+                  @saved="handleFileSaved"
+                />
+              </div>
+            </template>
           </div>
         </div>
 
@@ -1099,19 +1225,65 @@ onBeforeUnmount(() => {
         <div class="inspector-panel" :style="{ '--inspector-width': inspectorWidth + 'px' }">
           <Inspector
             ref="inspectorRef"
-            :project-name="projectName"
-            :highlighted-state-key="highlightedStateKey"
-            :auto-jump-on-highlight-change="true"
-            :next-action-edge="selected ? null : nextAction"
-            :fired-action-edge="firedActionEdge"
-            :signal-values="effectiveSignalValues"
-            :until-message-id="untilMessageId"
-            :env-editable="envEditable"
-            :editable-files="files"
-            @jump-to-definition="jumpToDefinition"
-            @select-attachment="selectFile"
+            :tabs="inspectorTabs"
+            v-model:active-tab="inspectorActiveTab"
             @close="toggleInspect"
-          />
+          >
+            <template #tab-states="{ registerTab }">
+              <InspectorGraphTab
+                :ref="registerTab('states')"
+                :project-name="projectName"
+                :highlighted-state-key="highlightedStateKey"
+                :auto-jump-on-highlight-change="true"
+                :next-action-edge="selected ? null : nextAction"
+                :fired-action-edge="firedActionEdge"
+                :editable-files="files"
+                @jump-to-definition="jumpToDefinition"
+                @select-attachment="selectFile"
+              />
+            </template>
+            <template #tab-state="{ registerTab }">
+              <InspectorStateTab
+                :ref="registerTab('state')"
+                :selected-element="stateTabElement"
+                :editable-files="files"
+                :highlighted-state-key="highlightedStateKey"
+                @select="handleTabSelect"
+                @select-attachment="selectFile"
+              />
+            </template>
+            <template #tab-actions="{ registerTab }">
+              <InspectorActionsTab
+                :ref="registerTab('actions')"
+                :actions="actionsTabList"
+                :editable-files="files"
+                :selected-element="selectedGraphElement"
+                :next-action-edge="selected ? null : nextAction"
+                :fired-action-edge="firedActionEdge"
+                :highlighted-state-key="highlightedStateKey"
+                @select="handleTabSelect"
+                @select-attachment="selectFile"
+                @reorder="handleReorderAction"
+              />
+            </template>
+            <template #tab-signals="{ registerTab }">
+              <InspectorSignalsTab
+                :ref="registerTab('signals')"
+                :project-name="projectName"
+                :signal-values="effectiveSignalValues"
+                :editable-files="files"
+                :state-key="highlightedStateKey"
+                @jump-to-definition="jumpToDefinition"
+                @select-attachment="selectFile"
+              />
+            </template>
+            <template #tab-metrics="{ registerTab }">
+              <InspectorMetricsTab :ref="registerTab('metrics')" :until-message-id="untilMessageId" />
+            </template>
+            <template #tab-env="{ registerTab }">
+              <InspectorEnvTab :ref="registerTab('env')" :until-message-id="untilMessageId" :editable="envEditable" />
+            </template>
+          </Inspector>
         </div>
       </div>
       </Transition>

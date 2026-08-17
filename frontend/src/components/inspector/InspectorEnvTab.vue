@@ -123,7 +123,15 @@ async function clearActionAll() {
   }
 }
 
-defineExpose({ loadEnv })
+// Always reloads regardless of `active` — matches this tab's pre-slot-
+// refactor behavior (Inspector.vue's old refreshEnv() always fetched,
+// tab open or not: cheap, and some of its own computed values are only
+// ever correct "as of right now").
+async function refresh() {
+  await loadEnv()
+}
+
+defineExpose({ loadEnv, refresh })
 </script>
 
 <template>

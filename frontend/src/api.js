@@ -32,6 +32,10 @@ async function apiFetch(url, options, { parse = 'json' } = {}) {
     throw err
   }
 
+  // A 204 (see e.g. deleteState/deleteAction/deleteSignal below) never
+  // has a body at all — res.json() on an empty one throws a parse error,
+  // regardless of which `parse` mode the caller asked for.
+  if (res.status === 204) return null
   if (parse === 'blob') return res.blob()
   if (parse === 'text') return res.text()
   return res.json()
@@ -433,6 +437,77 @@ export function clearProjectHistory(projectName) {
 
 export function deleteProject(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}`, {
+    method: 'DELETE'
+  })
+}
+
+// index.yml structural editing — add/edit/delete/reorder states,
+// actions, and signals without hand-writing YAML (see backend's
+// AutomatonYamlEditor). Every one of these returns just the affected
+// object's own payload (StatePayload/ActionPayload/SignalPayload), never
+// the whole YAML text — see controller.py's own docstring for the whole
+// family.
+
+export function postAddState(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/states`, { method: 'POST' })
+}
+
+export function postAddSignal(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/signals`, { method: 'POST' })
+}
+
+export function postAddAction(projectName, stateName) {
+  return apiFetch(
+    `${API_URL}/projects/${encodeURIComponent(projectName)}/states/${encodeURIComponent(stateName)}/actions`,
+    { method: 'POST' }
+  )
+}
+
+export function putStateField(projectName, stateName, field, value) {
+  return apiFetch(
+    `${API_URL}/projects/${encodeURIComponent(projectName)}/states/${encodeURIComponent(stateName)}/${encodeURIComponent(field)}`,
+    { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value }) }
+  )
+}
+
+export function putActionField(projectName, stateName, actionName, field, value) {
+  return apiFetch(
+    `${API_URL}/projects/${encodeURIComponent(projectName)}/states/${encodeURIComponent(stateName)}/actions/${encodeURIComponent(actionName)}/${encodeURIComponent(field)}`,
+    { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value }) }
+  )
+}
+
+export function putSignalField(projectName, signalName, field, value) {
+  return apiFetch(
+    `${API_URL}/projects/${encodeURIComponent(projectName)}/signals/${encodeURIComponent(signalName)}/${encodeURIComponent(field)}`,
+    { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value }) }
+  )
+}
+
+// 0-based index the action should end up at, within its own state's
+// actions list.
+export function putActionOrder(projectName, stateName, actionName, position) {
+  return apiFetch(
+    `${API_URL}/projects/${encodeURIComponent(projectName)}/states/${encodeURIComponent(stateName)}/actions/${encodeURIComponent(actionName)}/order`,
+    { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: position }) }
+  )
+}
+
+export function deleteState(projectName, stateName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/states/${encodeURIComponent(stateName)}`, {
+    method: 'DELETE'
+  })
+}
+
+export function deleteProjectAction(projectName, stateName, actionName) {
+  return apiFetch(
+    `${API_URL}/projects/${encodeURIComponent(projectName)}/states/${encodeURIComponent(stateName)}/actions/${encodeURIComponent(actionName)}`,
+    { method: 'DELETE' }
+  )
+}
+
+export function deleteProjectSignal(projectName, signalName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/signals/${encodeURIComponent(signalName)}`, {
     method: 'DELETE'
   })
 }

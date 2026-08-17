@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
 
 from automaton.automaton import Automaton
+from automaton.automaton_yaml_editor import InitActionTargetError
 from db import Db
 from talk.talk_service import TalkService, TalkServiceNotAvailableError
 from listen.listen_service import ListenService, ListenServiceError, ListenServiceNotAvailableError
@@ -21,7 +22,9 @@ from schemas import (
     ChatMessageRequest,
     ExpectedSignalsRequest,
     ExpectedStateRequest,
+    ReorderActionRequest,
     SetEnvValueRequest,
+    SetProjectFieldRequest,
     TriggersPreviewRequest,
     TruncateSessionRequest,
 )
@@ -37,6 +40,19 @@ DOC_FILES = {
     "benchmark": "BENCHMARK.md",
 }
 DOCS_DIR = Path(__file__).resolve().parent / "docs"
+
+# Explicit per-type whitelists for the field-by-field state/action/signal
+# edit endpoints (see put_state_field/put_action_field/put_signal_field
+# below) — name/key is deliberately never in any of these three: it's
+# generated once at creation (see AutomatonYamlEditor.add_state/
+# add_action) and immutable from then on, so there's no edit endpoint
+# for it at all, for a state or an action. Only a signal's own `name` can
+# ever change, and only as a side effect of editing its own `ui-label`
+# (see AutomatonYamlEditor.set_signal_field), never through a field edit
+# of its own.
+STATE_EDITABLE_FIELDS = {"ui-label", "history-cutoff", "contextual-prompt"}
+ACTION_EDITABLE_FIELDS = {"ui-label", "action-prompt", "target"}
+SIGNAL_EDITABLE_FIELDS = {"ui-label", "definition"}
 
 
 def route(method: str, path: str, **kwargs):
@@ -590,6 +606,146 @@ class AvanceController(object):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"success": True}
+
+    # ------------------------------------------------------------------
+    # index.yml structural editing — add/edit/delete/reorder states,
+    # actions, and signals without hand-writing YAML (see
+    # AutomatonYamlEditor). Every one of these reuses put_project_file's
+    # own validation/history/commit path (see ProjectService.
+    # _edit_index_yml) — never a parallel write path of its own — and
+    # returns only the affected object's own payload, never the whole
+    # YAML text (see AutomatonBuilder.get_state_payload's equivalents,
+    # StatePayload/ActionPayload/SignalPayload).
+    # ------------------------------------------------------------------
+
+    @post("/api/projects/{project_name}/states")
+    async def add_state(self, project_name: str):
+        try:
+            return await self.project_service.add_state(project_name, self._activate_project)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @post("/api/projects/{project_name}/signals")
+    async def add_signal(self, project_name: str):
+        try:
+            return await self.project_service.add_signal(project_name, self._activate_project)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @post("/api/projects/{project_name}/states/{state_name}/actions")
+    async def add_action(self, project_name: str, state_name: str):
+        try:
+            return await self.project_service.add_action(project_name, state_name, self._activate_project)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @put("/api/projects/{project_name}/states/{state_name}/{field}")
+    async def put_state_field(self, project_name: str, state_name: str, field: str, req: SetProjectFieldRequest):
+        if field not in STATE_EDITABLE_FIELDS:
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail=f"'{field}' is not an editable state field — expected one of {sorted(STATE_EDITABLE_FIELDS)}.",
+            )
+        try:
+            return await self.project_service.set_state_field(
+                project_name, state_name, field, req.value, self._activate_project
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @put("/api/projects/{project_name}/states/{state_name}/actions/{action_name}/{field}")
+    async def put_action_field(
+        self, project_name: str, state_name: str, action_name: str, field: str, req: SetProjectFieldRequest
+    ):
+        if field not in ACTION_EDITABLE_FIELDS:
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail=f"'{field}' is not an editable action field — expected one of {sorted(ACTION_EDITABLE_FIELDS)}.",
+            )
+        try:
+            return await self.project_service.set_action_field(
+                project_name, state_name, action_name, field, req.value, self._activate_project
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @put("/api/projects/{project_name}/signals/{signal_name}/{field}")
+    async def put_signal_field(self, project_name: str, signal_name: str, field: str, req: SetProjectFieldRequest):
+        if field not in SIGNAL_EDITABLE_FIELDS:
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail=f"'{field}' is not an editable signal field — expected one of {sorted(SIGNAL_EDITABLE_FIELDS)}.",
+            )
+        try:
+            return await self.project_service.set_signal_field(
+                project_name, signal_name, field, req.value, self._activate_project
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    # Named to sort alphabetically before put_action_field: route
+    # registration order follows inspect.getmembers's own alphabetical
+    # method-name order (see __init__ above), and FastAPI matches routes
+    # in registration order — put_action_field's own {field} wildcard
+    # would otherwise swallow this path's literal "order" segment as if
+    # it were a field name, since "put_action_field" < "put_action_order"
+    # lexicographically registers the wildcard route first.
+    @put("/api/projects/{project_name}/states/{state_name}/actions/{action_name}/order")
+    async def move_action(
+        self, project_name: str, state_name: str, action_name: str, req: ReorderActionRequest
+    ):
+        try:
+            return await self.project_service.reorder_actions(
+                project_name, state_name, action_name, req.value, self._activate_project
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @delete("/api/projects/{project_name}/states/{state_name}")
+    async def delete_state(self, project_name: str, state_name: str):
+        try:
+            await self.project_service.delete_state(project_name, state_name, self._activate_project)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except InitActionTargetError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return Response(status_code=HTTPStatus.NO_CONTENT)
+
+    @delete("/api/projects/{project_name}/states/{state_name}/actions/{action_name}")
+    async def delete_action(self, project_name: str, state_name: str, action_name: str):
+        try:
+            await self.project_service.delete_action(project_name, state_name, action_name, self._activate_project)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return Response(status_code=HTTPStatus.NO_CONTENT)
+
+    @delete("/api/projects/{project_name}/signals/{signal_name}")
+    async def delete_signal(self, project_name: str, signal_name: str):
+        try:
+            await self.project_service.delete_signal(project_name, signal_name, self._activate_project)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return Response(status_code=HTTPStatus.NO_CONTENT)
 
     @delete("/api/projects/{project_name}")
     async def delete_project(self, project_name: str):

@@ -2,9 +2,11 @@ from automaton.automaton import Action, MemoryArchive, Automaton, Signal, Source
 from typing import Any
 from metrics.metrics_framework import metric_names
 
-import yaml
+from ruamel.yaml import YAML
 import base64
 from pathlib import Path
+
+_yaml = YAML(typ='rt')
 
 EXTENSION_TO_MEDIA_TYPE = {
     ".yml": "text/plain",
@@ -120,8 +122,18 @@ class AutomatonBuilder(object):
 
     def _build_state(self, key: str, raw_state: dict, all_archives: dict[str, MemoryArchive]) -> State:
         raw_actions = raw_state.get("actions", [])
-        actions = [self._build_action(key, raw_action, all_archives)
-                   for raw_action in raw_actions]
+        actions: list[Action] = []
+        action_names_by_ui_label: dict[str, str] = {}
+        for raw_action in raw_actions:
+            action = self._build_action(key, raw_action, all_archives)
+            existing_name = action_names_by_ui_label.get(action.ui_label)
+            if existing_name is not None:
+                raise ValueError(
+                    f"State '{key}': actions '{existing_name}' and '{action.name}' both use "
+                    f"ui-label '{action.ui_label}' — ui-label must be unique within a state."
+                )
+            action_names_by_ui_label[action.ui_label] = action.name
+            actions.append(action)
         fixed_message = raw_state.get("fixed-message")
         contextual_prompt = raw_state.get("contextual-prompt")
 
@@ -226,16 +238,24 @@ class AutomatonBuilder(object):
     def build(self, contents: dict) -> Automaton:
         all_archives = self._convert_contents_to_archives(contents=contents)
 
-        raw = yaml.safe_load(contents['index.yml'])
+        raw = _yaml.load(contents['index.yml'])
 
         raw_signals = raw.get("signals", {})
         if not isinstance(raw_signals, dict):
             raise ValueError(f"'signals' must be a mapping of signal name -> fields, got {type(raw_signals).__name__}.")
 
-        signals = {
-            name: self._build_signal(name, raw_signal, all_archives)
-            for name, raw_signal in raw_signals.items()
-        }
+        signals: dict[str, Signal] = {}
+        signal_names_by_ui_label: dict[str, str] = {}
+        for name, raw_signal in raw_signals.items():
+            signal = self._build_signal(name, raw_signal, all_archives)
+            existing_name = signal_names_by_ui_label.get(signal.ui_label)
+            if existing_name is not None:
+                raise ValueError(
+                    f"Signals '{existing_name}' and '{name}' both use ui-label "
+                    f"'{signal.ui_label}' — ui-label must be unique across all signals."
+                )
+            signal_names_by_ui_label[signal.ui_label] = name
+            signals[name] = signal
 
         reserved_names = set(signals.keys()) & metric_names()
         if reserved_names:
@@ -264,6 +284,7 @@ class AutomatonBuilder(object):
         states[""] = State(key="", ui_label="", final=False, ui_description="", actions=[init_action])
         self._actions_sanity_check(init_action.name, states[""], set(raw_states.keys()), valid_trigger_names)
 
+        state_keys_by_ui_label: dict[str, str] = {}
         for key, raw_state in raw_states.items():
             if not isinstance(raw_state, dict):
                 raise ValueError(
@@ -275,6 +296,13 @@ class AutomatonBuilder(object):
                 )
 
             states[key] = self._build_state(key, raw_state, all_archives)
+            existing_key = state_keys_by_ui_label.get(states[key].ui_label)
+            if existing_key is not None:
+                raise ValueError(
+                    f"States '{existing_key}' and '{key}' both use ui-label "
+                    f"'{states[key].ui_label}' — ui-label must be unique across all states."
+                )
+            state_keys_by_ui_label[states[key].ui_label] = key
             self._actions_sanity_check(key, states[key], set(raw_states.keys()), valid_trigger_names)
 
         general_attachments = self._extract_required_archives(raw.get('attachments', []), all_archives, for_field="global")

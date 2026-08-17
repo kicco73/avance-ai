@@ -12,8 +12,9 @@ import tempfile
 from pathlib import Path
 from typing import Awaitable, Callable
 
-from automaton.automaton import Action, Automaton, State, StatePayload
+from automaton.automaton import Action, ActionPayload, Automaton, SignalPayload, State, StatePayload
 from automaton.automaton_builder import AutomatonBuilder
+from automaton.automaton_yaml_editor import AutomatonYamlEditor, InitActionTargetError
 from session import Session
 from db import Db
 
@@ -504,6 +505,68 @@ class ProjectService(object):
         await self._finalize_project_update(project_name, new_automaton, commit)
 
         return {"success": True, "project_name": project_name, **self._file_undo_redo_info(project_name, file_name)}
+
+    async def _edit_index_yml(self, project_name: str, commit: CommitCallback, operation):
+        """Runs `operation(editor: AutomatonYamlEditor) -> T` against
+        `project_name`'s own current index.yml text, persists whatever it
+        produced through the exact same validation/history/commit path as
+        any other file edit (see put_project_file — never a parallel
+        write path of its own), and returns `operation`'s own result
+        untouched: the newly added/edited/reordered object's own payload,
+        never the whole YAML text (see AutomatonYamlEditor's own module
+        docstring — every one of its methods already returns exactly
+        that shape, or None for a delete)."""
+        current = self._file_undo_redo_info(project_name, "index.yml")["content"]
+        editor = AutomatonYamlEditor(current)
+        result = operation(editor)
+        await self.put_project_file(project_name, "index.yml", editor.serialize(), commit)
+        return result
+
+    async def add_state(self, project_name: str, commit: CommitCallback) -> StatePayload:
+        return await self._edit_index_yml(project_name, commit, lambda editor: editor.add_state())
+
+    async def add_signal(self, project_name: str, commit: CommitCallback) -> SignalPayload:
+        return await self._edit_index_yml(project_name, commit, lambda editor: editor.add_signal())
+
+    async def add_action(self, project_name: str, state_name: str, commit: CommitCallback) -> ActionPayload:
+        return await self._edit_index_yml(project_name, commit, lambda editor: editor.add_action(state_name))
+
+    async def set_state_field(
+        self, project_name: str, state_name: str, field: str, value, commit: CommitCallback
+    ) -> StatePayload:
+        return await self._edit_index_yml(
+            project_name, commit, lambda editor: editor.set_state_field(state_name, field, value)
+        )
+
+    async def set_action_field(
+        self, project_name: str, state_name: str, action_name: str, field: str, value, commit: CommitCallback
+    ) -> ActionPayload:
+        return await self._edit_index_yml(
+            project_name, commit, lambda editor: editor.set_action_field(state_name, action_name, field, value)
+        )
+
+    async def set_signal_field(
+        self, project_name: str, signal_name: str, field: str, value, commit: CommitCallback
+    ) -> SignalPayload:
+        return await self._edit_index_yml(
+            project_name, commit, lambda editor: editor.set_signal_field(signal_name, field, value)
+        )
+
+    async def delete_state(self, project_name: str, state_name: str, commit: CommitCallback) -> None:
+        await self._edit_index_yml(project_name, commit, lambda editor: editor.delete_state(state_name))
+
+    async def delete_action(self, project_name: str, state_name: str, action_name: str, commit: CommitCallback) -> None:
+        await self._edit_index_yml(project_name, commit, lambda editor: editor.delete_action(state_name, action_name))
+
+    async def delete_signal(self, project_name: str, signal_name: str, commit: CommitCallback) -> None:
+        await self._edit_index_yml(project_name, commit, lambda editor: editor.delete_signal(signal_name))
+
+    async def reorder_actions(
+        self, project_name: str, state_name: str, action_name: str, position: int, commit: CommitCallback
+    ) -> list[ActionPayload]:
+        return await self._edit_index_yml(
+            project_name, commit, lambda editor: editor.reorder_actions(state_name, action_name, position)
+        )
 
     async def undo_project_file(self, project_name: str, file_name: str, content: bytes) -> dict:
         """A pure editor preview, not a persisted change (see db.Db.

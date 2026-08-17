@@ -23,7 +23,14 @@ async function loadMetrics() {
   }
 }
 
-defineExpose({ loadMetrics })
+// Heavier to compute than Signals/Env — only reloaded while this tab is
+// the one actually visible (matches Inspector.vue's old refreshMetrics(),
+// gated on inspectorTab.value === 'metrics').
+async function refresh(active) {
+  if (active) await loadMetrics()
+}
+
+defineExpose({ loadMetrics, refresh })
 </script>
 
 <template>

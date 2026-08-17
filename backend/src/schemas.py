@@ -58,3 +58,19 @@ class SetEnvValueRequest(BaseModel):
     # See ChatService.set_env_value/chat.env.Env.set_value — the
     # Inspector Env tab's own "click a value to edit it".
     value: str
+
+
+class SetProjectFieldRequest(BaseModel):
+    # See ProjectService.set_state_field/set_action_field/
+    # set_signal_field — a state/action/signal's own editable fields are
+    # either free text (ui-label, contextual-prompt, action-prompt,
+    # definition, target) or, for a state's own history-cutoff, a plain
+    # boolean.
+    value: str | bool
+
+
+class ReorderActionRequest(BaseModel):
+    # 0-based index the action should end up at, in its own state's
+    # actions list — see ProjectService.reorder_actions/
+    # AutomatonYamlEditor.reorder_actions.
+    value: int

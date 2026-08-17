@@ -82,7 +82,17 @@ async function loadSignals() {
   } catch {} finally { signalsLoading.value = false }
 }
 
-defineExpose({ loadSignals })
+function selectAttachment(fileName) { emit('select-attachment', fileName) }
+
+// Always reloads regardless of `active` — matches this tab's pre-slot-
+// refactor behavior (Inspector.vue's old plain refresh() called
+// loadSignals() unconditionally, since signalsLog feeds the chat
+// timeline itself, visible whether or not this tab happens to be open).
+async function refresh() {
+  await loadSignals()
+}
+
+defineExpose({ loadSignals, refresh })
 
 // A graph click (or the live state itself moving on) changes which
 // state's own triggers `relevant` should reflect — refetch rather than
