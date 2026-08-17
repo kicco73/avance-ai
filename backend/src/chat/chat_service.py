@@ -378,34 +378,23 @@ class ChatService(object):
 		automaton, state = self._project_service.get_active_automaton_and_state()
 
 		init_message = None
-		# Set only when this call is the one that actually creates the
-		# automaton's own "" -> start_state transition (a session's very
-		# first) — never on a later call for an already-bootstrapped
-		# session, even if that call still generates its own opening
-		# message for some other reason (see _should_generate_opening_message).
-		init_transition_id = None
 		if self._db.get_current_state(project_name) is None:
 			action = automaton.init_action
-			init_transition_id = self._db.save_transition(
+			# Deliberately never linked to a message here: this transition
+			# fires before any message of this bootstrap exists (action_prompt's
+			# own, or the plain opening one, generated below), so there's no
+			# real "causing" message to attach it to — see
+			# TrackingService._materialize_session_start_row, which lazily
+			# links it (retroactively, to whatever message an expert first
+			# tries to annotate) the same way it already does for every
+			# later session's own start.
+			self._db.save_transition(
 				"", action.name, state.key, session_id, transition_log_level=state.transition_log_level
 			)
 			if action.action_prompt:
 				init_message = await self._generate_action_prompt_message(action, session_id)
 
-		opening_message = await self._generate_opening_message_if_needed(project_name, session_id, automaton, state)
-
-		if init_transition_id is not None:
-			# Whichever message this bootstrap actually produced —
-			# action_prompt's own, or the plain opening message — is what
-			# the "" -> start_state transition must be linked to, so a
-			# domain expert can annotate this earliest evaluation point
-			# too (see TrackingService.set_message_expected_state and its
-			# own _materialize_session_start_row, which only exists for
-			# every *later* session precisely because this one already
-			# gets a real linked row here).
-			linked_message = init_message or opening_message
-			if linked_message is not None:
-				self._db.link_signal_to_message(init_transition_id, linked_message["assistant_message_id"])
+		await self._generate_opening_message_if_needed(project_name, session_id, automaton, state)
 
 		return init_message
 
@@ -441,15 +430,33 @@ class ChatService(object):
 	async def _messages_for_transition(
 		self, action: Action, project_name: str, session_id: int, new_state: State, *, is_self_loop: bool
 	) -> list[dict]:
+		"""Every real, chat-visible message this transition's own follow-up
+		turn(s) produced — the action_prompt's own reply, and/or the
+		destination state's opening message, in that order — as flat
+		{id, role, content, audio_text, timestamp, session_id} rows (see
+		db.get_message), the same shape ChatWindow.vue's MessageBubble
+		already expects everywhere else. `process_turn`'s own return dict
+		(what `_generate_action_prompt_message`/process_turn actually hand
+		back) carries only ids, never the message body — a turn whose
+		reply landed in a non-chat state has no assistant_message_id at
+		all (see TrackingProcessor.process's own early return), which is
+		skipped here rather than looked up as None."""
 		should_open = not is_self_loop and self._should_generate_opening_message(project_name, session_id, new_state)
 
-		messages = []
+		turn_results = []
 		if action.action_prompt:
-			messages.append(
-				await self._generate_action_prompt_message(action, session_id)
-			)
+			turn_results.append(await self._generate_action_prompt_message(action, session_id))
 		if should_open:
-			messages.append(await self.process_turn(session_id))
+			turn_results.append(await self.process_turn(session_id))
+
+		messages = []
+		for turn_result in turn_results:
+			message_id = turn_result["assistant_message_id"]
+			if message_id is None:
+				continue
+			message = self._db.get_message(message_id)
+			if message is not None:
+				messages.append(message)
 		return messages
 
 	async def apply_manual_action(self, action_name: str, session_id: int | None) -> dict:
@@ -489,6 +496,11 @@ class ChatService(object):
 		_, state = self._project_service.get_active_automaton_and_state()
 		self._require_active_session(session_id, project_name, state.key)
 		reply = await self.tracking_service.process(session_id, text, on_metadata, extra_prompt=extra_prompt)
-		self._session_manager.touch_session(reply['session_id'], reply['state'])
+		# touch_session wants the plain state key (see apply_manual_action's
+		# own touch_session(..., state.key) call) — reply['state'] is the
+		# full StatePayload dict (see _build_turn_response), not a string;
+		# passing it whole silently stored its Python repr as end_state
+		# (visible as a rendered-dict title in the Sessions panel).
+		self._session_manager.touch_session(reply['session_id'], reply['state']['key'])
 		return reply
 

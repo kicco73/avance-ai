@@ -71,16 +71,16 @@ class TrackingService(object):
 		real Tracking row for that (see ChatService.open_if_needed's own
 		"" -> start_state transition, created once per project, not once
 		per session) — every other session's own start has nothing in the
-		database to annotate against at all. Rather than leave every
-		later session permanently un-annotatable at its own start point
-		(see the "Label sessions" view's chat timeline, which shows a
-		synthesized row there precisely because there's nothing real to
-		show), lazily creates that row here, the first time an expert
-		actually tries to annotate it — same shape open_if_needed's own
-		eager case uses. Returns None (falls through to the usual 409)
-		for anything other than a session's own first message, or a
-		session whose start row does exist but is linked elsewhere (must
-		never happen in practice, but not this function's job to fix)."""
+		database to annotate against at all. That first session's own row
+		is never linked to a message eagerly either (open_if_needed's own
+		transition fires before any message of its own bootstrap exists),
+		so both cases land here identically: lazily links (or, for every
+		later session, creates then links) that row the first time an
+		expert actually tries to annotate it. Returns None (falls through
+		to the usual 409) for anything other than a session's own first
+		message, or a session whose start row does exist but is linked
+		elsewhere (must never happen in practice, but not this function's
+		job to fix)."""
 		message = self._db.get_message(message_id)
 		if message is None:
 			return None

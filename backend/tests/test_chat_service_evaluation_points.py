@@ -6,19 +6,26 @@ such a link allows (see ChatService.set_message_expected_state/
 set_message_expected_signals).
 
 Current contract (verified directly against tracking/tracking_processor.py,
-tracking/tracking_processor_user.py, tracking/tracking_processor_ai.py, and
-empirically against a live TrackingService.process() call — see this
-file's own git history for the probe script used):
+tracking/tracking_processor_user.py, tracking/tracking_processor_ai.py):
   - A Tracking row is only ever created when a trigger actually FIRES a
     transition (tracking_processor.py's `_move_automaton` is only called
     from a fired-action branch in both subclasses) — merely *evaluating*
     signals with nothing meeting a trigger's threshold leaves no row at
     all, in either autotracking mode.
-  - Whichever mode produced it, that row is always linked to the
-    **assistant's** message (tracking_processor.py:100-101 — always
-    `link_signal_to_message(tracking_id, assistant_id)`), never to the
-    user's own message — even when it was the "before" mode's own
-    optimistic pre-reply guess that decided the transition fired.
+  - That row is linked to whichever message actually *caused* the
+    evaluation that fired it — the Edit Project timeline positions a
+    transition marker by that link (see frontend/src/benchmarkTimeline.js's
+    effectiveTimestamp), so linking it to the wrong message visibly
+    misplaces the marker. "before" mode (autotracking_on_ai_message=False)
+    decides the trigger from the user's own message, already saved before
+    the reply is even generated, so it's linked to the **user's** message
+    (tracking_processor_user.py's own `apply_transition(..., message_id=
+    self.user.message_id)`). "after" mode (autotracking_on_ai_message=True)
+    decides the trigger from the assistant's own reply, so it's linked to
+    the **assistant's** message instead (tracking_processor.py's own
+    post-hoc `link_signal_to_message(tracking_id, assistant_id)`, which
+    only ever fires when the row wasn't already linked at creation — see
+    OutVariables.tracking_linked_to_message).
   - `Automaton` now carries a single flag, `autotracking_on_ai_message`
     (the old, separate `autotracking_on_user_message` flag was removed —
     see tracking_service.py:193, `if not automaton.autotracking_on_ai_message`):
@@ -44,6 +51,7 @@ import pytest
 from automaton.automaton import Action, Automaton, Signal, State
 from chat.chat_service import ChatService
 from chat.session_manager import ChatSessionManager
+from db.models import Tracking
 from metrics.metric_service import MetricService
 from tracking.tracking_service import TrackingService, TrackingServiceError
 
@@ -157,8 +165,8 @@ async def _bootstrap_session(chat_service: ChatService) -> int:
     return session["id"]
 
 
-@pytest.mark.contract
-async def test_transition_from_optimistic_guess_links_the_resulting_assistant_message(db, chat_service_for):
+@pytest.mark.regression
+async def test_transition_from_optimistic_guess_links_the_causing_user_message(db, chat_service_for):
     # "before" mode (autotracking_on_ai_message=False) is optimistic (see
     # tracking_processor_user.py's own module docstring): the reply is
     # generated once, using the *current* state's own context, and its
@@ -179,12 +187,16 @@ async def test_transition_from_optimistic_guess_links_the_resulting_assistant_me
 
     assert ai_service.call_count == 2
     assert result["new_state"] == "b"
-    # The row always lands on the assistant's own message (tracking_
-    # processor.py:100-101's `link_signal_to_message(tracking_id,
-    # assistant_id)`) — never the user's, even though it was the user
-    # message's own optimistic evaluation that decided it fired.
-    assert db.get_signal_row_by_message(result["user_message_id"]) is None
-    linked = db.get_signal_row_by_message(result["assistant_message_id"])
+    # The row lands on the user's own message — that's the one whose
+    # optimistic evaluation actually decided the transition fired, before
+    # the assistant's reply was even regenerated (see tracking_processor_
+    # user.py's own apply_transition(..., message_id=self.user.message_id)
+    # call). The Edit Project timeline positions the state-change marker
+    # by this exact link (see frontend/src/benchmarkTimeline.js's
+    # effectiveTimestamp) — landing it on the assistant's message instead
+    # would visibly place the marker one turn too late.
+    assert db.get_signal_row_by_message(result["assistant_message_id"]) is None
+    linked = db.get_signal_row_by_message(result["user_message_id"])
     assert linked is not None
     assert linked["new_state"] == "b"
 
@@ -203,11 +215,16 @@ async def test_user_message_autotracking_makes_a_single_ai_call_when_the_optimis
 
     assert ai_service.call_count == 1
     assert result["state_changed"] is False
-    # No transition fired at all, so _move_automaton (the only thing that
-    # ever creates a Tracking row) never ran — nothing to link, for
-    # either message (tracking_processor_user.py's _get_ai_reply only
-    # calls it inside its own "state changed" branch).
-    assert db.get_signal_row_by_message(result["user_message_id"]) is None
+    # No transition fired, but the evaluation itself still leaves a real,
+    # queryable row (see tracking_engine.py's apply_transition — action is
+    # None here, so it lands in the plain-snapshot branch) — linked to the
+    # user's own message, the one whose content decided nothing should
+    # fire (see tracking_processor_user.py's own apply_transition(...,
+    # message_id=self.user.message_id) call, now unconditional on signals
+    # having been evaluated at all, not just on a transition firing).
+    row = db.get_signal_row_by_message(result["user_message_id"])
+    assert row is not None
+    assert row["old_state"] is None and row["new_state"] is None
     assert db.get_signal_row_by_message(result["assistant_message_id"]) is None
 
 
@@ -253,14 +270,16 @@ async def test_set_message_expected_state_rejects_an_unknown_state(db, chat_serv
 
 @pytest.mark.contract
 async def test_set_message_expected_state_rejects_a_non_evaluation_point_message(db, chat_service_for):
-    # A message only becomes an evaluation point when its own turn
-    # actually fires a transition (see this file's module docstring) —
-    # "no autotracking flags" does NOT produce one (tracking_service.py's
-    # processor selection always picks one of the two modes, never
-    # neither — see the deleted test_no_autotracking_means_no_linked_
-    # signal_row_at_all this replaces); a trigger that simply never meets
-    # its own threshold is what actually leaves a message unlinked.
-    chat_service = chat_service_for(_automaton(autotracking_on_ai_message=True, trigger="foo >= 99"))
+    # A message only becomes an evaluation point when signals were
+    # actually reported for its own turn at all (see this file's module
+    # docstring) — a trigger that simply never meets its own threshold
+    # still leaves a plain-snapshot evaluation point now (see
+    # test_user_message_autotracking_makes_a_single_ai_call_when_the_
+    # optimistic_guess_is_right), so this needs a turn where the model
+    # reports no signals whatsoever — the one scenario that genuinely
+    # leaves a message unlinked.
+    ai_service = FakeSchemaAiService([{}])
+    chat_service = chat_service_for(_automaton(autotracking_on_ai_message=True), ai_service=ai_service)
     session_id = await _bootstrap_session(chat_service)
     result = await chat_service.process_turn(session_id, "hello")
     message_id = result["assistant_message_id"]
@@ -306,3 +325,101 @@ async def test_set_message_expected_signals_rejects_an_out_of_range_value(db, ch
 
     with pytest.raises(TrackingServiceError):
         chat_service.set_message_expected_signals(message_id, {"foo": 150})
+
+
+@pytest.mark.regression
+async def test_message_linking_end_to_end_bootstrap_and_one_real_turn(db, chat_service_for):
+    """Regression test, pinned against a real reported scenario (a live
+    "before" mode project, autotracking_on_ai_message=False — a session
+    bootstrap plus one real user turn that fires a transition): every
+    Tracking row this machinery can produce must end up linked to the
+    message that actually caused it, never to a temporally-adjacent
+    (previous or next) one — and every real evaluation must leave a row
+    at all, even one that never fired. Wrong data confirmed directly
+    against a live avance.db before this fix: the init row was linked to
+    the *opening* message (should be unlinked — there's no causing
+    message for it yet), both [env]-only rows (the opening message's own,
+    and the regenerated reply's own) were left completely unlinked
+    (should each point at the very message that reported them), and the
+    opening message's own signal evaluation left no row at all (should
+    leave a plain snapshot, same as the real turn's own non-firing
+    optimistic guess would).
+
+    The 5 Tracking rows this produces, in order:
+      1. the init ("" -> "a") transition (see ChatService.open_if_needed)
+         — never linked to a message at all (see its own docstring:
+         nothing has caused it yet at that point).
+      2. the opening message's own signal evaluation — foo=-1 never
+         satisfies "foo >= 0", so no transition fires, but the evaluation
+         itself still leaves a plain snapshot (see tracking_engine.py's
+         apply_transition: action is None here), linked to the opening
+         message.
+      3. the env-only row the opening AI message itself reported via
+         [env] — linked to that same opening message (see
+         TrackingProcessor.process's env.update(..., message_id=assistant_id)).
+      4. the real ("a" -> "b") transition — decided from the user's own
+         message, before the AI's reply is even regenerated (see
+         TrackingProcessorAfterUserMessage._get_ai_reply's
+         apply_transition(..., message_id=self.user.message_id)) — so
+         it's linked to the *user's* message, not the assistant's.
+      5. the env-only row the regenerated reply itself reported via
+         [env] — linked to that reply message, same mechanism as row 3.
+    """
+    ai_service = FakeSchemaAiService([
+        {"signals": '{"foo": -1}', "env": "stage: opening"},  # opening message — never fires
+        {"signals": '{"foo": 1}', "env": "stage: guessed"},  # optimistic guess — fires "foo >= 0"
+        {"env": "stage: crisis"},  # regenerated reply — signals never re-requested
+    ])
+    chat_service = chat_service_for(_automaton(autotracking_on_ai_message=False), ai_service=ai_service)
+    session_id = await _bootstrap_session(chat_service)
+
+    messages = await chat_service.get_messages(session_id)  # triggers open_if_needed
+    assert len(messages) == 1
+    opening_message_id = messages[0]["id"]
+
+    result = await chat_service.process_turn(session_id, "hello")
+    assert result["new_state"] == "b"
+    user_message_id = result["user_message_id"]
+    assistant_message_id = result["assistant_message_id"]
+
+    rows = list(Tracking.select().where(Tracking.session == session_id).order_by(Tracking.id))
+    assert len(rows) == 5
+    init_row, opening_snapshot_row, opening_env_row, transition_row, reply_env_row = rows
+
+    assert (init_row.old_state, init_row.new_state) == ("", "a")
+    assert init_row.message_id is None
+
+    assert opening_snapshot_row.old_state is None and opening_snapshot_row.new_state is None
+    assert opening_snapshot_row.values == '{"foo": -1}'
+    assert opening_snapshot_row.message_id == opening_message_id
+
+    assert opening_env_row.env is not None and opening_env_row.old_state is None
+    assert opening_env_row.message_id == opening_message_id
+
+    assert (transition_row.old_state, transition_row.new_state) == ("a", "b")
+    assert transition_row.message_id == user_message_id
+
+    assert reply_env_row.env is not None and reply_env_row.old_state is None
+    assert reply_env_row.message_id == assistant_message_id
+
+
+@pytest.mark.regression
+async def test_process_turn_touches_the_session_with_the_plain_state_key_not_the_payload(db, chat_service_for):
+    # Regression test: ChatService.process_turn used to call
+    # self._session_manager.touch_session(reply['session_id'], reply['state'])
+    # — reply['state'] is the full StatePayload dict (see
+    # _build_turn_response), not a string. touch_session's own
+    # db.touch_chat_session writes that argument straight into
+    # ChatSession.end_state's CharField, so passing the whole dict
+    # silently stored its Python repr there instead of just the state
+    # key — visible in the Sessions panel as a rendered-dict title.
+    # apply_manual_action already got this right (touch_session(...,
+    # state.key)); process_turn now matches.
+    chat_service = chat_service_for(_automaton(autotracking_on_ai_message=True))
+    session_id = await _bootstrap_session(chat_service)
+
+    result = await chat_service.process_turn(session_id, "hello")
+
+    assert result["new_state"] == "b"
+    session = db.get_chat_session(session_id)
+    assert session["end_state"] == "b"

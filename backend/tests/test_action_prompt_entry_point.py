@@ -109,6 +109,32 @@ async def test_action_prompt_fires_even_when_the_destination_state_disallows_cha
     assert all(m["role"] == "assistant" for m in messages)
 
 
+async def test_apply_manual_action_reply_entries_are_flat_message_dicts(db):
+    # Regression test: apply_manual_action's own "reply" list used to be
+    # a list of nested turn-response dicts (each carrying only ids —
+    # process_turn's own return shape, see _build_turn_response — never
+    # the reply's own text). chatStore.js's handleAction has always
+    # destructured {id, content, audio_text} straight off each entry,
+    # which silently produced content: undefined/audioText: undefined/
+    # messageId: undefined bubbles for every action-triggered follow-up
+    # message. _messages_for_transition now resolves each turn's own
+    # assistant_message_id through db.get_message, returning the flat
+    # {id, role, content, audio_text, ...} shape the frontend already
+    # expects. State "b" here is both final and chat-enabled, so this
+    # exercises the two-entries case: the action_prompt's own reply,
+    # plus a separate opening message for landing in "b".
+    chat_service, _ = _chat_service(db, _automaton(chat_on_destination=True))
+    session = chat_service.get_or_create_current_session(None)
+
+    result = await chat_service.apply_manual_action("advance", session["id"])
+
+    assert len(result["reply"]) == 2
+    for entry in result["reply"]:
+        assert entry["role"] == "assistant"
+        assert isinstance(entry["id"], int)
+        assert isinstance(entry["content"], str) and entry["content"]
+
+
 async def test_action_prompt_text_reaches_the_model_prompt_not_the_saved_message(db):
     chat_service, ai_service = _chat_service(db, _automaton())
     session = chat_service.get_or_create_current_session(None)

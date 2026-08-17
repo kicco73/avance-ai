@@ -28,7 +28,6 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			rv = self.metadata.env = self.metadata_processor.parse_raw_env(value)
 		elif key == 'audio':
 			rv = self.metadata.audio = value
-			print("AUDIO ***************************", rv)
 		self.metadata.on_metadata(key, rv)
 
 	def on_receiving_metadata_when_repeating_the_call(self, key: str, value: str):
@@ -57,18 +56,40 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 				self.out.reply += chunk
 				self.metadata.on_metadata('chunk', chunk)
 
+		if self.metadata.signals:
+			# This "before" mode's own trigger is decided from the user's
+			# message (already saved — see self.user.message_id), not from
+			# the assistant's reply that's about to be (maybe) regenerated
+			# below — so the row must be linked to the user's message right
+			# away, rather than left for process()'s own post-hoc link to
+			# the (causally unrelated) assistant message. Called whenever
+			# signals were evaluated at all, fired or not — apply_transition
+			# itself saves a plain snapshot when self.out.action is still
+			# None (see tracking_engine.py), so an evaluation that didn't
+			# trigger anything (e.g. the opening message's own) still
+			# leaves a real, queryable row instead of vanishing outright.
+			#
+			# An opening turn (has_ai_started_conversation) has no real
+			# user message of its own though — self.user.message_id only
+			# points at a placeholder ('...') that process() deletes right
+			# after this returns, which would silently orphan an early
+			# link to it (Tracking.message is ON DELETE SET NULL). Left
+			# unlinked here instead, same as "after" mode always is, so
+			# process()'s own post-hoc link attaches it to the one real
+			# message this turn actually produces (its own reply).
+			has_real_user_message = not self.user.has_ai_started_conversation
+			self.out.tracking_id = self._tracking_engine.apply_transition(
+				self.user.automaton, self.user.state, self.out.action, self.metadata.signals, self.user.session_id,
+				message_id=self.user.message_id if has_real_user_message else None,
+			)
+			self.out.tracking_linked_to_message = has_real_user_message
+
 		if self.user.state != self.out.state:
 			# Wrong guess — the async method moved the automaton.
 			# We need to regenerate the answer
 
 			self.out.reply = ""
 			self.metadata.on_metadata('text', "")
-
-			# need to save state transition
-
-			self.out.tracking_id = self._tracking_engine.apply_transition(
-				self.user.automaton, self.user.state, self.out.action, self.metadata.signals, self.user.session_id
-			)
 
 			# Signals are already known from the first call — asking
 			# again here would be wasted (and must not trigger a second

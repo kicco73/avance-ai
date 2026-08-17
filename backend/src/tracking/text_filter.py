@@ -132,7 +132,7 @@ class StreamingTagFilter(Filter):
         """
         Default callback executed when a tag is found.
         """
-        print(f"\n[TAG DETECTED] {self.open_tag} {content}\n")
+        pass
 
 class TagFilter(StreamingTagFilter):
 

@@ -253,20 +253,31 @@ def test_clearing_the_only_annotation_on_a_materialized_start_row_deletes_it(cli
 
 
 @pytest.mark.regression
-def test_init_transition_is_linked_to_the_opening_message_and_becomes_annotatable(client, hello_project):
+def test_annotating_the_first_sessions_own_start_materializes_a_signals_row(client, hello_project):
     """Regression test: the automaton's very first ("" -> start_state)
-    transition, created by ChatService.open_if_needed before any user
-    message exists, must still end up linked to a real message (the
-    session's opening message) so a domain expert can annotate it too —
-    see open_if_needed's own signal_row_id/opening_message wiring."""
+    transition, created by ChatService.open_if_needed, fires before any
+    message of its own bootstrap exists — there's no real "causing"
+    message to link it to eagerly, so it starts out unlinked (see
+    open_if_needed's own docstring). A domain expert can still annotate
+    it: this exercises the exact same lazy-link path every later
+    session's own start already relies on (see TrackingService.
+    _materialize_session_start_row) — a real (not later-materialized)
+    row this time, but the linking is identical either way."""
     session = client.get("/api/chat/session").json()
-    client.get(f"/api/chat/messages?session_id={session['id']}")  # triggers open_if_needed
+    messages = client.get(f"/api/chat/messages?session_id={session['id']}").json()  # triggers open_if_needed
+    assert messages
+    first_message_id = messages[0]["id"]
 
     signals = client.get(f"/api/chat/sessions/{session['id']}/signals").json()
     init_row = next(row for row in signals if row["old_state"] == "")
-    assert init_row["message_id"] is not None
+    assert init_row["message_id"] is None
 
     response = client.put(
-        f"/api/chat/messages/{init_row['message_id']}/expected-state", json={"expected_state": "Hello"}
+        f"/api/chat/messages/{first_message_id}/expected-state", json={"expected_state": "Hello"}
     )
+
     assert response.status_code == 200
+    signals = client.get(f"/api/chat/sessions/{session['id']}/signals").json()
+    init_row = next(row for row in signals if row["old_state"] == "")
+    assert init_row["message_id"] == first_message_id
+    assert init_row["expected_state"] == "Hello"

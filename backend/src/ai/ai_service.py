@@ -159,6 +159,4 @@ class AiService(object):
 			return
 		last_inserted = next(reversed(final_parsed))
 		if last_inserted != 'text' and last_inserted not in emitted:
-			on_metadata(last_inserted, final_parsed[last_inserted]) 
-			print("EN FIN", last_inserted, final_parsed[last_inserted])
-		print("JSON", final_parsed)
+			on_metadata(last_inserted, final_parsed[last_inserted])

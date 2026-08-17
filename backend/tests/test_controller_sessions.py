@@ -24,11 +24,12 @@ def test_bootstrap_creates_a_session(client, hello_project):
 def test_sessions_list_reflects_has_annotations_per_session(client, hello_project, app_db: Db):
     session = client.get("/api/chat/session").json()
     turn = client.post("/api/chat/messages", json={"message": "hi", "session_id": session["id"]}).json()
-    # process_turn's own "reply" key is not a list of {id, ...} message
-    # dicts (that shape belongs to apply_manual_action's "reply", a list of
-    # nested turn-response dicts) — the assistant message id for a plain
-    # chat turn is the top-level "assistant_message_id" key instead (see
-    # tracking/tracking_processor.py's _build_turn_response).
+    # process_turn's own "reply" key is always [] (see tracking/
+    # tracking_processor.py's _build_turn_response) — the assistant
+    # message id for a plain chat turn is the top-level
+    # "assistant_message_id" key instead. apply_manual_action's own
+    # "reply" is the one that's a list of {id, role, content, audio_text,
+    # ...} message dicts (see ChatService._messages_for_transition).
     message_id = turn["assistant_message_id"]
     signal_row_id = app_db.save_signal_snapshot({"foo": 1}, session["id"], message_id=message_id)
 

@@ -75,7 +75,7 @@ class Env(object):
     def set_last_transition_instant(self, instant: datetime | None) -> None:
         self._last_transition_instant = instant
 
-    def _write_stored(self, values: dict[str, Any]) -> None:
+    def _write_stored(self, values: dict[str, Any], message_id: int | None = None) -> None:
         self._stored = values
 
     def _write_action_set(self, values: dict[str, Any]) -> None:
@@ -123,7 +123,7 @@ class Env(object):
                 result[key] = value
         return result
 
-    def update(self, values: dict[str, Any]) -> None:
+    def update(self, values: dict[str, Any], message_id: int | None = None) -> None:
         if not values:
             return
         action_set = self.action_set()
@@ -131,7 +131,7 @@ class Env(object):
         if not filtered:
             return
         merged = {**self.stored(), **filtered}
-        self._write_stored(merged)
+        self._write_stored(merged, message_id)
 
     def set_value(self, key: str, value: str) -> None:
         """The Inspector Env tab's own "click a value to edit it" — a
@@ -311,8 +311,8 @@ class PersistedEnv(Env):
         """Same `until` convention as stored()."""
         return self._db.get_action_env(self._get_active_project_name(), self._get_username(), until=until)
 
-    def _write_stored(self, values: dict[str, Any]) -> None:
-        self._db.set_env(self._get_active_project_name(), values, self._get_username())
+    def _write_stored(self, values: dict[str, Any], message_id: int | None = None) -> None:
+        self._db.set_env(self._get_active_project_name(), values, self._get_username(), message_id=message_id)
 
     def _write_action_set(self, values: dict[str, Any]) -> None:
         self._db.set_action_env(self._get_active_project_name(), values, self._get_username())

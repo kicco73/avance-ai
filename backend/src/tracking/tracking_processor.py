@@ -60,6 +60,11 @@ class OutVariables:
 	tracking_id: int | None
 	state: State
 	action: Action | None
+	# True once tracking_id's own row already carries the message id of
+	# whichever message actually caused it (see TrackingProcessorAfterUserMessage
+	# ._get_ai_reply, which knows self.user.message_id up front) — process()
+	# must not then overwrite that link with the assistant's own message id.
+	tracking_linked_to_message: bool = False
 
 class TrackingProcessor(object):
 	metadata_processor = MetadataHandler()
@@ -113,16 +118,22 @@ class TrackingProcessor(object):
 		self._save_user_message(text)
 
 		def dummy_on_metadata(key: str, value: str) -> None:
-			print(f'process.on_metadata: null call key {key} = {value}')
+			pass
 
 		self.metadata = Metadata(on_metadata or dummy_on_metadata, {}, {}, "", None)
 
 		self.out = await self._get_ai_reply()
 
-		self.env.update(self.metadata.env)
 		assistant_id = self.db.save_message("assistant", self.out.reply, self.user.session_id, audio_text=self.metadata.audio)
+		# Linked to the assistant's own message right away — this turn's
+		# reply is what actually reported these env values (see
+		# MetadataHandler.parse_raw_env), so unlike self.out.tracking_id
+		# (which may already be linked to an earlier, causing message —
+		# see TrackingProcessorAfterUserMessage), this row has no such
+		# earlier candidate to prefer.
+		self.env.update(self.metadata.env, message_id=assistant_id)
 
-		if self.out.tracking_id is not None:
+		if self.out.tracking_id is not None and not self.out.tracking_linked_to_message:
 			self.db.link_signal_to_message(self.out.tracking_id, assistant_id)
 
 		user_message_id = self.user.message_id
