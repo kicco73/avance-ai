@@ -15,7 +15,8 @@ from ai import gemini_provider_v2, openai_provider_v2, anthropic_provider_v2
 _PROVIDER_CLASSES : dict[str, object] = {
 	"anthropic": anthropic_provider_v2.AnthropicProvider,
 	"gemini": gemini_provider_v2.GeminiProvider,
-	"openai": openai_provider_v2.OpenAIProvider,
+	"openai": openai_provider_v2.OpenAICompatibleProvider,
+	"llama.cpp": openai_provider_v2.OpenAICompatibleProvider,
 }
 class AiService(object):
 

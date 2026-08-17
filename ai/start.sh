@@ -23,10 +23,11 @@ echo "Model available."
 
 exec ./build/bin/llama-server \
     -hf "${LLM}:${LLM_QUANTISATION}" \
-    -c 6000 \
+    -c 3072 \
     -b 512 \
-    -ub 128 \
-    -ngl 20 \
+    -ub 256 \
+    -ngl 24 \
+    -t 6 \
     -np 1 \
     --device Vulkan0 \
     --reasoning-budget 0 \
