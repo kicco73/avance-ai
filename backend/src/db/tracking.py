@@ -26,7 +26,7 @@ class TrackingMixin:
         rows = Tracking.select().where((Tracking.session == session_id) & Tracking.env.is_null(True) & Tracking.action_env.is_null(True)).order_by(Tracking.timestamp.asc(), Tracking.id.asc())
         return [{'id': row.id, 'timestamp': _utc_iso(row.timestamp), 'values': row.values, 'expected_values': row.expected_values, 'expected_state': row.expected_state, 'old_state': row.old_state, 'action': row.action, 'new_state': row.new_state, 'message_id': row.message_id} for row in rows]
 
-    def save_transition(self, old_state: str, action: str, new_state: str, session_id: int, transition_log_level: str, signal_values: dict | None=None, message_id: int | None=None) -> int:
+    def save_transition(self, old_state: str | None, action: str | None, new_state: str | None, session_id: int, transition_log_level: str, signal_values: dict | None=None, message_id: int | None=None) -> int:
         row = Tracking.create(session=session_id, old_state=old_state, action=action, new_state=new_state, values=json.dumps(signal_values) if signal_values is not None else None, message=message_id)
         trigger_type = 'auto' if signal_values is not None else 'manual'
         level = getattr(logging, transition_log_level)

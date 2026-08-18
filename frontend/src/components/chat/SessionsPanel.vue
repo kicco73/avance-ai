@@ -19,6 +19,11 @@ const props = defineProps({
   deletingSessionId: { type: [Number, String], default: null },
   allowCreate: { type: Boolean, default: true },
   allowDelete: { type: Boolean, default: true },
+  // BenchmarkProjectView's own — only an imported session (see
+  // ChatSession.source) is ever deletable there, never a native one
+  // (ChatWindow.vue's own live-chat contexts leave this at its default
+  // false, since allowDelete there already means "any session").
+  deleteImportedOnly: { type: Boolean, default: false },
   // BenchmarkProjectView's own — a transcript import produces a session
   // annotatable/testable without ever running live (see ChatSession.
   // source), meaningful only for review/labeling, not for the main chat
@@ -138,7 +143,7 @@ const {
         <span class="session-timestamp">{{ formatSessionTimestamp(session.datetime_start) }}</span>
       </button>
       <button
-        v-if="allowDelete"
+        v-if="allowDelete && (!deleteImportedOnly || session.source === 'imported')"
         type="button"
         class="session-delete-btn"
         :disabled="deletingSessionId === session.id"

@@ -9,8 +9,8 @@ import InspectorMetricsTab from './inspector/InspectorMetricsTab.vue'
 import InspectorPerformanceTab from './inspector/InspectorPerformanceTab.vue'
 import ErrorBanner from './ErrorBanner.vue'
 import {
-  getMessages, getSessionSignals, getSessions, postImportSession, putMessageExpectedState, putMessageExpectedSignals,
-  deleteSessionAnnotations
+  getMessages, getSessionSignals, getSessions, getProjectGraph, postImportSession, putMessageExpectedState,
+  putMessageExpectedSignals, deleteSessionAnnotations, deleteSession
 } from '../api.js'
 import { currentSessionId, sessions, sessionsLoading, loadSessions, refreshSessionsQuietly, selectSession } from '../chatStore.js'
 import {
@@ -40,6 +40,13 @@ const rawMessages = ref([])
 // further backend round trips.
 const signalsLog = ref([])
 const sessionStartState = ref(null)
+// Project-wide, fetched once (see onMounted below) — whether a live turn
+// evaluates on the assistant's own reply (true) or the user's own
+// message (false). An imported session (see ChatSession.source) has no
+// real Tracking rows to consult at all, so annotatableSignalsRow below
+// falls back to this same convention instead, to decide which side of
+// an imported session's own messages is a legitimate mark point.
+const autotrackingOnAiMessage = ref(false)
 
 const inspectorRef = ref(null)
 const inspectorWidth = ref(360)
@@ -115,6 +122,28 @@ async function handleImportSession(file) {
 // one source of truth, and the watcher below reacts to it changing.
 function onSelectSession(session) {
   selectSession(session)
+}
+
+// Only an imported session is ever deletable here (see SessionsPanel.
+// vue's own deleteImportedOnly) — a live/native one is the record of a
+// real conversation, not this view's own to discard. Mirrors chatStore.
+// js's own handleDeleteSession, just against this view's own session
+// list (refreshSessionsQuietly(true) — see handleImportSession's own
+// docstring on why includeImported matters here) rather than the main
+// chat's.
+const deletingSessionId = ref(null)
+async function handleDeleteSession(session) {
+  if (!window.confirm(`Delete this imported session (${session.title || session.end_state})? This cannot be undone.`)) return
+  deletingSessionId.value = session.id
+  try {
+    await deleteSession(session.id)
+    if (session.id === currentSessionId.value) currentSessionId.value = null
+    await refreshSessionsQuietly(true)
+  } catch {
+    // already surfaced via apiFetch
+  } finally {
+    deletingSessionId.value = null
+  }
 }
 
 function handleWindowResize() {
@@ -221,6 +250,24 @@ const untilMessageId = computed(() => {
 
 const signalValues = computed(() => signalValuesFor(selected.value, signalsLog.value))
 
+// Whether the session currently being reviewed was imported (see
+// ChatSession.source) rather than played live — the one case with no
+// real Tracking rows at all to consult for annotatableSignalsRow below
+// (see tracking.session_import's own module docstring).
+const currentSessionIsImported = computed(() => {
+  return sessions.value.find((s) => s.id === currentSessionId.value)?.source === 'imported'
+})
+
+// A message is a legitimate mark point for an imported session (which
+// has no real Tracking row to prove it) only on whichever side a live
+// turn would actually have evaluated on — assistant if
+// autotrackingOnAiMessage, user otherwise (see TrackingService.
+// _materialize_imported_session_row, the backend's own mirror of this
+// same rule).
+function isImportedAnnotationPoint(message) {
+  return message.role === (autotrackingOnAiMessage.value ? 'assistant' : 'user')
+}
+
 // The Signals row backing the current selection's own evaluation, if
 // any — the row itself for a clicked transition auto-tracking produced
 // (see its own message_id), or (found by message_id) the row a clicked
@@ -229,13 +276,23 @@ const signalValues = computed(() => signalValuesFor(selected.value, signalsLog.v
 // null: see project_service.apply_manual_action), or a message
 // auto-tracking never evaluated anything after (see Signals.message's own
 // docstring) — the Inspector's annotation controls only ever show for a
-// non-null value here.
+// non-null value here. An imported session never has a real row for any
+// message (see currentSessionIsImported) — a virtual one (no id yet,
+// materialized backend-side the first time an annotation is actually
+// written, see TrackingService._materialize_imported_session_row) steps
+// in for whichever message is a legitimate mark point on its own session.
 const annotatableSignalsRow = computed(() => {
   if (!selected.value) return null
   if (selected.value.kind === 'transition') {
     return selected.value.transition.message_id != null ? selected.value.transition : null
   }
-  return signalsLog.value.find((s) => s.message_id === selected.value.message.id) ?? null
+  const message = selected.value.message
+  const row = signalsLog.value.find((s) => s.message_id === message.id)
+  if (row) return row
+  if (currentSessionIsImported.value && isImportedAnnotationPoint(message)) {
+    return { id: null, message_id: message.id, old_state: null, new_state: null, expected_state: null, expected_values: null, values: null }
+  }
+  return null
 })
 
 // The message id to PUT an annotation change against — the annotation
@@ -352,6 +409,11 @@ onMounted(() => {
   // toggleBenchmarkSessionsPanel only loads on a closed-to-open flip, so
   // the initial open needs its own load.
   loadSessions(true)
+  getProjectGraph(props.projectName).then((graph) => {
+    autotrackingOnAiMessage.value = graph.autotracking_on_ai_message
+  }).catch(() => {
+    // already surfaced via apiFetch
+  })
   window.addEventListener('mousemove', onDrag)
   window.addEventListener('mouseup', stopDrag)
   window.addEventListener('resize', handleWindowResize)
@@ -382,13 +444,16 @@ onBeforeUnmount(() => {
               :sessions="sessions"
               :loading="sessionsLoading"
               :current-session-id="currentSessionId"
+              :deleting-session-id="deletingSessionId"
               :allow-create="false"
-              :allow-delete="false"
+              :allow-delete="true"
+              :delete-imported-only="true"
               :allow-import="true"
               :collapsed="!benchmarkSessionsPanelOpen"
               @update:collapsed="toggleBenchmarkSessionsPanel"
               @select="onSelectSession"
               @import="handleImportSession"
+              @delete="handleDeleteSession"
             />
           </div>
           <div v-if="benchmarkSessionsPanelOpen" class="split-divider" @mousedown="startSessionsDrag"></div>

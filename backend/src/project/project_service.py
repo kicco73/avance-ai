@@ -378,7 +378,12 @@ class ProjectService(object):
             for state in automaton.states.values()
             for action in state.actions
         ]
-        return {"nodes": nodes, "edges": edges}
+        # BenchmarkProjectView.vue's own — an imported session (see
+        # ChatSession.source) has no real Tracking rows to resolve which
+        # message a mark/annotation point belongs to, so it falls back to
+        # whichever side a live turn would actually have evaluated on (see
+        # TrackingService._materialize_imported_session_row).
+        return {"nodes": nodes, "edges": edges, "autotracking_on_ai_message": automaton.autotracking_on_ai_message}
 
     def list_projects(self) -> dict:
         names = self._db.list_projects()

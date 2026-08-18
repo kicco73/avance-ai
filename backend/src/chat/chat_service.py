@@ -409,6 +409,24 @@ class ChatService(object):
 		self.tracking_service.clear_session_annotations(session_id)
 
 	async def open_if_needed(self, session_id: int) -> dict | None:
+		# An imported session (see ChatSession.source) is a fixed
+		# historical transcript, never a live conversation — nothing below
+		# ever applies to it (no init transition of its own to bootstrap,
+		# no opening message to generate). Without this early return, a
+		# project whose *live* conversation currently sits in a final/
+		# no-chat state falls into _should_generate_opening_message's own
+		# chat_blocked branch, which gates on message timestamps this
+		# session's own messages never have (see tracking.session_import's
+		# own save_message(..., timestamp=None)) — has_messages_since's
+		# `Message.timestamp > since` silently excludes every NULL-
+		# timestamp row, so it wrongly reports "no messages since
+		# gate_since" and tries to generate one for a session that can
+		# never accept it, crashing with "Session is not active" (see
+		# _require_active_session, reached via process_turn).
+		session = self._db.get_chat_session(session_id)
+		if session is not None and session["source"] == "imported":
+			return None
+
 		project_name = self._active_project_name
 		automaton, state = self._project_service.get_active_automaton_and_state()
 
