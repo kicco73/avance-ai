@@ -72,6 +72,7 @@ def _user_variables(automaton: Automaton, session_id: int) -> UserVariables:
 
 async def test_regeneration_call_does_not_request_signals(db):
     db.ensure_project(PROJECT_NAME)
+    db.publish_project(PROJECT_NAME)
     session_id = db.create_chat_session(
         username=USERNAME, project_name=PROJECT_NAME,
         datetime_start=datetime.utcnow(), datetime_end=datetime.utcnow(),

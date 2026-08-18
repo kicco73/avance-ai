@@ -123,12 +123,18 @@ class ChatService(object):
 	def get_or_create_current_session(self, session_id: int | None) -> dict:
 		"""Bootstrap for a client with no (or a possibly-stale) session_id:
 		resolves — or creates — the one session currently writable for the
-		active project (see ChatSessionManager)."""
+		active project (see ChatSessionManager). ValueError (see
+		db.create_chat_session — a project with no published revision yet
+		can't have chat sessions) becomes a 409, same convention as
+		_require_active_session's own."""
 		project_name = self._active_project_name
 		_, state = self._project_service.get_active_automaton_and_state()
-		session = self._session_manager.get_or_create_current_session(
-			self._username, project_name, session_id, state.key
-		)
+		try:
+			session = self._session_manager.get_or_create_current_session(
+				self._username, project_name, session_id, state.key
+			)
+		except ValueError as exc:
+			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 		# Always the active one by construction — see
 		# ChatSessionManager.get_or_create_current_session. Resolves an
 		# existing session as easily as a brand new one, so its own
@@ -148,12 +154,18 @@ class ChatService(object):
 		state other sessions have since moved the project's automaton to
 		(that position is a single project-wide fact, unaffected by this;
 		see ChatSession.start_state/end_state as just this session's own
-		bookkeeping, not the authoritative current state)."""
+		bookkeeping, not the authoritative current state). ValueError (see
+		db.create_chat_session — a project with no published revision yet
+		can't have chat sessions) becomes a 409, same convention as
+		_require_active_session's own."""
 		project_name = self._active_project_name
 		automaton, _ = self._project_service.get_active_automaton_and_state()
-		session = self._session_manager.create_session(
-			self._username, project_name, automaton.init_action.target
-		)
+		try:
+			session = self._session_manager.create_session(
+				self._username, project_name, automaton.init_action.target
+			)
+		except ValueError as exc:
+			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 		# A brand new session has no messages/Tracking rows yet at all —
 		# correct by construction, no query needed.
 		return self._session_payload(session, active=True, has_annotations=False)

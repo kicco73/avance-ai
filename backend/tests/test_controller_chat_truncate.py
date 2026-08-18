@@ -69,6 +69,7 @@ def test_truncate_deletes_trailing_turns_and_rolls_the_live_state_back(client):
     resp = client.put("/api/projects/cat", content=content, headers={"Content-Type": "application/zip"})
     assert resp.status_code == 200, resp.text
     client.put("/api/projects/cat/activate")
+    client.post("/api/projects/cat/publish", json={})
 
     session = client.get("/api/chat/session").json()
     assert session["start_state"] == "welcome"

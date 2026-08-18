@@ -30,6 +30,8 @@ YML = (
 def _upload_and_get_session(client):
     resp = client.put("/api/projects/proj", content=YML.encode(), headers={"Content-Type": "application/x-yaml"})
     assert resp.status_code == 200, resp.text
+    resp = client.post("/api/projects/proj/publish", json={})
+    assert resp.status_code == 200, resp.text
     return client.get("/api/chat/session").json()
 
 

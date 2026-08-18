@@ -525,3 +525,17 @@ export function deleteProjectSignal(projectName, signalName) {
 export function downloadProject(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}`, {}, { parse: 'blob' })
 }
+
+export function getProjectRevision(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/revision`)
+}
+
+export function getPublishPreview(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/publish/preview`)
+}
+
+export function postPublishProject(projectName, remapTo = null) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/publish`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ remap_to: remapTo })
+  })
+}

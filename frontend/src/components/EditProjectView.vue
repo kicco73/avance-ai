@@ -33,7 +33,10 @@ import {
   putActionOrder,
   deleteState,
   deleteProjectAction,
-  deleteProjectSignal
+  deleteProjectSignal,
+  getProjectRevision,
+  getPublishPreview,
+  postPublishProject
 } from '../api.js'
 import { clearApiError, setApiError } from '../errorStore.js'
 import ErrorBanner from './ErrorBanner.vue'
@@ -591,6 +594,71 @@ async function refreshAfterProjectEdit() {
   await indexYmlEditorRef.value?.reloadCode()
   if (inspecting.value) await inspectorRef.value?.refresh()
   refreshValidStateKeys()
+  refreshProjectRevision()
+}
+
+// {revision, published_revision} — null while not yet loaded. A save can
+// fork (see Db.save_project_files' own fork-on-first-edit-after-publish),
+// bumping `revision` — refreshed after every save (see handleFileSaved/
+// refreshAfterProjectEdit) and after every publish, never assumed stable
+// across either.
+const projectRevision = ref(null)
+const publishing = ref(false)
+// Set only while ProjectService.preview_publish reported needs_remap —
+// the modal below is shown exactly while this is non-null. Cleared on
+// both confirm and cancel.
+const publishRemapPrompt = ref(null)
+const publishRemapChoice = ref('')
+
+async function refreshProjectRevision() {
+  try {
+    projectRevision.value = await getProjectRevision(props.projectName)
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+const publishUpToDate = computed(
+  () => projectRevision.value != null && projectRevision.value.revision === projectRevision.value.published_revision
+)
+
+async function handlePublish() {
+  if (publishUpToDate.value || publishing.value) return
+  publishing.value = true
+  try {
+    const preview = await getPublishPreview(props.projectName)
+    if (preview.needs_remap) {
+      publishRemapChoice.value = ''
+      publishRemapPrompt.value = preview
+      return
+    }
+    if (!window.confirm(`Publish revision ${projectRevision.value?.revision}? The current published revision will stay frozen; this one becomes the new one.`)) {
+      return
+    }
+    projectRevision.value = await postPublishProject(props.projectName)
+  } catch {
+    // already surfaced via apiFetch
+  } finally {
+    publishing.value = false
+  }
+}
+
+async function confirmPublishRemap(stateKey) {
+  publishing.value = true
+  try {
+    projectRevision.value = await postPublishProject(props.projectName, stateKey)
+    publishRemapPrompt.value = null
+  } catch {
+    // already surfaced via apiFetch — leave the modal open so the user
+    // can pick a different state or cancel
+  } finally {
+    publishing.value = false
+  }
+}
+
+function cancelPublishRemap() {
+  publishRemapPrompt.value = null
+  publishing.value = false
 }
 
 async function handleAddState() {
@@ -716,6 +784,7 @@ async function handleFileSaved() {
   emit('saved')
   if (inspecting.value) await inspectorRef.value?.refresh()
   refreshValidStateKeys()
+  refreshProjectRevision()
 }
 
 // The Inspector's own "State"/"Actions" tabs share the exact same
@@ -999,6 +1068,7 @@ onMounted(async () => {
   refreshSessionStartState()
   refreshSignalsLog()
   refreshValidStateKeys()
+  refreshProjectRevision()
   if (inspecting.value) openInspect()
   window.addEventListener('mousemove', onDrag)
   window.addEventListener('mouseup', stopDrag)
@@ -1047,6 +1117,12 @@ onBeforeUnmount(() => {
           Inspect
         </button>
         <button class="inspect-btn" @click="handleDownload">Download</button>
+        <span v-if="projectRevision" class="revision-indicator" :title="`Draft revision ${projectRevision.revision} — published: ${projectRevision.published_revision ?? 'never'}`">
+          rev {{ projectRevision.revision }}
+        </span>
+        <button class="publish-btn" :disabled="publishUpToDate || publishing" @click="handlePublish">
+          {{ publishing ? 'Publishing…' : 'Publish' }}
+        </button>
         <button class="reset-btn" @click="handleReset">Reset</button>
         <button class="close-btn" @click="handleClose">Back</button>
       </div>
@@ -1299,6 +1375,27 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
+
+    <div v-if="publishRemapPrompt" class="switch-dialog-overlay">
+      <div class="switch-dialog">
+        <p>
+          The conversation's own current state ("{{ publishRemapPrompt.missing_state }}") no longer exists in this
+          revision. Pick the state it now corresponds to before publishing.
+        </p>
+        <select v-model="publishRemapChoice" class="remap-select">
+          <option disabled value="">Select a state…</option>
+          <option v-for="key in publishRemapPrompt.available_states" :key="key" :value="key">{{ key }}</option>
+        </select>
+        <div class="switch-dialog-actions">
+          <button
+            class="switch-dialog-save-btn"
+            :disabled="publishing || !publishRemapChoice"
+            @click="confirmPublishRemap(publishRemapChoice)"
+          >Publish</button>
+          <button class="switch-dialog-cancel-btn" :disabled="publishing" @click="cancelPublishRemap">Cancel</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -1407,6 +1504,40 @@ onBeforeUnmount(() => {
 
 .inspect-btn-on:hover {
   background: #3d5c8a;
+}
+
+.revision-indicator {
+  font-size: 0.78rem;
+  color: #666;
+  white-space: nowrap;
+}
+
+.publish-btn {
+  padding: 0.4rem 1rem;
+  border-radius: 6px;
+  border: 1px solid #2e7d32;
+  background: #2e7d32;
+  color: white;
+  cursor: pointer;
+}
+
+.publish-btn:hover:not(:disabled) {
+  background: #256428;
+}
+
+.publish-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.remap-select {
+  display: block;
+  width: 100%;
+  margin-bottom: 1rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  font-size: 0.85rem;
 }
 
 .edit-project-body {

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .models import Archive, ChatSession, History, Message, Project, Tracking
+from .models import Archive, ChatSession, History, Message, Project, StateRemap, Tracking, database
 
 
 class ProjectMixin:
@@ -25,38 +25,131 @@ class ProjectMixin:
         Message.delete().execute()
         ChatSession.delete().execute()
 
-    def get_archive(self, project_name: str, archive_name: str) -> str | None:
-        row = Archive.get_or_none((Archive.project_name == project_name) & (Archive.archive_name == archive_name))
+    def _current_revision(self, project_name: str) -> int:
+        project = Project.get_or_none(Project.name == project_name)
+        return project.revision if project is not None else 0
+
+    def get_project_revision(self, project_name: str) -> int:
+        return self._current_revision(project_name)
+
+    def get_project_published_revision(self, project_name: str) -> int | None:
+        project = Project.get_or_none(Project.name == project_name)
+        return project.published_revision if project is not None else None
+
+    def _ensure_draft_revision(self, project_name: str) -> int:
+        """The revision an Archive write/delete must target — forking
+        first, inside one transaction, if the current draft is exactly
+        the published one (the first edit after a publish): every row of
+        `Project.revision` is copied to `Project.revision + 1`, which then
+        becomes the new draft. A published revision's own rows are never
+        touched again after this point — see Meta.indexes on Archive
+        itself (project_name, archive_name, revision) being the unique
+        key now, not just (project_name, archive_name)."""
+        with database.atomic():
+            project = Project.get(Project.name == project_name)
+            if project.revision != project.published_revision:
+                return project.revision
+            new_revision = project.revision + 1
+            for archive in Archive.select().where(
+                (Archive.project_name == project_name) & (Archive.revision == project.revision)
+            ):
+                Archive.create(
+                    project_name=project_name, archive_name=archive.archive_name,
+                    revision=new_revision, content=archive.content,
+                )
+            Project.update(revision=new_revision).where(Project.name == project_name).execute()
+            # Every user's own Undo/Redo stack for this project just went
+            # stale — it referenced content belonging to the revision that
+            # was just frozen, not the new draft (see the resolved design
+            # question: clear on fork, rather than tag each entry with the
+            # revision it belongs to).
+            History.delete().where(History.project_name == project_name).execute()
+            return new_revision
+
+    def get_archive(self, project_name: str, archive_name: str, revision: int | None = None) -> str | None:
+        if revision is None:
+            revision = self._current_revision(project_name)
+        row = Archive.get_or_none(
+            (Archive.project_name == project_name) & (Archive.archive_name == archive_name) & (Archive.revision == revision)
+        )
         return row.content if row is not None else None
 
-    def get_archives(self, project_name: str) -> dict:
-        return {row.archive_name: row.content for row in Archive.select(Archive.archive_name, Archive.content).where(Archive.project_name == project_name)}
+    def get_archives(self, project_name: str, revision: int | None = None) -> dict:
+        if revision is None:
+            revision = self._current_revision(project_name)
+        return {
+            row.archive_name: row.content
+            for row in Archive.select(Archive.archive_name, Archive.content).where(
+                (Archive.project_name == project_name) & (Archive.revision == revision)
+            )
+        }
 
     def save_project_files(self, project_name: str, files: dict[str, str]) -> None:
         self.ensure_project(project_name)
+        revision = self._ensure_draft_revision(project_name)
         for archive_name, content in files.items():
-            existing = Archive.get_or_none((Archive.project_name == project_name) & (Archive.archive_name == archive_name))
+            existing = Archive.get_or_none(
+                (Archive.project_name == project_name) & (Archive.archive_name == archive_name) & (Archive.revision == revision)
+            )
             if existing is None:
-                Archive.create(project_name=project_name, archive_name=archive_name, revision=0, content=content)
+                Archive.create(project_name=project_name, archive_name=archive_name, revision=revision, content=content)
             else:
-                Archive.update(content=content, revision=Archive.revision + 1).where(Archive.id == existing.id).execute()
+                Archive.update(content=content).where(Archive.id == existing.id).execute()
 
     def list_projects(self) -> list[str]:
         return [p.name for p in Project.select(Project.name)]
 
-    def list_archives(self, project_name: str) -> list[str]:
-        return [p.archive_name for p in Archive.select(Archive.archive_name).where(Archive.project_name == project_name)]
+    def list_archives(self, project_name: str, revision: int | None = None) -> list[str]:
+        if revision is None:
+            revision = self._current_revision(project_name)
+        return [
+            p.archive_name for p in Archive.select(Archive.archive_name).where(
+                (Archive.project_name == project_name) & (Archive.revision == revision)
+            )
+        ]
 
     def delete_archive(self, project_name: str, archive_name: str) -> None:
-        Archive.delete().where((Archive.project_name == project_name) & (Archive.archive_name == archive_name)).execute()
+        revision = self._ensure_draft_revision(project_name)
+        Archive.delete().where(
+            (Archive.project_name == project_name) & (Archive.archive_name == archive_name) & (Archive.revision == revision)
+        ).execute()
         History.delete().where((History.project_name == project_name) & (History.archive_name == archive_name)).execute()
 
     def delete_archives(self, project_name: str) -> None:
-        """The only caller is ProjectService.delete_project — this is the
-        project's own last file, so the Project row itself goes with it
-        (list_projects() now reads from Project, not from Archive's own
-        distinct project names, so leaving the row behind would make a
-        deleted project keep showing up as one with zero files)."""
+        """The only caller is ProjectService.delete_project — deletes the
+        project entirely, every revision at once (unlike delete_archive,
+        this never goes through _ensure_draft_revision: there's no draft
+        to protect, the whole project is going away). The Project row
+        itself goes with it (list_projects() now reads from Project, not
+        from Archive's own distinct project names, so leaving the row
+        behind would make a deleted project keep showing up as one with
+        zero files)."""
         Archive.delete().where(Archive.project_name == project_name).execute()
         History.delete().where(History.project_name == project_name).execute()
+        StateRemap.delete().where(StateRemap.project_name == project_name).execute()
         Project.delete().where(Project.name == project_name).execute()
+
+    def publish_project(self, project_name: str) -> None:
+        """Sets published_revision = revision — a no-op (not an error) if
+        they already match, so a concurrent double-click is harmless. Note
+        the explicit is_null() branch: published_revision IS NULL right up
+        until a project's first publish, and SQL's NULL != revision is
+        NULL (neither true nor false) under three-valued logic, not a
+        match — a plain != would silently skip that very first publish."""
+        Project.update(published_revision=Project.revision).where(
+            (Project.name == project_name)
+            & (Project.published_revision.is_null() | (Project.published_revision != Project.revision))
+        ).execute()
+
+    def get_state_remap(self, project_name: str, old_key: str) -> str | None:
+        row = StateRemap.get_or_none((StateRemap.project_name == project_name) & (StateRemap.old_key == old_key))
+        return row.new_key if row is not None else None
+
+    def write_state_remap(self, project_name: str, old_key: str, new_key: str) -> None:
+        """Flattens every existing row whose own new_key is exactly
+        `old_key` onto `new_key` first — so a key remapped across several
+        publications always resolves in a single lookup, never a chain."""
+        StateRemap.update(new_key=new_key).where(
+            (StateRemap.project_name == project_name) & (StateRemap.new_key == old_key)
+        ).execute()
+        StateRemap.replace(project_name=project_name, old_key=old_key, new_key=new_key).execute()

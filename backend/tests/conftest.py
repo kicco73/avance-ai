@@ -117,14 +117,17 @@ def client(app: FastAPI) -> TestClient:
 
 @pytest.fixture
 def hello_project(client: TestClient) -> str:
-    """Uploads and activates the bundled "Hello world" sample project —
-    for tests that need a real active project/automaton, not just an
-    empty one. Returns its project_name."""
+    """Uploads, activates, and publishes the bundled "Hello world" sample
+    project — for tests that need a real active project/automaton, not
+    just an empty one. Published because a project with no published
+    revision yet can't have chat sessions (see Db.create_chat_session)."""
     content = (SAMPLES_DIR / "Hello world.zip").read_bytes()
     response = client.put(
         "/api/projects/hello", content=content, headers={"Content-Type": "application/zip"}
     )
     assert response.status_code == 200, response.text
     response = client.put("/api/projects/hello/activate")
+    assert response.status_code == 200, response.text
+    response = client.post("/api/projects/hello/publish", json={})
     assert response.status_code == 200, response.text
     return "hello"

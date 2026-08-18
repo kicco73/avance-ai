@@ -148,6 +148,7 @@ def test_manual_new_session_starts_at_the_automatons_initial_state_not_the_curre
     resp = client.put("/api/projects/cat", content=content, headers={"Content-Type": "application/zip"})
     assert resp.status_code == 200, resp.text
     client.put("/api/projects/cat/activate")
+    client.post("/api/projects/cat/publish", json={})
 
     bootstrap = client.get("/api/chat/session").json()
     assert bootstrap["start_state"] == "welcome"  # this project's init_action.target
@@ -172,6 +173,8 @@ def test_switching_projects_does_not_delete_the_previous_projects_sessions(clien
     for name, sample in (("hello", "Hello world.zip"), ("cat", "Aprendr català.zip")):
         content = (samples_dir / sample).read_bytes()
         resp = client.put(f"/api/projects/{name}", content=content, headers={"Content-Type": "application/zip"})
+        assert resp.status_code == 200, resp.text
+        resp = client.post(f"/api/projects/{name}/publish", json={})
         assert resp.status_code == 200, resp.text
 
     client.put("/api/projects/hello/activate")

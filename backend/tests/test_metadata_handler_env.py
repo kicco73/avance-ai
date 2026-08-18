@@ -100,6 +100,7 @@ class _RecordingProtocol(TurnProtocol):
 
 def test_generate_reply_renders_an_env_block_with_stored_and_computed_values(db):
     db.ensure_project(PROJECT_NAME)
+    db.publish_project(PROJECT_NAME)
     db.create_chat_session(
         username=USERNAME, project_name=PROJECT_NAME,
         datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),

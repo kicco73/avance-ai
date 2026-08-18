@@ -4,7 +4,7 @@ from datetime import datetime
 
 from peewee import fn
 
-from .models import ChatSession, Message, Tracking
+from .models import ChatSession, Message, Project, Tracking
 from .utils import _utc_iso
 
 
@@ -16,8 +16,16 @@ class SessionMixin:
         start_state: str | None = None, end_state: str | None = None,
         source: str = 'native',
     ) -> int:
+        # project_revision is stamped once, from whatever's published right
+        # now, and never touched again — see ChatSession.project_revision's
+        # own docstring. A project that's never been published has nothing
+        # to stamp it with, so it can't have chat sessions yet at all.
+        project = Project.get_or_none(Project.name == project_name)
+        if project is None or project.published_revision is None:
+            raise ValueError(f"Project '{project_name}' has never been published — cannot create a chat session.")
         session = ChatSession.create(
             username=username, project_name=project_name, source=source,
+            project_revision=project.published_revision,
             datetime_start=datetime_start, datetime_end=datetime_end,
             start_state=start_state, end_state=end_state,
         )

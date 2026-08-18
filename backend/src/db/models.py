@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from peewee import AutoField, CharField, DateTimeField, ForeignKeyField, IntegerField, Model, Proxy, TextField
+from peewee import AutoField, CharField, CompositeKey, DateTimeField, ForeignKeyField, IntegerField, Model, Proxy, TextField
 
 database = Proxy()
 
@@ -22,6 +22,12 @@ class ChatSession(BaseModel):
     username = CharField()
     project_name = ForeignKeyField(Project, field='name', column_name='project_name', backref='chat_sessions')
     source = CharField(default='native')
+    # The project's own published_revision at the moment this session was
+    # created — never touched again after (see Db.save_project_files's own
+    # fork-on-first-edit-after-publish: a later fork must never silently
+    # reinterpret an already-created session's own state keys against a
+    # revision it never actually ran against).
+    project_revision = IntegerField(null=False)
     datetime_start = DateTimeField(null=True)
     datetime_end = DateTimeField(null=True)
     start_state = CharField(null=True)
@@ -64,7 +70,25 @@ class Archive(BaseModel):
     content = TextField(null=False)
 
     class Meta:
-        indexes = ((('project_name', 'archive_name'), True),)
+        # One row per revision — a published revision's own rows are never
+        # updated in place again (see Db.save_project_files's fork step),
+        # so (project_name, archive_name) alone can no longer be unique.
+        indexes = ((('project_name', 'archive_name', 'revision'), True),)
+
+class StateRemap(BaseModel):
+    """An administrative fact about a published revision, not a
+    conversation event (never goes in Tracking) — independent of how many
+    sessions/users exist, ready for a future multi-user resolution that
+    isn't built yet (see ProjectService.get_active_automaton_and_state).
+    Flattened on every write (see Db.write_state_remap) so resolving a key
+    is always a single lookup, never a chain, regardless of how many
+    publications have passed since it was first remapped."""
+    project_name = CharField()
+    old_key = CharField()
+    new_key = CharField()
+
+    class Meta:
+        primary_key = CompositeKey('project_name', 'old_key')
 
 class History(BaseModel):
     id = AutoField()

@@ -26,6 +26,8 @@ TWO_STATE_YML = (
 def _upload_and_reach_b(client):
     resp = client.put("/api/projects/proj", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
     assert resp.status_code == 200, resp.text
+    resp = client.post("/api/projects/proj/publish", json={})
+    assert resp.status_code == 200, resp.text
 
     session = client.get("/api/chat/session").json()
     action_resp = client.post("/api/action", json={"action_name": "go", "session_id": session["id"]})

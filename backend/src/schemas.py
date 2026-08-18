@@ -74,3 +74,12 @@ class ReorderActionRequest(BaseModel):
     # actions list — see ProjectService.reorder_actions/
     # AutomatonYamlEditor.reorder_actions.
     value: int
+
+
+class PublishProjectRequest(BaseModel):
+    # Required only when ProjectService.preview_publish reports
+    # needs_remap — the state a human picked for the currently persisted
+    # state that's gone missing from the revision about to be published.
+    # None (the default, and the only valid value when no remap is
+    # needed) means "no remap decision to make".
+    remap_to: str | None = None

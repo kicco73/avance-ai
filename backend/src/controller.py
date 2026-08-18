@@ -24,6 +24,7 @@ from schemas import (
     ChatMessageRequest,
     ExpectedSignalsRequest,
     ExpectedStateRequest,
+    PublishProjectRequest,
     ReorderActionRequest,
     SetEnvValueRequest,
     SetProjectFieldRequest,
@@ -508,6 +509,38 @@ class AvanceController(object):
 
         try:
             result = await self.project_service.put_project(project_name, content, content_type, self._activate_project)
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @get("/api/projects/{project_name}/revision")
+    def get_project_revision(self, project_name: str):
+        """{revision, published_revision} — the "Edit project" toolbar's
+        own revision display."""
+        try:
+            return self.project_service.get_project_revision_info(project_name)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+
+    @get("/api/projects/{project_name}/publish/preview")
+    def get_publish_preview(self, project_name: str):
+        """Whether a Publish right now needs an explicit state remap first
+        — see ProjectService.preview_publish. The Publish button's own
+        confirm flow calls this before POSTing, to know whether to prompt
+        for a remap target."""
+        try:
+            return self.project_service.preview_publish(project_name)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+
+    @post("/api/projects/{project_name}/publish")
+    def post_publish_project(self, project_name: str, req: PublishProjectRequest):
+        """Freezes the current draft as `project_name`'s published
+        revision — see ProjectService.publish_project. `remap_to` is
+        required only when get_publish_preview reported needs_remap."""
+        try:
+            return self.project_service.publish_project(project_name, req.remap_to)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 

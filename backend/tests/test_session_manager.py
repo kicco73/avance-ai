@@ -10,8 +10,11 @@ from chat.session_manager import ChatSessionManager
 @pytest.fixture
 def manager(db) -> ChatSessionManager:
     db.ensure_project("proj")
+    db.publish_project("proj")
     db.ensure_project("proj-a")
+    db.publish_project("proj-a")
     db.ensure_project("proj-b")
+    db.publish_project("proj-b")
     return ChatSessionManager(db)
 
 

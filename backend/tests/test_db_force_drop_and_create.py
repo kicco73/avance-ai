@@ -97,3 +97,50 @@ def test_flag_on_leaves_an_already_compatible_schema_and_its_data_alone(tmp_path
     db = Db(f"sqlite:///{db_path}", force_drop_and_create_when_incompatible=True)
 
     assert db.get_archive("proj", "index.yml") == "kept content"
+
+
+# 'project' is a real FOREIGN KEY parent of 'chatsession'/'archive' (see
+# db/models.py) — created first here, same as sqlite_master's own on-disk
+# order for a real install (peewee creates parents before children), so
+# it's also the first table _drop_and_recreate_if_incompatible's own
+# unordered loop tries to drop. Something (missing 'source') makes the
+# schema incompatible so the drop path actually runs; the schema is
+# otherwise a real regression case, not a synthetic one — this is
+# genuinely what an install from partway through the Project/FK
+# migration looks like on disk.
+FK_PARENT_FIRST_DDL = [
+    "CREATE TABLE project (name TEXT PRIMARY KEY, revision INTEGER, published_revision INTEGER)",
+    "CREATE TABLE chatsession (id INTEGER PRIMARY KEY, username TEXT, "
+    "project_name TEXT REFERENCES project(name), datetime_start TEXT, datetime_end TEXT, "
+    "start_state TEXT, end_state TEXT)",
+    "CREATE TABLE archive (id INTEGER PRIMARY KEY, project_name TEXT REFERENCES project(name), "
+    "archive_name TEXT, revision INTEGER, content TEXT)",
+    "INSERT INTO project (name, revision, published_revision) VALUES ('proj', 0, 0)",
+    "INSERT INTO chatsession (id, username, project_name) VALUES (1, 'user', 'proj')",
+]
+
+
+def test_flag_on_drops_a_parent_table_referenced_by_a_still_existing_child(tmp_path):
+    """Regression test: DROP TABLE on a FK parent while a child table's
+    own constraint still references it raises IntegrityError under
+    SQLite's own FK enforcement (verified directly against sqlite3) —
+    _drop_and_recreate_if_incompatible's own drop loop isn't ordered by
+    dependency, so this used to crash the whole app at startup (with the
+    fallback error app taking over) any time an on-disk schema mid-
+    migration happened to list a FK parent before its own children."""
+    db_path = tmp_path / "test.db"
+    _make_sqlite_file(db_path, FK_PARENT_FIRST_DDL)
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA foreign_key_check")  # sanity: schema is internally consistent
+    finally:
+        conn.close()
+
+    db = Db(f"sqlite:///{db_path}", force_drop_and_create_when_incompatible=True)  # must not raise
+
+    # The old (incompatible) data is gone — dropped, not migrated — and
+    # the new schema works normally from here on.
+    assert db.get_chat_session(1) is None
+    db.save_project_file("user", "proj", "index.yml", "fresh content")
+    assert db.get_archive("proj", "index.yml") == "fresh content"

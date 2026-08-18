@@ -34,6 +34,7 @@ def test_deleting_the_active_project_falls_back_to_a_remaining_one(client):
     after deleting the active one becomes active instead."""
     _upload(client, "hello", "Hello world.zip")
     _upload(client, "cat", "Aprendr català.zip")
+    client.post("/api/projects/cat/publish", json={})
     client.put("/api/projects/hello/activate")
 
     response = client.delete("/api/projects/hello")
@@ -136,7 +137,11 @@ def test_new_project_creates_and_activates_hello_world(client):
     files = client.get("/api/projects/Hello world/files/index.yml").json()
     assert 'hello, world' in files["content"].lower()
 
-    # And it's actually usable, not just a stored blob.
+    # And it's actually usable, not just a stored blob — once published
+    # (see Db.create_chat_session, a project can't have chat sessions
+    # before its first publish).
+    publish_resp = client.post("/api/projects/Hello world/publish", json={})
+    assert publish_resp.status_code == 200, publish_resp.text
     assert client.get("/api/chat/session").status_code == 200
 
 

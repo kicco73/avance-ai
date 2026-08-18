@@ -52,6 +52,7 @@ async def test_get_messages_raises_for_a_deleted_session(chat_service, db):
     reaching open_if_needed's save_message and hitting a FOREIGN KEY
     IntegrityError."""
     db.ensure_project("proj")
+    db.publish_project("proj")
     session_id = db.create_chat_session(
         username="user",
         project_name="proj",
@@ -68,6 +69,7 @@ async def test_get_messages_raises_for_a_deleted_session(chat_service, db):
 
 async def test_get_messages_raises_for_someone_elses_session(chat_service, db):
     db.ensure_project("proj")
+    db.publish_project("proj")
     session_id = db.create_chat_session(
         username="other-user",
         project_name="proj",
@@ -88,6 +90,7 @@ def test_delete_session_raises_for_unknown_session(chat_service):
 
 def test_delete_session_raises_for_someone_elses_session(chat_service, db):
     db.ensure_project("proj")
+    db.publish_project("proj")
     session_id = db.create_chat_session(
         username="other-user",
         project_name="proj",

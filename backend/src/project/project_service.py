@@ -206,29 +206,40 @@ class ProjectService(object):
         return name
     
     def get_active_automaton_and_state(self) -> tuple[Automaton, State]:
-        """The active Automaton paired with its current State — falls back
-        to init_action.target if none is persisted yet, or the persisted
-        one was renamed/removed on disk since. A pure read, no side
-        effect: never returns the reserved implicit state ("") itself, so
-        every caller of this (not just ChatService.open_if_needed) always
-        sees a real state, whether or not init_action has actually been
-        resolved/persisted yet. Raises FileNotFoundError (same exception
-        _load_project itself raises for an unknown project name) when
-        there's no active project at all — see get_active_project_name's
-        own docstring for when that happens."""
+        """The active Automaton paired with its current State. No state
+        persisted yet (nothing has ever run) still falls back to
+        init_action.target, same as always — that's a legitimate default,
+        not a broken reference. A persisted state that no longer exists in
+        the current automaton is different: it means a publish once
+        renamed/removed it out from under an in-progress conversation, and
+        StateRemap (written at that publish, see ProjectService.
+        publish_project) is the only thing allowed to resolve it — no more
+        silent fallback to init_action.target. If StateRemap doesn't have
+        an answer either, that's an inconsistency the publish-time check
+        should have prevented; raising here is a guardrail, not the
+        expected path. A pure read, no side effect: never returns the
+        reserved implicit state ("") itself, so every caller of this (not
+        just ChatService.open_if_needed) always sees a real state, whether
+        or not init_action has actually been resolved/persisted yet.
+        Raises FileNotFoundError (same exception _load_project itself
+        raises for an unknown project name) when there's no active project
+        at all — see get_active_project_name's own docstring for when that
+        happens."""
         project_name = self.get_active_project_name()
         if project_name is None:
             raise FileNotFoundError("No project is currently active.")
         automaton = self._load_project(project_name)
         state_key = self._db.get_current_state(project_name)
-        if state_key is None or state_key not in automaton.states:
-            if state_key is not None:
-                logger.warning(
-                    "Project '%s': persisted state '%s' no longer exists (renamed/removed on "
-                    "disk?) — falling back to init_action.target '%s'.",
-                    project_name, state_key, automaton.init_action.target,
-                )
+        if state_key is None:
             state_key = automaton.init_action.target
+        elif state_key not in automaton.states:
+            remapped = self._db.get_state_remap(project_name, state_key)
+            if remapped is None or remapped not in automaton.states:
+                raise ValueError(
+                    f"Project '{project_name}': persisted state '{state_key}' no longer exists "
+                    "and has no StateRemap entry — this should have been caught at publish time."
+                )
+            state_key = remapped
         return automaton, automaton.get_state(state_key)
 
     def apply_manual_action(self, action_name: str, session_id: int) -> tuple[StatePayload, Action, str]:
@@ -355,6 +366,60 @@ class ProjectService(object):
         except FileNotFoundError:
             active = None
         return {"projects": names, "active": active}
+
+    def get_project_revision_info(self, project_name: str) -> dict:
+        """{revision, published_revision} — the "Edit project" toolbar's
+        own revision display, refreshed after every save (a save can fork,
+        bumping `revision`) and after every publish."""
+        if project_name not in self._db.list_projects():
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+        return {
+            "revision": self._db.get_project_revision(project_name),
+            "published_revision": self._db.get_project_published_revision(project_name),
+        }
+
+    def preview_publish(self, project_name: str) -> dict:
+        """Whether publishing `project_name` right now needs a human state
+        remap decision first — the one case where the app itself never
+        picks: the current persisted state (mono-user today, see
+        Db.get_current_state) has gone missing from the draft that's about
+        to become the published revision. No session ever having happened
+        (current_state_key is None) is not this case — nothing to remap."""
+        if project_name not in self._db.list_projects():
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+        draft = self._load_project(project_name)
+        current_state_key = self._db.get_current_state(project_name)
+        if current_state_key is None or current_state_key in draft.states:
+            return {"needs_remap": False}
+        return {
+            "needs_remap": True,
+            "missing_state": current_state_key,
+            "available_states": [state.key for state in draft.states.values() if state.key != ""],
+        }
+
+    def publish_project(self, project_name: str, remap_to: str | None = None) -> dict:
+        """Sets published_revision = revision for `project_name` — freezing
+        the current draft forever (see Db.save_project_files' own fork-on-
+        first-edit-after-publish). If the currently persisted state has
+        gone missing from that draft (see preview_publish), `remap_to`
+        must name a real state in it; the resulting StateRemap entry is
+        what get_active_automaton_and_state consults from then on, instead
+        of ever guessing (no fallback to init_action.target, no heuristic
+        match — the choice is always the caller's, made explicit here)."""
+        if project_name not in self._db.list_projects():
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+        draft = self._load_project(project_name)
+        current_state_key = self._db.get_current_state(project_name)
+        if current_state_key is not None and current_state_key not in draft.states:
+            if remap_to is None:
+                raise ValueError(
+                    f"State '{current_state_key}' no longer exists in this revision — a remap target is required."
+                )
+            if remap_to == "" or remap_to not in draft.states:
+                raise ValueError(f"'{remap_to}' is not a valid state in this revision.")
+            self._db.write_state_remap(project_name, current_state_key, remap_to)
+        self._db.publish_project(project_name)
+        return self.get_project_revision_info(project_name)
 
     async def activate_project(self, project_name: str, commit: CommitCallback) -> Automaton:
         """Validates via _load_and_validate(), persists `project_name` as

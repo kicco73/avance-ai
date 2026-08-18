@@ -44,6 +44,8 @@ def _upload_and_activate(client, name: str, yaml_text: str):
     assert response.status_code == 200, response.text
     response = client.put(f"/api/projects/{name}/activate")
     assert response.status_code == 200, response.text
+    response = client.post(f"/api/projects/{name}/publish", json={})
+    assert response.status_code == 200, response.text
 
 
 def test_uploading_a_project_with_a_signal_named_after_a_metric_is_rejected(client):

@@ -112,6 +112,7 @@ def _tracking_service(db, automaton: Automaton, signals_json: str = '{"mySignal"
 
 def _session_id(db) -> int:
     db.ensure_project(PROJECT_NAME)
+    db.publish_project(PROJECT_NAME)
     return db.create_chat_session(
         username=USERNAME, project_name=PROJECT_NAME,
         datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),

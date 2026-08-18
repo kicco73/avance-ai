@@ -36,6 +36,7 @@ def _session(db, username=USERNAME, project_name=PROJECT_NAME, start=None):
     # a value (directly or via env.update) needs a session first.
     start = start or datetime(2026, 1, 1)
     db.ensure_project(project_name)
+    db.publish_project(project_name)
     return db.create_chat_session(
         username=username, project_name=project_name,
         datetime_start=start, datetime_end=start,
@@ -70,6 +71,7 @@ def test_get_reads_a_stored_value(db):
 @pytest.mark.regression
 def test_get_falls_back_to_default_for_an_unknown_key(db):
     db.ensure_project(PROJECT_NAME)
+    db.publish_project(PROJECT_NAME)
     db.set_active_project_name(PROJECT_NAME, USERNAME)
     assert _env(db).get("nope", "fallback") == "fallback"
 
@@ -179,6 +181,7 @@ def test_clear_action_set_leaves_stored_and_computed_untouched(db):
 @pytest.mark.contract
 def test_today_and_time_are_computed_fresh_never_stored(db):
     db.ensure_project(PROJECT_NAME)
+    db.publish_project(PROJECT_NAME)
     db.set_active_project_name(PROJECT_NAME, USERNAME)
     env = _env(db)
 
@@ -193,6 +196,7 @@ def test_today_and_time_are_computed_fresh_never_stored(db):
 @pytest.mark.regression
 def test_number_of_user_sessions_counts_every_session_for_the_project(db):
     db.ensure_project(PROJECT_NAME)
+    db.publish_project(PROJECT_NAME)
     db.set_active_project_name(PROJECT_NAME, USERNAME)
     env = _env(db)
     assert env.get("number_of_user_sessions") == 0
@@ -215,6 +219,7 @@ def test_number_of_user_sessions_counts_every_session_for_the_project(db):
 @pytest.mark.regression
 def test_current_session_duration_in_minutes_is_zero_with_no_session(db):
     db.ensure_project(PROJECT_NAME)
+    db.publish_project(PROJECT_NAME)
     db.set_active_project_name(PROJECT_NAME, USERNAME)
     assert _env(db).get("current_session_duration_in_minutes") == 0.0
 
@@ -222,6 +227,7 @@ def test_current_session_duration_in_minutes_is_zero_with_no_session(db):
 @pytest.mark.regression
 def test_current_session_duration_in_minutes_uses_the_most_recent_session(db):
     db.ensure_project(PROJECT_NAME)
+    db.publish_project(PROJECT_NAME)
     db.set_active_project_name(PROJECT_NAME, USERNAME)
     ten_minutes_ago = datetime.utcnow() - timedelta(minutes=10)
     db.create_chat_session(
@@ -238,6 +244,7 @@ def test_current_session_duration_in_minutes_uses_the_most_recent_session(db):
 @pytest.mark.regression
 def test_last_user_session_datetime_is_none_for_a_first_ever_session(db):
     db.ensure_project(PROJECT_NAME)
+    db.publish_project(PROJECT_NAME)
     db.set_active_project_name(PROJECT_NAME, USERNAME)
     db.create_chat_session(
         username=USERNAME, project_name=PROJECT_NAME,
@@ -251,6 +258,7 @@ def test_last_user_session_datetime_is_none_for_a_first_ever_session(db):
 @pytest.mark.regression
 def test_last_user_session_datetime_is_the_previous_sessions_start(db):
     db.ensure_project(PROJECT_NAME)
+    db.publish_project(PROJECT_NAME)
     db.set_active_project_name(PROJECT_NAME, USERNAME)
     db.create_chat_session(
         username=USERNAME, project_name=PROJECT_NAME,
@@ -278,6 +286,7 @@ def test_last_user_session_datetime_is_the_previous_sessions_start(db):
 @pytest.mark.regression
 def test_state_duration_in_minutes_is_zero_with_no_transition_yet(db):
     db.ensure_project(PROJECT_NAME)
+    db.publish_project(PROJECT_NAME)
     db.set_active_project_name(PROJECT_NAME, USERNAME)
     assert _env(db).get("state_duration_in_minutes") == 0.0
 
@@ -285,6 +294,7 @@ def test_state_duration_in_minutes_is_zero_with_no_transition_yet(db):
 @pytest.mark.regression
 def test_state_duration_in_minutes_since_the_last_real_transition(db):
     db.ensure_project(PROJECT_NAME)
+    db.publish_project(PROJECT_NAME)
     db.set_active_project_name(PROJECT_NAME, USERNAME)
     session_id = db.create_chat_session(
         username=USERNAME, project_name=PROJECT_NAME,
@@ -306,6 +316,7 @@ def test_state_duration_in_minutes_since_the_last_real_transition(db):
 @pytest.mark.contract
 def test_env_computed_key_is_usable_in_a_trigger(db):
     db.ensure_project(PROJECT_NAME)
+    db.publish_project(PROJECT_NAME)
     db.set_active_project_name(PROJECT_NAME, USERNAME)
     automaton = _automaton_with_trigger("number_of_user_sessions >= 1")
     env = _env(db)

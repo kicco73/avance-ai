@@ -14,7 +14,7 @@ from .tracking import TrackingMixin
 
 from playhouse.db_url import connect, parse as parse_db_url
 
-from .models import Archive, ChatSession, History, Message, Project, Settings, Tracking, database
+from .models import Archive, ChatSession, History, Message, Project, Settings, StateRemap, Tracking, database
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ class Db(
     HistoryMixin):
 
     _SQLITE_MAGIC = b"SQLite format 3\x00"
-    _MODELS = (Project, ChatSession, Message, Settings, Tracking, Archive, History)
+    _MODELS = (Project, ChatSession, Message, Settings, Tracking, Archive, History, StateRemap)
 
     def __init__(self, database_url: str, force_drop_and_create_when_incompatible: bool=False) -> None:
         self._database_url = database_url
@@ -77,8 +77,20 @@ class Db(
         if actual == self._expected_schema():
             return
         logger.warning("Database schema at '%s' doesn't match what this code expects — dropping and recreating every table from scratch (database.force-drop-and-create-when-incompatible is enabled).", path)
-        for table in actual:
-            database.execute_sql(f'DROP TABLE IF EXISTS "{table}"')
+        # Dropping a parent table (e.g. 'project') while a child table
+        # (e.g. 'chatsession'/'archive') still has a FOREIGN KEY
+        # referencing it raises IntegrityError under SQLite's own FK
+        # enforcement — verified DROP TABLE is checked, not just DML.
+        # `actual`'s own table order reflects sqlite_master's on-disk
+        # order, not a dependency-safe one, so foreign key checking is
+        # switched off for the duration of the drop only, then restored
+        # before anything gets recreated.
+        database.execute_sql('PRAGMA foreign_keys = OFF')
+        try:
+            for table in actual:
+                database.execute_sql(f'DROP TABLE IF EXISTS "{table}"')
+        finally:
+            self._enable_foreign_keys()
 
     @staticmethod
     def _enable_foreign_keys() -> None:

@@ -28,6 +28,8 @@ def _upload_and_activate(client, name: str = "metrics-playground"):
     assert response.status_code == 200, response.text
     response = client.put(f"/api/projects/{name}/activate")
     assert response.status_code == 200, response.text
+    response = client.post(f"/api/projects/{name}/publish", json={})
+    assert response.status_code == 200, response.text
     return name
 
 
