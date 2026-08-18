@@ -7,15 +7,24 @@
 // of which screen triggered it, so this is the one place that ever needs
 // to render it — no props, no per-screen copy of this markup to keep in
 // sync.
-import { ref, watch } from 'vue'
+import { onUnmounted, ref, watch } from 'vue'
 import { clearApiError, errorDetail, errorMessage } from '../errorStore.js'
 
 const showDetail = ref(false)
 
 // A new error replaces whatever was being inspected — stale expanded
 // detail from a previous, unrelated failure would otherwise linger open.
-watch(errorMessage, () => {
+// It also restarts the auto-dismiss timer below — each error gets its
+// own full 10s, not whatever was left over from the one it replaced.
+const AUTO_DISMISS_MS = 10000
+let dismissTimer = null
+watch(errorMessage, (message) => {
   showDetail.value = false
+  if (dismissTimer) clearTimeout(dismissTimer)
+  dismissTimer = message ? setTimeout(clearApiError, AUTO_DISMISS_MS) : null
+})
+onUnmounted(() => {
+  if (dismissTimer) clearTimeout(dismissTimer)
 })
 </script>
 

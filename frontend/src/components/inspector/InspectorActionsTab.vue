@@ -8,7 +8,7 @@
 // {actionName, position} intent — EditProjectView.vue is the one that
 // knows the containing state's own key, calls the actual endpoint, and
 // coordinates refreshing the graph/code buffer afterward.
-import { nextTick, ref, watch } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import InspectorDetailCard from './InspectorDetailCard.vue'
 
 const props = defineProps({
@@ -33,6 +33,24 @@ const emit = defineEmits(['select', 'select-attachment', 'reorder', 'set-field',
 
 const draggedIndex = ref(null)
 const dragOverIndex = ref(null)
+// The row itself is what HTML5 drag-and-drop needs to be draggable (so
+// the whole card follows the cursor, not just the handle span) — but a
+// row-wide `draggable="true"` swallows every ordinary click anywhere in
+// its subtree into a native drag-start gesture, which starves
+// InspectorDetailCard.vue's own @click from ever firing (the accordion
+// never opens). Instead, `draggable` is only ever true while the mouse
+// is actually down on the ⠿ handle — everywhere else in the row a click
+// behaves like a plain click.
+const dragArmed = ref(false)
+// A mouseup that lands outside the handle (cursor drifted off it between
+// mousedown and release, without a drag ever actually starting) would
+// otherwise never reach the handle's own @mouseup — this window-level
+// fallback guarantees dragArmed always gets cleared.
+function disarm() {
+  dragArmed.value = false
+}
+onMounted(() => window.addEventListener('mouseup', disarm))
+onUnmounted(() => window.removeEventListener('mouseup', disarm))
 
 function isSelected(action) {
   return props.selectedElement?.kind === 'action' && props.selectedElement.data.actionName === action.data.actionName
@@ -95,6 +113,7 @@ function handleDrop(index) {
   const fromIndex = draggedIndex.value
   draggedIndex.value = null
   dragOverIndex.value = null
+  dragArmed.value = false
   if (fromIndex === null || fromIndex === index) return
   const actionName = props.actions[fromIndex]?.data.actionName
   if (actionName == null) return
@@ -104,6 +123,7 @@ function handleDrop(index) {
 function handleDragEnd() {
   draggedIndex.value = null
   dragOverIndex.value = null
+  dragArmed.value = false
 }
 </script>
 
@@ -116,14 +136,19 @@ function handleDragEnd() {
       :ref="(el) => setRowRef(action.data.actionName, el)"
       class="inspector-actions-tab-row"
       :class="{ 'inspector-actions-tab-row-drag-over': dragOverIndex === index && draggedIndex !== index }"
-      draggable="true"
+      :draggable="dragArmed"
       @dragstart="handleDragStart(index)"
       @dragover.prevent="handleDragOver(index)"
       @dragleave="handleDragLeave(index)"
       @drop.prevent="handleDrop(index)"
       @dragend="handleDragEnd"
     >
-      <span class="inspector-actions-tab-drag-handle" title="Drag to reorder">⠿</span>
+      <span
+        class="inspector-actions-tab-drag-handle"
+        title="Drag to reorder"
+        @mousedown="dragArmed = true"
+        @mouseup="dragArmed = false"
+      >⠿</span>
       <InspectorDetailCard
         class="inspector-actions-tab-card"
         :selected-element="action"
