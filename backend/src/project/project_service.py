@@ -289,11 +289,14 @@ class ProjectService(object):
             relevant_names = automaton.all_triggerable_signal_names()
         return [
             {
-                "name": signal.name,
-                "ui_label": signal.ui_label,
-                "ui_description": signal.ui_description,
-                "attachments": [a.filename for a in signal.attachments.values()],
+                "signal": Automaton.get_signal_payload(signal),
                 "relevant": signal.name in relevant_names,
+                # Not part of SignalPayload itself (see its own
+                # get_signal_payload docstring on why attachments stays
+                # empty there) — filenames only, same as a state/action's
+                # own attachments (see get_project_graph's node/edge
+                # wrappers below), never full content.
+                "attachments": [a.filename for a in signal.attachments.values()],
             }
             for signal in automaton.signals
         ]
@@ -320,12 +323,8 @@ class ProjectService(object):
         real_states = [state for state in automaton.states.values() if state.key != ""]
         nodes = [
             {
-                "key": state.key,
-                "ui_label": state.ui_label,
-                "ui_description": state.ui_description,
-                "final": state.final,
+                "state": Automaton.get_state_payload(state),
                 "is_start": state.key == automaton.init_action.target,
-                "chat": state.chat,
                 "history_cutoff": state.history_cutoff,
                 "transition_log_level": state.transition_log_level,
                 "attachments": list(state.attachments.keys()),
@@ -334,16 +333,15 @@ class ProjectService(object):
         ]
         edges = [
             {
+                "action": Automaton.get_action_payload(action),
                 "source": state.key,
-                "target": action.target,
-                "action_name": action.name,
-                "ui_label": action.ui_label,
-                "ui_description": action.ui_description,
-                "ui_button": action.ui_button,
+                # None of these three belong in ActionPayload itself (see
+                # its own get_action_payload docstring) — `trigger`
+                # especially never reaches a live chat client, only this
+                # "Edit project" Inspect-panel-only edge wrapper.
                 "trigger": action.trigger,
-                "has_trigger": action.trigger is not None,
                 "action_prompt": action.action_prompt,
-                "on-enter": action.on_enter,
+                "ui_description": action.ui_description,
             }
             for state in automaton.states.values()
             for action in state.actions

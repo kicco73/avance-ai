@@ -347,7 +347,7 @@ const validStateKeys = ref(new Set())
 async function refreshValidStateKeys() {
   try {
     const { nodes } = await getProjectGraph(props.projectName)
-    validStateKeys.value = new Set(nodes.map((n) => n.key))
+    validStateKeys.value = new Set(nodes.map((n) => n.state.key))
   } catch {
     // already surfaced via apiFetch
   }

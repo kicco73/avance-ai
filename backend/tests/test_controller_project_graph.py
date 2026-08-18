@@ -13,7 +13,7 @@ pytestmark = pytest.mark.contract
 def test_graph_excludes_the_reserved_implicit_state_from_nodes(client, hello_project):
     graph = client.get("/api/projects/hello/graph").json()
 
-    assert [n["key"] for n in graph["nodes"]] == ["Hello"]
+    assert [n["state"]["key"] for n in graph["nodes"]] == ["Hello"]
     assert graph["nodes"][0]["is_start"] is True
 
 
@@ -26,9 +26,9 @@ def test_graph_includes_an_edge_from_the_reserved_state_for_init_action(client, 
 
     init_edges = [e for e in graph["edges"] if e.get("source") in ("", None)]
     assert len(init_edges) == 1
-    assert init_edges[0]["target"] == "Hello"
-    assert init_edges[0]["action_name"] in {"init_action", "init-action"}
-    assert init_edges[0]["has_trigger"] is False
+    assert init_edges[0]["action"]["target"] == "Hello"
+    assert init_edges[0]["action"]["name"] in {"init_action", "init-action"}
+    assert init_edges[0]["action"]["has_trigger"] is False
 
 
 def test_on_enter_is_reported_per_edge_not_per_node(client):
@@ -53,7 +53,7 @@ def test_on_enter_is_reported_per_edge_not_per_node(client):
 
     graph = client.get("/api/projects/on-enter-proj/graph").json()
 
-    assert "on-enter" not in graph["nodes"][0]
-    edges_by_name = {e["action_name"]: e for e in graph["edges"]}
-    assert edges_by_name["go-quiet"]["on-enter"] is None
-    assert edges_by_name["go-loud"]["on-enter"] == "celebrate"
+    assert "on-enter" not in graph["nodes"][0]["state"]
+    edges_by_name = {e["action"]["name"]: e for e in graph["edges"]}
+    assert edges_by_name["go-quiet"]["action"]["on-enter"] is None
+    assert edges_by_name["go-loud"]["action"]["on-enter"] == "celebrate"

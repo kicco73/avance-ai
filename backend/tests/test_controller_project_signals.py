@@ -93,7 +93,7 @@ def test_signals_report_whether_a_trigger_references_them(client):
     response = client.get("/api/projects/relevance-test/signals")
 
     assert response.status_code == 200
-    by_name = {s["name"]: s for s in response.json()["signals"]}
+    by_name = {s["signal"]["name"]: s for s in response.json()["signals"]}
     assert by_name["progress"]["relevant"] is True
     assert by_name["score"]["relevant"] is False
 
@@ -107,7 +107,7 @@ def test_a_signal_referenced_only_via_env_field_is_also_relevant(client):
 
     response = client.get("/api/projects/relevance-env-test/signals")
 
-    by_name = {s["name"]: s for s in response.json()["signals"]}
+    by_name = {s["signal"]["name"]: s for s in response.json()["signals"]}
     assert by_name["score"]["relevant"] is True
 
 
@@ -116,7 +116,7 @@ def test_without_state_key_relevance_is_every_states_triggers_combined(client):
 
     response = client.get("/api/projects/two-state-test/signals")
 
-    by_name = {s["name"]: s for s in response.json()["signals"]}
+    by_name = {s["signal"]["name"]: s for s in response.json()["signals"]}
     assert by_name["progressSignal"]["relevant"] is True
     assert by_name["moodSignal"]["relevant"] is True
     assert by_name["unusedSignal"]["relevant"] is False
@@ -126,12 +126,12 @@ def test_state_key_scopes_relevance_to_that_states_own_outgoing_triggers(client)
     _upload(client, "two-state-scoped-test", TWO_STATE_PROJECT)
 
     response_a = client.get("/api/projects/two-state-scoped-test/signals?state_key=a")
-    by_name_a = {s["name"]: s for s in response_a.json()["signals"]}
+    by_name_a = {s["signal"]["name"]: s for s in response_a.json()["signals"]}
     assert by_name_a["progressSignal"]["relevant"] is True
     assert by_name_a["moodSignal"]["relevant"] is False
 
     response_b = client.get("/api/projects/two-state-scoped-test/signals?state_key=b")
-    by_name_b = {s["name"]: s for s in response_b.json()["signals"]}
+    by_name_b = {s["signal"]["name"]: s for s in response_b.json()["signals"]}
     assert by_name_b["progressSignal"]["relevant"] is False
     assert by_name_b["moodSignal"]["relevant"] is True
 
@@ -141,6 +141,6 @@ def test_an_unknown_state_key_falls_back_to_every_states_triggers_combined(clien
 
     response = client.get("/api/projects/unknown-state-key-test/signals?state_key=not-a-real-state")
 
-    by_name = {s["name"]: s for s in response.json()["signals"]}
+    by_name = {s["signal"]["name"]: s for s in response.json()["signals"]}
     assert by_name["progressSignal"]["relevant"] is True
     assert by_name["moodSignal"]["relevant"] is True

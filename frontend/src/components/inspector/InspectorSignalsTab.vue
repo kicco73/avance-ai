@@ -115,24 +115,24 @@ onMounted(loadSignals)
       No relevant signals — none are referenced by an action's own trigger yet.
     </p>
     <div v-else class="inspector-signal-list">
-      <div v-for="signal in displayedSignals" :key="signal.name" class="inspector-signal-block" :class="{ 'inspector-signal-block-clickable': editableFiles }" :title="editableFiles ? 'Jump to definition' : undefined" @click="editableFiles && emit('jump-to-definition', { kind: 'signal', signalName: signal.name })">
+      <div v-for="entry in displayedSignals" :key="entry.signal.name" class="inspector-signal-block" :class="{ 'inspector-signal-block-clickable': editableFiles }" :title="editableFiles ? 'Jump to definition' : undefined" @click="editableFiles && emit('jump-to-definition', { kind: 'signal', signalName: entry.signal.name })">
         <div class="inspector-signal-header">
           <span class="inspector-detail-badge inspector-detail-badge-signal">Signal</span>
-          <span class="inspector-signal-name">{{ signal.ui_label || signal.name }}</span>
+          <span class="inspector-signal-name">{{ entry.signal.ui_label || entry.signal.name }}</span>
         </div>
-        <span v-if="signal.ui_description" class="inspector-signal-ui_description">{{ signal.ui_description }}</span>
-        <div v-if="editableFiles && signal.attachments?.length" class="inspector-attachments">
-          <button v-for="(fileName, idx) in signal.attachments" :key="fileName" class="inspector-attachment-btn" :class="{ 'inspector-attachment-btn-disabled': !editableFiles.includes(fileName) }" :disabled="!editableFiles.includes(fileName)" :title="editableFiles.includes(fileName) ? fileName : `${fileName} (not text-editable)`" @click.stop="selectAttachment(fileName)">{{ attachmentLabel(idx) }}</button>
+        <span v-if="entry.signal.ui_description" class="inspector-signal-ui_description">{{ entry.signal.ui_description }}</span>
+        <div v-if="editableFiles && entry.attachments?.length" class="inspector-attachments">
+          <button v-for="(fileName, idx) in entry.attachments" :key="fileName" class="inspector-attachment-btn" :class="{ 'inspector-attachment-btn-disabled': !editableFiles.includes(fileName) }" :disabled="!editableFiles.includes(fileName)" :title="editableFiles.includes(fileName) ? fileName : `${fileName} (not text-editable)`" @click.stop="selectAttachment(fileName)">{{ attachmentLabel(idx) }}</button>
         </div>
         <div class="inspector-signal-bar-track">
-          <div v-if="hasSignalValue(signalValues[signal.name])" class="inspector-signal-bar-fill" :class="{ 'inspector-signal-bar-changed': recentlyChangedSignals.has(signal.name) }" :style="{ width: signalValues[signal.name].value + '%' }"></div>
-          <div v-else class="inspector-signal-bar-fill inspector-signal-bar-na" :class="{ 'inspector-signal-bar-changed': recentlyChangedSignals.has(signal.name) }"></div>
-          <div v-if="annotatable" class="inspector-signal-expected-fill" :class="{ 'inspector-signal-expected-fill-set': isExpectedValueSet(signal.name) }" :style="{ width: displayedExpectedValue(signal.name) + '%' }"></div>
-          <input v-if="annotatable" type="range" min="0" max="100" step="1" class="inspector-signal-slider" :class="{ 'inspector-signal-slider-set': isExpectedValueSet(signal.name) }" :value="displayedExpectedValue(signal.name)" :title="`Expected: ${expectedValues[signal.name] ?? '—'}`" @click.stop @input="onExpectedSignalInput(signal.name, $event.target.value)" @change="onExpectedSignalChange(signal.name, $event.target.value)" />
+          <div v-if="hasSignalValue(signalValues[entry.signal.name])" class="inspector-signal-bar-fill" :class="{ 'inspector-signal-bar-changed': recentlyChangedSignals.has(entry.signal.name) }" :style="{ width: signalValues[entry.signal.name].value + '%' }"></div>
+          <div v-else class="inspector-signal-bar-fill inspector-signal-bar-na" :class="{ 'inspector-signal-bar-changed': recentlyChangedSignals.has(entry.signal.name) }"></div>
+          <div v-if="annotatable" class="inspector-signal-expected-fill" :class="{ 'inspector-signal-expected-fill-set': isExpectedValueSet(entry.signal.name) }" :style="{ width: displayedExpectedValue(entry.signal.name) + '%' }"></div>
+          <input v-if="annotatable" type="range" min="0" max="100" step="1" class="inspector-signal-slider" :class="{ 'inspector-signal-slider-set': isExpectedValueSet(entry.signal.name) }" :value="displayedExpectedValue(entry.signal.name)" :title="`Expected: ${expectedValues[entry.signal.name] ?? '—'}`" @click.stop @input="onExpectedSignalInput(entry.signal.name, $event.target.value)" @change="onExpectedSignalChange(entry.signal.name, $event.target.value)" />
         </div>
-        <div v-if="annotatable && isExpectedValueSet(signal.name)" class="inspector-signal-annotation-footer">
-          <span class="inspector-signal-expected-label">Expected: {{ draggingExpectedValues[signal.name] ?? expectedValues[signal.name] }}</span>
-          <button v-if="expectedValues[signal.name] != null" type="button" class="inspector-annotation-clear-btn" title="Remove annotation" @click.stop="onClearExpectedSignal(signal.name)">×</button>
+        <div v-if="annotatable && isExpectedValueSet(entry.signal.name)" class="inspector-signal-annotation-footer">
+          <span class="inspector-signal-expected-label">Expected: {{ draggingExpectedValues[entry.signal.name] ?? expectedValues[entry.signal.name] }}</span>
+          <button v-if="expectedValues[entry.signal.name] != null" type="button" class="inspector-annotation-clear-btn" title="Remove annotation" @click.stop="onClearExpectedSignal(entry.signal.name)">×</button>
         </div>
       </div>
     </div>

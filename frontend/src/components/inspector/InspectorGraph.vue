@@ -66,7 +66,16 @@ function destroyGraph() {
   cyGraph = null
 }
 
-function nodeToCyData(n) { return { id: n.key, uiLabel: n.ui_label, uiDescription: n.ui_description, final: n.final, isStart: n.is_start, chat: n.chat, historyCutoff: n.history_cutoff, transitionLogLevel: n.transition_log_level, attachments: n.attachments } }
+// `n`/`e` are the node/edge *wrappers* project_service.py's
+// get_project_graph now sends (see its own docstring) — a nested
+// StatePayload/ActionPayload (the exact shape chat's own live client
+// gets too, see Automaton.get_state_payload/get_action_payload) plus
+// whatever extra fields the graph itself needs and those shared payloads
+// deliberately don't carry (is_start/history_cutoff/transition_log_level/
+// attachments on a node; source/trigger/action_prompt/ui_description on
+// an edge — trigger especially never reaches a live chat client, only
+// this Inspect-panel-only wrapper).
+function nodeToCyData(n) { return { id: n.state.key, uiLabel: n.state.ui_label, uiDescription: n.state.ui_description, final: n.state.final, isStart: n.is_start, chat: n.state.chat, historyCutoff: n.history_cutoff, transitionLogLevel: n.transition_log_level, attachments: n.attachments } }
 // The one edge with source === "" is the automaton's own init_action (see
 // project_service.py's get_project_graph). Its cytoscape-facing `source`
 // is PSEUDO_START_ID (a real node has to exist there — see
@@ -84,16 +93,16 @@ function edgeToCyData(e, id) {
   return {
     id,
     source: isInitEdge ? PSEUDO_START_ID : e.source,
-    target: e.target,
+    target: e.action.target,
     matchStateKey: e.source,
-    uiLabel: e.ui_label,
+    uiLabel: e.action.ui_label,
     uiDescription: e.ui_description,
-    actionName: isInitEdge ? '' : e.action_name,
-    buttonText: e.ui_button,
+    actionName: isInitEdge ? '' : e.action.name,
+    buttonText: e.action.ui_button,
     trigger: e.trigger,
-    hasTrigger: e.has_trigger,
+    hasTrigger: e.action.has_trigger,
     actionPrompt: e.action_prompt,
-    onEnter: e['on-enter'],
+    onEnter: e.action['on-enter'],
     isInitEdge
   }
 }
@@ -139,7 +148,7 @@ function handleEdgeTap(evt) {
 function renderGraph(nodes, edges) {
   destroyGraph()
   if (!graphHost.value) return
-  const startKey = nodes.find(n => n.is_start)?.key
+  const startKey = nodes.find(n => n.is_start)?.state.key
   // Rooting the layout at the pseudo-start node itself (when the init
   // edge exists — see pseudoStartNodeElements) rather than the real start
   // state puts that state one level *into* the tree, so its own incoming
@@ -242,10 +251,10 @@ function syncSelectionToSelection({ emitJump = false } = {}) {
     }
   }
   const key = props.highlightedStateKey
-  const node = key == null ? null : graphNodes.value.find((n) => n.key === key)
+  const node = key == null ? null : graphNodes.value.find((n) => n.state.key === key)
   if (!node) return selectGraphElement(null, null)
   selectGraphElement('state', nodeToCyData(node))
-  if (emitJump) emit('jump-to-definition', { kind: 'state', stateKey: node.key })
+  if (emitJump) emit('jump-to-definition', { kind: 'state', stateKey: node.state.key })
 }
 
 function resize() { cyGraph?.resize() }
@@ -279,7 +288,7 @@ watch(() => props.firedActionEdge, () => { applyFiredActionHighlight(); syncSele
 // have produced, off the exact same already-loaded graphNodes/graphEdges
 // rather than a second, possibly-inconsistent fetch of their own.
 function stateElementFor(stateKey) {
-  const node = graphNodes.value.find((n) => n.key === stateKey)
+  const node = graphNodes.value.find((n) => n.state.key === stateKey)
   return node ? { kind: 'state', data: nodeToCyData(node) } : null
 }
 
@@ -333,7 +342,7 @@ onBeforeUnmount(destroyGraph)
         @change="onExpectedStateChange($event.target.value)"
       >
         <option :value="UNLABELLED" class="inspector-annotation-option-unlabelled">&lt;not labelled&gt;</option>
-        <option v-for="node in graphNodes" :key="node.key" :value="node.key">{{ node.ui_label }}</option>
+        <option v-for="node in graphNodes" :key="node.state.key" :value="node.state.key">{{ node.state.ui_label }}</option>
       </select>
     </div>
   </div>

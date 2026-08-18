@@ -164,6 +164,50 @@ class Automaton(object):
         return self.states[state_key]
 
     @staticmethod
+    def get_action_payload(action: Action) -> ActionPayload:
+        """Serializes `action` into the plain-dict shape every
+        action-reporting endpoint sends to the frontend — the one place
+        this shape is built, so it can't drift between call sites (see
+        get_state_payload's own nested use, and project_service.py's
+        get_project_graph's own flat edge list). Deliberately never
+        includes `trigger`'s own raw expression — just whether one is
+        set (the frontend uses this to decide button visibility, see
+        ActionButtons.vue, never to evaluate anything itself) — the
+        expression itself (thresholds, risk-detection conditions) is
+        internal transition logic that must never reach a live chat
+        client, only ever the "Edit project" view's own Inspect panel
+        (see get_project_graph's own edge wrapper, which carries it
+        alongside this payload instead of inside it)."""
+        return {
+            "name": action.name,
+            "ui_label": action.ui_label,
+            "ui_button": action.ui_button,
+            "target": action.target,
+            "has_trigger": action.trigger is not None,
+            "on-enter": action.on_enter,
+        }
+
+    @staticmethod
+    def get_signal_payload(signal: Signal) -> SignalPayload:
+        """Serializes `signal` into the plain-dict shape every
+        signal-reporting endpoint sends to the frontend. `attachments`
+        stays empty here deliberately: the real dict[str, MemoryArchive]
+        (full file content, base64-encoded for a binary one) would make
+        every caller of this — including project_service.py's own
+        get_project_signals, refreshed on every Inspector Signals-tab
+        open — pay to ship whole file bodies just to know their own
+        names; a caller that needs the names themselves (that one does)
+        reads them off the same Signal object directly instead."""
+        return {
+            "name": signal.name,
+            "ui_label": signal.ui_label,
+            "ui_description": signal.ui_description,
+            "definition": signal.definition,
+            "attachments": {},
+            "error": None,
+        }
+
+    @staticmethod
     def get_state_payload(state: State) -> StatePayload:
         """Serializes `state` into the plain-dict shape every
         state-reporting endpoint sends to the frontend — the one place
@@ -178,21 +222,7 @@ class Automaton(object):
             "ui_description": state.ui_description,
             "final": state.final,
             "chat": state.chat,
-            "actions": [
-                {
-                    "name": a.name,
-                    "ui_label": a.ui_label,
-                    "ui_button": a.ui_button,
-                    "target": a.target,
-                    # Not the trigger expression itself, just whether one is
-                    # set — the frontend uses this to decide button
-                    # visibility (see ActionButtons.vue), never to evaluate
-                    # anything itself.
-                    "has_trigger": a.trigger is not None,
-                    "on-enter": a.on_enter,
-                }
-                for a in state.actions
-            ],
+            "actions": [Automaton.get_action_payload(a) for a in state.actions],
         }
 
     def move(self, state_key: str, action_name: str) -> Action:
