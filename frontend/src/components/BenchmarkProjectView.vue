@@ -9,7 +9,7 @@ import InspectorMetricsTab from './inspector/InspectorMetricsTab.vue'
 import InspectorPerformanceTab from './inspector/InspectorPerformanceTab.vue'
 import ErrorBanner from './ErrorBanner.vue'
 import {
-  getMessages, getSessionSignals, getSessions, putMessageExpectedState, putMessageExpectedSignals,
+  getMessages, getSessionSignals, getSessions, postImportSession, putMessageExpectedState, putMessageExpectedSignals,
   deleteSessionAnnotations
 } from '../api.js'
 import { currentSessionId, sessions, sessionsLoading, loadSessions, refreshSessionsQuietly, selectSession } from '../chatStore.js'
@@ -90,7 +90,21 @@ function stopDrag() {
 // and shouldn't change just because this view's own panel did.
 function toggleBenchmarkSessionsPanel() {
   benchmarkSessionsPanelOpen.value = !benchmarkSessionsPanelOpen.value
-  if (benchmarkSessionsPanelOpen.value) loadSessions()
+  if (benchmarkSessionsPanelOpen.value) loadSessions(true)
+}
+
+// This view's own Sessions panel is the one place that reviews imported
+// transcripts (see ChatSession.source) alongside live ones (see
+// SessionsPanel.vue's own allowImport) — every load/refresh below passes
+// includeImported so an imported session doesn't disappear from the list
+// again after the very next reload.
+async function handleImportSession(file) {
+  try {
+    await postImportSession(file)
+    await refreshSessionsQuietly(true)
+  } catch {
+    // already surfaced via apiFetch (see <ErrorBanner /> above)
+  }
 }
 
 // Picking a session here uses the exact same shared mechanism as every
@@ -120,7 +134,7 @@ async function loadTimeline() {
     const [messageRows, signalRows, allSessions] = await Promise.all([
       getMessages(sessionId),
       getSessionSignals(sessionId),
-      getSessions()
+      getSessions(true)
     ])
     rawMessages.value = messageRows
     signalsLog.value = signalRows
@@ -271,7 +285,7 @@ async function reloadSignalsLog() {
   // the panel is toggled closed and reopened. Quiet: a full loadSessions()
   // would flash the panel to "Loading…" for something the user never
   // asked to reload.
-  await refreshSessionsQuietly()
+  await refreshSessionsQuietly(true)
 }
 
 async function onUpdateExpectedState(value) {
@@ -335,7 +349,7 @@ onMounted(() => {
   // The Sessions panel starts open (see benchmarkSessionsPanelOpen) —
   // toggleBenchmarkSessionsPanel only loads on a closed-to-open flip, so
   // the initial open needs its own load.
-  loadSessions()
+  loadSessions(true)
   window.addEventListener('mousemove', onDrag)
   window.addEventListener('mouseup', stopDrag)
   window.addEventListener('resize', handleWindowResize)
@@ -376,7 +390,9 @@ onBeforeUnmount(() => {
                 :current-session-id="currentSessionId"
                 :allow-create="false"
                 :allow-delete="false"
+                :allow-import="true"
                 @select="onSelectSession"
+                @import="handleImportSession"
               />
             </div>
             <div class="split-divider" @mousedown="startSessionsDrag"></div>

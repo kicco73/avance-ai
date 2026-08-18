@@ -10,29 +10,42 @@ from .utils import _utc_iso
 
 class SessionMixin:
 
-    def create_chat_session(self, username: str, project_name: str, datetime_start: datetime, datetime_end: datetime, start_state: str, end_state: str) -> int:
-        session = ChatSession.create(username=username, project_name=project_name, datetime_start=datetime_start, datetime_end=datetime_end, start_state=start_state, end_state=end_state)
+    def create_chat_session(
+        self, username: str, project_name: str,
+        datetime_start: datetime | None = None, datetime_end: datetime | None = None,
+        start_state: str | None = None, end_state: str | None = None,
+        source: str = 'native',
+    ) -> int:
+        session = ChatSession.create(
+            username=username, project_name=project_name, source=source,
+            datetime_start=datetime_start, datetime_end=datetime_end,
+            start_state=start_state, end_state=end_state,
+        )
         return session.id
 
     @staticmethod
     def _chat_session_to_dict(session: ChatSession) -> dict:
-        return {'id': session.id, 'username': session.username, 'project_name': session.project_name, 'datetime_start': session.datetime_start, 'datetime_end': session.datetime_end, 'start_state': session.start_state, 'end_state': session.end_state}
+        return {'id': session.id, 'username': session.username, 'project_name': session.project_name_id, 'source': session.source, 'datetime_start': session.datetime_start, 'datetime_end': session.datetime_end, 'start_state': session.start_state, 'end_state': session.end_state}
 
     def get_chat_session(self, session_id: int) -> dict | None:
         session = ChatSession.get_or_none(ChatSession.id == session_id)
         return self._chat_session_to_dict(session) if session is not None else None
 
-    def get_latest_chat_session(self, username: str, project_name: str, until: datetime | None=None) -> dict | None:
+    def get_latest_chat_session(self, username: str, project_name: str, until: datetime | None=None, source: str | None='native') -> dict | None:
         query = ChatSession.select().where((ChatSession.username == username) & (ChatSession.project_name == project_name))
         if until is not None:
             query = query.where(ChatSession.datetime_start <= until)
+        if source is not None:
+            query = query.where(ChatSession.source == source)
         session = query.order_by(ChatSession.datetime_start.desc()).first()
         return self._chat_session_to_dict(session) if session is not None else None
 
-    def list_chat_sessions(self, username: str, project_name: str, until: datetime | None=None) -> list[dict]:
+    def list_chat_sessions(self, username: str, project_name: str, until: datetime | None=None, source: str | None='native') -> list[dict]:
         query = ChatSession.select().where((ChatSession.username == username) & (ChatSession.project_name == project_name))
         if until is not None:
             query = query.where(ChatSession.datetime_start <= until)
+        if source is not None:
+            query = query.where(ChatSession.source == source)
         sessions = query.order_by(ChatSession.datetime_start.desc())
         return [self._chat_session_to_dict(s) for s in sessions]
 

@@ -404,6 +404,7 @@ class ProjectService(object):
             raise ValueError(f"Invalid project definition: {exc}") from exc
 
         self._db.set_active_project_name(project_name, Session().user)
+        self._db.ensure_project(project_name)
         if to_persist is not None:
             self._db.save_project_files(project_name, to_persist)
         await self._finalize_project_update(project_name, new_automaton, commit)

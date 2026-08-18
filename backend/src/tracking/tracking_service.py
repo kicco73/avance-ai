@@ -15,6 +15,7 @@ from .errors import TrackingServiceError
 from .turn_callbacks import OnMetadata
 from .env import PersistedEnv
 from .definitions import Signals
+from .session_import import SessionImportManager
 from .tracking_processor import UserVariables
 from .tracking_processor_ai import TrackingProcessorAfterAiMessage
 from .tracking_processor_user import TrackingProcessorAfterUserMessage
@@ -36,7 +37,14 @@ class TrackingService(object):
 		self._ai_service = ai_service
 		self._project_service = project_service
 		self._metrics = metrics_service
+		self._session_import_manager = SessionImportManager(db)
 		self.auto_tracking_enabled = True
+
+	def import_session(self, username: str, project_name: str, text: str) -> int:
+		try:
+			return self._session_import_manager.import_transcript(username, project_name, text)
+		except ValueError as exc:
+			raise TrackingServiceError(str(exc), status_code=HTTPStatus.BAD_REQUEST) from exc
 
 	@property
 	def automaton(self) -> Automaton:

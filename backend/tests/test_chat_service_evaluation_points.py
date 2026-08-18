@@ -135,6 +135,8 @@ class FakeSchemaAiService:
 
 @pytest.fixture
 def chat_service_for(db):
+    db.ensure_project(PROJECT_NAME)
+
     def make(automaton: Automaton, *, ai_service=None) -> ChatService:
         ai_service = ai_service or FakeSchemaAiService([{"signals": '{"foo": 1}'}])
         project_service = FakeProjectService(automaton)

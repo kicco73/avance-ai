@@ -121,10 +121,10 @@ export async function loadMessages() {
   }
 }
 
-export async function loadSessions() {
+export async function loadSessions(includeImported = false) {
   sessionsLoading.value = true
   try {
-    sessions.value = await getSessions()
+    sessions.value = await getSessions(includeImported)
   } catch {
     // already surfaced via apiFetch
   } finally {
@@ -138,9 +138,9 @@ export async function loadSessions() {
 // panel (main page, EditProjectView, BenchmarkProjectView all read the
 // same sessionsLoading) to its "Loading…" placeholder over something the
 // user never asked to reload.
-export async function refreshSessionsQuietly() {
+export async function refreshSessionsQuietly(includeImported = false) {
   try {
-    sessions.value = await getSessions()
+    sessions.value = await getSessions(includeImported)
   } catch {
     // already surfaced via apiFetch
   }

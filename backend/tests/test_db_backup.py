@@ -66,7 +66,8 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
     the exact same-tables-wrong-columns case a naive "tables only" check
     would miss."""
     ddl = [
-        "CREATE TABLE chatsession (id INTEGER PRIMARY KEY, username TEXT, project_name TEXT, "
+        "CREATE TABLE project (name TEXT PRIMARY KEY, revision INTEGER, published_revision INTEGER)",
+        "CREATE TABLE chatsession (id INTEGER PRIMARY KEY, username TEXT, project_name TEXT, source TEXT, "
         "datetime_start TEXT, datetime_end TEXT, start_state TEXT, end_state TEXT)",
         "CREATE TABLE message (id INTEGER PRIMARY KEY, role TEXT, content TEXT, timestamp TEXT, audio_text TEXT)",
         "CREATE TABLE settings (user TEXT PRIMARY KEY, project TEXT)",
@@ -131,6 +132,8 @@ def test_restore_backup_preserves_the_working_files_permissions(file_db):
 
 @pytest.mark.regression
 def test_restore_backup_replaces_data_and_reconnects(file_db):
+    file_db.ensure_project("proj")
+    file_db.ensure_project("proj2")
     kept_id = file_db.create_chat_session(
         username="user",
         project_name="proj",

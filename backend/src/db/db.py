@@ -14,11 +14,11 @@ from .tracking import TrackingMixin
 
 from playhouse.db_url import connect, parse as parse_db_url
 
-from .models import Archive, ChatSession, History, Message, Settings, Tracking, database
+from .models import Archive, ChatSession, History, Message, Project, Settings, Tracking, database
 
 logger = logging.getLogger(__name__)
 
-def _utc_iso(dt: datetime) -> str:
+def _utc_iso(dt: datetime | None) -> str | None:
     """Every DateTimeField in this module is written with
     `default=datetime.utcnow` — a naive datetime that's really always UTC,
     never the server's local time. `dt.isoformat()` alone would drop that
@@ -27,8 +27,11 @@ def _utc_iso(dt: datetime) -> str:
     every timestamp by the browser's own UTC offset. Stamping the
     timezone explicitly here is what lets the frontend be the only place
     that ever converts to the user's local time for display (see
-    MessageBubble.vue's formatTimestamp)."""
-    return dt.replace(tzinfo=timezone.utc).isoformat()
+    MessageBubble.vue's formatTimestamp). `dt` is None for an imported
+    session/message with no real timestamp (see ChatSession.source) —
+    stays None rather than raising, since that's a legitimate value here,
+    not a bug."""
+    return dt.replace(tzinfo=timezone.utc).isoformat() if dt is not None else None
 
 class Db(
     SessionMixin,
@@ -39,7 +42,7 @@ class Db(
     HistoryMixin):
 
     _SQLITE_MAGIC = b"SQLite format 3\x00"
-    _MODELS = (ChatSession, Message, Settings, Tracking, Archive, History)
+    _MODELS = (Project, ChatSession, Message, Settings, Tracking, Archive, History)
 
     def __init__(self, database_url: str, force_drop_and_create_when_incompatible: bool=False) -> None:
         self._database_url = database_url
@@ -49,6 +52,20 @@ class Db(
         if force_drop_and_create_when_incompatible:
             self._drop_and_recreate_if_incompatible()
         database.create_tables(self._MODELS, safe=True)
+        self._backfill_projects()
+
+    @staticmethod
+    def _backfill_projects() -> None:
+        """Project didn't exist before ChatSession.project_name/
+        Archive.project_name became foreign keys to it — an install with
+        data from before this migration has distinct project_name values
+        in those tables with no corresponding Project row yet. Idempotent
+        (get_or_create), so safe to run on every startup rather than only
+        once."""
+        names = {row.project_name_id for row in ChatSession.select(ChatSession.project_name).distinct()}
+        names |= {row.project_name_id for row in Archive.select(Archive.project_name).distinct()}
+        for name in names:
+            Project.get_or_create(name=name, defaults={'revision': 0, 'published_revision': None})
 
     def _drop_and_recreate_if_incompatible(self) -> None:
         path = self.backup_file_path()

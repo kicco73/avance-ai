@@ -54,8 +54,9 @@ export function postCreateSession() {
   return apiFetch(`${API_URL}/chat/sessions`, { method: 'POST' })
 }
 
-export function getSessions() {
-  return apiFetch(`${API_URL}/chat/sessions`)
+export function getSessions(includeImported = false) {
+  const query = includeImported ? '?include_imported=true' : ''
+  return apiFetch(`${API_URL}/chat/sessions${query}`)
 }
 
 export function deleteSession(sessionId) {
@@ -179,6 +180,15 @@ export function postListenTranscribe(audioBlob) {
   const formData = new FormData()
   formData.append('file', audioBlob, 'recording.webm')
   return apiFetch(`${API_URL}/listen/transcribe`, {
+    method: 'POST',
+    body: formData
+  })
+}
+
+export function postImportSession(file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return apiFetch(`${API_URL}/chat/sessions/import`, {
     method: 'POST',
     body: formData
   })

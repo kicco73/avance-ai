@@ -1,4 +1,5 @@
 <script setup>
+import { ref } from 'vue'
 import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 
 // The sessions list content (header + rows) shared by every chat surface
@@ -17,10 +18,29 @@ const props = defineProps({
   // just that row's own delete button. Ignored when allowDelete is false.
   deletingSessionId: { type: [Number, String], default: null },
   allowCreate: { type: Boolean, default: true },
-  allowDelete: { type: Boolean, default: true }
+  allowDelete: { type: Boolean, default: true },
+  // BenchmarkProjectView's own — a transcript import produces a session
+  // annotatable/testable without ever running live (see ChatSession.
+  // source), meaningful only for review/labeling, not for the main chat
+  // or the "Edit project" embedded chat (see ChatWindow.vue, which
+  // leaves this at its default false).
+  allowImport: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['select', 'create', 'delete'])
+const emit = defineEmits(['select', 'create', 'delete', 'import'])
+
+const importInput = ref(null)
+
+function triggerImport() {
+  importInput.value?.click()
+}
+
+function onImportFileChosen(event) {
+  const file = event.target.files?.[0]
+  if (file) emit('import', file)
+  // Reset so choosing the exact same file again still fires 'change'.
+  event.target.value = ''
+}
 
 function formatSessionTimestamp(iso) {
   const date = new Date(iso)
@@ -42,8 +62,14 @@ const {
 <template>
   <div class="sessions-panel-header">
     <span class="sessions-panel-title">Sessions</span>
-    <div v-if="allowCreate" class="sessions-panel-header-actions">
-      <button type="button" class="sessions-panel-icon-btn" title="New session" @click="emit('create')">
+    <div v-if="allowCreate || allowImport" class="sessions-panel-header-actions">
+      <button v-if="allowImport" type="button" class="sessions-panel-icon-btn" title="Import transcript" @click="triggerImport">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+          <path d="M12 3l4 4h-3v6h-2V7H8l4-4zM5 19v-6h2v6h10v-6h2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z" />
+        </svg>
+      </button>
+      <input v-if="allowImport" ref="importInput" type="file" accept=".txt,text/plain" class="sessions-panel-import-input" @change="onImportFileChosen" />
+      <button v-if="allowCreate" type="button" class="sessions-panel-icon-btn" title="New session" @click="emit('create')">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
           <path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z" />
         </svg>
@@ -140,6 +166,10 @@ const {
 .sessions-panel-icon-btn:hover {
   background: #4a6fa5;
   color: white;
+}
+
+.sessions-panel-import-input {
+  display: none;
 }
 
 .sessions-status {

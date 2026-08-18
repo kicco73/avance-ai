@@ -28,7 +28,7 @@ __version__ = "1.2.0"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
-logger.info(f"Booting avance api server v{__version__}.")
+logger.info(f"Booting avance headless server v{__version__}.")
 
 def _build_fallback_app(error: Exception) -> FastAPI:
     """Used only when essential startup wiring below fails: every request,
@@ -98,7 +98,7 @@ try:
     )
 
     register_error_handlers(app)
-    controller = AvanceController(chat_service, project_service, talk_service, listen_service, db)
+    controller = AvanceController(chat_service, project_service, talk_service, listen_service, db, tracking_service)
     app.include_router(controller.router)
 
     if chat_ws_adapter is not None:
@@ -108,7 +108,7 @@ try:
         async def chat_ws(websocket: WebSocket) -> None:
             await adapter.chat_loop(websocket)
         
-    logger.info("Boot completed - avance api server ready.")
+    logger.info("Boot completed - server ready.")
 
 except Exception as exc:
     logger.exception("Backend failed to start — serving a fallback error app instead of crashing.")

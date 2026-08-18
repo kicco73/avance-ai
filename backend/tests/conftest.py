@@ -105,7 +105,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
 
     fastapi_app = FastAPI(title="Avance State Engine (test)")
     register_error_handlers(fastapi_app)
-    controller = AvanceController(chat_service, project_service, None, None, app_db)
+    controller = AvanceController(chat_service, project_service, None, None, app_db, tracking_service)
     fastapi_app.include_router(controller.router)
     return fastapi_app
 

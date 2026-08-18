@@ -12,14 +12,20 @@ class BaseModel(Model):
     class Meta:
         database = database
 
+class Project(BaseModel):
+    name = CharField(primary_key=True)
+    revision = IntegerField(null=False, default=0)
+    published_revision = IntegerField(null=True)
+
 class ChatSession(BaseModel):
     id = AutoField()
     username = CharField()
-    project_name = CharField()
-    datetime_start = DateTimeField(null=False)
-    datetime_end = DateTimeField(null=False)
-    start_state = CharField(null=False)
-    end_state = CharField(null=False)
+    project_name = ForeignKeyField(Project, field='name', column_name='project_name', backref='chat_sessions')
+    source = CharField(default='native')
+    datetime_start = DateTimeField(null=True)
+    datetime_end = DateTimeField(null=True)
+    start_state = CharField(null=True)
+    end_state = CharField(null=True)
 
     class Meta:
         indexes = ((('username', 'project_name', 'datetime_start', 'datetime_end'), False), (('username', 'project_name', 'start_state', 'end_state'), False))
@@ -28,7 +34,7 @@ class Message(BaseModel):
     id = AutoField()
     role = CharField()
     content = TextField()
-    timestamp = DateTimeField(index=True, default=datetime.utcnow)
+    timestamp = DateTimeField(index=True, default=datetime.utcnow, null=True)
     audio_text = TextField(null=True)
     session = ForeignKeyField(ChatSession, null=False, backref='messages', on_delete='CASCADE')
 
@@ -52,7 +58,7 @@ class Tracking(BaseModel):
 
 class Archive(BaseModel):
     id = AutoField()
-    project_name = CharField(index=True, null=False)
+    project_name = ForeignKeyField(Project, field='name', column_name='project_name', backref='archives')
     archive_name = CharField(index=True, null=False)
     revision = IntegerField(null=False, default=0)
     content = TextField(null=False)

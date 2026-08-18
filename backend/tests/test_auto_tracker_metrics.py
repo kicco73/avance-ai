@@ -113,6 +113,7 @@ def _session_id(db) -> int:
     # "engagement" above zero via its own session component alone (see
     # tests/test_controller_metrics.py) — enough to drive these triggers
     # without needing to fabricate a message history.
+    db.ensure_project(PROJECT_NAME)
     return db.create_chat_session(
         username=USERNAME,
         project_name=PROJECT_NAME,

@@ -64,6 +64,7 @@ class FakeProjectService:
 
 
 def _chat_service(db, automaton: Automaton) -> ChatService:
+    db.ensure_project(PROJECT_NAME)
     ai_service = FakeAiService()
     project_service = FakeProjectService(automaton)
     metric_service = MetricService(

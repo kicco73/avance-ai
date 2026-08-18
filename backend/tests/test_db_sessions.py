@@ -8,6 +8,7 @@ import pytest
 def _make_session(db, *, username="user", project_name="proj", start, end=None, start_state="start", end_state=None):
     end = end if end is not None else start
     end_state = end_state if end_state is not None else start_state
+    db.ensure_project(project_name)
     return db.create_chat_session(
         username=username,
         project_name=project_name,

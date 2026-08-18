@@ -15,6 +15,8 @@ from talk.talk_service import TalkService, TalkServiceNotAvailableError
 from listen.listen_service import ListenService, ListenServiceError, ListenServiceNotAvailableError
 from chat.chat_service import ChatService, ChatServiceError
 from project.project_service import ProjectService
+from session import Session
+from tracking.tracking_service import TrackingService
 from schemas import (
     ActionRequest,
     AiModelSelectionRequest,
@@ -86,12 +88,14 @@ class AvanceController(object):
         talk_service: TalkService | None,
         listen_service: ListenService | None,
         db: Db,
+        tracking_service: TrackingService,
     ) -> None:
         self.chat_service = chat_service
         self.project_service = project_service
         self.talk_service = talk_service
         self.listen_service = listen_service
         self.db = db
+        self.tracking_service = tracking_service
 
         self.router = APIRouter()
         for _, member in inspect.getmembers(self, predicate=inspect.ismethod):
@@ -252,10 +256,26 @@ class AvanceController(object):
         return self.chat_service.create_session()
 
     @get("/api/chat/sessions")
-    def get_sessions(self):
+    def get_sessions(self, include_imported: bool = False):
         """Every session for the active project, for the chat's
         "Sessions" side panel — see ChatService.list_sessions."""
-        return self.chat_service.list_sessions()
+        return self.chat_service.list_sessions(include_imported=include_imported)
+
+    @post("/api/chat/sessions/import")
+    async def post_import_session(self, file: UploadFile):
+        """Imports a chat session from a plain-text transcript (see
+        TrackingService.import_session/tracking.session_import.
+        parse_transcript) — annotatable/testable without ever having run
+        through a live conversation. Uses the active project, same
+        convention as POST /api/chat/sessions. No try/except: a malformed
+        transcript raises TrackingServiceError, already handled by the
+        global exception handler (see error_handlers.py)."""
+        content = await file.read()
+        text = content.decode("utf-8")
+        session_id = self.tracking_service.import_session(
+            Session().user, self.project_service.get_active_project_name(), text
+        )
+        return {"success": True, "session_id": session_id}
 
     @delete("/api/chat/sessions/{session_id}")
     def delete_session(self, session_id: int):

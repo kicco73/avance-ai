@@ -141,7 +141,8 @@ def test_get_benchmark_metrics_response_shape(client, hello_project, app_db):
     # default-metric filtering) — benchmark_stability/benchmark_consistency's
     # own scope is {all_sessions}, so neither is ever included here.
     assert {m["name"] for m in body} == {
-        "state_accuracy", "signal_accuracy", "transition_responsiveness", "benchmark_accuracy",
+        "state_accuracy", "state_accuracy_stable", "state_accuracy_transition",
+        "signal_accuracy", "transition_responsiveness", "benchmark_accuracy",
     }
     for metric in body:
         assert set(metric) == {"name", "ui_label", "ui_description", "value", "sample_count"}

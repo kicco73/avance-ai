@@ -87,7 +87,12 @@ class ChatService(object):
 			"datetime_end": _utc_iso(session["datetime_end"]),
 			"start_state": session["start_state"],
 			"end_state": session["end_state"],
-			"open": self._session_manager.is_open(session),
+			# An imported session (see ChatSession.source) has no
+			# datetime_end — it never had a live conversation window to
+			# begin with, so it's never "open" (ChatSessionManager.is_open
+			# itself isn't null-safe, and shouldn't have to be — that
+			# concept doesn't apply here at all).
+			"open": self._session_manager.is_open(session) if session["datetime_end"] is not None else False,
 			# Distinct from "open" (see session_manager.py's module
 			# docstring): the single open session with the most recent
 			# datetime_start for this project — what the frontend must
@@ -153,15 +158,20 @@ class ChatService(object):
 		# correct by construction, no query needed.
 		return self._session_payload(session, active=True, has_annotations=False)
 
-	def list_sessions(self) -> list[dict]:
+	def list_sessions(self, include_imported: bool = False) -> list[dict]:
 		"""Every session for the active project, most recently started
 		first — for the "Sessions" panel (see ChatWindow.vue). `active`
 		on each one (see _session_payload) is what the frontend must
 		trust to decide whether that particular session still accepts
 		chat turns/manual actions — never computed client-side (see
-		ChatSessionManager's module docstring)."""
+		ChatSessionManager's module docstring). `include_imported` widens
+		this to every source (native and imported alike) — used by
+		BenchmarkProjectView's own sessions panel, the one place that
+		annotates/tests imported transcripts alongside live ones; every
+		other caller keeps seeing native sessions only (see
+		db.list_chat_sessions' own source default)."""
 		project_name = self._active_project_name
-		sessions = self._db.list_chat_sessions(self._username, project_name)
+		sessions = self._db.list_chat_sessions(self._username, project_name, source=None if include_imported else 'native')
 		active = self._session_manager.get_active_session(self._username, project_name)
 		active_id = active["id"] if active is not None else None
 		# One query for the whole list, not one per session — see

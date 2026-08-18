@@ -41,6 +41,14 @@ class _Statistics(object):
         )
 
 
+def _state_accuracy_values(observations: tuple[BenchmarkObservation, ...], expected_transition: bool) -> list[float]:
+    return [
+        float(o.state_agreement)
+        for o in observations
+        if o.expected_transition is expected_transition and o.state_agreement is not None
+    ]
+
+
 class StateAccuracyMetric(BenchmarkMetric):
     @property
     def name(self) -> str:
@@ -57,6 +65,42 @@ class StateAccuracyMetric(BenchmarkMetric):
     def calculate(self, observations: tuple[BenchmarkObservation, ...]) -> BenchmarkMetricResult:
         values = [o.state_agreement for o in observations if o.state_agreement is not None]
         return _Statistics.result(self.name, [float(v) for v in values], metadata={"unit": "percent"})
+
+
+class StateAccuracyStableMetric(BenchmarkMetric):
+    @property
+    def name(self) -> str:
+        return "state_accuracy_stable"
+
+    @property
+    def ui_label(self) -> str:
+        return "State Accuracy (Stable Points)"
+
+    @property
+    def ui_description(self) -> str:
+        return "Percentage of expert-annotated points where no state change was expected and the system correctly stayed in the current state."
+
+    def calculate(self, observations: tuple[BenchmarkObservation, ...]) -> BenchmarkMetricResult:
+        values = _state_accuracy_values(observations, expected_transition=False)
+        return _Statistics.result(self.name, values, metadata={"unit": "percent"})
+
+
+class StateAccuracyTransitionMetric(BenchmarkMetric):
+    @property
+    def name(self) -> str:
+        return "state_accuracy_transition"
+
+    @property
+    def ui_label(self) -> str:
+        return "State Accuracy (Expected Transitions)"
+
+    @property
+    def ui_description(self) -> str:
+        return "Percentage of expert-annotated points where a state change was expected and the system reached the correct new state."
+
+    def calculate(self, observations: tuple[BenchmarkObservation, ...]) -> BenchmarkMetricResult:
+        values = _state_accuracy_values(observations, expected_transition=True)
+        return _Statistics.result(self.name, values, metadata={"unit": "percent"})
 
 
 class SignalAccuracyMetric(BenchmarkMetric):
@@ -244,6 +288,8 @@ class BenchmarkConsistencyMetric(BenchmarkMetric):
 
 __all__ = [
     "StateAccuracyMetric",
+    "StateAccuracyStableMetric",
+    "StateAccuracyTransitionMetric",
     "SignalAccuracyMetric",
     "TransitionResponsivenessMetric",
     "BenchmarkAccuracyMetric",
