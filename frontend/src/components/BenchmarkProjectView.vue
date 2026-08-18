@@ -43,6 +43,7 @@ const sessionStartState = ref(null)
 
 const inspectorRef = ref(null)
 const inspectorWidth = ref(360)
+const inspectorCollapsed = ref(false)
 // This view's own tab set — Performance instead of Env (see Inspector.
 // vue's own slot-based contract; EditProjectView.vue passes a different
 // set for its own live chat).
@@ -83,11 +84,12 @@ function stopDrag() {
   dragTarget = null
 }
 
-// Toggled by the header's own Sessions button, same as ChatWindow.vue's
-// own panel — but a local, independent open/closed flag: the main page's
-// own Sessions panel (see chatStore.js's sessionsPanelOpen) is a separate
-// piece of UI, hidden behind this full-screen overlay while it's open,
-// and shouldn't change just because this view's own panel did.
+// Toggled by SessionsPanel.vue's own collapse button, same as
+// ChatWindow.vue's own panel — but a local, independent open/closed flag:
+// the main page's own Sessions panel (see chatStore.js's
+// sessionsPanelOpen) is a separate piece of UI, hidden behind this
+// full-screen overlay while it's open, and shouldn't change just because
+// this view's own panel did.
 function toggleBenchmarkSessionsPanel() {
   benchmarkSessionsPanelOpen.value = !benchmarkSessionsPanelOpen.value
   if (benchmarkSessionsPanelOpen.value) loadSessions(true)
@@ -366,13 +368,6 @@ onBeforeUnmount(() => {
     <div class="benchmark-header">
       <h2>Label sessions — {{ projectName }}</h2>
       <div class="benchmark-header-actions">
-        <button
-          class="sessions-toggle-btn"
-          :class="{ 'sessions-toggle-btn-on': benchmarkSessionsPanelOpen }"
-          @click="toggleBenchmarkSessionsPanel"
-        >
-          Sessions
-        </button>
         <button class="close-btn" @click="emit('close')">Back</button>
       </div>
     </div>
@@ -381,23 +376,23 @@ onBeforeUnmount(() => {
 
     <div class="benchmark-body">
       <div class="benchmark-chat-pane">
-        <Transition name="panel-slide-left">
-          <div v-if="benchmarkSessionsPanelOpen" class="sessions-panel-wrap">
-            <div class="sessions-panel" :style="{ width: sessionsPanelWidth + 'px' }">
-              <SessionsPanel
-                :sessions="sessions"
-                :loading="sessionsLoading"
-                :current-session-id="currentSessionId"
-                :allow-create="false"
-                :allow-delete="false"
-                :allow-import="true"
-                @select="onSelectSession"
-                @import="handleImportSession"
-              />
-            </div>
-            <div class="split-divider" @mousedown="startSessionsDrag"></div>
+        <div class="sessions-panel-wrap">
+          <div class="sessions-panel" :class="{ 'sessions-panel-collapsed': !benchmarkSessionsPanelOpen }" :style="benchmarkSessionsPanelOpen ? { width: sessionsPanelWidth + 'px' } : null">
+            <SessionsPanel
+              :sessions="sessions"
+              :loading="sessionsLoading"
+              :current-session-id="currentSessionId"
+              :allow-create="false"
+              :allow-delete="false"
+              :allow-import="true"
+              :collapsed="!benchmarkSessionsPanelOpen"
+              @update:collapsed="toggleBenchmarkSessionsPanel"
+              @select="onSelectSession"
+              @import="handleImportSession"
+            />
           </div>
-        </Transition>
+          <div v-if="benchmarkSessionsPanelOpen" class="split-divider" @mousedown="startSessionsDrag"></div>
+        </div>
 
         <div class="benchmark-chat-content">
           <div class="benchmark-chat-toolbar">
@@ -436,7 +431,7 @@ onBeforeUnmount(() => {
           ref="inspectorRef"
           :tabs="inspectorTabs"
           v-model:active-tab="inspectorActiveTab"
-          :closable="false"
+          v-model:collapsed="inspectorCollapsed"
         >
           <template #tab-states="{ registerTab }">
             <InspectorGraphTab
@@ -563,17 +558,6 @@ onBeforeUnmount(() => {
   min-height: 0;
 }
 
-.panel-slide-left-enter-active,
-.panel-slide-left-leave-active {
-  transition: opacity 0.18s ease, transform 0.18s ease;
-}
-
-.panel-slide-left-enter-from,
-.panel-slide-left-leave-to {
-  opacity: 0;
-  transform: translateX(-16px);
-}
-
 .sessions-panel {
   display: flex;
   flex-direction: column;
@@ -581,6 +565,13 @@ onBeforeUnmount(() => {
   min-height: 0;
   border-right: 1px solid #ddd;
   background: #f9fafb;
+  transition: width 0.15s ease;
+}
+
+/* Collapsed (see SessionsPanel.vue's own always-visible header toggle) —
+   a slim strip, same pattern as ChatWindow.vue's own equivalent. */
+.sessions-panel-collapsed {
+  width: 2.4rem !important;
 }
 
 .benchmark-chat-content {

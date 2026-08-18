@@ -7,7 +7,7 @@
 // current/next/fired one" badge computed here from props, never from
 // internal state, so a parent can drive this from Graph's own emitted
 // selection without this component needing any cytoscape awareness at all.
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
   selectedElement: { type: Object, default: null }, // { kind: 'state' | 'action', data } | null
@@ -29,13 +29,144 @@ const props = defineProps({
   // usage, and "State"). Off for a row inside "Actions"' own list: there
   // every action is always shown, nothing for × to "close" without also
   // meaning delete (a distinct, separate action of its own).
-  closable: { type: Boolean, default: true }
+  closable: { type: Boolean, default: true },
+  // Turns the read-only body into an editable form (see set-field below)
+  // — only the Inspector's own "State"/"Actions" tabs (always inside an
+  // active "Edit project" session) pass this; the original "States" tab
+  // (InspectorGraphTab.vue, shown even outside any editing context, e.g.
+  // the main chat window/BenchmarkProjectView) leaves it at its default,
+  // staying read-only exactly as before.
+  editable: { type: Boolean, default: false },
+  // Every real state's own {key, uiLabel} — the action form's own
+  // target <select> options. Irrelevant (and unused) for a state card.
+  availableStates: { type: Array, default: () => [] },
+  // Whether this card's own form is showing, open/closed a v-model
+  // (update:open) the *parent* owns rather than local state — the
+  // Actions tab hosts several of these at once and needs exactly one
+  // open at a time (an accordion), which only the parent (tracking one
+  // shared "which one" value) can enforce; InspectorStateTab.vue, with
+  // only ever one card, still owns its own single boolean the same way,
+  // just trivially.
+  open: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['select-attachment', 'close', 'select'])
+const emit = defineEmits(['select-attachment', 'jump-to-attachment', 'close', 'select', 'set-field', 'delete', 'update:open'])
 
-function handleCardClick() {
-  if (props.selectable) emit('select')
+const showEditForm = computed(() => props.editable && props.open)
+
+// A click anywhere used to promote/reselect+jump (see jumpToDefinition
+// wiring one level up) — fine for a read-only row (Actions tab's own
+// rows, the original "States" floating card), but once a card's own form
+// is open, its body is full of inputs a user clicks into just to edit or
+// position a cursor, and every one of those clicks doesn't stop
+// propagation the way a form control does. Bubbling those up to a
+// reselect+jump-to-Code flip mid-edit is what made editing feel broken
+// (the field's own blur-save *did* fire, but the view lurched to the Code
+// segment right after, hiding the result). Scoping both the open/close
+// toggle and the reselect to the header (badge/title, not the input
+// inside it — that still has its own @click.stop) keeps every other
+// click, wherever it lands, from doing either.
+function handleCardClick(event) {
+  const onHeader = event.target.closest('.inspector-detail-header')
+  if (props.editable) {
+    if (!onHeader) return
+    emit('update:open', !props.open)
+  }
+  if (props.selectable && (!props.editable || onHeader)) emit('select')
+}
+
+// Local editable buffers — separate from selectedElement's own props so
+// typing doesn't fight a parent re-render, and so a blur can compare
+// against the value it started from to skip a no-op PUT. Reset whenever
+// the selection's own identity changes (switching from editing one
+// state/action to another must never carry over the previous one's
+// buffer, and must close the form back down rather than silently keep
+// showing a stale one open) — never on every selectedElement prop
+// change, since the same element's own reference changes after every
+// refetch this component itself triggers (see EditProjectView.vue's
+// refreshAfterProjectEdit).
+const editUiLabel = ref('')
+const editUiDescription = ref('')
+const editContextualPrompt = ref('')
+const editActionPrompt = ref('')
+const editTarget = ref('')
+
+// A textarea's own *opening* height (see this component's own rows
+// attribute bindings below) — proportional to how much text it already
+// holds, capped at 10 lines so a long prompt doesn't blow out the panel;
+// never recomputed while typing (that would fight a manual resize-drag
+// mid-edit), only at the moment the form is (re)opened.
+function rowsFor(text) {
+  const lines = (text ?? '').split('\n').length
+  return Math.min(10, Math.max(2, lines))
+}
+const uiDescriptionRows = ref(2)
+const contextualPromptRows = ref(4)
+const actionPromptRows = ref(4)
+
+const elementIdentity = computed(() => {
+  if (!props.selectedElement) return null
+  const d = props.selectedElement.data
+  return props.selectedElement.kind === 'state' ? `state:${d.id}` : `action:${d.matchStateKey}/${d.actionName}`
+})
+
+function resetEditBuffers() {
+  if (!props.selectedElement) return
+  const d = props.selectedElement.data
+  editUiLabel.value = d.uiLabel ?? ''
+  editUiDescription.value = d.uiDescription ?? ''
+  editContextualPrompt.value = d.contextualPrompt ?? ''
+  editActionPrompt.value = d.actionPrompt ?? ''
+  editTarget.value = d.target ?? ''
+  uiDescriptionRows.value = rowsFor(editUiDescription.value)
+  contextualPromptRows.value = rowsFor(editContextualPrompt.value)
+  actionPromptRows.value = rowsFor(editActionPrompt.value)
+}
+
+watch(elementIdentity, resetEditBuffers, { immediate: true })
+// Also on every fresh open — the parent now owns open/closed (see the
+// `open` prop's own docstring), so this is what used to happen for free
+// as a side effect of resetEditBuffers also closing the form on an
+// identity change; opening back up should always start from whatever's
+// actually current, not a possibly-stale buffer from before it closed.
+watch(() => props.open, (isOpen) => { if (isOpen) resetEditBuffers() })
+
+function commitTextField(field, currentValue, originalValue) {
+  if (currentValue === originalValue) return
+  emit('set-field', field, currentValue)
+}
+
+function commitUiLabel() {
+  commitTextField('ui-label', editUiLabel.value, props.selectedElement?.data.uiLabel ?? '')
+}
+
+function commitUiDescription() {
+  commitTextField('ui-description', editUiDescription.value, props.selectedElement?.data.uiDescription ?? '')
+}
+
+function commitContextualPrompt() {
+  commitTextField('contextual-prompt', editContextualPrompt.value, props.selectedElement?.data.contextualPrompt ?? '')
+}
+
+function commitActionPrompt() {
+  commitTextField('action-prompt', editActionPrompt.value, props.selectedElement?.data.actionPrompt ?? '')
+}
+
+function commitTarget() {
+  commitTextField('target', editTarget.value, props.selectedElement?.data.target ?? '')
+}
+
+// history-cutoff/chat: a plain instant toggle, not a typed field — no
+// local buffer/blur dance needed, just commit straight off the prop's
+// own current value (see the badge's own @click below).
+function commitBoolField(field, value) {
+  emit('set-field', field, value)
+}
+
+function confirmDelete() {
+  const kind = props.selectedElement.kind === 'state' ? 'state' : 'action'
+  if (!window.confirm(`Delete this ${kind} ("${props.selectedElement.data.uiLabel}")? This cannot be undone.`)) return
+  emit('delete')
 }
 
 function attachmentLabel(index) { return String.fromCharCode(97 + index) }
@@ -63,21 +194,41 @@ const isSelectedStateCurrent = computed(() => {
 const hasSelectedElementBadges = computed(() => {
   if (!props.selectedElement) return false
   if (props.selectedElement.kind === 'state') {
+    // History cutoff/No chat are always-shown clickable badges once the
+    // form is actually open (see the template below) — so there's
+    // always something to show then. Closed, this card is read-only,
+    // same as the non-editable case entirely (see this component's own
+    // docstring on `editable`/showEditForm) — same conditional set, no
+    // clickable badges to change anything from here.
+    if (showEditForm.value) return true
     const d = props.selectedElement.data
     return isSelectedStateCurrent.value || d.isStart || d.final || !d.chat || d.historyCutoff
   }
+  // An open action's own badges are suppressed entirely (see the
+  // template below) — only the "Action" kind-badge in the header stays,
+  // which isn't part of this row at all. Closed, same read-only set as
+  // the non-editable case.
+  if (showEditForm.value) return false
   const d = props.selectedElement.data
   return isSelectedActionNext.value || isSelectedActionFired.value || !d.hasTrigger || d.isInitEdge
 })
 
-function selectAttachment(fileName) { emit('select-attachment', fileName) }
+// A state's own editable form is the one place clicking an attachment
+// should jump to where it's actually declared (index.yml's own
+// `attachments:` list under that state) rather than open the attachment
+// file itself — everywhere else (read-only "States", the Actions list,
+// Signals) keeps opening the file, unchanged.
+function selectAttachment(fileName) {
+  if (props.editable && props.selectedElement?.kind === 'state') emit('jump-to-attachment', fileName)
+  else emit('select-attachment', fileName)
+}
 </script>
 
 <template>
   <div
     v-if="selectedElement"
     class="inspector-detail-card"
-    :class="{ 'inspector-detail-card-selectable': selectable }"
+    :class="{ 'inspector-detail-card-selectable': selectable, 'inspector-detail-card-editable': editable, 'inspector-detail-card-open': showEditForm }"
     @click="handleCardClick"
   >
     <div class="inspector-detail-header">
@@ -86,7 +237,15 @@ function selectAttachment(fileName) { emit('select-attachment', fileName) }
           class="inspector-detail-badge"
           :class="selectedElement.kind === 'state' ? 'inspector-detail-badge-state' : 'inspector-detail-badge-action'"
         >{{ selectedElement.kind === 'state' ? 'State' : 'Action' }}</span>
-        <span class="inspector-detail-title">{{ selectedElement.data.uiLabel }}</span>
+        <input
+          v-if="showEditForm"
+          v-model="editUiLabel"
+          class="inspector-detail-title-input"
+          placeholder="Label"
+          @click.stop
+          @blur="commitUiLabel"
+        />
+        <span v-else class="inspector-detail-title">{{ selectedElement.data.uiLabel }}</span>
         <button v-if="closable" class="close-x-btn" title="Close" @click.stop="emit('close')">×</button>
       </div>
       <div v-if="hasSelectedElementBadges" class="inspector-detail-badges">
@@ -94,10 +253,26 @@ function selectAttachment(fileName) { emit('select-attachment', fileName) }
           <span v-if="isSelectedStateCurrent" class="inspector-detail-badge inspector-detail-badge-current">Current</span>
           <span v-if="selectedElement.data.isStart" class="inspector-detail-badge inspector-detail-badge-start">Start</span>
           <span v-if="selectedElement.data.final" class="inspector-detail-badge inspector-detail-badge-final">Final</span>
-          <span v-if="!selectedElement.data.chat" class="inspector-detail-badge inspector-detail-badge-neutral">No chat</span>
-          <span v-if="selectedElement.data.historyCutoff" class="inspector-detail-badge inspector-detail-badge-neutral">History cutoff</span>
+          <template v-if="showEditForm">
+            <span
+              class="inspector-detail-badge inspector-detail-badge-toggle"
+              :class="!selectedElement.data.chat ? 'inspector-detail-badge-toggle-on' : 'inspector-detail-badge-toggle-off'"
+              title="Click to toggle"
+              @click.stop="commitBoolField('chat', !selectedElement.data.chat)"
+            >No chat</span>
+            <span
+              class="inspector-detail-badge inspector-detail-badge-toggle"
+              :class="selectedElement.data.historyCutoff ? 'inspector-detail-badge-toggle-on' : 'inspector-detail-badge-toggle-off'"
+              title="Click to toggle"
+              @click.stop="commitBoolField('history-cutoff', !selectedElement.data.historyCutoff)"
+            >History cutoff</span>
+          </template>
+          <template v-else>
+            <span v-if="!selectedElement.data.chat" class="inspector-detail-badge inspector-detail-badge-neutral">No chat</span>
+            <span v-if="selectedElement.data.historyCutoff" class="inspector-detail-badge inspector-detail-badge-neutral">History cutoff</span>
+          </template>
         </template>
-        <template v-else>
+        <template v-else-if="!showEditForm">
           <span v-if="selectedElement.data.isInitEdge" class="inspector-detail-badge inspector-detail-badge-start">Start</span>
           <span v-if="isSelectedActionNext" class="inspector-detail-badge inspector-detail-badge-next">Next</span>
           <span v-if="isSelectedActionFired" class="inspector-detail-badge inspector-detail-badge-fired">Fired</span>
@@ -107,24 +282,81 @@ function selectAttachment(fileName) { emit('select-attachment', fileName) }
     </div>
     <div class="inspector-detail-body">
       <template v-if="selectedElement.kind === 'state'">
-        <p v-if="selectedElement.data.uiDescription" class="inspector-detail-ui_description">{{ selectedElement.data.uiDescription }}</p>
+        <Transition name="crossfade" mode="out-in">
+          <div v-if="showEditForm" key="edit" class="inspector-detail-form">
+            <label class="inspector-detail-form-label">Description</label>
+            <textarea
+              v-model="editUiDescription"
+              class="inspector-detail-textarea"
+              :rows="uiDescriptionRows"
+              @click.stop
+              @blur="commitUiDescription"
+            ></textarea>
+            <label class="inspector-detail-form-label">Contextual prompt</label>
+            <textarea
+              v-model="editContextualPrompt"
+              class="inspector-detail-textarea"
+              :rows="contextualPromptRows"
+              @click.stop
+              @blur="commitContextualPrompt"
+            ></textarea>
+            <button
+              class="inspector-detail-delete-btn"
+              :disabled="selectedElement.data.isStart"
+              :title="selectedElement.data.isStart ? 'The initial state can\'t be deleted — point init-action at another state first.' : null"
+              @click.stop="confirmDelete"
+            >Delete state</button>
+          </div>
+          <div v-else key="readonly" class="inspector-detail-readonly">
+            <p v-if="selectedElement.data.uiDescription" class="inspector-detail-ui_description">{{ selectedElement.data.uiDescription }}</p>
+          </div>
+        </Transition>
       </template>
       <template v-else>
-        <p v-if="selectedElement.data.uiDescription" class="inspector-detail-ui_description">{{ selectedElement.data.uiDescription }}</p>
-        <p class="inspector-detail-field"><template v-if="!selectedElement.data.isInitEdge"><strong>{{ selectedElement.data.source }}</strong> → </template><strong>{{ selectedElement.data.target }}</strong></p>
-        <p v-if="selectedElement.data.buttonText" class="inspector-detail-field"><strong>Button:</strong> {{ selectedElement.data.buttonText }}</p>
-        <p v-if="selectedElement.data.trigger" class="inspector-detail-field"><strong>Trigger:</strong><code class="inspector-detail-code">{{ selectedElement.data.trigger }}</code></p>
-        <p v-if="selectedElement.data.actionPrompt" class="inspector-detail-field"><strong>Action prompt:</strong> {{ selectedElement.data.actionPrompt }}</p>
-        <p v-if="selectedElement.data.onEnter" class="inspector-detail-field"><strong>On enter:</strong> {{ selectedElement.data.onEnter }}</p>
+        <Transition name="crossfade" mode="out-in">
+          <div v-if="showEditForm" key="edit" class="inspector-detail-form">
+            <p v-if="selectedElement.data.uiDescription" class="inspector-detail-ui_description">{{ selectedElement.data.uiDescription }}</p>
+            <p class="inspector-detail-field">
+              <template v-if="!selectedElement.data.isInitEdge"><strong>{{ selectedElement.data.source }}</strong> → </template>
+              <select
+                v-model="editTarget"
+                class="inspector-detail-target-select"
+                @click.stop
+                @change="commitTarget"
+              >
+                <option v-for="state in availableStates" :key="state.key" :value="state.key">{{ state.uiLabel }}</option>
+              </select>
+            </p>
+            <p v-if="selectedElement.data.trigger" class="inspector-detail-field"><strong>Trigger:</strong><code class="inspector-detail-code">{{ selectedElement.data.trigger }}</code></p>
+            <template v-if="!selectedElement.data.isInitEdge">
+              <label class="inspector-detail-form-label">Action prompt</label>
+              <textarea
+                v-model="editActionPrompt"
+                class="inspector-detail-textarea"
+                :rows="actionPromptRows"
+                @click.stop
+                @blur="commitActionPrompt"
+              ></textarea>
+              <button class="inspector-detail-delete-btn" @click.stop="confirmDelete">Delete action</button>
+            </template>
+          </div>
+          <div v-else key="readonly" class="inspector-detail-readonly">
+            <p v-if="selectedElement.data.uiDescription" class="inspector-detail-ui_description">{{ selectedElement.data.uiDescription }}</p>
+            <p class="inspector-detail-field"><template v-if="!selectedElement.data.isInitEdge"><strong>{{ selectedElement.data.source }}</strong> → </template><strong>{{ selectedElement.data.target }}</strong></p>
+            <p v-if="selectedElement.data.trigger" class="inspector-detail-field"><strong>Trigger:</strong><code class="inspector-detail-code">{{ selectedElement.data.trigger }}</code></p>
+            <p v-if="selectedElement.data.onEnter" class="inspector-detail-field"><strong>On enter:</strong> {{ selectedElement.data.onEnter }}</p>
+            <p v-if="selectedElement.data.actionPrompt" class="inspector-detail-field"><strong>Action prompt:</strong> {{ selectedElement.data.actionPrompt }}</p>
+          </div>
+        </Transition>
       </template>
-      <div v-if="editableFiles && selectedElement.data.attachments?.length" class="inspector-attachments">
+      <div v-if="selectedElement.data.attachments?.length" class="inspector-attachments">
         <button
           v-for="(fileName, idx) in selectedElement.data.attachments"
           :key="fileName"
           class="inspector-attachment-btn"
-          :class="{ 'inspector-attachment-btn-disabled': !editableFiles.includes(fileName) }"
-          :disabled="!editableFiles.includes(fileName)"
-          :title="editableFiles.includes(fileName) ? fileName : `${fileName} (not text-editable)`"
+          :class="{ 'inspector-attachment-btn-disabled': editableFiles && !editableFiles.includes(fileName) }"
+          :disabled="editableFiles && !editableFiles.includes(fileName)"
+          :title="!editableFiles || editableFiles.includes(fileName) ? fileName : `${fileName} (not text-editable)`"
           @click.stop="selectAttachment(fileName)"
         >{{ attachmentLabel(idx) }}</button>
       </div>
@@ -136,7 +368,18 @@ function selectAttachment(fileName) { emit('select-attachment', fileName) }
 .inspector-detail-card { flex-shrink: 0; margin-top: 0.75rem; max-height: 45%; display: flex; flex-direction: column; border-radius: 8px; border: 1px solid #eee; background: #fafafa; overflow: hidden; }
 .inspector-detail-card-selectable { cursor: pointer; }
 .inspector-detail-card-selectable:hover { border-color: #c9d6e8; background: #f0f4fa; }
+/* An editable card's own textarea can be dragged taller (resize:
+   vertical, see .inspector-detail-textarea) — the 45%/overflow:hidden
+   cap above exists for the read-only/list-row usages (Graph's floating
+   card, Actions-list rows), where several cards share the panel at once.
+   An editable card is always alone in its own already-scrollable tab
+   (see .inspector-state-tab/.inspector-actions-tab's own overflow-y),
+   so here the card should grow with its content instead of clipping or
+   scrolling internally. */
+.inspector-detail-card-editable { max-height: none; overflow: visible; }
+.inspector-detail-card-editable .inspector-detail-body { overflow: visible; }
 .inspector-detail-header { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem 0.6rem; border-bottom: 1px solid #eee; flex-shrink: 0; }
+.inspector-detail-card-editable .inspector-detail-header { cursor: pointer; }
 .inspector-detail-header-top { display: flex; align-items: center; gap: 0.5rem; }
 .inspector-detail-badges { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .inspector-detail-badge { flex-shrink: 0; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.15rem 0.5rem; border-radius: 999px; color: white; }
@@ -146,9 +389,21 @@ function selectAttachment(fileName) { emit('select-attachment', fileName) }
 .inspector-detail-badge-start, .inspector-detail-badge-next { background: #2e7d32; }
 .inspector-detail-badge-fired { background: #ad1457; }
 .inspector-detail-badge-final { background: #c62828; }
-.inspector-detail-badge-manual { background: #5c6b7a; }
-.inspector-detail-badge-neutral { background: #8a8a8a; }
+.inspector-detail-badge-manual { background: #00695c; }
+.inspector-detail-badge-neutral { background: #4a6fa5; }
+.inspector-detail-badge-toggle { cursor: pointer; }
+.inspector-detail-badge-toggle-off { background: #ccc; color: #555; }
+.inspector-detail-badge-toggle-on { background: #4a6fa5; }
 .inspector-detail-title { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inspector-detail-title-input { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; border: 1px solid transparent; border-radius: 4px; padding: 0.1rem 0.3rem; background: transparent; }
+.inspector-detail-title-input:hover, .inspector-detail-title-input:focus { border-color: #ccc; background: white; }
+.inspector-detail-form-label { display: block; margin: 0.5rem 0 0.2rem; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #777; }
+.inspector-detail-textarea { display: block; width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 0.8rem; padding: 0.4rem 0.5rem; border-radius: 6px; border: 1px solid #ccc; }
+.inspector-detail-target-select { display: inline-block; width: auto; max-width: 100%; font: inherit; font-weight: 700; font-size: inherit; color: #333; padding: 0.05rem 0.2rem; border-radius: 4px; border: 1px solid transparent; background: transparent; cursor: pointer; }
+.inspector-detail-target-select:hover, .inspector-detail-target-select:focus { border-color: #ccc; background: white; }
+.inspector-detail-delete-btn { display: block; margin-top: 0.75rem; padding: 0.35rem 0.8rem; border-radius: 6px; border: 1px solid #c62828; background: white; color: #c62828; font-size: 0.78rem; cursor: pointer; }
+.inspector-detail-delete-btn:hover:not(:disabled) { background: #c62828; color: white; }
+.inspector-detail-delete-btn:disabled { opacity: 0.5; cursor: not-allowed; border-color: #ccc; color: #999; }
 .close-x-btn { flex-shrink: 0; width: 1.4rem; height: 1.4rem; line-height: 1; border: none; border-radius: 6px; background: none; color: #666; cursor: pointer; font-size: 1rem; }
 .close-x-btn:hover { background: #eee; }
 .inspector-detail-body { padding: 0.6rem 0.75rem; overflow-y: auto; font-size: 0.8rem; color: #444; }
@@ -160,4 +415,6 @@ function selectAttachment(fileName) { emit('select-attachment', fileName) }
 .inspector-attachment-btn:hover:not(:disabled) { background: #4a6fa5; color: white; }
 .inspector-attachment-btn-disabled { border-color: #ccc; color: #aaa; cursor: not-allowed; }
 .inspector-attachment-btn-disabled:hover { background: white; color: #aaa; }
+.crossfade-enter-active, .crossfade-leave-active { transition: opacity 0.15s ease; }
+.crossfade-enter-from, .crossfade-leave-to { opacity: 0; }
 </style>

@@ -40,9 +40,9 @@ class TrackingService(object):
 		self._session_import_manager = SessionImportManager(db)
 		self.auto_tracking_enabled = True
 
-	def import_session(self, username: str, project_name: str, text: str) -> int:
+	def import_session(self, username: str, project_name: str, text: str, title: str | None = None) -> int:
 		try:
-			return self._session_import_manager.import_transcript(username, project_name, text)
+			return self._session_import_manager.import_transcript(username, project_name, text, title=title)
 		except ValueError as exc:
 			raise TrackingServiceError(str(exc), status_code=HTTPStatus.BAD_REQUEST) from exc
 

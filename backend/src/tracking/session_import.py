@@ -58,12 +58,12 @@ class SessionImportManager:
     def __init__(self, db: Db) -> None:
         self._db = db
 
-    def import_transcript(self, username: str, project_name: str, text: str) -> int:
+    def import_transcript(self, username: str, project_name: str, text: str, title: str | None = None) -> int:
         messages = parse_transcript(text)
         session_id = self._db.create_chat_session(
             username, project_name,
             datetime_start=None, datetime_end=None, start_state=None, end_state=None,
-            source='imported',
+            source='imported', title=title,
         )
         for message in messages:
             self._db.save_message(message["role"], message["content"], session_id, timestamp=None)

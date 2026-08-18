@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples"
+SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
 
 
 def _upload_and_activate(client, name: str = "metrics-playground-states"):

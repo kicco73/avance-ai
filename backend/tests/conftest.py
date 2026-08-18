@@ -16,7 +16,7 @@ from project.project_service import ProjectService
 from session import Session
 from tracking.tracking_service import TrackingService
 
-SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples"
+SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
 
 
 @pytest.fixture

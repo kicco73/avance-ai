@@ -45,6 +45,13 @@ const isDirty = computed(() => content.value !== originalContent.value)
 const canUndo = ref(false)
 const canRedo = ref(false)
 
+// The same extension-based rule ProjectService._file_undo_redo_info
+// derives this from (see its own docstring) — fixed for this file's
+// whole lifetime (its extension, hence :key="fileName" on this
+// component, never changes without a remount), so unlike can_undo/
+// can_redo this only ever needs setting once, on load.
+const mediaType = ref(null)
+
 let view = null
 const editableCompartment = new Compartment()
 
@@ -104,11 +111,20 @@ async function load() {
     originalContent.value = file.content
     canUndo.value = file.can_undo
     canRedo.value = file.can_redo
+    mediaType.value = file.media_type
   } catch {
     if (token === requestToken) loading.value = false
     return
   }
   loading.value = false
+  // A later call (see reload()) with a view already mounted — replace its
+  // buffer in place, same as save()/undo/redo already do, rather than
+  // creating a second EditorView on top of the still-live first one
+  // (createEditor below only ever runs once, on the very first load).
+  if (view) {
+    setEditorDoc(content.value)
+    return
+  }
   await nextTick() // editorHost is v-show'd by loading above — wait a tick for layout to settle
   if (token !== requestToken) return
   createEditor(content.value)
@@ -194,7 +210,7 @@ async function reload() {
   await load()
 }
 
-defineExpose({ content, isDirty, canUndo, canRedo, loading, saving, save, undo, redo, jumpToLine, reload })
+defineExpose({ content, isDirty, canUndo, canRedo, mediaType, loading, saving, save, undo, redo, jumpToLine, reload })
 
 // Read-only for the duration of an in-flight save — typing over content
 // that's already mid-flight to the backend would just be silently lost

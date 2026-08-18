@@ -75,7 +75,7 @@ function destroyGraph() {
 // attachments on a node; source/trigger/action_prompt/ui_description on
 // an edge — trigger especially never reaches a live chat client, only
 // this Inspect-panel-only wrapper).
-function nodeToCyData(n) { return { id: n.state.key, uiLabel: n.state.ui_label, uiDescription: n.state.ui_description, final: n.state.final, isStart: n.is_start, chat: n.state.chat, historyCutoff: n.history_cutoff, transitionLogLevel: n.transition_log_level, attachments: n.attachments } }
+function nodeToCyData(n) { return { id: n.state.key, uiLabel: n.state.ui_label, uiDescription: n.state.ui_description, final: n.state.final, isStart: n.is_start, chat: n.state.chat, historyCutoff: n.history_cutoff, transitionLogLevel: n.transition_log_level, attachments: n.attachments, contextualPrompt: n.contextual_prompt } }
 // The one edge with source === "" is the automaton's own init_action (see
 // project_service.py's get_project_graph). Its cytoscape-facing `source`
 // is PSEUDO_START_ID (a real node has to exist there — see
@@ -251,7 +251,17 @@ function syncSelectionToSelection({ emitJump = false } = {}) {
     }
   }
   const key = props.highlightedStateKey
-  const node = key == null ? null : graphNodes.value.find((n) => n.state.key === key)
+  // No live state to auto-follow at all (edit mode has none, ever — see
+  // EditProjectView.vue's own highlightedStateKey) is not the same thing
+  // as "the previously highlighted one went away" (a real, still-worth-
+  // clearing case, just below) — this runs after *every* graph reload
+  // (see renderGraph), not just an actual highlightedStateKey change, so
+  // treating "nothing to follow" as "clear the selection" would silently
+  // wipe out whatever the user (or a field edit's own re-selection, see
+  // EditProjectView.vue's own handleSetStateField) had independently and
+  // deliberately selected, on every single reload.
+  if (key == null) return
+  const node = graphNodes.value.find((n) => n.state.key === key)
   if (!node) return selectGraphElement(null, null)
   selectGraphElement('state', nodeToCyData(node))
   if (emitJump) emit('jump-to-definition', { kind: 'state', stateKey: node.state.key })

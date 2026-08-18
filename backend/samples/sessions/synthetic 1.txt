@@ -1,0 +1,27 @@
+assistant: Hi, and thank you for talking about this. First, I’d like to understand where you are with your drinking. Do you see it as a problem you want to change, or are you still unsure?
+
+user: I know I drink too much, especially in the evening. But I don’t think I’m ready to quit completely.
+
+assistant: It sounds like you recognize that drinking is causing some difficulties, while at the same time the idea of quitting completely feels like too much right now. What worries you most when you think about changing?
+
+user: I’m afraid I won’t be able to relax without drinking. And sometimes I think that maybe it’s not really that serious.
+
+assistant: It makes sense that you have mixed feelings. On one hand, you see some negative consequences; on the other, alcohol still feels useful for managing stress. If we look at both the benefits and the costs, what does drinking give you, and what is it taking away?
+
+user: It helps me switch off after work and sleep. But I argue with my wife more often, and I’m tired in the mornings.
+
+assistant: So alcohol gives you some immediate relief, but it also seems to have consequences that matter to you, especially in your relationship and your energy levels. How important have these effects become for you?
+
+user: Pretty important. I don’t want my wife to get tired of dealing with this situation.
+
+assistant: That sounds like a meaningful reason for you to consider change. You don’t have to decide everything today; we can focus on the next step. On a scale from 0 to 10, how willing are you to try changing something about your drinking?
+
+user: I’d say 6. I’m not at 9, but I’m definitely not at 2 either.
+
+assistant: A 6 suggests that an important part of you is already leaning toward change. Why did you choose 6 rather than, say, 3?
+
+user: Because I know I can’t keep going like this. I’d at least like to try cutting down and see if I feel better.
+
+assistant: That’s a concrete goal. We can explore what might help you move from intention to a first step, without expecting you to solve everything immediately. We could also track when you drink and what happens beforehand, so you can better understand the situations that make drinking harder to resist.
+
+user: Yes, I think I could start by writing down when I drink and what happens beforehand. That feels more manageable than promising I’ll never drink again.

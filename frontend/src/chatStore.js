@@ -34,8 +34,16 @@ export const currentSessionId = ref(null)
 // most recently started *open* one, so "active" and "open" aren't the
 // same thing), set to the backend's own `active` flag only when the user
 // picks a session from the sessions panel (see selectSession) — never
-// computed client-side.
-export const selectedSessionActive = ref(true)
+// computed client-side. Starts false, not true: nothing has actually
+// resolved a session yet at this point, and a project that's never been
+// published can't create one at all (see db.create_chat_session) — the
+// bootstrap in loadMessages()/ensureSession() then simply never gets to
+// set this true, so ChatWindow.vue's own ActionButtons (gated on this,
+// not recomputed from state.value, which the automaton alone can already
+// populate with no session behind it at all) correctly stays out of the
+// render path instead of showing manual-action buttons with nothing to
+// fire them against.
+export const selectedSessionActive = ref(false)
 export const sessions = ref([])
 export const sessionsLoading = ref(false)
 export const sessionsPanelOpen = ref(false)
@@ -96,16 +104,22 @@ function toStoreMessage(m) {
   return { role: m.role, content: m.content, audioText: m.audio_text, timestamp: m.timestamp, failed: false, messageId: m.id }
 }
 
-async function ensureSession() {
-  const session = await getCurrentSession(currentSessionId.value)
+async function ensureSession(allowDraft = false) {
+  const session = await getCurrentSession(currentSessionId.value, allowDraft)
   currentSessionId.value = session.id
   selectedSessionActive.value = session.active
   return session.id
 }
 
-export async function loadMessages() {
+// allowDraft: see api.js's getCurrentSession — EditProjectView.vue's own
+// embedded "Test" chat calls this with allowDraft true (see its own
+// ensureDraftChatSession) so a project that's never been published (or
+// has draft edits ahead of what's published) can still be tested there;
+// every other caller (the main app, on boot/project switch) leaves it at
+// its default false, same behavior as always.
+export async function loadMessages(allowDraft = false) {
   try {
-    const sessionId = await ensureSession()
+    const sessionId = await ensureSession(allowDraft)
     const history = await getMessages(sessionId)
     messages.value = history.map(toStoreMessage)
     // Whichever project just became active, the sessions panel (if open)
@@ -510,32 +524,38 @@ export function clearChatUi() {
   sessions.value = []
 }
 
-export async function handleReset() {
+// allowDraft — see loadMessages's own docstring — threaded through so
+// Reset still works from EditProjectView.vue's own embedded "Test" chat
+// toolbar for a project that's never been published.
+export async function handleReset(allowDraft = false) {
   if (!window.confirm('Reset the conversation, signals, and transitions? This cannot be undone.')) return
   clearChatUi()
   try {
     const newState = await postReset()
     state.value = null
     handleStateChange(newState)
-    await loadMessages()
+    await loadMessages(allowDraft)
     bumpTurn()
   } catch {
     // already surfaced via apiFetch
   }
 }
 
-export async function handleNewSession() {
+// allowDraft — see loadMessages's own docstring — threaded through from
+// ChatWindow.vue's own allowDraft prop (its own SessionsPanel "new
+// session" button is what reaches this).
+export async function handleNewSession(allowDraft = false) {
   // Only one session is ever active per project (see ChatSessionManager) —
   // starting a new one always supersedes whichever one was current, so
   // this is a real "close the current session" action, not just an addition.
   if (!window.confirm('Start a new session? This will close the current session for this project — only one can be active at a time.')) return
   try {
-    const session = await postCreateSession()
+    const session = await postCreateSession(allowDraft)
     currentSessionId.value = session.id
     selectedSessionActive.value = session.active
     clearApiError()
     messages.value = []
-    await loadMessages()
+    await loadMessages(allowDraft)
     // Opened unconditionally (not just refreshed when already open) so the
     // new session is actually visible right away, wherever this was
     // triggered from — not dependent on the sessions panel already being open.

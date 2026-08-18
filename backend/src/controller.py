@@ -53,9 +53,9 @@ DOCS_DIR = Path(__file__).resolve().parent / "docs"
 # ever change, and only as a side effect of editing its own `ui-label`
 # (see AutomatonYamlEditor.set_signal_field), never through a field edit
 # of its own.
-STATE_EDITABLE_FIELDS = {"ui-label", "history-cutoff", "contextual-prompt"}
+STATE_EDITABLE_FIELDS = {"ui-label", "ui-description", "history-cutoff", "contextual-prompt", "chat"}
 ACTION_EDITABLE_FIELDS = {"ui-label", "action-prompt", "target"}
-SIGNAL_EDITABLE_FIELDS = {"ui-label", "definition"}
+SIGNAL_EDITABLE_FIELDS = {"ui-label", "ui-description", "definition"}
 
 
 def route(method: str, path: str, **kwargs):
@@ -243,18 +243,20 @@ class AvanceController(object):
         return self.chat_service.get_ai_models_info()
 
     @get("/api/chat/session")
-    def get_current_session(self, session_id: int | None = None):
+    def get_current_session(self, session_id: int | None = None, allow_draft: bool = False):
         """Bootstrap endpoint: resolves (or creates) the active project's
         current writable session — see chat/session_manager.py. Called by
         the frontend before it has a known session_id, or to recover from
-        a stale one."""
-        return self.chat_service.get_or_create_current_session(session_id)
+        a stale one. `allow_draft` — see ChatService.get_or_create_
+        current_session's own docstring — only ever true from
+        EditProjectView.vue's own embedded "Test" chat."""
+        return self.chat_service.get_or_create_current_session(session_id, allow_draft=allow_draft)
 
     @post("/api/chat/sessions")
-    def post_create_session(self):
+    def post_create_session(self, allow_draft: bool = False):
         """Explicit "start a new session" action — always creates one,
         superseding whichever session was previously current."""
-        return self.chat_service.create_session()
+        return self.chat_service.create_session(allow_draft=allow_draft)
 
     @get("/api/chat/sessions")
     def get_sessions(self, include_imported: bool = False):
@@ -274,7 +276,7 @@ class AvanceController(object):
         content = await file.read()
         text = content.decode("utf-8")
         session_id = self.tracking_service.import_session(
-            Session().user, self.project_service.get_active_project_name(), text
+            Session().user, self.project_service.get_active_project_name(), text, title=file.filename
         )
         return {"success": True, "session_id": session_id}
 
@@ -742,6 +744,20 @@ class AvanceController(object):
         try:
             return await self.project_service.set_signal_field(
                 project_name, signal_name, field, req.value, self._activate_project
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @put("/api/projects/{project_name}/init-action/target")
+    async def put_init_action_target(self, project_name: str, req: SetProjectFieldRequest):
+        """Moves the automaton's own start state to req.value — see
+        AutomatonYamlEditor.set_init_action_target. Converts ValueError
+        (an unknown state name) to 400."""
+        try:
+            return await self.project_service.set_init_action_target(
+                project_name, req.value, self._activate_project
             )
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc

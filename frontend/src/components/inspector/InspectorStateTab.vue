@@ -8,6 +8,7 @@
 // This component owns none of that resolution itself, purely a thin
 // wrapper so the card is clickable here (see selectable below) without
 // making it clickable in "States" too.
+import { ref, watch } from 'vue'
 import InspectorDetailCard from './InspectorDetailCard.vue'
 
 const props = defineProps({
@@ -16,7 +17,14 @@ const props = defineProps({
   highlightedStateKey: { type: String, default: null }
 })
 
-const emit = defineEmits(['select', 'select-attachment'])
+const emit = defineEmits(['select', 'select-attachment', 'jump-to-attachment', 'set-field', 'delete', 'add-state'])
+
+// This tab only ever has the one card, but it's still the parent that
+// owns open/closed now (see InspectorDetailCard.vue's own `open` prop) —
+// closed whenever the selection moves to a genuinely different state,
+// same as before.
+const open = ref(false)
+watch(() => props.selectedElement?.data.id, () => { open.value = false })
 </script>
 
 <template>
@@ -28,14 +36,23 @@ const emit = defineEmits(['select', 'select-attachment'])
       :editable-files="editableFiles"
       :highlighted-state-key="highlightedStateKey"
       selectable
+      editable
+      :closable="false"
+      :open="open"
+      @update:open="open = $event"
       @select="emit('select', selectedElement)"
       @select-attachment="emit('select-attachment', $event)"
-      @close="emit('select', null)"
+      @jump-to-attachment="emit('jump-to-attachment', $event)"
+      @set-field="(field, value) => emit('set-field', field, value)"
+      @delete="emit('delete', selectedElement.data.id)"
     />
+    <button class="inspector-state-tab-add-btn" @click="emit('add-state')">+ Add state</button>
   </div>
 </template>
 
 <style scoped>
-.inspector-state-tab { flex: 1; min-height: 0; overflow-y: auto; }
+.inspector-state-tab { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
 .inspector-state-tab-empty { margin: 0; color: #444; font-size: 0.9rem; }
+.inspector-state-tab-add-btn { flex-shrink: 0; margin-top: 0.5rem; padding: 0.5rem; border-radius: 6px; border: 1px dashed #4a6fa5; background: white; color: #4a6fa5; font-size: 0.82rem; cursor: pointer; }
+.inspector-state-tab-add-btn:hover { background: #eef2f9; }
 </style>

@@ -257,6 +257,18 @@ class AutomatonYamlEditor:
         self._signal(signal_name)[field] = value
         return self._signal_payload(signal_name)
 
+    def set_init_action_target(self, state_name: str) -> StatePayload:
+        """Moves the automaton's own start state — the Inspector's own
+        editable state card shows this as an always-on "Start" badge (see
+        InspectorDetailCard.vue), clickable to make *this* state the new
+        one; there's no way to unset it from here, only to move it to a
+        different state (see delete_state's own InitActionTargetError for
+        the corresponding "can't delete the current one" guard)."""
+        self._state(state_name)  # raises ValueError if unknown, same as every other set_*_field
+        init_action = self._raw.setdefault("init-action", CommentedMap())
+        init_action["target"] = state_name
+        return self._state_payload(state_name)
+
     def rename_signal(self, old_name: str, new_name: str) -> SignalPayload:
         signals = self._signals()
         if old_name not in signals:

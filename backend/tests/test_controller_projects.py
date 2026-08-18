@@ -6,7 +6,7 @@ import pytest
 
 pytestmark = pytest.mark.regression
 
-SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples"
+SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
 
 
 def _upload(client, name, sample):

@@ -8,7 +8,7 @@
 // {actionName, position} intent — EditProjectView.vue is the one that
 // knows the containing state's own key, calls the actual endpoint, and
 // coordinates refreshing the graph/code buffer afterward.
-import { ref } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 import InspectorDetailCard from './InspectorDetailCard.vue'
 
 const props = defineProps({
@@ -17,10 +17,19 @@ const props = defineProps({
   selectedElement: { type: Object, default: null },
   nextActionEdge: { type: Object, default: null },
   firedActionEdge: { type: Object, default: null },
-  highlightedStateKey: { type: String, default: null }
+  highlightedStateKey: { type: String, default: null },
+  // Every real state's own {key, uiLabel} — forwarded straight through to
+  // each row's own InspectorDetailCard for its target <select>.
+  availableStates: { type: Array, default: () => [] },
+  // False while this list is showing the init-action (no real state
+  // selected — see EditProjectView.vue's own actionsTabList/
+  // selectedStateKey) — the init-action is a singleton the automaton
+  // itself always owns, not one more action a real state's own "+ Add
+  // action" could add another of.
+  allowAdd: { type: Boolean, default: true }
 })
 
-const emit = defineEmits(['select', 'select-attachment', 'reorder'])
+const emit = defineEmits(['select', 'select-attachment', 'reorder', 'set-field', 'delete', 'add-action'])
 
 const draggedIndex = ref(null)
 const dragOverIndex = ref(null)
@@ -28,6 +37,47 @@ const dragOverIndex = ref(null)
 function isSelected(action) {
   return props.selectedElement?.kind === 'action' && props.selectedElement.data.actionName === action.data.actionName
 }
+
+// An accordion — at most one row's own form open at a time (see
+// InspectorDetailCard.vue's own `open` prop, now parent-owned for
+// exactly this reason). Cleared whenever the action it points at is no
+// longer in the list at all (a delete, or a reorder never changes names
+// so that's not a concern here) — no stale reference to a row that's
+// gone.
+const expandedActionName = ref(null)
+function toggleOpen(action, isOpen) {
+  expandedActionName.value = isOpen ? action.data.actionName : null
+}
+watch(
+  () => props.actions,
+  (actions) => {
+    if (expandedActionName.value && !actions.some((a) => a.data.actionName === expandedActionName.value)) {
+      expandedActionName.value = null
+    }
+  }
+)
+
+// EditProjectView.vue's own edit-mode selection (a Graph tap, a jump from
+// elsewhere) never scrolls the page to find this tab's own row on its
+// own — the Inspector may already be showing "State" instead of
+// "Actions", or the row itself may simply be off-screen further down
+// this tab's own scrollable list (see .inspector-actions-tab's own
+// overflow-y). Scrolling it into view here is this tab's own
+// responsibility once it (and the row) actually exist to scroll to.
+const rowRefs = {}
+function setRowRef(name, el) {
+  if (el) rowRefs[name] = el
+  else delete rowRefs[name]
+}
+
+watch(
+  () => props.selectedElement,
+  async (element) => {
+    if (element?.kind !== 'action') return
+    await nextTick()
+    rowRefs[element.data.actionName]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }
+)
 
 function handleDragStart(index) {
   draggedIndex.value = index
@@ -63,6 +113,7 @@ function handleDragEnd() {
     <div
       v-for="(action, index) in actions"
       :key="action.data.actionName"
+      :ref="(el) => setRowRef(action.data.actionName, el)"
       class="inspector-actions-tab-row"
       :class="{ 'inspector-actions-tab-row-drag-over': dragOverIndex === index && draggedIndex !== index }"
       draggable="true"
@@ -81,11 +132,18 @@ function handleDragEnd() {
         :fired-action-edge="firedActionEdge"
         :highlighted-state-key="highlightedStateKey"
         :selectable="!isSelected(action)"
+        editable
+        :available-states="availableStates"
         :closable="false"
+        :open="expandedActionName === action.data.actionName"
+        @update:open="toggleOpen(action, $event)"
         @select="emit('select', action)"
         @select-attachment="emit('select-attachment', $event)"
+        @set-field="(field, value) => emit('set-field', action.data.matchStateKey, action.data.actionName, field, value)"
+        @delete="emit('delete', action.data.matchStateKey, action.data.actionName)"
       />
     </div>
+    <button v-if="allowAdd" class="inspector-actions-tab-add-btn" @click="emit('add-action')">+ Add action</button>
   </div>
 </template>
 
@@ -96,4 +154,6 @@ function handleDragEnd() {
 .inspector-actions-tab-row-drag-over { outline: 2px dashed #4a6fa5; outline-offset: 2px; border-radius: 8px; }
 .inspector-actions-tab-drag-handle { flex-shrink: 0; display: flex; align-items: center; cursor: grab; color: #999; font-size: 0.9rem; padding: 0 0.2rem; user-select: none; }
 .inspector-actions-tab-card { flex: 1; min-width: 0; margin-top: 0 !important; }
+.inspector-actions-tab-add-btn { flex-shrink: 0; margin-top: 0.5rem; padding: 0.5rem; border-radius: 6px; border: 1px dashed #4a6fa5; background: white; color: #4a6fa5; font-size: 0.82rem; cursor: pointer; }
+.inspector-actions-tab-add-btn:hover { background: #eef2f9; }
 </style>

@@ -45,13 +45,21 @@ export function getState(signal) {
   return apiFetch(`${API_URL}/state`, { signal })
 }
 
-export function getCurrentSession(sessionId) {
-  const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
-  return apiFetch(`${API_URL}/chat/session${query}`)
+// allowDraft: only ever true from EditProjectView.vue's own embedded
+// "Test" chat — the one place a session is allowed to exist against a
+// revision nobody's published yet (see backend ChatService.get_or_
+// create_current_session's own docstring).
+export function getCurrentSession(sessionId, allowDraft = false) {
+  const params = new URLSearchParams()
+  if (sessionId != null) params.set('session_id', sessionId)
+  if (allowDraft) params.set('allow_draft', 'true')
+  const query = params.toString()
+  return apiFetch(`${API_URL}/chat/session${query ? `?${query}` : ''}`)
 }
 
-export function postCreateSession() {
-  return apiFetch(`${API_URL}/chat/sessions`, { method: 'POST' })
+export function postCreateSession(allowDraft = false) {
+  const query = allowDraft ? '?allow_draft=true' : ''
+  return apiFetch(`${API_URL}/chat/sessions${query}`, { method: 'POST' })
 }
 
 export function getSessions(includeImported = false) {
@@ -484,6 +492,18 @@ export function putActionField(projectName, stateName, actionName, field, value)
   return apiFetch(
     `${API_URL}/projects/${encodeURIComponent(projectName)}/states/${encodeURIComponent(stateName)}/actions/${encodeURIComponent(actionName)}/${encodeURIComponent(field)}`,
     { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value }) }
+  )
+}
+
+// The init-action lives outside `states:` in the YAML (see
+// AutomatonYamlEditor.set_init_action_target) — its target is the only
+// field it exposes an edit for, via this dedicated endpoint rather than
+// putActionField above (which looks the action up inside a real state's
+// own `actions:` list, and the init-action isn't in one).
+export function putInitActionTarget(projectName, target) {
+  return apiFetch(
+    `${API_URL}/projects/${encodeURIComponent(projectName)}/init-action/target`,
+    { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: target }) }
   )
 }
 

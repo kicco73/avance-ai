@@ -40,7 +40,7 @@ class ChatSessionManager(object):
         return None
 
     def get_or_create_current_session(
-        self, username: str, project_name: str, session_id: int | None, current_state: str
+        self, username: str, project_name: str, session_id: int | None, current_state: str, allow_draft: bool = False
     ) -> dict:
         """The one session `username`+`project_name` may write to right
         now: the most recently started one, if it's still open (touched
@@ -49,7 +49,10 @@ class ChatSessionManager(object):
         the latest datetime_start). `session_id` is the caller's belief
         about which session is current — never trusted for the decision
         (see module docstring), only logged when it's stale so a rotation
-        elsewhere is observable."""
+        elsewhere is observable. `allow_draft` (see create_session's own)
+        only matters for that fresh-creation path — an existing active
+        session is reused/touched exactly as-is regardless, whichever
+        revision it was originally stamped with."""
         now = datetime.utcnow()
         active = self.get_active_session(username, project_name)
         if active is not None:
@@ -59,7 +62,7 @@ class ChatSessionManager(object):
                     "current session is %s", session_id, username, project_name, active["id"]
                 )
             return self._touch(active["id"], now, current_state)
-        return self.create_session(username, project_name, current_state)
+        return self.create_session(username, project_name, current_state, allow_draft=allow_draft)
 
     def require_active_session(
         self, username: str, project_name: str, session_id: int | None, current_state: str
@@ -82,7 +85,7 @@ class ChatSessionManager(object):
             raise ValueError("Session is not active.")
         return self._touch(session["id"], datetime.utcnow(), current_state)
 
-    def create_session(self, username: str, project_name: str, current_state: str) -> dict:
+    def create_session(self, username: str, project_name: str, current_state: str, allow_draft: bool = False) -> dict:
         now = datetime.utcnow()
         session_id = self._db.create_chat_session(
             username=username,
@@ -91,6 +94,7 @@ class ChatSessionManager(object):
             datetime_end=now,
             start_state=current_state,
             end_state=current_state,
+            allow_draft=allow_draft,
         )
         session = self._db.get_chat_session(session_id)
         assert session is not None

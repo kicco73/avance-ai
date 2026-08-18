@@ -9,11 +9,15 @@
 // own undo()/redo()/canUndo/canRedo need to stay live even while "graph"
 // is the one actually visible.
 //
-// Owns no persistence of its own for Add…/reorder — see the emitted
-// add-state/add-signal/add-action events below: EditProjectView.vue is
-// the one holding the unsaved-changes guard, so it's the one that must
-// decide whether a click here is even allowed to proceed, then call the
-// actual endpoint, then tell this view to refresh (see reload()/refresh()).
+// Owns no persistence of its own for reorder — EditProjectView.vue is the
+// one holding the unsaved-changes guard, so it's the one that must decide
+// whether a click is even allowed to proceed, then call the actual
+// endpoint, then tell this view to refresh (see reload()/refresh()). Add
+// state/action/signal all live at the bottom of their own Inspector tab
+// instead now (see InspectorStateTab.vue/InspectorActionsTab.vue/
+// InspectorSignalsTab.vue's own add-state/add-action/add-signal, which
+// reach EditProjectView.vue directly — this view isn't involved in any
+// of them).
 import { computed, ref } from 'vue'
 import InspectorGraph from './inspector/InspectorGraph.vue'
 import CodeEditor from './CodeEditor.vue'
@@ -24,19 +28,14 @@ const props = defineProps({
   highlightedStateKey: { type: String, default: null },
   autoJumpOnHighlightChange: { type: Boolean, default: false },
   nextActionEdge: { type: Object, default: null },
-  firedActionEdge: { type: Object, default: null },
-  // The state "Add action" would add to — null disables that menu item
-  // (see EditProjectView.vue's own selectedGraphElement, the shared
-  // Graph/State-tab/Actions-tab selection this is derived from).
-  selectedStateKey: { type: String, default: null }
+  firedActionEdge: { type: Object, default: null }
 })
 
-const emit = defineEmits(['jump-to-definition', 'select', 'saved', 'add-state', 'add-signal', 'add-action'])
+const emit = defineEmits(['jump-to-definition', 'select', 'saved'])
 
 const segment = ref('graph')
 const graphRef = ref(null)
 const codeEditorRef = ref(null)
-const addMenuOpen = ref(false)
 
 function loadGraph() { return graphRef.value?.loadGraph() }
 function resize() { graphRef.value?.resize() }
@@ -67,13 +66,18 @@ function jumpToLine(lineIndex) {
   codeEditorRef.value?.jumpToLine(lineIndex)
 }
 
-function clickAdd(kind) {
-  addMenuOpen.value = false
-  emit(`add-${kind}`)
+// The Inspector's own State/Actions/Signals row selections use this
+// instead — never switches segment (both stay mounted either way, see
+// this component's own docstring, but forcing "code" on every row click
+// fought the user's own Graph/Code choice) and only moves the cursor at
+// all while "code" is already the one showing.
+function jumpToLineSilently(lineIndex) {
+  if (segment.value !== 'code') return
+  codeEditorRef.value?.jumpToLine(lineIndex)
 }
 
 // The raw YAML text and its own dirty flag — for EditProjectView.vue's
-// own unsaved-changes guard (before Add…/reorder) and jump-to-definition
+// own unsaved-changes guard (before a reorder) and jump-to-definition
 // line-finding (see findStateLine/findActionLine/findSignalLine there),
 // neither of which this view has any business knowing about itself.
 const content = computed(() => codeEditorRef.value?.content ?? '')
@@ -90,8 +94,8 @@ function undo() { return codeEditorRef.value?.undo() }
 function redo() { return codeEditorRef.value?.redo() }
 
 defineExpose({
-  loadGraph, resize, fit, refresh, reloadCode, jumpToLine, stateElementFor, actionsForState, content, isDirty,
-  save, undo, redo
+  loadGraph, resize, fit, refresh, reloadCode, jumpToLine, jumpToLineSilently, stateElementFor, actionsForState,
+  content, isDirty, save, undo, redo
 })
 </script>
 
@@ -111,19 +115,6 @@ defineExpose({
         >Code</button>
       </div>
       <div class="index-yml-editor-toolbar-actions">
-        <div class="index-yml-editor-add-menu">
-          <button class="add-btn" @click="addMenuOpen = !addMenuOpen">Add…</button>
-          <div v-if="addMenuOpen" class="index-yml-editor-add-panel">
-            <button class="index-yml-editor-add-item" @click="clickAdd('state')">Add state</button>
-            <button
-              class="index-yml-editor-add-item"
-              :disabled="!selectedStateKey"
-              :title="selectedStateKey ? '' : 'Select a state first'"
-              @click="clickAdd('action')"
-            >Add action</button>
-            <button class="index-yml-editor-add-item" @click="clickAdd('signal')">Add signal</button>
-          </div>
-        </div>
         <button
           class="undo-redo-btn"
           title="Undo"
@@ -136,6 +127,11 @@ defineExpose({
           :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.canRedo"
           @click="codeEditorRef?.redo()"
         >↷</button>
+        <button v-if="segment === 'graph'" class="fit-graph-btn" title="Fit graph to view" @click="resize(); fit()">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+            <path d="M9 3H5a2 2 0 0 0-2 2v4h2V5h4V3zm10 0h-4v2h4v4h2V5a2 2 0 0 0-2-2zM5 15H3v4a2 2 0 0 0 2 2h4v-2H5v-4zm14 4h-4v2h4a2 2 0 0 0 2-2v-4h-2v4z" />
+          </svg>
+        </button>
         <template v-if="segment === 'code'">
           <button
             class="save-btn"
@@ -178,15 +174,10 @@ defineExpose({
 .index-yml-editor-segment-btn { padding: 0.3rem 0.8rem; border: none; border-radius: 6px; background: none; cursor: pointer; font-size: 0.82rem; color: #555; }
 .index-yml-editor-segment-btn-active { background: white; color: #2c4d7a; font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
 .index-yml-editor-toolbar-actions { display: flex; align-items: center; gap: 0.5rem; }
-.index-yml-editor-add-menu { position: relative; }
-.add-btn { padding: 0.4rem 0.9rem; border-radius: 6px; border: 1px solid #4a6fa5; background: white; color: #4a6fa5; cursor: pointer; font-size: 0.85rem; }
-.add-btn:hover { background: #eef2f9; }
-.index-yml-editor-add-panel { position: absolute; top: calc(100% + 0.3rem); right: 0; z-index: 20; display: flex; flex-direction: column; min-width: 140px; border: 1px solid #ddd; border-radius: 8px; background: white; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12); overflow: hidden; }
-.index-yml-editor-add-item { padding: 0.5rem 0.8rem; border: none; background: white; text-align: left; cursor: pointer; font-size: 0.82rem; color: #333; }
-.index-yml-editor-add-item:hover:not(:disabled) { background: #eef2f9; }
-.index-yml-editor-add-item:disabled { color: #aaa; cursor: not-allowed; }
 .undo-redo-btn { padding: 0.35rem 0.6rem; border-radius: 6px; border: 1px solid #ccc; background: white; cursor: pointer; font-size: 0.9rem; }
 .undo-redo-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.fit-graph-btn { display: flex; align-items: center; justify-content: center; width: 1.8rem; height: 1.8rem; padding: 0; border-radius: 6px; border: 1px solid #ccc; background: white; color: #555; cursor: pointer; }
+.fit-graph-btn:hover { background: #eef2f9; border-color: #4a6fa5; color: #4a6fa5; }
 .save-btn { padding: 0.4rem 1rem; border-radius: 6px; border: 1px solid #2e7d32; background: #2e7d32; color: white; cursor: pointer; }
 .save-btn:hover:not(:disabled) { background: #256428; }
 .save-btn:disabled { opacity: 0.6; cursor: not-allowed; }

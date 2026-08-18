@@ -38,6 +38,50 @@ def test_get_chat_session_returns_none_for_unknown_id(db):
 
 
 @pytest.mark.regression
+def test_create_chat_session_rejects_an_unpublished_project_by_default(db):
+    db.ensure_project("draft-only")
+    with pytest.raises(ValueError, match="never been published"):
+        db.create_chat_session(username="user", project_name="draft-only", start_state="start")
+
+
+@pytest.mark.regression
+def test_create_chat_session_allow_draft_permits_an_unpublished_project(db):
+    db.ensure_project("draft-only")
+    session_id = db.create_chat_session(
+        username="user", project_name="draft-only", start_state="start", allow_draft=True
+    )
+    session = db.get_chat_session(session_id)
+    assert session is not None
+
+
+@pytest.mark.regression
+def test_create_chat_session_allow_draft_stamps_the_current_draft_revision_not_published(db):
+    # Publish once (revision 0), then edit again so the draft moves ahead
+    # to revision 1 while published_revision stays frozen at 0 — a
+    # allow_draft session must be stamped with the *draft* (1), unlike a
+    # normal session, which would be stamped with published_revision (0).
+    db.ensure_project("ahead-of-published")
+    db.publish_project("ahead-of-published")
+    db.save_project_file("user", "ahead-of-published", "index.yml", "states: {}\n")
+
+    draft_session_id = db.create_chat_session(
+        username="user", project_name="ahead-of-published", start_state="start", allow_draft=True
+    )
+    normal_session_id = db.create_chat_session(
+        username="user", project_name="ahead-of-published", start_state="start"
+    )
+
+    assert db.get_project_revision("ahead-of-published") == 1
+    assert db.get_project_published_revision("ahead-of-published") == 0
+
+    # project_revision isn't in the public dict (see _chat_session_to_dict) —
+    # read it straight off the model instead.
+    from db.models import ChatSession
+    assert ChatSession.get_by_id(draft_session_id).project_revision == 1
+    assert ChatSession.get_by_id(normal_session_id).project_revision == 0
+
+
+@pytest.mark.regression
 def test_get_latest_chat_session_picks_most_recent_start(db):
     _make_session(db, start=datetime(2026, 1, 1, 9, 0, 0))
     newer = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))

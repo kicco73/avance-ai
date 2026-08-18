@@ -22,6 +22,12 @@ class ChatSession(BaseModel):
     username = CharField()
     project_name = ForeignKeyField(Project, field='name', column_name='project_name', backref='chat_sessions')
     source = CharField(default='native')
+    # Optional, freeform — never shown for a native session unless the
+    # user someday gets a way to set one (none exists yet); an imported
+    # one always gets the uploaded transcript's own filename (see
+    # SessionImportManager.import_transcript). Shown in the Sessions
+    # panel's own badge in place of end_state, when set.
+    title = CharField(null=True)
     # The project's own published_revision at the moment this session was
     # created — never touched again after (see Db.save_project_files's own
     # fork-on-first-edit-after-publish: a later fork must never silently

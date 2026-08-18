@@ -75,6 +75,14 @@ class TestPutStateField:
         response = client.put(f"/api/projects/{hello_project}/states/Hello/history-cutoff", json={"value": True})
         assert response.status_code == 200
 
+    def test_edits_ui_description(self, client, hello_project):
+        response = client.put(
+            f"/api/projects/{hello_project}/states/Hello/ui-description", json={"value": "A friendly greeting."}
+        )
+        assert response.status_code == 200
+        assert response.json()["ui_description"] == "A friendly greeting."
+        assert "A friendly greeting." in _index_yml(client, hello_project)
+
     def test_rejects_a_field_not_on_the_whitelist(self, client, hello_project):
         response = client.put(f"/api/projects/{hello_project}/states/Hello/fixed-message", json={"value": "x"})
         assert response.status_code == 400
@@ -111,6 +119,15 @@ class TestPutSignalField:
         assert response.status_code == 200
         assert response.json()["definition"] == "a real definition"
 
+    def test_edits_ui_description(self, client, hello_project):
+        signal = client.post(f"/api/projects/{hello_project}/signals").json()
+        response = client.put(
+            f"/api/projects/{hello_project}/signals/{signal['name']}/ui-description",
+            json={"value": "A short human description."},
+        )
+        assert response.status_code == 200
+        assert response.json()["ui_description"] == "A short human description."
+
     def test_ui_label_edit_renames_the_signal(self, client, hello_project):
         signal = client.post(f"/api/projects/{hello_project}/signals").json()  # new_signal
         response = client.put(
@@ -130,6 +147,29 @@ class TestPutSignalField:
             json={"value": "x"},
         )
         assert response.status_code == 400
+
+
+class TestPutInitActionTarget:
+    def test_moves_the_start_state(self, client, hello_project):
+        client.post(f"/api/projects/{hello_project}/states")  # state-0
+        response = client.put(
+            f"/api/projects/{hello_project}/init-action/target", json={"value": "state-0"}
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["key"] == "state-0"
+
+        # Now that state-0 is the start state, Hello can be deleted and
+        # state-0 can't — the exact same guard as before, just flipped.
+        assert client.delete(f"/api/projects/{hello_project}/states/Hello").status_code == 204
+        assert client.delete(f"/api/projects/{hello_project}/states/state-0").status_code == 400
+
+    def test_rejects_an_unknown_state(self, client, hello_project):
+        response = client.put(
+            f"/api/projects/{hello_project}/init-action/target", json={"value": "does-not-exist"}
+        )
+        assert response.status_code == 400
+        assert "Hello:" in _index_yml(client, hello_project)
 
 
 class TestReorderActions:

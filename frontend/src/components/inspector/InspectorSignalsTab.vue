@@ -18,12 +18,60 @@ const props = defineProps({
   stateKey: { type: String, default: null }
 })
 
-const emit = defineEmits(['jump-to-definition', 'select-attachment', 'update-expected-signals'])
+const emit = defineEmits(['jump-to-definition', 'select-attachment', 'update-expected-signals', 'set-field', 'add-signal'])
 
 const signalsLoading = ref(true)
 const signals = ref([])
 const { recentlyChanged: recentlyChangedSignals, markChanged: markSignalsChanged } = useSignalChangeFlash()
 const draggingExpectedValues = ref({})
+
+// Which signal's own block is expanded into an editable form (see
+// editableFiles below — same "we're inside an active edit session"
+// signal already gating jump-to-definition/attachments) — at most one
+// at a time, same convention as the Actions tab's own single-selected-
+// row form. Local UI state only, never persisted, reset whenever the
+// signal it points at disappears from a fresh load (a delete, or a
+// rename that already updated `signals` under a new name).
+const expandedSignalName = ref(null)
+const editUiLabel = ref('')
+const editUiDescription = ref('')
+const editDefinition = ref('')
+
+// A textarea's own opening height, proportional to its existing content
+// (capped at 10 lines) — same reasoning as InspectorDetailCard.vue's own
+// rowsFor, computed once when the block expands, never while typing (so
+// it doesn't fight a manual resize-drag mid-edit).
+function rowsFor(text) {
+  const lines = (text ?? '').split('\n').length
+  return Math.min(10, Math.max(2, lines))
+}
+const uiDescriptionRows = ref(2)
+const definitionRows = ref(4)
+
+function resetEditBuffers(entry) {
+  editUiLabel.value = entry?.signal.ui_label ?? ''
+  editUiDescription.value = entry?.signal.ui_description ?? ''
+  editDefinition.value = entry?.signal.definition ?? ''
+  uiDescriptionRows.value = rowsFor(editUiDescription.value)
+  definitionRows.value = rowsFor(editDefinition.value)
+}
+
+function selectSignal(entry) {
+  if (!props.editableFiles) return
+  const name = entry.signal.name
+  if (expandedSignalName.value === name) {
+    expandedSignalName.value = null
+  } else {
+    expandedSignalName.value = name
+    resetEditBuffers(entry)
+  }
+  emit('jump-to-definition', { kind: 'signal', signalName: name })
+}
+
+function commitSignalField(field, currentValue, originalValue) {
+  if (currentValue === originalValue) return
+  emit('set-field', expandedSignalName.value, field, currentValue)
+}
 
 // "Relevant" per-signal, scoped to props.stateKey (see Automaton.
 // triggerable_signal_names/all_triggerable_signal_names on the backend)
@@ -80,6 +128,12 @@ async function loadSignals() {
   try {
     signals.value = (await getProjectSignals(props.projectName, props.stateKey)).signals
   } catch {} finally { signalsLoading.value = false }
+  // A rename (or a delete) moves/removes the signal expandedSignalName
+  // was pointing at — collapse rather than keep showing a stale form for
+  // a name that's no longer in the freshly-loaded list.
+  if (expandedSignalName.value && !signals.value.some((s) => s.signal.name === expandedSignalName.value)) {
+    expandedSignalName.value = null
+  }
 }
 
 function selectAttachment(fileName) { emit('select-attachment', fileName) }
@@ -115,32 +169,74 @@ onMounted(loadSignals)
       No relevant signals — none are referenced by an action's own trigger yet.
     </p>
     <div v-else class="inspector-signal-list">
-      <div v-for="entry in displayedSignals" :key="entry.signal.name" class="inspector-signal-block" :class="{ 'inspector-signal-block-clickable': editableFiles }" :title="editableFiles ? 'Jump to definition' : undefined" @click="editableFiles && emit('jump-to-definition', { kind: 'signal', signalName: entry.signal.name })">
-        <div class="inspector-signal-header">
-          <span class="inspector-detail-badge inspector-detail-badge-signal">Signal</span>
-          <span class="inspector-signal-name">{{ entry.signal.ui_label || entry.signal.name }}</span>
-        </div>
-        <span v-if="entry.signal.ui_description" class="inspector-signal-ui_description">{{ entry.signal.ui_description }}</span>
-        <div v-if="editableFiles && entry.attachments?.length" class="inspector-attachments">
-          <button v-for="(fileName, idx) in entry.attachments" :key="fileName" class="inspector-attachment-btn" :class="{ 'inspector-attachment-btn-disabled': !editableFiles.includes(fileName) }" :disabled="!editableFiles.includes(fileName)" :title="editableFiles.includes(fileName) ? fileName : `${fileName} (not text-editable)`" @click.stop="selectAttachment(fileName)">{{ attachmentLabel(idx) }}</button>
-        </div>
-        <div class="inspector-signal-bar-track">
-          <div v-if="hasSignalValue(signalValues[entry.signal.name])" class="inspector-signal-bar-fill" :class="{ 'inspector-signal-bar-changed': recentlyChangedSignals.has(entry.signal.name) }" :style="{ width: signalValues[entry.signal.name].value + '%' }"></div>
-          <div v-else class="inspector-signal-bar-fill inspector-signal-bar-na" :class="{ 'inspector-signal-bar-changed': recentlyChangedSignals.has(entry.signal.name) }"></div>
-          <div v-if="annotatable" class="inspector-signal-expected-fill" :class="{ 'inspector-signal-expected-fill-set': isExpectedValueSet(entry.signal.name) }" :style="{ width: displayedExpectedValue(entry.signal.name) + '%' }"></div>
-          <input v-if="annotatable" type="range" min="0" max="100" step="1" class="inspector-signal-slider" :class="{ 'inspector-signal-slider-set': isExpectedValueSet(entry.signal.name) }" :value="displayedExpectedValue(entry.signal.name)" :title="`Expected: ${expectedValues[entry.signal.name] ?? '—'}`" @click.stop @input="onExpectedSignalInput(entry.signal.name, $event.target.value)" @change="onExpectedSignalChange(entry.signal.name, $event.target.value)" />
-        </div>
-        <div v-if="annotatable && isExpectedValueSet(entry.signal.name)" class="inspector-signal-annotation-footer">
-          <span class="inspector-signal-expected-label">Expected: {{ draggingExpectedValues[entry.signal.name] ?? expectedValues[entry.signal.name] }}</span>
-          <button v-if="expectedValues[entry.signal.name] != null" type="button" class="inspector-annotation-clear-btn" title="Remove annotation" @click.stop="onClearExpectedSignal(entry.signal.name)">×</button>
-        </div>
+      <div v-for="entry in displayedSignals" :key="entry.signal.name" class="inspector-signal-block" :class="{ 'inspector-signal-block-clickable': editableFiles }" :title="editableFiles ? 'Click to open' : undefined" @click="editableFiles ? selectSignal(entry) : null">
+        <Transition name="crossfade" mode="out-in">
+          <div v-if="editableFiles && expandedSignalName === entry.signal.name" key="edit" class="inspector-signal-form">
+            <div class="inspector-signal-header">
+              <span class="inspector-detail-badge inspector-detail-badge-signal">Signal</span>
+              <input
+                v-model="editUiLabel"
+                class="inspector-signal-label-input"
+                placeholder="Label"
+                @click.stop
+                @blur="commitSignalField('ui-label', editUiLabel, entry.signal.ui_label ?? '')"
+              />
+            </div>
+            <label class="inspector-signal-form-label">Description</label>
+            <textarea
+              v-model="editUiDescription"
+              class="inspector-signal-textarea"
+              :rows="uiDescriptionRows"
+              @click.stop
+              @blur="commitSignalField('ui-description', editUiDescription, entry.signal.ui_description ?? '')"
+            ></textarea>
+            <label class="inspector-signal-form-label">Definition</label>
+            <textarea
+              v-model="editDefinition"
+              class="inspector-signal-textarea"
+              :rows="definitionRows"
+              @click.stop
+              @blur="commitSignalField('definition', editDefinition, entry.signal.definition ?? '')"
+            ></textarea>
+            <div v-if="entry.attachments?.length" class="inspector-attachments">
+              <button v-for="(fileName, idx) in entry.attachments" :key="fileName" class="inspector-attachment-btn" :class="{ 'inspector-attachment-btn-disabled': !editableFiles.includes(fileName) }" :disabled="!editableFiles.includes(fileName)" :title="editableFiles.includes(fileName) ? fileName : `${fileName} (not text-editable)`" @click.stop="selectAttachment(fileName)">{{ attachmentLabel(idx) }}</button>
+            </div>
+          </div>
+          <div v-else key="readonly" class="inspector-signal-readonly">
+            <div class="inspector-signal-header">
+              <span class="inspector-detail-badge inspector-detail-badge-signal">Signal</span>
+              <span class="inspector-signal-name">{{ entry.signal.ui_label || entry.signal.name }}</span>
+            </div>
+            <span v-if="entry.signal.ui_description" class="inspector-signal-ui_description">{{ entry.signal.ui_description }}</span>
+          </div>
+        </Transition>
+        <!-- The current-value bar is a live-conversation concept, same
+             reasoning as EditProjectView.vue's own "no current state
+             while editing" — never shown at all in an editable context
+             (editableFiles), regardless of whether this block is
+             expanded or collapsed. -->
+        <template v-if="!editableFiles">
+          <div class="inspector-signal-bar-track">
+            <div v-if="hasSignalValue(signalValues[entry.signal.name])" class="inspector-signal-bar-fill" :class="{ 'inspector-signal-bar-changed': recentlyChangedSignals.has(entry.signal.name) }" :style="{ width: signalValues[entry.signal.name].value + '%' }"></div>
+            <div v-else class="inspector-signal-bar-fill inspector-signal-bar-na" :class="{ 'inspector-signal-bar-changed': recentlyChangedSignals.has(entry.signal.name) }"></div>
+            <div v-if="annotatable" class="inspector-signal-expected-fill" :class="{ 'inspector-signal-expected-fill-set': isExpectedValueSet(entry.signal.name) }" :style="{ width: displayedExpectedValue(entry.signal.name) + '%' }"></div>
+            <input v-if="annotatable" type="range" min="0" max="100" step="1" class="inspector-signal-slider" :class="{ 'inspector-signal-slider-set': isExpectedValueSet(entry.signal.name) }" :value="displayedExpectedValue(entry.signal.name)" :title="`Expected: ${expectedValues[entry.signal.name] ?? '—'}`" @click.stop @input="onExpectedSignalInput(entry.signal.name, $event.target.value)" @change="onExpectedSignalChange(entry.signal.name, $event.target.value)" />
+          </div>
+          <div v-if="annotatable && isExpectedValueSet(entry.signal.name)" class="inspector-signal-annotation-footer">
+            <span class="inspector-signal-expected-label">Expected: {{ draggingExpectedValues[entry.signal.name] ?? expectedValues[entry.signal.name] }}</span>
+            <button v-if="expectedValues[entry.signal.name] != null" type="button" class="inspector-annotation-clear-btn" title="Remove annotation" @click.stop="onClearExpectedSignal(entry.signal.name)">×</button>
+          </div>
+        </template>
       </div>
     </div>
+    <button v-if="editableFiles" class="inspector-signals-add-btn" @click="emit('add-signal')">+ Add signal</button>
   </div>
 </template>
 
 <style scoped>
 .inspector-signals-section { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+.inspector-signals-add-btn { flex-shrink: 0; margin-top: 0.5rem; padding: 0.5rem; border-radius: 6px; border: 1px dashed #4a6fa5; background: white; color: #4a6fa5; font-size: 0.82rem; cursor: pointer; }
+.inspector-signals-add-btn:hover { background: #eef2f9; }
 .inspector-signals-relevant-toggle { display: flex; align-items: center; gap: 0.35rem; margin-bottom: 0.6rem; font-size: 0.78rem; color: #555; cursor: pointer; user-select: none; flex-shrink: 0; }
 .inspector-signals-relevant-toggle input { cursor: pointer; }
 .signals-status { margin: 0; color: #444; font-size: 0.9rem; }
@@ -152,6 +248,13 @@ onMounted(loadSignals)
 .inspector-detail-badge { flex-shrink: 0; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.15rem 0.5rem; border-radius: 999px; color: white; }
 .inspector-detail-badge-signal { background: #6a4c93; }
 .inspector-signal-name { font-weight: 600; font-size: 0.85rem; color: #333; }
+/* Same hover/focus-reveal look as InspectorDetailCard.vue's own
+   .inspector-detail-title-input, for a state/signal/action's own label
+   to read as one consistent editing affordance across the Inspector. */
+.inspector-signal-label-input { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; border: 1px solid transparent; border-radius: 4px; padding: 0.1rem 0.3rem; background: transparent; }
+.inspector-signal-label-input:hover, .inspector-signal-label-input:focus { border-color: #ccc; background: white; }
+.inspector-signal-form-label { display: block; margin: 0.4rem 0 0.15rem; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #777; }
+.inspector-signal-textarea { display: block; width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 0.78rem; padding: 0.35rem 0.5rem; border-radius: 6px; border: 1px solid #ccc; }
 .inspector-signal-ui_description { font-size: 0.78rem; color: #666; line-height: 1.4; }
 .inspector-signal-bar-track { position: relative; margin-top: 0.4rem; height: 10px; border-radius: 999px; background: #eee; overflow: visible; }
 .inspector-signal-bar-fill { height: 100%; background: #4a6fa5; border-radius: 999px; transition: width 0.3s ease; }
@@ -171,4 +274,6 @@ onMounted(loadSignals)
 .inspector-annotation-clear-btn:hover { background: #eee; }
 @keyframes inspector-signal-bar-flash { 0% { box-shadow: 0 0 0 0 rgba(74, 111, 165, 0.7); filter: brightness(1.35); } 70% { box-shadow: 0 0 0 5px rgba(74, 111, 165, 0); } 100% { box-shadow: 0 0 0 0 rgba(74, 111, 165, 0); filter: brightness(1); } }
 .inspector-signal-bar-changed { animation: inspector-signal-bar-flash 0.9s ease-out; }
+.crossfade-enter-active, .crossfade-leave-active { transition: opacity 0.15s ease; }
+.crossfade-enter-from, .crossfade-leave-to { opacity: 0; }
 </style>

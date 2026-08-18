@@ -21,10 +21,16 @@ import { reactive, ref, watch } from 'vue'
 const props = defineProps({
   tabs: { type: Array, required: true }, // [{ id, label }]
   activeTab: { type: String, default: null },
-  closable: { type: Boolean, default: true }
+  // Always mounted now (see EditProjectView.vue's own inspectorCollapsed —
+  // no more v-if teardown/remount of this whole panel, just this one
+  // shrinking to a thin strip) — collapsed hides the tab bar/body (v-show,
+  // so cytoscape/etc. inside a tab stays alive and doesn't need
+  // relayout-from-scratch the next time it's shown) but keeps the header
+  // itself, with its own expand toggle, always visible.
+  collapsed: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['update:active-tab', 'close'])
+const emit = defineEmits(['update:active-tab', 'update:collapsed'])
 
 // id -> mounted tab component instance. A plain object wrapped in
 // reactive() (not a Map — `v-for`/dynamic-slot iteration elsewhere in
@@ -104,11 +110,15 @@ defineExpose({ refresh, resize })
 
 <template>
   <div class="inspector-header">
-    <span class="inspector-title">Inspector</span>
-    <button v-if="closable" class="close-x-btn" title="Close" @click="emit('close')">×</button>
+    <span v-show="!collapsed" class="inspector-title">Inspector</span>
+    <button
+      class="collapse-toggle-btn"
+      :title="collapsed ? 'Expand inspector' : 'Collapse inspector'"
+      @click="emit('update:collapsed', !collapsed)"
+    >{{ collapsed ? '◂' : '▸' }}</button>
   </div>
 
-  <div class="inspector-tabs">
+  <div v-show="!collapsed" class="inspector-tabs">
     <button
       v-for="tab in tabs"
       :key="tab.id"
@@ -118,7 +128,7 @@ defineExpose({ refresh, resize })
     >{{ tab.label }}</button>
   </div>
 
-  <div class="inspector-body">
+  <div v-show="!collapsed" class="inspector-body">
     <div v-for="tab in tabs" :key="tab.id" v-show="internalActive === tab.id" class="inspector-tab-panel">
       <slot :name="`tab-${tab.id}`" :register-tab="registerTab" />
     </div>
@@ -134,6 +144,6 @@ defineExpose({ refresh, resize })
 .inspector-tab-btn-active { color: #2c4d7a; font-weight: 600; border-bottom-color: #4a6fa5; }
 .inspector-body { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 1rem; }
 .inspector-tab-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.close-x-btn { flex-shrink: 0; width: 1.4rem; height: 1.4rem; line-height: 1; border: none; border-radius: 6px; background: none; color: #666; cursor: pointer; font-size: 1rem; }
-.close-x-btn:hover { background: #eee; }
+.collapse-toggle-btn { flex-shrink: 0; width: 1.4rem; height: 1.4rem; line-height: 1; border: none; border-radius: 6px; background: none; color: #666; cursor: pointer; font-size: 0.9rem; }
+.collapse-toggle-btn:hover { background: #eee; }
 </style>

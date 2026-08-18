@@ -143,7 +143,7 @@ def test_manual_new_session_starts_at_the_automatons_initial_state_not_the_curre
     shared, project-wide automaton position has since moved to (that's a
     separate fact, untouched by creating a session; see
     ChatSession.start_state's own docs)."""
-    samples_dir = Path(__file__).resolve().parent.parent / "samples"
+    samples_dir = Path(__file__).resolve().parent.parent / "samples" / "projects"
     content = (samples_dir / "Aprendr català.zip").read_bytes()
     resp = client.put("/api/projects/cat", content=content, headers={"Content-Type": "application/zip"})
     assert resp.status_code == 200, resp.text
@@ -169,7 +169,7 @@ def test_manual_new_session_starts_at_the_automatons_initial_state_not_the_curre
 def test_switching_projects_does_not_delete_the_previous_projects_sessions(client, app_db: Db):
     # Uploads both sample projects directly (avoids depending on a
     # single-project fixture, since this test needs two).
-    samples_dir = Path(__file__).resolve().parent.parent / "samples"
+    samples_dir = Path(__file__).resolve().parent.parent / "samples" / "projects"
     for name, sample in (("hello", "Hello world.zip"), ("cat", "Aprendr català.zip")):
         content = (samples_dir / sample).read_bytes()
         resp = client.put(f"/api/projects/{name}", content=content, headers={"Content-Type": "application/zip"})

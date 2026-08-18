@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Awaitable, Callable
 
 from automaton.automaton import Action, ActionPayload, Automaton, SignalPayload, State, StatePayload
-from automaton.automaton_builder import AutomatonBuilder
+from automaton.automaton_builder import AutomatonBuilder, EXTENSION_TO_MEDIA_TYPE
 from automaton.automaton_yaml_editor import AutomatonYamlEditor, InitActionTargetError
 from session import Session
 from db import Db
@@ -38,7 +38,7 @@ CommitCallback = Callable[[Automaton], Awaitable[None]]
 # samples/ ships alongside backend/src/ in every deployment (see the
 # repo's own Dockerfile: `COPY . .` copies the whole repo before src/
 # ever runs), so this never depends on the dev checkout specifically.
-NEW_PROJECT_TEMPLATE = Path(__file__).resolve().parents[2] / "samples" / "Hello world.zip"
+NEW_PROJECT_TEMPLATE = Path(__file__).resolve().parents[2] / "samples" / "projects" / "Hello world.zip"
 NEW_PROJECT_NAME = "Hello world"
 
 
@@ -108,10 +108,18 @@ class ProjectService(object):
         if content is None:
             raise FileNotFoundError(f"File '{file_name}' does not exist in project '{project_name}'.")
         user = Session().user
+        # Same extension-based rule AutomatonBuilder._convert_contents_to_
+        # archives uses to build each MemoryArchive's own SourceDict —
+        # reused here (rather than re-derived) so the "Edit project" view's
+        # file explorer can display it without that meaning something
+        # different than what the automaton itself would resolve.
+        extension = Path(file_name).suffix.lower()
+        media_type = EXTENSION_TO_MEDIA_TYPE.get(extension, "application/octet-stream")
         return {
             "content": content,
             "can_undo": self._db.has_undo(user, project_name, file_name),
             "can_redo": self._db.has_redo(user, project_name, file_name),
+            "media_type": media_type,
         }
 
     async def _finalize_project_update(
@@ -339,6 +347,13 @@ class ProjectService(object):
                 "history_cutoff": state.history_cutoff,
                 "transition_log_level": state.transition_log_level,
                 "attachments": list(state.attachments.keys()),
+                # Not part of StatePayload itself (see its own
+                # get_state_payload docstring on why) — a state's own
+                # system-prompt text never reaches a live chat client,
+                # only this "Edit project" Inspect-panel-only node wrapper
+                # (same treatment as action_prompt on the edge wrapper
+                # below).
+                "contextual_prompt": state.contextual_prompt,
             }
             for state in real_states
         ]
@@ -384,17 +399,29 @@ class ProjectService(object):
         picks: the current persisted state (mono-user today, see
         Db.get_current_state) has gone missing from the draft that's about
         to become the published revision. No session ever having happened
-        (current_state_key is None) is not this case — nothing to remap."""
+        (current_state_key is None) is not this case — nothing to remap.
+        Also reports `has_active_sessions` — whether any live conversation
+        is still actually running on the revision about to be superseded
+        (see Db.has_open_sessions_for_revision) — EditProjectView.vue's own
+        handlePublish only asks the user to confirm when this is true;
+        publishing over a revision nobody's mid-conversation on needs no
+        extra prompt."""
         if project_name not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
         draft = self._load_project(project_name)
         current_state_key = self._db.get_current_state(project_name)
+        published_revision = self._db.get_project_published_revision(project_name)
+        has_active_sessions = (
+            published_revision is not None
+            and self._db.has_open_sessions_for_revision(project_name, published_revision)
+        )
         if current_state_key is None or current_state_key in draft.states:
-            return {"needs_remap": False}
+            return {"needs_remap": False, "has_active_sessions": has_active_sessions}
         return {
             "needs_remap": True,
             "missing_state": current_state_key,
             "available_states": [state.key for state in draft.states.values() if state.key != ""],
+            "has_active_sessions": has_active_sessions,
         }
 
     def publish_project(self, project_name: str, remap_to: str | None = None) -> dict:
@@ -614,6 +641,13 @@ class ProjectService(object):
     ) -> SignalPayload:
         return await self._edit_index_yml(
             project_name, commit, lambda editor: editor.set_signal_field(signal_name, field, value)
+        )
+
+    async def set_init_action_target(
+        self, project_name: str, state_name: str, commit: CommitCallback
+    ) -> StatePayload:
+        return await self._edit_index_yml(
+            project_name, commit, lambda editor: editor.set_init_action_target(state_name)
         )
 
     async def delete_state(self, project_name: str, state_name: str, commit: CommitCallback) -> None:
