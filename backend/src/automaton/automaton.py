@@ -39,16 +39,18 @@ class Action:
     on_enter: str | None = None
     # {env key: expression source}, evaluated (see Automaton.
     # eval_action_env) whenever this action fires — manually or via
-    # auto-tracking's trigger — and merged onto chat.env.Env's own
-    # persisted store (see chat_service.py/auto_tracker.py's own call
-    # sites) so the *next* prompt already sees the updated value. Each
+    # auto-tracking's trigger — and merged onto tracking.env.Env's own
+    # action_set store (see tracking_engine.py's own apply_action_env)
+    # so the *next* prompt already sees the updated value. Each
     # expression shares the exact same variable scope/mechanics as a
-    # `trigger` (see _eval_trigger) — declared signals, core metrics, env
-    # itself — just without the boolean cast, since a result here can be
-    # any simple value, not only true/false. Normalized to a string at
-    # build time even for a YAML value that isn't naturally one (e.g.
-    # `True`, `42`) — see automaton_builder.py's _build_action — so this
-    # is always Python-expression source, exactly like `trigger`.
+    # `trigger` (see _eval_trigger) — the signal/env/system/session
+    # namespaces plus any referenced metric (see tracking.evaluation_
+    # scope.EvaluationScopeBuilder) — just without the boolean cast,
+    # since a result here can be any simple value, not only true/false.
+    # Normalized to a string at build time even for a YAML value that
+    # isn't naturally one (e.g. `True`, `42`) — see automaton_builder.
+    # py's _build_action — so this is always Python-expression source,
+    # exactly like `trigger`.
     env: dict[str, str] | None = None
 
 @dataclass
@@ -124,12 +126,60 @@ class SignalPayload(TypedDict):
     attachments: dict[str, MemoryArchive]
     error: bool | None
 
+# The four reserved namespaces a trigger/env expression resolves
+# against (see tracking.evaluation_scope.EvaluationScopeBuilder) — every
+# `<namespace>.<attr>` access in an expression's own AST is one of
+# these. A core metric name (see metrics_framework.metric_names) stays a
+# bare, unnamespaced identifier — untouched by this set.
+RESERVED_NAMESPACES = ("signal", "env", "system", "session")
+
+
+def _namespace_attrs(tree: ast.AST, namespace: str) -> set[str]:
+    return {
+        node.attr for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == namespace
+    }
+
+
 def trigger_signal_names(expression: str) -> set[str]:
-    """Free variable names in a trigger expression, e.g.
-    "daysSinceLastEvent >= 85" -> {"daysSinceLastEvent"}. Used to validate
-    triggers at boot and to report which signals drove a transition."""
+    """Every `signal.<name>` referenced in a trigger/env expression, e.g.
+    "signal.daysSinceLastEvent >= 85" -> {"daysSinceLastEvent"}. Used to
+    validate a trigger's own signal references at boot, to scope which
+    signals a turn's own signal-computation prompt asks about (see
+    tracking.definitions.Signals.get_definition), to report which
+    signals actually drove a transition, and to rewrite a trigger when
+    the signal it references is renamed/deleted (see automaton_yaml_
+    editor.py)."""
     tree = ast.parse(expression, mode="eval")
-    return {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+    return _namespace_attrs(tree, "signal")
+
+
+def trigger_bare_names(expression: str) -> set[str]:
+    """Every identifier referenced *outside* one of the four reserved
+    namespaces (see RESERVED_NAMESPACES) — what a core metric name, or a
+    leftover un-migrated bare signal reference, looks like. Used to
+    detect a metric reference (see Automaton.triggers_reference) and, at
+    build time, any name that isn't a recognized metric either (see
+    automaton_builder.py's own validation)."""
+    tree = ast.parse(expression, mode="eval")
+    namespace_bases = {
+        node.value.id for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id in RESERVED_NAMESPACES
+    }
+    return {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)} - namespace_bases
+
+
+def trigger_namespace_refs(expression: str) -> dict[str, set[str]]:
+    """{'signal': {...}, 'env': {...}, 'system': {...}, 'session': {...}}
+    — every reserved-namespace attribute reference in `expression`, one
+    entry per namespace actually used (a namespace nothing references is
+    simply absent, never an empty set). Used only by automaton_builder.
+    py's own build-time validation — nothing at runtime needs this
+    broken out by namespace, see trigger_signal_names/trigger_bare_names
+    above for the two that do."""
+    tree = ast.parse(expression, mode="eval")
+    refs = {ns: _namespace_attrs(tree, ns) for ns in RESERVED_NAMESPACES}
+    return {ns: attrs for ns, attrs in refs.items() if attrs}
 
 
 class Automaton(object):
@@ -236,15 +286,18 @@ class Automaton(object):
 
     def triggers_reference(self, state_key: str, names: set[str]) -> bool:
         """Whether any triggerable action leaving `state_key` references at
-        least one of `names` in its trigger expression. Generic (`names` is
-        just a set the caller decides the meaning of) — lets a caller skip
-        resolving an expensive extra value set (e.g. metrics_framework's
-        metrics, see chat/metrics_service.py's merge_if_referenced) before
-        evaluation, whenever nothing in this state's triggers could
-        possibly use it."""
+        least one of `names`, as a *bare* (unnamespaced) identifier, in
+        its trigger expression — in practice always a core metric name
+        (see metrics_framework.metric_names, the only bare-identifier
+        caller left — signal/env/system/session are namespaced now, see
+        RESERVED_NAMESPACES, and no longer need this same skip-if-
+        unreferenced check: see EvaluationScopeBuilder's own docstring
+        for why). Lets a caller skip resolving an expensive extra value
+        set (see MetricService.merge_if_referenced) before evaluation,
+        whenever nothing in this state's triggers could possibly use it."""
         state = self.states[state_key]
         return any(
-            action.trigger and trigger_signal_names(action.trigger) & names for action in state.actions
+            action.trigger and trigger_bare_names(action.trigger) & names for action in state.actions
         )
 
     def triggerable_signal_names(self, state_key: str) -> set[str]:
@@ -270,21 +323,23 @@ class Automaton(object):
         needs for its own prompt/computation scoping."""
         return {name for state_key in self.states for name in self.triggerable_signal_names(state_key)}
 
-    def evaluate_triggers(self, state_key: str, signals: dict[str, Any]) -> str | None:
-        action = self.evaluate_triggers_action(state_key, signals)
+    def evaluate_triggers(self, state_key: str, scope: dict[str, Any]) -> str | None:
+        action = self.evaluate_triggers_action(state_key, scope)
         return action.name if action else None
 
-    def evaluate_triggers_action(self, state_key: str, signals: dict[str, Any]) -> Action | None:
+    def evaluate_triggers_action(self, state_key: str, scope: dict[str, Any]) -> Action | None:
         """Returns the first action (YAML order) whose trigger evaluates
         true — FIFO priority — or None. Actions without `trigger` stay
-        manual-only, never returned here."""
+        manual-only, never returned here. `scope`: see
+        tracking.evaluation_scope.EvaluationScopeBuilder — the
+        signal/env/system/session namespaces plus any referenced metric."""
         state = self.states[state_key]
         for action in state.actions:
-            if action.trigger and self._eval_trigger(action.trigger, signals):
+            if action.trigger and self._eval_trigger(action.trigger, scope):
                 return action
         return None
-    
-    def preview_triggers(self, state_key: str, signals: dict[str, Any]) -> list:
+
+    def preview_triggers(self, state_key: str, scope: dict[str, Any]) -> list:
         """Every triggerable action in `state_key` with its expression and
         evaluation result, in FIFO priority order — for UI display only,
         never applies a transition."""
@@ -294,7 +349,7 @@ class Automaton(object):
         for action in state.actions:
             if not action.trigger:
                 continue
-            result = self._eval_trigger(action.trigger, signals)
+            result = self._eval_trigger(action.trigger, scope)
             would_fire = result and not winner_found
             winner_found = winner_found or result
             results.append({
@@ -307,27 +362,28 @@ class Automaton(object):
         return results
 
     @staticmethod
-    def eval_action_env(action: Action, names: dict[str, Any]) -> dict[str, Any]:
+    def eval_action_env(action: Action, scope: dict[str, Any]) -> dict[str, Any]:
         """`action`'s own `env` expressions (see automaton_builder.py's
-        _build_action), evaluated against `names` — same mechanics as
-        _eval_trigger (simpleeval), just without its boolean cast: a
-        result here can be any simple value. Unlike _eval_trigger, a
-        referenced name that's still None (or missing outright — e.g. a
-        free-form env key that was never set, or a typo) is NOT silently
+        _build_action), evaluated against `scope` (see
+        tracking.evaluation_scope.EvaluationScopeBuilder) — same
+        mechanics as _eval_trigger (simpleeval), just without its boolean
+        cast: a result here can be any simple value. Unlike _eval_trigger,
+        a referenced name that's still None (or missing outright — e.g. a
+        typo, or an `env.` key no action has ever set yet) is NOT silently
         treated as a routine no-op: it's left to simpleeval to fail
         naturally, so the exception below always logs it. One key's
         failure never blocks the others in the same `env:` mapping —
         each is caught and logged individually. Returns only the keys
-        that evaluated successfully — the caller (chat.env.Env.update)
-        merges these onto whatever's already stored, so a failed key
-        simply leaves its previous value untouched rather than being
-        clobbered with a spurious one."""
+        that evaluated successfully — the caller (tracking.env.Env.
+        update_action_set) merges these onto whatever's already stored,
+        so a failed key simply leaves its previous value untouched rather
+        than being clobbered with a spurious one."""
         if not action.env:
             return {}
         result: dict[str, Any] = {}
         for key, expression in action.env.items():
             try:
-                result[key] = simpleeval.simple_eval(expression, names=names)
+                result[key] = simpleeval.simple_eval(expression, names=scope)
             except Exception as exc:
                 logger.warning(
                     "env expression evaluation failed for action '%s', key '%s' ('%s'): %s",
@@ -336,22 +392,27 @@ class Automaton(object):
         return result
 
     @staticmethod
-    def _eval_trigger(expression: str, signals: dict[str, Any]) -> bool:
+    def _eval_trigger(expression: str, scope: dict[str, Any]) -> bool:
         """A malformed expression must never crash the caller: treat
         evaluation failures as False, with a warning. A referenced signal
         that hasn't been computed yet (value None — routine early in a
         conversation, or right after a failed computation) is a distinct,
-        expected case: evaluating e.g. `signal > 5` against None would
+        expected case: evaluating e.g. `signal.foo > 5` against None would
         always raise, so short-circuit to False without even trying,
-        instead of logging a warning for something that isn't wrong.
-        (Every referenced name is guaranteed to be a real signal by now —
-        see automaton_builder.py's _actions_sanity_check at build time —
-        so a None here only ever means "not computed yet", never a typo.)
+        instead of logging a warning for something that isn't wrong. Only
+        `signal.*` gets this treatment — env/system/session/metric
+        references either resolve to a real value or fail loudly via the
+        except below, since none of them has signal's own "not computed
+        yet" routine-None case. (Every signal referenced this way is
+        guaranteed to be a real declared one by now — see
+        automaton_builder.py's _actions_sanity_check at build time — so a
+        None here only ever means "not computed yet", never a typo.)
         """
         try:
-            if any(signals.get(name) is None for name in trigger_signal_names(expression)):
+            signal_values = scope.get("signal", {})
+            if any(signal_values.get(name) is None for name in trigger_signal_names(expression)):
                 return False
-            return bool(simpleeval.simple_eval(expression, names=signals))
+            return bool(simpleeval.simple_eval(expression, names=scope))
         except Exception as exc:
             logger.warning("Trigger evaluation failed for expression '%s': %s", expression, exc)
             return False

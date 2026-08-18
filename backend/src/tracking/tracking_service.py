@@ -14,6 +14,9 @@ from metrics.metric_service import MetricService
 from .errors import TrackingServiceError
 from .turn_callbacks import OnMetadata
 from .env import PersistedEnv
+from .evaluation_scope import EvaluationScopeBuilder
+from .session_facts import SessionFacts
+from .system_facts import SystemFacts
 from .definitions import Signals
 from .session_import import SessionImportManager
 from .tracking_processor import UserVariables
@@ -204,17 +207,19 @@ class TrackingService(object):
 		else:
 			TrackingProcessor = TrackingProcessorAfterAiMessage
 
-		env = PersistedEnv(
-			self._db, get_username=lambda: Session().user,
-			get_active_project_name=self._project_service.get_active_project_name
-		)
+		get_username = lambda: Session().user
+		get_active_project_name = self._project_service.get_active_project_name
+		env = PersistedEnv(self._db, get_username=get_username, get_active_project_name=get_active_project_name)
+		system_facts = SystemFacts()
+		session_facts = SessionFacts(self._db, get_username=get_username, get_active_project_name=get_active_project_name)
+		scope_builder = EvaluationScopeBuilder(env, self._metrics, system_facts, session_facts)
 
 		def on_metadata_sync_to_async(key: str, value: Any):
 			if on_metadata:
 				asyncio.ensure_future(on_metadata(key, value))
 
 		tracking_processor = TrackingProcessor(
-			self._ai_service, self._metrics, 
+			self._ai_service, scope_builder,
 			env, self._db, user_vars
 		)
 

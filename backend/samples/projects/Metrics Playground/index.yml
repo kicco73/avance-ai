@@ -85,7 +85,7 @@ states:
         ui-label: "Mood signal alone crosses its threshold"
         ui-button: "Notice mood"
         target: engaged
-        trigger: "mood >= 70"
+        trigger: "signal.mood >= 70"
         action-prompt: |
           Briefly acknowledge to the user that the mood-based trigger just
           fired, then continue the conversation normally.
@@ -93,7 +93,7 @@ states:
         ui-label: "Mood signal AND engagement metric both cross their thresholds"
         ui-button: "Notice combo"
         target: engaged
-        trigger: "mood >= 40 and engagement >= 10"
+        trigger: "signal.mood >= 40 and engagement >= 10"
         action-prompt: |
           Briefly acknowledge to the user that the combined mood+engagement
           trigger just fired, then continue the conversation normally.

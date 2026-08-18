@@ -1,4 +1,7 @@
-from automaton.automaton import Action, MemoryArchive, Automaton, Signal, SourceDict, State, trigger_signal_names
+from automaton.automaton import (
+    Action, MemoryArchive, Automaton, RESERVED_NAMESPACES, Signal, SourceDict, State,
+    trigger_bare_names, trigger_namespace_refs,
+)
 from typing import Any
 from metrics.metrics_framework import metric_names
 
@@ -17,21 +20,23 @@ EXTENSION_TO_MEDIA_TYPE = {
 
 VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 
-# The fixed set of always-computed keys chat.env.Env provides on every
-# read (never persisted — see its own module docstring), reserved here
-# too so a trigger can reference one (e.g. "state_duration_in_minutes >= 30")
-# without failing the same undefined-name validation signal/metric names
-# already go through below — chat.env.Env imports this constant back,
-# rather than the reverse, to keep automaton/ free of any dependency on
-# chat/ (chat/ already depends on automaton/, never the other way around).
-ENV_COMPUTED_KEYS = (
-    "today",
-    "time",
+# Every zero-arg method the `system`/`session` proxies expose to a
+# trigger/env expression (called as `system.today()`, `session.
+# number_of_user_sessions()`, ...) — see tracking.system_facts.
+# SystemFacts/tracking.session_facts.SessionFacts, the classes that
+# actually implement them. Kept here, independent of those two (rather
+# than introspected off them), for the same reason the old
+# ENV_COMPUTED_KEYS constant this replaces lived here: automaton/ stays
+# free of any dependency on tracking/ (tracking/ already depends on
+# automaton/, never the other way around) — the two must be kept in
+# sync by hand.
+SYSTEM_ATTRS = frozenset({"today", "time"})
+SESSION_ATTRS = frozenset({
     "current_session_duration_in_minutes",
     "last_user_session_datetime",
     "number_of_user_sessions",
     "state_duration_in_minutes",
-)
+})
 
 class AutomatonBuilder(object):
     """Builds an Automaton from a project's index.yml: parses the YAML,
@@ -167,55 +172,69 @@ class AutomatonBuilder(object):
             chat=raw_state.get("chat", True),
         )
 
-    def _actions_sanity_check(self, key: str, state: State, declared_states: set[str], valid_trigger_names: set[str]):
-        """`valid_trigger_names` is every name a trigger expression may
-        reference: this project's own declared signals, every core metric
-        name (see metrics_framework.metric_names), and every always-
-        computed env key (see ENV_COMPUTED_KEYS) — a trigger can compare
-        against any of the three interchangeably, see automaton.py's
-        Automaton.triggers_reference/evaluate_triggers. A project's own
-        free-form [env] values (see chat.env.Env/chat.metadata_handler.
-        MetadataHandler) are deliberately not included here: their names
-        are only ever known at runtime (whatever the model has reported
-        so far), never at build time, so they can't be validated the same
-        way — referencing one in a trigger fails this check exactly like
-        referencing any other genuinely undefined name would. An action's
-        own `env` expressions (see Action.env/Automaton.eval_action_env)
-        get only a syntax check here, deliberately not the same
-        unknown-name check: unlike a trigger, an env expression's whole
-        point is often to reference (and update) a project's own
-        free-form env key — e.g. `number_of_steps: number_of_steps + 1`
-        — which is exactly one of these runtime-only names this method
-        can't see at build time either."""
+    @staticmethod
+    def _validate_namespaced_expression(
+        expression: str, context: str, valid_signal_names: set[str], valid_env_attrs: set[str]
+    ) -> None:
+        """Syntax + per-namespace identifier validation shared by both
+        `trigger:` and an action's own `env:` expressions (see automaton.
+        automaton's RESERVED_NAMESPACES/trigger_namespace_refs/
+        trigger_bare_names) — `context` is just this expression's own
+        description, for the error message. `env.*` is validated here
+        too, unlike before this refactor: every one of its valid names
+        (`valid_env_attrs`) is now known project-wide at build time —
+        every action's own declared `env:` key, collected across the
+        whole project before this ever runs (see build()) — so there's
+        no longer a runtime-only name it can't see. (That used to be
+        true only because an action's own env: could also reference
+        tracking.env.Env's own free-form, genuinely-runtime-only stored()
+        keys; those are no longer part of the `env` namespace at all —
+        see that module's own docstring.) Any bare (unnamespaced)
+        identifier left over must be a core metric (see metrics_
+        framework.metric_names) — anything else, namespaced or not, is
+        undefined."""
+        try:
+            namespace_refs = trigger_namespace_refs(expression)
+            bare_names = trigger_bare_names(expression)
+        except SyntaxError as exc:
+            raise ValueError(f"{context} ('{expression}') is not a valid expression: {exc}") from exc
+
+        unknown = set()
+        unknown |= {f"signal.{n}" for n in namespace_refs.get("signal", set()) - valid_signal_names}
+        unknown |= {f"env.{n}" for n in namespace_refs.get("env", set()) - valid_env_attrs}
+        unknown |= {f"system.{n}" for n in namespace_refs.get("system", set()) - SYSTEM_ATTRS}
+        unknown |= {f"session.{n}" for n in namespace_refs.get("session", set()) - SESSION_ATTRS}
+        unknown |= bare_names - metric_names()
+        if unknown:
+            raise ValueError(f"{context} references undefined name(s): {', '.join(sorted(unknown))}")
+
+    def _actions_sanity_check(
+        self, key: str, state: State, declared_states: set[str], valid_signal_names: set[str], valid_env_attrs: set[str]
+    ):
+        """`valid_signal_names`: this project's own declared signals —
+        every `signal.<name>` reference must be one. `valid_env_attrs`:
+        every action's own declared `env:` key across the *whole*
+        project — every `env.<name>` reference must be one (see
+        _validate_namespaced_expression's own docstring). `system.*`/
+        `session.*` are validated against the two fixed proxy method
+        sets (SYSTEM_ATTRS/SESSION_ATTRS)."""
         for action in state.actions:
-                if action.target not in declared_states:
-                    raise ValueError(
-                        f"State '{state.key}', action '{action.name}': "
-                        f"target '{action.target}' is not a valid state"
+            if action.target not in declared_states:
+                raise ValueError(
+                    f"State '{state.key}', action '{action.name}': "
+                    f"target '{action.target}' is not a valid state"
+                )
+            if action.trigger:
+                self._validate_namespaced_expression(
+                    action.trigger, f"State {key}, action '{action.name}': trigger",
+                    valid_signal_names, valid_env_attrs,
+                )
+            if action.env:
+                for env_key, expression in action.env.items():
+                    self._validate_namespaced_expression(
+                        expression, f"State {key}, action '{action.name}': env expression for '{env_key}'",
+                        valid_signal_names, valid_env_attrs,
                     )
-                if action.trigger:
-                    try:
-                     referenced_names = trigger_signal_names(action.trigger)
-                    except SyntaxError as exc:
-                        raise ValueError(
-                            f"State {key}, action '{action.name}': "
-                            f"trigger '{action.trigger}' is not a valid expression: {exc}"
-                        ) from exc
-                    unknown_names = referenced_names - valid_trigger_names
-                    if unknown_names:
-                        raise ValueError(
-                            f"Action '{action.name}': "
-                            f"trigger references undefined signal(s)/metric(s)/env value(s): {', '.join(sorted(unknown_names))}"
-                        )
-                if action.env:
-                    for env_key, expression in action.env.items():
-                        try:
-                            trigger_signal_names(expression)
-                        except SyntaxError as exc:
-                            raise ValueError(
-                                f"State {key}, action '{action.name}': "
-                                f"env expression for '{env_key}' ('{expression}') is not a valid expression: {exc}"
-                            ) from exc
 
     def _build_init_action(self, raw: dict) -> Action:
         raw_init_action = raw.get("init-action")
@@ -263,12 +282,7 @@ class AutomatonBuilder(object):
                 "Signal name(s) reserved for core metrics (see metrics_framework) cannot be "
                 f"reused as signal names: {', '.join(sorted(reserved_names))}"
             )
-        # A trigger may reference a declared signal, a core metric, or an
-        # always-computed env key interchangeably — see automaton.py's
-        # Automaton.evaluate_triggers, whose caller merges metric/env
-        # values into the same flat `names` dict (see chat/metrics_
-        # service.py's merge_if_referenced, chat/env.py's own equivalent).
-        valid_trigger_names = set(signals.keys()) | metric_names() | set(ENV_COMPUTED_KEYS)
+        valid_signal_names = set(signals.keys())
 
         raw_states = raw["states"]
         if not isinstance(raw_states, dict):
@@ -279,10 +293,14 @@ class AutomatonBuilder(object):
                 "and cannot be declared in 'states'."
             )
 
+        # Pass 1: build every state/action, no expression validation yet
+        # — every action's own declared `env:` keys (see valid_env_attrs
+        # below) can only be known project-wide, once every one of them
+        # has actually been built, so validation itself has to wait for
+        # a second pass (see _actions_sanity_check's own calls below).
         init_action = self._build_init_action(raw)
         states: dict[str, State] = {}
         states[""] = State(key="", ui_label="", final=False, ui_description="", actions=[init_action])
-        self._actions_sanity_check(init_action.name, states[""], set(raw_states.keys()), valid_trigger_names)
 
         state_keys_by_ui_label: dict[str, str] = {}
         for key, raw_state in raw_states.items():
@@ -303,7 +321,22 @@ class AutomatonBuilder(object):
                     f"'{states[key].ui_label}' — ui-label must be unique across all states."
                 )
             state_keys_by_ui_label[states[key].ui_label] = key
-            self._actions_sanity_check(key, states[key], set(raw_states.keys()), valid_trigger_names)
+
+        # Pass 2: every action's own env: keys, across every state
+        # (including the synthetic "" state's own init_action) — the
+        # `env` namespace's own valid-attrs set (see EvaluationScope
+        # Builder: `env` is populated from every action's own env:
+        # output, project-wide, never scoped to one state/action).
+        valid_env_attrs = {
+            env_key
+            for state in states.values()
+            for action in state.actions
+            if action.env
+            for env_key in action.env
+        }
+        for key, state in states.items():
+            context_key = init_action.name if key == "" else key
+            self._actions_sanity_check(context_key, state, set(raw_states.keys()), valid_signal_names, valid_env_attrs)
 
         general_attachments = self._extract_required_archives(raw.get('attachments', []), all_archives, for_field="global")
         autotracking_on_ai_message = raw.get("signal-tracking-on-ai-message", False)

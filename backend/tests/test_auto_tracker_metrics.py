@@ -153,7 +153,7 @@ async def test_metric_values_used_for_evaluation_are_never_persisted(db):
     # same as a metric always was, so a trigger that only ever names a
     # metric would (correctly) filter mySignal out too and defeat this
     # test's own actual point below.
-    automaton = _automaton_with_trigger("mySignal >= 1 and engagement >= 1")
+    automaton = _automaton_with_trigger("signal.mySignal >= 1 and engagement >= 1")
     session_id = _session_id(db)
 
     await _tracking_service(db, automaton, '{"mySignal": 42}').process(session_id, "hello")
@@ -170,7 +170,7 @@ async def test_metric_values_used_for_evaluation_are_never_persisted(db):
 
 
 async def test_metrics_are_never_computed_when_no_trigger_in_the_state_references_one(db, monkeypatch):
-    automaton = _automaton_with_trigger("mySignal >= 1")
+    automaton = _automaton_with_trigger("signal.mySignal >= 1")
     session_id = _session_id(db)
     tracking_service = _tracking_service(db, automaton, '{"mySignal": 42}')
     calls = []
@@ -182,7 +182,7 @@ async def test_metrics_are_never_computed_when_no_trigger_in_the_state_reference
 
 
 async def test_a_trigger_can_combine_a_signal_and_a_metric(db):
-    automaton = _automaton_with_trigger("mySignal >= 40 and engagement >= 1")
+    automaton = _automaton_with_trigger("signal.mySignal >= 40 and engagement >= 1")
     session_id = _session_id(db)
 
     result = await _tracking_service(db, automaton, '{"mySignal": 42}').process(session_id, "hello")

@@ -18,18 +18,18 @@ const props = defineProps({
 const envLoading = ref(false)
 const stored = ref({})
 const actionSet = ref({})
-const computedValues = ref({})
 const isLive = computed(() => props.editable)
 
 // Stored ("AI") entries are free-form and editable/deletable; action-set
-// ("ACTION" — see automaton_builder.py's action-level `env:` field) and
-// computed (see backend's ENV_COMPUTED_KEYS) never are — all three
-// reported separately by the backend for exactly this reason, not
-// merged (see backend/src/chat/env.py's Env.to_dict vs
-// stored/action_set/computed).
+// ("ACTION" — see automaton_builder.py's action-level `env:` field)
+// never is — both reported separately by the backend for exactly this
+// reason, not merged (see backend/src/tracking/env.py's Env.
+// serialise_as_text vs stored/action_set). No "computed" section
+// anymore — system/session facts (see tracking.evaluation_scope.
+// EvaluationScopeBuilder) are evaluation-scope-only now, never rendered
+// here.
 const storedEntries = computed(() => Object.entries(stored.value))
 const actionSetEntries = computed(() => Object.entries(actionSet.value))
-const computedEntries = computed(() => Object.entries(computedValues.value))
 
 async function loadEnv() {
   envLoading.value = true
@@ -37,7 +37,6 @@ async function loadEnv() {
     const result = await getEnv(props.untilMessageId ?? undefined)
     stored.value = result.stored
     actionSet.value = result.action_set
-    computedValues.value = result.computed
   } catch {
     // already surfaced via apiFetch
   } finally {
@@ -82,7 +81,6 @@ async function commitEditing() {
     const result = await putEnvValue(key, value)
     stored.value = result.stored
     actionSet.value = result.action_set
-    computedValues.value = result.computed
   } catch {
     // already surfaced via apiFetch
   }
@@ -93,7 +91,6 @@ async function removeKey(key) {
     const result = await deleteEnvValue(key)
     stored.value = result.stored
     actionSet.value = result.action_set
-    computedValues.value = result.computed
   } catch {
     // already surfaced via apiFetch
   }
@@ -105,7 +102,6 @@ async function clearAll() {
     const result = await clearEnv()
     stored.value = result.stored
     actionSet.value = result.action_set
-    computedValues.value = result.computed
   } catch {
     // already surfaced via apiFetch
   }
@@ -117,7 +113,6 @@ async function clearActionAll() {
     const result = await clearActionEnv()
     stored.value = result.stored
     actionSet.value = result.action_set
-    computedValues.value = result.computed
   } catch {
     // already surfaced via apiFetch
   }
@@ -125,8 +120,8 @@ async function clearActionAll() {
 
 // Always reloads regardless of `active` — matches this tab's pre-slot-
 // refactor behavior (Inspector.vue's old refreshEnv() always fetched,
-// tab open or not: cheap, and some of its own computed values are only
-// ever correct "as of right now").
+// tab open or not: cheap, and both stored/action-set values can change
+// out from under this tab any time it's not the one currently showing).
 async function refresh() {
   await loadEnv()
 }
@@ -193,16 +188,6 @@ defineExpose({ loadEnv, refresh })
           <strong>{{ key }}:</strong> {{ value === null ? '—' : value }}
         </p>
       </div>
-
-      <div class="inspector-signal-block">
-        <div class="inspector-signal-header">
-          <span class="inspector-detail-badge inspector-detail-badge-env-computed">Computed</span>
-          <span class="inspector-signal-name">Always up to date</span>
-        </div>
-        <p v-for="[key, value] in computedEntries" :key="key" class="inspector-detail-field">
-          <strong>{{ key }}:</strong> {{ value === null ? '—' : value }}
-        </p>
-      </div>
     </template>
   </div>
 </template>
@@ -215,7 +200,6 @@ defineExpose({ loadEnv, refresh })
 .inspector-detail-badge { flex-shrink: 0; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.15rem 0.5rem; border-radius: 999px; color: white; }
 .inspector-detail-badge-env { background: #8a5a44; }
 .inspector-detail-badge-env-action { background: #3d6b52; }
-.inspector-detail-badge-env-computed { background: #6b7280; }
 .inspector-signal-name { font-weight: 600; font-size: 0.85rem; color: #333; }
 .inspector-detail-field { margin: 0 0 0.3rem; line-height: 1.4; font-size: 0.8rem; color: #444; word-break: break-word; }
 .inspector-env-empty { margin: 0; font-size: 0.8rem; color: #888; font-style: italic; }

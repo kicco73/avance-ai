@@ -1,50 +1,90 @@
-"""A trigger may reference any of chat.env.Env's always-computed keys
-(see automaton_builder.ENV_COMPUTED_KEYS) without failing build-time
-validation, the same way signal/metric names already do — but not an
-arbitrary free-form [env] key, since those are only ever known at
-runtime (see automaton_builder.py's own _actions_sanity_check docstring).
+"""A trigger may reference any of SystemFacts'/SessionFacts' own methods
+(see automaton_builder.SYSTEM_ATTRS/SESSION_ATTRS) as `system.<name>()`/
+`session.<name>()`, without failing build-time validation, the same way
+`signal.<name>` and a core metric name already do — but not an
+arbitrary free-form [env] key (see tracking.env.Env's own stored()),
+since those are only ever known at runtime; only a project's own
+*declared* `env:` keys (set by some action's own YAML `env:` field,
+anywhere in the project) are valid `env.<name>` references (see
+automaton_builder.py's own _actions_sanity_check/_validate_namespaced_
+expression docstrings).
 """
 from __future__ import annotations
 
 import pytest
 
-from automaton.automaton_builder import ENV_COMPUTED_KEYS, AutomatonBuilder
+from automaton.automaton_builder import SESSION_ATTRS, SYSTEM_ATTRS, AutomatonBuilder
 
 pytestmark = pytest.mark.contract
 
 
-@pytest.mark.parametrize("env_key", ENV_COMPUTED_KEYS)
-def test_a_trigger_may_reference_any_env_computed_key(env_key):
+def _project(trigger: str, extra_action: str = "") -> str:
+    return f"""
+init-action:
+  target: a
+states:
+  a:
+    contextual-prompt: hi
+    actions:
+      - name: go
+        target: b
+        trigger: "{trigger}"
+      {extra_action}
+  b:
+    contextual-prompt: there
+"""
+
+
+@pytest.mark.parametrize("attr", sorted(SYSTEM_ATTRS))
+def test_a_trigger_may_reference_any_system_attr(attr):
+    content = _project(f"system.{attr}() != None")
+    automaton = AutomatonBuilder().build({"index.yml": content})
+    assert automaton.states["a"].actions[0].trigger == f"system.{attr}() != None"
+
+
+@pytest.mark.parametrize("attr", sorted(SESSION_ATTRS))
+def test_a_trigger_may_reference_any_session_attr(attr):
+    content = _project(f"session.{attr}() != None")
+    automaton = AutomatonBuilder().build({"index.yml": content})
+    assert automaton.states["a"].actions[0].trigger == f"session.{attr}() != None"
+
+
+def test_a_trigger_referencing_an_undeclared_env_key_is_rejected():
+    content = _project("env.some_custom_env_key >= 1")
+    with pytest.raises(ValueError, match="undefined name\\(s\\).*env.some_custom_env_key"):
+        AutomatonBuilder().build({"index.yml": content})
+
+
+def test_a_trigger_may_reference_an_env_key_declared_by_some_other_action():
+    extra_action = """- name: also
+        target: b
+        env:
+          visits: "1"
+    """
+    content = _project("env.visits >= 1", extra_action=extra_action)
+    automaton = AutomatonBuilder().build({"index.yml": content})
+    assert automaton.states["a"].actions[0].trigger == "env.visits >= 1"
+
+
+def test_a_trigger_referencing_a_leftover_bare_signal_name_is_rejected():
+    """The pre-migration bare-name syntax (`mood >= 50` instead of
+    `signal.mood >= 50`) must fail loudly, not silently resolve to
+    nothing — see the "Migrazione" note in this refactor's own spec."""
     content = f"""
 init-action:
   target: a
+signals:
+  mood:
+    definition: how happy the user seems
 states:
   a:
     contextual-prompt: hi
     actions:
       - name: go
         target: b
-        trigger: "{env_key} >= 0"
+        trigger: "mood >= 50"
   b:
     contextual-prompt: there
 """
-    automaton = AutomatonBuilder().build({"index.yml": content})
-    assert automaton.states["a"].actions[0].trigger == f"{env_key} >= 0"
-
-
-def test_a_trigger_referencing_an_undeclared_free_form_env_key_is_rejected():
-    content = """
-init-action:
-  target: a
-states:
-  a:
-    contextual-prompt: hi
-    actions:
-      - name: go
-        target: b
-        trigger: "some_custom_env_key >= 1"
-  b:
-    contextual-prompt: there
-"""
-    with pytest.raises(ValueError, match="undefined signal\\(s\\)/metric\\(s\\)/env value\\(s\\)"):
+    with pytest.raises(ValueError, match="undefined name\\(s\\).*mood"):
         AutomatonBuilder().build({"index.yml": content})

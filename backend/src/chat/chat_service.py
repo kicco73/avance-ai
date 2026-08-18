@@ -12,6 +12,9 @@ from ai.ai_service import AiService
 from session import Session
 
 from tracking.env import PersistedEnv
+from tracking.evaluation_scope import EvaluationScopeBuilder
+from tracking.session_facts import SessionFacts
+from tracking.system_facts import SystemFacts
 from chat.errors import ChatServiceError
 from tracking.metadata_handler import MetadataHandler
 from chat.session_manager import ChatSessionManager
@@ -39,11 +42,16 @@ class ChatService(object):
 		self._session_manager = session_manager
 		self.tracking_service = tracking_service
 		self.metric_service = metric_service
-		self.env = PersistedEnv(
-			db, get_username=lambda: Session().user, get_active_project_name=lambda: project_service.get_active_project_name()
+		get_username = lambda: Session().user
+		get_active_project_name = lambda: project_service.get_active_project_name()
+		self.env = PersistedEnv(db, get_username=get_username, get_active_project_name=get_active_project_name)
+		self._system_facts = SystemFacts()
+		self._session_facts = SessionFacts(db, get_username=get_username, get_active_project_name=get_active_project_name)
+		self.evaluation_scope_builder = EvaluationScopeBuilder(
+			self.env, metric_service, self._system_facts, self._session_facts
 		)
 		self._metadata_handler = MetadataHandler()
-		self._tracking_engine = TrackingEngine(DbTrackingSink(db), self.env, metric_service)
+		self._tracking_engine = TrackingEngine(DbTrackingSink(db), self.env, self.evaluation_scope_builder)
 
 		# Single-user prototype: serializes chat-turn processing across
 		# both transports and against a concurrent reset/activate/upload/
@@ -309,24 +317,21 @@ class ChatService(object):
 		return self.metric_service.calculate_all(until=until)
 
 	def get_env(self, message_id: int | None = None) -> dict:
-		"""{"stored": ..., "action_set": ..., "computed": ...} — see
-		tracking.env.PersistedEnv.stored/action_set/Env.computed,
-		reported separately (not merged, unlike Env.to_dict's own use in
-		the turn prompt) so the Inspector Env tab knows which section
-		each value belongs in ("AI"/"SET"/"COMPUTED") and which are
-		actually editable/deletable (see set_env_value/delete_env_key:
-		only the stored — "AI" — ones are). `stored`/`action_set`:
-		live/current, or (`message_id` given) as of that exact message —
-		same point-in-time convention as get_metrics. `computed`: always
-		live — Env.computed() no longer takes a point-in-time bound (see
-		its own docstring: that's now an internal, per-turn replay-only
-		concept, set via set_replay_instant/set_last_transition_instant,
-		never wired up to a `message_id` read like this one)."""
+		"""{"stored": ..., "action_set": ...} — see tracking.env.
+		PersistedEnv.stored/action_set, reported separately (not merged,
+		unlike Env.serialise_as_text's own use in the turn prompt) so the
+		Inspector Env tab knows which section each value belongs in
+		("AI"/"SET") and which are actually editable/deletable (see
+		set_env_value/delete_env_key: only the stored — "AI" — ones are).
+		Live/current, or (`message_id` given) as of that exact message —
+		same point-in-time convention as get_metrics. No "computed" key
+		anymore (system/session facts, see tracking.env's own docstring)
+		— those are evaluation-scope-only now, never rendered in the
+		Inspector."""
 		until = self._until_from_message(message_id)
 		return {
 			"stored": self.env.stored(until),
 			"action_set": self.env.action_set(until),
-			"computed": self.env.computed(),
 		}
 
 	def set_env_value(self, key: str, value: str) -> dict:
@@ -502,7 +507,7 @@ class ChatService(object):
 				action_name, session["id"]
 			)
 			automaton, state = self._project_service.get_active_automaton_and_state()
-			self._tracking_engine.apply_action_env(automaton, action, {})
+			self._tracking_engine.apply_action_env(automaton, action, {}, source_state_key)
 			reply = await self._messages_for_transition(
 				action, project_name, session["id"], state, is_self_loop=(action.target == source_state_key)
 			)

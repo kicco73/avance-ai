@@ -5,9 +5,8 @@ from typing import Any, Protocol
 
 from automaton.automaton import Action, Automaton, State
 from db.db import Db
-from metrics.metric_service import MetricsProvider
 from tracking.env import Env
-from tracking.evaluator import SignalEvaluator
+from tracking.evaluation_scope import EvaluationScopeBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -66,30 +65,22 @@ class TrackingEngine:
     verbatim from tracking_processor.py's own (formerly _would_trigger_
     action/_move_automaton/_apply_action_env). No temporal ("as of when")
     concept ever passes through these methods: whoever constructs this
-    (production or a benchmark replay) injects an `env`/`metrics` already
-    behaving correctly for its own context, refreshed turn by turn by
-    whoever orchestrates the loop — never through these method
+    (production or a benchmark replay) injects an `env`/`scope_builder`
+    already behaving correctly for its own context, refreshed turn by
+    turn by whoever orchestrates the loop — never through these method
     signatures themselves."""
 
-    def __init__(self, sink: TrackingSink, env: Env, metrics: MetricsProvider) -> None:
+    def __init__(self, sink: TrackingSink, env: Env, scope_builder: EvaluationScopeBuilder) -> None:
         self._sink = sink
         self._env = env
-        self._metrics = metrics
+        self._scope_builder = scope_builder
 
     def evaluate_triggered_action(self, automaton: Automaton, state: State, signal_values: dict) -> Action | None:
-        signal_evaluator = SignalEvaluator()
-
         if not state.has_triggerable_actions:
             return None
 
-        needed_signal_names = automaton.triggerable_signal_names(state.key)
-        signal_values = signal_evaluator.validate(automaton, signal_values, needed_signal_names)
-
-        evaluation_names = self._metrics.merge_if_referenced(automaton, state.key, signal_values)
-        evaluation_names = self._env.merge_if_referenced(automaton, state.key, evaluation_names)
-        triggered_action = automaton.evaluate_triggers_action(state.key, evaluation_names)
-
-        return triggered_action
+        scope = self._scope_builder.build(automaton, state.key, signal_values)
+        return automaton.evaluate_triggers_action(state.key, scope)
 
     def apply_transition(
         self,
@@ -111,7 +102,7 @@ class TrackingEngine:
         # The full evaluated values ride along on this same row (see
         # db.py's Tracking) instead of a separate snapshot row to link to.
 
-        self.apply_action_env(automaton, action, signal_values)
+        self.apply_action_env(automaton, action, signal_values, state.key)
         return self._sink.save_transition(
             state.key,
             action.name,
@@ -122,15 +113,19 @@ class TrackingEngine:
             message_id=message_id,
         )
 
-    def apply_action_env(self, automaton: Automaton, action: Action, signal_values: dict) -> None:
+    def apply_action_env(self, automaton: Automaton, action: Action, signal_values: dict, state_key: str) -> None:
         """Applies `action`'s own `env:` updates to the current scope —
         shared by both the auto-tracking path (apply_transition, above)
         and ChatService.apply_manual_action's manual-action path (see
         chat/chat_service.py), which fires this directly with an empty
-        signal_values since no AI computation runs for a manual action."""
+        signal_values since no AI computation runs for a manual action,
+        and the *origin* state's own key (the one the action fired from
+        — matches evaluate_triggered_action's own scoping, and is what
+        merge_if_referenced's "any triggerable action leaving here"
+        check needs)."""
         if not action.env:
             return
-        scope = {**signal_values, **self._metrics.calculate_values(), **self._env.to_dict()}
+        scope = self._scope_builder.build(automaton, state_key, signal_values)
         updates = automaton.eval_action_env(action, scope)
         if updates:
             self._env.update_action_set(updates)

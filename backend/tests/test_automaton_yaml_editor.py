@@ -34,11 +34,11 @@ states:
       - name: go-b
         ui-label: Go to B
         target: b
-        trigger: foo >= 50
+        trigger: signal.foo >= 50
       - name: go-c
         ui-label: Go to C
         target: c
-        trigger: foo >= 50 and bar >= 50
+        trigger: signal.foo >= 50 and signal.bar >= 50
   b:
     ui-label: State B
     contextual-prompt: there
@@ -257,16 +257,16 @@ class TestRenameSignal:
         automaton = _builds(editor.serialize())
         go_b = next(a for a in automaton.states["a"].actions if a.name == "go-b")
         go_c = next(a for a in automaton.states["a"].actions if a.name == "go-c")
-        assert go_b.trigger == "danger >= 50"
-        assert go_c.trigger == "danger >= 50 and bar >= 50"
+        assert go_b.trigger == "signal.danger >= 50"
+        assert go_c.trigger == "signal.danger >= 50 and signal.bar >= 50"
 
     def test_a_trigger_not_referencing_the_signal_is_left_untouched(self):
         editor = _editor()
         editor.rename_signal("foo", "danger")
         automaton = _builds(editor.serialize())
-        # go-c's own "bar >= 50" clause survives unchanged (bar was never renamed).
+        # go-c's own "signal.bar >= 50" clause survives unchanged (bar was never renamed).
         go_c = next(a for a in automaton.states["a"].actions if a.name == "go-c")
-        assert "bar >= 50" in go_c.trigger
+        assert "signal.bar >= 50" in go_c.trigger
 
 
 class TestDeleteState:
@@ -333,8 +333,8 @@ class TestDeleteSignal:
         editor.delete_signal("bar")
         automaton = _builds(editor.serialize())
         go_c = next(a for a in automaton.states["a"].actions if a.name == "go-c")
-        # "foo >= 50 and bar >= 50" loses only its own "bar >= 50" operand.
-        assert go_c.trigger == "foo >= 50"
+        # "signal.foo >= 50 and signal.bar >= 50" loses only its own "signal.bar >= 50" operand.
+        assert go_c.trigger == "signal.foo >= 50"
 
     def test_a_lone_non_bool_op_trigger_is_removed_entirely_when_it_references_the_signal(self):
         editor = _editor()
@@ -361,7 +361,7 @@ states:
     actions:
       - name: go-b
         target: b
-        trigger: bar >= 50
+        trigger: signal.bar >= 50
   b:
     ui-label: B
     contextual-prompt: there
@@ -369,7 +369,7 @@ states:
         editor.delete_signal("foo")
         automaton = _builds(editor.serialize())
         go_b = next(a for a in automaton.states["a"].actions if a.name == "go-b")
-        assert go_b.trigger == "bar >= 50"
+        assert go_b.trigger == "signal.bar >= 50"
 
     def test_all_operands_referencing_the_signal_empties_the_trigger_field(self):
         editor = _editor("""\
@@ -386,7 +386,7 @@ states:
     actions:
       - name: go-b
         target: b
-        trigger: foo >= 50 or foo <= 0
+        trigger: signal.foo >= 50 or signal.foo <= 0
   b:
     ui-label: B
     contextual-prompt: there

@@ -15,7 +15,10 @@ import pytest
 
 from automaton.automaton import Action, Automaton, Signal, State
 from metrics.metric_service import MetricService
-from tracking.env import Env
+from tracking.env import PersistedEnv
+from tracking.evaluation_scope import EvaluationScopeBuilder
+from tracking.session_facts import SessionFacts
+from tracking.system_facts import SystemFacts
 from tracking.tracking_processor import UserVariables
 from tracking.tracking_processor_user import TrackingProcessorAfterUserMessage
 
@@ -27,7 +30,7 @@ PROJECT_NAME = "proj"
 
 def _automaton() -> Automaton:
     mood = Signal(name="mood", ui_label="Mood", definition="0-100 mood score.")
-    action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger="mood >= 50")
+    action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger="signal.mood >= 50")
     state_a = State(key="a", ui_label="A", final=False, contextual_prompt="You are in A.", actions=[action])
     state_b = State(key="b", ui_label="B", final=True, contextual_prompt="You are in B.")
     init_action = Action(name="init_action", ui_label="init_action", ui_button="", target="a")
@@ -80,11 +83,16 @@ async def test_regeneration_call_does_not_request_signals(db):
     )
     automaton = _automaton()
     ai_service = RecordingSchemaAiService()
-    metrics = MetricService(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
-    env = Env(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
+    get_username = lambda: USERNAME
+    get_active_project_name = lambda: PROJECT_NAME
+    metrics = MetricService(db, get_username=get_username, get_active_project_name=get_active_project_name)
+    env = PersistedEnv(db, get_username=get_username, get_active_project_name=get_active_project_name)
+    scope_builder = EvaluationScopeBuilder(
+        env, metrics, SystemFacts(), SessionFacts(db, get_username, get_active_project_name)
+    )
 
     processor = TrackingProcessorAfterUserMessage(
-        ai_service, metrics, env, db, _user_variables(automaton, session_id)
+        ai_service, scope_builder, env, db, _user_variables(automaton, session_id)
     )
     await processor.process("hello")
 

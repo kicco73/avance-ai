@@ -363,9 +363,10 @@ class AutomatonYamlEditor:
     def _transform_triggers_referencing(self, signal_name: str, transform) -> None:
         """Walks every action of every state, ast-parses any `trigger`
         that references `signal_name` (via trigger_signal_names — an
-        ast.walk over every ast.Name at any depth, so a signal name
-        that's merely a substring of another name or expression token is
-        never mistaken for a real reference) and rewrites it through
+        ast.walk over every `signal.<name>` attribute access at any
+        depth, so a signal name that's merely a substring of another
+        name or expression token is never mistaken for a real
+        reference) and rewrites it through
         `transform(tree) -> ast.AST | None`. A trigger that doesn't
         reference `signal_name` at all is left completely untouched, not
         even re-unparsed, so an edit here never reformats an unrelated
@@ -388,8 +389,11 @@ class AutomatonYamlEditor:
     def _rename_signal_in_triggers(self, old_name: str, new_name: str) -> None:
         def transform(tree: ast.AST) -> ast.AST:
             for node in ast.walk(tree):
-                if isinstance(node, ast.Name) and node.id == old_name:
-                    node.id = new_name
+                if (
+                    isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
+                    and node.value.id == "signal" and node.attr == old_name
+                ):
+                    node.attr = new_name
             return tree
         self._transform_triggers_referencing(old_name, transform)
 
@@ -414,5 +418,9 @@ class AutomatonYamlEditor:
                 return kept[0]
             node.values = kept
             return node
-        references_signal = any(isinstance(n, ast.Name) and n.id == signal_name for n in ast.walk(node))
+        references_signal = any(
+            isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name)
+            and n.value.id == "signal" and n.attr == signal_name
+            for n in ast.walk(node)
+        )
         return None if references_signal else node

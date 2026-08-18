@@ -90,12 +90,12 @@ states:
         ui-label: "Mood signal alone crosses its threshold"
         ui-button: "Notice mood"
         target: mood_reached
-        trigger: "mood >= 70"
+        trigger: "signal.mood >= 70"
       - name: notice_combo
         ui-label: "Mood signal AND engagement metric both cross their thresholds"
         ui-button: "Notice combo"
         target: combo_reached
-        trigger: "mood >= 40 and engagement >= 10"
+        trigger: "signal.mood >= 40 and engagement >= 10"
       - name: notice_engagement
         ui-label: "Engagement metric crosses its threshold"
         ui-button: "Notice engagement"

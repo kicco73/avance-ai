@@ -33,7 +33,7 @@ states:
       - name: advance
         ui-label: Advance
         target: b
-        trigger: "progress == 100"
+        trigger: "signal.progress == 100"
   b:
     contextual-prompt: "bye"
 """
@@ -60,14 +60,14 @@ states:
       - name: advance
         ui-label: Advance
         target: b
-        trigger: "progressSignal == 100"
+        trigger: "signal.progressSignal == 100"
   b:
     contextual-prompt: "middle"
     actions:
       - name: finish
         ui-label: Finish
         target: c
-        trigger: "moodSignal >= 50"
+        trigger: "signal.moodSignal >= 50"
   c:
     contextual-prompt: "bye"
 """
@@ -100,8 +100,8 @@ def test_signals_report_whether_a_trigger_references_them(client):
 
 def test_a_signal_referenced_only_via_env_field_is_also_relevant(client):
     project = PROJECT.replace(
-        'trigger: "progress == 100"',
-        'trigger: "progress == 100"\n        env:\n          last_score: score',
+        'trigger: "signal.progress == 100"',
+        'trigger: "signal.progress == 100"\n        env:\n          last_score: signal.score',
     )
     _upload(client, "relevance-env-test", project)
 

@@ -60,7 +60,7 @@ pytestmark = pytest.mark.asyncio
 PROJECT_NAME = "proj"
 
 
-def _automaton(*, autotracking_on_ai_message=False, trigger="foo >= 0") -> Automaton:
+def _automaton(*, autotracking_on_ai_message=False, trigger="signal.foo >= 0") -> Automaton:
     action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger=trigger)
     state_a = State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action])
     state_b = State(key="b", ui_label="B", final=True, actions=[])

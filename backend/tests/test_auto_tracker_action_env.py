@@ -125,7 +125,7 @@ def _env(db) -> PersistedEnv:
 
 
 async def test_a_fired_actions_env_is_persisted(db):
-    automaton = _automaton_with_env("mySignal >= 1", {"reset_counter": "True"})
+    automaton = _automaton_with_env("signal.mySignal >= 1", {"reset_counter": "True"})
     session_id = _session_id(db)
 
     result = await _tracking_service(db, automaton, '{"mySignal": 1}').process(session_id, "hello")
@@ -142,7 +142,7 @@ async def test_a_fired_actions_env_is_persisted(db):
 
 
 async def test_env_is_not_touched_when_the_trigger_does_not_fire(db):
-    automaton = _automaton_with_env("mySignal >= 99", {"reset_counter": "True"})
+    automaton = _automaton_with_env("signal.mySignal >= 99", {"reset_counter": "True"})
     session_id = _session_id(db)
 
     result = await _tracking_service(db, automaton, '{"mySignal": 1}').process(session_id, "hello")
@@ -153,7 +153,7 @@ async def test_env_is_not_touched_when_the_trigger_does_not_fire(db):
 
 
 async def test_an_env_expression_can_self_reference_the_previous_stored_value(db):
-    automaton = _automaton_with_env("mySignal >= 1", {"number_of_steps": "number_of_steps + 1"}, target="a")
+    automaton = _automaton_with_env("signal.mySignal >= 1", {"number_of_steps": "env.number_of_steps + 1"}, target="a")
     session_id = _session_id(db)
     env = _env(db)
     # Seeded directly in the action-set store (see Env.update_action_set)
@@ -169,7 +169,7 @@ async def test_an_env_expression_can_self_reference_the_previous_stored_value(db
 
 
 async def test_self_referencing_an_env_key_that_was_never_stored_yet_leaves_it_unset(db):
-    automaton = _automaton_with_env("mySignal >= 1", {"number_of_steps": "number_of_steps + 1"}, target="a")
+    automaton = _automaton_with_env("signal.mySignal >= 1", {"number_of_steps": "env.number_of_steps + 1"}, target="a")
     session_id = _session_id(db)
 
     await _tracking_service(db, automaton, '{"mySignal": 1}').process(session_id, "hello")
@@ -179,7 +179,7 @@ async def test_self_referencing_an_env_key_that_was_never_stored_yet_leaves_it_u
 
 
 async def test_env_can_reference_a_signal_value_from_this_same_turn(db):
-    automaton = _automaton_with_env("mySignal >= 1", {"last_signal": "mySignal"})
+    automaton = _automaton_with_env("signal.mySignal >= 1", {"last_signal": "signal.mySignal"})
     session_id = _session_id(db)
 
     await _tracking_service(db, automaton, '{"mySignal": 7}').process(session_id, "hello")
@@ -196,7 +196,7 @@ async def test_an_action_with_no_env_field_never_touches_the_action_set_store(db
     # action.env: return`) is that a fired action with no `env:` field
     # never writes to the action-set store either, which is what still
     # matters here and is what's asserted directly now.
-    automaton = _automaton_with_env("mySignal >= 1", None)
+    automaton = _automaton_with_env("signal.mySignal >= 1", None)
     session_id = _session_id(db)
 
     result = await _tracking_service(db, automaton, '{"mySignal": 1}').process(session_id, "hello")
