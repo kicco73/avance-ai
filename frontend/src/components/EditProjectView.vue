@@ -13,7 +13,6 @@ import InspectorStateTab from './inspector/InspectorStateTab.vue'
 import InspectorActionsTab from './inspector/InspectorActionsTab.vue'
 import CodeEditor from './CodeEditor.vue'
 import IndexYmlEditorView from './IndexYmlEditorView.vue'
-import DocInfoButton from './DocInfoButton.vue'
 import {
   getProjectFiles,
   putProjectFile,
@@ -29,7 +28,7 @@ import {
   postAddAction,
   putStateField,
   putActionField,
-  putInitActionTarget,
+  putInitActionField,
   putSignalField,
   putActionOrder,
   deleteState,
@@ -37,7 +36,8 @@ import {
   deleteProjectSignal,
   getProjectRevision,
   getPublishPreview,
-  postPublishProject
+  postPublishProject,
+  postRevertProject
 } from '../api.js'
 import { clearApiError, setApiError } from '../errorStore.js'
 import ErrorBanner from './ErrorBanner.vue'
@@ -242,6 +242,24 @@ const inspectorWidth = ref(360)
 // 'select' emit), so stateTabElement/actionsTabList below don't care
 // which one it actually came from.
 const selectedGraphElement = ref(null)
+
+// Identifies whatever a state/action/signal add-button just created — a
+// state/action/signal card matching this (see InspectorDetailCard.vue's
+// own elementIdentity/InspectorSignalsTab.vue) plays a yellow-fade
+// highlight so a brand new entry is obviously the one that just appeared,
+// without any of the actual selection/tab-switch/scroll logic needing to
+// know why. Same string shape as InspectorDetailCard.vue's own
+// elementIdentity ('state:<key>' / 'action:<stateKey>/<actionName>'),
+// plus 'signal:<name>' for InspectorSignalsTab.vue.
+const recentlyAddedKey = ref(null)
+const RECENTLY_ADDED_FLASH_MS = 1600
+let recentlyAddedTimer = null
+function flashRecentlyAdded(key) {
+  recentlyAddedKey.value = key
+  if (recentlyAddedTimer) clearTimeout(recentlyAddedTimer)
+  recentlyAddedTimer = setTimeout(() => { recentlyAddedKey.value = null }, RECENTLY_ADDED_FLASH_MS)
+}
+onBeforeUnmount(() => { if (recentlyAddedTimer) clearTimeout(recentlyAddedTimer) })
 
 // The state key "State"/"Actions" should reflect — the selection itself
 // when it's already a state, or the state an already-selected action
@@ -562,9 +580,16 @@ function setMode(next) {
   if (next === 'test') ensureDraftChatSession()
 }
 
-// Set while the unsaved-changes dialog is blocking a switch to this file —
-// resolved one way or another by confirmSwitchSave/Discard/Cancel.
-const pendingFileName = ref(null)
+// Whatever's queued behind the unsaved-changes dialog below — set
+// whenever something that would discard the active editor's own dirty
+// buffer (see activeEditorIsDirty) is requested while it's actually
+// dirty: a file switch (see selectFile) or a structural edit (add/
+// delete/field-edit on a state/action/signal, a reorder — see each
+// handler below). `run` performs the action itself (already fully bound
+// in its own closure); `label` is what the dialog shows the user (e.g.
+// 'switch to "notes.txt"', 'add a new state'). Resolved one way or
+// another by confirmPendingSave/Discard/Cancel.
+const pendingAction = ref(null) // { run: () => void, label: string } | null
 
 // Left panel width in px, adjusted by dragging the split divider.
 const explorerWidth = ref(220)
@@ -647,7 +672,7 @@ async function jumpToDefinition(target, { silent = false } = {}) {
   applyPendingCursorTarget()
 }
 
-async function switchFile(fileName) {
+function switchFile(fileName) {
   currentFileName.value = fileName
   // selectedGraphElement is deliberately left alone here — IndexYmlEditor
   // View stays mounted regardless of which file this switches to (see
@@ -656,50 +681,48 @@ async function switchFile(fileName) {
   // was before switching to it.
 }
 
-// Entry point for both explorer clicks and post-upload auto-open — routes
-// through the unsaved-changes dialog when there's something to lose.
-async function selectFile(fileName) {
-  if (fileName === currentFileName.value) return
-  if (activeEditorIsDirty.value) {
-    pendingFileName.value = fileName
+// Every entry point that would discard unsaved code — switching files in
+// the Explorer, or any structural edit (add/delete/field-edit on a
+// state/action/signal, a reorder) — routes through here instead of
+// running `run` directly: dirty means ask first (queuing `run` behind
+// the dialog below, see pendingAction), clean means there's nothing to
+// lose, so it just runs immediately.
+function guardedAction(label, run) {
+  if (!activeEditorIsDirty.value) {
+    run()
     return
   }
-  await switchFile(fileName)
+  pendingAction.value = { label, run }
 }
 
-async function confirmSwitchSave() {
-  const target = pendingFileName.value
-  pendingFileName.value = null
-  if (await activeEditor()?.save?.()) await switchFile(target)
+// Entry point for both explorer clicks and post-upload auto-open.
+function selectFile(fileName) {
+  if (fileName === currentFileName.value) return
+  guardedAction(`switch to "${fileName}"`, () => switchFile(fileName))
 }
 
-async function confirmSwitchDiscard() {
-  const target = pendingFileName.value
-  pendingFileName.value = null
-  await switchFile(target)
+async function confirmPendingSave() {
+  const action = pendingAction.value
+  pendingAction.value = null
+  if (await activeEditor()?.save?.()) action.run()
 }
 
-function confirmSwitchCancel() {
-  pendingFileName.value = null
-  // A cursor jump that triggered this switch is moot once the switch
-  // itself is declined — don't let it fire on some later, unrelated switch.
+function confirmPendingDiscard() {
+  const action = pendingAction.value
+  pendingAction.value = null
+  // The whole point of "Discard": the active editor's own dirty buffer
+  // (whichever file it's currently showing — index.yml's embedded one,
+  // or a plain attachment's) actually reverts to its last-loaded
+  // content, not just "the dialog goes away while the edit lingers."
+  activeEditor()?.discard?.()
+  action.run()
+}
+
+function confirmPendingCancel() {
+  pendingAction.value = null
+  // A cursor jump that triggered this action is moot once it's declined
+  // — don't let it fire on some later, unrelated action.
   pendingCursorTarget.value = null
-}
-
-// Shared guard for every index.yml structural edit (Add state/action/
-// signal, a field edit, a delete, a drag-and-drop reorder) — all of them
-// write index.yml directly through AutomatonYamlEditor, bypassing
-// whatever's currently sitting unsaved in the code editor's own buffer.
-// A later Save there would silently clobber the structural edit right
-// back out, so this asks first, the same way switching files with
-// unsaved changes already does (see selectFile), just without a target
-// file of its own to name — true means "go ahead", already resolved
-// (nothing to lose) or the user confirmed anyway.
-function guardUnsavedChanges() {
-  if (!activeEditorIsDirty.value) return true
-  return window.confirm(
-    'You have unsaved changes in the code editor. Continuing will discard them — proceed?'
-  )
 }
 
 // Common tail for every Add/edit/delete/reorder handler below: the
@@ -786,133 +809,196 @@ function cancelPublishRemap() {
   publishing.value = false
 }
 
-async function handleAddState() {
-  if (!guardUnsavedChanges()) return
-  try {
-    const state = await postAddState(props.projectName)
-    await refreshAfterProjectEdit()
-    selectedGraphElement.value = indexYmlEditorRef.value?.stateElementFor(state.key) ?? null
-  } catch {
-    // already surfaced via apiFetch
-  }
+// The "Rev. X" split button's own dropdown arrow — only ever rendered
+// (see the template below) when there's both a draft ahead of the
+// published revision and a prior publication to revert to in the first
+// place; a stale open flag surviving past that (revision info reloading
+// out from under it) is harmless, the arrow/dropdown just won't be there
+// to click.
+const canRevert = computed(
+  () => !publishUpToDate.value && projectRevision.value?.published_revision != null
+)
+const publishMenuOpen = ref(false)
+function closePublishMenu() {
+  publishMenuOpen.value = false
 }
-
-async function handleAddSignal() {
-  if (!guardUnsavedChanges()) return
-  try {
-    await postAddSignal(props.projectName)
-    await refreshAfterProjectEdit()
-  } catch {
-    // already surfaced via apiFetch
-  }
+function handleDocumentClickForPublishMenu(event) {
+  if (publishMenuOpen.value && !event.target.closest('.publish-split-btn')) closePublishMenu()
 }
+onMounted(() => document.addEventListener('click', handleDocumentClickForPublishMenu))
+onBeforeUnmount(() => document.removeEventListener('click', handleDocumentClickForPublishMenu))
 
-async function handleAddAction() {
-  const stateKey = selectedStateKey.value
-  if (!stateKey || !guardUnsavedChanges()) return
-  try {
-    await postAddAction(props.projectName, stateKey)
-    await refreshAfterProjectEdit()
-    selectedGraphElement.value = indexYmlEditorRef.value?.stateElementFor(stateKey) ?? null
-  } catch {
-    // already surfaced via apiFetch
+async function handleRevert() {
+  if (!canRevert.value || publishing.value) return
+  const targetRevision = projectRevision.value.published_revision
+  if (
+    !window.confirm(
+      `Revert to rev. ${targetRevision}? This permanently discards every unpublished change on rev. ${projectRevision.value.revision} — there's no undo for this.`
+    )
+  ) {
+    return
   }
-}
-
-async function handleSetStateField(stateName, field, value) {
-  if (!guardUnsavedChanges()) return
+  publishing.value = true
   try {
-    await putStateField(props.projectName, stateName, field, value)
-    await refreshAfterProjectEdit()
-    selectedGraphElement.value = indexYmlEditorRef.value?.stateElementFor(stateName) ?? null
-  } catch {
-    // already surfaced via apiFetch
-  }
-}
-
-async function handleSetActionField(stateName, actionName, field, value) {
-  if (!guardUnsavedChanges()) return
-  try {
-    // The init-action (stateName '' — see InspectorGraph.vue's own
-    // isInitEdge) lives outside `states:` entirely, so putActionField's
-    // own state/action lookup can't reach it — its only editable field
-    // (target) goes through the dedicated endpoint instead.
-    if (stateName === '' && field === 'target') {
-      await putInitActionTarget(props.projectName, value)
-    } else {
-      await putActionField(props.projectName, stateName, actionName, field, value)
-    }
-    await refreshAfterProjectEdit()
-    selectedGraphElement.value = indexYmlEditorRef.value?.actionsForState(stateName).find(
-      (a) => a.data.actionName === actionName
-    ) ?? null
-  } catch {
-    // already surfaced via apiFetch
-  }
-}
-
-async function handleSetSignalField(signalName, field, value) {
-  if (!guardUnsavedChanges()) return
-  try {
-    const signal = await putSignalField(props.projectName, signalName, field, value)
-    await refreshAfterProjectEdit()
-    // Only a ui-label edit can rename the signal (see AutomatonYamlEditor.
-    // set_signal_field's own ui-label special case) — state/action never
-    // move for a field edit, since their own name/key never changes, but
-    // a renamed signal's own line in the YAML does: reuse the same
-    // cursor-repositioning heuristic a direct jump already uses, off the
-    // *new* name the response just reported.
-    if (field === 'ui-label') await jumpToDefinition({ kind: 'signal', signalName: signal.name }, { silent: true })
-  } catch {
-    // already surfaced via apiFetch
-  }
-}
-
-async function handleDeleteState(stateName) {
-  if (!guardUnsavedChanges()) return
-  try {
-    await deleteState(props.projectName, stateName)
+    await postRevertProject(props.projectName)
     selectedGraphElement.value = null
     await refreshAfterProjectEdit()
   } catch {
     // already surfaced via apiFetch
+  } finally {
+    publishing.value = false
   }
 }
 
-async function handleDeleteAction(stateName, actionName) {
-  if (!guardUnsavedChanges()) return
-  try {
-    await deleteProjectAction(props.projectName, stateName, actionName)
-    // The containing state is still selected — only the action itself
-    // (if it happened to be the literal selection) is now gone.
-    if (selectedGraphElement.value?.kind === 'action' && selectedGraphElement.value.data.actionName === actionName) {
-      selectedGraphElement.value = indexYmlEditorRef.value?.stateElementFor(stateName) ?? null
+function handleAddState() {
+  guardedAction('add a new state', async () => {
+    try {
+      const state = await postAddState(props.projectName)
+      await refreshAfterProjectEdit()
+      selectedGraphElement.value = indexYmlEditorRef.value?.stateElementFor(state.key) ?? null
+      flashRecentlyAdded(`state:${state.key}`)
+    } catch {
+      // already surfaced via apiFetch
     }
-    await refreshAfterProjectEdit()
-  } catch {
-    // already surfaced via apiFetch
-  }
+  })
 }
 
-async function handleDeleteSignal(signalName) {
-  if (!guardUnsavedChanges()) return
-  try {
-    await deleteProjectSignal(props.projectName, signalName)
-    await refreshAfterProjectEdit()
-  } catch {
-    // already surfaced via apiFetch
-  }
+function handleAddSignal() {
+  guardedAction('add a new signal', async () => {
+    try {
+      const signal = await postAddSignal(props.projectName)
+      await refreshAfterProjectEdit()
+      flashRecentlyAdded(`signal:${signal.name}`)
+    } catch {
+      // already surfaced via apiFetch
+    }
+  })
 }
 
-async function handleReorderAction({ actionName, position }) {
+function handleAddAction() {
   const stateKey = selectedStateKey.value
-  if (!stateKey || !guardUnsavedChanges()) return
-  try {
-    await putActionOrder(props.projectName, stateKey, actionName, position)
-    await refreshAfterProjectEdit()
-  } catch {
-    // already surfaced via apiFetch
-  }
+  if (!stateKey) return
+  guardedAction('add a new action', async () => {
+    try {
+      const action = await postAddAction(props.projectName, stateKey)
+      await refreshAfterProjectEdit()
+      // The new action itself, not its containing state — selecting the
+      // state here used to flip the Inspector's own active tab back to
+      // "State" (see the selectedGraphElement watch above), which is
+      // exactly the "view resets" bug this was reported as.
+      selectedGraphElement.value = indexYmlEditorRef.value?.actionsForState(stateKey).find(
+        (a) => a.data.actionName === action.name
+      ) ?? null
+      flashRecentlyAdded(`action:${stateKey}/${action.name}`)
+    } catch {
+      // already surfaced via apiFetch
+    }
+  })
+}
+
+function handleSetStateField(stateName, field, value) {
+  guardedAction(`edit "${field}"`, async () => {
+    try {
+      await putStateField(props.projectName, stateName, field, value)
+      await refreshAfterProjectEdit()
+      selectedGraphElement.value = indexYmlEditorRef.value?.stateElementFor(stateName) ?? null
+    } catch {
+      // already surfaced via apiFetch
+    }
+  })
+}
+
+function handleSetActionField(stateName, actionName, field, value) {
+  guardedAction(`edit "${field}"`, async () => {
+    try {
+      // The init-action (stateName '' — see InspectorGraph.vue's own
+      // isInitEdge) lives outside `states:` entirely, so putActionField's
+      // own state/action lookup can't reach it — every one of its own
+      // editable fields (target, ui-label, ...) goes through the
+      // dedicated endpoint instead.
+      if (stateName === '') {
+        await putInitActionField(props.projectName, field, value)
+      } else {
+        await putActionField(props.projectName, stateName, actionName, field, value)
+      }
+      await refreshAfterProjectEdit()
+      selectedGraphElement.value = indexYmlEditorRef.value?.actionsForState(stateName).find(
+        (a) => a.data.actionName === actionName
+      ) ?? null
+    } catch {
+      // already surfaced via apiFetch
+    }
+  })
+}
+
+function handleSetSignalField(signalName, field, value) {
+  guardedAction(`edit "${field}"`, async () => {
+    try {
+      const signal = await putSignalField(props.projectName, signalName, field, value)
+      await refreshAfterProjectEdit()
+      // Only a ui-label edit can rename the signal (see AutomatonYamlEditor.
+      // set_signal_field's own ui-label special case) — state/action never
+      // move for a field edit, since their own name/key never changes, but
+      // a renamed signal's own line in the YAML does: reuse the same
+      // cursor-repositioning heuristic a direct jump already uses, off the
+      // *new* name the response just reported.
+      if (field === 'ui-label') await jumpToDefinition({ kind: 'signal', signalName: signal.name }, { silent: true })
+    } catch {
+      // already surfaced via apiFetch
+    }
+  })
+}
+
+function handleDeleteState(stateName) {
+  guardedAction('delete this state', async () => {
+    try {
+      await deleteState(props.projectName, stateName)
+      selectedGraphElement.value = null
+      await refreshAfterProjectEdit()
+    } catch {
+      // already surfaced via apiFetch
+    }
+  })
+}
+
+function handleDeleteAction(stateName, actionName) {
+  guardedAction('delete this action', async () => {
+    try {
+      await deleteProjectAction(props.projectName, stateName, actionName)
+      // The containing state is still selected — only the action itself
+      // (if it happened to be the literal selection) is now gone.
+      if (selectedGraphElement.value?.kind === 'action' && selectedGraphElement.value.data.actionName === actionName) {
+        selectedGraphElement.value = indexYmlEditorRef.value?.stateElementFor(stateName) ?? null
+      }
+      await refreshAfterProjectEdit()
+    } catch {
+      // already surfaced via apiFetch
+    }
+  })
+}
+
+function handleDeleteSignal(signalName) {
+  guardedAction('delete this signal', async () => {
+    try {
+      await deleteProjectSignal(props.projectName, signalName)
+      await refreshAfterProjectEdit()
+    } catch {
+      // already surfaced via apiFetch
+    }
+  })
+}
+
+function handleReorderAction({ actionName, position }) {
+  const stateKey = selectedStateKey.value
+  if (!stateKey) return
+  guardedAction('reorder actions', async () => {
+    try {
+      await putActionOrder(props.projectName, stateKey, actionName, position)
+      await refreshAfterProjectEdit()
+    } catch {
+      // already surfaced via apiFetch
+    }
+  })
 }
 
 // Common tail for a successful Save on either kind of editor (see
@@ -995,7 +1081,12 @@ async function handleUploadFile(event) {
 }
 
 async function handleNewFile() {
-  const rawName = window.prompt('New file name (e.g. notes.txt or extra.yml):')
+  // .yml/.yaml is technically accepted (see UPLOADABLE_PATTERN) but never
+  // a sensible choice here — index.yml is the only YAML file the
+  // automaton itself ever reads, so a second one could only ever be an
+  // inert attachment — the example below steers toward what an
+  // attachment is actually for instead.
+  const rawName = window.prompt('New file name (e.g. notes.txt):')
   if (rawName === null) return // cancelled
   const name = rawName.trim()
   if (!name) return
@@ -1255,12 +1346,30 @@ onBeforeUnmount(() => {
             @click="setMode('test')"
           >Test</button>
         </div>
-        <span v-if="projectRevision" class="revision-indicator" :title="`Draft revision ${projectRevision.revision} — published: ${projectRevision.published_revision ?? 'never'}`">
-          rev {{ projectRevision.revision }}
-        </span>
-        <button class="publish-btn" :disabled="publishUpToDate || publishing" @click="handlePublish">
-          {{ publishing ? 'Publishing…' : 'Publish' }}
-        </button>
+        <div v-if="projectRevision" class="publish-split-btn">
+          <button
+            class="publish-btn"
+            :disabled="publishUpToDate || publishing"
+            :title="`Draft revision ${projectRevision.revision} — published: ${projectRevision.published_revision ?? 'never'}`"
+            @click="handlePublish"
+          >{{ publishing ? 'Publishing…' : `Rev. ${projectRevision.revision}` }}</button>
+          <template v-if="canRevert">
+            <button
+              type="button"
+              class="publish-menu-toggle"
+              title="More publish options"
+              @click="publishMenuOpen = !publishMenuOpen"
+            >▾</button>
+            <div v-if="publishMenuOpen" class="publish-menu-dropdown">
+              <button type="button" class="publish-menu-item" @click="closePublishMenu(); handlePublish()">Publish</button>
+              <button
+                type="button"
+                class="publish-menu-item publish-menu-item-danger"
+                @click="closePublishMenu(); handleRevert()"
+              >Revert to rev. {{ projectRevision.published_revision }}</button>
+            </div>
+          </template>
+        </div>
         <button class="close-btn" @click="handleClose">Back</button>
       </div>
     </div>
@@ -1361,7 +1470,6 @@ onBeforeUnmount(() => {
                       :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.isDirty"
                       @click="codeEditorRef?.save()"
                     >{{ codeEditorRef?.saving ? 'Saving…' : 'Save' }}</button>
-                    <DocInfoButton doc-name="project-specs" title="Project format specification" />
                   </div>
                 </div>
                 <div class="edit-project-editor-content">
@@ -1455,6 +1563,7 @@ onBeforeUnmount(() => {
                 :selected-element="stateTabElement"
                 :editable-files="files"
                 :highlighted-state-key="highlightedStateKey"
+                :recently-added-key="recentlyAddedKey"
                 @select="handleTabSelect"
                 @select-attachment="selectFile"
                 @jump-to-attachment="handleJumpToAttachment"
@@ -1474,6 +1583,7 @@ onBeforeUnmount(() => {
                 :highlighted-state-key="highlightedStateKey"
                 :available-states="availableStates"
                 :allow-add="!!selectedStateKey"
+                :recently-added-key="recentlyAddedKey"
                 @select="handleTabSelect"
                 @select-attachment="selectFile"
                 @reorder="handleReorderAction"
@@ -1491,11 +1601,13 @@ onBeforeUnmount(() => {
                 :project-name="projectName"
                 :signal-values="effectiveSignalValues"
                 :editable-files="mode === 'edit' ? files : null"
-                :state-key="highlightedStateKey"
+                :state-key="mode === 'edit' ? selectedStateKey : highlightedStateKey"
+                :recently-added-key="recentlyAddedKey"
                 @jump-to-definition="(target) => jumpToDefinition(target, { silent: true })"
                 @select-attachment="selectFile"
                 @set-field="handleSetSignalField"
                 @add-signal="handleAddSignal"
+                @delete="handleDeleteSignal"
               />
             </template>
             <template #tab-metrics="{ registerTab }">
@@ -1509,13 +1621,13 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div v-if="pendingFileName" class="switch-dialog-overlay">
+    <div v-if="pendingAction" class="switch-dialog-overlay">
       <div class="switch-dialog">
-        <p>"{{ currentFileName }}" has unsaved changes. Save before switching to "{{ pendingFileName }}"?</p>
+        <p>"{{ currentFileName }}" has unsaved changes. Save before you {{ pendingAction.label }}?</p>
         <div class="switch-dialog-actions">
-          <button class="switch-dialog-save-btn" :disabled="saving" @click="confirmSwitchSave">Save</button>
-          <button class="switch-dialog-discard-btn" :disabled="saving" @click="confirmSwitchDiscard">Discard</button>
-          <button class="switch-dialog-cancel-btn" :disabled="saving" @click="confirmSwitchCancel">Cancel</button>
+          <button class="switch-dialog-save-btn" :disabled="activeEditor()?.saving" @click="confirmPendingSave">Save</button>
+          <button class="switch-dialog-discard-btn" :disabled="activeEditor()?.saving" @click="confirmPendingDiscard">Discard</button>
+          <button class="switch-dialog-cancel-btn" :disabled="activeEditor()?.saving" @click="confirmPendingCancel">Cancel</button>
         </div>
       </div>
     </div>
@@ -1635,10 +1747,10 @@ onBeforeUnmount(() => {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
 }
 
-.revision-indicator {
-  font-size: 0.78rem;
-  color: #666;
-  white-space: nowrap;
+.publish-split-btn {
+  position: relative;
+  display: flex;
+  align-items: stretch;
 }
 
 .publish-btn {
@@ -1650,6 +1762,16 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
+/* The arrow half only ever renders alongside the main button (see
+   canRevert) — rounding the main button's right edge only when it does
+   keeps a plain, arrow-less "Rev. X" (nothing to revert to yet) looking
+   like an ordinary single button rather than a split one missing a half. */
+.publish-btn:has(+ .publish-menu-toggle) {
+  border-right: none;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
 .publish-btn:hover:not(:disabled) {
   background: #256428;
 }
@@ -1657,6 +1779,63 @@ onBeforeUnmount(() => {
 .publish-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.publish-menu-toggle {
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid #2e7d32;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  background: #2e7d32;
+  color: white;
+  cursor: pointer;
+  font-size: 0.7rem;
+}
+
+.publish-menu-toggle:hover {
+  background: #256428;
+}
+
+.publish-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: 11rem;
+  padding: 0.3rem;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  background: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+}
+
+.publish-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.45rem 0.6rem;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  font-size: 0.82rem;
+  color: #333;
+  cursor: pointer;
+}
+
+.publish-menu-item:hover {
+  background: #f0f4fa;
+}
+
+.publish-menu-item-danger {
+  color: #c62828;
+  font-weight: 700;
+}
+
+.publish-menu-item-danger:hover {
+  background: #fdecea;
 }
 
 .remap-select {

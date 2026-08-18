@@ -153,6 +153,17 @@ async function save() {
   }
 }
 
+// Reverts the buffer to whatever was last loaded/saved, discarding any
+// local unsaved edit — EditProjectView.vue's own unsaved-changes dialog
+// calls this (regardless of which kind of editor is actually active, see
+// its own activeEditor() helper) when the user picks "Discard" rather
+// than "Save" before an action that would otherwise clobber this file's
+// content right back out from under them.
+function discard() {
+  content.value = originalContent.value
+  setEditorDoc(originalContent.value)
+}
+
 // Undo/redo ask the backend to preview the previous/next content from
 // the current user's own history (see api.js's undoProjectFile/
 // redoProjectFile), sending the editor's own current content along so a
@@ -210,7 +221,7 @@ async function reload() {
   await load()
 }
 
-defineExpose({ content, isDirty, canUndo, canRedo, mediaType, loading, saving, save, undo, redo, jumpToLine, reload })
+defineExpose({ content, isDirty, canUndo, canRedo, mediaType, loading, saving, save, discard, undo, redo, jumpToLine, reload })
 
 // Read-only for the duration of an in-flight save — typing over content
 // that's already mid-flight to the backend would just be silently lost

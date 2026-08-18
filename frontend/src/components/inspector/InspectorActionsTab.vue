@@ -26,7 +26,11 @@ const props = defineProps({
   // selectedStateKey) — the init-action is a singleton the automaton
   // itself always owns, not one more action a real state's own "+ Add
   // action" could add another of.
-  allowAdd: { type: Boolean, default: true }
+  allowAdd: { type: Boolean, default: true },
+  // See EditProjectView.vue's own docstring on this — 'action:<stateKey>/
+  // <actionName>' while one of `actions` is the row a "+ Add action"
+  // click just created, null otherwise.
+  recentlyAddedKey: { type: String, default: null }
 })
 
 const emit = defineEmits(['select', 'select-attachment', 'reorder', 'set-field', 'delete', 'add-action'])
@@ -159,6 +163,7 @@ function handleDragEnd() {
         :selectable="!isSelected(action)"
         editable
         :available-states="availableStates"
+        :recently-added-key="recentlyAddedKey"
         :closable="false"
         :open="expandedActionName === action.data.actionName"
         @update:open="toggleOpen(action, $event)"

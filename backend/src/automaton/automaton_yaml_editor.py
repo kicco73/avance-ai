@@ -247,6 +247,17 @@ class AutomatonYamlEditor:
         self._find_action(state_name, action_name)[field] = value
         return self._action_payload(state_name, action_name)
 
+    def _init_action_payload(self) -> ActionPayload:
+        init_action = self._raw.get("init-action") or {}
+        return {
+            "name": "init-action",
+            "ui_label": init_action.get("ui-label") or "init-action",
+            "ui_button": "",
+            "target": init_action.get("target"),
+            "has_trigger": False,
+            "on-enter": init_action.get("on-enter"),
+        }
+
     def set_signal_field(self, signal_name: str, field: str, value) -> SignalPayload:
         if field == "ui-label":
             self._signal(signal_name)["ui-label"] = value
@@ -256,6 +267,24 @@ class AutomatonYamlEditor:
             return self._signal_payload(signal_name)
         self._signal(signal_name)[field] = value
         return self._signal_payload(signal_name)
+
+    def set_init_action_field(self, field: str, value) -> StatePayload | ActionPayload:
+        """Every editable field of the init-action itself. 'target' (see
+        set_init_action_target below, kept as its own method — Started-
+        payload-shaped, with its own must-be-a-real-state validation) is
+        the one existing callers already relied on; every other field
+        ('ui-label' is the only one currently exposed by the Inspector —
+        see InspectorDetailCard.vue's own title input, shown for every
+        action card including the init-action's) used to 404: the
+        init-action lives outside `states:` entirely (just its own
+        top-level `init-action:` mapping), so the regular per-field action
+        endpoint's states[state_name]/_find_action lookup could never
+        reach it."""
+        if field == "target":
+            return self.set_init_action_target(value)
+        init_action = self._raw.setdefault("init-action", CommentedMap())
+        init_action[field] = value
+        return self._init_action_payload()
 
     def set_init_action_target(self, state_name: str) -> StatePayload:
         """Moves the automaton's own start state — the Inspector's own

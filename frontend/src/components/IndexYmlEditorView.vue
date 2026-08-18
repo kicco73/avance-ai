@@ -82,20 +82,23 @@ function jumpToLineSilently(lineIndex) {
 // neither of which this view has any business knowing about itself.
 const content = computed(() => codeEditorRef.value?.content ?? '')
 const isDirty = computed(() => codeEditorRef.value?.isDirty ?? false)
+const saving = computed(() => codeEditorRef.value?.saving ?? false)
 
 // Delegated straight to the (always-mounted, see this component's own
-// docstring) CodeEditor instance — EditProjectView.vue's own switch-file
-// dialog calls save() regardless of which kind of editor is actually
-// active (see its own activeEditor() helper), and Undo/Redo already
-// live in this view's own toolbar above, but a caller may still want
-// them directly (e.g. a future keyboard shortcut scoped to this view).
+// docstring) CodeEditor instance — EditProjectView.vue's own unsaved-
+// changes dialog calls save()/discard() regardless of which kind of
+// editor is actually active (see its own activeEditor() helper), and
+// Undo/Redo already live in this view's own toolbar above, but a caller
+// may still want them directly (e.g. a future keyboard shortcut scoped
+// to this view).
 function save() { return codeEditorRef.value?.save() }
+function discard() { return codeEditorRef.value?.discard() }
 function undo() { return codeEditorRef.value?.undo() }
 function redo() { return codeEditorRef.value?.redo() }
 
 defineExpose({
   loadGraph, resize, fit, refresh, reloadCode, jumpToLine, jumpToLineSilently, stateElementFor, actionsForState,
-  content, isDirty, save, undo, redo
+  content, isDirty, saving, save, discard, undo, redo
 })
 </script>
 

@@ -496,14 +496,14 @@ export function putActionField(projectName, stateName, actionName, field, value)
 }
 
 // The init-action lives outside `states:` in the YAML (see
-// AutomatonYamlEditor.set_init_action_target) — its target is the only
-// field it exposes an edit for, via this dedicated endpoint rather than
-// putActionField above (which looks the action up inside a real state's
-// own `actions:` list, and the init-action isn't in one).
-export function putInitActionTarget(projectName, target) {
+// AutomatonYamlEditor.set_init_action_field) — putActionField above looks
+// an action up inside a real state's own `actions:` list, and the
+// init-action isn't in one, so every one of its own editable fields
+// (target, ui-label, ...) goes through this dedicated endpoint instead.
+export function putInitActionField(projectName, field, value) {
   return apiFetch(
-    `${API_URL}/projects/${encodeURIComponent(projectName)}/init-action/target`,
-    { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: target }) }
+    `${API_URL}/projects/${encodeURIComponent(projectName)}/init-action/${encodeURIComponent(field)}`,
+    { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value }) }
   )
 }
 
@@ -558,4 +558,8 @@ export function postPublishProject(projectName, remapTo = null) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/publish`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ remap_to: remapTo })
   })
+}
+
+export function postRevertProject(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/revert`, { method: 'POST' })
 }

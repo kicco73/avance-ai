@@ -1,7 +1,10 @@
 <script setup>
-import { computed, ref, watch, onMounted } from 'vue'
+import { computed, nextTick, ref, watch, onMounted } from 'vue'
 import { getProjectSignals } from '../../api.js'
 import { hasSignalValue, useSignalChangeFlash } from './signalDisplay.js'
+import { vAutosize } from './textareaAutosize.js'
+import CardMenu from './CardMenu.vue'
+import { handleEnterNext } from './enterToNextField.js'
 
 const props = defineProps({
   projectName: { type: String, required: true },
@@ -15,10 +18,20 @@ const props = defineProps({
   // action fires *from*. null means "every state's triggers combined"
   // (see getProjectSignals/backend's Automaton.
   // all_triggerable_signal_names).
-  stateKey: { type: String, default: null }
+  stateKey: { type: String, default: null },
+  // See EditProjectView.vue's own docstring on this — 'signal:<name>'
+  // while one of `signals` is the entry a "+ Add signal" click just
+  // created, null otherwise.
+  recentlyAddedKey: { type: String, default: null }
 })
 
-const emit = defineEmits(['jump-to-definition', 'select-attachment', 'update-expected-signals', 'set-field', 'add-signal'])
+const emit = defineEmits(['jump-to-definition', 'select-attachment', 'update-expected-signals', 'set-field', 'add-signal', 'delete'])
+
+// No confirmation dialog — an undo exists for exactly this (same
+// reasoning as InspectorDetailCard.vue's own handleDelete).
+function handleDeleteSignal(signalName) {
+  emit('delete', signalName)
+}
 
 const signalsLoading = ref(true)
 const signals = ref([])
@@ -37,24 +50,51 @@ const editUiLabel = ref('')
 const editUiDescription = ref('')
 const editDefinition = ref('')
 
-// A textarea's own opening height, proportional to its existing content
-// (capped at 10 lines) — same reasoning as InspectorDetailCard.vue's own
-// rowsFor, computed once when the block expands, never while typing (so
-// it doesn't fight a manual resize-drag mid-edit).
-function rowsFor(text) {
-  const lines = (text ?? '').split('\n').length
-  return Math.min(10, Math.max(2, lines))
-}
-const uiDescriptionRows = ref(2)
-const definitionRows = ref(4)
-
 function resetEditBuffers(entry) {
   editUiLabel.value = entry?.signal.ui_label ?? ''
   editUiDescription.value = entry?.signal.ui_description ?? ''
   editDefinition.value = entry?.signal.definition ?? ''
-  uiDescriptionRows.value = rowsFor(editUiDescription.value)
-  definitionRows.value = rowsFor(editDefinition.value)
 }
+
+// A plain (non-ref-array) element ref — see InspectorEnvTab.vue's own
+// setEditInputRef for why: a v-for's own `ref=` would collect one entry
+// per row regardless of how many actually render an editable label input
+// at a time (only the expanded one does).
+let labelInputEl = null
+function setLabelInputRef(el) {
+  labelInputEl = el
+}
+const blockRefs = {}
+function setBlockRef(name, el) {
+  if (el) blockRefs[name] = el
+  else delete blockRefs[name]
+}
+
+function isRecentlyAdded(name) {
+  return props.recentlyAddedKey === `signal:${name}`
+}
+
+// "+ Add signal" (see EditProjectView.vue's own handleAddSignal) creates
+// a signal with no trigger referencing it yet, so it's never "relevant" —
+// left showOnlyRelevant on, it would silently vanish from the list the
+// instant it's created (previously the user had to notice this and
+// switch the toggle off by hand). Expanding it and focusing its label
+// also fulfils "keep focus on the new signal" from the same request.
+watch(() => props.recentlyAddedKey, async (key) => {
+  if (!key?.startsWith('signal:')) return
+  const name = key.slice('signal:'.length)
+  const entry = signals.value.find((s) => s.signal.name === name)
+  if (!entry) return
+  showOnlyRelevant.value = false
+  if (props.editableFiles) {
+    expandedSignalName.value = name
+    resetEditBuffers(entry)
+  }
+  await nextTick()
+  blockRefs[name]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  labelInputEl?.focus()
+  labelInputEl?.select()
+})
 
 function selectSignal(entry) {
   if (!props.editableFiles) return
@@ -87,9 +127,18 @@ function commitSignalField(field, currentValue, originalValue) {
 // meaningful only to some *other* state).
 const showOnlyRelevant = ref(true)
 
-const displayedSignals = computed(() =>
-  showOnlyRelevant.value ? signals.value.filter((s) => s.relevant) : signals.value
-)
+// Within an active edit session (editableFiles set), a null stateKey
+// means nothing at all is selected (see EditProjectView.vue's own
+// selectedStateKey) — the filter has nothing to scope itself to, so it's
+// bypassed entirely rather than falling back to "every state's triggers
+// combined" (still what a null stateKey means for the live/Benchmark
+// case below, where it's the deliberate fallback, not "nothing
+// selected").
+const displayedSignals = computed(() => {
+  if (!showOnlyRelevant.value) return signals.value
+  if (props.editableFiles && props.stateKey == null) return signals.value
+  return signals.value.filter((s) => s.relevant)
+})
 
 function attachmentLabel(index) { return String.fromCharCode(97 + index) }
 
@@ -169,32 +218,47 @@ onMounted(loadSignals)
       No relevant signals — none are referenced by an action's own trigger yet.
     </p>
     <div v-else class="inspector-signal-list">
-      <div v-for="entry in displayedSignals" :key="entry.signal.name" class="inspector-signal-block" :class="{ 'inspector-signal-block-clickable': editableFiles }" :title="editableFiles ? 'Click to open' : undefined" @click="editableFiles ? selectSignal(entry) : null">
+      <div
+        v-for="entry in displayedSignals"
+        :key="entry.signal.name"
+        :ref="(el) => setBlockRef(entry.signal.name, el)"
+        class="inspector-signal-block"
+        :class="{ 'inspector-signal-block-clickable': editableFiles, 'inspector-signal-block-flash': isRecentlyAdded(entry.signal.name) }"
+        :title="editableFiles ? 'Click to open' : undefined"
+        @click="editableFiles ? selectSignal(entry) : null"
+      >
         <Transition name="crossfade" mode="out-in">
           <div v-if="editableFiles && expandedSignalName === entry.signal.name" key="edit" class="inspector-signal-form">
             <div class="inspector-signal-header">
               <span class="inspector-detail-badge inspector-detail-badge-signal">Signal</span>
               <input
+                :ref="setLabelInputRef"
                 v-model="editUiLabel"
                 class="inspector-signal-label-input"
                 placeholder="Label"
                 @click.stop
                 @blur="commitSignalField('ui-label', editUiLabel, entry.signal.ui_label ?? '')"
+                @keydown.enter.prevent="handleEnterNext"
               />
+              <CardMenu>
+                <button type="button" class="card-menu-item-danger" @click="handleDeleteSignal(entry.signal.name)">Delete</button>
+              </CardMenu>
             </div>
             <label class="inspector-signal-form-label">Description</label>
             <textarea
               v-model="editUiDescription"
+              v-autosize
               class="inspector-signal-textarea"
-              :rows="uiDescriptionRows"
+              rows="2"
               @click.stop
               @blur="commitSignalField('ui-description', editUiDescription, entry.signal.ui_description ?? '')"
             ></textarea>
             <label class="inspector-signal-form-label">Definition</label>
             <textarea
               v-model="editDefinition"
+              v-autosize
               class="inspector-signal-textarea"
-              :rows="definitionRows"
+              rows="2"
               @click.stop
               @blur="commitSignalField('definition', editDefinition, entry.signal.definition ?? '')"
             ></textarea>
@@ -206,6 +270,9 @@ onMounted(loadSignals)
             <div class="inspector-signal-header">
               <span class="inspector-detail-badge inspector-detail-badge-signal">Signal</span>
               <span class="inspector-signal-name">{{ entry.signal.ui_label || entry.signal.name }}</span>
+              <CardMenu v-if="editableFiles">
+                <button type="button" class="card-menu-item-danger" @click="handleDeleteSignal(entry.signal.name)">Delete</button>
+              </CardMenu>
             </div>
             <span v-if="entry.signal.ui_description" class="inspector-signal-ui_description">{{ entry.signal.ui_description }}</span>
           </div>
@@ -242,12 +309,14 @@ onMounted(loadSignals)
 .signals-status { margin: 0; color: #444; font-size: 0.9rem; }
 .inspector-signal-list { display: flex; flex-direction: column; gap: 0.6rem; }
 .inspector-signal-block { display: flex; flex-direction: column; gap: 0.2rem; padding: 0.6rem 0.75rem; border-radius: 8px; border: 1px solid #eee; background: #fafafa; }
+@keyframes inspector-signal-block-flash { from { background-color: #fff3b0; } to { background-color: #fafafa; } }
+.inspector-signal-block-flash { animation: inspector-signal-block-flash 1.5s ease-out; }
 .inspector-signal-block-clickable { cursor: pointer; }
 .inspector-signal-block-clickable:hover { border-color: #c9d6e8; background: #f0f4fa; }
 .inspector-signal-header { display: flex; align-items: center; gap: 0.4rem; }
 .inspector-detail-badge { flex-shrink: 0; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.15rem 0.5rem; border-radius: 999px; color: white; }
 .inspector-detail-badge-signal { background: #6a4c93; }
-.inspector-signal-name { font-weight: 600; font-size: 0.85rem; color: #333; }
+.inspector-signal-name { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; }
 /* Same hover/focus-reveal look as InspectorDetailCard.vue's own
    .inspector-detail-title-input, for a state/signal/action's own label
    to read as one consistent editing affordance across the Inspector. */

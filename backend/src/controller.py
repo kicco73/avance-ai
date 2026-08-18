@@ -546,6 +546,16 @@ class AvanceController(object):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
+    @post("/api/projects/{project_name}/revert")
+    async def post_revert_project(self, project_name: str):
+        """Discards `project_name`'s entire in-progress draft revision,
+        reverting to whatever was last published — see ProjectService.
+        revert_to_published."""
+        try:
+            return await self.project_service.revert_to_published(project_name, self._activate_project)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+
     @get("/api/projects/{project_name}/graph")
     def get_project_graph(self, project_name: str):
         """The project's state machine (states as nodes, actions as edges)
@@ -750,14 +760,18 @@ class AvanceController(object):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @put("/api/projects/{project_name}/init-action/target")
-    async def put_init_action_target(self, project_name: str, req: SetProjectFieldRequest):
-        """Moves the automaton's own start state to req.value — see
-        AutomatonYamlEditor.set_init_action_target. Converts ValueError
-        (an unknown state name) to 400."""
+    @put("/api/projects/{project_name}/init-action/{field}")
+    async def put_init_action_field(self, project_name: str, field: str, req: SetProjectFieldRequest):
+        """Every editable field of the init-action itself — see
+        AutomatonYamlEditor.set_init_action_field. 'target' (moving the
+        automaton's own start state) is the one case with its own
+        validation (an unknown state name converts to 400, same as
+        before this was generalized from its own dedicated .../target
+        endpoint); every other field (e.g. 'ui-label') just writes
+        through."""
         try:
-            return await self.project_service.set_init_action_target(
-                project_name, req.value, self._activate_project
+            return await self.project_service.set_init_action_field(
+                project_name, field, req.value, self._activate_project
             )
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc

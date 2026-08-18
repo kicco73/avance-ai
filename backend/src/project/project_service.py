@@ -78,8 +78,14 @@ class ProjectService(object):
     def _project_update_changed(self, existing: dict[str, str], files: dict[str, str]) -> bool:
         """Whether `files` (new content for some subset of a project's
         own files — see _prepare_project_update) is a genuine change
-        against `existing`."""
-        return any(existing.get(name, "") != content for name, content in files.items())
+        against `existing`. A file `existing` doesn't have at all yet is
+        always a change, even when its own new content happens to be ""
+        (the Explorer's own "+ new file" always creates one this way) —
+        `existing.get(name, "")` used to fold that case into "unchanged"
+        indistinguishably from a real no-op edit, so the file was never
+        actually persisted (see put_project_file's own to_persist branch)
+        and the very next read of it 404'd."""
+        return any(name not in existing or existing[name] != content for name, content in files.items())
 
     def _prepare_project_update(self, project_name: str, files: dict[str, str]) -> tuple[Automaton, dict[str, str] | None]:
         """Builds+validates the Automaton for `files` (new content for
@@ -448,6 +454,22 @@ class ProjectService(object):
         self._db.publish_project(project_name)
         return self.get_project_revision_info(project_name)
 
+    async def revert_to_published(self, project_name: str, commit: CommitCallback) -> dict:
+        """Discards the entire in-progress draft revision, reverting to
+        whatever was last published (see Db.revert_to_published) — the
+        "Rev. X" split button's own "Revert to rev. X-1" option (see
+        EditProjectView.vue), only ever offered there when both a draft-
+        ahead-of-published revision and a prior publication exist (a
+        stale/duplicate click past that point is a safe no-op, same as
+        publish_project)."""
+        if project_name not in self._db.list_projects():
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+        self._db.revert_to_published(project_name)
+        self._automaton_cache.pop(project_name, None)
+        new_automaton = self._load_project(project_name)
+        await self._finalize_project_update(project_name, new_automaton, commit)
+        return self.get_project_revision_info(project_name)
+
     async def activate_project(self, project_name: str, commit: CommitCallback) -> Automaton:
         """Validates via _load_and_validate(), persists `project_name` as
         active, then awaits `commit(new_automaton)`."""
@@ -643,11 +665,9 @@ class ProjectService(object):
             project_name, commit, lambda editor: editor.set_signal_field(signal_name, field, value)
         )
 
-    async def set_init_action_target(
-        self, project_name: str, state_name: str, commit: CommitCallback
-    ) -> StatePayload:
+    async def set_init_action_field(self, project_name: str, field: str, value, commit: CommitCallback):
         return await self._edit_index_yml(
-            project_name, commit, lambda editor: editor.set_init_action_target(state_name)
+            project_name, commit, lambda editor: editor.set_init_action_field(field, value)
         )
 
     async def delete_state(self, project_name: str, state_name: str, commit: CommitCallback) -> None:

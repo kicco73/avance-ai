@@ -141,6 +141,28 @@ class ProjectMixin:
             & (Project.published_revision.is_null() | (Project.published_revision != Project.revision))
         ).execute()
 
+    def revert_to_published(self, project_name: str) -> None:
+        """Discards the entire in-progress draft at once — the current
+        draft revision's own Archive rows (created by _ensure_draft_
+        revision's own fork-on-first-edit copy, see its own docstring) are
+        simply deleted, leaving Project.revision pointed back at
+        published_revision's own row set, never touched since the fork
+        happened. A no-op (not an error) when there's nothing to revert —
+        no prior publication at all, or the draft already *is* the
+        published one — same "safe against a stale/duplicate click"
+        convention as publish_project. History (now describing edits to a
+        revision that no longer exists) is cleared right alongside it,
+        same as a fork's own History wipe."""
+        with database.atomic():
+            project = Project.get(Project.name == project_name)
+            if project.published_revision is None or project.revision == project.published_revision:
+                return
+            Archive.delete().where(
+                (Archive.project_name == project_name) & (Archive.revision == project.revision)
+            ).execute()
+            Project.update(revision=project.published_revision).where(Project.name == project_name).execute()
+            History.delete().where(History.project_name == project_name).execute()
+
     def get_state_remap(self, project_name: str, old_key: str) -> str | None:
         row = StateRemap.get_or_none((StateRemap.project_name == project_name) & (StateRemap.old_key == old_key))
         return row.new_key if row is not None else None

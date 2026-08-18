@@ -14,7 +14,11 @@ import InspectorDetailCard from './InspectorDetailCard.vue'
 const props = defineProps({
   selectedElement: { type: Object, default: null },
   editableFiles: { type: Array, default: null },
-  highlightedStateKey: { type: String, default: null }
+  highlightedStateKey: { type: String, default: null },
+  // See EditProjectView.vue's own docstring on this — 'state:<key>' while
+  // `selectedElement` is the state a "+ Add state" click just created,
+  // null otherwise.
+  recentlyAddedKey: { type: String, default: null }
 })
 
 const emit = defineEmits(['select', 'select-attachment', 'jump-to-attachment', 'set-field', 'delete', 'add-state'])
@@ -22,9 +26,13 @@ const emit = defineEmits(['select', 'select-attachment', 'jump-to-attachment', '
 // This tab only ever has the one card, but it's still the parent that
 // owns open/closed now (see InspectorDetailCard.vue's own `open` prop) —
 // closed whenever the selection moves to a genuinely different state,
-// same as before.
+// same as before, *except* when it moved there because "+ Add state" just
+// created it — that one opens straight into its own edit form instead of
+// requiring a second click.
 const open = ref(false)
-watch(() => props.selectedElement?.data.id, () => { open.value = false })
+watch(() => props.selectedElement?.data.id, (id) => {
+  open.value = id != null && props.recentlyAddedKey === `state:${id}`
+})
 </script>
 
 <template>
@@ -35,6 +43,7 @@ watch(() => props.selectedElement?.data.id, () => { open.value = false })
       :selected-element="selectedElement"
       :editable-files="editableFiles"
       :highlighted-state-key="highlightedStateKey"
+      :recently-added-key="recentlyAddedKey"
       selectable
       editable
       :closable="false"
