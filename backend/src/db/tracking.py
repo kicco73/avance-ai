@@ -4,6 +4,8 @@ import json
 import logging
 from datetime import datetime
 
+from peewee import fn
+
 from .models import ChatSession, Tracking, DEFAULT_USER
 from .utils import _utc_iso
 
@@ -41,6 +43,25 @@ class TrackingMixin:
 
     def get_signal_row_by_message(self, message_id: int) -> dict | None:
         row = Tracking.get_or_none(Tracking.message == message_id)
+        if row is None:
+            return None
+        return {'id': row.id, 'timestamp': _utc_iso(row.timestamp), 'values': row.values, 'expected_values': row.expected_values, 'expected_state': row.expected_state, 'old_state': row.old_state, 'action': row.action, 'new_state': row.new_state, 'message_id': row.message_id}
+
+    def get_nearest_tracking_row_by_message(self, session_id: int, message_id: int) -> dict | None:
+        """Nearest real (production) Tracking row to `message_id` within
+        this session, by message-id proximity — never by timestamp: a
+        benchmark replay's own turns don't share production's timeline,
+        but they do share the same underlying Message ids (see
+        metrics.benchmark_signal_sources.TurnByTurnSignalSource, which
+        widens its signal ask with whatever state production was
+        actually in around this point of the conversation)."""
+        row = (
+            Tracking
+            .select()
+            .where((Tracking.session == session_id) & Tracking.message.is_null(False))
+            .order_by(fn.ABS(Tracking.message - message_id))
+            .first()
+        )
         if row is None:
             return None
         return {'id': row.id, 'timestamp': _utc_iso(row.timestamp), 'values': row.values, 'expected_values': row.expected_values, 'expected_state': row.expected_state, 'old_state': row.old_state, 'action': row.action, 'new_state': row.new_state, 'message_id': row.message_id}

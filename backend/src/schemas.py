@@ -103,3 +103,13 @@ class PublishProjectRequest(BaseModel):
     # None (the default, and the only valid value when no remap is
     # needed) means "no remap decision to make".
     remap_to: str | None = None
+
+
+class CreateBenchmarkRunRequest(BaseModel):
+    # None = every labeled session of the project, replayed as one run
+    # (same session_id=None|int dual as BenchmarkCalculator). See
+    # BenchmarkRunService.create_run.
+    session_id: int | None = None
+    # 'turn_by_turn' or 'batch' — see benchmark_run_service.py's own
+    # VALID_STRATEGIES.
+    strategy: str

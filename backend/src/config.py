@@ -70,6 +70,17 @@ class AppConfig:
             raise ConfigError(f"{path}: '{section}' section is missing or not a mapping.")
         return sub
 
+    @staticmethod
+    def _get_optional_section(raw: dict, section: str, path: Path) -> dict:
+        """Like _get_section, but an absent section is treated as empty
+        rather than an error — for a section (e.g. `jobs`) that's allowed
+        to be omitted entirely, unlike chat-service/database which are
+        always present for other, required fields."""
+        sub = raw.get(section, {})
+        if not isinstance(sub, dict):
+            raise ConfigError(f"{path}: '{section}' section is not a mapping.")
+        return sub
+
     @classmethod
     def _get_optional_positive_float(
         cls, raw: dict, section: str, field: str, path: Path, default: float
@@ -79,6 +90,16 @@ class AppConfig:
         if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
             raise ConfigError(f"{path}: '{section}.{field}' must be a positive number if present.")
         return float(value)
+
+    @classmethod
+    def _get_optional_positive_int(
+        cls, raw: dict, section: str, field: str, path: Path, default: int
+    ) -> int:
+        sub = cls._get_optional_section(raw, section, path)
+        value = sub.get(field, default)
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise ConfigError(f"{path}: '{section}.{field}' must be a positive integer if present.")
+        return value
 
     @classmethod
     def _get_optional_bool(cls, raw: dict, section: str, field: str, path: Path, default: bool) -> bool:
@@ -240,6 +261,17 @@ class AppConfig:
         # hardcoded elsewhere.
         self.max_session_duration_in_minutes = self._get_optional_positive_float(
             raw, "chat-service", "max_session_duration_in_minutes", path, default=60.0
+        )
+
+        # Two independent worker pools (see jobs/job_queue.py's JobQueue) —
+        # one per JobSink implementation, never shared between them. Both
+        # optional, and so is the whole `jobs` section: a job kind that
+        # doesn't exist yet in this codebase needs neither to be configured.
+        self.jobs_max_concurrent_persisted = self._get_optional_positive_int(
+            raw, "jobs", "max_concurrent_persisted", path, default=2
+        )
+        self.jobs_max_concurrent_ephemeral = self._get_optional_positive_int(
+            raw, "jobs", "max_concurrent_ephemeral", path, default=4
         )
 
         self.ai_services = self._parse_ai_services(raw, path)

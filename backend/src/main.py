@@ -18,6 +18,8 @@ from config import AppConfig
 from controller import AvanceController
 from db import Db
 from error_handlers import register_error_handlers
+from jobs import InMemoryJobSink, JobQueue, PersistedJobSink
+from metrics.benchmark_run_service import BenchmarkRunService
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
 from ai.ai_service import AiService
@@ -74,7 +76,14 @@ def create_app() -> FastAPI:
             config.database_url,
             force_drop_and_create_when_incompatible=config.database_force_drop_and_create_when_incompatible,
         )
-        
+
+        # Two independent worker pools, never shared — see jobs/job_queue.py's
+        # JobQueue for why a job must never wait on another job from its own
+        # queue. Neither has a consumer yet: no job kind has been moved onto
+        # this engine yet, this just wires the generic mechanism up.
+        persisted_job_queue = JobQueue(PersistedJobSink(db), max_concurrent=config.jobs_max_concurrent_persisted)
+        ephemeral_job_queue = JobQueue(InMemoryJobSink(), max_concurrent=config.jobs_max_concurrent_ephemeral)
+
         project_service = ProjectService(db)
         session_manager = ChatSessionManager(db, open_window_minutes=config.max_session_duration_in_minutes)
         
@@ -96,9 +105,16 @@ def create_app() -> FastAPI:
         tracking_service = TrackingService(db, ai_service, project_service, metric_service)
         chat_service = ChatService(db, ai_service, project_service, session_manager, tracking_service, metric_service)
 
+        # Shares persisted_job_queue with anything else that submits a
+        # persisted job kind (see jobs/job_queue.py's own module
+        # docstring) — never its own private queue.
+        benchmark_run_service = BenchmarkRunService(db, ai_service, tracking_service, persisted_job_queue)
+
         chat_ws_adapter = WsAdapter(chat_service) if config.chat_transport == "websocket" else None
 
-        controller = AvanceController(chat_service, project_service, talk_service, listen_service, db, tracking_service)
+        controller = AvanceController(
+            chat_service, project_service, talk_service, listen_service, db, tracking_service, benchmark_run_service,
+        )
         app.include_router(controller.router)
 
         if chat_ws_adapter is not None:

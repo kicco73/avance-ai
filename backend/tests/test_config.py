@@ -128,3 +128,53 @@ class TestDatabaseForceDropAndCreateWhenIncompatible:
         )
         with pytest.raises(ConfigError):
             _load(monkeypatch, tmp_path, content)
+
+
+class TestGetOptionalPositiveInt:
+    """Unit tests against the parsing helper directly — no file I/O."""
+
+    def test_returns_the_default_when_the_field_is_absent(self):
+        raw = {"jobs": {}}
+        value = AppConfig._get_optional_positive_int(raw, "jobs", "max_concurrent_persisted", "cfg", default=2)
+        assert value == 2
+
+    def test_returns_the_default_when_the_whole_section_is_absent(self):
+        value = AppConfig._get_optional_positive_int({}, "jobs", "max_concurrent_persisted", "cfg", default=2)
+        assert value == 2
+
+    def test_returns_the_configured_value_when_present(self):
+        raw = {"jobs": {"max_concurrent_persisted": 5}}
+        value = AppConfig._get_optional_positive_int(raw, "jobs", "max_concurrent_persisted", "cfg", default=2)
+        assert value == 5
+
+    @pytest.mark.parametrize("bad_value", [0, -1, 1.5, "2", True, None])
+    def test_rejects_non_positive_or_non_integer_values(self, bad_value):
+        raw = {"jobs": {"max_concurrent_persisted": bad_value}}
+        with pytest.raises(ConfigError):
+            AppConfig._get_optional_positive_int(raw, "jobs", "max_concurrent_persisted", "cfg", default=2)
+
+    def test_rejects_a_non_mapping_section(self):
+        with pytest.raises(ConfigError):
+            AppConfig._get_optional_positive_int({"jobs": "nope"}, "jobs", "max_concurrent_persisted", "cfg", default=2)
+
+
+class TestJobsMaxConcurrent:
+    """End-to-end: a real AppConfig() built from a real (temp) config file.
+    The whole `jobs` section is optional, unlike chat-service/database —
+    MINIMAL_CONFIG has none of it at all."""
+
+    def test_defaults_when_the_jobs_section_is_omitted(self, monkeypatch, tmp_path):
+        config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
+        assert config.jobs_max_concurrent_persisted == 2
+        assert config.jobs_max_concurrent_ephemeral == 4
+
+    def test_reads_custom_values(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG + "\njobs:\n  max_concurrent_persisted: 1\n  max_concurrent_ephemeral: 8\n"
+        config = _load(monkeypatch, tmp_path, content)
+        assert config.jobs_max_concurrent_persisted == 1
+        assert config.jobs_max_concurrent_ephemeral == 8
+
+    def test_rejects_a_non_positive_value(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG + "\njobs:\n  max_concurrent_persisted: 0\n"
+        with pytest.raises(ConfigError):
+            _load(monkeypatch, tmp_path, content)

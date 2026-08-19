@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Protocol
 
 from automaton.automaton import Action, Automaton, State
 from db.db import Db
+from db.models import BenchmarkRunObservation
 from tracking.env import Env
 from tracking.evaluation_scope import EvaluationScopeBuilder
 
@@ -58,6 +60,43 @@ class DbTrackingSink:
             signal_values=signal_values,
             message_id=message_id,
         )
+
+
+class BenchmarkRunObservationSink:
+    """TrackingSink for a benchmark replay — writes to
+    BenchmarkRunObservation, never to Tracking: a replay must never be
+    mistaken for (or overwrite) real production data. Talks to the
+    peewee model directly rather than through Db, unlike DbTrackingSink:
+    it owns exactly one table for exactly one run's lifetime, no other
+    Db concern (connection management, schema checks, ...) applies."""
+
+    def __init__(self, run_id: int) -> None:
+        self._run_id = run_id
+
+    def save_signal_snapshot(self, values: dict, session_id: int, message_id: int | None = None) -> int:
+        row = BenchmarkRunObservation.create(
+            run=self._run_id, session=session_id, message=message_id, values=json.dumps(values),
+        )
+        return row.id
+
+    def save_transition(
+        self,
+        old_state: str,
+        action: str,
+        new_state: str,
+        session_id: int,
+        transition_log_level: str,
+        signal_values: dict | None = None,
+        message_id: int | None = None,
+    ) -> int:
+        # transition_log_level: received only to satisfy TrackingSink's
+        # shared shape — there's no production log to write for a replay.
+        row = BenchmarkRunObservation.create(
+            run=self._run_id, session=session_id, message=message_id,
+            old_state=old_state, action=action, new_state=new_state,
+            values=json.dumps(signal_values) if signal_values is not None else None,
+        )
+        return row.id
 
 
 class TrackingEngine:

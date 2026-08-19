@@ -103,6 +103,57 @@ class StateRemap(BaseModel):
     class Meta:
         primary_key = CompositeKey('project_name', 'old_key')
 
+class Job(BaseModel):
+    id = AutoField()
+    kind = CharField()
+    reference_id = IntegerField(null=True)
+    status = CharField()
+    created_at = DateTimeField(index=True, default=datetime.utcnow)
+    finished_at = DateTimeField(null=True)
+    error = TextField(null=True)
+    result = TextField(null=True)
+    progress_current = IntegerField(default=0)
+    progress_total = IntegerField(default=0)
+
+class BenchmarkRun(BaseModel):
+    id = AutoField()
+    username = CharField()
+    project_name = CharField(index=True)
+    # None means "every labeled session of the project", never a single
+    # unresolved session — same dual as BenchmarkCalculator(session_id=
+    # None|int) (see metrics/metrics_framework/benchmark_metrics/calculator.py).
+    session = ForeignKeyField(ChatSession, null=True, backref='benchmark_runs', on_delete='CASCADE')
+    strategy = CharField()
+    # The project's own draft revision at the moment this run was
+    # created — captured once, up front, regardless of which revision is
+    # published (see ChatSession.project_revision, same idea).
+    project_revision = IntegerField(null=False)
+    # Only ever set for strategy='batch' — stays null for 'turn_by_turn'.
+    batch_segments = IntegerField(null=True)
+    ai_model_snapshot = TextField(null=True)
+    results = TextField(null=True)
+
+    class Meta:
+        indexes = ((('username', 'project_name'), False),)
+
+class BenchmarkRunObservation(BaseModel):
+    """A replay's own signal snapshot/transition — the exact same shape
+    Tracking carries for production, but on its own table: a replay must
+    never be mistaken for (or overwrite) real conversation data. See
+    tracking/tracking_engine.py's BenchmarkRunObservationSink."""
+    id = AutoField()
+    run = ForeignKeyField(BenchmarkRun, null=False, backref='observations', on_delete='CASCADE')
+    session = ForeignKeyField(ChatSession, null=False, backref='benchmark_run_observations', on_delete='CASCADE')
+    message = ForeignKeyField(Message, null=True, backref='benchmark_observations', on_delete='SET NULL')
+    timestamp = DateTimeField(index=True, default=datetime.utcnow)
+    values = TextField(null=True)
+    old_state = CharField(null=True, index=True)
+    action = CharField(null=True)
+    new_state = CharField(null=True, index=True)
+
+    class Meta:
+        indexes = ((('run', 'session'), False),)
+
 class History(BaseModel):
     id = AutoField()
     user_id = CharField(index=True, null=False)

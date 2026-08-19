@@ -239,6 +239,29 @@ class BenchmarkMetricsProvider:
     def calculate_values(self) -> dict[str, float]:
         return _values_dict(self._calculate())
 
+    def for_turn(self) -> UserMetricNamespace:
+        """The `metric` namespace's own value for one replay turn (see
+        tracking.evaluation_scope.EvaluationScopeBuilder, which every
+        BenchmarkProcessor turn builds one of — see metrics/
+        benchmark_processor.py) — same laziness as MetricService.for_turn
+        (no AnalyticsCalculator built, no DB query, until an expression
+        actually calls one of the returned namespace's own methods), just
+        picking its dataset the same per-turn way _calculate above
+        already does (full cross-session history `until=real_timestamp`
+        for a real session, this one session truncated by message id
+        otherwise) instead of always "now, everything so far"."""
+        def _build_calculator() -> AnalyticsCalculator:
+            if self._real_timestamp is not None:
+                return AnalyticsCalculator(
+                    self._db, self._username, self._project_name,
+                    metrics=_user_scoped_metrics(), until=self._real_timestamp,
+                )
+            data = UserAnalyticsDataBuilder(self._db, self._username, self._project_name).build_for_session(
+                self._session_id, until_message_id=self._message_id
+            )
+            return AnalyticsCalculator.from_data(data, metrics=_user_scoped_metrics())
+        return UserMetricNamespace(_build_calculator)
+
     def merge_if_referenced(self, automaton: Automaton, state_key: str, names: dict[str, Any]) -> dict[str, Any]:
         if not automaton.triggers_reference(state_key, _metric_names()):
             return names

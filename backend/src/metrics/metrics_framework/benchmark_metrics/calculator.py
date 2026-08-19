@@ -45,10 +45,37 @@ class BenchmarkCalculator(object):
         self._project_name = project_name
         self._session_id = session_id
         self._configuration = configuration or BenchmarkConfiguration()
+        # None here (as opposed to an already-built BenchmarkData) is
+        # what tells _build_observations to load from `db` the normal
+        # way — see from_data below, which sets this instead.
+        self._data: BenchmarkData | None = None
+        self._metrics = self._select_metrics(metrics)
+
+    def _select_metrics(self, metrics: Iterable[BenchmarkMetric] | None) -> tuple[BenchmarkMetric, ...]:
         if metrics is not None:
-            self._metrics = tuple(metrics)
-        else:
-            self._metrics = tuple(m for m in self.default_metrics() if "one_session" in m.scope)
+            return tuple(metrics)
+        return tuple(m for m in self.default_metrics() if "one_session" in m.scope)
+
+    @classmethod
+    def from_data(
+        cls,
+        data: BenchmarkData,
+        configuration: BenchmarkConfiguration | None = None,
+        metrics: Iterable[BenchmarkMetric] | None = None,
+    ) -> "BenchmarkCalculator":
+        """Same mechanism as metrics_framework.calculator.AnalyticsCalculator.
+        from_data: skips the usual _load_sessions/_load_messages/_load_signals
+        DB round-trips, building straight from an already-ready BenchmarkData
+        (see metrics/benchmark_run_data.py's build_benchmark_run_data, for a
+        BenchmarkRun's own hybrid real-messages/replayed-signals data). Same
+        scope filter as the normal constructor: `metrics` explicit if given,
+        otherwise only the default metrics meaningful in a "one_session"
+        context."""
+        instance = cls.__new__(cls)
+        instance._configuration = configuration or BenchmarkConfiguration()
+        instance._data = data
+        instance._metrics = instance._select_metrics(metrics)
+        return instance
 
     def default_metrics(self) -> tuple[BenchmarkMetric, ...]:
         return (
@@ -82,6 +109,8 @@ class BenchmarkCalculator(object):
         return self._build_observations()
 
     def _build_observations(self):
+        if self._data is not None:
+            return BenchmarkObservationBuilder(self._configuration).build(self._data)
         sessions = self._load_sessions()
         session_ids = [int(row["id"]) for row in sessions]
         # Tracking rows loaded once per session and reused for both frames:

@@ -14,6 +14,7 @@ from db import Db
 from talk.talk_service import TalkService, TalkServiceNotAvailableError
 from listen.listen_service import ListenService, ListenServiceError, ListenServiceNotAvailableError
 from chat.chat_service import ChatService, ChatServiceError
+from metrics.benchmark_run_service import BenchmarkRunService
 from project.project_service import ProjectService
 from session import Session
 from tracking.tracking_service import TrackingService
@@ -22,6 +23,7 @@ from schemas import (
     AiModelSelectionRequest,
     AutoTrackingRequest,
     ChatMessageRequest,
+    CreateBenchmarkRunRequest,
     ExpectedSignalsRequest,
     ExpectedStateRequest,
     PublishProjectRequest,
@@ -91,12 +93,14 @@ class AvanceController(object):
         listen_service: ListenService | None,
         db: Db,
         tracking_service: TrackingService,
+        benchmark_run_service: BenchmarkRunService,
     ) -> None:
         self.chat_service = chat_service
         self.project_service = project_service
         self.talk_service = talk_service
         self.listen_service = listen_service
         self.db = db
+        self.benchmark_run_service = benchmark_run_service
         self.tracking_service = tracking_service
 
         self.router = APIRouter()
@@ -619,6 +623,36 @@ class AvanceController(object):
             return await self.project_service.revert_to_published(project_name, self._activate_project)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+
+    @post("/api/projects/{project_name}/benchmark-runs")
+    def post_benchmark_run(self, project_name: str, req: CreateBenchmarkRunRequest):
+        """Creates a BenchmarkRun and submits its replay job — returns
+        immediately with status='pending' (see BenchmarkRunService.
+        create_run), before the job's own worker thread has actually
+        started it. BenchmarkServiceError (see metrics/benchmark_errors.py)
+        is handled globally, see error_handlers.py."""
+        try:
+            return self.benchmark_run_service.create_run(
+                Session().user, project_name, req.session_id, req.strategy,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @get("/api/projects/{project_name}/benchmark-runs/{run_id}")
+    def get_benchmark_run(self, project_name: str, run_id: int):
+        """One BenchmarkRun, its own domain data merged with its Job's
+        lifecycle (status/progress/error/timestamps) — see
+        BenchmarkRunService.get_run. BenchmarkServiceError (404 for an
+        unknown run_id) is handled globally, see error_handlers.py."""
+        return self.benchmark_run_service.get_run(run_id)
+
+    @get("/api/projects/{project_name}/benchmark-runs")
+    def get_benchmark_runs(self, project_name: str, session_id: int | None = None):
+        """Every BenchmarkRun for `project_name` with that exact
+        session_id — None (the default) means every whole-project-scope
+        run, not "no filter" (same convention as everywhere else in this
+        system — see BenchmarkRunService.list_runs). Most recent first."""
+        return self.benchmark_run_service.list_runs(project_name, session_id)
 
     @get("/api/projects/{project_name}/graph")
     def get_project_graph(self, project_name: str):
