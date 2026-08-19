@@ -54,7 +54,7 @@ DOCS_DIR = Path(__file__).resolve().parent / "docs"
 # (see AutomatonYamlEditor.set_signal_field), never through a field edit
 # of its own.
 STATE_EDITABLE_FIELDS = {"ui-label", "ui-description", "history-cutoff", "contextual-prompt", "chat"}
-ACTION_EDITABLE_FIELDS = {"ui-label", "action-prompt", "target"}
+ACTION_EDITABLE_FIELDS = {"ui-label", "ui-description", "action-prompt", "target", "trigger"}
 SIGNAL_EDITABLE_FIELDS = {"ui-label", "ui-description", "definition"}
 
 
@@ -302,6 +302,16 @@ class AvanceController(object):
         above (see that one's own docstring, and post_create_test_session's
         own on why `project_name` is here but unused beyond the URL)."""
         return self.chat_service.get_or_create_current_draft_session(session_id)
+
+    @get("/api/projects/{project_name}/test-sessions")
+    def get_test_sessions(self, project_name: str):
+        """EditProjectView.vue's own embedded "Test" chat, its own
+        "Sessions" panel listing (see ChatService.list_test_sessions) —
+        the draft-session equivalent of GET /api/chat/sessions. Never
+        shows (and GET /api/chat/sessions never shows) the other pool's
+        own sessions — the two are fully isolated, not just filtered
+        views over one shared list."""
+        return self.chat_service.list_test_sessions()
 
     @get("/api/chat/sessions")
     def get_sessions(self, include_imported: bool = False):

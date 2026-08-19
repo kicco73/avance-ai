@@ -31,8 +31,23 @@ const props = defineProps({
   // already 'labelled' rather than 'correct'/'incorrect'), so both the
   // transition badge and MessageBubble's own signal marker read as a
   // neutral "labelled" tick instead of a correct/incorrect verdict.
-  imported: { type: Boolean, default: false }
+  imported: { type: Boolean, default: false },
+  // (stateKey) => displayLabel — every transition's own old_state/
+  // new_state (see benchmarkTimeline.js) is always the automaton's own
+  // internal state *key*, never its human-facing ui-label (the two just
+  // happen to read the same until someone actually renames one without
+  // renaming the other). Optional: BenchmarkProjectView.vue's own review
+  // timeline doesn't pass this at all and keeps showing the raw key
+  // exactly as before — only EditProjectView.vue's live "Test" timeline
+  // passes one (resolved off its own always-current-draft state list),
+  // since that's the one place a stale key/label mismatch is actually
+  // confusing (testing exactly what's being edited right now).
+  resolveStateLabel: { type: Function, default: null }
 })
+
+function stateLabel(stateKey) {
+  return props.resolveStateLabel ? props.resolveStateLabel(stateKey) : stateKey
+}
 
 const emit = defineEmits(['select-message', 'select-transition'])
 
@@ -118,7 +133,7 @@ function isSelfLoop(transition) {
           class="timeline-transition-arrow"
           :title="isSelfLoop(entry.transition) ? 'No actual state change here' : ''"
         >{{ isSelfLoop(entry.transition) ? '↻' : '→' }}</span>
-        <span class="timeline-transition-badge">{{ entry.transition.new_state }}</span>
+        <span class="timeline-transition-badge">{{ stateLabel(entry.transition.new_state) }}</span>
         <span
           v-if="entry.annotationStatus === 'correct'"
           class="timeline-transition-annotation-icon timeline-transition-annotation-icon-correct"

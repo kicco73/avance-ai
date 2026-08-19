@@ -10,6 +10,7 @@
 import { computed, ref, watch } from 'vue'
 import { vAutosize } from './textareaAutosize.js'
 import CardMenu from './CardMenu.vue'
+import TriggerEditor from './TriggerEditor.vue'
 import { handleEnterNext } from './enterToNextField.js'
 
 const props = defineProps({
@@ -343,14 +344,7 @@ function selectAttachment(fileName) {
             ></textarea>
             <template v-if="!selectedElement.data.isInitEdge">
               <label class="inspector-detail-form-label">Trigger</label>
-              <textarea
-                v-model="editTrigger"
-                v-autosize
-                class="inspector-detail-textarea"
-                rows="2"
-                @click.stop
-                @blur="commitTrigger"
-              ></textarea>
+              <TriggerEditor v-model="editTrigger" @click.stop @blur="commitTrigger" />
             </template>
             <p class="inspector-detail-field">
               <template v-if="!selectedElement.data.isInitEdge"><strong>{{ stateLabelFor(selectedElement.data.source) }}</strong> → </template>

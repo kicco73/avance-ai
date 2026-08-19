@@ -74,6 +74,14 @@ export function getSessions(includeImported = false) {
   return apiFetch(`${API_URL}/chat/sessions${query}`)
 }
 
+// EditProjectView.vue's own embedded "Test" chat's own Sessions panel —
+// the draft-session equivalent of getSessions, a fully separate list
+// (see backend ChatService.list_test_sessions's own docstring): a "Test"
+// session never appears in getSessions, and a real one never appears here.
+export function getTestSessions(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/test-sessions`)
+}
+
 export function deleteSession(sessionId) {
   return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
 }
@@ -211,6 +219,16 @@ export function postImportSession(file) {
 
 export function getSignals() {
   return apiFetch(`${API_URL}/chat/signals`)
+}
+
+// The active project's own identifier registry (see backend's automaton.
+// identifier_registry.build_registry) — {identifier: description} per
+// namespace (signal, env, system, session, "session.metric", metric) a
+// trigger/env: expression can reference. InspectorDetailCard.vue's own
+// trigger editor (see TriggerEditor.vue) is the one consumer, for its own
+// autocomplete/syntax coloring.
+export function getIdentifiers() {
+  return apiFetch(`${API_URL}/chat/identifiers`)
 }
 
 // The active user+project's current "environment" memory (see backend's

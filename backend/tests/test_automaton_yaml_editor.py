@@ -132,6 +132,7 @@ class TestAddAction:
         assert payload["name"] == "action-0"
         assert payload["ui_label"] == "New Action"
         assert payload["ui_button"] == "New Action"  # falls back through ui-label
+        assert payload["ui_description"] is None
         assert payload["target"] == "b"  # self-loop, target omitted
         assert payload["has_trigger"] is False
         assert payload["on-enter"] is None
@@ -207,6 +208,30 @@ class TestSetActionField:
         automaton = _builds(editor.serialize())
         action = next(a for a in automaton.states["a"].actions if a.name == "go-b")
         assert action.action_prompt == "Say hello warmly."
+
+    def test_ui_description_edit(self):
+        editor = _editor()
+        payload = editor.set_action_field("a", "go-b", "ui-description", "Goes to B.")
+        assert payload["ui_description"] == "Goes to B."
+        automaton = _builds(editor.serialize())
+        action = next(a for a in automaton.states["a"].actions if a.name == "go-b")
+        assert action.ui_description == "Goes to B."
+
+    def test_trigger_edit(self):
+        editor = _editor()
+        payload = editor.set_action_field("a", "go-c", "trigger", "signal.foo < 10")
+        assert payload["has_trigger"] is True
+        automaton = _builds(editor.serialize())
+        action = next(a for a in automaton.states["a"].actions if a.name == "go-c")
+        assert action.trigger == "signal.foo < 10"
+
+    def test_clearing_trigger_removes_the_key_instead_of_storing_an_empty_string(self):
+        editor = _editor()  # go-b already has "trigger: signal.foo >= 50"
+        payload = editor.set_action_field("a", "go-b", "trigger", "")
+        assert payload["has_trigger"] is False
+        automaton = _builds(editor.serialize())
+        action = next(a for a in automaton.states["a"].actions if a.name == "go-b")
+        assert action.trigger is None
 
 
 class TestSetSignalField:

@@ -59,7 +59,8 @@ import {
   handleSend,
   handleTruncateFrom,
   loadMessages,
-  spokenTextEnabled
+  spokenTextEnabled,
+  testModeProjectName
 } from '../chatStore.js'
 
 const props = defineProps({
@@ -436,6 +437,19 @@ const validStateKeys = ref(new Set())
 // getProjectGraph call and change together.
 const availableStates = ref([])
 
+// The live chat's own timeline (see ChatTimeline.vue's own
+// resolveStateLabel prop) shows a transition's ui-label instead of its
+// raw state key — always resolved against availableStates' own current
+// draft (refreshed after every edit, see refreshValidStateKeys), so
+// renaming a state's ui-label without touching its key (exactly what
+// prompted this) is reflected here immediately, not just in the Graph.
+// Falls back to the raw key itself for a transition landing on a state
+// that's since been renamed/removed entirely (see isStateGone) — better
+// than showing nothing.
+function stateLabelFor(key) {
+  return availableStates.value.find((s) => s.key === key)?.uiLabel ?? key
+}
+
 async function refreshValidStateKeys() {
   try {
     const { nodes } = await getProjectGraph(props.projectName)
@@ -561,21 +575,33 @@ const chatOpen = computed(() => mode.value === 'test')
 // session against the draft — App.vue's own boot-time loadMessages() (the
 // main app, always a real published-revision session) may well have
 // already failed silently for a project that's never been published (see
-// chatStore.js's loadMessages/handleReset own testProjectName docstring),
-// leaving currentSessionId null; this is what lets this view's own
-// embedded chat still work then, without the main app's live chat ever
-// gaining the same ability. A no-op once a session already exists (e.g. a
-// published project's own already-successful main-app bootstrap) —
-// ensureSession itself already just touches/returns whichever one that is.
+// chatStore.js's loadMessages/handleReset, both of which read
+// testModeProjectName internally now), leaving currentSessionId null;
+// this is what lets this view's own embedded chat still work then,
+// without the main app's live chat ever gaining the same ability. A
+// no-op once a session already exists (e.g. a published project's own
+// already-successful main-app bootstrap) — ensureSession itself already
+// just touches/returns whichever one that is.
 async function ensureDraftChatSession() {
   if (currentSessionId.value != null) return
-  await loadMessages(props.projectName)
+  await loadMessages()
 }
 
+// testModeProjectName (see chatStore.js's own docstring) is this view's
+// own signal to every session bootstrap/list/refresh function there
+// (ensureSession, loadSessions, handleNewSession, ...) that "Test" mode's
+// own separate session pool is in effect, not the real one — set the
+// instant 'test' becomes the active mode, cleared the instant it isn't.
+// Also cleared on unmount below, defensively: navigating away from this
+// view entirely must never leave the main app's own chat silently
+// resolving against this project's "Test" sessions afterward.
 function setMode(next) {
   mode.value = next
+  testModeProjectName.value = next === 'test' ? props.projectName : null
   if (next === 'test') ensureDraftChatSession()
 }
+
+onBeforeUnmount(() => { testModeProjectName.value = null })
 
 // Whatever's queued behind the unsaved-changes dialog below — set
 // whenever something that would discard the active editor's own dirty
@@ -1504,17 +1530,18 @@ onBeforeUnmount(() => {
                 Dev mode: freeze automatic state transitions
               </label>
               <div class="edit-project-chat-toolbar-actions">
-                <button class="reset-btn" @click="handleReset(projectName)">Reset</button>
+                <button class="reset-btn" @click="handleReset()">Reset</button>
                 <ModelMenu />
               </div>
             </div>
-            <ChatWindow allow-import :project-name="projectName">
+            <ChatWindow allow-import>
               <template #timeline>
                 <ChatTimeline
                   :timeline="timeline"
                   :signals-log="signalsLog"
                   :selected="selected"
                   :spoken-text-enabled="spokenTextEnabled"
+                  :resolve-state-label="stateLabelFor"
                   @select-message="selectMessage"
                   @select-transition="selectTransition"
                 >

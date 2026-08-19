@@ -175,6 +175,7 @@ class AutomatonYamlEditor:
             "name": raw_action["name"],
             "ui_label": raw_action.get("ui-label") or raw_action["name"],
             "ui_button": raw_action.get("ui-button") or raw_action.get("ui-label") or raw_action["name"],
+            "ui_description": raw_action["ui-description"].strip() if raw_action.get("ui-description") else None,
             "target": raw_action.get("target", state_name),
             "has_trigger": raw_action.get("trigger") is not None,
             "on-enter": raw_action.get("on-enter"),
@@ -244,7 +245,17 @@ class AutomatonYamlEditor:
         return self._state_payload(state_name)
 
     def set_action_field(self, state_name: str, action_name: str, field: str, value) -> ActionPayload:
-        self._find_action(state_name, action_name)[field] = value
+        raw_action = self._find_action(state_name, action_name)
+        # Same convention _transform_triggers_referencing already applies
+        # when a rename/delete empties a trigger out from under it (see
+        # its own docstring): an empty trigger means manual-only, so the
+        # key itself is removed rather than left holding "" — has_trigger
+        # (raw_action.get("trigger") is not None) would otherwise report
+        # True for an action the user just cleared.
+        if field == "trigger" and not value:
+            raw_action.pop("trigger", None)
+        else:
+            raw_action[field] = value
         return self._action_payload(state_name, action_name)
 
     def _init_action_payload(self) -> ActionPayload:

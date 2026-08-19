@@ -28,13 +28,19 @@ class ChatSessionManager(object):
         now = now if now is not None else datetime.utcnow()
         return now - session["datetime_end"] < self._open_window
 
-    def get_active_session(self, username: str, project_name: str) -> dict | None:
+    def get_active_session(self, username: str, project_name: str, source: str = 'native') -> dict | None:
         """The single session `username`+`project_name` may currently
         write to — the most recently started one, but only if it's also
         still open; None if there isn't one (nothing yet, or the latest
         has expired too). Every other session for this project, even one
-        that's individually still open, is not this one."""
-        latest = self._db.get_latest_chat_session(username, project_name)
+        that's individually still open, is not this one. `source`: 'native'
+        (the default — every real, live-chat caller) or 'test' (see
+        get_or_create_current_draft_session/create_draft_session below) —
+        these are two entirely separate "active session" pools, never
+        interchangeable: a project's live conversation and its own
+        in-progress "Test" chat must never resolve to (or touch) the same
+        row."""
+        latest = self._db.get_latest_chat_session(username, project_name, source=source)
         if latest is not None and self.is_open(latest):
             return latest
         return None
@@ -74,7 +80,7 @@ class ChatSessionManager(object):
         as-is either way, whichever revision it was originally stamped
         with."""
         now = datetime.utcnow()
-        active = self.get_active_session(username, project_name)
+        active = self.get_active_session(username, project_name, source='test')
         if active is not None:
             if session_id is not None and session_id != active["id"]:
                 logger.info(
@@ -94,13 +100,18 @@ class ChatSessionManager(object):
         that project (whether it's outright closed, or merely open but
         already superseded by a newer one — both are rejected the same
         way). On success, touches it (same refresh as
-        get_or_create_current_session) and returns it."""
+        get_or_create_current_session) and returns it. The "active" pool
+        checked against is whichever one `session_id` itself belongs to
+        (see get_active_session's own source docstring) — a real chat
+        turn's own session_id is always 'native', a "Test" chat turn's
+        always 'test', so this needs no separate signal from the caller
+        to know which: the session row already says so."""
         if session_id is None:
             raise ValueError("No session specified.")
         session = self._db.get_chat_session(session_id)
         if session is None or session["username"] != username or session["project_name"] != project_name:
             raise ValueError("Session not found.")
-        active = self.get_active_session(username, project_name)
+        active = self.get_active_session(username, project_name, source=session["source"])
         if active is None or active["id"] != session["id"]:
             raise ValueError("Session is not active.")
         return self._touch(session["id"], datetime.utcnow(), current_state)

@@ -37,22 +37,21 @@ import {
   refreshSessionsQuietly
 } from '../../chatStore.js'
 
-// Only the "Edit project" view's own embedded chat passes either of
-// these — a transcript import is meaningful there (reviewing/testing a
-// project still being authored), not for the main app's live chat
-// window, which stays at its current default (see App.vue's own usage,
-// unchanged). projectName: see chatStore.js's own handleNewSession/
-// loadMessages — only EditProjectView.vue's own "Test" mode passes this
-// (its own projectName), the one place a session is allowed to start
-// against a revision nobody's published yet; every other caller leaves
-// it null, same behavior as always.
+// Only the "Edit project" view's own embedded chat passes this — a
+// transcript import is meaningful there (reviewing/testing a project
+// still being authored), not for the main app's live chat window, which
+// stays at its current default (see App.vue's own usage, unchanged).
+// Which session pool this whole window actually operates against (real
+// vs EditProjectView.vue's own embedded "Test" chat) is chatStore.js's
+// own testModeProjectName, not a prop here — see its own docstring: this
+// component doesn't need to know, or tell any of its own handlers, which
+// one is currently in effect.
 const props = defineProps({
-  allowImport: { type: Boolean, default: false },
-  projectName: { type: String, default: null }
+  allowImport: { type: Boolean, default: false }
 })
 
 function createSession() {
-  handleNewSession(props.projectName)
+  handleNewSession()
 }
 
 async function handleImportSession(file) {

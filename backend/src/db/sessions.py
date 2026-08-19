@@ -42,14 +42,19 @@ class SessionMixin:
         self, username: str, project_name: str,
         datetime_start: datetime | None = None, datetime_end: datetime | None = None,
         start_state: str | None = None, end_state: str | None = None,
-        source: str = 'native', title: str | None = None,
+        source: str = 'test', title: str | None = None,
     ) -> int:
         """Like create_chat_session, but always stamped with the project's
         own current *draft* revision instead — published or not, since
         testing (see ChatService.create_draft_session/get_or_create_
         current_draft_session, EditProjectView.vue's own embedded "Test"
         chat, the only caller) means testing exactly what's actually being
-        edited right now."""
+        edited right now. `source='test'` (not 'native') by default: a
+        draft session must never be indistinguishable from a real one —
+        every query elsewhere that resolves/lists "the" active/native
+        session (get_latest_chat_session/list_chat_sessions' own source
+        default) would otherwise happily pick one of these up instead,
+        exactly the isolation break this field exists to prevent."""
         project = Project.get_or_none(Project.name == project_name)
         if project is None:
             raise ValueError(f"Project '{project_name}' does not exist.")
@@ -80,21 +85,39 @@ class SessionMixin:
         session = ChatSession.get_or_none(ChatSession.id == session_id)
         return self._chat_session_to_dict(session) if session is not None else None
 
-    def get_latest_chat_session(self, username: str, project_name: str, until: datetime | None=None, source: str | None='native') -> dict | None:
+    @staticmethod
+    def _filter_by_source(query, source: str | tuple[str, ...] | None):
+        """`source`: a single value (the common case), a tuple (e.g.
+        ('native', 'imported') — every *real* session, excluding test
+        ones — see ChatService.list_sessions), or None for no filter at
+        all (every caller of this module still passes something real
+        though; None only exists for get_chat_session's own single-row
+        lookup, which has no source concept to filter by)."""
+        if source is None:
+            return query
+        if isinstance(source, tuple):
+            return query.where(ChatSession.source.in_(source))
+        return query.where(ChatSession.source == source)
+
+    def get_latest_chat_session(
+        self, username: str, project_name: str, until: datetime | None=None,
+        source: str | tuple[str, ...] | None='native',
+    ) -> dict | None:
         query = ChatSession.select().where((ChatSession.username == username) & (ChatSession.project_name == project_name))
         if until is not None:
             query = query.where(ChatSession.datetime_start <= until)
-        if source is not None:
-            query = query.where(ChatSession.source == source)
+        query = self._filter_by_source(query, source)
         session = query.order_by(ChatSession.datetime_start.desc()).first()
         return self._chat_session_to_dict(session) if session is not None else None
 
-    def list_chat_sessions(self, username: str, project_name: str, until: datetime | None=None, source: str | None='native') -> list[dict]:
+    def list_chat_sessions(
+        self, username: str, project_name: str, until: datetime | None=None,
+        source: str | tuple[str, ...] | None='native',
+    ) -> list[dict]:
         query = ChatSession.select().where((ChatSession.username == username) & (ChatSession.project_name == project_name))
         if until is not None:
             query = query.where(ChatSession.datetime_start <= until)
-        if source is not None:
-            query = query.where(ChatSession.source == source)
+        query = self._filter_by_source(query, source)
         sessions = query.order_by(ChatSession.datetime_start.desc())
         return [self._chat_session_to_dict(s) for s in sessions]
 

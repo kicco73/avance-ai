@@ -100,6 +100,40 @@ class TestPutActionField:
         assert response.status_code == 200
         assert response.json()["target"] == "state-0"
 
+    def test_edits_ui_description(self, client, hello_project):
+        action = client.post(f"/api/projects/{hello_project}/states/Hello/actions").json()
+        response = client.put(
+            f"/api/projects/{hello_project}/states/Hello/actions/{action['name']}/ui-description",
+            json={"value": "A short action description."},
+        )
+        assert response.status_code == 200
+        assert response.json()["ui_description"] == "A short action description."
+        assert "A short action description." in _index_yml(client, hello_project)
+
+    def test_edits_trigger(self, client, hello_project):
+        action = client.post(f"/api/projects/{hello_project}/states/Hello/actions").json()
+        response = client.put(
+            f"/api/projects/{hello_project}/states/Hello/actions/{action['name']}/trigger",
+            json={"value": "True"},
+        )
+        assert response.status_code == 200
+        assert response.json()["has_trigger"] is True
+        assert "trigger:" in _index_yml(client, hello_project)
+
+    def test_clearing_trigger_removes_it_rather_than_storing_an_empty_string(self, client, hello_project):
+        action = client.post(f"/api/projects/{hello_project}/states/Hello/actions").json()
+        client.put(
+            f"/api/projects/{hello_project}/states/Hello/actions/{action['name']}/trigger",
+            json={"value": "signal.mood == 'happy'"},
+        )
+        response = client.put(
+            f"/api/projects/{hello_project}/states/Hello/actions/{action['name']}/trigger",
+            json={"value": ""},
+        )
+        assert response.status_code == 200
+        assert response.json()["has_trigger"] is False
+        assert "trigger" not in _index_yml(client, hello_project)
+
     def test_rejects_a_field_not_on_the_whitelist(self, client, hello_project):
         action = client.post(f"/api/projects/{hello_project}/states/Hello/actions").json()
         response = client.put(

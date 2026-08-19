@@ -314,24 +314,38 @@ class ProjectService(object):
         return automaton, self._resolve_state(project_name, automaton)
 
     def get_automaton_and_state_for_session(self, session_id: int) -> tuple[Automaton, State]:
-        """The Automaton `session_id` was actually stamped against at
-        creation time (see ChatSession.project_revision's own docstring —
-        native or draft alike, published or not, exactly whatever was
-        current the moment this session started) paired with its current
-        State (see _resolve_state) — every chat-turn-shaped operation that
-        already has a concrete session_id to work from (chat_service.py's
-        own truncate_session/open_if_needed/apply_manual_action/
-        process_turn, this module's own apply_manual_action, tracking_
-        service.py's own process) uses this instead of get_active_
-        automaton_and_state, so an in-progress draft edit elsewhere never
+        """The Automaton `session_id`'s own turns must run against, paired
+        with its current State (see _resolve_state) — every chat-turn-
+        shaped operation that already has a concrete session_id to work
+        from (chat_service.py's own truncate_session/open_if_needed/
+        apply_manual_action/process_turn, this module's own apply_manual_
+        action, tracking_service.py's own process) uses this instead of
+        get_active_automaton_and_state.
+
+        A native session is pinned to the Automaton it was actually
+        stamped against at creation time (see ChatSession.project_revision's
+        own docstring — whatever was published the moment this session
+        started), so an in-progress draft edit elsewhere never
         retroactively changes what an already-running session's own turns
         see, and a session pinned to an old, already-superseded revision
-        keeps behaving exactly as it did when it was created."""
+        keeps behaving exactly as it did when it was created.
+
+        A 'test' session (see db.create_draft_chat_session) is the one
+        exception: EditProjectView.vue's own embedded "Test" chat exists
+        precisely to test whatever's being edited *right now*, not
+        whatever the draft happened to look like when the session was
+        first bootstrapped — every turn re-resolves against the live
+        draft (same _load_project call as get_active_draft_automaton_and_
+        state), same as create_draft_session/get_or_create_current_draft_
+        session already do for a brand new session."""
         session = self._db.get_chat_session(session_id)
         if session is None:
             raise FileNotFoundError(f"Session {session_id} does not exist.")
         project_name = session["project_name"]
-        automaton = self._load_project_at_revision(project_name, session["project_revision"])
+        if session["source"] == "test":
+            automaton = self._load_project(project_name)
+        else:
+            automaton = self._load_project_at_revision(project_name, session["project_revision"])
         return automaton, self._resolve_state(project_name, automaton)
 
     def get_active_draft_automaton_and_state(self) -> tuple[Automaton, State]:

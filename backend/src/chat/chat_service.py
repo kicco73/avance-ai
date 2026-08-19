@@ -220,21 +220,9 @@ class ChatService(object):
 			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 		return self._session_payload(session, active=True, has_annotations=False)
 
-	def list_sessions(self, include_imported: bool = False) -> list[dict]:
-		"""Every session for the active project, most recently started
-		first — for the "Sessions" panel (see ChatWindow.vue). `active`
-		on each one (see _session_payload) is what the frontend must
-		trust to decide whether that particular session still accepts
-		chat turns/manual actions — never computed client-side (see
-		ChatSessionManager's module docstring). `include_imported` widens
-		this to every source (native and imported alike) — used by
-		BenchmarkProjectView's own sessions panel, the one place that
-		annotates/tests imported transcripts alongside live ones; every
-		other caller keeps seeing native sessions only (see
-		db.list_chat_sessions' own source default)."""
-		project_name = self._active_project_name
-		sessions = self._db.list_chat_sessions(self._username, project_name, source=None if include_imported else 'native')
-		active = self._session_manager.get_active_session(self._username, project_name)
+	def _list_sessions_by_source(self, project_name: str, source: str | tuple[str, ...], active_source: str) -> list[dict]:
+		sessions = self._db.list_chat_sessions(self._username, project_name, source=source)
+		active = self._session_manager.get_active_session(self._username, project_name, source=active_source)
 		active_id = active["id"] if active is not None else None
 		# One query for the whole list, not one per session — see
 		# db.get_annotated_session_ids's own docstring.
@@ -245,6 +233,35 @@ class ChatService(object):
 			)
 			for s in sessions
 		]
+
+	def list_sessions(self, include_imported: bool = False) -> list[dict]:
+		"""Every real (native, and optionally imported) session for the
+		active project, most recently started first — for the "Sessions"
+		panel (see ChatWindow.vue). `active` on each one (see
+		_session_payload) is what the frontend must trust to decide
+		whether that particular session still accepts chat turns/manual
+		actions — never computed client-side (see ChatSessionManager's
+		module docstring). `include_imported` widens this to native and
+		imported alike — used by BenchmarkProjectView's own sessions
+		panel, the one place that annotates/tests imported transcripts
+		alongside live ones; every other caller keeps seeing native
+		sessions only. Never a 'test' session either way (see
+		list_test_sessions instead, EditProjectView.vue's own embedded
+		"Test" chat) — those are a completely separate pool, not just a
+		third source this could also opt into."""
+		project_name = self._active_project_name
+		source = ('native', 'imported') if include_imported else 'native'
+		return self._list_sessions_by_source(project_name, source, active_source='native')
+
+	def list_test_sessions(self) -> list[dict]:
+		"""Like list_sessions, but the active project's own 'test' sessions
+		(see db.create_draft_chat_session) — EditProjectView.vue's own
+		embedded "Test" chat's own Sessions panel, the only caller. Native/
+		imported sessions never appear here, symmetric to how a test
+		session never appears in list_sessions — the two pools never mix
+		in either direction."""
+		project_name = self._active_project_name
+		return self._list_sessions_by_source(project_name, 'test', active_source='test')
 
 	def _require_own_session(self, session_id: int) -> None:
 		"""Raises (404) unless `session_id` still exists and belongs to
