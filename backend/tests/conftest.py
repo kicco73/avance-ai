@@ -11,7 +11,7 @@ from chat.session_manager import ChatSessionManager
 from controller import AvanceController
 from db import Db
 from error_handlers import register_error_handlers
-from jobs import JobQueue, PersistedJobSink
+from jobs import InMemoryJobSink, JobQueue, PersistedJobSink
 from metrics.benchmark_run_service import BenchmarkRunService
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
@@ -101,11 +101,14 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     tracking_service = TrackingService(
         app_db, fake_ai_service, project_service, metric_service,
     )
-    chat_service = ChatService(
-        app_db, fake_ai_service, project_service, session_manager, tracking_service, metric_service
-    )
     persisted_jobs = JobQueue(PersistedJobSink(app_db), max_concurrent=1)
-    benchmark_run_service = BenchmarkRunService(app_db, fake_ai_service, tracking_service, persisted_jobs)
+    ephemeral_jobs = JobQueue(InMemoryJobSink(), max_concurrent=1)
+    chat_service = ChatService(
+        app_db, fake_ai_service, project_service, session_manager, tracking_service, metric_service, persisted_jobs,
+    )
+    benchmark_run_service = BenchmarkRunService(
+        app_db, fake_ai_service, tracking_service, persisted_jobs, ephemeral_jobs,
+    )
 
     fastapi_app = FastAPI(title="Avance State Engine (test)")
     register_error_handlers(fastapi_app)

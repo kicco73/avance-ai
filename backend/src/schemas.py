@@ -113,3 +113,9 @@ class CreateBenchmarkRunRequest(BaseModel):
     # 'turn_by_turn' or 'batch' — see benchmark_run_service.py's own
     # VALID_STRATEGIES.
     strategy: str
+
+
+class StateTestRequest(BaseModel):
+    # See BenchmarkRunService.start_job — same VALID_STRATEGIES as
+    # CreateBenchmarkRunRequest.strategy.
+    strategy: str

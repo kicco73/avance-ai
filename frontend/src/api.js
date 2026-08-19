@@ -602,3 +602,41 @@ export function postPublishProject(projectName, remapTo = null) {
 export function postRevertProject(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/revert`, { method: 'POST' })
 }
+
+// The "Auto" tab's own replay launch (see TestsPanel.vue) — sessionId
+// null means the whole-project-scope run (every labeled session at once),
+// same convention as everywhere else this system uses session_id.
+export function postBenchmarkRun(projectName, sessionId, strategy) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/benchmark-runs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: sessionId, strategy })
+  })
+}
+
+export function getBenchmarkRun(projectName, runId) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/benchmark-runs/${encodeURIComponent(runId)}`)
+}
+
+export function getBenchmarkRuns(projectName, sessionId) {
+  const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/benchmark-runs${query}`)
+}
+
+// Every real state key of the project's current draft automaton — the
+// "Stati" branch's own node list (see TestsTree.vue).
+export function getProjectStates(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/states`)
+}
+
+export function postStateTest(projectName, stateKey, strategy) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/states/${encodeURIComponent(stateKey)}/test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ strategy })
+  })
+}
+
+export function getStateJob(projectName, jobId) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/state-jobs/${encodeURIComponent(jobId)}`)
+}

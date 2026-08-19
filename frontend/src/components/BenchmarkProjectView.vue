@@ -16,6 +16,7 @@ import { currentSessionId, sessions, sessionsLoading, loadSessions, refreshSessi
 import {
   buildTimeline, highlightedStateKeyFor, nearestMessageIdAtOrBefore, signalValuesFor
 } from '../benchmarkTimeline.js'
+import { useLeaveConfirmation } from '../composables/useLeaveConfirmation.js'
 
 const props = defineProps({
   projectName: {
@@ -135,6 +136,7 @@ async function handleImportSession(file) {
 // used by SessionsPanel.vue's other callers) — currentSessionId is the
 // one source of truth, and the watcher below reacts to it changing.
 function onSelectSession(session) {
+  if (!confirmLeaveIfNeeded()) return
   selectSession(session)
 }
 
@@ -368,6 +370,7 @@ async function onUpdateExpectedState(value) {
   if (messageId == null) return
   try {
     await putMessageExpectedState(messageId, value)
+    hasUnconfirmedChanges.value = true
     await reloadSignalsLog()
     inspectorRef.value?.refresh()
   } catch {
@@ -380,6 +383,7 @@ async function onUpdateExpectedSignals(values) {
   if (messageId == null) return
   try {
     await putMessageExpectedSignals(messageId, values)
+    hasUnconfirmedChanges.value = true
     await reloadSignalsLog()
     inspectorRef.value?.refresh()
   } catch {
@@ -401,6 +405,7 @@ async function onUnlabelAll() {
   unlabelingAll.value = true
   try {
     await deleteSessionAnnotations(currentSessionId.value)
+    hasUnconfirmedChanges.value = true
     await reloadSignalsLog()
     inspectorRef.value?.refresh()
   } catch {
@@ -420,6 +425,29 @@ async function onUnlabelAll() {
 const currentSessionLabeled = computed(() => {
   return sessions.value.find((s) => s.id === currentSessionId.value)?.has_annotations ?? false
 })
+
+// A reminder, not a constraint (see this file's own composable) — set the
+// instant an annotation is actually changed during this visit, reset the
+// instant a new visit to a (possibly different) session begins. Nothing
+// here ever blocks a change from being made; it only informs the leave
+// prompt below.
+const hasUnconfirmedChanges = ref(false)
+watch(currentSessionId, () => { hasUnconfirmedChanges.value = false })
+
+// Only a genuine reminder when there's both something unconfirmed *and*
+// the session still isn't marked done — an expert who already pressed
+// "Mark done" after their edits has already confirmed them, nothing left
+// to remind about.
+const shouldConfirm = computed(() => hasUnconfirmedChanges.value && !currentSessionLabeled.value)
+const { confirmLeaveIfNeeded } = useLeaveConfirmation(
+  shouldConfirm,
+  'You changed annotations in this session, which is not marked done yet. Leave anyway?'
+)
+
+function handleClose() {
+  if (!confirmLeaveIfNeeded()) return
+  emit('close')
+}
 
 const markingDone = ref(false)
 
@@ -472,7 +500,7 @@ onBeforeUnmount(() => {
     <div class="benchmark-header">
       <h2>Label sessions — {{ projectName }}</h2>
       <div class="benchmark-header-actions">
-        <button class="close-btn" @click="emit('close')">Back</button>
+        <button class="close-btn" @click="handleClose">Back</button>
       </div>
     </div>
 

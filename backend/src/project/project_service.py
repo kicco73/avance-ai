@@ -444,6 +444,16 @@ class ProjectService(object):
         automaton, _ = self.get_active_automaton_and_state()
         return build_registry(automaton.signals, automaton.states)
 
+    def get_project_states(self, project_name: str) -> list[str]:
+        """Every real state key of `project_name`'s current draft
+        automaton, excluding the reserved "" pseudo-state (see
+        AutomatonBuilder.build) — same exclusion as get_project_graph's
+        own `real_states`, just the keys alone, for a caller (the "Stati"
+        branch's own node list — see TestsTree.vue) that has no use for
+        the rest of the graph payload."""
+        automaton = self._load_project(project_name)
+        return [state.key for state in automaton.states.values() if state.key != ""]
+
     def get_project_graph(self, project_name: str) -> dict:
         """The project's state machine as nodes (states) and edges
         (actions) — the source for the "Edit project" view's Inspect panel

@@ -18,6 +18,8 @@ from tracking.system_facts import SystemFacts
 from chat.errors import ChatServiceError
 from tracking.metadata_handler import MetadataHandler
 from chat.session_manager import ChatSessionManager
+from chat.session_summary_manager import SessionSummaryManager
+from jobs import JobQueue
 from tracking.tracking_engine import DbTrackingSink, TrackingEngine
 from tracking.turn_callbacks import OnMetadata
 from metrics.metric_service import MetricService
@@ -35,6 +37,7 @@ class ChatService(object):
 		session_manager: ChatSessionManager,
 		tracking_service: TrackingService,
 		metric_service: MetricService,
+		persisted_jobs: JobQueue,
 	) -> None:
 		self._db = db
 		self._ai_service = ai_service
@@ -42,6 +45,9 @@ class ChatService(object):
 		self._session_manager = session_manager
 		self.tracking_service = tracking_service
 		self.metric_service = metric_service
+		# Shares persisted_jobs with BenchmarkRunService (see main.py's own
+		# wiring) — never its own private queue.
+		self._session_summary_manager = SessionSummaryManager(db, ai_service, persisted_jobs, session_manager)
 		get_username = lambda: Session().user
 		get_active_project_name = lambda: project_service.get_active_project_name()
 		self.env = PersistedEnv(db, get_username=get_username, get_active_project_name=get_active_project_name)
@@ -69,6 +75,15 @@ class ChatService(object):
 
 	def get_message_audio_text(self, message_id: int) -> str | None:
 		return self._db.get_message_audio_text(message_id)
+
+	def get_session_summary(self, session_id: int) -> dict:
+		"""{content: str | None} — None either way whether no
+		SessionSummary row exists yet (never queued) or one does but its
+		own job hasn't completed yet (see db.get_session_summary/
+		SessionSummaryManager). This endpoint only ever answers "is a
+		summary ready", never distinguishing those two cases further."""
+		summary = self._db.get_session_summary(session_id)
+		return {'content': summary['content'] if summary is not None else None}
 
 	def get_ai_models_info(self) -> dict:
 		return self._ai_service.get_models_info()
@@ -144,6 +159,12 @@ class ChatService(object):
 		409, same convention as _require_active_session's own."""
 		project_name = self._active_project_name
 		try:
+			# No active session means a new one is about to be created —
+			# exactly the moment the previously active one (if any) has
+			# just been discovered closed (see SessionSummaryManager's own
+			# module docstring: there's no other discovery point today).
+			if self._session_manager.get_active_session(self._username, project_name) is None:
+				self._session_summary_manager.check_for_closed_sessions(self._username, project_name)
 			_, state = self._project_service.get_active_automaton_and_state()
 			session = self._session_manager.get_or_create_current_session(
 				self._username, project_name, session_id, state.key

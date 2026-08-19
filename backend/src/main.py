@@ -28,7 +28,7 @@ from tracking.tracking_service import TrackingService
 from talk.talk_service import TalkService
 from listen.listen_service import ListenService
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -103,12 +103,16 @@ def create_app() -> FastAPI:
         # ChatService depend on ai_service (and metric_service) directly,
         # never through one another.
         tracking_service = TrackingService(db, ai_service, project_service, metric_service)
-        chat_service = ChatService(db, ai_service, project_service, session_manager, tracking_service, metric_service)
+        chat_service = ChatService(
+            db, ai_service, project_service, session_manager, tracking_service, metric_service, persisted_job_queue,
+        )
 
-        # Shares persisted_job_queue with anything else that submits a
-        # persisted job kind (see jobs/job_queue.py's own module
-        # docstring) — never its own private queue.
-        benchmark_run_service = BenchmarkRunService(db, ai_service, tracking_service, persisted_job_queue)
+        # Shares persisted_job_queue/ephemeral_job_queue with anything else
+        # that submits a job of either kind (see jobs/job_queue.py's own
+        # module docstring) — never its own private queue.
+        benchmark_run_service = BenchmarkRunService(
+            db, ai_service, tracking_service, persisted_job_queue, ephemeral_job_queue,
+        )
 
         chat_ws_adapter = WsAdapter(chat_service) if config.chat_transport == "websocket" else None
 

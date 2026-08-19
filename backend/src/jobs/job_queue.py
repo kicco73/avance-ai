@@ -54,6 +54,12 @@ class JobQueue:
         self._queue.put((job_id, work))
         return job_id
 
+    def get(self, job_id: int) -> dict | None:
+        """Read-only passthrough to this queue's own sink — for a caller
+        that only knows "which queue", never the sink implementation
+        behind it (see BenchmarkRunService.get_job_status)."""
+        return self._sink.get(job_id)
+
     def _worker_loop(self) -> None:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)

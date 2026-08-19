@@ -31,6 +31,7 @@ from schemas import (
     SetEnvValueRequest,
     SetProjectFieldRequest,
     SetSessionLabeledRequest,
+    StateTestRequest,
     TriggersPreviewRequest,
     TruncateSessionRequest,
 )
@@ -357,6 +358,14 @@ class AvanceController(object):
         delete_session above."""
         return self.chat_service.mark_session_labeled(session_id, req.labeled)
 
+    @get("/api/chat/sessions/{session_id}/summary")
+    def get_session_summary(self, session_id: int):
+        """{content: str | None} — see ChatService.get_session_summary.
+        Auto-queued the moment this session was discovered closed (see
+        chat/session_summary_manager.py) — never triggered by this
+        endpoint itself, which only ever reads."""
+        return self.chat_service.get_session_summary(session_id)
+
     @post("/api/chat/sessions/{session_id}/truncate")
     async def post_truncate_session(self, session_id: int, req: TruncateSessionRequest):
         """"Restart from here" (EditProjectView.vue's chat only) — see
@@ -653,6 +662,37 @@ class AvanceController(object):
         run, not "no filter" (same convention as everywhere else in this
         system — see BenchmarkRunService.list_runs). Most recent first."""
         return self.benchmark_run_service.list_runs(project_name, session_id)
+
+    @post("/api/projects/{project_name}/states/{state_key}/test")
+    def post_state_test(self, project_name: str, state_key: str, req: StateTestRequest):
+        """Launches the "Stati" branch's own aggregation job for one state
+        — see BenchmarkRunService.start_job. Returns immediately with the
+        ephemeral job's own id; poll GET .../state-jobs/{job_id} for its
+        outcome (see get_state_job below)."""
+        try:
+            job_id = self.benchmark_run_service.start_job(Session().user, project_name, state_key, req.strategy)
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return {"job_id": job_id}
+
+    @get("/api/projects/{project_name}/state-jobs/{job_id}")
+    def get_state_job(self, project_name: str, job_id: int):
+        """One ephemeral 'state_aggregation' job's own status/progress/
+        result — see BenchmarkRunService.get_job_status. None (never a
+        404) for an unknown job_id, e.g. after a backend restart — the
+        ephemeral queue's own JobSink already returns None for that case,
+        distinguishable from "in progress"/"completed" by every caller."""
+        return self.benchmark_run_service.get_job_status(job_id)
+
+    @get("/api/projects/{project_name}/states")
+    def get_project_states(self, project_name: str):
+        """Every real state key of `project_name`'s current draft
+        automaton — the "Stati" branch's own node list (see
+        TestsTree.vue)."""
+        try:
+            return self.project_service.get_project_states(project_name)
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
     @get("/api/projects/{project_name}/graph")
     def get_project_graph(self, project_name: str):

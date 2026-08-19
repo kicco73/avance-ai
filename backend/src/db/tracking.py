@@ -47,6 +47,23 @@ class TrackingMixin:
             return None
         return {'id': row.id, 'timestamp': _utc_iso(row.timestamp), 'values': row.values, 'expected_values': row.expected_values, 'expected_state': row.expected_state, 'old_state': row.old_state, 'action': row.action, 'new_state': row.new_state, 'message_id': row.message_id}
 
+    def get_session_ids_with_expected_state(self, username: str, project_name: str, state_key: str) -> set[int]:
+        """Every session (of this user+project) with at least one real
+        Tracking row annotated expected_state == state_key — the "Stati"
+        branch's own definition of "touches this state" (see
+        BenchmarkRunService.start_job)."""
+        rows = (
+            Tracking
+            .select(Tracking.session)
+            .join(ChatSession, on=Tracking.session == ChatSession.id)
+            .where(
+                (ChatSession.username == username) & (ChatSession.project_name == project_name)
+                & (Tracking.expected_state == state_key)
+            )
+            .distinct()
+        )
+        return {row.session_id for row in rows}
+
     def get_nearest_tracking_row_by_message(self, session_id: int, message_id: int) -> dict | None:
         """Nearest real (production) Tracking row to `message_id` within
         this session, by message-id proximity — never by timestamp: a

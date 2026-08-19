@@ -85,6 +85,7 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
         "strategy TEXT, project_revision INTEGER, batch_segments INTEGER, ai_model_snapshot TEXT, results TEXT)",
         "CREATE TABLE benchmarkrunobservation (id INTEGER PRIMARY KEY, run_id INTEGER, session_id INTEGER, "
         "message_id INTEGER, timestamp TEXT, \"values\" TEXT, old_state TEXT, action TEXT, new_state TEXT)",
+        "CREATE TABLE sessionsummary (id INTEGER PRIMARY KEY, session_id INTEGER, content TEXT)",
     ]
     wrong = _make_sqlite_bytes(tmp_path, "wrong_columns.db", ddl)
 

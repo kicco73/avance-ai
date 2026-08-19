@@ -52,6 +52,7 @@ from automaton.automaton import Action, Automaton, Signal, State
 from chat.chat_service import ChatService
 from chat.session_manager import ChatSessionManager
 from db.models import Tracking
+from jobs import JobQueue, PersistedJobSink
 from metrics.metric_service import MetricService
 from tracking.tracking_service import TrackingService, TrackingServiceError
 
@@ -160,6 +161,7 @@ def chat_service_for(db):
             session_manager=ChatSessionManager(db),
             tracking_service=tracking_service,
             metric_service=metric_service,
+            persisted_jobs=JobQueue(PersistedJobSink(db), max_concurrent=1),
         )
         return service
 

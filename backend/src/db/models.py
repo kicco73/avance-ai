@@ -115,6 +115,15 @@ class Job(BaseModel):
     progress_current = IntegerField(default=0)
     progress_total = IntegerField(default=0)
 
+class SessionSummary(BaseModel):
+    id = AutoField()
+    # unique=True: at most one summary per session, ever — its own
+    # existence is what stops SessionSummaryManager.check_for_closed_
+    # sessions from re-queuing the same session a second time.
+    session = ForeignKeyField(ChatSession, unique=True, backref='summary', on_delete='CASCADE')
+    # Null until the job completes — see SessionSummaryManager's own work.
+    content = TextField(null=True)
+
 class BenchmarkRun(BaseModel):
     id = AutoField()
     username = CharField()

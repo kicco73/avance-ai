@@ -13,6 +13,8 @@ import InspectorStateTab from './inspector/InspectorStateTab.vue'
 import InspectorActionsTab from './inspector/InspectorActionsTab.vue'
 import CodeEditor from './CodeEditor.vue'
 import IndexYmlEditorView from './IndexYmlEditorView.vue'
+import TestsPanel from './TestsPanel.vue'
+import { useLeaveConfirmation } from '../composables/useLeaveConfirmation.js'
 import {
   getProjectFiles,
   putProjectFile,
@@ -578,6 +580,9 @@ const pendingCursorTarget = ref(null)
 const mode = ref('edit')
 const editorOpen = computed(() => mode.value === 'edit')
 const chatOpen = computed(() => mode.value === 'test')
+// 'auto' — the automatic-replay tree (see TestsPanel.vue), a third state
+// of the same segmented control, never a separate tab/panel of its own.
+const autoOpen = computed(() => mode.value === 'auto')
 
 // Entering 'test' mode is this view's own chance to bootstrap a chat
 // session against the draft — App.vue's own boot-time loadMessages() (the
@@ -1168,8 +1173,10 @@ async function handleDeleteFile(fileName) {
 // Only prompts when there's actually something to lose — a clean editor
 // (nothing typed, or already saved) closes straight away. Undo/redo
 // history itself is cleared on entry, not here — see onMounted.
+const { confirmLeaveIfNeeded } = useLeaveConfirmation(activeEditorIsDirty, 'Discard unsaved changes to this file?')
+
 function handleClose() {
-  if (activeEditorIsDirty.value && !window.confirm('Discard unsaved changes to this file?')) return
+  if (!confirmLeaveIfNeeded()) return
   emit('close')
 }
 
@@ -1380,6 +1387,11 @@ onBeforeUnmount(() => {
             :class="{ 'mode-segment-btn-active': mode === 'test' }"
             @click="setMode('test')"
           >Test</button>
+          <button
+            class="mode-segment-btn"
+            :class="{ 'mode-segment-btn-active': mode === 'auto' }"
+            @click="setMode('auto')"
+          >Auto</button>
         </div>
         <div v-if="projectRevision" class="publish-split-btn">
           <button
@@ -1567,6 +1579,10 @@ onBeforeUnmount(() => {
           </div>
         </div>
         </Transition>
+
+        <div v-if="autoOpen" class="edit-project-auto-wrap">
+          <TestsPanel :project-name="projectName" />
+        </div>
       </div>
 
       <div class="inspector-wrap">
@@ -1917,6 +1933,15 @@ onBeforeUnmount(() => {
    isn't, and this fills the whole column instead of splitting against it. */
 .edit-project-chat-wrap-full {
   flex: 1;
+}
+
+/* Same "inherits whatever space editor/chat already take turns
+   occupying" idea as .edit-project-chat-wrap-full above — 'auto' is
+   mutually exclusive with both. */
+.edit-project-auto-wrap {
+  flex: 1;
+  display: flex;
+  min-height: 0;
 }
 
 .edit-project-chat-wrap-full .edit-project-chat-panel {
