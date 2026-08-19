@@ -79,7 +79,7 @@ class SessionMixin:
 
     @staticmethod
     def _chat_session_to_dict(session: ChatSession) -> dict:
-        return {'id': session.id, 'username': session.username, 'project_name': session.project_name_id, 'source': session.source, 'title': session.title, 'datetime_start': session.datetime_start, 'datetime_end': session.datetime_end, 'start_state': session.start_state, 'end_state': session.end_state, 'project_revision': session.project_revision}
+        return {'id': session.id, 'username': session.username, 'project_name': session.project_name_id, 'source': session.source, 'title': session.title, 'datetime_start': session.datetime_start, 'datetime_end': session.datetime_end, 'start_state': session.start_state, 'end_state': session.end_state, 'project_revision': session.project_revision, 'labeled': session.labeled}
 
     def get_chat_session(self, session_id: int) -> dict | None:
         session = ChatSession.get_or_none(ChatSession.id == session_id)
@@ -141,12 +141,16 @@ class SessionMixin:
             & (ChatSession.datetime_end >= cutoff)
         ).exists()
 
-    def session_has_annotations(self, session_id: int) -> bool:
-        return Tracking.select().where((Tracking.session == session_id) & (Tracking.expected_state.is_null(False) | Tracking.expected_values.is_null(False))).exists()
-
-    def get_annotated_session_ids(self, username: str, project_name: str) -> set[int]:
-        rows = Tracking.select(Tracking.session).join(ChatSession, on=Tracking.session == ChatSession.id).where((ChatSession.username == username) & (ChatSession.project_name == project_name) & (Tracking.expected_state.is_null(False) | Tracking.expected_values.is_null(False))).distinct()
-        return {row.session_id for row in rows}
+    def set_session_labeled(self, session_id: int, labeled: bool) -> None:
+        """The "Label sessions" view's own "Mark done" button (see
+        ChatService.mark_session_labeled) — a domain expert's explicit,
+        persisted verdict on whether this session's been reviewed,
+        replacing the old any-Tracking-row-has-an-annotation heuristic
+        this class used to compute it with on every read (see db.py's
+        own one-time _backfill_labeled_from_old_annotation_heuristic,
+        which seeded this column from that same heuristic the moment it
+        was introduced, never touched again after)."""
+        ChatSession.update(labeled=labeled).where(ChatSession.id == session_id).execute()
 
     def touch_chat_session(self, session_id: int, datetime_end: datetime, end_state: str) -> None:
         ChatSession.update(datetime_end=datetime_end, end_state=end_state).where(ChatSession.id == session_id).execute()

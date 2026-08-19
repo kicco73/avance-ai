@@ -29,6 +29,20 @@ def test_open_window_is_configurable(db):
     assert manager.open_window == timedelta(minutes=5)
 
 
+@pytest.mark.regression
+def test_is_open_is_false_never_a_crash_for_a_session_with_no_datetime_end(manager):
+    """An imported session (see ChatSession.source) always has
+    datetime_end=None — it never had a live conversation window to begin
+    with (see tracking.session_import's own create_chat_session call).
+    Regression for a real crash: marking an imported session done (see
+    ChatService.mark_session_labeled) used to call get_active_session
+    against the 'imported' pool, which reached this comparison and raised
+    TypeError: unsupported operand type(s) for -: 'datetime' and
+    'NoneType'."""
+    session = {"datetime_end": None}
+    assert manager.is_open(session) is False
+
+
 @pytest.mark.contract
 def test_creates_a_new_session_when_none_exists(manager):
     session = manager.get_or_create_current_session("user", "proj", None, "start")

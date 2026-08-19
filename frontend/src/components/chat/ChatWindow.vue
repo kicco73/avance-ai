@@ -6,7 +6,6 @@ import MessageBubble from './MessageBubble.vue'
 import SessionsPanel from './SessionsPanel.vue'
 import { setApiError } from '../../errorStore.js'
 import { startRecording, stopRecording } from '../../mic.js'
-import { postImportSession } from '../../api.js'
 import {
   state,
   messages,
@@ -33,34 +32,23 @@ import {
   handleVoiceMessage,
   handleAction,
   toggleAudio,
-  toggleSpokenText,
-  refreshSessionsQuietly
+  toggleSpokenText
 } from '../../chatStore.js'
 
-// Only the "Edit project" view's own embedded chat passes this — a
-// transcript import is meaningful there (reviewing/testing a project
-// still being authored), not for the main app's live chat window, which
-// stays at its current default (see App.vue's own usage, unchanged).
-// Which session pool this whole window actually operates against (real
-// vs EditProjectView.vue's own embedded "Test" chat) is chatStore.js's
-// own testModeProjectName, not a prop here — see its own docstring: this
-// component doesn't need to know, or tell any of its own handlers, which
-// one is currently in effect.
-const props = defineProps({
-  allowImport: { type: Boolean, default: false }
-})
+// No transcript import here: this window is either the main app's live
+// chat, or EditProjectView.vue's own embedded "Test" chat (see
+// chatStore.js's testModeProjectName) — an imported session is a
+// separate, 'imported'-source pool of its own (see backend db.py's
+// ChatSession.source) that never shows up in either one's own sessions
+// list (list_sessions/list_test_sessions both filter it out), so
+// importing from here would silently succeed server-side and then just
+// vanish from view. Only BenchmarkProjectView.vue's own dedicated
+// review panel — which actually lists imported sessions — offers import
+// (it renders SessionsPanel.vue directly, with its own allow-import,
+// rather than going through this component at all).
 
 function createSession() {
   handleNewSession()
-}
-
-async function handleImportSession(file) {
-  try {
-    await postImportSession(file)
-    await refreshSessionsQuietly(true)
-  } catch {
-    // already surfaced via apiFetch
-  }
 }
 
 const scrollEl = ref(null)
@@ -209,14 +197,12 @@ async function onAction(actionName) {
           :loading="sessionsLoading"
           :current-session-id="currentSessionId"
           :deleting-session-id="deletingSessionId"
-          :allow-import="allowImport"
           :collapsed="!sessionsPanelOpen"
           restrict-selection-to-native
           @update:collapsed="toggleSessionsPanel"
           @select="selectSession"
           @create="createSession"
           @delete="onDeleteSession"
-          @import="handleImportSession"
         />
       </div>
 

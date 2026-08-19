@@ -60,14 +60,14 @@ describe('signalValuesAsOf', () => {
       transitionRow(3, { timestamp: '2026-01-01T10:00:10', values: JSON.stringify({ risk: 100 }) })
     ]
 
-    expect(signalValuesAsOf(log, '2026-01-01T10:00:07')).toEqual({ risk: { value: 0, error: null } })
-    expect(signalValuesAsOf(log, '2026-01-01T10:00:10')).toEqual({ risk: { value: 100, error: null } })
+    expect(signalValuesAsOf(log, [], '2026-01-01T10:00:07')).toEqual({ risk: { value: 0, error: null } })
+    expect(signalValuesAsOf(log, [], '2026-01-01T10:00:10')).toEqual({ risk: { value: 100, error: null } })
   })
 
   it('returns an empty object when nothing precedes the given timestamp', () => {
     const log = [transitionRow(1, { timestamp: '2026-01-01T10:00:10', values: JSON.stringify({ risk: 100 }) })]
 
-    expect(signalValuesAsOf(log, '2026-01-01T10:00:00')).toEqual({})
+    expect(signalValuesAsOf(log, [], '2026-01-01T10:00:00')).toEqual({})
   })
 })
 
@@ -115,6 +115,59 @@ describe('signalValuesFor — the off-by-one bug this session found and fixed', 
     const selected = { kind: 'transition', transition: synthetic }
 
     expect(signalValuesFor(selected, log)).toEqual({})
+  })
+})
+
+describe('an imported session — signals/state resolve by transcript position, not by real annotation time', () => {
+  // Reproduces the reported bug: reviewing an imported session (see
+  // session_import.py — every message has timestamp=null), an expert
+  // annotates message 1 first, then later (in real wall-clock time)
+  // annotates message 4 (see TrackingService._materialize_imported_
+  // session_row — each Tracking row's own `timestamp` is stamped at
+  // *annotation* time, unrelated to the message's own position in the
+  // transcript). Selecting the unannotated message 3, in between, must
+  // show message 1's own signal values (the last one *before* it in the
+  // transcript), never message 4's (the globally last-annotated one,
+  // even though it comes *after* the selection) — the old bug, since a
+  // plain "row.timestamp > (null) selected.message.timestamp" comparison
+  // never skips anything and always ends up picking whichever row has
+  // the greatest raw timestamp, i.e. whichever was annotated most
+  // recently in real time, full stop.
+  const m0 = message(0, null) // before any annotation at all
+  const m1 = message(1, null)
+  const m3 = message(3, null) // unannotated, selected below
+  const m4 = message(4, null)
+  const messages = [m0, m1, m3, m4]
+  const rowForM1 = transitionRow(10, {
+    timestamp: '2026-01-01T09:00:00', // annotated first, in real time
+    values: JSON.stringify({ mood: 10 }),
+    messageId: 1,
+    expectedState: 'early-state'
+  })
+  const rowForM4 = transitionRow(11, {
+    timestamp: '2026-01-01T09:05:00', // annotated later, in real time
+    values: JSON.stringify({ mood: 90 }),
+    messageId: 4,
+    expectedState: 'late-state'
+  })
+  const log = [rowForM1, rowForM4]
+
+  it('shows the last-annotated message before the selection in transcript order, not the globally last one', () => {
+    const selected = { kind: 'message', message: m3 }
+
+    expect(signalValuesFor(selected, log, messages)).toEqual({ mood: { value: 10, error: null } })
+  })
+
+  it('a selection before any annotation at all shows nothing, never a later one', () => {
+    const selected = { kind: 'message', message: m0 }
+
+    expect(signalValuesFor(selected, log, messages)).toEqual({})
+  })
+
+  it('resolves the same way for state highlighting, through the actually-built timeline', () => {
+    const timeline = buildTimeline(messages, log, null, { imported: true })
+
+    expect(highlightedStateKeyFor({ kind: 'message', message: m3 }, timeline, null)).toBe('early-state')
   })
 })
 

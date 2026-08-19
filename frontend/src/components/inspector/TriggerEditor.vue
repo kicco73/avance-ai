@@ -34,7 +34,7 @@ import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete'
 import { lintKeymap } from '@codemirror/lint'
-import { getIdentifiers } from '../../api.js'
+import { identifierRegistry, refreshIdentifierRegistry } from '../../identifierRegistry.js'
 import { NAMESPACE_COLORS, REFERENCE_PATTERN_SOURCE, completeIdentifiers as completeIdentifiersFor } from '../../triggerEditorSupport.js'
 
 const model = defineModel({ type: String, default: '' })
@@ -44,29 +44,17 @@ const loading = ref(true)
 const editorHost = ref(null)
 let view = null
 
-// namespace -> {identifier: description}, one entry per registry key
-// (signal, env, system, session, "session.metric", metric) — fetched
-// once when this editor mounts, which (see InspectorDetailCard.vue's own
-// v-if="showEditForm") only ever happens while the card is actually
-// open, so "on card open" falls out of onMounted for free, no separate
-// visibility tracking needed here.
-let registry = {}
-
-async function loadRegistry() {
-  try {
-    registry = await getIdentifiers()
-  } catch {
-    registry = {}
-  }
-}
-
 // The one completion source this editor's own autocompletion() (below)
 // registers — basicSetup's own copy activates the extension but wires no
 // source of its own (see triggerEditorSupport.js's own completeIdentifiers
 // for the actual two-case logic — kept there, not here, so it has a real
-// test against a plain CompletionContext, no live view/DOM needed).
+// test against a plain CompletionContext, no live view/DOM needed). Reads
+// identifierRegistry.value fresh on every call (see identifierRegistry.js)
+// rather than a local snapshot, so a signal/action added elsewhere while
+// this editor is already open and mounted is visible the very next
+// keystroke, not just on the next open.
 function completeIdentifiers(context) {
-  return completeIdentifiersFor(context, registry)
+  return completeIdentifiersFor(context, identifierRegistry.value)
 }
 
 // Matches a complete namespace reference (e.g. "signal.mood",
@@ -163,7 +151,14 @@ watch(model, (newValue) => {
 })
 
 onMounted(async () => {
-  await loadRegistry()
+  // Only fetches on this editor's own *first-ever* mount across the
+  // whole app (an empty registry — see identifierRegistry.js's own
+  // default) — every later open reuses whatever's already shared,
+  // refreshed independently by every project edit (see
+  // EditProjectView.vue's own refreshValidStateKeys), so reopening an
+  // already-visited action's card never re-shows the loading placeholder
+  // just to re-fetch data that hasn't gone stale.
+  if (!Object.keys(identifierRegistry.value).length) await refreshIdentifierRegistry()
   loading.value = false
   await nextTick()
   createEditor()

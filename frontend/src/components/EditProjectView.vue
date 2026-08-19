@@ -41,6 +41,7 @@ import {
 } from '../api.js'
 import { clearApiError, setApiError } from '../errorStore.js'
 import ErrorBanner from './ErrorBanner.vue'
+import { refreshIdentifierRegistry } from '../identifierRegistry.js'
 import { buildTimeline, highlightedStateKeyFor, nearestMessageIdAtOrBefore, resultingStateKeyFor, signalValuesFor } from '../benchmarkTimeline.js'
 // Aliased: this file already uses "state" to mean an automaton state node
 // — `liveState` is specifically the live conversation's current state,
@@ -458,6 +459,13 @@ async function refreshValidStateKeys() {
   } catch {
     // already surfaced via apiFetch
   }
+  // The single common point every project edit already funnels through —
+  // both a structural edit (see refreshAfterProjectEdit) and a manual
+  // Code-editor Save (see handleFileSaved) call this, plus the initial
+  // mount below — so refreshing the shared trigger-autocomplete registry
+  // here (see identifierRegistry.js) covers every way a signal/action
+  // can come into existence without a second call site of its own.
+  refreshIdentifierRegistry()
 }
 
 // The state a given message's own turn left the conversation in — see
@@ -532,7 +540,7 @@ const envEditable = computed(() =>
 )
 
 const effectiveSignalValues = computed(() =>
-  selected.value ? signalValuesFor(selected.value, signalsLog.value) : signalValueByName.value
+  selected.value ? signalValuesFor(selected.value, signalsLog.value, rawLiveMessages.value) : signalValueByName.value
 )
 
 // "Restart from here" (RestartFromHereButton.vue, this view's chat only —
@@ -1534,7 +1542,7 @@ onBeforeUnmount(() => {
                 <ModelMenu />
               </div>
             </div>
-            <ChatWindow allow-import>
+            <ChatWindow>
               <template #timeline>
                 <ChatTimeline
                   :timeline="timeline"

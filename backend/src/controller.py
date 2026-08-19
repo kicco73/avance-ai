@@ -28,6 +28,7 @@ from schemas import (
     ReorderActionRequest,
     SetEnvValueRequest,
     SetProjectFieldRequest,
+    SetSessionLabeledRequest,
     TriggersPreviewRequest,
     TruncateSessionRequest,
 )
@@ -343,6 +344,14 @@ class AvanceController(object):
         exception handler (see error_handlers.py), no try/except needed here."""
         self.chat_service.delete_session(session_id)
         return {"success": True}
+
+    @put("/api/chat/sessions/{session_id}/labeled")
+    def put_session_labeled(self, session_id: int, req: SetSessionLabeledRequest):
+        """The "Label sessions" view's own "Mark done" button — see
+        ChatService.mark_session_labeled. Raises ChatServiceError (404)
+        for an unknown/not-yours session_id, same convention as
+        delete_session above."""
+        return self.chat_service.mark_session_labeled(session_id, req.labeled)
 
     @post("/api/chat/sessions/{session_id}/truncate")
     async def post_truncate_session(self, session_id: int, req: TruncateSessionRequest):

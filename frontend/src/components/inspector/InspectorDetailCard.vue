@@ -223,13 +223,15 @@ const hasSelectedElementBadges = computed(() => {
   return isSelectedActionNext.value || isSelectedActionFired.value || !d.hasTrigger || d.isInitEdge
 })
 
-// A state's own editable form is the one place clicking an attachment
-// should jump to where it's actually declared (index.yml's own
-// `attachments:` list under that state) rather than open the attachment
-// file itself — everywhere else (read-only "States", the Actions list,
-// Signals) keeps opening the file, unchanged.
+// Only ever reachable while showEditForm's own attachment list is
+// actually showing (see its own template comment) — always editable by
+// construction, so this only branches on state vs. action. A state's
+// own editable form is the one place clicking an attachment should jump
+// to where it's actually declared (index.yml's own `attachments:` list
+// under that state) rather than open the attachment file itself — an
+// action's own form keeps opening the file, unchanged.
 function selectAttachment(fileName) {
-  if (props.editable && props.selectedElement?.kind === 'state') emit('jump-to-attachment', fileName)
+  if (props.selectedElement?.kind === 'state') emit('jump-to-attachment', fileName)
   else emit('select-attachment', fileName)
 }
 </script>
@@ -367,12 +369,17 @@ function selectAttachment(fileName) {
           </div>
         </Transition>
       </template>
-      <!-- Hidden in the Inspector's own editable State/Actions tabs while
-           collapsed (see this component's own docstring on `editable`) —
-           the original, always-non-editable "States" tab (InspectorGraphTab.
-           vue, shown during normal chat) has no edit/collapsed distinction
-           at all, so it keeps showing these exactly as before. -->
-      <div v-if="(!editable || showEditForm) && selectedElement.data.attachments?.length" class="inspector-attachments">
+      <!-- Attachments are an editing concern only — never shown in a
+           read-only display, whether that's this card collapsed inside
+           EditProjectView.vue's own editable State/Actions tabs, or the
+           always-non-editable "States" tab (InspectorGraphTab.vue, shown
+           during normal chat and throughout BenchmarkProjectView.vue,
+           `editable` false there). Only while the edit form itself is
+           actually open (showEditForm: editable AND open) does the
+           attachment list — and its own jump-to-definition/select
+           affordance, see selectAttachment above — have anything useful
+           to do. -->
+      <div v-if="showEditForm && selectedElement.data.attachments?.length" class="inspector-attachments">
         <button
           v-for="(fileName, idx) in selectedElement.data.attachments"
           :key="fileName"

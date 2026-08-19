@@ -225,48 +225,32 @@ def test_foreign_key_cascade_is_enforced_at_the_sqlite_level(db):
 
 
 @pytest.mark.regression
-def test_session_has_annotations_is_false_with_no_signals_at_all(db):
+def test_a_new_session_starts_unlabeled(db):
     session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
-    assert db.session_has_annotations(session_id) is False
+    assert db.get_chat_session(session_id)["labeled"] is False
 
 
 @pytest.mark.regression
-def test_session_has_annotations_is_false_when_nothing_is_annotated(db):
+def test_set_session_labeled_marks_a_session_done(db):
     session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
-    message_id = db.save_message("user", "hi", session_id)
-    db.save_signal_snapshot({"foo": 1}, session_id, message_id=message_id)
-    assert db.session_has_annotations(session_id) is False
+    db.set_session_labeled(session_id, True)
+    assert db.get_chat_session(session_id)["labeled"] is True
 
 
 @pytest.mark.regression
-def test_session_has_annotations_is_true_with_an_expected_state(db):
+def test_set_session_labeled_can_toggle_back_off(db):
     session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
-    message_id = db.save_message("user", "hi", session_id)
-    row_id = db.save_signal_snapshot({"foo": 1}, session_id, message_id=message_id)
-    db.set_signal_expected_state(row_id, "start")
-    assert db.session_has_annotations(session_id) is True
+    db.set_session_labeled(session_id, True)
+    db.set_session_labeled(session_id, False)
+    assert db.get_chat_session(session_id)["labeled"] is False
 
 
 @pytest.mark.regression
-def test_session_has_annotations_is_true_with_expected_values(db):
-    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
-    message_id = db.save_message("user", "hi", session_id)
-    row_id = db.save_signal_snapshot({"foo": 1}, session_id, message_id=message_id)
-    db.set_signal_expected_values(row_id, {"foo": 75})
-    assert db.session_has_annotations(session_id) is True
+def test_set_session_labeled_only_touches_the_given_session(db):
+    marked = _make_session(db, username="user", project_name="proj", start=datetime(2026, 1, 1, 10, 0, 0))
+    untouched = _make_session(db, username="user", project_name="proj", start=datetime(2026, 1, 2, 10, 0, 0))
 
+    db.set_session_labeled(marked, True)
 
-@pytest.mark.regression
-def test_get_annotated_session_ids_scoped_to_username_and_project(db):
-    annotated = _make_session(db, username="user", project_name="proj", start=datetime(2026, 1, 1, 10, 0, 0))
-    unannotated = _make_session(db, username="user", project_name="proj", start=datetime(2026, 1, 2, 10, 0, 0))
-    other_project = _make_session(db, username="user", project_name="other", start=datetime(2026, 1, 3, 10, 0, 0))
-    other_user = _make_session(db, username="someone-else", project_name="proj", start=datetime(2026, 1, 4, 10, 0, 0))
-
-    for session_id in (annotated, unannotated, other_project, other_user):
-        message_id = db.save_message("user", "hi", session_id)
-        row_id = db.save_signal_snapshot({"foo": 1}, session_id, message_id=message_id)
-        if session_id != unannotated:
-            db.set_signal_expected_state(row_id, "start")
-
-    assert db.get_annotated_session_ids("user", "proj") == {annotated}
+    assert db.get_chat_session(marked)["labeled"] is True
+    assert db.get_chat_session(untouched)["labeled"] is False

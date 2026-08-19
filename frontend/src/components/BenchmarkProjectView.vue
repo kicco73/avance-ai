@@ -10,7 +10,7 @@ import InspectorPerformanceTab from './inspector/InspectorPerformanceTab.vue'
 import ErrorBanner from './ErrorBanner.vue'
 import {
   getMessages, getSessionSignals, getSessions, getProjectGraph, postImportSession, putMessageExpectedState,
-  putMessageExpectedSignals, deleteSessionAnnotations, deleteSession
+  putMessageExpectedSignals, putSessionLabeled, deleteSessionAnnotations, deleteSession
 } from '../api.js'
 import { currentSessionId, sessions, sessionsLoading, loadSessions, refreshSessionsQuietly, selectSession } from '../chatStore.js'
 import {
@@ -118,8 +118,13 @@ function toggleBenchmarkSessionsPanel() {
 // again after the very next reload.
 async function handleImportSession(file) {
   try {
-    await postImportSession(file)
+    const { session_id } = await postImportSession(file)
+    // The list must actually contain the new session before it can be
+    // looked up in it — refresh first, select second, not the other way
+    // around.
     await refreshSessionsQuietly(true)
+    const imported = sessions.value.find((s) => s.id === session_id)
+    if (imported) selectSession(imported)
   } catch {
     // already surfaced via apiFetch (see <ErrorBanner /> above)
   }
@@ -259,7 +264,7 @@ const untilMessageId = computed(() => {
   return selected.value.transition.message_id ?? nearestMessageIdAtOrBefore(rawMessages.value, selected.value.transition.timestamp)
 })
 
-const signalValues = computed(() => signalValuesFor(selected.value, signalsLog.value))
+const signalValues = computed(() => signalValuesFor(selected.value, signalsLog.value, rawMessages.value))
 
 // Whether the session currently being reviewed was imported (see
 // ChatSession.source) rather than played live — the one case with no
@@ -405,6 +410,32 @@ async function onUnlabelAll() {
   }
 }
 
+// The current session's own persisted "reviewed" flag (see backend
+// ChatSession.labeled) — read straight off the Sessions panel's own list
+// (its has_annotations field, see chatStore.js's sessions/ChatService.
+// _session_payload), the single source of truth for it now, not
+// recomputed from signalsLog the way hasAnyAnnotations above still is
+// for "Unlabel all" (a genuinely different question: "is there anything
+// to clear" vs. "has an expert signed off on this session").
+const currentSessionLabeled = computed(() => {
+  return sessions.value.find((s) => s.id === currentSessionId.value)?.has_annotations ?? false
+})
+
+const markingDone = ref(false)
+
+async function onToggleMarkDone() {
+  if (!currentSessionId.value) return
+  markingDone.value = true
+  try {
+    await putSessionLabeled(currentSessionId.value, !currentSessionLabeled.value)
+    await refreshSessionsQuietly(true)
+  } catch {
+    // already surfaced via apiFetch
+  } finally {
+    markingDone.value = false
+  }
+}
+
 // Metrics aren't reactive to props on their own (see
 // InspectorMetricsTab.vue's own refresh(active) docstring) — every
 // selection change needs an explicit nudge, same as EditProjectView.vue's
@@ -473,14 +504,25 @@ onBeforeUnmount(() => {
         <div class="benchmark-chat-content">
           <div class="benchmark-chat-toolbar">
             <span class="benchmark-chat-title">Chat</span>
-            <button
-              type="button"
-              class="benchmark-unlabel-all-btn"
-              :disabled="!hasAnyAnnotations || unlabelingAll"
-              @click="onUnlabelAll"
-            >
-              {{ unlabelingAll ? 'Unlabelling…' : 'Unlabel all' }}
-            </button>
+            <div class="benchmark-chat-toolbar-actions">
+              <button
+                type="button"
+                class="benchmark-mark-done-btn"
+                :class="{ 'benchmark-mark-done-btn-active': currentSessionLabeled }"
+                :disabled="!currentSessionId || markingDone"
+                @click="onToggleMarkDone"
+              >
+                {{ currentSessionLabeled ? '✓ Done' : 'Mark done' }}
+              </button>
+              <button
+                type="button"
+                class="benchmark-unlabel-all-btn"
+                :disabled="!hasAnyAnnotations || unlabelingAll"
+                @click="onUnlabelAll"
+              >
+                {{ unlabelingAll ? 'Unlabelling…' : 'Unlabel all' }}
+              </button>
+            </div>
           </div>
 
           <p v-if="loading" class="benchmark-status">Loading…</p>
@@ -685,6 +727,12 @@ onBeforeUnmount(() => {
   letter-spacing: 0.03em;
 }
 
+.benchmark-chat-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 .benchmark-unlabel-all-btn {
   padding: 0.3rem 0.7rem;
   border-radius: 6px;
@@ -701,6 +749,32 @@ onBeforeUnmount(() => {
 }
 
 .benchmark-unlabel-all-btn:disabled {
+  border-color: #ccc;
+  color: #ccc;
+  cursor: not-allowed;
+}
+
+.benchmark-mark-done-btn {
+  padding: 0.3rem 0.7rem;
+  border-radius: 6px;
+  border: 1px solid #2e7d32;
+  background: white;
+  color: #2e7d32;
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+
+.benchmark-mark-done-btn:hover:not(:disabled) {
+  background: #2e7d32;
+  color: white;
+}
+
+.benchmark-mark-done-btn-active {
+  background: #2e7d32;
+  color: white;
+}
+
+.benchmark-mark-done-btn:disabled {
   border-color: #ccc;
   color: #ccc;
   cursor: not-allowed;

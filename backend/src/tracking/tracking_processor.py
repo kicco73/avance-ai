@@ -77,13 +77,14 @@ class TrackingProcessor(object):
 			  env: Env,
 			  db: Db,
 			  user_variables: UserVariables,
+			  auto_tracking_enabled: bool = True,
 		):
 		self.ai_service = ai_service
 
 		self.env = env
 		self.db = db
 		self.user = user_variables
-		self._tracking_engine = TrackingEngine(DbTrackingSink(db), env, scope_builder)
+		self._tracking_engine = TrackingEngine(DbTrackingSink(db), env, scope_builder, auto_tracking_enabled)
 		# Set per-turn by process() — appended to base_prompt after the
 		# state's own contextual_prompt (see __build_turn_prompt_parts).
 		self.extra_prompt: str | None = None

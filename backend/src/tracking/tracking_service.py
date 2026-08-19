@@ -261,7 +261,8 @@ class TrackingService(object):
 
 		tracking_processor = TrackingProcessor(
 			self._ai_service, scope_builder,
-			env, self._db, user_vars
+			env, self._db, user_vars,
+			auto_tracking_enabled=self.auto_tracking_enabled,
 		)
 
 		return tracking_processor.process(text, on_metadata=on_metadata_sync_to_async, extra_prompt=extra_prompt)

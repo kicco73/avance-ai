@@ -89,3 +89,39 @@ states:
 """
     with pytest.raises(ValueError, match="undefined name\\(s\\).*mood"):
         AutomatonBuilder().build({"index.yml": content})
+
+
+def _project_with_mood_signal(trigger: str) -> str:
+    return f"""
+init-action:
+  target: a
+signals:
+  mood:
+    definition: how happy the user seems
+states:
+  a:
+    contextual-prompt: hi
+    actions:
+      - name: go
+        target: b
+        trigger: "{trigger}"
+  b:
+    contextual-prompt: there
+"""
+
+
+def test_a_trigger_comparing_a_string_typed_identifier_against_a_number_is_rejected():
+    """See automaton.trigger_type_violations' own docstring — system.
+    today() is a date string (see identifier_registry.SYSTEM), never a
+    number, so comparing it with `>=` would raise a genuine TypeError the
+    moment this trigger is ever evaluated; build-time validation can
+    catch that statically, unlike a signal's actual runtime value."""
+    content = _project_with_mood_signal("system.today() >= 5")
+    with pytest.raises(ValueError, match="system.today\\(\\).*>=.*5"):
+        AutomatonBuilder().build({"index.yml": content})
+
+
+def test_a_trigger_with_a_type_consistent_numeric_threshold_builds_fine():
+    content = _project_with_mood_signal("signal.mood >= 75")
+    automaton = AutomatonBuilder().build({"index.yml": content})
+    assert automaton.states["a"].actions[0].trigger == "signal.mood >= 75"

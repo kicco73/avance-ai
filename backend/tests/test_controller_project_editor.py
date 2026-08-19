@@ -87,6 +87,11 @@ class TestPutStateField:
         response = client.put(f"/api/projects/{hello_project}/states/Hello/fixed-message", json={"value": "x"})
         assert response.status_code == 400
 
+    def test_trims_leading_and_trailing_whitespace(self, client, hello_project):
+        response = client.put(f"/api/projects/{hello_project}/states/Hello/ui-label", json={"value": "  Greeting  "})
+        assert response.status_code == 200
+        assert response.json()["ui_label"] == "Greeting"
+
 
 class TestPutActionField:
     def test_edits_target(self, client, hello_project):

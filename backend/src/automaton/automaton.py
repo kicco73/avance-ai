@@ -234,6 +234,114 @@ def trigger_namespace_refs(expression: str) -> dict[str, set[str]]:
     return refs
 
 
+# Every identifier whose runtime *type* (not value) is fixed by its own
+# contract, well enough to be checked statically — signal.*/session.
+# metric.*/metric.* are always numbers (see tracking.evaluator.
+# SignalEvaluator._validate_one's own docstring: not range-checked, but
+# genuinely never anything but int/float/None), a specific system.*/
+# session.* one has its own fixed type (see tracking.system_facts.
+# SystemFacts/tracking.session_facts.SessionFacts). `env.*` is
+# deliberately absent: it's a free-form store an action's own `env:`
+# expression can set to anything (see Action.env's own docstring, "any
+# simple value") — its type is never knowable ahead of a real turn, so
+# trigger_type_violations below always treats it (and anything else this
+# table has no entry for) as unknown rather than guessing.
+_KIND_NUMBER = "number"
+_KIND_STRING = "string"
+_KIND_BOOL = "bool"
+# A kind counts as "number-like" for ordering purposes: Python itself
+# treats bool as an int subtype (`True >= 0.5` is legal), so mixing the
+# two is never actually a runtime error.
+_NUMERIC_KINDS = (_KIND_NUMBER, _KIND_BOOL)
+
+_FIXED_IDENTIFIER_KIND: dict[tuple[str, ...], dict[str, str]] = {
+    ("system",): {"today": _KIND_STRING, "time": _KIND_STRING},
+    ("session",): {
+        "current_session_duration_in_minutes": _KIND_NUMBER,
+        "last_user_session_datetime": _KIND_STRING,
+        "number_of_user_sessions": _KIND_NUMBER,
+        "state_duration_in_minutes": _KIND_NUMBER,
+    },
+}
+# Every identifier under these namespaces is a number, with no per-name
+# exceptions to look up (unlike system/session above) — signals by
+# contract, metrics because BaseMetric.result always clamps into
+# [0, 100] as a float (see metrics_framework.metrics.base).
+_ALWAYS_NUMERIC_NAMESPACES = (("signal",), ("session", "metric"), ("metric",))
+
+_ORDERING_OPS: dict[type, str] = {ast.Lt: "<", ast.LtE: "<=", ast.Gt: ">", ast.GtE: ">="}
+
+
+def _leaf_kind(node: ast.AST) -> str | None:
+    """`node`'s own statically-known kind ('number'/'string'/'bool'), if
+    it's a leaf whose type is actually knowable ahead of a real turn —
+    None (unknown, never "wrong") for anything else: a bare name, an
+    `env.*` reference, an arithmetic/boolean sub-expression, ... —
+    trigger_type_violations only ever flags a comparison where *both*
+    sides are actually known and incompatible, never one built on a
+    guess."""
+    if isinstance(node, ast.Call):
+        return _leaf_kind(node.func)
+    if isinstance(node, ast.Attribute):
+        ref = _namespace_path_of(node)
+        if ref is None:
+            return None
+        path, leaf = ref
+        fixed = _FIXED_IDENTIFIER_KIND.get(path, {}).get(leaf)
+        if fixed is not None:
+            return fixed
+        return _KIND_NUMBER if path in _ALWAYS_NUMERIC_NAMESPACES else None
+    if isinstance(node, ast.Constant):
+        if isinstance(node.value, bool):
+            return _KIND_BOOL
+        if isinstance(node.value, (int, float)):
+            return _KIND_NUMBER
+        if isinstance(node.value, str):
+            return _KIND_STRING
+        return None
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+        inner = _leaf_kind(node.operand)
+        return inner if inner in _NUMERIC_KINDS else None
+    return None
+
+
+def trigger_type_violations(expression: str) -> list[str]:
+    """Every ordering comparison (`<`/`<=`/`>`/`>=` — never `==`/`!=`,
+    which Python allows between any two types unconditionally, always
+    just returning False for a mismatch rather than raising) in
+    `expression` between two operands whose statically-known kinds (see
+    _leaf_kind) are actually incompatible — e.g. `system.today() >= 5`
+    (a date string compared against a number), which would raise
+    TypeError the moment this trigger is ever evaluated. A pair where
+    either side's kind isn't statically knowable (an `env.*` reference,
+    a bare name, a nested arithmetic expression, ...) has nothing this
+    can check, so it's silently skipped rather than guessed at — this
+    only ever flags a comparison *proven* to fail, never a merely
+    suspicious one. Returns human-readable messages, never raises
+    itself: the caller decides what to do with them (see
+    AutomatonBuilder._actions_sanity_check)."""
+    tree = ast.parse(expression, mode="eval").body
+    violations = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Compare):
+            continue
+        operands = [node.left, *node.comparators]
+        for left, op, right in zip(operands, node.ops, operands[1:]):
+            symbol = _ORDERING_OPS.get(type(op))
+            if symbol is None:
+                continue
+            left_kind, right_kind = _leaf_kind(left), _leaf_kind(right)
+            if left_kind is None or right_kind is None:
+                continue
+            if left_kind == right_kind or (left_kind in _NUMERIC_KINDS and right_kind in _NUMERIC_KINDS):
+                continue
+            violations.append(
+                f"'{ast.unparse(left)} {symbol} {ast.unparse(right)}' compares a {left_kind} "
+                f"with a {right_kind} — this will raise a TypeError as soon as it's evaluated"
+            )
+    return violations
+
+
 class Automaton(object):
 
     def __init__(

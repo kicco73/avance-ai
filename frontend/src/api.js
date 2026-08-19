@@ -119,6 +119,20 @@ export function putMessageExpectedSignals(messageId, expectedValues) {
   })
 }
 
+// Sets (or clears) a session's own persisted "reviewed by a domain
+// expert" flag — the "Label sessions" view's own "Mark done" button
+// (see backend ChatSession.labeled/ChatService.mark_session_labeled),
+// the source of truth for that session's own has_annotations marker
+// from here on, replacing the old any-annotation heuristic. A toggle:
+// the same call with `false` un-marks it again.
+export function putSessionLabeled(sessionId, labeled) {
+  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/labeled`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ labeled })
+  })
+}
+
 // Clears every expert annotation (expected_state and expected_values
 // alike) across sessionId's own Signals rows in one call — the
 // "Label sessions" view's "Unlabel all" action, after its own

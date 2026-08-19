@@ -1,6 +1,6 @@
 from automaton.automaton import (
     Action, MemoryArchive, Automaton, Signal, SourceDict, State,
-    trigger_bare_names, trigger_namespace_refs,
+    trigger_bare_names, trigger_namespace_refs, trigger_type_violations,
 )
 from automaton.identifier_registry import build_registry
 from typing import Any
@@ -184,6 +184,20 @@ class AutomatonBuilder(object):
         if unknown:
             raise ValueError(f"{context} references undefined name(s): {', '.join(sorted(unknown))}")
 
+    @staticmethod
+    def _validate_trigger_types(expression: str, context: str) -> None:
+        """Only for `trigger:` (see _actions_sanity_check's own call
+        site) — never `env:`, which has no comparison shape to
+        type-check in the first place (see Action.env's own docstring:
+        "any simple value", not a boolean condition). See
+        trigger_type_violations' own docstring for exactly what this
+        catches (a comparison between two statically-known-incompatible
+        types, e.g. `system.today() >= 5`) and why that's a build-time-
+        checkable thing at all, unlike a signal's actual runtime value."""
+        violations = trigger_type_violations(expression)
+        if violations:
+            raise ValueError(f"{context} ('{expression}'): {'; '.join(violations)}")
+
     def _actions_sanity_check(
         self, key: str, state: State, declared_states: set[str], registry: dict[str, dict[str, str]]
     ):
@@ -201,6 +215,9 @@ class AutomatonBuilder(object):
             if action.trigger:
                 self._validate_namespaced_expression(
                     action.trigger, f"State {key}, action '{action.name}': trigger", registry,
+                )
+                self._validate_trigger_types(
+                    action.trigger, f"State {key}, action '{action.name}': trigger",
                 )
             if action.env:
                 for env_key, expression in action.env.items():

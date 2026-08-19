@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from peewee import AutoField, CharField, CompositeKey, DateTimeField, ForeignKeyField, IntegerField, Model, Proxy, TextField
+from peewee import AutoField, BooleanField, CharField, CompositeKey, DateTimeField, ForeignKeyField, IntegerField, Model, Proxy, TextField
 
 database = Proxy()
 
@@ -38,6 +38,13 @@ class ChatSession(BaseModel):
     datetime_end = DateTimeField(null=True)
     start_state = CharField(null=True)
     end_state = CharField(null=True)
+    # Explicitly set by a domain expert (see "Label sessions" view's own
+    # "Mark done" button, ChatService.mark_session_labeled) — the single
+    # source of truth for whether a session counts as reviewed, replacing
+    # the old heuristic (any Tracking row in it carries an expert
+    # annotation) that used to derive this implicitly. A toggle, not a
+    # one-way flag: pressing "Mark done" again clears it back to False.
+    labeled = BooleanField(default=False)
 
     class Meta:
         indexes = ((('username', 'project_name', 'datetime_start', 'datetime_end'), False), (('username', 'project_name', 'start_state', 'end_state'), False))

@@ -70,13 +70,37 @@ class TrackingEngine:
     turn by whoever orchestrates the loop — never through these method
     signatures themselves."""
 
-    def __init__(self, sink: TrackingSink, env: Env, scope_builder: EvaluationScopeBuilder) -> None:
+    def __init__(
+        self, sink: TrackingSink, env: Env, scope_builder: EvaluationScopeBuilder, auto_tracking_enabled: bool = True,
+    ) -> None:
         self._sink = sink
         self._env = env
         self._scope_builder = scope_builder
+        # EditProjectView.vue's own "Dev mode: freeze automatic state
+        # transitions" toggle (see TrackingService.auto_tracking_enabled,
+        # threaded down through TrackingProcessor.__init__) — False means
+        # a triggerable action is never *selected* here, so apply_transition
+        # always falls into its own action-is-None branch below and just
+        # logs the evaluation (see evaluate_triggered_action's own
+        # docstring: signals are computed and evaluated exactly as before
+        # either way, only whether the result actually moves the
+        # conversation is what this gates). Manual (button) actions never
+        # go through this method at all (see ChatService.apply_manual_
+        # action, which calls apply_action_env directly) — frozen or not,
+        # a manual action always fires.
+        self._auto_tracking_enabled = auto_tracking_enabled
 
     def evaluate_triggered_action(self, automaton: Automaton, state: State, signal_values: dict) -> Action | None:
-        if not state.has_triggerable_actions:
+        """None whenever auto-tracking is frozen (see __init__'s own
+        docstring) or `state` has nothing triggerable to begin with —
+        both cases leave signal_values completely untouched: this method
+        only ever decides which action (if any) fires from already-
+        computed signals, never whether they get computed at all (that
+        already happened by the time this runs — see tracking_processor_
+        ai.py/tracking_processor_user.py's own on_receiving_metadata_*
+        callbacks, which call this only after parsing the turn's own
+        [signals] tag)."""
+        if not self._auto_tracking_enabled or not state.has_triggerable_actions:
             return None
 
         scope = self._scope_builder.build(automaton, state.key, signal_values)

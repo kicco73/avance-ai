@@ -21,27 +21,51 @@ def test_bootstrap_creates_a_session(client, hello_project):
 
 
 @pytest.mark.regression
-def test_sessions_list_reflects_has_annotations_per_session(client, hello_project, app_db: Db):
+def test_sessions_list_reflects_has_annotations_per_session(client, hello_project):
+    """has_annotations now reflects ChatSession.labeled directly (see
+    ChatService.mark_session_labeled/"Label sessions" view's own "Mark
+    done" button) rather than the old any-Tracking-row-has-an-annotation
+    heuristic."""
     session = client.get("/api/chat/session").json()
-    turn = client.post("/api/chat/messages", json={"message": "hi", "session_id": session["id"]}).json()
-    # process_turn's own "reply" key is always [] (see tracking/
-    # tracking_processor.py's _build_turn_response) — the assistant
-    # message id for a plain chat turn is the top-level
-    # "assistant_message_id" key instead. apply_manual_action's own
-    # "reply" is the one that's a list of {id, role, content, audio_text,
-    # ...} message dicts (see ChatService._messages_for_transition).
-    message_id = turn["assistant_message_id"]
-    signal_row_id = app_db.save_signal_snapshot({"foo": 1}, session["id"], message_id=message_id)
 
     before = {s["id"]: s for s in client.get("/api/chat/sessions").json()}
     assert before[session["id"]]["has_annotations"] is False
 
-    app_db.set_signal_expected_state(signal_row_id, "Hello")
+    response = client.put(f"/api/chat/sessions/{session['id']}/labeled", json={"labeled": True})
+    assert response.status_code == 200
+    assert response.json()["has_annotations"] is True
 
     after = {s["id"]: s for s in client.get("/api/chat/sessions").json()}
     assert after[session["id"]]["has_annotations"] is True
     # And the same single-session bootstrap endpoint reflects it too.
     assert client.get(f"/api/chat/session?session_id={session['id']}").json()["has_annotations"] is True
+
+
+@pytest.mark.regression
+def test_mark_session_labeled_works_for_an_imported_session(client, hello_project):
+    """Regression for a real crash: an imported session (see ChatSession.
+    source) always has datetime_end=None (see tracking.session_import's
+    own create_chat_session call) — marking it done used to call
+    ChatSessionManager.get_active_session against the 'imported' pool,
+    which reached is_open's own `now - session["datetime_end"]` and threw
+    TypeError: unsupported operand type(s) for -: 'datetime' and
+    'NoneType'. An imported session is also never "active" at all (see
+    ChatService.list_sessions' own docstring) — this locks that down too."""
+    imported = client.post(
+        "/api/chat/sessions/import", files={"file": ("transcript.txt", "user: hi\nassistant: hello\n", "text/plain")}
+    ).json()
+    session_id = imported["session_id"]
+
+    response = client.put(f"/api/chat/sessions/{session_id}/labeled", json={"labeled": True})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["has_annotations"] is True
+    assert body["active"] is False
+
+    # Toggles back off, same endpoint.
+    response = client.put(f"/api/chat/sessions/{session_id}/labeled", json={"labeled": False})
+    assert response.json()["has_annotations"] is False
 
 
 @pytest.mark.regression

@@ -25,6 +25,14 @@ class ChatSessionManager(object):
         return self._open_window
 
     def is_open(self, session: dict, now: datetime | None = None) -> bool:
+        # An imported session (see ChatSession.source) has no datetime_end
+        # at all — it never had a live conversation window to begin with
+        # (see tracking.session_import's own create_chat_session(...,
+        # datetime_end=None)), so "open" (and by extension "active", see
+        # get_active_session below) can never mean anything for it: always
+        # False, never a crash from comparing against None.
+        if session["datetime_end"] is None:
+            return False
         now = now if now is not None else datetime.utcnow()
         return now - session["datetime_end"] < self._open_window
 

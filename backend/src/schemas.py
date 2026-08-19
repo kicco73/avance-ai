@@ -1,7 +1,7 @@
 """Pydantic request bodies for the REST endpoints — see controller.py."""
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class ActionRequest(BaseModel):
@@ -46,6 +46,13 @@ class ExpectedSignalsRequest(BaseModel):
     expected_values: dict[str, int | float] | None = None
 
 
+class SetSessionLabeledRequest(BaseModel):
+    # See ChatService.mark_session_labeled — the "Label sessions" view's
+    # own "Mark done" button, a domain expert's explicit, toggleable
+    # verdict on whether a session's been reviewed.
+    labeled: bool
+
+
 class TruncateSessionRequest(BaseModel):
     # ISO 8601, expected to be one of the UTC-explicit strings the
     # backend itself already handed back (see db._utc_iso) — every
@@ -64,9 +71,22 @@ class SetProjectFieldRequest(BaseModel):
     # See ProjectService.set_state_field/set_action_field/
     # set_signal_field — a state/action/signal's own editable fields are
     # either free text (ui-label, contextual-prompt, action-prompt,
-    # definition, target) or, for a state's own history-cutoff, a plain
-    # boolean.
+    # definition, target, trigger) or, for a state's own history-cutoff/
+    # chat, a plain boolean.
     value: str | bool
+
+    @field_validator("value")
+    @classmethod
+    def _strip_string_value(cls, value: str | bool) -> str | bool:
+        """Every put_*_field endpoint (state/action/signal/init-action)
+        shares this one request body — trimming a string value here,
+        the single point they all pass through, means incidental
+        leading/trailing whitespace from a UI text field can never make
+        "Action " and "Action" register as two distinct ui-labels (or
+        otherwise-identical values), regardless of which specific field
+        it came in on. A bare boolean (history-cutoff/chat) passes
+        through untouched."""
+        return value.strip() if isinstance(value, str) else value
 
 
 class ReorderActionRequest(BaseModel):
