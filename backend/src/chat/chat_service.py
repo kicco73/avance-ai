@@ -130,23 +130,21 @@ class ChatService(object):
 		except ValueError as exc:
 			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 
-	def get_or_create_current_session(self, session_id: int | None, allow_draft: bool = False) -> dict:
+	def get_or_create_current_session(self, session_id: int | None) -> dict:
 		"""Bootstrap for a client with no (or a possibly-stale) session_id:
 		resolves — or creates — the one session currently writable for the
-		active project (see ChatSessionManager). ValueError (see
-		db.create_chat_session — a project with no published revision yet
-		can't have chat sessions, unless `allow_draft`) becomes a 409, same
-		convention as _require_active_session's own. `allow_draft` is only
-		ever true from EditProjectView.vue's own embedded "Test" chat (see
-		its own ensureDraftChatSession) — the one place a session is
-		allowed to exist against a revision nobody's published yet,
-		stamped with that draft revision instead (see db.create_chat_
-		session's own docstring)."""
+		active project (see ChatSessionManager). Always a real, published-
+		revision session — see get_or_create_current_draft_session for
+		EditProjectView.vue's own embedded "Test" chat, the only caller
+		allowed a draft one instead (see db.create_draft_chat_session's own
+		docstring). ValueError (see db.create_chat_session — a project with
+		no published revision yet can't have a real chat session) becomes a
+		409, same convention as _require_active_session's own."""
 		project_name = self._active_project_name
-		_, state = self._project_service.get_active_automaton_and_state()
 		try:
+			_, state = self._project_service.get_active_automaton_and_state()
 			session = self._session_manager.get_or_create_current_session(
-				self._username, project_name, session_id, state.key, allow_draft=allow_draft
+				self._username, project_name, session_id, state.key
 			)
 		except ValueError as exc:
 			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
@@ -158,7 +156,26 @@ class ChatService(object):
 			session, active=True, has_annotations=self._db.session_has_annotations(session["id"])
 		)
 
-	def create_session(self, allow_draft: bool = False) -> dict:
+	def get_or_create_current_draft_session(self, session_id: int | None) -> dict:
+		"""Like get_or_create_current_session, but the one session currently
+		writable for the active project's own *draft* — see db.create_
+		draft_chat_session's own docstring for why this exists at all:
+		EditProjectView.vue's own embedded "Test" chat (see its own
+		ensureDraftChatSession) is the one place a session is allowed to
+		exist against a revision nobody's published yet."""
+		project_name = self._active_project_name
+		try:
+			_, state = self._project_service.get_active_draft_automaton_and_state()
+			session = self._session_manager.get_or_create_current_draft_session(
+				self._username, project_name, session_id, state.key
+			)
+		except ValueError as exc:
+			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
+		return self._session_payload(
+			session, active=True, has_annotations=self._db.session_has_annotations(session["id"])
+		)
+
+	def create_session(self) -> dict:
 		"""Explicit "new session" action (see session_manager.py's module
 		docstring): always starts a fresh session, which immediately
 		becomes the active project's writable one. Recorded as starting
@@ -169,21 +186,38 @@ class ChatService(object):
 		state other sessions have since moved the project's automaton to
 		(that position is a single project-wide fact, unaffected by this;
 		see ChatSession.start_state/end_state as just this session's own
-		bookkeeping, not the authoritative current state). ValueError (see
-		db.create_chat_session — a project with no published revision yet
-		can't have chat sessions, unless `allow_draft`) becomes a 409, same
-		convention as _require_active_session's own. See get_or_create_
-		current_session's own docstring for what `allow_draft` means."""
+		bookkeeping, not the authoritative current state). Always a real,
+		published-revision session — see create_draft_session for
+		EditProjectView.vue's own embedded "Test" chat, the only caller
+		allowed a draft one instead. ValueError (see db.create_chat_session
+		— a project with no published revision yet can't have a real chat
+		session) becomes a 409, same convention as _require_active_
+		session's own."""
 		project_name = self._active_project_name
-		automaton, _ = self._project_service.get_active_automaton_and_state()
 		try:
+			automaton, _ = self._project_service.get_active_automaton_and_state()
 			session = self._session_manager.create_session(
-				self._username, project_name, automaton.init_action.target, allow_draft=allow_draft
+				self._username, project_name, automaton.init_action.target
 			)
 		except ValueError as exc:
 			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 		# A brand new session has no messages/Tracking rows yet at all —
 		# correct by construction, no query needed.
+		return self._session_payload(session, active=True, has_annotations=False)
+
+	def create_draft_session(self) -> dict:
+		"""Like create_session, but always against the active project's own
+		current *draft* revision instead (see db.create_draft_chat_session's
+		own docstring) — EditProjectView.vue's own embedded "Test" chat is
+		the only caller."""
+		project_name = self._active_project_name
+		try:
+			automaton, _ = self._project_service.get_active_draft_automaton_and_state()
+			session = self._session_manager.create_draft_session(
+				self._username, project_name, automaton.init_action.target
+			)
+		except ValueError as exc:
+			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 		return self._session_payload(session, active=True, has_annotations=False)
 
 	def list_sessions(self, include_imported: bool = False) -> list[dict]:
@@ -250,7 +284,7 @@ class ChatService(object):
 		session = self._db.get_chat_session(session_id)
 		assert session is not None
 		latest = self._db.latest_message_or_signal_timestamp(session_id)
-		_, state = self._project_service.get_active_automaton_and_state()
+		_, state = self._project_service.get_automaton_and_state_for_session(session_id)
 		self._db.touch_chat_session(session_id, latest or session["datetime_start"], state.key)
 
 	async def get_messages(self, session_id: int, last_n: int | None = None) -> list[dict]:
@@ -428,7 +462,7 @@ class ChatService(object):
 			return None
 
 		project_name = self._active_project_name
-		automaton, state = self._project_service.get_active_automaton_and_state()
+		automaton, state = self._project_service.get_automaton_and_state_for_session(session_id)
 
 		init_message = None
 		if self._db.get_current_state(project_name) is None:
@@ -517,14 +551,21 @@ class ChatService(object):
 			raise ChatServiceError("A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT)
 		async with self.lock:
 			project_name = self._active_project_name
-			_, source_state = self._project_service.get_active_automaton_and_state()
+			# Same "no session specified" ValueError require_active_session
+			# itself would raise below — checked explicitly here instead of
+			# just letting it happen naturally, since get_automaton_and_state_
+			# for_session (unlike get_active_automaton_and_state before it)
+			# needs a real session_id to resolve against, not an optional one.
+			if session_id is None:
+				raise ChatServiceError("No session specified.", status_code=HTTPStatus.CONFLICT)
+			_, source_state = self._project_service.get_automaton_and_state_for_session(session_id)
 			# Resolved before applying the action: save_transition (inside
 			# project_service.apply_manual_action) now needs a session_id.
 			session = self._require_active_session(session_id, project_name, source_state.key)
 			state_payload, action, source_state_key = self._project_service.apply_manual_action(
 				action_name, session["id"]
 			)
-			automaton, state = self._project_service.get_active_automaton_and_state()
+			automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
 			self._tracking_engine.apply_action_env(automaton, action, {}, source_state_key)
 			reply = await self._messages_for_transition(
 				action, project_name, session["id"], state, is_self_loop=(action.target == source_state_key)
@@ -546,7 +587,7 @@ class ChatService(object):
 		extra_prompt: str | None = None,
 	) -> dict:
 		project_name = self._active_project_name
-		_, state = self._project_service.get_active_automaton_and_state()
+		_, state = self._project_service.get_automaton_and_state_for_session(session_id)
 		self._require_active_session(session_id, project_name, state.key)
 		reply = await self.tracking_service.process(session_id, text, on_metadata, extra_prompt=extra_prompt)
 		# touch_session wants the plain state key (see apply_manual_action's

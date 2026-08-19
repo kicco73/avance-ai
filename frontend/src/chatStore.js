@@ -2,6 +2,8 @@ import { nextTick, ref } from 'vue'
 import {
   getCurrentSession,
   postCreateSession,
+  getCurrentTestSession,
+  postCreateTestSession,
   getSessions,
   deleteSession,
   getMessages,
@@ -104,22 +106,26 @@ function toStoreMessage(m) {
   return { role: m.role, content: m.content, audioText: m.audio_text, timestamp: m.timestamp, failed: false, messageId: m.id }
 }
 
-async function ensureSession(allowDraft = false) {
-  const session = await getCurrentSession(currentSessionId.value, allowDraft)
+// `testProjectName`: null for a real, published-revision session (every
+// caller but one); EditProjectView.vue's own embedded "Test" chat passes
+// its own projectName instead (see its own ensureDraftChatSession), the
+// one place a session is allowed to exist against a revision nobody's
+// published yet — routed to a completely different pair of endpoints
+// (getCurrentTestSession/postCreateTestSession below), never a flag on
+// the shared ones (see api.js's own docstring on why).
+async function ensureSession(testProjectName = null) {
+  const session = testProjectName != null
+    ? await getCurrentTestSession(currentSessionId.value, testProjectName)
+    : await getCurrentSession(currentSessionId.value)
   currentSessionId.value = session.id
   selectedSessionActive.value = session.active
   return session.id
 }
 
-// allowDraft: see api.js's getCurrentSession — EditProjectView.vue's own
-// embedded "Test" chat calls this with allowDraft true (see its own
-// ensureDraftChatSession) so a project that's never been published (or
-// has draft edits ahead of what's published) can still be tested there;
-// every other caller (the main app, on boot/project switch) leaves it at
-// its default false, same behavior as always.
-export async function loadMessages(allowDraft = false) {
+// testProjectName: see ensureSession's own docstring.
+export async function loadMessages(testProjectName = null) {
   try {
-    const sessionId = await ensureSession(allowDraft)
+    const sessionId = await ensureSession(testProjectName)
     const history = await getMessages(sessionId)
     messages.value = history.map(toStoreMessage)
     // Whichever project just became active, the sessions panel (if open)
@@ -524,38 +530,40 @@ export function clearChatUi() {
   sessions.value = []
 }
 
-// allowDraft — see loadMessages's own docstring — threaded through so
-// Reset still works from EditProjectView.vue's own embedded "Test" chat
-// toolbar for a project that's never been published.
-export async function handleReset(allowDraft = false) {
+// testProjectName — see loadMessages's own docstring — threaded through
+// so Reset still works from EditProjectView.vue's own embedded "Test"
+// chat toolbar for a project that's never been published.
+export async function handleReset(testProjectName = null) {
   if (!window.confirm('Reset the conversation, signals, and transitions? This cannot be undone.')) return
   clearChatUi()
   try {
     const newState = await postReset()
     state.value = null
     handleStateChange(newState)
-    await loadMessages(allowDraft)
+    await loadMessages(testProjectName)
     bumpTurn()
   } catch {
     // already surfaced via apiFetch
   }
 }
 
-// allowDraft — see loadMessages's own docstring — threaded through from
-// ChatWindow.vue's own allowDraft prop (its own SessionsPanel "new
+// testProjectName — see loadMessages's own docstring — threaded through
+// from ChatWindow.vue's own projectName prop (its own SessionsPanel "new
 // session" button is what reaches this).
-export async function handleNewSession(allowDraft = false) {
+export async function handleNewSession(testProjectName = null) {
   // Only one session is ever active per project (see ChatSessionManager) —
   // starting a new one always supersedes whichever one was current, so
   // this is a real "close the current session" action, not just an addition.
   if (!window.confirm('Start a new session? This will close the current session for this project — only one can be active at a time.')) return
   try {
-    const session = await postCreateSession(allowDraft)
+    const session = testProjectName != null
+      ? await postCreateTestSession(testProjectName)
+      : await postCreateSession()
     currentSessionId.value = session.id
     selectedSessionActive.value = session.active
     clearApiError()
     messages.value = []
-    await loadMessages(allowDraft)
+    await loadMessages(testProjectName)
     // Opened unconditionally (not just refreshed when already open) so the
     // new session is actually visible right away, wherever this was
     // triggered from — not dependent on the sessions panel already being open.

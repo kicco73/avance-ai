@@ -45,27 +45,27 @@ def test_create_chat_session_rejects_an_unpublished_project_by_default(db):
 
 
 @pytest.mark.regression
-def test_create_chat_session_allow_draft_permits_an_unpublished_project(db):
+def test_create_draft_chat_session_permits_an_unpublished_project(db):
     db.ensure_project("draft-only")
-    session_id = db.create_chat_session(
-        username="user", project_name="draft-only", start_state="start", allow_draft=True
+    session_id = db.create_draft_chat_session(
+        username="user", project_name="draft-only", start_state="start"
     )
     session = db.get_chat_session(session_id)
     assert session is not None
 
 
 @pytest.mark.regression
-def test_create_chat_session_allow_draft_stamps_the_current_draft_revision_not_published(db):
+def test_create_draft_chat_session_stamps_the_current_draft_revision_not_published(db):
     # Publish once (revision 0), then edit again so the draft moves ahead
-    # to revision 1 while published_revision stays frozen at 0 — a
-    # allow_draft session must be stamped with the *draft* (1), unlike a
-    # normal session, which would be stamped with published_revision (0).
+    # to revision 1 while published_revision stays frozen at 0 — a draft
+    # session must be stamped with the *draft* (1), unlike a normal
+    # session, which would be stamped with published_revision (0).
     db.ensure_project("ahead-of-published")
     db.publish_project("ahead-of-published")
     db.save_project_file("user", "ahead-of-published", "index.yml", "states: {}\n")
 
-    draft_session_id = db.create_chat_session(
-        username="user", project_name="ahead-of-published", start_state="start", allow_draft=True
+    draft_session_id = db.create_draft_chat_session(
+        username="user", project_name="ahead-of-published", start_state="start"
     )
     normal_session_id = db.create_chat_session(
         username="user", project_name="ahead-of-published", start_state="start"

@@ -41,16 +41,18 @@ import {
 // these — a transcript import is meaningful there (reviewing/testing a
 // project still being authored), not for the main app's live chat
 // window, which stays at its current default (see App.vue's own usage,
-// unchanged). allowDraft: see chatStore.js's own handleNewSession —
-// only EditProjectView.vue's own "Test" mode is allowed to start a
-// session against a revision nobody's published yet.
+// unchanged). projectName: see chatStore.js's own handleNewSession/
+// loadMessages — only EditProjectView.vue's own "Test" mode passes this
+// (its own projectName), the one place a session is allowed to start
+// against a revision nobody's published yet; every other caller leaves
+// it null, same behavior as always.
 const props = defineProps({
   allowImport: { type: Boolean, default: false },
-  allowDraft: { type: Boolean, default: false }
+  projectName: { type: String, default: null }
 })
 
 function createSession() {
-  handleNewSession(props.allowDraft)
+  handleNewSession(props.projectName)
 }
 
 async function handleImportSession(file) {

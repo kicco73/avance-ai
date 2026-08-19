@@ -234,7 +234,7 @@ class TrackingService(object):
 		extra_prompt: str | None = None,
 		):
 
-		automaton, state = self._project_service.get_active_automaton_and_state()
+		automaton, state = self._project_service.get_automaton_and_state_for_session(session_id)
 
 		user_vars = UserVariables(
 			automaton=automaton,

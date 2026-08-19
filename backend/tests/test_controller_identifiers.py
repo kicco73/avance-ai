@@ -45,6 +45,12 @@ def _upload_and_activate(client, name: str, yaml_text: str):
     assert response.status_code == 200, response.text
     response = client.put(f"/api/projects/{name}/activate")
     assert response.status_code == 200, response.text
+    # get_active_automaton_and_state (see ProjectService) now requires a
+    # published revision — a draft-only project can no longer resolve an
+    # active automaton at all outside EditProject's own dedicated draft
+    # entry points.
+    response = client.post(f"/api/projects/{name}/publish", json={})
+    assert response.status_code == 200, response.text
 
 
 def test_returns_one_dict_per_namespace_for_the_active_project(client):

@@ -46,7 +46,13 @@ NEW_PROJECT_NAME = "Hello world"
 class ProjectService(object):
     def __init__(self, db: Db) -> None:
         self._db = db
-        self._automaton_cache: dict[str, Automaton] = {}
+        # (project_name, revision) -> Automaton. Revision-keyed (not just
+        # project_name) so a caller pinned to one specific revision (see
+        # _load_project_at_revision, get_automaton_and_state_for_session)
+        # and a caller that always wants "whatever's current" (see
+        # _load_project/get_active_automaton_and_state) can share the same
+        # cache without one silently serving the other's revision.
+        self._automaton_cache: dict[tuple[str, int], Automaton] = {}
 
     @staticmethod
     def _is_safe_project_name(project_name: str) -> bool:
@@ -57,24 +63,47 @@ class ProjectService(object):
             return False
         return Path(project_name).name == project_name
 
-    def _load_project(self, project_name: str) -> Automaton:
-        cached = self._automaton_cache.get(project_name)
+    def _invalidate_automaton_cache(self, project_name: str) -> None:
+        """Drops every cached revision of `project_name` at once — a write
+        path (revert_to_published/delete_project) that needs this has no
+        reason to work out exactly which revision number(s) might now be
+        stale, so this just clears all of them. Never needed after an
+        ordinary edit (put_project_file/delete_project_file/...): those go
+        through _finalize_project_update instead, which already knows
+        exactly which one revision it just built and re-caches only that."""
+        for key in [k for k in self._automaton_cache if k[0] == project_name]:
+            del self._automaton_cache[key]
+
+    def _load_project_at_revision(self, project_name: str, revision: int) -> Automaton:
+        cache_key = (project_name, revision)
+        cached = self._automaton_cache.get(cache_key)
         if cached is not None:
             return cached
 
         if not ProjectService._is_safe_project_name(project_name):
             raise ValueError(f"Invalid project name: '{project_name}'.")
 
-        archives = self._db.get_archives(project_name)
+        archives = self._db.get_archives(project_name, revision=revision)
 
         if not archives:
             raise  FileNotFoundError(f"Project '{project_name}' does not exist.")
         if 'index.yml' not in archives:
             raise  FileNotFoundError(f"Project '{project_name}' does not contain 'index.yml'.")
-        
+
         automaton = AutomatonBuilder().build(archives)
-        self._automaton_cache[project_name] = automaton
+        self._automaton_cache[cache_key] = automaton
         return automaton
+
+    def _load_project(self, project_name: str) -> Automaton:
+        """Whatever's current for `project_name` right now — the most
+        recent draft, published or not (see Db.get_project_revision). Every
+        existing caller of this keeps exactly that behavior; a caller that
+        instead needs a specific, possibly older revision (the published
+        one specifically, or a particular session's own — see
+        get_active_automaton_and_state/get_automaton_and_state_for_session)
+        goes through _load_project_at_revision directly instead."""
+        revision = self._db.get_project_revision(project_name)
+        return self._load_project_at_revision(project_name, revision)
 
     def _project_update_changed(self, existing: dict[str, str], files: dict[str, str]) -> bool:
         """Whether `files` (new content for some subset of a project's
@@ -147,7 +176,8 @@ class ProjectService(object):
         exactly where it was, rather than restarting on every single save
         regardless of whether anything relevant to it actually changed."""
 
-        self._automaton_cache[project_name] = automaton
+        revision = self._db.get_project_revision(project_name)
+        self._automaton_cache[(project_name, revision)] = automaton
         if project_name == self.get_active_project_name():
             current_state_key = self._db.get_current_state(project_name)
             if current_state_key is None or current_state_key not in automaton.states:
@@ -220,30 +250,29 @@ class ProjectService(object):
             raise FileNotFoundError("No project is currently active.")
         return name
     
-    def get_active_automaton_and_state(self) -> tuple[Automaton, State]:
-        """The active Automaton paired with its current State. No state
-        persisted yet (nothing has ever run) still falls back to
-        init_action.target, same as always — that's a legitimate default,
-        not a broken reference. A persisted state that no longer exists in
-        the current automaton is different: it means a publish once
-        renamed/removed it out from under an in-progress conversation, and
-        StateRemap (written at that publish, see ProjectService.
-        publish_project) is the only thing allowed to resolve it — no more
-        silent fallback to init_action.target. If StateRemap doesn't have
-        an answer either, that's an inconsistency the publish-time check
-        should have prevented; raising here is a guardrail, not the
-        expected path. A pure read, no side effect: never returns the
-        reserved implicit state ("") itself, so every caller of this (not
-        just ChatService.open_if_needed) always sees a real state, whether
-        or not init_action has actually been resolved/persisted yet.
-        Raises FileNotFoundError (same exception _load_project itself
-        raises for an unknown project name) when there's no active project
-        at all — see get_active_project_name's own docstring for when that
-        happens."""
-        project_name = self.get_active_project_name()
-        if project_name is None:
-            raise FileNotFoundError("No project is currently active.")
-        automaton = self._load_project(project_name)
+    def _resolve_state(self, project_name: str, automaton: Automaton) -> State:
+        """The State half of get_active_automaton_and_state/
+        get_automaton_and_state_for_session, factored out since both need
+        the exact same resolution against `automaton` — only how
+        `automaton` itself gets picked (published-only vs. one session's
+        own pinned revision) differs between them. No state persisted yet
+        (nothing has ever run) still falls back to init_action.target,
+        same as always — that's a legitimate default, not a broken
+        reference. A persisted state that no longer exists in `automaton`
+        is different: it means a publish once renamed/removed it out from
+        under an in-progress conversation, and StateRemap (written at that
+        publish, see ProjectService.publish_project — a single lookup no
+        matter how many publishes have happened since, since every
+        publish that would otherwise orphan a still-open state writes its
+        own fresh entry pointing straight at the *current* remap target)
+        is the only thing allowed to resolve it — no more silent fallback
+        to init_action.target. If StateRemap doesn't have an answer
+        either, that's an inconsistency the publish-time check should
+        have prevented; raising here is a guardrail, not the expected
+        path. A pure read, no side effect: never returns the reserved
+        implicit state ("") itself, so every caller of this (not just
+        ChatService.open_if_needed) always sees a real state, whether or
+        not init_action has actually been resolved/persisted yet."""
         state_key = self._db.get_current_state(project_name)
         if state_key is None:
             state_key = automaton.init_action.target
@@ -255,13 +284,78 @@ class ProjectService(object):
                     "and has no StateRemap entry — this should have been caught at publish time."
                 )
             state_key = remapped
-        return automaton, automaton.get_state(state_key)
+        return automaton.get_state(state_key)
+
+    def get_active_automaton_and_state(self) -> tuple[Automaton, State]:
+        """The active project's *published* Automaton paired with its
+        current State — never the in-progress draft, whatever it happens
+        to look like right now (see _resolve_state's own docstring for
+        the State half). Every caller of this that's about a specific,
+        already-existing session instead (see the "6 places" in
+        get_automaton_and_state_for_session's own docstring) uses that one
+        instead, pinned to that session's own project_revision — this one
+        is for every other caller, which never has a session of its own
+        to pin to and must never see draft content it didn't explicitly
+        ask for (see EditProjectView.vue's own dedicated draft entry
+        points, the one place that's still allowed to). Raises
+        FileNotFoundError (same exception _load_project itself raises for
+        an unknown project name) when there's no active project at all —
+        see get_active_project_name's own docstring for when that
+        happens — and ValueError, same as db.create_chat_session's own
+        "never published" case, when the active project has no published
+        revision yet."""
+        project_name = self.get_active_project_name()
+        if project_name is None:
+            raise FileNotFoundError("No project is currently active.")
+        published_revision = self._db.get_project_published_revision(project_name)
+        if published_revision is None:
+            raise ValueError(f"Project '{project_name}' has never been published.")
+        automaton = self._load_project_at_revision(project_name, published_revision)
+        return automaton, self._resolve_state(project_name, automaton)
+
+    def get_automaton_and_state_for_session(self, session_id: int) -> tuple[Automaton, State]:
+        """The Automaton `session_id` was actually stamped against at
+        creation time (see ChatSession.project_revision's own docstring —
+        native or draft alike, published or not, exactly whatever was
+        current the moment this session started) paired with its current
+        State (see _resolve_state) — every chat-turn-shaped operation that
+        already has a concrete session_id to work from (chat_service.py's
+        own truncate_session/open_if_needed/apply_manual_action/
+        process_turn, this module's own apply_manual_action, tracking_
+        service.py's own process) uses this instead of get_active_
+        automaton_and_state, so an in-progress draft edit elsewhere never
+        retroactively changes what an already-running session's own turns
+        see, and a session pinned to an old, already-superseded revision
+        keeps behaving exactly as it did when it was created."""
+        session = self._db.get_chat_session(session_id)
+        if session is None:
+            raise FileNotFoundError(f"Session {session_id} does not exist.")
+        project_name = session["project_name"]
+        automaton = self._load_project_at_revision(project_name, session["project_revision"])
+        return automaton, self._resolve_state(project_name, automaton)
+
+    def get_active_draft_automaton_and_state(self) -> tuple[Automaton, State]:
+        """Like get_active_automaton_and_state, but the in-progress draft
+        (whatever _load_project resolves to right now) rather than
+        published-only — EditProjectView.vue's own dedicated draft session
+        entry points (ChatService.create_draft_session/get_or_create_
+        current_draft_session) are the only callers: a "Test" session must
+        stay creatable against a project that's never been published at
+        all yet (see db.create_draft_chat_session), which get_active_
+        automaton_and_state's own published-only requirement would
+        otherwise block outright before a session (and this call) ever
+        even happens."""
+        project_name = self.get_active_project_name()
+        if project_name is None:
+            raise FileNotFoundError("No project is currently active.")
+        automaton = self._load_project(project_name)
+        return automaton, self._resolve_state(project_name, automaton)
 
     def apply_manual_action(self, action_name: str, session_id: int) -> tuple[StatePayload, Action, str]:
         """Applies a manual (button) action and returns the destination
         state's payload, the Action that fired, and the source state's
         key (e.g. to detect a self-loop)."""
-        automaton, state = self.get_active_automaton_and_state()
+        automaton, state = self.get_automaton_and_state_for_session(session_id)
         action = automaton.move(state.key, action_name)
         new_state = automaton.get_state(action.target)
         # Always saved, self-loop or not — a real history entry either
@@ -480,7 +574,7 @@ class ProjectService(object):
         if project_name not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
         self._db.revert_to_published(project_name)
-        self._automaton_cache.pop(project_name, None)
+        self._invalidate_automaton_cache(project_name)
         new_automaton = self._load_project(project_name)
         await self._finalize_project_update(project_name, new_automaton, commit)
         return self.get_project_revision_info(project_name)
@@ -779,7 +873,7 @@ class ProjectService(object):
     async def delete_project(self, project_name: str, commit: CommitCallback) -> None:
         self._db.reset_project(project_name)
         self._db.delete_archives(project_name)
-        self._automaton_cache.pop(project_name, None)
+        self._invalidate_automaton_cache(project_name)
 
         if project_name == self.get_active_project_name():
             # No project name is reserved/preferred for continuity anymore

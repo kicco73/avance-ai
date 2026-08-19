@@ -45,21 +45,28 @@ export function getState(signal) {
   return apiFetch(`${API_URL}/state`, { signal })
 }
 
-// allowDraft: only ever true from EditProjectView.vue's own embedded
-// "Test" chat — the one place a session is allowed to exist against a
-// revision nobody's published yet (see backend ChatService.get_or_
-// create_current_session's own docstring).
-export function getCurrentSession(sessionId, allowDraft = false) {
-  const params = new URLSearchParams()
-  if (sessionId != null) params.set('session_id', sessionId)
-  if (allowDraft) params.set('allow_draft', 'true')
-  const query = params.toString()
-  return apiFetch(`${API_URL}/chat/session${query ? `?${query}` : ''}`)
+export function getCurrentSession(sessionId) {
+  const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
+  return apiFetch(`${API_URL}/chat/session${query}`)
 }
 
-export function postCreateSession(allowDraft = false) {
-  const query = allowDraft ? '?allow_draft=true' : ''
-  return apiFetch(`${API_URL}/chat/sessions${query}`, { method: 'POST' })
+export function postCreateSession() {
+  return apiFetch(`${API_URL}/chat/sessions`, { method: 'POST' })
+}
+
+// EditProjectView.vue's own embedded "Test" chat — the one place a
+// session is allowed to exist against a revision nobody's published yet
+// (see backend ChatService.create_draft_session/get_or_create_current_
+// draft_session's own docstrings). Which revision a session may exist
+// against is decided solely by which endpoint is called now, never by a
+// caller-supplied flag on the two above.
+export function getCurrentTestSession(sessionId, projectName) {
+  const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/test-sessions/current${query}`)
+}
+
+export function postCreateTestSession(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/test-sessions`, { method: 'POST' })
 }
 
 export function getSessions(includeImported = false) {

@@ -86,7 +86,6 @@ function handleCardClick() {
 const editUiLabel = ref('')
 const editUiDescription = ref('')
 const editContextualPrompt = ref('')
-const editActionPrompt = ref('')
 const editTrigger = ref('')
 const editTarget = ref('')
 
@@ -104,7 +103,6 @@ function resetEditBuffers() {
   editUiLabel.value = d.uiLabel ?? ''
   editUiDescription.value = d.uiDescription ?? ''
   editContextualPrompt.value = d.contextualPrompt ?? ''
-  editActionPrompt.value = d.actionPrompt ?? ''
   editTrigger.value = d.trigger ?? ''
   editTarget.value = d.target ?? ''
 }
@@ -132,10 +130,6 @@ function commitUiDescription() {
 
 function commitContextualPrompt() {
   commitTextField('contextual-prompt', editContextualPrompt.value, props.selectedElement?.data.contextualPrompt ?? '')
-}
-
-function commitActionPrompt() {
-  commitTextField('action-prompt', editActionPrompt.value, props.selectedElement?.data.actionPrompt ?? '')
 }
 
 function commitTrigger() {
@@ -348,15 +342,6 @@ function selectAttachment(fileName) {
               @blur="commitUiDescription"
             ></textarea>
             <template v-if="!selectedElement.data.isInitEdge">
-              <label class="inspector-detail-form-label">Action prompt</label>
-              <textarea
-                v-model="editActionPrompt"
-                v-autosize
-                class="inspector-detail-textarea"
-                rows="2"
-                @click.stop
-                @blur="commitActionPrompt"
-              ></textarea>
               <label class="inspector-detail-form-label">Trigger</label>
               <textarea
                 v-model="editTrigger"

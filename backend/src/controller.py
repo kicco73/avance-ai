@@ -260,20 +260,48 @@ class AvanceController(object):
         return self.chat_service.get_ai_models_info()
 
     @get("/api/chat/session")
-    def get_current_session(self, session_id: int | None = None, allow_draft: bool = False):
+    def get_current_session(self, session_id: int | None = None):
         """Bootstrap endpoint: resolves (or creates) the active project's
         current writable session — see chat/session_manager.py. Called by
         the frontend before it has a known session_id, or to recover from
-        a stale one. `allow_draft` — see ChatService.get_or_create_
-        current_session's own docstring — only ever true from
-        EditProjectView.vue's own embedded "Test" chat."""
-        return self.chat_service.get_or_create_current_session(session_id, allow_draft=allow_draft)
+        a stale one. Always a real, published-revision session — see
+        GET /api/projects/{project_name}/test-sessions/current for
+        EditProjectView.vue's own embedded "Test" chat, the only caller
+        allowed a draft one instead. No `allow_draft` parameter here or on
+        POST /api/chat/sessions below anymore: which revision a session
+        may exist against is decided solely by which endpoint is called,
+        never by a caller-supplied flag on a shared one."""
+        return self.chat_service.get_or_create_current_session(session_id)
 
     @post("/api/chat/sessions")
-    def post_create_session(self, allow_draft: bool = False):
+    def post_create_session(self):
         """Explicit "start a new session" action — always creates one,
         superseding whichever session was previously current."""
-        return self.chat_service.create_session(allow_draft=allow_draft)
+        return self.chat_service.create_session()
+
+    @post("/api/projects/{project_name}/test-sessions")
+    def post_create_test_session(self, project_name: str):
+        """EditProjectView.vue's own embedded "Test" chat, its own
+        explicit "start a new session" action — the one place a session
+        may exist against a revision nobody's published yet (see
+        db.create_draft_chat_session's own docstring). `project_name`
+        isn't itself passed through to ChatService (see ChatService.
+        create_draft_session, which — same as every other ChatService
+        method — always operates on whichever project the active user's
+        session already has activated, see PUT /api/projects/
+        {project_name}/activate): it's here so this endpoint reads, in the
+        URL alone, as unambiguously project-scoped and draft-only, the
+        same convention as every other /api/projects/{project_name}/...
+        route."""
+        return self.chat_service.create_draft_session()
+
+    @get("/api/projects/{project_name}/test-sessions/current")
+    def get_current_test_session(self, project_name: str, session_id: int | None = None):
+        """EditProjectView.vue's own embedded "Test" chat, its own bootstrap
+        endpoint — the draft-session equivalent of GET /api/chat/session
+        above (see that one's own docstring, and post_create_test_session's
+        own on why `project_name` is here but unused beyond the URL)."""
+        return self.chat_service.get_or_create_current_draft_session(session_id)
 
     @get("/api/chat/sessions")
     def get_sessions(self, include_imported: bool = False):

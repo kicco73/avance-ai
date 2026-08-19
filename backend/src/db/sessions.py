@@ -19,27 +19,51 @@ class SessionMixin:
         self, username: str, project_name: str,
         datetime_start: datetime | None = None, datetime_end: datetime | None = None,
         start_state: str | None = None, end_state: str | None = None,
-        source: str = 'native', title: str | None = None, allow_draft: bool = False,
+        source: str = 'native', title: str | None = None,
     ) -> int:
-        # project_revision is stamped once and never touched again (see
-        # ChatSession.project_revision's own docstring) — from whatever's
-        # published right now, same as always, unless `allow_draft` (only
-        # ever passed by EditProjectView.vue's own embedded "Test" chat —
-        # see ChatService.get_or_create_current_session/create_session's
-        # own allow_draft): then it's stamped with the project's own
-        # current *draft* revision instead, published or not, since
-        # testing means testing exactly what's actually being edited right
-        # now, and is the one place a session is even allowed to exist
-        # against a revision nobody's published yet.
+        """A real session — always stamped with whatever's published right
+        now (see ChatSession.project_revision's own docstring), never a
+        revision nobody's published yet. Every entry point except
+        EditProjectView.vue's own embedded "Test" chat calls this one; that
+        one calls create_draft_chat_session instead — the only place a
+        session is allowed to exist against an unpublished revision."""
         project = Project.get_or_none(Project.name == project_name)
         if project is None:
             raise ValueError(f"Project '{project_name}' does not exist.")
-        if allow_draft:
-            project_revision = self._current_revision(project_name)
-        elif project.published_revision is not None:
-            project_revision = project.published_revision
-        else:
+        if project.published_revision is None:
             raise ValueError(f"Project '{project_name}' has never been published — cannot create a chat session.")
+        return self._create_chat_session_row(
+            username, project_name, project.published_revision,
+            datetime_start=datetime_start, datetime_end=datetime_end,
+            start_state=start_state, end_state=end_state, source=source, title=title,
+        )
+
+    def create_draft_chat_session(
+        self, username: str, project_name: str,
+        datetime_start: datetime | None = None, datetime_end: datetime | None = None,
+        start_state: str | None = None, end_state: str | None = None,
+        source: str = 'native', title: str | None = None,
+    ) -> int:
+        """Like create_chat_session, but always stamped with the project's
+        own current *draft* revision instead — published or not, since
+        testing (see ChatService.create_draft_session/get_or_create_
+        current_draft_session, EditProjectView.vue's own embedded "Test"
+        chat, the only caller) means testing exactly what's actually being
+        edited right now."""
+        project = Project.get_or_none(Project.name == project_name)
+        if project is None:
+            raise ValueError(f"Project '{project_name}' does not exist.")
+        return self._create_chat_session_row(
+            username, project_name, self._current_revision(project_name),
+            datetime_start=datetime_start, datetime_end=datetime_end,
+            start_state=start_state, end_state=end_state, source=source, title=title,
+        )
+
+    def _create_chat_session_row(
+        self, username: str, project_name: str, project_revision: int, *,
+        datetime_start: datetime | None, datetime_end: datetime | None,
+        start_state: str | None, end_state: str | None, source: str, title: str | None,
+    ) -> int:
         session = ChatSession.create(
             username=username, project_name=project_name, source=source, title=title,
             project_revision=project_revision,
@@ -50,7 +74,7 @@ class SessionMixin:
 
     @staticmethod
     def _chat_session_to_dict(session: ChatSession) -> dict:
-        return {'id': session.id, 'username': session.username, 'project_name': session.project_name_id, 'source': session.source, 'title': session.title, 'datetime_start': session.datetime_start, 'datetime_end': session.datetime_end, 'start_state': session.start_state, 'end_state': session.end_state}
+        return {'id': session.id, 'username': session.username, 'project_name': session.project_name_id, 'source': session.source, 'title': session.title, 'datetime_start': session.datetime_start, 'datetime_end': session.datetime_end, 'start_state': session.start_state, 'end_state': session.end_state, 'project_revision': session.project_revision}
 
     def get_chat_session(self, session_id: int) -> dict | None:
         session = ChatSession.get_or_none(ChatSession.id == session_id)

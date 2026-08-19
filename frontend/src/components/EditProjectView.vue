@@ -558,18 +558,18 @@ const editorOpen = computed(() => mode.value === 'edit')
 const chatOpen = computed(() => mode.value === 'test')
 
 // Entering 'test' mode is this view's own chance to bootstrap a chat
-// session with allow_draft — App.vue's own boot-time loadMessages() (the
-// main app, always allowDraft=false) may well have already failed
-// silently for a project that's never been published (see chatStore.js's
-// loadMessages/handleReset own allowDraft docstring), leaving
-// currentSessionId null; this is what lets this view's own embedded chat
-// still work then, without the main app's live chat ever gaining the
-// same ability. A no-op once a session already exists (e.g. a published
-// project's own already-successful main-app bootstrap) — ensureSession
-// itself already just touches/returns whichever one that is.
+// session against the draft — App.vue's own boot-time loadMessages() (the
+// main app, always a real published-revision session) may well have
+// already failed silently for a project that's never been published (see
+// chatStore.js's loadMessages/handleReset own testProjectName docstring),
+// leaving currentSessionId null; this is what lets this view's own
+// embedded chat still work then, without the main app's live chat ever
+// gaining the same ability. A no-op once a session already exists (e.g. a
+// published project's own already-successful main-app bootstrap) —
+// ensureSession itself already just touches/returns whichever one that is.
 async function ensureDraftChatSession() {
   if (currentSessionId.value != null) return
-  await loadMessages(true)
+  await loadMessages(props.projectName)
 }
 
 function setMode(next) {
@@ -1504,11 +1504,11 @@ onBeforeUnmount(() => {
                 Dev mode: freeze automatic state transitions
               </label>
               <div class="edit-project-chat-toolbar-actions">
-                <button class="reset-btn" @click="handleReset(true)">Reset</button>
+                <button class="reset-btn" @click="handleReset(projectName)">Reset</button>
                 <ModelMenu />
               </div>
             </div>
-            <ChatWindow allow-import allow-draft>
+            <ChatWindow allow-import :project-name="projectName">
               <template #timeline>
                 <ChatTimeline
                   :timeline="timeline"
