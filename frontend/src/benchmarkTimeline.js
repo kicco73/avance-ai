@@ -58,7 +58,19 @@ export function actualStateAtOrBefore(signalsLog, sessionStartState, timestamp) 
 // actually in effect at that point — same value on both sides, same as
 // a self-loop reads today, so transitionAnnotationStatus's own
 // expected_state/new_state comparison still means the right thing.
-export function resolveTransitionRow(row, signalsLog, sessionStartState) {
+export function resolveTransitionRow(row, signalsLog, sessionStartState, { imported = false } = {}) {
+  // An imported session never has a real avance-computed new_state at all
+  // (see TrackingService._materialize_imported_session_row's own
+  // save_transition(None, None, None, ...) — old_state/action/new_state
+  // are always null there): actualStateAtOrBefore would just keep
+  // returning sessionStartState (itself null for an import — see
+  // session_import.py's own create_chat_session(..., start_state=None))
+  // for every row, so there's nothing genuine to resolve against. The
+  // row's own annotated expected_state is the only real state anyone
+  // ever attached here, so it stands in for new_state directly — see
+  // transitionAnnotationStatus's own imported branch, which relies on
+  // this to render the annotated state's name instead of a blank badge.
+  if (imported) return { ...row, old_state: null, new_state: row.expected_state }
   if (row.new_state != null && row.new_state !== row.old_state) return row
   const actualState = actualStateAtOrBefore(signalsLog, sessionStartState, row.timestamp)
   return { ...row, old_state: actualState, new_state: actualState }
@@ -68,9 +80,16 @@ export function resolveTransitionRow(row, signalsLog, sessionStartState) {
 // Signals.expected_state — lives directly on the transition's own row
 // now, no message lookup needed) agrees with what actually happened —
 // null when unannotated (the timeline shows no verdict either way, same
-// as the Inspector's own States tab).
-export function transitionAnnotationStatus(transition) {
+// as the Inspector's own States tab). An imported session has no real
+// avance-computed state to compare against at all (see
+// resolveTransitionRow's own imported branch) — "correct"/"incorrect"
+// would be meaningless there (an expert's own annotation compared
+// against itself always "matches"), so this reports the neutral
+// 'labelled' verdict instead, whenever something has actually been
+// annotated.
+export function transitionAnnotationStatus(transition, { imported = false } = {}) {
   if (transition.expected_state == null) return null
+  if (imported) return 'labelled'
   return transition.expected_state === transition.new_state ? 'correct' : 'incorrect'
 }
 
@@ -88,6 +107,23 @@ export function effectiveTimestamp(entry, rawMessages) {
   const messageId = entry.transition.message_id
   const linkedMessage = messageId != null ? rawMessages.find((m) => m.id === messageId) : null
   return linkedMessage ? linkedMessage.timestamp : entry.transition.timestamp
+}
+
+// buildTimeline's own sort key: effectiveTimestamp's real ISO string
+// whenever there is one, or (an imported session — see session_import.
+// py's own save_message(..., timestamp=None), which leaves every message
+// and every transition linked to one with no real timestamp at all) a
+// zero-padded, lexicographically-sortable stand-in built from the linked
+// message's own id instead — get_messages' own id order is already the
+// correct chronological order for any session, native or imported (see
+// db.py's own comment on why). A session's messages are either all real
+// or all null, never mixed, so a fallback key here is never compared
+// against a real timestamp string from the very same sort.
+function effectiveOrderKey(entry, rawMessages) {
+  const timestamp = effectiveTimestamp(entry, rawMessages)
+  if (timestamp != null) return timestamp
+  const messageId = entry.kind === 'message' ? entry.message.id : entry.transition.message_id
+  return `#${String(messageId).padStart(12, '0')}`
 }
 
 // Only the literal first session ever opened for a project gets a real
@@ -136,7 +172,7 @@ export function syntheticSessionStartEntry(signalsLog, rawMessages, sessionStart
 // "Label sessions" review (unannotated ones stay excluded there, by
 // omitting this flag — self-loops the model already didn't get flagged
 // on aren't worth the clutter for that view's own purpose).
-export function buildTimeline(rawMessages, signalsLog, sessionStartState, { includeSelfLoops = false } = {}) {
+export function buildTimeline(rawMessages, signalsLog, sessionStartState, { includeSelfLoops = false, imported = false } = {}) {
   const messageEntries = rawMessages.map((m) => ({ kind: 'message', timestamp: m.timestamp, message: m }))
   const transitionEntries = signalsLog
     .filter((s) => {
@@ -145,19 +181,19 @@ export function buildTimeline(rawMessages, signalsLog, sessionStartState, { incl
       return !isSelfLoop || includeSelfLoops || s.expected_state != null
     })
     .map((s) => {
-      const transition = resolveTransitionRow(s, signalsLog, sessionStartState)
+      const transition = resolveTransitionRow(s, signalsLog, sessionStartState, { imported })
       return {
         kind: 'transition',
         timestamp: s.timestamp,
         transition,
-        annotationStatus: transitionAnnotationStatus(transition)
+        annotationStatus: transitionAnnotationStatus(transition, { imported })
       }
     })
   const synthetic = syntheticSessionStartEntry(signalsLog, rawMessages, sessionStartState)
   if (synthetic) transitionEntries.push(synthetic)
   return [...messageEntries, ...transitionEntries].sort((a, b) => {
-    const ta = effectiveTimestamp(a, rawMessages)
-    const tb = effectiveTimestamp(b, rawMessages)
+    const ta = effectiveOrderKey(a, rawMessages)
+    const tb = effectiveOrderKey(b, rawMessages)
     if (ta !== tb) return ta.localeCompare(tb)
     // The same effective moment only happens when a transition is tied to
     // its own linked message. For every ordinary transition that message

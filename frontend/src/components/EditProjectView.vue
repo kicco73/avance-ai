@@ -544,9 +544,6 @@ async function restartAndResend(message) {
 // in the editor — see jumpToDefinition/applyPendingCursorTarget. Cleared
 // once applied, or if the user cancels a pending file-switch dialog.
 const pendingCursorTarget = ref(null)
-// Whether the pending jump should stay silent — see jumpToDefinition's
-// own `silent` option.
-const pendingCursorSilent = ref(false)
 
 // Single "Edit | Test" segmented control, replacing what used to be two
 // independent Edit/Chat toggles (both could be open together, split
@@ -617,13 +614,15 @@ async function loadFiles() {
 // actually finished loading its own code buffer. Best-effort: a target
 // that findStateLine/findActionLine/findSignalLine can't locate (e.g.
 // hand-edited YAML with unusual indentation) just leaves the cursor
-// where it was.
+// where it was. IndexYmlEditorView's own jumpToLine already never
+// switches the Graph/Code segment on this call's behalf (see its own
+// docstring) — only moves the cursor while "code" is already showing —
+// so there's nothing left for this to decide silent/non-silent about.
 function applyPendingCursorTarget() {
   if (!pendingCursorTarget.value) return
   const text = indexYmlEditorRef.value?.content
   if (!text) return
   const target = pendingCursorTarget.value
-  const silent = pendingCursorSilent.value
   pendingCursorTarget.value = null
   const lines = text.split('\n')
   let lineIndex = null
@@ -633,8 +632,7 @@ function applyPendingCursorTarget() {
   } else if (target.kind === 'signal') lineIndex = findSignalLine(lines, target.signalName)
   else if (target.kind === 'attachment') lineIndex = findAttachmentLine(lines, target.stateKey, target.fileName)
   if (lineIndex === null) return
-  if (silent) indexYmlEditorRef.value?.jumpToLineSilently(lineIndex)
-  else indexYmlEditorRef.value?.jumpToLine(lineIndex)
+  indexYmlEditorRef.value?.jumpToLine(lineIndex)
 }
 
 // Entry point for the graph's node/edge taps, the Signals tab's rows, and
@@ -645,18 +643,21 @@ function applyPendingCursorTarget() {
 // content before looking up a line in it (its own CodeEditor loads
 // asynchronously on mount, unlike the old single shared editor this
 // replaced, which was always already loaded whenever index.yml was
-// already the open file).
+// already the open file). Never touches the Graph/Code segment itself —
+// see applyPendingCursorTarget/IndexYmlEditorView's own jumpToLine, which
+// only ever moves the cursor while "code" is already the segment
+// showing, regardless of caller: that choice is the user's own, never
+// something a click elsewhere should override on its behalf.
 //
-// `silent`: a plain row selection in the Inspector's own State/Actions/
-// Signals tabs shouldn't fight the Graph/Code segment the user is
-// already looking at — this only ever moves the cursor within an
-// already-visible Code segment, does nothing at all if index.yml isn't
-// even the open file, and never switches segment or file to make itself
-// visible. A direct Graph tap, or an explicit "show me its definition"
-// action (see handleJumpToAttachment), still forces both (the default).
+// `silent`: whether this may switch the open *file* to index.yml on its
+// own — a plain row selection in the Inspector's own State/Actions/
+// Signals tabs shouldn't yank the user out of whatever file/attachment
+// they're actually looking at just to move a cursor they can't even see;
+// this does nothing at all there instead. A direct Graph tap, or an
+// explicit "show me its definition" action, still forces the file switch
+// (the default) — locating the definition is the whole point of the click.
 async function jumpToDefinition(target, { silent = false } = {}) {
   pendingCursorTarget.value = target
-  pendingCursorSilent.value = silent
   if (currentFileName.value !== 'index.yml') {
     if (silent) {
       pendingCursorTarget.value = null

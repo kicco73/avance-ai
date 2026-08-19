@@ -56,22 +56,14 @@ function stateElementFor(stateKey) { return graphRef.value?.stateElementFor(stat
 function actionsForState(stateKey) { return graphRef.value?.actionsForState(stateKey) ?? [] }
 
 // The caller's own entry point for a Graph click / a Signals-tab-style
-// row click elsewhere in the app (see EditProjectView.vue's own
-// jumpToDefinition) — switches to "code" so the cursor move is actually
-// visible, same as clicking node/edge already does inside InspectorGraph
-// itself (see its own emit('jump-to-definition', ...), forwarded
-// straight through below without this view acting on it directly).
+// row click / an expanded detail's own definition jump elsewhere in the
+// app (see EditProjectView.vue's own jumpToDefinition) — moves the
+// cursor only while "code" is already the segment showing, and never
+// switches it there itself: the Graph/Code segment is the user's own
+// choice (see the segment ref below), never something a click elsewhere
+// should override on its behalf. A target the code buffer can't be
+// scrolled to yet (segment still "graph") simply has nothing to do here.
 function jumpToLine(lineIndex) {
-  segment.value = 'code'
-  codeEditorRef.value?.jumpToLine(lineIndex)
-}
-
-// The Inspector's own State/Actions/Signals row selections use this
-// instead — never switches segment (both stay mounted either way, see
-// this component's own docstring, but forcing "code" on every row click
-// fought the user's own Graph/Code choice) and only moves the cursor at
-// all while "code" is already the one showing.
-function jumpToLineSilently(lineIndex) {
   if (segment.value !== 'code') return
   codeEditorRef.value?.jumpToLine(lineIndex)
 }
@@ -97,7 +89,7 @@ function undo() { return codeEditorRef.value?.undo() }
 function redo() { return codeEditorRef.value?.redo() }
 
 defineExpose({
-  loadGraph, resize, fit, refresh, reloadCode, jumpToLine, jumpToLineSilently, stateElementFor, actionsForState,
+  loadGraph, resize, fit, refresh, reloadCode, jumpToLine, stateElementFor, actionsForState,
   content, isDirty, saving, save, discard, undo, redo
 })
 </script>

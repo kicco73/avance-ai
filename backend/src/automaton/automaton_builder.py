@@ -1,7 +1,8 @@
 from automaton.automaton import (
-    Action, MemoryArchive, Automaton, RESERVED_NAMESPACES, Signal, SourceDict, State,
+    Action, MemoryArchive, Automaton, Signal, SourceDict, State,
     trigger_bare_names, trigger_namespace_refs,
 )
+from automaton.identifier_registry import build_registry
 from typing import Any
 from metrics.metrics_framework import metric_names
 
@@ -19,24 +20,6 @@ EXTENSION_TO_MEDIA_TYPE = {
 }
 
 VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
-
-# Every zero-arg method the `system`/`session` proxies expose to a
-# trigger/env expression (called as `system.today()`, `session.
-# number_of_user_sessions()`, ...) — see tracking.system_facts.
-# SystemFacts/tracking.session_facts.SessionFacts, the classes that
-# actually implement them. Kept here, independent of those two (rather
-# than introspected off them), for the same reason the old
-# ENV_COMPUTED_KEYS constant this replaces lived here: automaton/ stays
-# free of any dependency on tracking/ (tracking/ already depends on
-# automaton/, never the other way around) — the two must be kept in
-# sync by hand.
-SYSTEM_ATTRS = frozenset({"today", "time"})
-SESSION_ATTRS = frozenset({
-    "current_session_duration_in_minutes",
-    "last_user_session_datetime",
-    "number_of_user_sessions",
-    "state_duration_in_minutes",
-})
 
 class AutomatonBuilder(object):
     """Builds an Automaton from a project's index.yml: parses the YAML,
@@ -173,26 +156,20 @@ class AutomatonBuilder(object):
         )
 
     @staticmethod
-    def _validate_namespaced_expression(
-        expression: str, context: str, valid_signal_names: set[str], valid_env_attrs: set[str]
-    ) -> None:
+    def _validate_namespaced_expression(expression: str, context: str, registry: dict[str, dict[str, str]]) -> None:
         """Syntax + per-namespace identifier validation shared by both
         `trigger:` and an action's own `env:` expressions (see automaton.
         automaton's RESERVED_NAMESPACES/trigger_namespace_refs/
         trigger_bare_names) — `context` is just this expression's own
-        description, for the error message. `env.*` is validated here
-        too, unlike before this refactor: every one of its valid names
-        (`valid_env_attrs`) is now known project-wide at build time —
-        every action's own declared `env:` key, collected across the
-        whole project before this ever runs (see build()) — so there's
-        no longer a runtime-only name it can't see. (That used to be
-        true only because an action's own env: could also reference
-        tracking.env.Env's own free-form, genuinely-runtime-only stored()
-        keys; those are no longer part of the `env` namespace at all —
-        see that module's own docstring.) Any bare (unnamespaced)
-        identifier left over must be a core metric (see metrics_
-        framework.metric_names) — anything else, namespaced or not, is
-        undefined."""
+        description, for the error message. `registry` (see automaton.
+        identifier_registry.build_registry) is the single source of every
+        valid identifier per namespace — including `env.*`, whose valid
+        names are only known project-wide at build time: every action's
+        own declared `env:` key, collected across the whole project
+        before this ever runs (see build()), so there's no longer a
+        runtime-only name it can't see. Any bare (unnamespaced) identifier
+        left over must be a core metric (see metrics_framework.
+        metric_names) — anything else, namespaced or not, is undefined."""
         try:
             namespace_refs = trigger_namespace_refs(expression)
             bare_names = trigger_bare_names(expression)
@@ -200,24 +177,21 @@ class AutomatonBuilder(object):
             raise ValueError(f"{context} ('{expression}') is not a valid expression: {exc}") from exc
 
         unknown = set()
-        unknown |= {f"signal.{n}" for n in namespace_refs.get("signal", set()) - valid_signal_names}
-        unknown |= {f"env.{n}" for n in namespace_refs.get("env", set()) - valid_env_attrs}
-        unknown |= {f"system.{n}" for n in namespace_refs.get("system", set()) - SYSTEM_ATTRS}
-        unknown |= {f"session.{n}" for n in namespace_refs.get("session", set()) - SESSION_ATTRS}
+        for namespace, refs in namespace_refs.items():
+            valid = registry.get(namespace, {}).keys()
+            unknown |= {f"{namespace}.{n}" for n in refs - valid}
         unknown |= bare_names - metric_names()
         if unknown:
             raise ValueError(f"{context} references undefined name(s): {', '.join(sorted(unknown))}")
 
     def _actions_sanity_check(
-        self, key: str, state: State, declared_states: set[str], valid_signal_names: set[str], valid_env_attrs: set[str]
+        self, key: str, state: State, declared_states: set[str], registry: dict[str, dict[str, str]]
     ):
-        """`valid_signal_names`: this project's own declared signals —
-        every `signal.<name>` reference must be one. `valid_env_attrs`:
-        every action's own declared `env:` key across the *whole*
-        project — every `env.<name>` reference must be one (see
-        _validate_namespaced_expression's own docstring). `system.*`/
-        `session.*` are validated against the two fixed proxy method
-        sets (SYSTEM_ATTRS/SESSION_ATTRS)."""
+        """`registry` (see automaton.identifier_registry.build_registry):
+        every valid identifier for this project, one set per namespace —
+        `signal.*`/`env.*` project-specific, `system.*`/`session.*`/
+        `session.metric.*`/`metric.*` the same fixed sets for every
+        project (see that module's own docstring)."""
         for action in state.actions:
             if action.target not in declared_states:
                 raise ValueError(
@@ -226,14 +200,12 @@ class AutomatonBuilder(object):
                 )
             if action.trigger:
                 self._validate_namespaced_expression(
-                    action.trigger, f"State {key}, action '{action.name}': trigger",
-                    valid_signal_names, valid_env_attrs,
+                    action.trigger, f"State {key}, action '{action.name}': trigger", registry,
                 )
             if action.env:
                 for env_key, expression in action.env.items():
                     self._validate_namespaced_expression(
-                        expression, f"State {key}, action '{action.name}': env expression for '{env_key}'",
-                        valid_signal_names, valid_env_attrs,
+                        expression, f"State {key}, action '{action.name}': env expression for '{env_key}'", registry,
                     )
 
     def _build_init_action(self, raw: dict) -> Action:
@@ -282,7 +254,6 @@ class AutomatonBuilder(object):
                 "Signal name(s) reserved for core metrics (see metrics_framework) cannot be "
                 f"reused as signal names: {', '.join(sorted(reserved_names))}"
             )
-        valid_signal_names = set(signals.keys())
 
         raw_states = raw["states"]
         if not isinstance(raw_states, dict):
@@ -323,20 +294,15 @@ class AutomatonBuilder(object):
             state_keys_by_ui_label[states[key].ui_label] = key
 
         # Pass 2: every action's own env: keys, across every state
-        # (including the synthetic "" state's own init_action) — the
-        # `env` namespace's own valid-attrs set (see EvaluationScope
-        # Builder: `env` is populated from every action's own env:
-        # output, project-wide, never scoped to one state/action).
-        valid_env_attrs = {
-            env_key
-            for state in states.values()
-            for action in state.actions
-            if action.env
-            for env_key in action.env
-        }
+        # (including the synthetic "" state's own init_action), plus
+        # every declared signal — the project's own identifier registry
+        # (see automaton.identifier_registry.build_registry), the single
+        # source _actions_sanity_check validates every trigger/env:
+        # expression's own namespace references against below.
+        registry = build_registry(list(signals.values()), states)
         for key, state in states.items():
             context_key = init_action.name if key == "" else key
-            self._actions_sanity_check(context_key, state, set(raw_states.keys()), valid_signal_names, valid_env_attrs)
+            self._actions_sanity_check(context_key, state, set(raw_states.keys()), registry)
 
         general_attachments = self._extract_required_archives(raw.get('attachments', []), all_archives, for_field="global")
         autotracking_on_ai_message = raw.get("signal-tracking-on-ai-message", False)

@@ -15,6 +15,7 @@ from typing import Awaitable, Callable
 from automaton.automaton import Action, ActionPayload, Automaton, SignalPayload, State, StatePayload
 from automaton.automaton_builder import AutomatonBuilder, EXTENSION_TO_MEDIA_TYPE
 from automaton.automaton_yaml_editor import AutomatonYamlEditor, InitActionTargetError
+from automaton.identifier_registry import build_registry
 from session import Session
 from db import Db
 
@@ -325,6 +326,15 @@ class ProjectService(object):
             }
             for signal in automaton.signals
         ]
+
+    def get_active_identifier_registry(self) -> dict[str, dict[str, str]]:
+        """Every identifier the active project's own trigger/`env:`
+        expressions can reference, one dict per namespace (see automaton.
+        identifier_registry.build_registry) — for GET /api/chat/
+        identifiers, the "Edit project" view's own reference for what's
+        actually usable in a trigger/env: field."""
+        automaton, _ = self.get_active_automaton_and_state()
+        return build_registry(automaton.signals, automaton.states)
 
     def get_project_graph(self, project_name: str) -> dict:
         """The project's state machine as nodes (states) and edges

@@ -1,5 +1,5 @@
 """A trigger may reference any of SystemFacts'/SessionFacts' own methods
-(see automaton_builder.SYSTEM_ATTRS/SESSION_ATTRS) as `system.<name>()`/
+(see automaton.identifier_registry.SYSTEM/SESSION) as `system.<name>()`/
 `session.<name>()`, without failing build-time validation, the same way
 `signal.<name>` and a core metric name already do — but not an
 arbitrary free-form [env] key (see tracking.env.Env's own stored()),
@@ -13,7 +13,8 @@ from __future__ import annotations
 
 import pytest
 
-from automaton.automaton_builder import SESSION_ATTRS, SYSTEM_ATTRS, AutomatonBuilder
+from automaton.automaton_builder import AutomatonBuilder
+from automaton.identifier_registry import SESSION, SYSTEM
 
 pytestmark = pytest.mark.contract
 
@@ -35,14 +36,14 @@ states:
 """
 
 
-@pytest.mark.parametrize("attr", sorted(SYSTEM_ATTRS))
+@pytest.mark.parametrize("attr", sorted(SYSTEM))
 def test_a_trigger_may_reference_any_system_attr(attr):
     content = _project(f"system.{attr}() != None")
     automaton = AutomatonBuilder().build({"index.yml": content})
     assert automaton.states["a"].actions[0].trigger == f"system.{attr}() != None"
 
 
-@pytest.mark.parametrize("attr", sorted(SESSION_ATTRS))
+@pytest.mark.parametrize("attr", sorted(SESSION))
 def test_a_trigger_may_reference_any_session_attr(attr):
     content = _project(f"session.{attr}() != None")
     automaton = AutomatonBuilder().build({"index.yml": content})

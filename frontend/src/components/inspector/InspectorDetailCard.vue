@@ -87,6 +87,7 @@ const editUiLabel = ref('')
 const editUiDescription = ref('')
 const editContextualPrompt = ref('')
 const editActionPrompt = ref('')
+const editTrigger = ref('')
 const editTarget = ref('')
 
 const elementIdentity = computed(() => {
@@ -104,6 +105,7 @@ function resetEditBuffers() {
   editUiDescription.value = d.uiDescription ?? ''
   editContextualPrompt.value = d.contextualPrompt ?? ''
   editActionPrompt.value = d.actionPrompt ?? ''
+  editTrigger.value = d.trigger ?? ''
   editTarget.value = d.target ?? ''
 }
 
@@ -134,6 +136,10 @@ function commitContextualPrompt() {
 
 function commitActionPrompt() {
   commitTextField('action-prompt', editActionPrompt.value, props.selectedElement?.data.actionPrompt ?? '')
+}
+
+function commitTrigger() {
+  commitTextField('trigger', editTrigger.value, props.selectedElement?.data.trigger ?? '')
 }
 
 function commitTarget() {
@@ -341,6 +347,26 @@ function selectAttachment(fileName) {
               @click.stop
               @blur="commitUiDescription"
             ></textarea>
+            <template v-if="!selectedElement.data.isInitEdge">
+              <label class="inspector-detail-form-label">Action prompt</label>
+              <textarea
+                v-model="editActionPrompt"
+                v-autosize
+                class="inspector-detail-textarea"
+                rows="2"
+                @click.stop
+                @blur="commitActionPrompt"
+              ></textarea>
+              <label class="inspector-detail-form-label">Trigger</label>
+              <textarea
+                v-model="editTrigger"
+                v-autosize
+                class="inspector-detail-textarea"
+                rows="2"
+                @click.stop
+                @blur="commitTrigger"
+              ></textarea>
+            </template>
             <p class="inspector-detail-field">
               <template v-if="!selectedElement.data.isInitEdge"><strong>{{ stateLabelFor(selectedElement.data.source) }}</strong> → </template>
               <select
@@ -352,18 +378,6 @@ function selectAttachment(fileName) {
                 <option v-for="state in availableStates" :key="state.key" :value="state.key">{{ state.uiLabel }}</option>
               </select>
             </p>
-            <p v-if="selectedElement.data.trigger" class="inspector-detail-field"><strong>Trigger:</strong><code class="inspector-detail-code">{{ selectedElement.data.trigger }}</code></p>
-            <template v-if="!selectedElement.data.isInitEdge">
-              <label class="inspector-detail-form-label">Action prompt</label>
-              <textarea
-                v-model="editActionPrompt"
-                v-autosize
-                class="inspector-detail-textarea"
-                rows="2"
-                @click.stop
-                @blur="commitActionPrompt"
-              ></textarea>
-            </template>
           </div>
           <div v-else key="readonly" class="inspector-detail-readonly">
             <p v-if="selectedElement.data.uiDescription" class="inspector-detail-ui_description">{{ selectedElement.data.uiDescription }}</p>

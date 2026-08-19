@@ -53,13 +53,22 @@ const inspectorWidth = ref(360)
 const inspectorCollapsed = ref(false)
 // This view's own tab set — Performance instead of Env (see Inspector.
 // vue's own slot-based contract; EditProjectView.vue passes a different
-// set for its own live chat).
-const inspectorTabs = [
-  { id: 'states', label: 'States' },
-  { id: 'signals', label: 'Signals' },
-  { id: 'metrics', label: 'Metrics' },
-  { id: 'performance', label: 'Performance' }
-]
+// set for its own live chat). An imported session (see
+// currentSessionIsImported below) has no real avance-computed metrics
+// history of its own to show at all — Metrics/Performance both read off
+// live Tracking rows an import never produces (see MetricService/
+// BenchmarkCalculator) — so only States/Signals (annotation surfaces)
+// make sense there. Inspector.vue's own tabs watcher already falls back
+// to the first tab whenever the active one stops being valid, so
+// switching sessions never needs to reset inspectorActiveTab by hand.
+const inspectorTabs = computed(() => {
+  const base = [
+    { id: 'states', label: 'States' },
+    { id: 'signals', label: 'Signals' }
+  ]
+  if (currentSessionIsImported.value) return base
+  return [...base, { id: 'metrics', label: 'Metrics' }, { id: 'performance', label: 'Performance' }]
+})
 const inspectorActiveTab = ref('states')
 // The Sessions panel starts open — reviewing a specific session is the
 // point of this view, so the picker should always be immediately visible
@@ -201,7 +210,9 @@ watch(currentSessionId, loadTimeline)
 // for the actual logic (and its own regression tests) — every function
 // there is pure, taking rawMessages/signalsLog/sessionStartState
 // explicitly instead of closing over these refs.
-const timeline = computed(() => buildTimeline(rawMessages.value, signalsLog.value, sessionStartState.value))
+const timeline = computed(() =>
+  buildTimeline(rawMessages.value, signalsLog.value, sessionStartState.value, { imported: currentSessionIsImported.value })
+)
 
 // The point in time currently reflected by the Inspector — a message or a
 // transition clicked in the timeline (see selectMessage/selectTransition).
@@ -483,6 +494,7 @@ onBeforeUnmount(() => {
             :timeline="timeline"
             :signals-log="signalsLog"
             :selected="selected"
+            :imported="currentSessionIsImported"
             @select-message="selectMessage"
             @select-transition="selectTransition"
           />
@@ -491,7 +503,11 @@ onBeforeUnmount(() => {
 
       <div class="split-divider inspector-divider" @mousedown="startInspectorDrag"></div>
 
-      <div class="benchmark-inspector-panel" :style="{ '--inspector-width': inspectorWidth + 'px' }">
+      <div
+        class="benchmark-inspector-panel"
+        :class="{ 'benchmark-inspector-panel-collapsed': inspectorCollapsed }"
+        :style="inspectorCollapsed ? null : { '--inspector-width': inspectorWidth + 'px' }"
+      >
         <Inspector
           ref="inspectorRef"
           :tabs="inspectorTabs"
@@ -506,6 +522,7 @@ onBeforeUnmount(() => {
               :fired-action-edge="firedActionEdge"
               :annotatable="annotatableSignalsRow != null"
               :expected-state="expectedState"
+              :imported="currentSessionIsImported"
               @update-expected-state="onUpdateExpectedState"
             />
           </template>
@@ -517,6 +534,7 @@ onBeforeUnmount(() => {
               :annotatable="annotatableExpectedSignals"
               :expected-values="expectedValues"
               :state-key="highlightedStateKey"
+              :imported="currentSessionIsImported"
               @update-expected-signals="onUpdateExpectedSignals"
             />
           </template>
@@ -714,5 +732,14 @@ onBeforeUnmount(() => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+/* Collapsed (see Inspector.vue's own always-visible header toggle) —
+   without this, width stayed pinned to --inspector-width regardless (the
+   bug: an empty docked panel that never actually gave its own space back
+   to the timeline/sessions split next to it). Same slim-strip convention
+   EditProjectView.vue's own .inspector-panel-collapsed uses. */
+.benchmark-inspector-panel-collapsed {
+  width: 2.4rem !important;
 }
 </style>

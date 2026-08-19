@@ -22,7 +22,13 @@ const props = defineProps({
   // See EditProjectView.vue's own docstring on this — 'signal:<name>'
   // while one of `signals` is the entry a "+ Add signal" click just
   // created, null otherwise.
-  recentlyAddedKey: { type: String, default: null }
+  recentlyAddedKey: { type: String, default: null },
+  // Whether the session being annotated was imported (see ChatSession.
+  // source) — see InspectorGraph.vue's own imported prop docstring for
+  // why: the "expected value set" overlay reads as a neutral "labelled"
+  // green there instead of its usual magenta, matching ChatTimeline.vue/
+  // InspectorGraph.vue's own imported-session styling.
+  imported: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['jump-to-definition', 'select-attachment', 'update-expected-signals', 'set-field', 'add-signal', 'delete'])
@@ -286,11 +292,11 @@ onMounted(loadSignals)
           <div class="inspector-signal-bar-track">
             <div v-if="hasSignalValue(signalValues[entry.signal.name])" class="inspector-signal-bar-fill" :class="{ 'inspector-signal-bar-changed': recentlyChangedSignals.has(entry.signal.name) }" :style="{ width: signalValues[entry.signal.name].value + '%' }"></div>
             <div v-else class="inspector-signal-bar-fill inspector-signal-bar-na" :class="{ 'inspector-signal-bar-changed': recentlyChangedSignals.has(entry.signal.name) }"></div>
-            <div v-if="annotatable" class="inspector-signal-expected-fill" :class="{ 'inspector-signal-expected-fill-set': isExpectedValueSet(entry.signal.name) }" :style="{ width: displayedExpectedValue(entry.signal.name) + '%' }"></div>
-            <input v-if="annotatable" type="range" min="0" max="100" step="1" class="inspector-signal-slider" :class="{ 'inspector-signal-slider-set': isExpectedValueSet(entry.signal.name) }" :value="displayedExpectedValue(entry.signal.name)" :title="`Expected: ${expectedValues[entry.signal.name] ?? '—'}`" @click.stop @input="onExpectedSignalInput(entry.signal.name, $event.target.value)" @change="onExpectedSignalChange(entry.signal.name, $event.target.value)" />
+            <div v-if="annotatable" class="inspector-signal-expected-fill" :class="{ 'inspector-signal-expected-fill-set': isExpectedValueSet(entry.signal.name) && !imported, 'inspector-signal-expected-fill-labelled': isExpectedValueSet(entry.signal.name) && imported }" :style="{ width: displayedExpectedValue(entry.signal.name) + '%' }"></div>
+            <input v-if="annotatable" type="range" min="0" max="100" step="1" class="inspector-signal-slider" :class="{ 'inspector-signal-slider-set': isExpectedValueSet(entry.signal.name) && !imported, 'inspector-signal-slider-labelled': isExpectedValueSet(entry.signal.name) && imported }" :value="displayedExpectedValue(entry.signal.name)" :title="`Expected: ${expectedValues[entry.signal.name] ?? '—'}`" @click.stop @input="onExpectedSignalInput(entry.signal.name, $event.target.value)" @change="onExpectedSignalChange(entry.signal.name, $event.target.value)" />
           </div>
           <div v-if="annotatable && isExpectedValueSet(entry.signal.name)" class="inspector-signal-annotation-footer">
-            <span class="inspector-signal-expected-label">Expected: {{ draggingExpectedValues[entry.signal.name] ?? expectedValues[entry.signal.name] }}</span>
+            <span class="inspector-signal-expected-label" :class="{ 'inspector-signal-expected-label-labelled': imported }">Expected: {{ draggingExpectedValues[entry.signal.name] ?? expectedValues[entry.signal.name] }}</span>
             <button v-if="expectedValues[entry.signal.name] != null" type="button" class="inspector-annotation-clear-btn" title="Remove annotation" @click.stop="onClearExpectedSignal(entry.signal.name)">×</button>
           </div>
         </template>
@@ -330,6 +336,11 @@ onMounted(loadSignals)
 .inspector-signal-bar-na { width: 100%; background: repeating-linear-gradient(45deg, #ccc, #ccc 6px, #ddd 6px, #ddd 12px); }
 .inspector-signal-expected-fill { position: absolute; inset: 0; height: 100%; border-radius: 999px; background: rgba(153, 153, 153, 0.3); pointer-events: none; transition: width 0.1s ease; }
 .inspector-signal-expected-fill-set { background: rgba(173, 20, 87, 0.3); }
+/* An imported session (see the imported prop's own docstring) has no
+   avance-computed value to be "wrong" against — green "labelled" instead
+   of the usual magenta "set", same green InspectorGraph.vue/
+   ChatTimeline.vue use for their own imported-session styling. */
+.inspector-signal-expected-fill-labelled { background: rgba(46, 125, 50, 0.3); }
 .inspector-signal-slider { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; -webkit-appearance: none; appearance: none; background: transparent; }
 .inspector-signal-slider::-webkit-slider-runnable-track { background: transparent; height: 100%; }
 .inspector-signal-slider::-moz-range-track { background: transparent; height: 100%; }
@@ -337,8 +348,11 @@ onMounted(loadSignals)
 .inspector-signal-slider::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; background: #999; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4); cursor: grab; }
 .inspector-signal-slider-set::-webkit-slider-thumb { background: #ad1457; }
 .inspector-signal-slider-set::-moz-range-thumb { background: #ad1457; }
+.inspector-signal-slider-labelled::-webkit-slider-thumb { background: #2e7d32; }
+.inspector-signal-slider-labelled::-moz-range-thumb { background: #2e7d32; }
 .inspector-signal-annotation-footer { display: flex; align-items: center; gap: 0.3rem; margin-top: 0.3rem; }
 .inspector-signal-expected-label { font-size: 0.72rem; color: #ad1457; font-weight: 600; }
+.inspector-signal-expected-label-labelled { color: #2e7d32; }
 .inspector-annotation-clear-btn { flex-shrink: 0; width: 1.4rem; height: 1.4rem; line-height: 1; border: none; border-radius: 6px; background: none; color: #666; cursor: pointer; font-size: 1rem; }
 .inspector-annotation-clear-btn:hover { background: #eee; }
 @keyframes inspector-signal-bar-flash { 0% { box-shadow: 0 0 0 0 rgba(74, 111, 165, 0.7); filter: brightness(1.35); } 70% { box-shadow: 0 0 0 5px rgba(74, 111, 165, 0); } 100% { box-shadow: 0 0 0 0 rgba(74, 111, 165, 0); filter: brightness(1); } }

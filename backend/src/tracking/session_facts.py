@@ -9,6 +9,12 @@ is only ever computed — a real db query — if an expression actually
 references it. Moved verbatim out of tracking.env.Env, which used to
 compute these itself (see ENV_COMPUTED_KEYS, now gone) alongside its own
 unrelated stored/action_set responsibilities.
+
+`metric` (see the `metric` property below) is this class's one
+sub-namespace: `session.metric.<name>()` — the Analytics Core Metrics
+meaningful over just the current session's own window, as opposed to the
+`metric` namespace's own (see metrics.metric_service.MetricService.
+for_turn), which spans the user's whole cross-session history instead.
 """
 from __future__ import annotations
 
@@ -16,6 +22,8 @@ from datetime import datetime
 from typing import Callable
 
 from db import Db, _utc_iso
+from metrics.metric_namespace import SessionMetricNamespace
+from metrics.metrics_framework import AnalyticsCalculator
 
 GetUsername = Callable[[], str]
 GetActiveProjectName = Callable[[], str]
@@ -41,6 +49,7 @@ class SessionFacts(object):
         self._get_active_project_name = get_active_project_name
         self._replay_instant: datetime | None | object = _UNSET
         self._last_transition_instant: datetime | None | object = _UNSET
+        self._metric: SessionMetricNamespace | None = None
 
     def set_replay_instant(self, instant: datetime | None) -> None:
         self._replay_instant = instant
@@ -106,3 +115,23 @@ class SessionFacts(object):
         username = self._get_username()
         project_name = self._get_active_project_name()
         return len(self._db.list_chat_sessions(username, project_name, until=self._replay_bound()))
+
+    @property
+    def metric(self) -> SessionMetricNamespace:
+        """`session.metric` — see metrics.metric_namespace.
+        SessionMetricNamespace's own docstring for the laziness this
+        relies on: accessing this property itself does no DB work at
+        all, not even the current-session lookup below, which only runs
+        the first time an expression actually calls one of the returned
+        namespace's own methods."""
+        if self._metric is None:
+            self._metric = SessionMetricNamespace(self._build_session_metric_calculator)
+        return self._metric
+
+    def _build_session_metric_calculator(self) -> AnalyticsCalculator:
+        now = self._now()
+        username = self._get_username()
+        project_name = self._get_active_project_name()
+        session = self._db.get_latest_chat_session(username, project_name, until=self._replay_bound())
+        since = session["datetime_start"] if session is not None else None
+        return AnalyticsCalculator(self._db, username, project_name, since=since, until=now)

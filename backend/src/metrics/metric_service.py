@@ -20,6 +20,7 @@ from typing import Any, Callable, Protocol
 from automaton.automaton import Automaton
 from chat.session_manager import DEFAULT_OPEN_WINDOW_MINUTES
 from db import Db
+from metrics.metric_namespace import UserMetricNamespace
 from metrics.metrics_framework import (
     AnalyticsCalculator,
     BenchmarkCalculator,
@@ -29,6 +30,21 @@ from metrics.metrics_framework import (
     UserAnalyticsDataBuilder,
 )
 from metrics.metrics_framework import metric_names as _metric_names
+
+# Every default metric whose own scope declares "all_sessions_per_user"
+# but not "one_session" — the `metric` namespace's own membership (see
+# MetricService.for_turn/UserMetricNamespace). Excluding "one_session"
+# (rather than just checking "all_sessions_per_user" in scope) matters:
+# BaseMetric's own default scope is *every* MetricScope (see BaseMetric.
+# scope), so a plain "all_sessions_per_user" in scope check alone would
+# also match Engagement/StateStability/SignalStability — those belong to
+# `session.metric` instead (see tracking.session_facts.SessionFacts.metric),
+# never both.
+def _user_scoped_metrics() -> list[MetricCalculator]:
+    return [
+        metric for metric in AnalyticsCalculator.default_metrics()
+        if "all_sessions_per_user" in metric.scope and "one_session" not in metric.scope
+    ]
 
 GetUsername = Callable[[], str]
 GetActiveProjectName = Callable[[], str]
@@ -116,6 +132,22 @@ class MetricService(object):
         like a signal that was never estimated: a trigger referencing it
         simply evaluates False (Automaton._eval_trigger), never crashes."""
         return _values_dict(self._calculate())
+
+    def for_turn(self) -> UserMetricNamespace:
+        """The `metric` namespace's own value for one turn's evaluation
+        scope (see tracking.evaluation_scope.EvaluationScopeBuilder) —
+        cheap to call unconditionally every turn, same as SystemFacts/
+        SessionFacts: no AnalyticsCalculator is actually built (no DB
+        query) until an expression calls one of the returned namespace's
+        own methods, and once one does, the *same* calculator instance
+        (until=now, no since — the user's whole cross-session history)
+        backs every metric referenced off it for the rest of this turn.
+        Does not touch calculate_values/calculate_all above — those stay
+        exactly as they were for their own existing callers."""
+        return UserMetricNamespace(lambda: AnalyticsCalculator(
+            self._db, self._get_username(), self._get_active_project_name(),
+            metrics=_user_scoped_metrics(), until=datetime.utcnow(),
+        ))
 
     def merge_if_referenced(self, automaton: Automaton, state_key: str, names: dict[str, Any]) -> dict[str, Any]:
         """`names` (signal values headed for trigger evaluation — see

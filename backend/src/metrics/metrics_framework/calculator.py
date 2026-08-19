@@ -34,12 +34,17 @@ class AnalyticsCalculator(object):
         username: str,
         project_name: str,
         metrics: Iterable[MetricCalculator] | None = None,
+        since: datetime | None = None,
         until: datetime | None = None,
     ) -> None:
-        """`until` (naive UTC, matching the DB's own timestamp convention)
-        restricts the whole analytical dataset to what existed at or
-        before that point — see UserAnalyticsDataBuilder.build. Omitted,
-        this is the full, current history, exactly as before.
+        """`since`/`until` (naive UTC, matching the DB's own timestamp
+        convention) restrict the whole analytical dataset to what falls
+        within that window — see UserAnalyticsDataBuilder.build. Both
+        omitted, this is the full, current history, exactly as before;
+        `since` alone (or alongside `until`) is what lets a caller scope
+        this to a bounded window, e.g. tracking.session_facts.
+        SessionFacts scoping to just the current session's own
+        [start, now).
 
         The *default* metric set is filtered down to whatever's
         meaningful in a "one_session" context (see BaseMetric.scope) —
@@ -48,7 +53,7 @@ class AnalyticsCalculator(object):
         and trigger evaluation) only ever wants that. An explicitly
         passed `metrics` is used as-is, unfiltered — the caller's own
         explicit choice, not this calculator's to second-guess."""
-        self._data = UserAnalyticsDataBuilder(db, username, project_name).build(until=until)
+        self._data = UserAnalyticsDataBuilder(db, username, project_name).build(since=since, until=until)
         self._metrics = self._select_metrics(metrics)
 
     @classmethod

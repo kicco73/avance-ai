@@ -16,7 +16,9 @@ const props = defineProps({
   firedActionEdge: { type: Object, default: null },
   editableFiles: { type: Array, default: null },
   annotatable: { type: Boolean, default: false },
-  expectedState: { type: String, default: null }
+  expectedState: { type: String, default: null },
+  // See InspectorGraph.vue's own imported prop docstring.
+  imported: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['jump-to-definition', 'select-attachment', 'update-expected-state'])
@@ -57,6 +59,7 @@ defineExpose({ loadGraph, resize, fit, refresh })
       :fired-action-edge="firedActionEdge"
       :annotatable="annotatable"
       :expected-state="expectedState"
+      :imported="imported"
       @jump-to-definition="emit('jump-to-definition', $event)"
       @update-expected-state="emit('update-expected-state', $event)"
       @select="handleSelect"

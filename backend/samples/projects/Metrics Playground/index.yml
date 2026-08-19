@@ -1,17 +1,18 @@
 # Metrics Playground
 #
-# No narrative purpose beyond exercising metrics_framework's core metrics
-# that are actually usable as trigger conditions in a chat's own live
-# context — engagement, state_stability, signal_stability — plus an
-# ordinary signal ("mood") and a trigger that combines a signal with a
-# metric in the same expression. retention/activity_consistency are
-# deliberately absent: their own scope (see MetricCalculator.scope) is
-# {all_sessions_per_user, all_sessions}, never one_session, and a chat
-# turn only ever evaluates triggers in a one_session context (see
-# AnalyticsCalculator's own default-metric filtering) — so a trigger
-# referencing either would never see a defined value. See
-# backend/src/metrics_framework/README.md for what each metric measures
-# and how it's normalized (0..100).
+# No narrative purpose beyond exercising the `session.metric` namespace
+# (see tracking.session_facts.SessionFacts.metric) — engagement,
+# state_stability, signal_stability, the Analytics Core Metrics scoped to
+# just the current session — plus an ordinary signal ("mood") and a
+# trigger that combines a signal with a metric in the same expression.
+# retention/activity_consistency are deliberately absent here: their own
+# scope (see MetricCalculator.scope) is {all_sessions_per_user,
+# all_sessions}, never one_session, so `session.metric.retention()` (etc.)
+# would never see a defined value — they live under the top-level `metric`
+# namespace instead (see metrics.metric_service.MetricService.for_turn),
+# which spans the user's whole cross-session history rather than the
+# current session alone. See backend/src/metrics_framework/README.md for
+# what each metric measures and how it's normalized (0..100).
 #
 # "lobby"'s own warm_up fires almost immediately: even a freshly
 # bootstrapped session with zero messages already scores a few points of
@@ -68,7 +69,7 @@ states:
         ui-label: "Engagement metric crosses its threshold"
         ui-button: "Warm up"
         target: engaged
-        trigger: "engagement >= 4"
+        trigger: "session.metric.engagement() >= 4"
 
   engaged:
     ui-label: Engaged
@@ -93,7 +94,7 @@ states:
         ui-label: "Mood signal AND engagement metric both cross their thresholds"
         ui-button: "Notice combo"
         target: engaged
-        trigger: "signal.mood >= 40 and engagement >= 10"
+        trigger: "signal.mood >= 40 and session.metric.engagement() >= 10"
         action-prompt: |
           Briefly acknowledge to the user that the combined mood+engagement
           trigger just fired, then continue the conversation normally.
@@ -101,7 +102,7 @@ states:
         ui-label: "Engagement metric crosses its threshold"
         ui-button: "Notice engagement"
         target: engaged
-        trigger: "engagement >= 20"
+        trigger: "session.metric.engagement() >= 20"
         action-prompt: |
           Briefly acknowledge to the user that the engagement trigger just
           fired, then continue the conversation normally.
@@ -109,7 +110,7 @@ states:
         ui-label: "State stability metric stays above its threshold"
         ui-button: "Notice stability"
         target: engaged
-        trigger: "state_stability >= 80"
+        trigger: "session.metric.state_stability() >= 80"
         action-prompt: |
           Briefly acknowledge to the user that the state-stability trigger
           just fired, then continue the conversation normally.
@@ -117,7 +118,7 @@ states:
         ui-label: "Signal stability metric crosses its threshold"
         ui-button: "Notice signal stability"
         target: engaged
-        trigger: "signal_stability >= 1"
+        trigger: "session.metric.signal_stability() >= 1"
         action-prompt: |
           Briefly acknowledge to the user that the signal-stability
           trigger just fired, then continue the conversation normally.

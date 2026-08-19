@@ -126,19 +126,58 @@ class SignalPayload(TypedDict):
     attachments: dict[str, MemoryArchive]
     error: bool | None
 
-# The four reserved namespaces a trigger/env expression resolves
-# against (see tracking.evaluation_scope.EvaluationScopeBuilder) — every
-# `<namespace>.<attr>` access in an expression's own AST is one of
-# these. A core metric name (see metrics_framework.metric_names) stays a
-# bare, unnamespaced identifier — untouched by this set.
-RESERVED_NAMESPACES = ("signal", "env", "system", "session")
+# The reserved namespaces a trigger/env expression resolves against (see
+# tracking.evaluation_scope.EvaluationScopeBuilder) — every top-level
+# `<namespace>.<attr>` access in an expression's own AST is one of these.
+# A core metric name (see metrics_framework.metric_names) stays a bare,
+# unnamespaced identifier — untouched by this set.
+RESERVED_NAMESPACES = ("signal", "env", "system", "session", "metric")
+
+# Dotted sub-namespaces nested one level under a reserved namespace above
+# — today just `session.metric` (see tracking.session_facts.SessionFacts.
+# metric). Every entry here is matched as a *whole* path: `session.metric.
+# <attr>` is a reference into this sub-namespace, `session.<attr>` (with
+# no `.metric` in between) stays a reference into plain `session` — see
+# _namespace_path/_maximal_attribute_nodes below, which tell the two
+# apart by always matching an expression's longest attribute chain first.
+NESTED_NAMESPACES = (("session", "metric"),)
+
+_NAMESPACE_PATHS: tuple[tuple[str, ...], ...] = tuple((ns,) for ns in RESERVED_NAMESPACES) + NESTED_NAMESPACES
 
 
-def _namespace_attrs(tree: ast.AST, namespace: str) -> set[str]:
-    return {
-        node.attr for node in ast.walk(tree)
-        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == namespace
-    }
+def _maximal_attribute_nodes(tree: ast.AST) -> list[ast.Attribute]:
+    """Every ast.Attribute node in `tree` that isn't itself nested inside
+    a longer attribute chain — e.g. for `session.metric.engagement()`
+    this is only the outermost `....engagement` node, never the inner
+    `session.metric` one, so a dotted chain is only ever matched against
+    its full, longest namespace path (see _namespace_path_of), never
+    partially re-matched against a shorter one along the way."""
+    nested_value_ids = {id(node.value) for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
+    return [node for node in ast.walk(tree) if isinstance(node, ast.Attribute) and id(node) not in nested_value_ids]
+
+
+def _namespace_path_of(node: ast.Attribute) -> tuple[tuple[str, ...], str] | None:
+    """(namespace_path, leaf_attr) for `node` if its full dotted chain,
+    root to leaf, is exactly one of _NAMESPACE_PATHS plus one more
+    attribute (e.g. `session.metric.engagement` -> (("session",
+    "metric"), "engagement"), `signal.mood` -> (("signal",), "mood")) —
+    None if it isn't a namespace reference at all (some other/unrelated
+    attribute access)."""
+    attrs = [node.attr]
+    cur = node.value
+    while isinstance(cur, ast.Attribute):
+        attrs.append(cur.attr)
+        cur = cur.value
+    if not isinstance(cur, ast.Name):
+        return None
+    chain = (cur.id, *reversed(attrs))
+    path, leaf = chain[:-1], chain[-1]
+    return (path, leaf) if path in _NAMESPACE_PATHS else None
+
+
+def _namespace_attrs(tree: ast.AST, *namespace: str) -> set[str]:
+    refs = (_namespace_path_of(node) for node in _maximal_attribute_nodes(tree))
+    return {ref[1] for ref in refs if ref is not None and ref[0] == namespace}
 
 
 def trigger_signal_names(expression: str) -> set[str]:
@@ -155,11 +194,15 @@ def trigger_signal_names(expression: str) -> set[str]:
 
 
 def trigger_bare_names(expression: str) -> set[str]:
-    """Every identifier referenced *outside* one of the four reserved
+    """Every identifier referenced *outside* one of the reserved
     namespaces (see RESERVED_NAMESPACES) — what a core metric name, or a
-    leftover un-migrated bare signal reference, looks like. Used to
-    detect a metric reference (see Automaton.triggers_reference) and, at
-    build time, any name that isn't a recognized metric either (see
+    leftover un-migrated bare signal reference, looks like. A name that's
+    actually the root of a *nested* namespace (see NESTED_NAMESPACES,
+    e.g. `session` in `session.metric.engagement()`) is still excluded
+    here exactly like a plain one — this only ever needs the namespace's
+    own root identifier, never how deep the chain built on it goes. Used
+    to detect a metric reference (see Automaton.triggers_reference) and,
+    at build time, any name that isn't a recognized metric either (see
     automaton_builder.py's own validation)."""
     tree = ast.parse(expression, mode="eval")
     namespace_bases = {
@@ -170,16 +213,24 @@ def trigger_bare_names(expression: str) -> set[str]:
 
 
 def trigger_namespace_refs(expression: str) -> dict[str, set[str]]:
-    """{'signal': {...}, 'env': {...}, 'system': {...}, 'session': {...}}
-    — every reserved-namespace attribute reference in `expression`, one
-    entry per namespace actually used (a namespace nothing references is
-    simply absent, never an empty set). Used only by automaton_builder.
-    py's own build-time validation — nothing at runtime needs this
-    broken out by namespace, see trigger_signal_names/trigger_bare_names
-    above for the two that do."""
+    """{'signal': {...}, 'env': {...}, 'system': {...}, 'session': {...},
+    'session.metric': {...}, 'metric': {...}} — every namespace attribute
+    reference in `expression` (see _NAMESPACE_PATHS — every reserved
+    namespace plus any nested one), one entry per namespace actually
+    used (a namespace nothing references is simply absent, never an
+    empty set), keyed by its dotted path (e.g. "session.metric"). Used
+    only by automaton_builder.py's own build-time validation — nothing
+    at runtime needs this broken out by namespace, see
+    trigger_signal_names/trigger_bare_names above for the two that do."""
     tree = ast.parse(expression, mode="eval")
-    refs = {ns: _namespace_attrs(tree, ns) for ns in RESERVED_NAMESPACES}
-    return {ns: attrs for ns, attrs in refs.items() if attrs}
+    refs: dict[str, set[str]] = {}
+    for node in _maximal_attribute_nodes(tree):
+        ref = _namespace_path_of(node)
+        if ref is None:
+            continue
+        path, leaf = ref
+        refs.setdefault(".".join(path), set()).add(leaf)
+    return refs
 
 
 class Automaton(object):

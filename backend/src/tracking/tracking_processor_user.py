@@ -23,6 +23,24 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			)
 			if self.out.action:
 				self.out.state = self.user.automaton.get_state(self.out.action.target)
+				# An auto-triggered action's own action-prompt used to only
+				# ever fire for a *manually* clicked one (see ChatService.
+				# apply_manual_action/_generate_action_prompt_message, which
+				# runs it as its own dedicated turn) — silently dropped here
+				# otherwise, even though the field exists on every action the
+				# same way. self.extra_prompt is exactly the mechanism
+				# __build_turn_prompt_parts already folds into whatever
+				# reply gets generated next (see TrackingProcessor.process's
+				# own docstring) — setting it here, the moment the fired
+				# action is known, means the regeneration below (state
+				# actually changed — see _get_ai_reply) already reads it
+				# like any other. A fired *self-loop* still keeps its
+				# already-streamed optimistic-guess reply verbatim (no
+				# regeneration happens at all — see _get_ai_reply), so this
+				# has no effect there: folding an action-prompt into an
+				# already-completed stream isn't possible after the fact.
+				if self.out.action.action_prompt:
+					self.extra_prompt = self.out.action.action_prompt
 
 		elif key == 'env':
 			rv = self.metadata.env = self.metadata_processor.parse_raw_env(value)

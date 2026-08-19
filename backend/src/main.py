@@ -2,7 +2,9 @@
 only. Every endpoint lives on AvanceController (see controller.py)."""
 
 from __future__ import annotations
+import inspect
 import logging
+from contextlib import asynccontextmanager
 from http import HTTPStatus
 
 from fastapi import FastAPI, WebSocket
@@ -28,7 +30,7 @@ __version__ = "1.2.0"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
-logger.info(f"Booting avance headless server v{__version__}.")
+
 
 def _build_fallback_app(error: Exception) -> FastAPI:
     """Used only when essential startup wiring below fails: every request,
@@ -56,61 +58,89 @@ def _build_fallback_app(error: Exception) -> FastAPI:
     return fallback_app
 
 
-try:
+def create_app() -> FastAPI:
     config = AppConfig()
 
-    ai_service = AiService.from_config(config.ai_services)
-    talk_service = TalkService.from_config(config.talk_services) if config.talk_services is not None else None
-    listen_service = ListenService.from_config(config.listen_services) if config.listen_services is not None else None
-    db = Db(
-        config.database_url,
-        force_drop_and_create_when_incompatible=config.database_force_drop_and_create_when_incompatible,
-    )
-    project_service = ProjectService(db)
-    session_manager = ChatSessionManager(db, open_window_minutes=config.max_session_duration_in_minutes)
-    # A leaf service (see metrics/metric_service.py's own module
-    # docstring) — depends only on db, so it's built first and handed to
-    # whoever needs it, never the other way around.
-    metric_service = MetricService(
-        db,
-        get_username=lambda: Session().user,
-        get_active_project_name=lambda: project_service.get_active_project_name(),
-        get_max_session_duration_in_minutes=lambda: config.max_session_duration_in_minutes,
-    )
-    # Architecturally analogous to ai_service/chat_service/... above —
-    # instantiated once here, not built by ChatService for itself (see
-    # tracking/tracking_service.py's own module docstring). Both this and
-    # ChatService depend on ai_service (and metric_service) directly,
-    # never through one another.
-    tracking_service = TrackingService(db, ai_service, project_service, metric_service)
-    chat_service = ChatService(db, ai_service, project_service, session_manager, tracking_service, metric_service)
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        # --- STARTUP ---
+        logger.info(f"Booting avance headless server v{__version__}.")
+        
+        ai_service = AiService.from_config(config.ai_services)
+        talk_service = TalkService.from_config(config.talk_services) if config.talk_services is not None else None
+        listen_service = ListenService.from_config(config.listen_services) if config.listen_services is not None else None
+        
+        db = Db(
+            config.database_url,
+            force_drop_and_create_when_incompatible=config.database_force_drop_and_create_when_incompatible,
+        )
+        
+        project_service = ProjectService(db)
+        session_manager = ChatSessionManager(db, open_window_minutes=config.max_session_duration_in_minutes)
+        
+        # A leaf service (see metrics/metric_service.py's own module
+        # docstring) — depends only on db, so it's built first and handed to
+        # whoever needs it, never the other way around.
+        metric_service = MetricService(
+            db,
+            get_username=lambda: Session().user,
+            get_active_project_name=lambda: project_service.get_active_project_name(),
+            get_max_session_duration_in_minutes=lambda: config.max_session_duration_in_minutes,
+        )
+        
+        # Architecturally analogous to ai_service/chat_service/... above —
+        # instantiated once here, not built by ChatService for itself (see
+        # tracking/tracking_service.py's own module docstring). Both this and
+        # ChatService depend on ai_service (and metric_service) directly,
+        # never through one another.
+        tracking_service = TrackingService(db, ai_service, project_service, metric_service)
+        chat_service = ChatService(db, ai_service, project_service, session_manager, tracking_service, metric_service)
 
-    chat_ws_adapter = WsAdapter(chat_service) if config.chat_transport == "websocket" else None
+        chat_ws_adapter = WsAdapter(chat_service) if config.chat_transport == "websocket" else None
 
-    app = FastAPI(title="Avance State Engine")
+        controller = AvanceController(chat_service, project_service, talk_service, listen_service, db, tracking_service)
+        app.include_router(controller.router)
+
+        if chat_ws_adapter is not None:
+            adapter = chat_ws_adapter
+
+            @app.websocket("/ws/chat")
+            async def chat_ws(websocket: WebSocket) -> None:
+                await adapter.chat_loop(websocket)
+            
+        logger.info("Boot completed - server ready.")
+
+        # L'applicazione FastAPI rimane attiva qui durante la gestione delle richieste
+        yield
+
+        # --- SHUTDOWN / CLEANUP ---
+        logger.info("Shutting down - cleaning up resources...")
+        
+        for service in [db, talk_service, listen_service, ai_service]:
+            if service is not None and hasattr(service, "close") and callable(getattr(service, "close")):
+                close_fn = getattr(service, "close")
+                if inspect.iscoroutinefunction(close_fn):
+                    await close_fn()
+                else:
+                    close_fn()
+
+    app = FastAPI(title="Avance State Engine", lifespan=lifespan)
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"], # FIXME: restrict in production
+        allow_origins=["*"],  # FIXME: restrict in production
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
     register_error_handlers(app)
-    controller = AvanceController(chat_service, project_service, talk_service, listen_service, db, tracking_service)
-    app.include_router(controller.router)
+    
+    return app
 
-    if chat_ws_adapter is not None:
-        adapter = chat_ws_adapter
 
-        @app.websocket("/ws/chat")
-        async def chat_ws(websocket: WebSocket) -> None:
-            await adapter.chat_loop(websocket)
-        
-    logger.info("Boot completed - server ready.")
-
+try:
+    app = create_app()
 except Exception as exc:
     logger.exception("Backend failed to start — serving a fallback error app instead of crashing.")
     app = _build_fallback_app(exc)
-

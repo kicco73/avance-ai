@@ -127,17 +127,21 @@ class AvanceController(object):
 
     @get("/api/chat/env")
     def get_env(self, message_id: int | None = None):
-        """{"stored": ..., "action_set": ..., "computed": ...} — the
-        active user+project's current "environment" memory (see chat.
-        env.Env), split so the "Edit project" view's Inspector Env tab
-        knows which section each value belongs in ("AI"/"ACTION"/
-        "COMPUTED") and which are actually editable/deletable (only the
-        stored — "AI" — ones, see PUT/DELETE below; "ACTION" values are
-        only ever cleared as a whole, see DELETE /api/chat/action-env).
-        Live/current, or (`message_id` given) as of that exact message —
-        same point-in-time convention as GET /api/chat/metrics.
-        ChatServiceError (404 for an unknown/not-yours `message_id`) is
-        handled globally, see error_handlers.py."""
+        """{"stored": ..., "action_set": ...} — the active user+project's
+        current "environment" memory (see tracking.env.Env), split so the
+        "Edit project" view's Inspector Env tab knows which section each
+        value belongs in ("AI"/"ACTION") and which are actually
+        editable/deletable (only the stored — "AI" — ones, see PUT/DELETE
+        below; "ACTION" values are only ever cleared as a whole, see
+        DELETE /api/chat/action-env). No "computed" section anymore —
+        system/session/metric facts (see tracking.evaluation_scope.
+        EvaluationScopeBuilder) are evaluation-scope-only now, never
+        rendered in the Inspector (see GET /api/chat/identifiers instead,
+        for what's actually referenceable). Live/current, or
+        (`message_id` given) as of that exact message — same
+        point-in-time convention as GET /api/chat/metrics. ChatServiceError
+        (404 for an unknown/not-yours `message_id`) is handled globally,
+        see error_handlers.py."""
         return self.chat_service.get_env(message_id)
 
     @delete("/api/chat/env")
@@ -179,6 +183,19 @@ class AvanceController(object):
             return self.chat_service.delete_env_key(key)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @get("/api/chat/identifiers")
+    def get_identifiers(self):
+        """The active project's own identifier registry (see automaton.
+        identifier_registry.build_registry/ProjectService.
+        get_active_identifier_registry) — every identifier a trigger/
+        `env:` expression can reference, one {identifier: description}
+        dict per namespace (signal, env, system, session, session.metric,
+        metric)."""
+        try:
+            return self.project_service.get_active_identifier_registry()
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
 
     @get("/api/chat/metrics")
     def get_metrics(self, message_id: int | None = None):

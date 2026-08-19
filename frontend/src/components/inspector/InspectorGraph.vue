@@ -19,7 +19,14 @@ const props = defineProps({
   nextActionEdge: { type: Object, default: null },
   firedActionEdge: { type: Object, default: null },
   annotatable: { type: Boolean, default: false },
-  expectedState: { type: String, default: null }
+  expectedState: { type: String, default: null },
+  // Whether the session being annotated was imported (see ChatSession.
+  // source) — there's no real avance-computed state to compare
+  // expectedState against there (see benchmarkTimeline.js's own
+  // transitionAnnotationStatus/resolveTransitionRow, and ChatTimeline.
+  // vue's own analogous imported prop), so the select reads as a neutral
+  // "labelled" state instead of a correct/incorrect verdict.
+  imported: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['jump-to-definition', 'update-expected-state', 'select'])
@@ -128,7 +135,28 @@ function graphElements(nodes, edges) {
   ]
 }
 
+// The single choke point every selection path already funnels through —
+// a manual node/edge tap (handleNodeTap/handleEdgeTap), a background tap
+// to deselect, and syncSelectionToSelection's own programmatic follow
+// (test mode auto-tracking the live state/fired action) alike — so
+// applying the visual "selected" class here, rather than separately at
+// each call site, keeps every one of them consistent for free. Same
+// overlay mechanism as .current-state (see applyCurrentStateHighlight)
+// but its own class/color, so a node can show both at once without one
+// masking the other — e.g. the live current state, freshly tapped.
+function applySelectionHighlight(kind, data) {
+  if (!cyGraph) return
+  cyGraph.nodes().removeClass('selected-element')
+  cyGraph.edges().removeClass('selected-element')
+  if (kind === 'state') cyGraph.getElementById(data.id).addClass('selected-element')
+  else if (kind === 'action') {
+    cyGraph.edges().filter((e) => e.data('matchStateKey') === data.matchStateKey && e.data('actionName') === data.actionName)
+      .addClass('selected-element')
+  }
+}
+
 function selectGraphElement(kind, data) {
+  applySelectionHighlight(kind, data)
   emit('select', kind == null ? null : { kind, data })
 }
 
@@ -163,6 +191,13 @@ function renderGraph(nodes, edges) {
       { selector: 'node[?final]', style: { 'border-width': 4, 'border-color': '#c62828', 'background-color': '#fdecea' } },
       { selector: 'node[?isStart]', style: { 'border-color': '#2e7d32', 'background-color': '#eaf6ea' } },
       { selector: 'node.current-state', style: { 'overlay-color': '#f5a623', 'overlay-opacity': 0.35, 'overlay-padding': 6 } },
+      // Whatever's actually selected (see selectGraphElement/
+      // applySelectionHighlight) — its own border/background, distinct
+      // from current-state's overlay above, so both can show on the same
+      // node at once (the live current state, freshly tapped) without
+      // one masking the other.
+      { selector: 'node.selected-element', style: { 'border-color': '#2c4d7a', 'border-width': 4, 'background-color': '#dce6f5' } },
+      { selector: 'edge.selected-element', style: { 'line-color': '#2c4d7a', 'target-arrow-color': '#2c4d7a', width: 3 } },
       // The init_action pseudo-node itself is never seen — only the edge
       // leading out of it (styled below) is, reading as an arrow with no
       // visible source.
@@ -345,8 +380,9 @@ onBeforeUnmount(destroyGraph)
       <select
         class="inspector-annotation-select"
         :class="{
-          'inspector-annotation-select-correct': expectedState != null && expectedState === highlightedStateKey,
-          'inspector-annotation-select-incorrect': expectedState != null && expectedState !== highlightedStateKey
+          'inspector-annotation-select-labelled': imported && expectedState != null,
+          'inspector-annotation-select-correct': !imported && expectedState != null && expectedState === highlightedStateKey,
+          'inspector-annotation-select-incorrect': !imported && expectedState != null && expectedState !== highlightedStateKey
         }"
         :value="expectedState ?? UNLABELLED"
         @change="onExpectedStateChange($event.target.value)"
@@ -370,6 +406,11 @@ onBeforeUnmount(destroyGraph)
 /* An explicit choice that differs from it — same red as the timeline's
    own .benchmark-transition-row-incorrect. */
 .inspector-annotation-select-incorrect { border-color: #c62828; background: #fdecea; color: #333; }
+/* An imported session (see the imported prop's own docstring) has no
+   avance-computed state to compare against — same green as -correct
+   above, under its own class name so "labelled" and "verified correct"
+   stay distinct in the markup even though they read the same visually. */
+.inspector-annotation-select-labelled { border-color: #2e7d32; background: #e8f5e9; color: #333; }
 .inspector-annotation-option-unlabelled { color: #999; font-style: italic; }
 .inspector-annotation-help { position: relative; flex-shrink: 0; width: 1.2rem; height: 1.2rem; border-radius: 50%; border: 1px solid #999; color: #666; font-size: 0.7rem; display: flex; align-items: center; justify-content: center; cursor: help; }
 /* Teleported to <body> and positioned in viewport coordinates (see

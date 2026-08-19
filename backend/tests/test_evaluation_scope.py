@@ -48,7 +48,7 @@ def _automaton_with_trigger(trigger_expr: str) -> Automaton:
     )
 
 
-def test_scope_always_includes_all_four_namespaces(db):
+def test_scope_always_includes_every_namespace(db):
     db.ensure_project(PROJECT_NAME)
     db.publish_project(PROJECT_NAME)
     automaton = _automaton_with_trigger("signal.mood >= 1")
@@ -59,6 +59,29 @@ def test_scope_always_includes_all_four_namespaces(db):
     assert scope["env"] == {}
     assert scope["system"].today().count("-") == 2
     assert scope["session"].number_of_user_sessions() == 0
+    assert scope["session"].metric.engagement() is not None
+    assert scope["metric"].retention() is not None
+
+
+def test_session_metric_is_usable_in_a_trigger_end_to_end(db):
+    db.ensure_project(PROJECT_NAME)
+    db.publish_project(PROJECT_NAME)
+    automaton = _automaton_with_trigger("session.metric.state_stability() >= 50")
+
+    scope = _builder(db).build(automaton, "a", {})
+
+    # No transitions on record yet — state_stability starts at 100.
+    assert automaton.evaluate_triggers("a", scope) == "advance"
+
+
+def test_metric_namespace_is_usable_in_a_trigger_end_to_end(db):
+    db.ensure_project(PROJECT_NAME)
+    db.publish_project(PROJECT_NAME)
+    automaton = _automaton_with_trigger("metric.retention() >= 0")
+
+    scope = _builder(db).build(automaton, "a", {})
+
+    assert automaton.evaluate_triggers("a", scope) == "advance"
 
 
 def test_session_fact_is_usable_in_a_trigger_end_to_end(db):
