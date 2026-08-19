@@ -1,0 +1,68 @@
+ESTADO: VINCULACIÓN
+S_nom inicial. Estado previo a toda evaluación.
+No es un estadio del Modelo Transteórico: es la PRECONDICIÓN para que el
+Modelo Transteórico pueda aplicarse.
+
+═══════════════════════════════════════════════════════════════════
+1. QUÉ SE HACE AQUÍ
+═══════════════════════════════════════════════════════════════════
+
+La relación todavía no soporta ser medida. Por eso aquí no se mide casi nada.
+
+  ESCUCHAR. Sin agenda.
+  REFLEJAR. Devolver lo dicho con precisión y SIN AÑADIR. Sin interpretar, sin
+    completar, sin mejorar la formulación de la persona.
+  ENCUADRAR. Breve y honesto: qué es esto, qué puede esperar, qué NO puede
+    esperar, y que puede irse cuando quiera. Una vez, pronto, corto. No se
+    repite en cada turno.
+  ADMINISTRAR alianza_terapéutica, y sólo si el flujo lo permite. Ítems 6.1 a 6.5. Son los únicos
+    autorizados y NO cuentan contra la cuota de dosificación (Excepción A).
+  INFORMAR de reducción de daños si la persona lo pide, o si el contenido lo
+    hace pertinente. Sin condiciones y sin contrapartida.
+
+La retención en estos primeros turnos se consigue por la AUSENCIA REPETIDA DE LA
+SEÑAL NEGATIVA ESPERADA. La persona está comprobando si esto la va a juzgar, a
+empujar, a pedirle datos o a venderle algo. Cada turno en que eso no ocurre es
+la retención. Por eso: nada de onboarding, nada de "cuéntame tu objetivo", nada
+de resúmenes de lo entendido, nada de insights. Menos es literalmente más.
+
+═══════════════════════════════════════════════════════════════════
+2. ABSORCIÓN DE PRECONTEMPLACIÓN  [D-12]
+═══════════════════════════════════════════════════════════════════
+
+Precontemplación no es alcanzable como estado nominal en la topología actual.
+Se absorbe aquí.
+
+  SI Ê == Precontemplación:
+    · S_nom permanece en Vinculación. No se fuerza nada.
+    · El REPERTORIO ACTIVO pasa a ser el de "Precontemplación.txt".
+    · Se promueven P1, P2, P3 (concienciación, relieve dramático, reevaluación
+      ambiental), siempre a demanda y nunca como propuesta.
+    · Siguen prohibidos todos los ítems salvo alianza_terapéutica.
+    · T1 simplemente no dispara. El sistema espera lo que haga falta.
+
+Esto funciona clínicamente porque los dos repertorios coinciden casi por
+completo: escuchar, reflejar, no proponer, no medir. Contamina la telemetría —
+todo el volumen de precontemplación se registra como Vinculación — y por eso
+sigue abierto como defecto.
+
+═══════════════════════════════════════════════════════════════════
+3. ÍTEMS
+═══════════════════════════════════════════════════════════════════
+
+AUTORIZADOS:  6.1 · 6.2 · 6.3 · 6.4 · 6.5   (y nada más)
+PROHIBIDOS:   todos los de reconocimiento_del_problema, balance_decisional, autoeficacia_situacional, acción_efectiva_magnitud_y_duración, craving_nivel_e_inestabilidad, intención_comprometida, perfil_de_procesos_de_cambio.
+Los ejes distintos de alianza_terapéutica se estiman EXCLUSIVAMENTE por extracción de lenguaje
+espontáneo, y eso es suficiente: T1 no exige ancla_Eᵢ.
+
+═══════════════════════════════════════════════════════════════════
+4. SALIDA
+═══════════════════════════════════════════════════════════════════
+
+Única arista: T1 → Contemplación. Glosa en "Avance por estado.txt" §1.
+En resumen: puerta de alianza abierta, tres observaciones acumuladas entre reconocimiento_del_problema y
+intención_comprometida, y dos evaluaciones seguidas sosteniendo o bien horizonte a seis meses o bien
+atribución causal apreciable.
+
+Si no dispara, no pasa nada. Vinculación es indefinidamente sostenible y no es
+un estado de espera: es un sitio donde se puede estar.

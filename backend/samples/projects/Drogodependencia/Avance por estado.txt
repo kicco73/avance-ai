@@ -1,0 +1,274 @@
+AVANCE POR ESTADO — v2.1
+Tabla de transiciones nominales. Glosa de los siete [trigger].
+El trigger es la especificación. Esto es documentación. Si divergen, gana el trigger.
+
+Los triggers son EXPRESIONES PYTHON. Sintaxis y contrato del espacio de nombres
+en "Índice y convenciones.txt" §5, §6 y §8.
+
+═══════════════════════════════════════════════════════════════════
+0. TOPOLOGÍA REAL DE LA MÁQUINA
+═══════════════════════════════════════════════════════════════════
+
+  init ──▶ Vinculación
+           Vinculación ──T1──▶ Contemplación
+        Precontemplación ──T2──▶ Contemplación
+           Contemplación ──T3──▶ Preparación
+             Preparación ──T4──▶ Acción
+                  Acción ──T5──▶ Mantenimiento
+           Mantenimiento ──T6──▶ Recaída
+                 Recaída ──T7──▶ Contemplación
+
+Un solo camino ascendente. Una sola arista descendente (T6). Ningún nodo tiene
+más de una salida. Esto NO es la topología clínica del modelo transteórico:
+es la topología disponible.
+
+CONSECUENCIAS Y CÓMO SE ABSORBEN
+  · Precontemplación no tiene arista de entrada: es inalcanzable como S_nom.
+    Se absorbe en Vinculación, que opera el repertorio de precontemplación
+    cuando Ê == Precontemplación. Ver "Vinculación.txt" §2.
+  · Acción no tiene arista a Recaída, aunque el criterio canónico admite recaer
+    desde acción. Se absorbe dentro de Acción por override de repertorio:
+    R8 activa modo Recaída in situ y reinicia el contador, con lo que T5 queda
+    bloqueado por su propia condición temporal. Ver "Acción.txt" §4.
+  · No hay aristas descendentes salvo T6. Todos los descensos se resuelven por
+    Ê, sin tocar S_nom. Ver "Índice y convenciones.txt" §1.
+
+Todo esto funciona porque el repertorio lo gobierna Ê, no S_nom. S_nom es un
+trinquete conservador que va por detrás de la inferencia y nunca la adelanta.
+
+═══════════════════════════════════════════════════════════════════
+1. T1 · VINCULACIÓN → CONTEMPLACIÓN
+═══════════════════════════════════════════════════════════════════
+
+  puerta_alianza
+  and (n_reconocimiento_del_problema + n_intención_comprometida) >= 3
+  and (intención_comprometida_horizonte_min2 >= 1 or reconocimiento_del_problema_min2 >= 45)
+  and not flag_crisis_activa
+  and not flag_incoherencia_interna
+
+GLOSA
+La relación aguanta ser medida (puerta abierta tras dos evaluaciones sobre 45).
+Se han acumulado al menos tres observaciones entre reconocimiento e intención —
+no hace falta que sean de ítem: en Vinculación sólo se autorizan ítems de alianza_terapéutica, así
+que esta evidencia viene necesariamente de lenguaje espontáneo, y así debe ser.
+Y la persona sostiene, en las dos últimas evaluaciones, o bien un horizonte de
+cambio dentro de seis meses (intención_comprometida_horizonte_min2 >= 1), o bien atribución causal
+apreciable de daño al propio consumo (reconocimiento_del_problema_min2 >= 45).
+
+POR QUÉ "or" Y NO "and". Son las dos puertas de entrada a la ambivalencia, y son
+independientes. Hay quien reconoce el daño con nitidez sin plantearse cambiar, y
+hay quien se plantea cambiar sin nombrar daño. Exigir ambas dejaría en Vinculación
+a media población de contempladores.
+
+POR QUÉ min2 Y NO EL VALOR ACTUAL. El sufijo _min2 es el mínimo del eje en las
+dos últimas evaluaciones: exigirlo sobre el umbral equivale a exigir que la
+condición se haya sostenido dos veces seguidas. Con menos de dos evaluaciones
+acumuladas el derivado es centinela y la condición es falsa, de modo que ninguna
+ascendente puede dispararse en el primer turno con datos.
+
+POR QUÉ NO SE EXIGE ANCLAJE. Contemplación no tiene consecuencia conductual: su
+repertorio es experiencial. Elevar a alguien a trabajo de ambivalencia con
+evidencia lingüística es barato si resulta ser un falso positivo. Elevarlo a
+planificación no lo es.
+
+SI NO DISPARA: se permanece en Vinculación. Si además Ê == Precontemplación, se
+opera con repertorio de precontemplación sin cambiar S_nom.
+
+═══════════════════════════════════════════════════════════════════
+2. T2 · PRECONTEMPLACIÓN → CONTEMPLACIÓN
+═══════════════════════════════════════════════════════════════════
+
+  puerta_alianza
+  and n_reconocimiento_del_problema >= 2
+  and (intención_comprometida_horizonte_min2 >= 1 or reconocimiento_del_problema_min2 >= 45)
+  and not flag_crisis_activa
+  and not flag_incoherencia_interna
+
+GLOSA
+Misma condición de entrada que T1, porque la condición de entrada a un estado es
+propiedad del destino, no del origen. Difiere en el requisito de evidencia: aquí
+se exigen dos observaciones de reconocimiento_del_problema específicamente, porque el rasgo definitorio de
+precontemplación es reconocimiento_del_problema bajo y el sistema necesita ver movimiento en el eje que
+definía la posición, no sólo en el horizonte.
+
+Nota: este trigger sólo puede evaluarse si Precontemplación llega a ser S_nom
+alguna vez, cosa que la topología actual impide. Se especifica completo y correcto
+para que la arista funcione en cuanto se añada Vinculación → Precontemplación.
+Ver "Defectos detectados.txt" [D-12].
+
+═══════════════════════════════════════════════════════════════════
+3. T3 · CONTEMPLACIÓN → PREPARACIÓN
+═══════════════════════════════════════════════════════════════════
+
+  puerta_alianza
+  and intención_comprometida_horizonte_min2 >= 2
+  and ancla_intención_comprometida
+  and acción_efectiva_magnitud_y_duración_magnitud >= 15
+  and intención_comprometida_fuerza >= 50
+  and not flag_presion_externa
+  and not flag_ambivalencia_no_resuelta
+  and not flag_horizonte_sin_paso
+  and not flag_experiencial_dominante
+  and not flag_crisis_activa
+  and not flag_incoherencia_interna
+
+GLOSA — es la transición más cargada del sistema, y con razón.
+Es la primera con consecuencia conductual: cruzarla autoriza planificación,
+control de estímulos y contracondicionamiento.
+
+LOS DOS CRITERIOS CANÓNICOS, ambos necesarios:
+  · horizonte de treinta días sostenido dos evaluaciones. Como el ordinal codifica
+    2 = treinta días y 2 es su valor máximo, intención_comprometida_horizonte_min2 >= 2 significa que
+    en ambas evaluaciones el horizonte era de treinta días;
+  · un paso dado, acción_efectiva_magnitud_y_duración_magnitud >= 15 — que en esta escala puede ser cambiar de
+    contexto o de compañía. No hace falta reducir dosis para estar en preparación.
+
+ancla_intención_comprometida ES OBLIGATORIO. Ésta es la aplicación dura del principio de anclaje. Un
+horizonte de treinta días declarado sólo en lenguaje espontáneo es la observación
+más inflada del sistema: la deseabilidad conversacional empuja hacia arriba justo
+en este eje. Hace falta al menos un ítem de intención_comprometida en las últimas tres sesiones.
+
+intención_comprometida_fuerza >= 50 filtra el orden deseo < capacidad < activación < compromiso.
+Por debajo de 50 el lenguaje es de deseo o de capacidad, y sólo el compromiso
+predice días de cambio.
+
+EL VETO DE perfil_de_procesos_de_cambio, ahora vía flag_experiencial_dominante (R11), es el más importante
+y el menos obvio. Si el contraste de procesos sigue del lado experiencial, la
+persona aún está haciendo trabajo de concienciación y auto-reevaluación, y
+empujarla a planificación es el mecanismo documentado del estancamiento crónico
+en contemplación. R11 añade además la rama que la versión anterior no tenía: si
+NO HAY EVIDENCIA sobre el perfil de procesos, el veto se cierra igual. Ausencia
+de evidencia no abre la puerta.
+
+R2 (presión externa) y R3 (ambivalencia clavada) vetan por la misma lógica: un
+plan sostenido por un juzgado, o construido sobre un balance en el punto de cruce,
+es un plan que se romperá y cuya rotura se atribuirá a la persona.
+
+═══════════════════════════════════════════════════════════════════
+4. T4 · PREPARACIÓN → ACCIÓN
+═══════════════════════════════════════════════════════════════════
+
+  puerta_alianza
+  and acción_efectiva_magnitud_y_duración_magnitud_min2 >= 50
+  and ancla_acción_efectiva_magnitud_y_duración
+  and acción_efectiva_magnitud_y_duración_diasConsolidados >= 14
+  and acción_efectiva_magnitud_y_duración_diasConsolidados < 183
+  and not flag_lapso_reciente
+  and not flag_craving_inestable
+  and not flag_accion_sin_reconocimiento
+  and not flag_crisis_activa
+  and not flag_incoherencia_interna
+
+GLOSA
+Cambio conductual manifiesto (>= 50 en escala de reducción de daños: no exige
+abstinencia) sostenido dos evaluaciones y consolidado al menos catorce días. El
+techo de 183 días evita entrar en Acción a alguien que ya cumple criterio de
+Mantenimiento; en ese caso T4 no dispara y hay que revisar la trayectoria.
+
+ancla_acción_efectiva_magnitud_y_duración obligatorio: el cambio conductual se declara, y lo declarado sobre la
+propia conducta es donde más pesa la deseabilidad.
+
+VETOS. R4 (lapso en 14 días, con salida a 21) impide sellar "acción" justo después
+de un tropiezo. R5 (craving alto y volátil) impide consolidar cuando el perfil
+predice episodio. R6 (magnitud alta con reconocimiento bajo) exige que exista
+atribución antes de consolidar el cambio como identidad: si no la hay, el cambio
+no tiene sobre qué apoyarse en la primera situación de riesgo.
+
+═══════════════════════════════════════════════════════════════════
+5. T5 · ACCIÓN → MANTENIMIENTO
+═══════════════════════════════════════════════════════════════════
+
+  puerta_alianza
+  and acción_efectiva_magnitud_y_duración_magnitud >= 50
+  and acción_efectiva_magnitud_y_duración_diasConsolidados >= 183
+  and ancla_acción_efectiva_magnitud_y_duración
+  and not flag_recaida_confirmada
+  and not flag_regresion_magnitud
+  and not flag_accion_sin_reconocimiento
+  and not flag_crisis_activa
+  and not flag_incoherencia_interna
+
+GLOSA
+Es en gran medida una transición de reloj: seis meses de cambio consolidado. Pero
+no es automática. R10 (regresión de magnitud >= 25 sin llegar a recaída) la
+bloquea: no se consolida mantenimiento en plena pendiente descendente, aunque el
+contador de días todavía dé. R8 la bloquea por razón obvia.
+
+No se exige el derivado min2 sobre la magnitud porque acción_efectiva_magnitud_y_duración_diasConsolidados >= 183
+ya incorpora una exigencia temporal mucho más fuerte que dos evaluaciones.
+
+═══════════════════════════════════════════════════════════════════
+6. T6 · MANTENIMIENTO → RECAÍDA
+═══════════════════════════════════════════════════════════════════
+
+  flag_recaida_confirmada
+
+GLOSA — la única transición sin puerta de alianza y sin vetos, y es deliberado.
+Es descendente y protectora. Una transición protectora que dependiera de la
+alianza fallaría exactamente cuando más falta hace: cuando la persona se ha
+distanciado. Las puertas se ponen para no empujar, no para no proteger.
+
+R8 exige que el descenso bajo umbral se sostenga >= 21 días o >= 2 ventanas de
+observación. UN EPISODIO AISLADO NO DISPARA T6. El retorno al patrón previo es
+una propiedad del patrón, no de un día.
+
+Al disparar, el sistema NO comunica nada parecido a "has recaído". El registro
+cambia; el vocabulario de la ruptura está prohibido. Ver "deontologia.txt".
+
+═══════════════════════════════════════════════════════════════════
+7. T7 · RECAÍDA → CONTEMPLACIÓN
+═══════════════════════════════════════════════════════════════════
+
+  reobservados_desde_evento
+  and puerta_alianza
+  and not flag_crisis_activa
+  and not flag_incoherencia_interna
+
+GLOSA
+El estado Recaída no prescribe ningún proceso: prescribe reevaluar los ocho
+criterios. El trigger es literalmente esa exigencia. reobservados_desde_evento es
+verdadero cuando los ocho ejes tienen al menos una observación posterior a la
+marca temporal del evento registrado por R8. Observaciones anteriores no cuentan,
+por frescas que sean.
+
+Destino Contemplación, que es la reentrada canónica: tras recaer, las personas
+retoman el ciclo desde contemplación y desde ahí reinician. No se salta a
+Preparación aunque los números lo permitieran; la escalera se vuelve a subir por
+T3 y T4, que ya tienen sus propias compuertas.
+
+NO SE EXIGE que acción_efectiva_magnitud_y_duración_magnitud siga baja. Sería perverso: mantendría en modo de
+reevaluación precisamente a quien ya ha recuperado el cambio. Si la persona ha
+vuelto a estabilizarse, T7 dispara y la escalera se recorre rápido, porque la
+evidencia de acción_efectiva_magnitud_y_duración ya está acumulada.
+
+RIESGO CONOCIDO [D-13]: si la alianza cae y no se recupera, S_nom queda anclado
+en Recaída. Mitigación en "Recaída.txt" §3 — el repertorio degrada a modo
+Vinculación, que es seguro e indefinidamente sostenible.
+
+═══════════════════════════════════════════════════════════════════
+8. QUÉ SE NOMBRA Y QUÉ NO
+═══════════════════════════════════════════════════════════════════
+
+Un cambio de S_nom que NO altera el repertorio activo (porque Ê no ha cambiado)
+es imperceptible: no se nombra. Nombrarlo revelaría el estadiaje.
+
+Un cambio de REGISTRO perceptible — pasar de escuchar a proponer, de explorar a
+planificar, de acompañar a prevenir — SÍ se nombra, siempre, antes de hacerlo, y
+con posibilidad de rechazo. Nunca se cambia de modalidad en silencio.
+
+Se nombra el registro. Nunca el estadio, ni su paráfrasis, ni la cifra que hay
+detrás.
+
+═══════════════════════════════════════════════════════════════════
+9. INVARIANTE DE SEGURIDAD DE LOS SIETE TRIGGERS
+═══════════════════════════════════════════════════════════════════
+
+Con el espacio de nombres ligado íntegramente a valores centinela — es decir, sin
+una sola observación en ningún eje — los siete triggers deben evaluar a False.
+
+  T1..T5 y T7  falsos porque toda condición positiva compara contra centinela.
+  T6           falso porque flag_recaida_confirmada es False por defecto.
+
+Es la prueba de humo de "Índice y convenciones.txt" §8, y es obligatoria en CI.
+Si alguno diera True con evidencia vacía, el sistema avanzaría sin datos, que es
+el único fallo de este diseño que no se puede recuperar conversacionalmente.

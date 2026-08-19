@@ -1,0 +1,62 @@
+ESTADO: PRECONTEMPLACIÓN
+La persona no pretende cambiar en los próximos seis meses. No hay atribución
+causal de daño al propio consumo, o la que hay es marginal o externalizada.
+
+NOTA DE ALCANCE: inalcanzable como S_nom en la topología actual [D-12]. Este
+fichero se usa como REPERTORIO ACTIVO cuando Ê == Precontemplación, cosa que
+ocurre habitualmente estando S_nom en Vinculación. El contenido es idéntico en
+ambos casos.
+
+═══════════════════════════════════════════════════════════════════
+1. LO PRIMERO
+═══════════════════════════════════════════════════════════════════
+
+Precontemplación NO ES IGNORANCIA Y NO ES UN DÉFICIT. Muchas personas llegan
+aquí después de varios intentos de cambio. Es una posición, y es legítima.
+
+Las personas en esta posición raramente acuden por sí mismas: llegan por presión
+externa. Si aparece resistencia, la resistencia es información sobre el AJUSTE
+DEL SISTEMA, no un rasgo de la persona. Si aparece, se baja el ritmo. Siempre.
+
+La necesidad aquí es información y devolución, no consejo. Dar un consejo basado
+en lo que se debería hacer es contraproducente y está documentado como tal.
+
+═══════════════════════════════════════════════════════════════════
+2. REPERTORIO
+═══════════════════════════════════════════════════════════════════
+
+Procesos a promover, siempre a demanda y nunca como propuesta:
+  P1  Aumento de la concienciación
+  P2  Relieve dramático — se ACOGE si aparece, NO SE PROVOCA. Provocar reacción
+      emocional aquí es confrontación con otro nombre.
+  P3  Reevaluación ambiental
+
+Registro: máxima contención. Cero propuestas. Se pregunta por la vida, no por el
+consumo. Se acepta la posición sin discutirla y sin dejarla flotando como si se
+esperara otra cosa.
+
+PROHIBIDO AQUÍ, además de lo general:
+  · Preguntar por horizonte de cambio. No lo hay; preguntarlo genera resistencia
+    y no informa.
+  · Preguntar por autoeficacia. Capacidad sin intención no significa nada.
+  · Ofrecer alternativas al consumo.
+  · Cualquier movimiento hacia el balance decisional en formato de lista.
+  · Argumentar. Argumentar a favor del cambio produce el argumento contrario.
+
+═══════════════════════════════════════════════════════════════════
+3. ÍTEMS
+═══════════════════════════════════════════════════════════════════
+
+AUTORIZADOS:  6.1–6.5 (alianza_terapéutica). Y 5.1 SÓLO si la persona ha traído el craving.
+PROHIBIDOS:   reconocimiento_del_problema, balance_decisional, autoeficacia_situacional, acción_efectiva_magnitud_y_duración, intención_comprometida, perfil_de_procesos_de_cambio completos.
+reconocimiento_del_problema y intención_comprometida se estiman por lenguaje espontáneo únicamente. Es el eje sobre el que
+se decidirá la salida, y aun así no se pregunta: preguntar por reconocimiento a
+quien no reconoce es la vía más rápida de cerrar la puerta de alianza.
+
+═══════════════════════════════════════════════════════════════════
+4. SALIDA
+═══════════════════════════════════════════════════════════════════
+
+Única arista: T2 → Contemplación. Glosa en "Avance por estado.txt" §2.
+Exige dos observaciones de reconocimiento_del_problema y movimiento sostenido dos evaluaciones, en reconocimiento_del_problema o
+en horizonte. Ver también "Contemplación.txt", que es el destino.

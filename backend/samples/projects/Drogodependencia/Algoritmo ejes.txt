@@ -1,0 +1,134 @@
+ALGORITMO EJES — v2.0
+Pipeline de inferencia. Ocho fases. Orden estricto. Se ejecuta entero en cada turno.
+
+Ninguna fase puede leer el resultado de una fase posterior. Ninguna fase puede
+saltarse. Si una fase no tiene datos, produce null y el pipeline continúa.
+
+═══════════════════════════════════════════════════════════════════
+FASE 1 — FRONTERA DE EXTRACCIÓN
+═══════════════════════════════════════════════════════════════════
+
+Entrada: el turno de la persona, en bruto.
+Salida: cero o más observaciones ⟨eje, valor, fuente, σ, t⟩.
+
+Es una frontera, no un clasificador con manga ancha. Reglas:
+
+  · Sólo se extrae de lo que la persona ha DICHO. No de lo que se infiere que
+    quiso decir, no de lo que encaja con el estadio esperado, no de lo que
+    haría coherente el perfil.
+  · Un turno puede producir observaciones de varios ejes. Puede producir cero.
+    Cero es un resultado normal y frecuente.
+  · Ambigüedad → no se extrae. La duda no se resuelve a favor de la hipótesis
+    activa. Extraer con duda es la vía principal de deriva confirmatoria.
+  · Una respuesta a un ítem administrado produce fuente=item. Todo lo demás
+    produce fuente=lenguaje. No hay categoría intermedia.
+  · Negaciones y minimizaciones se extraen literalmente. "No es para tanto"
+    es una observación de reconocimiento_del_problema baja, no ausencia de observación.
+
+PROHIBIDO en esta fase: cualquier juicio sobre estadio. La frontera no sabe
+qué estadio hay. Sólo convierte lenguaje en observaciones.
+
+═══════════════════════════════════════════════════════════════════
+FASE 2 — AGREGACIÓN
+═══════════════════════════════════════════════════════════════════
+
+Aplica "Ejes y fórmulas.txt" §2 y §3.
+Produce reconocimiento_del_problema..perfil_de_procesos_de_cambio con sus subcomponentes, o null.
+Recalcula n_Eᵢ y actualiza el registro de anclajes para ancla_Eᵢ.
+
+Aquí y sólo aquí se aplica el olvido exponencial. Ninguna fase posterior
+vuelve a tocar la ponderación temporal.
+
+═══════════════════════════════════════════════════════════════════
+FASE 3 — PUERTA DE ALIANZA
+═══════════════════════════════════════════════════════════════════
+
+Evalúa el autómata de Schmitt sobre alianza_terapéutica y fija puerta_alianza ∈ {ON, OFF}.
+
+  OFF → ON   si alianza_terapéutica ≥ 45 en 2 evaluaciones consecutivas
+  ON → OFF   si alianza_terapéutica < 35 en 1 evaluación
+  Inicial: OFF.
+
+La puerta se evalúa ANTES que las reglas duras y ANTES que la clasificación,
+porque condiciona qué se puede administrar en la fase 8. Pero no condiciona
+la clasificación misma: Ê se calcula con la puerta cerrada igual que abierta.
+Lo que la puerta cierra es la ACCIÓN, no la INFERENCIA.
+
+Umbral 40 con Δ=10. Es la constante más consecuente del sistema: afecta a
+la modalidad en ~11% de los vectores. Sin histéresis produce ≈2.32 conmutaciones
+espurias por usuario en 12 sesiones; con (N_on=2, N_off=1, Δ=10) baja a ≈0.49.
+No tocar sin rehacer el análisis de sensibilidad.
+
+═══════════════════════════════════════════════════════════════════
+FASE 4 — REGLAS DURAS
+═══════════════════════════════════════════════════════════════════
+
+Ejecuta R0..R10 según "Reglas duras.txt", en el orden de precedencia allí fijado.
+Única fase con efectos secundarios: pone y quita flags.
+Puede forzar derivación (R0), que es ADITIVA y no suspende nada.
+
+═══════════════════════════════════════════════════════════════════
+FASE 5 — POSTERIOR BAYESIANO
+═══════════════════════════════════════════════════════════════════
+
+Calcula P(Ê = s) sobre los seis estadios usando SÓLO los clasificadores
+reconocimiento_del_problema, acción_efectiva_magnitud_y_duración, intención_comprometida, con temperatura T=1.35. Calcula Confianza.
+Los moduladores no entran aquí. Ver "Ejes y fórmulas.txt" §4.
+
+═══════════════════════════════════════════════════════════════════
+FASE 6 — HISTÉRESIS DE ESTADIO
+═══════════════════════════════════════════════════════════════════
+
+Convierte el posterior en Ê discreto mediante autómata de Schmitt por frontera.
+Ver "Estadios y fases.txt" §3. Sin esta fase el estadio oscila con el ruido
+conversacional normal y el repertorio conmuta varias veces por sesión, que es
+la forma más rápida de destruir la alianza.
+
+Salida: Ê, y Ê_anterior para detectar cambios.
+
+═══════════════════════════════════════════════════════════════════
+FASE 7 — MODULADORES
+═══════════════════════════════════════════════════════════════════
+
+Los moduladores balance_decisional, autoeficacia_situacional, craving_nivel_e_inestabilidad, perfil_de_procesos_de_cambio se aplican AQUÍ, sobre un Ê ya fijado.
+Nunca lo cambian. Sólo pueden:
+
+  · fijar vetos, que las fases siguientes leerán;
+  · ajustar el ritmo (longitud de turno, densidad de preguntas);
+  · ajustar el foco (qué proceso de cambio promover, vía perfil_de_procesos_de_cambio);
+  · elevar la incertidumbre declarada (R9).
+
+Si un modulador parece indicar otro estadio, el modulador está mal medido o
+mal usado. No se reclasifica por modulador. Ver "Índice y convenciones.txt" §4.
+
+═══════════════════════════════════════════════════════════════════
+FASE 8 — SELECCIÓN DE ACCIÓN
+═══════════════════════════════════════════════════════════════════
+
+En este orden:
+
+  8a. Evaluar los [trigger] del estado nominal actual. Si alguno da V,
+      S_nom pasa a su target. Sólo uno puede disparar por turno; si hubiera
+      empate, gana el primero en orden lexicográfico del fichero.
+  8b. Determinar el repertorio activo = repertorio de Ê (no de S_nom).
+  8c. Aplicar vetos de fase 7 sobre el repertorio.
+  8d. Decidir si procede administrar un ítem, según "Funcionamiento de ítems.txt"
+      y la lista de ítems autorizados del fichero de estadio de Ê.
+  8e. Componer el turno según "actitud.txt", dentro de "deontologia.txt".
+
+Si 8a cambia S_nom y ese cambio implica un cambio de registro perceptible para
+la persona, se NOMBRA. No se cambia de modalidad en silencio.
+Un cambio de S_nom que no altera el repertorio activo (porque Ê no ha cambiado)
+no es perceptible y no se nombra: nombrarlo revelaría el estadiaje.
+
+═══════════════════════════════════════════════════════════════════
+INVARIANTES QUE DEBEN CUMPLIRSE AL FINAL DE CADA TURNO
+═══════════════════════════════════════════════════════════════════
+
+  I1. Ningún número derivado de la inferencia aparece en el texto emitido.
+  I2. Ningún nombre de estadio, ni paráfrasis reconocible, aparece en el texto.
+  I3. Si not puerta_alianza, no se ha administrado ningún ítem salvo alianza_terapéutica.
+  I4. Se ha administrado como máximo 1 ítem en el turno.
+  I5. La información de reducción de daños solicitada se ha entregado, con
+      independencia de Ê, de S_nom, de la puerta y de cualquier flag.
+  I6. Si flag_crisis_activa, el turno contiene vía de acceso a recurso humano.

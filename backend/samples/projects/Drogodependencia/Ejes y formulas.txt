@@ -1,0 +1,167 @@
+EJES Y FÓRMULAS — v2.0
+Cómo se convierte una observación en un valor de eje. Nada más.
+La clasificación está en "Estadios y fases.txt". Las reglas, en "Reglas duras.txt".
+
+═══════════════════════════════════════════════════════════════════
+1. LA OBSERVACIÓN
+═══════════════════════════════════════════════════════════════════
+
+Una observación o = ⟨eje, valor_bruto, fuente, σ, t⟩
+
+  fuente ∈ { item, lenguaje }
+  σ      desviación asignada. Codifica cuánto se fía el sistema de esa fuente
+         para ese eje. NO es un error de medida: es un peso invertido.
+  t      marca temporal.
+
+Si en un turno no hay evidencia sobre un eje, NO se genera observación.
+No se genera una observación de valor 0. Ver §3 de "Índice y convenciones.txt".
+
+σ POR EJE Y FUENTE  [H0 — todos]
+
+  eje                                   σ_item  σ_lenguaje   ratio ítem:lenguaje
+  reconocimiento_del_problema               10          22   40 : 60
+  balance_decisional                        12          20   45 : 55
+  autoeficacia_situacional                  10          28   35 : 65
+  acción_efectiva_magnitud_y_duración        8          26   55 : 45
+  craving_nivel_e_inestabilidad             14          16   30 : 70
+  alianza_terapéutica                       12          24   40 : 60
+  intención_comprometida                     9          30   65 : 35
+  perfil_de_procesos_de_cambio              15          18   15 : 85
+
+  σ en las mismas unidades que el eje: 0–100. Se reescalaron con él.
+
+Lectura de la tabla — ÍTEMS COMO GPS, LENGUAJE COMO NAVEGACIÓN INERCIAL.
+El ítem da posición absoluta y no deriva. El lenguaje espontáneo da resolución
+temporal y especificidad situacional, pero deriva. intención_comprometida es el eje más dependiente
+de anclaje (por eso ancla_intención_comprometida aparece en el trigger de Preparación). perfil_de_procesos_de_cambio es el
+más lingüístico: los procesos de cambio se detectan mejor por lo que la persona
+cuenta que hace que por lo que declara en una escala.
+
+Todos los σ son [H0]. La proporción relativa entre ellos es la hipótesis
+sustantiva; la escala absoluta se recalibra en Fase 1.
+
+═══════════════════════════════════════════════════════════════════
+2. AGREGACIÓN DENTRO DE UN EJE
+═══════════════════════════════════════════════════════════════════
+
+Media ponderada por precisión, con olvido exponencial.
+
+  wₖ = (1/σₖ²) · exp(−λ · Δtₖ)        λ = 0.023 por día  [H0]  (semivida ≈ 30 d)
+  Eᵢ = Σ wₖ·vₖ / Σ wₖ
+
+  Si Σ wₖ = 0  →  Eᵢ = null.
+
+DERIVADOS DE SOSTENIMIENTO — se calculan aquí, en fase 2
+  reconocimiento_del_problema_min2            = min(reconocimiento_del_problema en las 2 últimas evaluaciones)
+  acción_efectiva_magnitud_y_duración_magnitud_min2   = min(acción_efectiva_magnitud_y_duración_magnitud en las 2 últimas evaluaciones)
+  intención_comprometida_horizonte_min2  = min(intención_comprometida_horizonte en las 2 últimas evaluaciones)
+
+  Con menos de 2 evaluaciones acumuladas, el derivado queda en null y se liga
+  al centinela correspondiente en fase 8a. Efecto: ninguna transición ascendente
+  puede dispararse con una sola evaluación. Es el suelo de histéresis temporal
+  del sistema y no depende de nada más.
+
+  Sustituyen al predicado estable(cond, 2) de la v2.0, que no era implementable
+  como llamada dentro de una expresión evaluada. Para una condición monótona
+  `X >= θ` sostenida en dos evaluaciones, min(X últimas 2) >= θ es el
+  equivalente exacto. Ver "Índice y convenciones.txt" §5.
+
+NOTA DE REDUNDANCIA — verificada a precisión de máquina.
+Pesos y tolerancias son matemáticamente redundantes: τ_ef = τ/√w. Calibrar
+ambos es sobreparametrizar. Se fija w y se calibra sólo τ. Grados de libertad
+efectivos: 7, no 14. No reintroducir pesos libres.
+
+═══════════════════════════════════════════════════════════════════
+3. AGREGACIÓN ENTRE SUBCOMPONENTES
+═══════════════════════════════════════════════════════════════════
+
+reconocimiento_del_problema — RECONOCIMIENTO
+  Escalar. Media ponderada directa de sus ítems y observaciones.
+  Atribución causal, no aceptación de etiqueta. Rechazar la palabra "adicción"
+  y describir con precisión el daño propio puntúa ALTO.
+
+balance_decisional — BALANCE DECISIONAL
+  Contraste estandarizado. NO es una media.
+    z_pros    = (P − μ_P) / s_P
+    z_contras = (C − μ_C) / s_C
+    balance_decisional = round( 50 * (1 + tanh( (z_pros − z_contras) / 2 )) )
+  Estandarizar CADA POLO POR SEPARADO y después restar. Es la única forma de
+  preservar el punto de cruce en 0. Estandarizar la diferencia, o promediar los
+  polos, destruye el cruce y con él toda la utilidad del eje.
+  μ y s de referencia: [D-11] pendientes de muestra normativa. Provisional:
+  μ_P = μ_C = 2.5, s_P = s_C = 1.0 sobre escala 0–5.  [H0]
+
+autoeficacia_situacional — AUTOEFICACIA SITUACIONAL
+  Requiere DOS estadísticos. Nunca uno solo.
+    autoeficacia_situacional_media = media de los tres dominios (afecto negativo · social positiva ·
+               malestar físico)
+    autoeficacia_situacional_min   = mínimo de los tres dominios
+  La media dice cuánta confianza hay. El mínimo dice dónde se rompe. Un perfil
+  con media 75 y mínimo 20 es un perfil de riesgo, no un perfil bueno.
+  Si sólo hay observaciones de un dominio: autoeficacia_situacional_media se calcula, autoeficacia_situacional_min = null.
+
+acción_efectiva_magnitud_y_duración — ACCIÓN EFECTIVA
+  Dos componentes que NO deben fundirse en un escalar.
+    acción_efectiva_magnitud_y_duración_magnitud ∈ [0,1]  cuánto ha cambiado la conducta manifiesta.
+    acción_efectiva_magnitud_y_duración_diasConsolidados ∈ ℕ  cuántos días lleva consolidado ese cambio.
+  Escala de magnitud compatible con reducción de daños  [H0]:
+    0  sin cambio
+    20  cambio de contexto o de compañía de consumo
+    35  cambio de vía de administración a una de menor riesgo
+    50  reducción sostenida de dosis o de días de consumo   ← umbral_cambio
+    70  reducción mayor, con sustitución de repertorio
+    100  abstinencia
+  umbral_paso = 15 · umbral_cambio = 50   [H0]
+  La abstinencia es el extremo de la escala, NO su definición. Cualquier valor
+  ≥ umbral_cambio es cambio conductual manifiesto a todos los efectos del motor.
+
+craving_nivel_e_inestabilidad — CRAVING
+  Dos señales. Ambas necesarias.
+    craving_nivel_e_inestabilidad_nivel = media ponderada de las intensidades observadas.
+    craving_nivel_e_inestabilidad_mssd  = diferencia media cuadrática sucesiva, normalizada:
+               mssd = [ Σ(vₖ₊₁ − vₖ)² / (n−1) ] / 2·s²
+    Con n < 3 observaciones: craving_nivel_e_inestabilidad_mssd = null. Nunca se estima con dos puntos.
+  Nivel alto y estable ≠ nivel alto e inestable. La segunda es la señal de riesgo.
+
+alianza_terapéutica — ALIANZA
+  Media de los tres bloques del WAI-SR: vínculo, acuerdo en objetivos, acuerdo
+  en tareas. Alimenta la puerta_alianza. No entra en ninguna clasificación.
+
+intención_comprometida — INTENCIÓN COMPROMETIDA
+  Tres subcomponentes heterogéneos. No se promedian entre sí.
+    intención_comprometida_horizonte ORDINAL ∈ {sin_horizonte, en_6m, en_30d}. Criterio canónico
+      de estadiaje. Se resuelve por la observación anclada más reciente; si no
+      hay anclada, por la lingüística más reciente, con σ mayor.
+    intención_comprometida_fuerza ∈ [0,1]. Fuerza del lenguaje de compromiso. Orden documentado:
+      deseo < capacidad < activación < compromiso. Sólo el compromiso predice.
+      Mapeo  [H0]: deseo 25 · capacidad 45 · activación 65 · compromiso 85
+    intención_comprometida_locus ∈ [0,1]. 1 = autonomía plena; 0 = presión externa pura.
+      Motivación controlada predice peor adherencia y más abandono.
+
+perfil_de_procesos_de_cambio — PERFIL DE PROCESOS
+  perfil_de_procesos_de_cambio_contraste = round( 50 * (1 + tanh( (z_conductuales − z_experienciales) / 2 )) )
+  Sobre los diez procesos. Negativo = trabajo experiencial dominante.
+  Valor PRESCRIPTIVO, no clasificatorio: responde a "sabido el estadio, qué
+  proceso conviene promover". Un perfil_de_procesos_de_cambio muy negativo en alguien a quien el sistema
+  va a empujar hacia conducta es la señal de estancamiento en contemplación.
+
+═══════════════════════════════════════════════════════════════════
+4. POSTERIOR BAYESIANO SOBRE ESTADIO
+═══════════════════════════════════════════════════════════════════
+
+  P(Ê = s | evidencia) ∝ P(s) · Π_i L(Eᵢ | s)^(1/T)
+
+  T = 1.35  temperatura  [H0]. T>1 aplana el posterior: menos confianza,
+      más histéresis efectiva, menos oscilación. Es deliberado.
+  P(s) prior plano salvo en Recaída, donde se reponderan según el criterio
+      canónico de reentrada por contemplación.
+  Sólo reconocimiento_del_problema, acción_efectiva_magnitud_y_duración y intención_comprometida tienen verosimilitud definida. Los moduladores NO entran
+      en el posterior: entran como vetos, después.
+
+  Confianza = 1 − H(P) / log(6)     H = entropía de Shannon.
+  Con Confianza < 35  [H0] el sistema opera en modo cauto: no se administran
+  ítems con consecuencia conductual y no dispara ninguna transición ascendente.
+
+  [D-01] La normalización de log-verosimilitudes está omitida en el documento
+  fuente. Implementada como normalización por número de ejes con evidencia.
+  Pendiente de ratificación.

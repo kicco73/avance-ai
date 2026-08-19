@@ -1,0 +1,102 @@
+perfil_de_procesos_de_cambio — PERFIL DE PROCESOS DE CAMBIO
+Tipo: MODULADOR. Sólo puede VETAR. Nunca aporta condición positiva.
+Escala: perfil_de_procesos_de_cambio_contraste ∈ [0,100] ∪ {null}. ENTERO. Equilibrio en 50.
+
+═══════════════════════════════════════════════════════════════════
+QUÉ MIDE
+═══════════════════════════════════════════════════════════════════
+
+Contraste entre el uso de procesos CONDUCTUALES y el de procesos EXPERIENCIALES,
+sobre los diez procesos del modelo.
+
+  perfil_de_procesos_de_cambio_contraste = round( 50 * (1 + tanh( (z_conductuales − z_experienciales) / 2 )) )
+  Negativo = trabajo experiencial dominante.
+  Positivo = trabajo conductual dominante.
+
+SU VALOR ES PRESCRIPTIVO, NO CLASIFICATORIO. perfil_de_procesos_de_cambio responde a la pregunta operativa
+que viene DESPUÉS de la clasificación: sabido el estadio, qué proceso conviene
+promover. No dice en qué estadio está nadie.
+
+Y ADVIERTE DE UN ERROR FRECUENTE: inducir procesos conductuales a alguien que
+todavía está en trabajo experiencial es la vía documentada del estancamiento en
+contemplación. No sólo no facilita el avance: lo obstaculiza. Produce frustración
+y caída de autoeficacia, y la persona lo vive como fracaso propio.
+
+Ésta es la razón de ser del veto de perfil_de_procesos_de_cambio en T3, del que se puede decir que es la
+condición clínicamente más importante de todo el conjunto de triggers.
+
+═══════════════════════════════════════════════════════════════════
+LOS DIEZ PROCESOS
+═══════════════════════════════════════════════════════════════════
+
+EXPERIENCIALES (cognitivos y afectivos)
+  P1  Aumento de la concienciación — procesar información sobre los problemas
+      asociados y sobre los beneficios de modificar.
+  P2  Relieve dramático (alivio dramático) — experimentar y expresar reacciones
+      emocionales ante los aspectos negativos.
+  P3  Reevaluación ambiental — valorar el impacto sobre las relaciones y sobre
+      las personas cercanas.
+  P4  Auto-reevaluación — valorar afectiva y cognitivamente el impacto sobre los
+      propios valores y sobre la manera de ser. ES EL PUENTE hacia preparación.
+  P5  Liberación social — percibir alternativas disponibles en el entorno.
+
+CONDUCTUALES
+  P6  Auto-liberación — creer que uno mismo puede ser elemento esencial del
+      cambio, y elegir.
+  P7  Manejo de contingencias — consecuencias que sostienen el cambio.
+  P8  Relaciones de ayuda — alguien disponible con quien contar.
+  P9  Contracondicionamiento — sustituir la conducta por otra.
+  P10 Control de estímulos — modificar el entorno que precipita.
+
+LOS PROCESOS NO EMPIEZAN DONDE EMPIEZA EL ESTADIO. Arrancan a mitad de un
+estadio y se prolongan en el siguiente: funcionan como puente. Por eso el
+repertorio de cada estadio incluye el cierre de los procesos del anterior.
+
+═══════════════════════════════════════════════════════════════════
+BANCO DE ÍTEMS — uno por proceso
+═══════════════════════════════════════════════════════════════════
+
+Procedencia: cuestionario de procesos de cambio para conductas adictivas
+(formato: nunca / muy pocas veces / de vez en cuando / bastantes veces /
+muchas veces). En Lluna se extraen casi siempre de lenguaje espontáneo: éste es
+el eje MÁS lingüístico del sistema (ratio estimado 15:85).
+
+8.1   P1  "Busco información sobre lo que el consumo me hace."
+8.2   P2  "Me remueve pensar en mi consumo."
+8.3   P3  "Pienso en cómo mi consumo afecta a los que tengo cerca."
+8.4   P4  "Pienso en si esto encaja con la persona que quiero ser."
+8.5   P5  "Veo que hay sitios y gente donde esto se puede llevar de otro modo."
+8.6   P6  "Creo que depende de mí y que puedo elegir."
+8.7   P7  "Noto que hay cosas buenas cuando lo llevo de otra manera."
+8.8   P8  "Tengo a alguien que me escucha cuando lo necesito."
+8.9   P9  "Cuando aprietan las ganas, hago otra cosa."
+8.10  P10 "Evito los sitios y la gente con los que consumía."
+
+Checkpoints: se formulan como preguntas por lo que la persona HACE, nunca por
+lo que debería hacer. "¿Has estado leyendo sobre esto?" · "¿Has cambiado de
+sitios?" · "¿Con quién puedes hablar de esto?"
+
+═══════════════════════════════════════════════════════════════════
+USO EN EL MOTOR
+═══════════════════════════════════════════════════════════════════
+
+NO aparece positivamente en ningún trigger. Por diseño.
+Aparece como VETO en: T3, a través de flag_experiencial_dominante (regla R11).
+NO aparece como comparación directa en el trigger, y es deliberado: perfil_de_procesos_de_cambio puede ser
+null, y una comparación con null en el evaluador o bien revienta o bien deja el
+veto abierto justo cuando no hay evidencia. R11 resuelve el caso null en la capa
+de reglas, que es código y no una expresión evaluada. Ver "Reglas duras.txt" R11.
+Modula: determina qué proceso promueve el turno, dentro del repertorio del
+estadio inferido. Con perfil_de_procesos_de_cambio claramente experiencial NO SE OFRECE TÉCNICA CONDUCTUAL,
+aunque el estadio nominal la permitiera.
+σ_item 15 · σ_lenguaje 18.
+
+MAPA PRESCRIPTIVO POR ESTADIO INFERIDO
+  Precontemplación  → P1 · P2 · P3
+  Contemplación     → P1 · P2 · P3 + P4 como puente
+  Preparación       → P6 + inicio de P9 y P10
+  Acción            → P7 · P8 · P9 · P10
+  Mantenimiento     → los conductuales consolidados + P5 + prevención de recaída
+  Recaída           → NINGUNO hasta reevaluar los ocho criterios
+
+AUTORIZADO EN: todos los estadios salvo Vinculación y Recaída en acogida.

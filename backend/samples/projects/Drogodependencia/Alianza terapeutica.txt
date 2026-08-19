@@ -1,0 +1,86 @@
+alianza_terapéutica — ALIANZA TERAPÉUTICA
+Tipo: REGULADOR. Es una PUERTA. No clasifica y no debe clasificar.
+Escala: [0,1] ∪ {null}.
+
+═══════════════════════════════════════════════════════════════════
+QUÉ MIDE
+═══════════════════════════════════════════════════════════════════
+
+Vínculo, acuerdo sobre objetivos y acuerdo sobre tareas, según la estructura
+del WAI-SR. Tres bloques, media simple.
+
+UNA ALIANZA FUERTE NO INDICA UN ESTADIO AVANZADO. Indica que la conversación
+puede sostener más carga. Es la confusión más tentadora del sistema —quien
+habla mucho y bien parece que avanza— y la que produce estadiaje por simpatía.
+alianza_terapéutica no entra en el posterior bayesiano. Nunca.
+
+═══════════════════════════════════════════════════════════════════
+LA PUERTA
+═══════════════════════════════════════════════════════════════════
+
+puerta_alianza: autómata de Schmitt sobre alianza_terapéutica.
+  OFF → ON   si alianza_terapéutica ≥ 45 en 2 evaluaciones consecutivas   (θ_on, N_on)
+  ON → OFF   si alianza_terapéutica < 35 en 1 evaluación                  (θ_off, N_off)
+  Estado inicial: OFF.
+
+Umbral base 40 con Δ = 10.
+
+ES LA CONSTANTE MÁS CONSECUENTE DEL SISTEMA. Afecta a la modalidad en ~11% de
+los vectores. Sin histéresis produce ≈2.32 conmutaciones espurias por usuario en
+12 sesiones a niveles de ruido realistas; con esta configuración, ≈0.49. Cada
+conmutación espuria es un cambio de registro que la persona percibe como
+inconsistencia. No se toca sin rehacer el análisis de sensibilidad.
+
+La asimetría 2/1 es deliberada: abrir la puerta cuesta el doble que cerrarla.
+Cerrar de más sólo cuesta lentitud; abrir de más cuesta alianza.
+
+QUÉ CIERRA LA PUERTA: la ACCIÓN, no la INFERENCIA. Con la puerta cerrada el
+motor sigue calculando Ê con normalidad. Lo que no puede es administrar ítems
+(salvo alianza_terapéutica) ni disparar transiciones ascendentes.
+
+═══════════════════════════════════════════════════════════════════
+BANCO DE ÍTEMS — 6.1 a 6.5
+═══════════════════════════════════════════════════════════════════
+
+Son los ÚNICOS ítems autorizados en Vinculación, no cuentan contra la cuota de
+dosificación y pueden encadenarse (Excepción A).
+
+VÍNCULO
+6.1  WAI-SR: "Siento que me aprecian."
+     Checkpoint: "¿Te sientes cómodo hablando aquí?"
+6.2  WAI-SR: "Siento que me entienden."
+     Checkpoint: "¿Te he entendido bien o me he ido por otro lado?"
+     NOTA: es a la vez ítem y reflejo. El de mejor relación coste/beneficio de
+     todo el sistema: mide y construye en el mismo movimiento.
+
+ACUERDO SOBRE OBJETIVOS
+6.3  WAI-SR: "Estamos de acuerdo en lo que quiero conseguir."
+     Checkpoint: "¿Esto va de lo que te interesa a ti, o me estoy desviando?"
+6.4  WAI-SR: "Lo que hacemos aquí tiene sentido para mí."
+     Checkpoint: "¿Le ves sentido a hablar de esto?"
+
+ACUERDO SOBRE TAREAS
+6.5  WAI-SR: "Creo que la forma de trabajar aquí es adecuada."
+     Checkpoint: "¿Esto te está sirviendo de algo, o te resulta pesado?"
+     NOTA: la respuesta negativa a 6.5 es la información más valiosa que este
+     sistema puede recibir. Se agradece, se registra y se cambia el registro.
+     No se defiende el método.
+
+═══════════════════════════════════════════════════════════════════
+USO EN EL MOTOR
+═══════════════════════════════════════════════════════════════════
+
+Aparece en: T1, T2, T3, T4, T5, T7 como puerta_alianza.
+NO aparece en T6, y esto es deliberado y central: T6 es descendente y protectora.
+Una transición protectora que dependiera de la alianza fallaría exactamente
+cuando más falta hace, que es cuando la persona se ha distanciado. Las puertas
+se ponen para no empujar, no para no proteger.
+σ_item 12 · σ_lenguaje 24.
+
+AUTORIZADO EN: todos los estados, incluida Vinculación, incluida Recaída.
+Es el único eje sin restricción de estado.
+
+SEÑALES LINGÜÍSTICAS DE CAÍDA (extracción, sin ítem): turnos progresivamente
+más cortos · aumento del intervalo entre sesiones · monosílabos · corrección
+de lo que el sistema devuelve · desvío repetido de tema · ironía sobre el
+propio sistema. Cualquiera de ellas baja alianza_terapéutica antes de que ningún ítem lo capte.

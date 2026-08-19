@@ -1,0 +1,72 @@
+craving_nivel_e_inestabilidad — CRAVING: NIVEL E INESTABILIDAD
+Tipo: MODULADOR. Sólo puede VETAR. Nunca aporta condición positiva.
+DOS señales. Ambas necesarias.
+
+═══════════════════════════════════════════════════════════════════
+COMPONENTES
+═══════════════════════════════════════════════════════════════════
+
+craving_nivel_e_inestabilidad_nivel ∈ [0,1] ∪ {null}   intensidad del deseo.
+craving_nivel_e_inestabilidad_mssd  ∈ [0,1] ∪ {null}   variabilidad entre observaciones.
+  mssd = [ Σ(vₖ₊₁ − vₖ)² / (n−1) ] / 2s²
+  Con n < 3 observaciones: mssd = null. NUNCA se estima con dos puntos.
+
+NIVEL ALTO Y ESTABLE ≠ NIVEL ALTO E INESTABLE.
+El primero es tolerable y a menudo compatible con cambio sostenido. El segundo
+predice episodio: el craving volátil produce ventanas de decisión estrechas en
+las que cualquier plan hecho en meseta no sirve. La señal de riesgo es la
+segunda, y sin mssd el sistema es ciego a ella.
+
+MARCO CONCEPTUAL: el craving es una experiencia que sube, se mantiene y baja
+por sí sola. No hay que hacer nada con ella para que pase. Ese encuadre —
+observar la ola en lugar de luchar contra ella — es la base del trabajo de
+prevención de recaídas basado en atención plena, y es lo que Lluna devuelve
+cuando craving_nivel_e_inestabilidad está alto, en lugar de técnicas de control.
+
+Procedencia: VAS de craving · escalas de deseo de MBRP.
+
+═══════════════════════════════════════════════════════════════════
+BANCO DE ÍTEMS
+═══════════════════════════════════════════════════════════════════
+
+NIVEL
+5.1  "Ahora mismo, ¿cuántas ganas tienes?"
+     Checkpoint: "¿Ahora mismo cómo andas de ganas?"
+     NOTA: es el único ítem del sistema que se admite en presente inmediato y
+     sin apenas contexto previo, porque la medida en diferido no sirve.
+5.2  "En los últimos días, ¿cómo de fuertes han sido las ganas?"
+     Checkpoint: "Estos días, ¿ha apretado?"
+5.3  "¿Cuánto te ha costado no consumir esta semana?"
+     Checkpoint: "¿Ha costado, esta semana?"
+
+INESTABILIDAD  (requiere repetición, no ítems distintos)
+5.4  Repetición temporal de 5.1 en momentos distintos. Es la fuente principal
+     de mssd. Ver Excepción B de "Funcionamiento de ítems.txt".
+5.5  "¿Va por rachas o está más o menos igual?"
+     Checkpoint: "¿Es siempre parecido o va a rachas?"
+     Da una estimación gruesa de mssd cuando no hay serie suficiente.
+
+CONTEXTUALIZACIÓN (no puntúa nivel; alimenta autoeficacia_situacional y el calendario de riesgo)
+     "¿Cuándo aprieta más?" · "¿Qué estaba pasando justo antes?"
+
+═══════════════════════════════════════════════════════════════════
+USO EN EL MOTOR
+═══════════════════════════════════════════════════════════════════
+
+NO aparece positivamente en ningún trigger. Por diseño.
+Aparece en reglas: R5 (nivel ≥70 Y mssd ≥60; salida en 60/50 sostenido
+dos evaluaciones), R9(a).
+Modula: con craving_nivel_e_inestabilidad alto el turno va del aquí y ahora. Nada prospectivo, ningún plan.
+Con craving_nivel_e_inestabilidad_mssd alto NO SE PIDE COMPROMISO: un compromiso hecho en cresta se rompe
+en valle, y la rotura se paga en autoeficacia y en alianza.
+σ_item 14 · σ_lenguaje 16. Es el único eje donde ítem y lenguaje pesan casi
+igual: el craving se describe espontáneamente con precisión razonable.
+
+AUTORIZADO EN: todos los estadios salvo Vinculación.
+En Precontemplación se admite 5.1 y sólo si la persona ha traído el tema.
+EXCEPCIÓN B activa: puede encadenarse con otro ítem de craving_nivel_e_inestabilidad si hay craving en el
+turno actual.
+
+NUNCA se responde a craving alto con una técnica no pedida. Primero se acompaña,
+se pregunta qué suele ayudar, y sólo entonces, si la persona lo quiere, se
+ofrecen opciones en plural.

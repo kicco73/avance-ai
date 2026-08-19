@@ -1,0 +1,86 @@
+ESTADO: RECAÍDA
+EVENTO, no estadio. Interrupción del cambio consolidado con retorno al patrón
+previo. Sólo es posible desde acción o mantenimiento: no se puede recaer de lo
+que no se ha dejado.
+
+═══════════════════════════════════════════════════════════════════
+1. LO PRIMERO, Y NO ES LA REEVALUACIÓN
+═══════════════════════════════════════════════════════════════════
+
+REGISTRO DE ACOGIDA. Ni una palabra de la lista prohibida: recaer, fallar,
+romper, volver a empezar, perder lo conseguido, tirar por la borda, desde cero.
+
+  · NO se pregunta qué pasó hasta que la persona lo traiga.
+  · Primero: cómo está AHORA, si está a salvo, qué necesita HOY.
+  · Se comprueba riesgo agudo. La tolerancia baja tras un periodo de reducción
+    y ésta es una ventana de riesgo real: R0 y R1 tienen prioridad sobre todo
+    lo demás de este fichero.
+  · Se informa de reducción de daños sin que haga falta pedirlo, si el contenido
+    lo hace pertinente. Aquí es cuando más sirve.
+
+La persona que recae enfrenta con frecuencia sentimientos de fracaso,
+desesperanza, culpa y frustración, y su sentido de autoeficacia queda seriamente
+afectado. La tarea es evitar el desconsuelo y la desmoralización, no analizar.
+
+ENCUADRE: el proceso es espiral, no lineal. La mayoría de las personas recorre
+el ciclo varias veces antes de un cambio estable, y la mayoría de quienes recaen
+no abandonan: reinician. Esto se sostiene desde el diseño; NO SE LE DICE A LA
+PERSONA COMO CONSUELO, porque dicho en el momento equivocado suena a minimizar.
+
+═══════════════════════════════════════════════════════════════════
+2. PROCESOS
+═══════════════════════════════════════════════════════════════════
+
+NINGUNO hasta reevaluar los ocho criterios. Literalmente ninguno.
+
+No se promueve concienciación, ni auto-reevaluación, ni control de estímulos,
+ni nada. El sistema no sabe dónde está la persona y actuar sin saberlo es
+precisamente el error que R9 y toda la fase 6 existen para evitar.
+
+La reevaluación es la tarea, y va LENTA. Se necesita al menos una observación
+posterior al evento en los OCHO ejes, y las observaciones anteriores no cuentan
+por frescas que sean. Se recogen sobre todo por lenguaje espontáneo; los ítems
+entran tarde, de uno en uno, y sólo cuando la acogida ya ha ocurrido.
+
+═══════════════════════════════════════════════════════════════════
+3. DEGRADACIÓN SI CAE LA ALIANZA  [D-13]
+═══════════════════════════════════════════════════════════════════
+
+T7 exige puerta_alianza. Si la alianza cae durante este estado y no se
+recupera, S_nom queda anclado aquí, porque es la única salida.
+
+  SI not puerta_alianza sostenido en este estado:
+    · El REPERTORIO ACTIVO degrada al de "Vinculación.txt": escuchar, reflejar,
+      no proponer, no medir, sólo ítems de alianza_terapéutica.
+    · Se mantiene disponible, sin condiciones, la información de reducción de
+      daños, los recursos de emergencia y el directorio de recursos presenciales.
+    · Es un estado seguro e indefinidamente sostenible. No hay prisa por salir.
+
+Reconstruir la alianza vuelve a abrir la puerta y T7 vuelve a ser evaluable.
+No hay ningún otro camino, y no hace falta ninguno.
+
+═══════════════════════════════════════════════════════════════════
+4. ÍTEMS
+═══════════════════════════════════════════════════════════════════
+
+FASE DE ACOGIDA:  sólo alianza_terapéutica (6.1–6.5). Nada más. Ningún otro eje.
+FASE DE REEVALUACIÓN: se abren progresivamente reconocimiento_del_problema, acción_efectiva_magnitud_y_duración, craving_nivel_e_inestabilidad, intención_comprometida, perfil_de_procesos_de_cambio, autoeficacia_situacional, balance_decisional, en
+ese orden aproximado. Dosificación reducida: máximo 1 por sesión.
+SIEMPRE PROHIBIDO: cualquier ítem con flag_crisis_activa.
+No se administra autoeficacia_situacional en las 72 horas posteriores al evento.
+
+═══════════════════════════════════════════════════════════════════
+5. SALIDA
+═══════════════════════════════════════════════════════════════════
+
+Única arista: T7 → Contemplación. Glosa en "Avance por estado.txt" §7.
+
+Destino Contemplación porque es la reentrada canónica: tras recaer, las personas
+retoman el ciclo desde contemplación y desde ahí reinician sus intentos. No se
+salta a Preparación aunque los números lo permitieran; la escalera se vuelve a
+subir por T3 y T4, que ya tienen sus propias compuertas.
+
+T7 NO exige que la magnitud siga baja. Sería perverso: mantendría en modo de
+reevaluación precisamente a quien ya ha recuperado el cambio. Si la persona se
+ha reestabilizado, T7 dispara y la escalera se recorre rápido, porque la
+evidencia de acción_efectiva_magnitud_y_duración ya está acumulada.

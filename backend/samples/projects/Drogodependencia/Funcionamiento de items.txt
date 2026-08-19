@@ -1,0 +1,129 @@
+FUNCIONAMIENTO DE ÍTEMS — v2.0
+Cómo se administra un instrumento validado sin que parezca un instrumento.
+
+═══════════════════════════════════════════════════════════════════
+1. QUÉ ES UN ÍTEM AQUÍ
+═══════════════════════════════════════════════════════════════════
+
+Los bancos de ítems de los ficheros de eje NO son cuestionarios que se pasan.
+Son un DICCIONARIO DE REFERENCIA: la formulación canónica de cada constructo,
+con su procedencia, para que el motor sepa qué está midiendo cuando extrae.
+
+Tienen dos usos y sólo dos:
+
+  USO 1 — PATRÓN DE EXTRACCIÓN (el habitual, ~90% del tiempo)
+  El ítem no se pregunta. Sirve de referencia para reconocer, en lenguaje
+  espontáneo, una respuesta equivalente. Si alguien dice "llevo dos meses sin
+  bajar al bar del barrio", eso es una respuesta a un ítem de control de
+  estímulos de perfil_de_procesos_de_cambio que nadie ha formulado. Se registra con fuente=lenguaje.
+
+  USO 2 — CHECKPOINT CONVERSACIONAL (excepcional, y anclado)
+  Versión ultrabreve del ítem, incrustada en el hilo de la conversación, en
+  lenguaje natural, sin escala visible y sin numerar. Genera fuente=item y
+  produce ANCLAJE. Es lo que hace posible ancla_acción_efectiva_magnitud_y_duración y ancla_intención_comprometida.
+
+ÍTEMS COMO GPS, LENGUAJE COMO NAVEGACIÓN INERCIAL
+El lenguaje espontáneo da resolución temporal alta y especificidad situacional,
+pero DERIVA: el sesgo se acumula turno a turno sin corrección. El ítem da
+posición absoluta y no deriva, pero es caro — cuesta naturalidad, cuesta
+alianza y no puede usarse a menudo. La estrategia es inercial con recalibración
+periódica, no una cosa o la otra.
+
+═══════════════════════════════════════════════════════════════════
+2. DOSIFICACIÓN
+═══════════════════════════════════════════════════════════════════
+
+  · Máximo 1 ítem por turno. Sin excepciones.
+  · Máximo 2 ítems por sesión.
+  · PROHIBIDO encadenar dos ítems del mismo eje, salvo las excepciones de §3.
+  · PROHIBIDO pedir una cifra sin contexto conversacional previo. El ítem entra
+    donde la conversación ya está, o no entra.
+  · Mínimo 3 turnos entre ítem e ítem.
+  · Si el turno anterior de la persona fue corto, evasivo o de malestar: no se
+    administra ítem.
+  · Si not puerta_alianza: no se administra ningún ítem salvo alianza_terapéutica.
+  · Si flag_crisis_activa: no se administra ningún ítem. Ninguno.
+  · Si Confianza < 35: no se administran ítems de acción_efectiva_magnitud_y_duración ni de intención_comprometida (los que tienen
+    consecuencia conductual). Los demás, sí.
+
+═══════════════════════════════════════════════════════════════════
+3. EXCEPCIONES DECLARADAS AL ENCADENAMIENTO
+═══════════════════════════════════════════════════════════════════
+
+Son dos. No hay más y no se añaden sin ratificación.
+
+  EXCEPCIÓN A — alianza_terapéutica EN VINCULACIÓN
+  Los ítems 6.1 a 6.5 pueden administrarse con mayor frecuencia y encadenarse
+  durante el estado Vinculación. NO cuentan contra la cuota de dosificación.
+  Razón: son los únicos autorizados en ese estado, la puerta de alianza depende
+  de ellos, y sin puerta el sistema entero está bloqueado.
+
+  EXCEPCIÓN B — craving_nivel_e_inestabilidad EN CRAVING ACTIVO
+  Si la persona describe craving en el turno actual, puede administrarse un ítem
+  de craving_nivel_e_inestabilidad aunque el ítem anterior fuera también de craving_nivel_e_inestabilidad.
+  Razón: craving_nivel_e_inestabilidad_mssd requiere ≥3 observaciones y sólo tiene sentido con medidas
+  próximas en el tiempo. Un mssd calculado con observaciones separadas por
+  semanas no mide inestabilidad: mide otra cosa.
+
+═══════════════════════════════════════════════════════════════════
+4. CÓMO SE INCRUSTA UN CHECKPOINT
+═══════════════════════════════════════════════════════════════════
+
+  1. Enganchar con lo que la persona acaba de decir. Literalmente.
+  2. Formular en lenguaje natural, sin numerar y sin nombrar escala.
+  3. Aceptar respuesta cualitativa. "Bastante", "poco", "según el día" son
+     respuestas válidas y se mapean internamente.
+  4. No repreguntar para precisar. Si la respuesta es vaga, se registra vaga
+     con σ mayor. Insistir cuesta más de lo que aporta.
+  5. Devolver algo. Un ítem que no produce reflejo se percibe como formulario.
+
+EJEMPLOS DE CONVERSIÓN
+
+  intención_comprometida horizonte — canónico: "¿Tiene intención de cambiar su consumo en los
+  próximos 30 días?"
+  Checkpoint: "Cuando piensas en cambiar algo de esto, ¿lo ves como algo de
+  este mes, o más bien de más adelante?"
+
+  autoeficacia_situacional dominio afecto negativo — canónico: "Puntúe su confianza de 0 a 100 para
+  resistir el consumo cuando se siente deprimido."
+  Checkpoint: "Un día malo de verdad, de esos que te hunden. ¿Cuánto te ves
+  capaz de esquivarlo, ahí?"
+
+  acción_efectiva_magnitud_y_duración magnitud — canónico: "¿Cuántos días de la última semana ha consumido?"
+  Checkpoint: "¿Cómo ha ido esta semana comparada con las de antes?"
+
+  alianza_terapéutica vínculo — canónico WAI-SR: "Siento que mi terapeuta me aprecia."
+  Checkpoint: "¿Esto te está sirviendo de algo, o te está resultando pesado?"
+
+═══════════════════════════════════════════════════════════════════
+5. LO QUE NUNCA SE HACE CON UN ÍTEM
+═══════════════════════════════════════════════════════════════════
+
+  · Presentarlo como test, escala, evaluación, cuestionario o "unas preguntitas".
+  · Numerarlo, agruparlo o anunciarlo ("te voy a hacer cinco preguntas").
+  · Mostrar una escala Likert, un slider o unas opciones cerradas.
+  · Devolver un resultado, una puntuación, un percentil o una comparación.
+  · Explicar para qué sirve, si lo preguntan, en términos de medición. Se dice
+    la verdad de otro modo: "para entenderte mejor y no darte la lata con cosas
+    que no te encajan".
+  · Administrar un ítem de un eje cuyo repertorio no está activo en Ê.
+
+═══════════════════════════════════════════════════════════════════
+6. VALIDEZ — ADVERTENCIA QUE NO SE PUEDE OMITIR
+═══════════════════════════════════════════════════════════════════
+
+Los coeficientes de fiabilidad de los instrumentos validados (SOCRATES, URICA,
+DTCQ, AASE, WAI-SR, RCQ, balance decisional de Velicer) NO SE TRANSFIEREN a la
+administración conversacional. Cambian el modo, el orden, el contexto, la
+presencia de reflejo entre ítems y la ausencia de escala visible. Todo eso es
+varianza de método.
+
+El instrumento conversacional es un instrumento NUEVO. Necesita su propia
+validación. La procedencia declarada en cada banco de ítems es trazabilidad
+teórica, no aval psicométrico, y no debe presentarse como tal ante ningún
+comité, ningún colaborador clínico y ningún inversor.
+
+Estudio Fase 1: validez concurrente, administración conversacional vs.
+cuestionario contrabalanceada, 80–120 participantes, dos clínicos independientes
+para la etiqueta de estadio, kappa ponderada como métrica primaria. Requisito
+previo: aprobación del comité de ética.

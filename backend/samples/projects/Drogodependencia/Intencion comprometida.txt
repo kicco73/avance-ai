@@ -1,0 +1,110 @@
+intención_comprometida — INTENCIÓN COMPROMETIDA
+Tipo: CLASIFICADOR. Es EL criterio canónico de estadiaje.
+TRES subcomponentes heterogéneos que NO se promedian entre sí.
+
+═══════════════════════════════════════════════════════════════════
+intención_comprometida_horizonte — ORDINAL
+═══════════════════════════════════════════════════════════════════
+
+Dominio ordenado, CODIFICADO COMO ENTERO:  0 sin horizonte · 1 seis meses · 2 treinta días
+Los triggers comparan contra el entero (>= 1, >= 2), no contra un literal simbólico:
+un nombre suelto tipo en_6m tendría que estar ligado en el espacio de nombres y es
+una dependencia innecesaria. Ver "Índice y convenciones.txt" §8.
+
+Es el criterio canónico del algoritmo de estadiaje:
+  precontemplación = no pretender cambiar en seis meses
+  contemplación    = pretenderlo en seis meses
+  preparación      = pretenderlo en treinta días Y haber dado algún paso
+
+Se compara con >=. NUNCA se promedia, nunca se interpola, nunca se convierte a
+continuo. Se resuelve por la observación anclada más reciente; si
+no hay anclada, por la lingüística más reciente, con σ mayor.
+
+═══════════════════════════════════════════════════════════════════
+intención_comprometida_fuerza — [0,1]
+═══════════════════════════════════════════════════════════════════
+
+Fuerza del lenguaje de compromiso. La fuerza del lenguaje de compromiso al
+evaluar un plan predice la proporción de días de cambio, y MEDIA el efecto del
+deseo, la capacidad, la necesidad y las razones. Es decir: deseo y razones no
+predicen por sí mismos; predicen a través del compromiso.
+
+ORDEN:  deseo < capacidad < activación < compromiso
+Mapeo [H0]:
+  25  deseo        "me gustaría", "ojalá", "querría"
+  45  capacidad    "podría", "sería capaz", "si quisiera"
+  65  activación   "estoy dispuesto", "estoy listo", "voy a intentarlo"
+  85  compromiso   "voy a", "lo hago", "he decidido"
+
+CONSECUENCIA OPERATIVA: un horizonte de treinta días expresado en lenguaje de
+deseo no es preparación. Por eso T3 exige fuerza ≥ 50, que cae entre capacidad
+y activación.
+
+═══════════════════════════════════════════════════════════════════
+intención_comprometida_locus — [0,1]
+═══════════════════════════════════════════════════════════════════
+
+1 = autonomía plena · 0 = presión externa pura.
+La motivación controlada por presión externa predice peor adherencia y más
+abandono que la autónoma. Un horizonte de treinta días sostenido por un juzgado,
+una pareja o una empresa no es preparación: es cumplimiento. Tratarlo como
+preparación produce un plan que nadie sostiene y una caída de autoeficacia que
+se atribuirá a la persona.
+
+Procedencia: RCQ · URICA · SOCRATES escala Disposición · TSRQ para locus ·
+codificación de lenguaje de cambio y de compromiso de la entrevista motivacional.
+
+═══════════════════════════════════════════════════════════════════
+BANCO DE ÍTEMS
+═══════════════════════════════════════════════════════════════════
+
+HORIZONTE
+7.1  "¿Tienes intención de cambiar algo de tu consumo en los próximos 30 días?"
+     Checkpoint: "Cuando piensas en cambiar algo, ¿lo ves de este mes o de
+     más adelante?"
+7.2  "¿Y en los próximos seis meses?"
+     Checkpoint: "¿Y de aquí a medio año, cómo lo ves?"
+7.3  "¿Has dado ya algún paso, aunque sea pequeño?"
+     Checkpoint: "¿Has movido algo ya, aunque sea poca cosa?"
+     NOTA: 7.3 es la segunda mitad del criterio de preparación. Sin él, el
+     horizonte solo produce falsos positivos sistemáticos.
+
+FUERZA
+7.4  "¿Cómo de decidido estás?"
+     Checkpoint: "¿Lo tienes decidido o lo estás pensando?"
+7.5  "¿Dirías que quieres cambiar, que puedes, o que vas a hacerlo?"
+     Checkpoint: se extrae casi siempre de lenguaje espontáneo. Administrarlo
+     es intrusivo y suele bajar la fuerza declarada.
+7.6  "Si tuvieras que ponerle fecha, ¿se la pondrías?"
+     Checkpoint: "¿Le pondrías fecha o todavía no?"
+
+LOCUS
+7.7  "¿Esto lo quieres tú o te lo piden?"
+     Checkpoint: "¿Esto sale de ti o viene de fuera?"
+     NOTA: de los movimientos más útiles de todo el sistema. Separar lo que la
+     persona quiere de lo que le exigen suele reordenar la conversación entera.
+7.8  "Si nadie te dijera nada, ¿harías lo mismo?"
+     Checkpoint: "Si no hubiera nadie encima, ¿qué harías?"
+7.9  "¿Qué pasaría si no cambiaras?" — se codifica el tipo de consecuencia
+     mencionada: externa (juzgado, pareja, trabajo) baja el locus; interna
+     (salud, valores, cómo se siente) lo sube.
+
+═══════════════════════════════════════════════════════════════════
+USO EN EL MOTOR
+═══════════════════════════════════════════════════════════════════
+
+Aparece positivamente en: T1 y T2 (intención_comprometida_horizonte_min2 >= 1), T3 (intención_comprometida_horizonte_min2 >= 2,
+ancla_intención_comprometida, intención_comprometida_fuerza >= 50).
+Aparece en reglas: R2 (locus < 30), R7 (horizonte 2 sin paso), R9(b).
+σ_item 9 · σ_lenguaje 30. LA MAYOR DIFERENCIA ÍTEM/LENGUAJE DEL SISTEMA,
+y de ahí que ancla_intención_comprometida sea obligatorio en T3.
+
+POR QUÉ. La deseabilidad conversacional empuja hacia arriba justo en este eje:
+decirle a alguien que te acompaña que vas a cambiar pronto es socialmente barato
+y emocionalmente gratificante. Un horizonte de treinta días declarado sólo en
+lenguaje espontáneo es la observación más inflada de todo el motor.
+
+AUTORIZADO EN: Contemplación, Preparación, Acción, Mantenimiento.
+PROHIBIDO EN: Vinculación, Precontemplación (preguntar por horizonte a quien no
+tiene ninguno genera resistencia y no informa), Recaída en fase de acogida, y
+siempre que Confianza < 35 o flag_crisis_activa.

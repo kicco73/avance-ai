@@ -1,0 +1,328 @@
+ÍNDICE Y CONVENCIONES — v2.0
+Fichero raíz. Define el lenguaje en el que están escritos todos los [trigger].
+Si algo de otro fichero contradice a éste, gana éste.
+
+═══════════════════════════════════════════════════════════════════
+0. ÍNDICE DE FICHEROS
+═══════════════════════════════════════════════════════════════════
+
+RAÍZ
+  Índice y convenciones.txt ..... este fichero. Notación, tipos, lógica.
+  deontologia.txt ............... límites no negociables. Gana sobre todo.
+  actitud.txt ................... registro conversacional, tono, ritmo.
+
+MOTOR
+  Ejes y fórmulas.txt ........... cómo se calcula cada Eᵢ a partir de observaciones.
+  Algoritmo ejes.txt ............ las 8 fases del pipeline, en orden.
+  Reglas duras.txt .............. R0–R10. Flags. Precedencia.
+  Estadios y fases.txt .......... criterios canónicos del MTT. Cálculo de Ê.
+  Avance por estado.txt ......... tabla de transiciones. Glosa de cada trigger.
+  Funcionamiento de ítems.txt ... administración encubierta y dosificación.
+  Defectos detectados.txt ....... indeterminaciones pendientes de ratificación.
+
+EJES (uno por signal)
+  Reconocimiento del problema.txt ............ reconocimiento_del_problema
+  Balance decisional.txt ..................... balance_decisional
+  Autoeficacia situacional.txt ............... autoeficacia_situacional
+  Acción efectiva - magnitud y duración.txt .. acción_efectiva_magnitud_y_duración
+  Craving - nivel e inestabilidad.txt ........ craving_nivel_e_inestabilidad
+  Alianza terapéutica.txt .................... alianza_terapéutica
+  Intención comprometida.txt ................. intención_comprometida
+  Perfil de procesos de cambio.txt ........... perfil_de_procesos_de_cambio
+
+ESTADOS (uno por state)
+  Vinculación.txt · Precontemplación.txt · Contemplación.txt ·
+  Preparación.txt · Acción.txt · Mantenimiento.txt · Recaída.txt
+
+═══════════════════════════════════════════════════════════════════
+1. DOS RELOJES: S_nom Y Ê
+═══════════════════════════════════════════════════════════════════
+
+Distinción central. No confundirlas nunca.
+
+  S_nom  Estado NOMINAL. Lo que la máquina de estados registra. Cambia sólo
+         cuando dispara un [trigger]. Es un trinquete: sólo avanza, salvo la
+         única arista descendente Mantenimiento → Recaída.
+
+  Ê      Estadio INFERIDO. Lo que el motor de 8 ejes calcula en cada turno.
+         Se mueve libremente en ambas direcciones. Es la verdad clínica.
+
+REGLA DE GOBIERNO DEL REPERTORIO
+  El repertorio — tono, ritmo, procesos a promover, ítems autorizados,
+  prohibiciones — lo gobierna Ê. NUNCA S_nom.
+  Si Ê < S_nom, se opera con el repertorio de Ê y NO se anuncia nada.
+  Si Ê > S_nom, se opera con el repertorio de S_nom y se espera a que el
+  trigger dispare. El avance nominal va siempre por detrás de la inferencia.
+
+POR QUÉ ESTA ASIMETRÍA
+  El riesgo iatrogénico está documentado en una sola dirección: inducir
+  procesos conductuales a quien todavía está en trabajo experiencial produce
+  estancamiento en contemplación, frustración y caída de autoeficacia. La
+  operación inversa — sostener trabajo experiencial con alguien que ya podría
+  soportar trabajo conductual — cuesta tiempo, no daño. Por eso las
+  transiciones ascendentes se compuertan duro y los descensos no necesitan
+  arista: se resuelven dentro del estado, por override de repertorio.
+
+═══════════════════════════════════════════════════════════════════
+2. TIPOS Y ESCALAS
+═══════════════════════════════════════════════════════════════════
+
+Eᵢ ∈ [0,1] ∪ {null}, salvo balance_decisional y perfil_de_procesos_de_cambio.
+balance_decisional ∈ [0,100] ∪ {null}   contraste estandarizado. Cruce preservado en 50.
+perfil_de_procesos_de_cambio ∈ [0,100] ∪ {null}   contraste conductual − experiencial. 50 = equilibrio.
+
+null NO ES CERO. null = ausencia de evidencia. Cero = evidencia de ausencia.
+Tratar la ausencia como evidencia negativa es un error de diseño, no una
+aproximación conservadora. Prohibido imputar.
+
+SUBCOMPONENTES — identificadores PLANOS, no acceso por punto. No se funden nunca.
+  autoeficacia_situacional_media · autoeficacia_situacional_min
+  acción_efectiva_magnitud_y_duración_magnitud · acción_efectiva_magnitud_y_duración_diasConsolidados · acción_efectiva_magnitud_y_duración_mesesConsolidados
+  craving_nivel_e_inestabilidad_nivel · craving_nivel_e_inestabilidad_mssd
+  intención_comprometida_horizonte · intención_comprometida_fuerza · intención_comprometida_locus
+  perfil_de_procesos_de_cambio_contraste
+
+intención_comprometida_horizonte es ORDINAL, no continuo. Codificado como ENTERO:
+  0 = sin horizonte · 1 = dentro de seis meses · 2 = dentro de treinta días
+Se compara con >=. Nunca se promedia, nunca se interpola.
+
+acción_efectiva_magnitud_y_duración_mesesConsolidados = acción_efectiva_magnitud_y_duración_diasConsolidados / 30.44   (derivado, no primitivo)
+
+═══════════════════════════════════════════════════════════════════
+2bis. ESCALA 0–100 — POR QUÉ, Y QUÉ SE MIRA EN EL INSPECTOR
+═══════════════════════════════════════════════════════════════════
+
+TODOS los valores de eje son ENTEROS EN [0,100]. Ningún eje trabaja en [0,1].
+
+La razón es de instrumentación, no teórica: el panel de señales renderiza barras
+sobre 0–100. Un eje formulado en [0,1] produce barras que se mueven un 1% como
+máximo, y el sistema queda ciego para quien lo observa. Un motor que no se puede
+inspeccionar no se puede calibrar, y la Fase 0 entera consiste en calibrar.
+
+  MONOPOLARES (6 ejes)   0 = ausencia · 100 = máximo
+      reconocimiento_del_problema · autoeficacia_situacional ·
+      acción_efectiva_magnitud_y_duración · craving_nivel_e_inestabilidad ·
+      alianza_terapéutica · intención_comprometida
+
+  BIPOLARES (2 ejes)     50 = NEUTRO · <50 un polo · >50 el otro
+      balance_decisional            <50 contras dominan · >50 pros dominan
+      perfil_de_procesos_de_cambio  <50 experiencial   · >50 conductual
+
+  LOS BIPOLARES NO SE MULTIPLICARON POR 100: SE REMAPEARON con v' = 50·(1+v).
+  Es la única conversión no lineal del reescalado y la que hay que mirar dos
+  veces. Su cruce estaba en 0 y ahora está en 50. Un balance decisional que
+  marque 50 no es "medio bueno": es ambivalencia clavada en el punto de cruce,
+  que es justo lo que dispara R3. En una barra 0–100 el neutro se ve en el
+  centro, que es además como debe leerse.
+
+  SUBCOMPONENTES en las mismas unidades que su eje, salvo dos que tienen unidad
+  propia y NO deben leerse como porcentaje:
+      intención_comprometida_horizonte        ordinal 0 · 1 · 2
+      acción_efectiva_..._diasConsolidados    días (0 a varios cientos)
+
+CENTINELAS. Un eje sin observaciones NO vale 0: vale el centinela de §3. Cero es
+evidencia de ausencia; centinela es ausencia de evidencia. En el inspector se
+ven igual —barra vacía— y ésa es una limitación del panel, no del motor. Al
+depurar, comprobar n_<eje> antes de concluir nada de una barra a cero.
+
+═══════════════════════════════════════════════════════════════════
+3. AUSENCIA DE EVIDENCIA — DÓNDE VIVE LA LÓGICA TRIVALUADA
+═══════════════════════════════════════════════════════════════════
+
+El principio no cambia: null NO ES CERO, y sin evidencia no se avanza.
+Lo que cambia es DÓNDE se implementa.
+
+Los [trigger] se evalúan como EXPRESIONES PYTHON. En Python una comparación
+contra None lanza TypeError, y una lógica de tres valores no es expresable en
+una expresión booleana ordinaria. Meter Kleene dentro del trigger no es sólo
+incómodo: es frágil, y falla en tiempo de ejecución en vez de fallar callado.
+
+REPARTO DE RESPONSABILIDAD
+  · La LÓGICA TRIVALUADA vive en las fases 2 a 7 del pipeline, que son código.
+    Ahí null se propaga como null y se razona sobre él con propiedad.
+  · Los TRIGGERS sólo ven escalares y booleanos ya resueltos. Nunca ven null.
+
+CÓMO SE RESUELVE null AL LIGAR EL ESPACIO DE NOMBRES (fase 8a)
+  · Clasificador continuo en null  → se liga a float('-inf')
+  · Ordinal en null                → se liga a -1
+  · Contador sin observaciones     → 0
+  · Booleano no evaluable          → False
+
+El efecto es exactamente el buscado: toda CONDICIÓN POSITIVA con evidencia
+ausente evalúa a False y el trigger no dispara. La ignorancia nunca empuja.
+
+LOS VETOS NO SE EXPRESAN COMO COMPARACIÓN. Ninguno. Todos pasan por un flag_*
+puesto por una regla dura. Razón: un veto escrito como `not (perfil_de_procesos_de_cambio_contraste <=
+25)` con perfil_de_procesos_de_cambio en null quedaría ABIERTO justo cuando no hay evidencia — que es
+el momento en que más se necesita cerrado. La capa de reglas es código y puede
+decidir explícitamente qué hacer con el null; una expresión evaluada, no.
+Ver R11 en "Reglas duras.txt", que es el caso donde esto muerde.
+
+═══════════════════════════════════════════════════════════════════
+4. TIPOLOGÍA DE EJES Y QUÉ PUEDE HACER CADA UNO
+═══════════════════════════════════════════════════════════════════
+
+Restricción estructural. Se respeta en los siete triggers sin excepción.
+
+  CLASIFICADORES  reconocimiento_del_problema, acción_efectiva_magnitud_y_duración, intención_comprometida
+      Sólo ellos pueden aportar CONDICIÓN POSITIVA a una transición.
+      Son los únicos que responden a "¿en qué estadio está?".
+
+  MODULADORES     balance_decisional, autoeficacia_situacional, craving_nivel_e_inestabilidad, perfil_de_procesos_de_cambio
+      Sólo pueden VETAR. Aparecen siempre negados en el trigger.
+      Nunca aportan condición positiva. Un modulador alto no adelanta a nadie;
+      un modulador en zona de riesgo puede detener a cualquiera.
+
+  REGULADOR       alianza_terapéutica
+      Puerta. Aparece en TODA transición ascendente y en NINGUNA descendente.
+      No clasifica y no debe clasificar. Una alianza fuerte no indica estadio
+      avanzado: indica que la conversación aguanta más carga.
+
+Violar esta tipología es el modo de fallo más probable del sistema: convierte
+un modulador en clasificador encubierto y produce estadiaje por simpatía.
+
+═══════════════════════════════════════════════════════════════════
+5. VARIABLES DISPONIBLES EN LOS TRIGGERS
+═══════════════════════════════════════════════════════════════════
+
+TODAS son escalares o booleanos planos. NINGUNA es una llamada a función.
+Es deliberado: así el trigger se evalúa contra un diccionario plano, sin
+inyectar callables en el espacio de nombres y sin un solo modo de fallo por
+resolución de símbolos.
+
+VALORES DE EJE          reconocimiento_del_problema · balance_decisional · alianza_terapéutica  (float)
+                        autoeficacia_situacional_media · autoeficacia_situacional_min · acción_efectiva_magnitud_y_duración_magnitud · craving_nivel_e_inestabilidad_nivel · craving_nivel_e_inestabilidad_mssd ·
+                        intención_comprometida_fuerza · intención_comprometida_locus · perfil_de_procesos_de_cambio_contraste  (float)
+                        intención_comprometida_horizonte  (int 0..2)
+                        acción_efectiva_magnitud_y_duración_diasConsolidados (int) · acción_efectiva_magnitud_y_duración_mesesConsolidados (float)
+
+SOSTENIMIENTO           reconocimiento_del_problema_min2 · acción_efectiva_magnitud_y_duración_magnitud_min2 · intención_comprometida_horizonte_min2
+                        Mínimo del eje en las 2 últimas evaluaciones.
+                        SUSTITUYEN al predicado estable(cond, 2) de la v2.0.
+
+  POR QUÉ EL CAMBIO. estable(cond, k) no es implementable como llamada en una
+  expresión evaluada: Python evalúa el argumento AHORA y pasa un booleano ya
+  colapsado; la función no puede consultar el historial de esa condición.
+  Para una condición monótona `X >= θ` sostenida en k=2, el equivalente exacto
+  es min(X en las 2 últimas) >= θ. Eso sí es un escalar, y se precalcula en
+  fase 2 igual que cualquier otro agregado.
+
+  DESVIACIÓN QUE ESTO INTRODUCE, y hay que saberla: en T1 y T2 la condición
+  era estable(A or B, 2) y ahora es (A_min2) or (B_min2). No es idéntica.
+  La versión nueva es MÁS ESTRICTA: exige que sea el MISMO indicador el que se
+  sostenga en las dos evaluaciones, y no admite que en t-1 fuera reconocimiento
+  y en t sea horizonte. Es una restricción, no una relajación, y por tanto cae
+  del lado seguro. Marcada [H0]: si en Fase 1 se ve que retrasa la entrada en
+  contemplación más de lo tolerable, se revisa.
+
+CONTADORES              n_reconocimiento_del_problema .. n_perfil_de_procesos_de_cambio  (int, nunca null; 0 si no hay nada)
+
+ANCLAJES                ancla_reconocimiento_del_problema .. ancla_perfil_de_procesos_de_cambio  (bool)
+                        True si hay ≥1 observación anclada POR ÍTEM en las
+                        últimas 3 sesiones. El lenguaje espontáneo no ancla.
+
+PUERTA                  puerta_alianza  (bool)
+                        Autómata de Schmitt sobre alianza_terapéutica. θ_on 45 · θ_off 35 ·
+                        N_on 2 · N_off 1 · inicial False.
+                        Definición en "Alianza terapéutica.txt".
+
+REEVALUACIÓN            reobservados_desde_evento  (bool)
+                        True si los ocho ejes tienen ≥1 observación posterior
+                        al último evento de recaída registrado por R8.
+
+FLAGS                   flag_*  (bool). Nunca None: una regla que no ha podido
+                        evaluarse deja su flag en False, no en indeterminado.
+                        Catálogo completo en "Reglas duras.txt" §3.
+
+═══════════════════════════════════════════════════════════════════
+6. SINTAXIS DE LOS [trigger]
+═══════════════════════════════════════════════════════════════════
+
+EL TRIGGER ES UNA EXPRESIÓN PYTHON VÁLIDA. Se compila con ast.parse antes de
+ejecutarse; cualquier cosa que no compile tumba la carga de la configuración
+entera, no sólo ese estado.
+
+  · Operadores lógicos EN MINÚSCULA: and · or · not
+  · Comparación: == != >= <= > <
+  · Booleanos: se escriben solos. `flag_recaida_confirmada`, no `== TRUE`.
+  · Sin literales simbólicos sueltos. El horizonte se compara contra 0, 1 o 2,
+    no contra en_6m: un nombre suelto exigiría ligarlo y es una dependencia
+    que no aporta nada.
+  · Sin llamadas a función. Ninguna.
+  · Sin efectos secundarios: un trigger lee. Sólo las reglas duras escriben.
+  · Se escriben con el bloque YAML plegado `>-`, que une las líneas en una sola
+    y elimina el salto final. Multilínea legible en el fichero, expresión de
+    una línea al evaluar.
+
+Evaluación en cada turno, en la fase 8a, después de modular y antes de componer.
+La glosa en lenguaje natural de cada trigger está en "Avance por estado.txt".
+Si glosa y trigger divergen, gana el trigger y hay que corregir la glosa.
+
+═══════════════════════════════════════════════════════════════════
+7. MARCAS DE PROCEDENCIA
+═══════════════════════════════════════════════════════════════════
+
+  [C]   Canónico. Deriva del criterio publicado del modelo. No se toca sin
+        justificación teórica.
+  [H0]  Hipótesis de diseño Fase 0. Umbral heurístico pendiente de calibración
+        empírica. Se toca libremente antes del estudio de validación.
+  [D-nn] Indeterminación abierta. Requiere ratificación explícita antes de
+        producción. Listado en "Defectos detectados.txt".
+
+Todo número que aparece en un trigger lleva su marca en el fichero del eje
+correspondiente. Ningún número aparece sin procedencia.
+
+═══════════════════════════════════════════════════════════════════
+8. CONTRATO DEL ESPACIO DE NOMBRES  — para el CTO
+═══════════════════════════════════════════════════════════════════
+
+Los triggers usan EXACTAMENTE los identificadores declarados en el bloque
+signals del index.yml. Nada de abreviaturas: donde la documentación dice E7,
+el trigger dice intención_comprometida.
+
+  E1  reconocimiento_del_problema          E5  craving_nivel_e_inestabilidad
+  E2  balance_decisional                   E6  alianza_terapéutica
+  E3  autoeficacia_situacional             E7  intención_comprometida
+  E4  acción_efectiva_magnitud_y_duración  E8  perfil_de_procesos_de_cambio
+
+Los ocho son identificadores Python válidos: PEP 3131 admite letras acentuadas,
+y ninguno colisiona al normalizar a NFKC (Python normaliza los identificadores
+a NFKC internamente, así que í e í descompuesta resuelven al mismo nombre).
+
+DERIVADOS. Se forman por sufijo sobre el nombre del eje, nunca por acceso con
+punto: un atributo exigiría que el eje fuera un objeto, y un escalar plano tiene
+menos modos de fallo.
+
+  <eje>                      valor agregado del eje
+  <eje>_<subcomponente>      magnitud · diasConsolidados · mesesConsolidados ·
+                             horizonte · fuerza · locus · nivel · mssd ·
+                             media · min · contraste
+  <eje>_min2                 mínimo en las 2 últimas evaluaciones
+  <eje>_<sub>_min2           ídem sobre un subcomponente
+  n_<eje>                    contador de observaciones (int, nunca null)
+  ancla_<eje>                bool: ≥1 observación anclada por ítem en 3 sesiones
+
+NOMBRES QUE NO SON DE EJE
+  puerta_alianza             bool. Schmitt sobre alianza_terapéutica.
+  reobservados_desde_evento  bool. Los ocho ejes reobservados tras R8.
+  flag_*                     bool. Los doce del catálogo de "Reglas duras" §3.
+
+LIGADO EN FASE 8a. Todos los nombres que aparecen en los siete triggers deben
+estar ligados antes de evaluar; si falta uno, ese trigger lanza NameError. Un
+eje sin observaciones NO se omite: se liga al centinela de §3 (float('-inf')
+para continuos, -1 para ordinales, 0 para contadores, False para booleanos).
+
+Evaluación con el diccionario como locals y globals sin builtins. Los triggers
+no usan ni una sola función, así que no hay razón para exponer ninguna.
+
+PRUEBA DE HUMO OBLIGATORIA EN CI: compilar los siete con ast.parse y evaluarlos
+contra un diccionario con todos los nombres a centinela. Los siete deben
+compilar y los siete deben devolver False. Si alguno devuelve True sin
+evidencia, hay una condición positiva mal escrita y el sistema avanzaría a
+ciegas.
+
+SI LA PLATAFORMA SÓLO LIGA LOS OCHO NOMBRES DESNUDOS y ningún derivado, el
+fallo será NameError sobre el primer sufijo. En ese caso no hay que reescribir
+los triggers: hay que exponer los derivados desde el pipeline, que es donde ya
+se calculan. La variante degradada de sólo ocho escalares está descrita en
+"Estadios y fases.txt" §6, y cuesta cara.

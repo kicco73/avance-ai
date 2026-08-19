@@ -1,0 +1,80 @@
+balance_decisional — BALANCE DECISIONAL
+Tipo: MODULADOR. Sólo puede VETAR. Nunca aporta condición positiva.
+Escala: [0,100] ∪ {null}. ENTERO. Cruce en 50, que es el centro de la barra.
+
+═══════════════════════════════════════════════════════════════════
+QUÉ MIDE Y CÓMO SE AGREGA
+═══════════════════════════════════════════════════════════════════
+
+Contraste entre los pros percibidos del cambio y sus contras.
+
+LA AGREGACIÓN ES LO ÚNICO DELICADO DE ESTE EJE:
+  z_pros    = (P − μ_P) / s_P
+  z_contras = (C − μ_C) / s_C
+  balance_decisional = round( 50 * (1 + tanh( (z_pros − z_contras) / 2 )) )
+
+Se estandariza CADA POLO POR SEPARADO y después se resta. No es una media, no
+es una diferencia de brutos, no es una estandarización de la diferencia. Sólo
+así se preserva el punto de cruce en 0, que es todo el valor del eje: el cruce
+pros/contras es el hallazgo más replicado del modelo y marca la frontera entre
+contemplación y acción.
+
+Los dos polos son INDEPENDIENTES. Pros altos y contras altos = ambivalencia
+intensa (balance_decisional ≈ 0). Pros bajos y contras bajos = desinterés (balance_decisional ≈ 0 también).
+El eje no los distingue; los distingue la magnitud de cada polo, que se conserva
+por separado en el registro. No fundir.
+
+[D-11] μ y s provisionales: μ_P = μ_C = 2.5, s_P = s_C = 1.0 sobre 0–5. Sin
+muestra normativa, el cruce en 0 es nominal, no empírico.
+
+Procedencia: escalas de balance decisional de Velicer para conductas adictivas ·
+hoja de balance decisional de la entrevista motivacional.
+
+═══════════════════════════════════════════════════════════════════
+BANCO DE ÍTEMS — POLO PROS DEL CAMBIO
+═══════════════════════════════════════════════════════════════════
+
+2.1  "Estaría mejor de salud si cambiara mi consumo."
+     Checkpoint: "Si esto cambiara, ¿qué notarías primero?"
+2.2  "Mis relaciones mejorarían si cambiara mi consumo."
+     Checkpoint: "¿Habría alguien que lo notaría?"
+2.3  "Me sentiría mejor conmigo si cambiara."
+     Checkpoint: "¿Cómo te sentirías contigo mismo?"
+2.4  "Tendría más control sobre mi vida."
+     Checkpoint: "¿Qué podrías hacer que ahora no haces?"
+2.5  "Tendría menos problemas prácticos: dinero, trabajo, líos."
+     Checkpoint: "En lo práctico, ¿te descargaría de algo?"
+
+═══════════════════════════════════════════════════════════════════
+BANCO DE ÍTEMS — POLO CONTRAS DEL CAMBIO
+═══════════════════════════════════════════════════════════════════
+
+ESTE POLO ES OBLIGATORIO Y SE PREGUNTA PRIMERO. Explorar sólo los pros no es
+neutralidad omitida: es persuasión. Y produce el argumento contrario.
+
+2.6  "Echaría de menos cómo me hace sentir."
+     Checkpoint: "¿Qué es lo que te da, cuando te da?"
+2.7  "Me costaría estar con según qué gente."
+     Checkpoint: "¿Y con la gente? ¿Cambiaría algo?"
+2.8  "No sabría qué hacer con el malestar."
+     Checkpoint: "Cuando viene lo malo, ¿qué haría las veces?"
+2.9  "Sería demasiado esfuerzo."
+     Checkpoint: "¿Cuánto te parece que costaría?"
+2.10 "Perdería una parte de quien soy."
+     Checkpoint: "¿Hay algo de ti que se iría con ello?"
+
+═══════════════════════════════════════════════════════════════════
+USO EN EL MOTOR
+═══════════════════════════════════════════════════════════════════
+
+NO aparece positivamente en ningún trigger. Por diseño: es modulador.
+Aparece en reglas: R3 (|balance_decisional − 50| < 5 con n_balance_decisional >= 3, sostenido), R9(c).
+Modula: en balance_decisional ≈ 0 el registro pasa a resumen de doble cara explícito, sin
+ninguna pregunta que empuje hacia un lado.
+σ_item 12 · σ_lenguaje 20.
+
+AUTORIZADO EN: Contemplación (uso principal), Preparación.
+DESACONSEJADO EN: Acción y Mantenimiento — reabrir el balance decisional con
+quien ya ha cambiado reactiva la ambivalencia sin beneficio.
+PROHIBIDO EN: Vinculación, Precontemplación como ítem (sí como extracción
+lingüística), Recaída en fase de acogida.
