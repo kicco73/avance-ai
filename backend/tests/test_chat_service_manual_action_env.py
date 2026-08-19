@@ -52,6 +52,9 @@ class FakeProjectService:
     def get_active_automaton_and_state(self):
         return self._automaton, self._automaton.states[self._state_key]
 
+    def get_automaton_and_state_for_session(self, session_id: int):
+        return self._automaton, self._automaton.states[self._state_key]
+
     def get_active_project_name(self) -> str:
         return PROJECT_NAME
 
@@ -64,6 +67,8 @@ class FakeProjectService:
 
 
 def _chat_service(db, automaton: Automaton) -> ChatService:
+    db.ensure_project(PROJECT_NAME)
+    db.publish_project(PROJECT_NAME)
     ai_service = FakeAiService()
     project_service = FakeProjectService(automaton)
     metric_service = MetricService(
@@ -114,7 +119,7 @@ async def test_an_action_with_no_env_field_never_touches_env(db):
 
 
 async def test_manual_actions_env_can_self_reference_a_previously_stored_value(db):
-    chat_service = _chat_service(db, _automaton({"number_of_steps": "number_of_steps + 1"}, target="a"))
+    chat_service = _chat_service(db, _automaton({"number_of_steps": "env.number_of_steps + 1"}, target="a"))
     session = chat_service.get_or_create_current_session(None)
     env = _env_for(db)
     env.update_action_set({"number_of_steps": 3})

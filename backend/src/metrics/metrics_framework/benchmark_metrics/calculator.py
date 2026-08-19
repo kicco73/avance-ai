@@ -14,6 +14,8 @@ from .metrics import (
     BenchmarkStabilityMetric,
     SignalAccuracyMetric,
     StateAccuracyMetric,
+    StateAccuracyStableMetric,
+    StateAccuracyTransitionMetric,
     TransitionResponsivenessMetric,
 )
 from .observations import BenchmarkData, BenchmarkObservationBuilder
@@ -51,6 +53,8 @@ class BenchmarkCalculator(object):
     def default_metrics(self) -> tuple[BenchmarkMetric, ...]:
         return (
             StateAccuracyMetric(),
+            StateAccuracyStableMetric(),
+            StateAccuracyTransitionMetric(),
             SignalAccuracyMetric(),
             TransitionResponsivenessMetric(),
             BenchmarkAccuracyMetric(),
@@ -136,7 +140,7 @@ class BenchmarkCalculator(object):
                 copied = dict(row)
                 copied["session_id"] = session_id
                 rows.append(copied)
-        columns = ["id", "timestamp", "values", "expected_values", "old_state", "action", "new_state", "session_id"]
+        columns = ["id", "message_id", "timestamp", "values", "expected_values", "old_state", "action", "new_state", "session_id"]
         if not rows:
             return pd.DataFrame(columns=columns)
         frame = pd.DataFrame.from_records(rows)
@@ -144,7 +148,7 @@ class BenchmarkCalculator(object):
             if column not in frame.columns:
                 frame[column] = None
         frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True)
-        return frame[columns].sort_values(["session_id", "timestamp", "id"], kind="stable")
+        return frame[columns].sort_values(["session_id", "id"], kind="stable")
 
     @staticmethod
     def _frame(rows: list[dict[str, object]], columns: list[str]) -> pd.DataFrame:
@@ -154,4 +158,4 @@ class BenchmarkCalculator(object):
 
     @staticmethod
     def _empty_signals() -> pd.DataFrame:
-        return pd.DataFrame(columns=["id", "timestamp", "values", "expected_values", "old_state", "action", "new_state", "session_id"])
+        return pd.DataFrame(columns=["id", "message_id", "timestamp", "values", "expected_values", "old_state", "action", "new_state", "session_id"])

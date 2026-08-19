@@ -17,18 +17,67 @@ export function valuesToSignalValues(raw) {
   return Object.fromEntries(Object.entries(parsed).map(([name, value]) => [name, { value, error: null }]))
 }
 
+// A comparable ordering key for anything with its own timestamp and a
+// linked message id (a message itself, or a Signals/Tracking row linked
+// to one via message_id) — the real ISO timestamp when there is one, or
+// (an imported session — see session_import.py's own save_message(...,
+// timestamp=None): every message, and every Tracking row materialized
+// against one (see TrackingService._materialize_imported_session_row's
+// own save_transition call, which never passes an explicit timestamp
+// either — so that row instead gets stamped with *whenever an expert
+// happened to annotate it*, unrelated to the message's own position in
+// the transcript) has no real timestamp at all there) a zero-padded,
+// lexicographically-sortable stand-in built from the linked message's
+// own id instead. get_messages' own id order is already the correct
+// chronological order for any session, native or imported (see db.py's
+// own comment on why) — using it here is what keeps every "at or
+// before" comparison below anchored to the message's actual position in
+// the conversation, never to an annotation row's own unrelated creation
+// time. A session's rows are either all real timestamps or all null,
+// never mixed, so a fallback key here is never compared against a real
+// timestamp string from the very same lookup.
+export function orderKey(timestamp, messageId) {
+  return timestamp != null ? timestamp : `#${String(messageId).padStart(12, '0')}`
+}
+
+// A Signals/Tracking row's own effective timestamp for "at or before"
+// comparisons — same preference effectiveTimestamp below already applies
+// to a timeline's own transition entries, and for the same two reasons:
+// a live turn's own auto-tracking evaluation can complete fractionally
+// before/after the message that caused it is actually saved, and (the
+// case that matters here) an imported session's row is always linked to
+// a message (see TrackingService._materialize_imported_session_row) but
+// stamped with whenever an expert happened to annotate it, never the
+// message's own position in the transcript at all — so the row's own
+// raw `timestamp` must never be trusted directly, only ever its linked
+// message's. Falls back to the row's own raw timestamp only when it
+// isn't linked to any message at all (a manual action's snapshot).
+function rowEffectiveTimestamp(row, rawMessages) {
+  if (row.message_id == null) return row.timestamp
+  const linkedMessage = rawMessages.find((m) => m.id === row.message_id)
+  return linkedMessage ? linkedMessage.timestamp : row.timestamp
+}
+
 // The latest Signals row that actually carries values (a plain snapshot,
 // or a transition that had signal_values — see db.py's Signals.values) at
-// or before `timestamp` — only a fallback for a message with no
-// evaluation of its own (see signalValuesFor); a row's own evaluation can
-// be timestamped fractionally *after* the message that caused it (see
-// effectiveTimestamp's own docstring), so this would otherwise always
-// land one point behind for a message that does have one.
-export function signalValuesAsOf(signalsLog, timestamp) {
+// or before `cutoffKey` (see orderKey — a message's own order key, not a
+// raw timestamp) — only a fallback for a message with no evaluation of
+// its own (see signalValuesFor). Compares each row by its own *effective*
+// timestamp (see rowEffectiveTimestamp), never its raw one — this is
+// what keeps an imported session's own annotation-time-stamped rows
+// correctly ordered by the message they're actually about, instead of by
+// whenever an expert happened to click annotate.
+export function signalValuesAsOf(signalsLog, rawMessages, cutoffKey) {
   let latest = null
+  let latestKey = null
   for (const row of signalsLog) {
-    if (row.timestamp > timestamp || row.values == null) continue
-    if (latest == null || row.timestamp >= latest.timestamp) latest = row
+    if (row.values == null) continue
+    const key = orderKey(rowEffectiveTimestamp(row, rawMessages), row.message_id)
+    if (key > cutoffKey) continue
+    if (latest == null || key >= latestKey) {
+      latest = row
+      latestKey = key
+    }
   }
   return latest ? valuesToSignalValues(latest.values) : {}
 }
@@ -58,7 +107,19 @@ export function actualStateAtOrBefore(signalsLog, sessionStartState, timestamp) 
 // actually in effect at that point — same value on both sides, same as
 // a self-loop reads today, so transitionAnnotationStatus's own
 // expected_state/new_state comparison still means the right thing.
-export function resolveTransitionRow(row, signalsLog, sessionStartState) {
+export function resolveTransitionRow(row, signalsLog, sessionStartState, { imported = false } = {}) {
+  // An imported session never has a real avance-computed new_state at all
+  // (see TrackingService._materialize_imported_session_row's own
+  // save_transition(None, None, None, ...) — old_state/action/new_state
+  // are always null there): actualStateAtOrBefore would just keep
+  // returning sessionStartState (itself null for an import — see
+  // session_import.py's own create_chat_session(..., start_state=None))
+  // for every row, so there's nothing genuine to resolve against. The
+  // row's own annotated expected_state is the only real state anyone
+  // ever attached here, so it stands in for new_state directly — see
+  // transitionAnnotationStatus's own imported branch, which relies on
+  // this to render the annotated state's name instead of a blank badge.
+  if (imported) return { ...row, old_state: null, new_state: row.expected_state }
   if (row.new_state != null && row.new_state !== row.old_state) return row
   const actualState = actualStateAtOrBefore(signalsLog, sessionStartState, row.timestamp)
   return { ...row, old_state: actualState, new_state: actualState }
@@ -68,9 +129,16 @@ export function resolveTransitionRow(row, signalsLog, sessionStartState) {
 // Signals.expected_state — lives directly on the transition's own row
 // now, no message lookup needed) agrees with what actually happened —
 // null when unannotated (the timeline shows no verdict either way, same
-// as the Inspector's own States tab).
-export function transitionAnnotationStatus(transition) {
+// as the Inspector's own States tab). An imported session has no real
+// avance-computed state to compare against at all (see
+// resolveTransitionRow's own imported branch) — "correct"/"incorrect"
+// would be meaningless there (an expert's own annotation compared
+// against itself always "matches"), so this reports the neutral
+// 'labelled' verdict instead, whenever something has actually been
+// annotated.
+export function transitionAnnotationStatus(transition, { imported = false } = {}) {
   if (transition.expected_state == null) return null
+  if (imported) return 'labelled'
   return transition.expected_state === transition.new_state ? 'correct' : 'incorrect'
 }
 
@@ -88,6 +156,16 @@ export function effectiveTimestamp(entry, rawMessages) {
   const messageId = entry.transition.message_id
   const linkedMessage = messageId != null ? rawMessages.find((m) => m.id === messageId) : null
   return linkedMessage ? linkedMessage.timestamp : entry.transition.timestamp
+}
+
+// A timeline entry's own order key — entry.timestamp is always already
+// the *effective* one by the time this is ever called (see buildTimeline,
+// which resolves it up front via effectiveTimestamp for every entry it
+// produces, transitions included — never the transition's own raw
+// timestamp), so this never needs rawMessages of its own to re-derive it.
+function entryOrderKey(entry) {
+  const messageId = entry.kind === 'message' ? entry.message.id : entry.transition.message_id
+  return orderKey(entry.timestamp, messageId)
 }
 
 // Only the literal first session ever opened for a project gets a real
@@ -136,7 +214,7 @@ export function syntheticSessionStartEntry(signalsLog, rawMessages, sessionStart
 // "Label sessions" review (unannotated ones stay excluded there, by
 // omitting this flag — self-loops the model already didn't get flagged
 // on aren't worth the clutter for that view's own purpose).
-export function buildTimeline(rawMessages, signalsLog, sessionStartState, { includeSelfLoops = false } = {}) {
+export function buildTimeline(rawMessages, signalsLog, sessionStartState, { includeSelfLoops = false, imported = false } = {}) {
   const messageEntries = rawMessages.map((m) => ({ kind: 'message', timestamp: m.timestamp, message: m }))
   const transitionEntries = signalsLog
     .filter((s) => {
@@ -145,19 +223,25 @@ export function buildTimeline(rawMessages, signalsLog, sessionStartState, { incl
       return !isSelfLoop || includeSelfLoops || s.expected_state != null
     })
     .map((s) => {
-      const transition = resolveTransitionRow(s, signalsLog, sessionStartState)
-      return {
-        kind: 'transition',
-        timestamp: s.timestamp,
-        transition,
-        annotationStatus: transitionAnnotationStatus(transition)
-      }
+      const transition = resolveTransitionRow(s, signalsLog, sessionStartState, { imported })
+      const entry = { kind: 'transition', timestamp: s.timestamp, transition, annotationStatus: null }
+      // Resolved here, once, rather than left as the row's own raw
+      // timestamp (see effectiveTimestamp's own docstring on why a
+      // linked transition's raw timestamp is never trustworthy on its
+      // own) — every later consumer of this entry (this function's own
+      // sort below, but also stateAsOf/nearestMessageIdAtOrBefore et al,
+      // called against the timeline this returns) then just reads
+      // entry.timestamp directly, never needing rawMessages of its own
+      // to re-derive the same thing a second time.
+      entry.timestamp = effectiveTimestamp(entry, rawMessages)
+      entry.annotationStatus = transitionAnnotationStatus(transition, { imported })
+      return entry
     })
   const synthetic = syntheticSessionStartEntry(signalsLog, rawMessages, sessionStartState)
   if (synthetic) transitionEntries.push(synthetic)
   return [...messageEntries, ...transitionEntries].sort((a, b) => {
-    const ta = effectiveTimestamp(a, rawMessages)
-    const tb = effectiveTimestamp(b, rawMessages)
+    const ta = entryOrderKey(a)
+    const tb = entryOrderKey(b)
     if (ta !== tb) return ta.localeCompare(tb)
     // The same effective moment only happens when a transition is tied to
     // its own linked message. For every ordinary transition that message
@@ -177,11 +261,25 @@ export function buildTimeline(rawMessages, signalsLog, sessionStartState, { incl
 }
 
 // The state active immediately after the latest transition at or before
-// `timestamp`, or the session's own starting state if none has fired yet.
-export function stateAsOf(timeline, sessionStartState, timestamp) {
+// `cutoffKey` (see orderKey — a message's own order key, not a raw
+// timestamp). Compares each transition by entryOrderKey — entry.timestamp
+// is trusted directly, same as before this session's own fix, but a
+// timeline built by buildTimeline now already carries the *effective*
+// one for every transition (never its own raw timestamp) — that's what
+// used to break this for an imported session: every Tracking row there
+// gets stamped with whenever an expert happened to annotate it, never
+// null like the messages themselves are, so comparing a transition's own
+// raw timestamp against a null message cutoff silently never skipped
+// anything and always landed on whichever row was annotated most
+// recently in real time, regardless of that row's own position in the
+// transcript. A hand-built timeline (e.g. in tests) that sets
+// entry.timestamp directly still works exactly as it always did — this
+// never re-derives it, only compares whatever's already there.
+export function stateAsOf(timeline, sessionStartState, cutoffKey) {
   let result = sessionStartState
   for (const entry of timeline) {
-    if (entry.kind !== 'transition' || entry.timestamp > timestamp) continue
+    if (entry.kind !== 'transition') continue
+    if (entryOrderKey(entry) > cutoffKey) continue
     result = entry.transition.new_state
   }
   return result
@@ -242,7 +340,7 @@ export function messageHasAnnotatedSignals(message, signalsLog) {
 export function highlightedStateKeyFor(selected, timeline, sessionStartState) {
   if (!selected) return null
   if (selected.kind === 'transition') return selected.transition.new_state
-  return stateAsOf(timeline, sessionStartState, selected.message.timestamp)
+  return stateAsOf(timeline, sessionStartState, orderKey(selected.message.timestamp, selected.message.id))
 }
 
 // "What state did this message's own turn ultimately leave the
@@ -266,11 +364,16 @@ export function resultingStateKeyFor(selected, timeline, sessionStartState) {
   const ownTransition = timeline.find(
     (entry) => entry.kind === 'transition' && entry.transition.message_id === message.id
   )
-  return ownTransition ? ownTransition.transition.new_state : stateAsOf(timeline, sessionStartState, message.timestamp)
+  return ownTransition
+    ? ownTransition.transition.new_state
+    : stateAsOf(timeline, sessionStartState, orderKey(message.timestamp, message.id))
 }
 
 // The signal values the Inspector should show for the current selection.
-export function signalValuesFor(selected, signalsLog) {
+// `rawMessages` is only ever consulted by the last-resort fallback below
+// (see signalValuesAsOf/rowEffectiveTimestamp) — every other branch
+// already has everything it needs on `selected`/`signalsLog` alone.
+export function signalValuesFor(selected, signalsLog, rawMessages = []) {
   if (!selected) return {}
   if (selected.kind === 'transition') {
     // Whatever this row itself observed — never a timestamp lookup,
@@ -286,5 +389,5 @@ export function signalValuesFor(selected, signalsLog) {
   // This message was never itself an evaluation point (e.g. an assistant
   // reply auto-tracking didn't run for) — the closest thing still true
   // is whatever the latest real evaluation showed strictly before it.
-  return signalValuesAsOf(signalsLog, selected.message.timestamp)
+  return signalValuesAsOf(signalsLog, rawMessages, orderKey(selected.message.timestamp, selected.message.id))
 }

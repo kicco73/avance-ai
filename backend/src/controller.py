@@ -9,11 +9,14 @@ from fastapi import APIRouter, HTTPException, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
 
 from automaton.automaton import Automaton
+from automaton.automaton_yaml_editor import InitActionTargetError
 from db import Db
 from talk.talk_service import TalkService, TalkServiceNotAvailableError
 from listen.listen_service import ListenService, ListenServiceError, ListenServiceNotAvailableError
 from chat.chat_service import ChatService, ChatServiceError
 from project.project_service import ProjectService
+from session import Session
+from tracking.tracking_service import TrackingService
 from schemas import (
     ActionRequest,
     AiModelSelectionRequest,
@@ -21,7 +24,11 @@ from schemas import (
     ChatMessageRequest,
     ExpectedSignalsRequest,
     ExpectedStateRequest,
+    PublishProjectRequest,
+    ReorderActionRequest,
     SetEnvValueRequest,
+    SetProjectFieldRequest,
+    SetSessionLabeledRequest,
     TriggersPreviewRequest,
     TruncateSessionRequest,
 )
@@ -37,6 +44,19 @@ DOC_FILES = {
     "benchmark": "BENCHMARK.md",
 }
 DOCS_DIR = Path(__file__).resolve().parent / "docs"
+
+# Explicit per-type whitelists for the field-by-field state/action/signal
+# edit endpoints (see put_state_field/put_action_field/put_signal_field
+# below) — name/key is deliberately never in any of these three: it's
+# generated once at creation (see AutomatonYamlEditor.add_state/
+# add_action) and immutable from then on, so there's no edit endpoint
+# for it at all, for a state or an action. Only a signal's own `name` can
+# ever change, and only as a side effect of editing its own `ui-label`
+# (see AutomatonYamlEditor.set_signal_field), never through a field edit
+# of its own.
+STATE_EDITABLE_FIELDS = {"ui-label", "ui-description", "history-cutoff", "contextual-prompt", "chat"}
+ACTION_EDITABLE_FIELDS = {"ui-label", "ui-description", "action-prompt", "target", "trigger"}
+SIGNAL_EDITABLE_FIELDS = {"ui-label", "ui-description", "definition"}
 
 
 def route(method: str, path: str, **kwargs):
@@ -70,12 +90,14 @@ class AvanceController(object):
         talk_service: TalkService | None,
         listen_service: ListenService | None,
         db: Db,
+        tracking_service: TrackingService,
     ) -> None:
         self.chat_service = chat_service
         self.project_service = project_service
         self.talk_service = talk_service
         self.listen_service = listen_service
         self.db = db
+        self.tracking_service = tracking_service
 
         self.router = APIRouter()
         for _, member in inspect.getmembers(self, predicate=inspect.ismethod):
@@ -106,17 +128,21 @@ class AvanceController(object):
 
     @get("/api/chat/env")
     def get_env(self, message_id: int | None = None):
-        """{"stored": ..., "action_set": ..., "computed": ...} — the
-        active user+project's current "environment" memory (see chat.
-        env.Env), split so the "Edit project" view's Inspector Env tab
-        knows which section each value belongs in ("AI"/"ACTION"/
-        "COMPUTED") and which are actually editable/deletable (only the
-        stored — "AI" — ones, see PUT/DELETE below; "ACTION" values are
-        only ever cleared as a whole, see DELETE /api/chat/action-env).
-        Live/current, or (`message_id` given) as of that exact message —
-        same point-in-time convention as GET /api/chat/metrics.
-        ChatServiceError (404 for an unknown/not-yours `message_id`) is
-        handled globally, see error_handlers.py."""
+        """{"stored": ..., "action_set": ...} — the active user+project's
+        current "environment" memory (see tracking.env.Env), split so the
+        "Edit project" view's Inspector Env tab knows which section each
+        value belongs in ("AI"/"ACTION") and which are actually
+        editable/deletable (only the stored — "AI" — ones, see PUT/DELETE
+        below; "ACTION" values are only ever cleared as a whole, see
+        DELETE /api/chat/action-env). No "computed" section anymore —
+        system/session/metric facts (see tracking.evaluation_scope.
+        EvaluationScopeBuilder) are evaluation-scope-only now, never
+        rendered in the Inspector (see GET /api/chat/identifiers instead,
+        for what's actually referenceable). Live/current, or
+        (`message_id` given) as of that exact message — same
+        point-in-time convention as GET /api/chat/metrics. ChatServiceError
+        (404 for an unknown/not-yours `message_id`) is handled globally,
+        see error_handlers.py."""
         return self.chat_service.get_env(message_id)
 
     @delete("/api/chat/env")
@@ -158,6 +184,19 @@ class AvanceController(object):
             return self.chat_service.delete_env_key(key)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @get("/api/chat/identifiers")
+    def get_identifiers(self):
+        """The active project's own identifier registry (see automaton.
+        identifier_registry.build_registry/ProjectService.
+        get_active_identifier_registry) — every identifier a trigger/
+        `env:` expression can reference, one {identifier: description}
+        dict per namespace (signal, env, system, session, session.metric,
+        metric)."""
+        try:
+            return self.project_service.get_active_identifier_registry()
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
 
     @get("/api/chat/metrics")
     def get_metrics(self, message_id: int | None = None):
@@ -226,7 +265,13 @@ class AvanceController(object):
         """Bootstrap endpoint: resolves (or creates) the active project's
         current writable session — see chat/session_manager.py. Called by
         the frontend before it has a known session_id, or to recover from
-        a stale one."""
+        a stale one. Always a real, published-revision session — see
+        GET /api/projects/{project_name}/test-sessions/current for
+        EditProjectView.vue's own embedded "Test" chat, the only caller
+        allowed a draft one instead. No `allow_draft` parameter here or on
+        POST /api/chat/sessions below anymore: which revision a session
+        may exist against is decided solely by which endpoint is called,
+        never by a caller-supplied flag on a shared one."""
         return self.chat_service.get_or_create_current_session(session_id)
 
     @post("/api/chat/sessions")
@@ -235,11 +280,61 @@ class AvanceController(object):
         superseding whichever session was previously current."""
         return self.chat_service.create_session()
 
+    @post("/api/projects/{project_name}/test-sessions")
+    def post_create_test_session(self, project_name: str):
+        """EditProjectView.vue's own embedded "Test" chat, its own
+        explicit "start a new session" action — the one place a session
+        may exist against a revision nobody's published yet (see
+        db.create_draft_chat_session's own docstring). `project_name`
+        isn't itself passed through to ChatService (see ChatService.
+        create_draft_session, which — same as every other ChatService
+        method — always operates on whichever project the active user's
+        session already has activated, see PUT /api/projects/
+        {project_name}/activate): it's here so this endpoint reads, in the
+        URL alone, as unambiguously project-scoped and draft-only, the
+        same convention as every other /api/projects/{project_name}/...
+        route."""
+        return self.chat_service.create_draft_session()
+
+    @get("/api/projects/{project_name}/test-sessions/current")
+    def get_current_test_session(self, project_name: str, session_id: int | None = None):
+        """EditProjectView.vue's own embedded "Test" chat, its own bootstrap
+        endpoint — the draft-session equivalent of GET /api/chat/session
+        above (see that one's own docstring, and post_create_test_session's
+        own on why `project_name` is here but unused beyond the URL)."""
+        return self.chat_service.get_or_create_current_draft_session(session_id)
+
+    @get("/api/projects/{project_name}/test-sessions")
+    def get_test_sessions(self, project_name: str):
+        """EditProjectView.vue's own embedded "Test" chat, its own
+        "Sessions" panel listing (see ChatService.list_test_sessions) —
+        the draft-session equivalent of GET /api/chat/sessions. Never
+        shows (and GET /api/chat/sessions never shows) the other pool's
+        own sessions — the two are fully isolated, not just filtered
+        views over one shared list."""
+        return self.chat_service.list_test_sessions()
+
     @get("/api/chat/sessions")
-    def get_sessions(self):
+    def get_sessions(self, include_imported: bool = False):
         """Every session for the active project, for the chat's
         "Sessions" side panel — see ChatService.list_sessions."""
-        return self.chat_service.list_sessions()
+        return self.chat_service.list_sessions(include_imported=include_imported)
+
+    @post("/api/chat/sessions/import")
+    async def post_import_session(self, file: UploadFile):
+        """Imports a chat session from a plain-text transcript (see
+        TrackingService.import_session/tracking.session_import.
+        parse_transcript) — annotatable/testable without ever having run
+        through a live conversation. Uses the active project, same
+        convention as POST /api/chat/sessions. No try/except: a malformed
+        transcript raises TrackingServiceError, already handled by the
+        global exception handler (see error_handlers.py)."""
+        content = await file.read()
+        text = content.decode("utf-8")
+        session_id = self.tracking_service.import_session(
+            Session().user, self.project_service.get_active_project_name(), text, title=file.filename
+        )
+        return {"success": True, "session_id": session_id}
 
     @delete("/api/chat/sessions/{session_id}")
     def delete_session(self, session_id: int):
@@ -249,6 +344,14 @@ class AvanceController(object):
         exception handler (see error_handlers.py), no try/except needed here."""
         self.chat_service.delete_session(session_id)
         return {"success": True}
+
+    @put("/api/chat/sessions/{session_id}/labeled")
+    def put_session_labeled(self, session_id: int, req: SetSessionLabeledRequest):
+        """The "Label sessions" view's own "Mark done" button — see
+        ChatService.mark_session_labeled. Raises ChatServiceError (404)
+        for an unknown/not-yours session_id, same convention as
+        delete_session above."""
+        return self.chat_service.mark_session_labeled(session_id, req.labeled)
 
     @post("/api/chat/sessions/{session_id}/truncate")
     async def post_truncate_session(self, session_id: int, req: TruncateSessionRequest):
@@ -382,8 +485,8 @@ class AvanceController(object):
     @post("/api/triggers/preview")
     def post_triggers_preview(self, req: TriggersPreviewRequest):
         automaton, state = self.project_service.get_active_automaton_and_state()
-        names = self.chat_service.metric_service.merge_if_referenced(automaton, state.key, req.signals)
-        return automaton.preview_triggers(state.key, names)
+        scope = self.chat_service.evaluation_scope_builder.build(automaton, state.key, req.signals)
+        return automaton.preview_triggers(state.key, scope)
 
     @post("/api/chat/reset")
     async def post_reset(self):
@@ -474,6 +577,48 @@ class AvanceController(object):
             result = await self.project_service.put_project(project_name, content, content_type, self._activate_project)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @get("/api/projects/{project_name}/revision")
+    def get_project_revision(self, project_name: str):
+        """{revision, published_revision} — the "Edit project" toolbar's
+        own revision display."""
+        try:
+            return self.project_service.get_project_revision_info(project_name)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+
+    @get("/api/projects/{project_name}/publish/preview")
+    def get_publish_preview(self, project_name: str):
+        """Whether a Publish right now needs an explicit state remap first
+        — see ProjectService.preview_publish. The Publish button's own
+        confirm flow calls this before POSTing, to know whether to prompt
+        for a remap target."""
+        try:
+            return self.project_service.preview_publish(project_name)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+
+    @post("/api/projects/{project_name}/publish")
+    def post_publish_project(self, project_name: str, req: PublishProjectRequest):
+        """Freezes the current draft as `project_name`'s published
+        revision — see ProjectService.publish_project. `remap_to` is
+        required only when get_publish_preview reported needs_remap."""
+        try:
+            return self.project_service.publish_project(project_name, req.remap_to)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @post("/api/projects/{project_name}/revert")
+    async def post_revert_project(self, project_name: str):
+        """Discards `project_name`'s entire in-progress draft revision,
+        reverting to whatever was last published — see ProjectService.
+        revert_to_published."""
+        try:
+            return await self.project_service.revert_to_published(project_name, self._activate_project)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
 
     @get("/api/projects/{project_name}/graph")
     def get_project_graph(self, project_name: str):
@@ -590,6 +735,164 @@ class AvanceController(object):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"success": True}
+
+    # ------------------------------------------------------------------
+    # index.yml structural editing — add/edit/delete/reorder states,
+    # actions, and signals without hand-writing YAML (see
+    # AutomatonYamlEditor). Every one of these reuses put_project_file's
+    # own validation/history/commit path (see ProjectService.
+    # _edit_index_yml) — never a parallel write path of its own — and
+    # returns only the affected object's own payload, never the whole
+    # YAML text (see AutomatonBuilder.get_state_payload's equivalents,
+    # StatePayload/ActionPayload/SignalPayload).
+    # ------------------------------------------------------------------
+
+    @post("/api/projects/{project_name}/states")
+    async def add_state(self, project_name: str):
+        try:
+            return await self.project_service.add_state(project_name, self._activate_project)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @post("/api/projects/{project_name}/signals")
+    async def add_signal(self, project_name: str):
+        try:
+            return await self.project_service.add_signal(project_name, self._activate_project)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @post("/api/projects/{project_name}/states/{state_name}/actions")
+    async def add_action(self, project_name: str, state_name: str):
+        try:
+            return await self.project_service.add_action(project_name, state_name, self._activate_project)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @put("/api/projects/{project_name}/states/{state_name}/{field}")
+    async def put_state_field(self, project_name: str, state_name: str, field: str, req: SetProjectFieldRequest):
+        if field not in STATE_EDITABLE_FIELDS:
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail=f"'{field}' is not an editable state field — expected one of {sorted(STATE_EDITABLE_FIELDS)}.",
+            )
+        try:
+            return await self.project_service.set_state_field(
+                project_name, state_name, field, req.value, self._activate_project
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @put("/api/projects/{project_name}/states/{state_name}/actions/{action_name}/{field}")
+    async def put_action_field(
+        self, project_name: str, state_name: str, action_name: str, field: str, req: SetProjectFieldRequest
+    ):
+        if field not in ACTION_EDITABLE_FIELDS:
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail=f"'{field}' is not an editable action field — expected one of {sorted(ACTION_EDITABLE_FIELDS)}.",
+            )
+        try:
+            return await self.project_service.set_action_field(
+                project_name, state_name, action_name, field, req.value, self._activate_project
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @put("/api/projects/{project_name}/signals/{signal_name}/{field}")
+    async def put_signal_field(self, project_name: str, signal_name: str, field: str, req: SetProjectFieldRequest):
+        if field not in SIGNAL_EDITABLE_FIELDS:
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail=f"'{field}' is not an editable signal field — expected one of {sorted(SIGNAL_EDITABLE_FIELDS)}.",
+            )
+        try:
+            return await self.project_service.set_signal_field(
+                project_name, signal_name, field, req.value, self._activate_project
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @put("/api/projects/{project_name}/init-action/{field}")
+    async def put_init_action_field(self, project_name: str, field: str, req: SetProjectFieldRequest):
+        """Every editable field of the init-action itself — see
+        AutomatonYamlEditor.set_init_action_field. 'target' (moving the
+        automaton's own start state) is the one case with its own
+        validation (an unknown state name converts to 400, same as
+        before this was generalized from its own dedicated .../target
+        endpoint); every other field (e.g. 'ui-label') just writes
+        through."""
+        try:
+            return await self.project_service.set_init_action_field(
+                project_name, field, req.value, self._activate_project
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    # Named to sort alphabetically before put_action_field: route
+    # registration order follows inspect.getmembers's own alphabetical
+    # method-name order (see __init__ above), and FastAPI matches routes
+    # in registration order — put_action_field's own {field} wildcard
+    # would otherwise swallow this path's literal "order" segment as if
+    # it were a field name, since "put_action_field" < "put_action_order"
+    # lexicographically registers the wildcard route first.
+    @put("/api/projects/{project_name}/states/{state_name}/actions/{action_name}/order")
+    async def move_action(
+        self, project_name: str, state_name: str, action_name: str, req: ReorderActionRequest
+    ):
+        try:
+            return await self.project_service.reorder_actions(
+                project_name, state_name, action_name, req.value, self._activate_project
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @delete("/api/projects/{project_name}/states/{state_name}")
+    async def delete_state(self, project_name: str, state_name: str):
+        try:
+            await self.project_service.delete_state(project_name, state_name, self._activate_project)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except InitActionTargetError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return Response(status_code=HTTPStatus.NO_CONTENT)
+
+    @delete("/api/projects/{project_name}/states/{state_name}/actions/{action_name}")
+    async def delete_action(self, project_name: str, state_name: str, action_name: str):
+        try:
+            await self.project_service.delete_action(project_name, state_name, action_name, self._activate_project)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return Response(status_code=HTTPStatus.NO_CONTENT)
+
+    @delete("/api/projects/{project_name}/signals/{signal_name}")
+    async def delete_signal(self, project_name: str, signal_name: str):
+        try:
+            await self.project_service.delete_signal(project_name, signal_name, self._activate_project)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return Response(status_code=HTTPStatus.NO_CONTENT)
 
     @delete("/api/projects/{project_name}")
     async def delete_project(self, project_name: str):

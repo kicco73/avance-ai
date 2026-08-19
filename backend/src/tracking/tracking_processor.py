@@ -8,10 +8,10 @@ from typing import AsyncIterator
 from db.db import Db
 from ai.ai_service import AiService
 from ai.llm_provider import MetadataCallback
-from metrics.metric_service import MetricService
 from automaton.automaton import Action, Automaton, State, StatePayload
 
 from .env import Env
+from .evaluation_scope import EvaluationScopeBuilder
 from .priming import build_priming_messages
 from .tracking_engine import DbTrackingSink, TrackingEngine
 from .turn_protocol import TurnProtocol
@@ -71,20 +71,20 @@ class TrackingProcessor(object):
 	user: UserVariables
 	out: OutVariables
 
-	def __init__(self, 
-			  ai_service: AiService, 
-			  metrics: MetricService,
+	def __init__(self,
+			  ai_service: AiService,
+			  scope_builder: EvaluationScopeBuilder,
 			  env: Env,
-			  db: Db, 
+			  db: Db,
 			  user_variables: UserVariables,
+			  auto_tracking_enabled: bool = True,
 		):
 		self.ai_service = ai_service
 
-		self.metrics = metrics
 		self.env = env
 		self.db = db
 		self.user = user_variables
-		self._tracking_engine = TrackingEngine(DbTrackingSink(db), env, self.metrics)
+		self._tracking_engine = TrackingEngine(DbTrackingSink(db), env, scope_builder, auto_tracking_enabled)
 		# Set per-turn by process() — appended to base_prompt after the
 		# state's own contextual_prompt (see __build_turn_prompt_parts).
 		self.extra_prompt: str | None = None

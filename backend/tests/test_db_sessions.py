@@ -8,6 +8,8 @@ import pytest
 def _make_session(db, *, username="user", project_name="proj", start, end=None, start_state="start", end_state=None):
     end = end if end is not None else start
     end_state = end_state if end_state is not None else start_state
+    db.ensure_project(project_name)
+    db.publish_project(project_name)
     return db.create_chat_session(
         username=username,
         project_name=project_name,
@@ -33,6 +35,50 @@ def test_create_and_get_chat_session(db):
 @pytest.mark.contract
 def test_get_chat_session_returns_none_for_unknown_id(db):
     assert db.get_chat_session(999999) is None
+
+
+@pytest.mark.regression
+def test_create_chat_session_rejects_an_unpublished_project_by_default(db):
+    db.ensure_project("draft-only")
+    with pytest.raises(ValueError, match="never been published"):
+        db.create_chat_session(username="user", project_name="draft-only", start_state="start")
+
+
+@pytest.mark.regression
+def test_create_draft_chat_session_permits_an_unpublished_project(db):
+    db.ensure_project("draft-only")
+    session_id = db.create_draft_chat_session(
+        username="user", project_name="draft-only", start_state="start"
+    )
+    session = db.get_chat_session(session_id)
+    assert session is not None
+
+
+@pytest.mark.regression
+def test_create_draft_chat_session_stamps_the_current_draft_revision_not_published(db):
+    # Publish once (revision 0), then edit again so the draft moves ahead
+    # to revision 1 while published_revision stays frozen at 0 — a draft
+    # session must be stamped with the *draft* (1), unlike a normal
+    # session, which would be stamped with published_revision (0).
+    db.ensure_project("ahead-of-published")
+    db.publish_project("ahead-of-published")
+    db.save_project_file("user", "ahead-of-published", "index.yml", "states: {}\n")
+
+    draft_session_id = db.create_draft_chat_session(
+        username="user", project_name="ahead-of-published", start_state="start"
+    )
+    normal_session_id = db.create_chat_session(
+        username="user", project_name="ahead-of-published", start_state="start"
+    )
+
+    assert db.get_project_revision("ahead-of-published") == 1
+    assert db.get_project_published_revision("ahead-of-published") == 0
+
+    # project_revision isn't in the public dict (see _chat_session_to_dict) —
+    # read it straight off the model instead.
+    from db.models import ChatSession
+    assert ChatSession.get_by_id(draft_session_id).project_revision == 1
+    assert ChatSession.get_by_id(normal_session_id).project_revision == 0
 
 
 @pytest.mark.regression
@@ -179,48 +225,32 @@ def test_foreign_key_cascade_is_enforced_at_the_sqlite_level(db):
 
 
 @pytest.mark.regression
-def test_session_has_annotations_is_false_with_no_signals_at_all(db):
+def test_a_new_session_starts_unlabeled(db):
     session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
-    assert db.session_has_annotations(session_id) is False
+    assert db.get_chat_session(session_id)["labeled"] is False
 
 
 @pytest.mark.regression
-def test_session_has_annotations_is_false_when_nothing_is_annotated(db):
+def test_set_session_labeled_marks_a_session_done(db):
     session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
-    message_id = db.save_message("user", "hi", session_id)
-    db.save_signal_snapshot({"foo": 1}, session_id, message_id=message_id)
-    assert db.session_has_annotations(session_id) is False
+    db.set_session_labeled(session_id, True)
+    assert db.get_chat_session(session_id)["labeled"] is True
 
 
 @pytest.mark.regression
-def test_session_has_annotations_is_true_with_an_expected_state(db):
+def test_set_session_labeled_can_toggle_back_off(db):
     session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
-    message_id = db.save_message("user", "hi", session_id)
-    row_id = db.save_signal_snapshot({"foo": 1}, session_id, message_id=message_id)
-    db.set_signal_expected_state(row_id, "start")
-    assert db.session_has_annotations(session_id) is True
+    db.set_session_labeled(session_id, True)
+    db.set_session_labeled(session_id, False)
+    assert db.get_chat_session(session_id)["labeled"] is False
 
 
 @pytest.mark.regression
-def test_session_has_annotations_is_true_with_expected_values(db):
-    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
-    message_id = db.save_message("user", "hi", session_id)
-    row_id = db.save_signal_snapshot({"foo": 1}, session_id, message_id=message_id)
-    db.set_signal_expected_values(row_id, {"foo": 75})
-    assert db.session_has_annotations(session_id) is True
+def test_set_session_labeled_only_touches_the_given_session(db):
+    marked = _make_session(db, username="user", project_name="proj", start=datetime(2026, 1, 1, 10, 0, 0))
+    untouched = _make_session(db, username="user", project_name="proj", start=datetime(2026, 1, 2, 10, 0, 0))
 
+    db.set_session_labeled(marked, True)
 
-@pytest.mark.regression
-def test_get_annotated_session_ids_scoped_to_username_and_project(db):
-    annotated = _make_session(db, username="user", project_name="proj", start=datetime(2026, 1, 1, 10, 0, 0))
-    unannotated = _make_session(db, username="user", project_name="proj", start=datetime(2026, 1, 2, 10, 0, 0))
-    other_project = _make_session(db, username="user", project_name="other", start=datetime(2026, 1, 3, 10, 0, 0))
-    other_user = _make_session(db, username="someone-else", project_name="proj", start=datetime(2026, 1, 4, 10, 0, 0))
-
-    for session_id in (annotated, unannotated, other_project, other_user):
-        message_id = db.save_message("user", "hi", session_id)
-        row_id = db.save_signal_snapshot({"foo": 1}, session_id, message_id=message_id)
-        if session_id != unannotated:
-            db.set_signal_expected_state(row_id, "start")
-
-    assert db.get_annotated_session_ids("user", "proj") == {annotated}
+    assert db.get_chat_session(marked)["labeled"] is True
+    assert db.get_chat_session(untouched)["labeled"] is False

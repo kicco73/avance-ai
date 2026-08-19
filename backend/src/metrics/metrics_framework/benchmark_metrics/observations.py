@@ -29,9 +29,9 @@ class BenchmarkObservationBuilder(object):
         if data.messages.empty:
             return ()
 
-        messages = data.messages.sort_values(["session_id", "timestamp", "id"], kind="stable")
-        signals = data.signals.sort_values(["session_id", "timestamp", "id"], kind="stable")
-        transitions = data.transitions.sort_values(["session_id", "timestamp", "id"], kind="stable")
+        messages = data.messages.sort_values(["session_id", "id"], kind="stable")
+        signals = data.signals.sort_values(["session_id", "id"], kind="stable")
+        transitions = data.transitions.sort_values(["session_id", "id"], kind="stable")
         sessions = data.sessions.set_index("id") if not data.sessions.empty else pd.DataFrame()
 
         observations: list[BenchmarkObservation] = []
@@ -40,10 +40,10 @@ class BenchmarkObservationBuilder(object):
             point_timestamp = pd.Timestamp(row["timestamp"])
             message_id = int(row["message_id"])
             session_messages = messages.loc[messages["session_id"].eq(session_id)].copy()
-            session_messages = session_messages.sort_values(["timestamp", "id"], kind="stable")
+            session_messages = session_messages.sort_values(["id"], kind="stable")
             expected_state = row.get("expected_state")
             expected_values = self._parse_values(row.get("expected_values"))
-            actual_state = self._state_after_message(session_id, point_timestamp, transitions, sessions)
+            actual_state = self._state_after_message(session_id, message_id, transitions, sessions)
 
             state_agreement: float | None = None
             if expected_state:
@@ -78,26 +78,34 @@ class BenchmarkObservationBuilder(object):
 
             if expected_transition and expected_state:
                 transition = self._transition_for_expected_point(
-                    session_id, point_timestamp, expected_state, actual_state, transitions
+                    session_id, message_id, expected_state, actual_state, transitions
                 )
                 expected_position = self._message_position(session_messages, message_id)
                 max_seconds = self._configuration.max_session_duration_in_minutes * 60.0
                 if transition is not None:
-                    actual_position = self._message_position_at_timestamp(session_messages, transition["timestamp"])
+                    actual_position = self._message_position(session_messages, transition["message_id"])
                     if expected_position is not None and actual_position is not None:
                         message_delay = actual_position - expected_position
-                    time_delay_seconds = float(
-                        (pd.Timestamp(transition["timestamp"]) - point_timestamp).total_seconds()
-                    )
+                    transition_timestamp = pd.Timestamp(transition["timestamp"])
+                    if pd.notna(point_timestamp) and pd.notna(transition_timestamp):
+                        time_delay_seconds = float(
+                            (transition_timestamp - point_timestamp).total_seconds()
+                        )
                     message_quality = self._message_delay_quality(
                         message_delay,
                         session_messages,
                         expected_position,
                     )
-                    time_quality = BenchmarkNormalizer.delay_to_quality(
-                        abs(time_delay_seconds), max_seconds
+                    time_quality = (
+                        BenchmarkNormalizer.delay_to_quality(abs(time_delay_seconds), max_seconds)
+                        if time_delay_seconds is not None else None
                     )
-                    responsiveness = (message_quality + time_quality) / 2.0 if message_quality is not None else time_quality
+                    if message_quality is not None and time_quality is not None:
+                        responsiveness = (message_quality + time_quality) / 2.0
+                    elif message_quality is not None:
+                        responsiveness = message_quality
+                    elif time_quality is not None:
+                        responsiveness = time_quality
                 else:
                     # The expert expected the transition, but the system never
                     # reached the expected state during the session. This is a
@@ -162,13 +170,18 @@ class BenchmarkObservationBuilder(object):
                 expected_values = row.expected_values
                 if pd.isna(expected_values) or not expected_values:
                     continue
-                session_messages = messages.loc[
-                    messages["session_id"].eq(int(row.session_id))
-                    & (messages["timestamp"] <= row.timestamp)
-                ]
-                if session_messages.empty:
-                    continue
-                message = session_messages.sort_values(["timestamp", "id"], kind="stable").iloc[-1]
+                if pd.isna(row.message_id):
+                    raise ValueError(
+                        f"Tracking row {row.id!r} in session {row.session_id!r} has expected_values "
+                        "but no message_id."
+                    )
+                message_rows = messages.loc[messages["id"].eq(int(row.message_id))]
+                if message_rows.empty:
+                    raise ValueError(
+                        f"Tracking row {row.id!r} in session {row.session_id!r} references unknown "
+                        f"message_id {int(row.message_id)!r}."
+                    )
+                message = message_rows.iloc[0]
                 key = (int(row.session_id), int(message["id"]))
                 message_expected_state = message.get("expected_state")
                 point = points.setdefault(
@@ -186,17 +199,17 @@ class BenchmarkObservationBuilder(object):
                 point["actual_values"] = row.values
                 point["timestamp"] = pd.Timestamp(row.timestamp)
 
-        return sorted(points.values(), key=lambda point: (point["session_id"], point["timestamp"], point["message_id"]))
+        return sorted(points.values(), key=lambda point: (point["session_id"], point["message_id"]))
 
     @staticmethod
     def _state_after_message(
         session_id: int,
-        timestamp: object,
+        message_id: int,
         transitions: pd.DataFrame,
         sessions: pd.DataFrame,
     ) -> str | None:
         rows = transitions.loc[
-            transitions["session_id"].eq(session_id) & (transitions["timestamp"] <= timestamp)
+            transitions["session_id"].eq(session_id) & (transitions["message_id"] <= message_id)
         ]
         if not rows.empty:
             value = rows.iloc[-1]["new_state"]
@@ -214,16 +227,9 @@ class BenchmarkObservationBuilder(object):
         return int(rows[0]) - int(messages.index[0])
 
     @staticmethod
-    def _message_position_at_timestamp(messages: pd.DataFrame, timestamp: object) -> int | None:
-        rows = messages.loc[messages["timestamp"] <= timestamp]
-        if rows.empty:
-            return None
-        return int(rows.index[-1]) - int(messages.index[0])
-
-    @staticmethod
     def _transition_for_expected_point(
         session_id: int,
-        expected_timestamp: object,
+        message_id: int,
         expected_state: str,
         actual_state: str | None,
         transitions: pd.DataFrame,
@@ -234,16 +240,15 @@ class BenchmarkObservationBuilder(object):
         ].copy()
         if rows.empty:
             return None
-        point = pd.Timestamp(expected_timestamp)
         if actual_state == expected_state:
-            prior = rows.loc[rows["timestamp"] <= point]
+            prior = rows.loc[rows["message_id"] <= message_id]
             if prior.empty:
                 return None
-            return prior.sort_values(["timestamp", "id"], kind="stable").iloc[-1].to_dict()
-        future = rows.loc[rows["timestamp"] > point]
+            return prior.sort_values(["id"], kind="stable").iloc[-1].to_dict()
+        future = rows.loc[rows["message_id"] > message_id]
         if future.empty:
             return None
-        return future.sort_values(["timestamp", "id"], kind="stable").iloc[0].to_dict()
+        return future.sort_values(["id"], kind="stable").iloc[0].to_dict()
 
     @staticmethod
     def _is_expected_transition(
@@ -260,7 +265,7 @@ class BenchmarkObservationBuilder(object):
             & session_messages["expected_state"].ne("")
         ]
         if not earlier.empty:
-            previous = earlier.sort_values(["timestamp", "id"], kind="stable").iloc[-1]["expected_state"]
+            previous = earlier.sort_values(["id"], kind="stable").iloc[-1]["expected_state"]
             return str(previous) != str(expected_state)
         session_id = int(session_messages.iloc[0]["session_id"])
         if session_id in sessions.index:

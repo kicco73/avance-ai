@@ -23,6 +23,7 @@ import {
   sessions,
   sessionsLoading,
   sessionsPanelOpen,
+  toggleSessionsPanel,
   selectSession,
   handleNewSession,
   handleDeleteSession,
@@ -33,6 +34,22 @@ import {
   toggleAudio,
   toggleSpokenText
 } from '../../chatStore.js'
+
+// No transcript import here: this window is either the main app's live
+// chat, or EditProjectView.vue's own embedded "Test" chat (see
+// chatStore.js's testModeProjectName) — an imported session is a
+// separate, 'imported'-source pool of its own (see backend db.py's
+// ChatSession.source) that never shows up in either one's own sessions
+// list (list_sessions/list_test_sessions both filter it out), so
+// importing from here would silently succeed server-side and then just
+// vanish from view. Only BenchmarkProjectView.vue's own dedicated
+// review panel — which actually lists imported sessions — offers import
+// (it renders SessionsPanel.vue directly, with its own allow-import,
+// rather than going through this component at all).
+
+function createSession() {
+  handleNewSession()
+}
 
 const scrollEl = ref(null)
 const chatInputRef = ref(null)
@@ -60,13 +77,20 @@ async function onDeleteSession(session) {
 // its own open/closed status.
 const chatDisabled = computed(() => !state.value?.key || !state.value?.chat || !selectedSessionActive.value)
 
-// Mirrors chatDisabled's own three conditions, in the same order, each
-// with its own explanation — a chat-blocked state (e.g. final, see
-// backend chat_service.py's own "doesn't accept messages" wording) is not
-// the same situation as no project/state being active at all.
+// Mirrors chatDisabled's own three conditions — no project/state at all
+// is checked first (the most fundamental one), then whichever reason
+// selectedSessionActive is false (see its own docstring in chatStore.js:
+// "never resolved a session yet" — currentSessionId still null — reads
+// differently than "resolved one, then it got superseded by a newer
+// one"), then a chat-blocked state (e.g. final, see backend
+// chat_service.py's own "doesn't accept messages" wording).
 const chatDisabledReason = computed(() => {
-  if (!selectedSessionActive.value) return 'This session is no longer active.'
   if (!state.value?.key) return 'Please select a project from the menu.'
+  if (!selectedSessionActive.value) {
+    return currentSessionId.value == null
+      ? 'No active session for this project yet.'
+      : 'This session is no longer active.'
+  }
   return "This state doesn't accept messages; use an action instead."
 })
 
@@ -166,23 +190,24 @@ async function onAction(actionName) {
 
 <template>
   <div class="chat-window-shell">
-    <Transition name="panel-slide-left">
-    <div v-if="sessionsPanelOpen" class="sessions-panel-wrap">
-      <div class="sessions-panel" :style="{ width: sessionsWidth + 'px' }">
+    <div class="sessions-panel-wrap">
+      <div class="sessions-panel" :class="{ 'sessions-panel-collapsed': !sessionsPanelOpen }" :style="sessionsPanelOpen ? { width: sessionsWidth + 'px' } : null">
         <SessionsPanel
           :sessions="sessions"
           :loading="sessionsLoading"
           :current-session-id="currentSessionId"
           :deleting-session-id="deletingSessionId"
+          :collapsed="!sessionsPanelOpen"
+          restrict-selection-to-native
+          @update:collapsed="toggleSessionsPanel"
           @select="selectSession"
-          @create="handleNewSession"
+          @create="createSession"
           @delete="onDeleteSession"
         />
       </div>
 
-      <div class="split-divider" @mousedown="startSessionsDrag"></div>
+      <div v-if="sessionsPanelOpen" class="split-divider" @mousedown="startSessionsDrag"></div>
     </div>
-    </Transition>
 
     <div class="chat-window">
     <div class="messages" ref="scrollEl">
@@ -256,17 +281,6 @@ async function onAction(actionName) {
   min-height: 0;
 }
 
-.panel-slide-left-enter-active,
-.panel-slide-left-leave-active {
-  transition: opacity 0.18s ease, transform 0.18s ease;
-}
-
-.panel-slide-left-enter-from,
-.panel-slide-left-leave-to {
-  opacity: 0;
-  transform: translateX(-16px);
-}
-
 .sessions-panel {
   display: flex;
   flex-direction: column;
@@ -274,6 +288,14 @@ async function onAction(actionName) {
   min-height: 0;
   border-right: 1px solid #ddd;
   background: #f9fafb;
+  transition: width 0.15s ease;
+}
+
+/* Collapsed (see SessionsPanel.vue's own always-visible header toggle) —
+   a slim strip, same pattern as EditProjectView.vue's own
+   .inspector-panel-collapsed. */
+.sessions-panel-collapsed {
+  width: 2.4rem !important;
 }
 
 .split-divider {

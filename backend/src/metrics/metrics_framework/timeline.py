@@ -22,28 +22,45 @@ class UserAnalyticsDataBuilder(object):
         self._username = username
         self._project_name = project_name
 
-    def build(self, until: datetime | None = None) -> UserAnalyticsData:
-        """`until`, when given, restricts every dataset to what existed at
-        or before that point in time — sessions that hadn't started yet,
-        and messages/signals timestamped after it, are excluded. This is
-        what lets a caller compute metrics "as of" a specific past
-        message (see chat/metrics_service.py's calculate_values_until)
-        instead of always the full, current history."""
+    def build(self, since: datetime | None = None, until: datetime | None = None) -> UserAnalyticsData:
+        """`since`/`until`, each independently optional, restrict every
+        dataset to what falls within [since, until] — sessions that
+        started before `since` or after `until`, and messages/signals
+        timestamped outside that same window, are excluded. `until` alone
+        is what lets a caller compute metrics "as of" a specific past
+        message (see chat/metrics_service.py's calculate_values_until);
+        `since` alongside it is what lets a caller restrict to a bounded
+        window instead — e.g. tracking.session_facts.SessionFacts scoping
+        to just the current session's own [start, now) — without either
+        metrics or this builder ever needing to know *why* the window is
+        what it is."""
         sessions = self._db.list_chat_sessions(self._username, self._project_name)
+        if since is not None:
+            sessions = [row for row in sessions if row["datetime_start"] >= since]
         if until is not None:
             sessions = [row for row in sessions if row["datetime_start"] <= until]
         session_ids = [int(row["id"]) for row in sessions]
 
         messages = self._load_messages(session_ids)
         signals = self._load_signals(session_ids)
-        if until is not None:
-            until_ts = pd.Timestamp(until, tz="UTC") if until.tzinfo is None else pd.Timestamp(until)
-            if not messages.empty:
-                messages = messages.loc[messages["timestamp"] <= until_ts].copy()
-            if not signals.empty:
-                signals = signals.loc[signals["timestamp"] <= until_ts].copy()
+        messages = self._filter_by_timestamp(messages, since, until)
+        signals = self._filter_by_timestamp(signals, since, until)
 
         return self._assemble(sessions, messages, signals)
+
+    @staticmethod
+    def _filter_by_timestamp(
+        frame: pd.DataFrame, since: datetime | None, until: datetime | None,
+    ) -> pd.DataFrame:
+        if frame.empty or (since is None and until is None):
+            return frame
+        if since is not None:
+            since_ts = pd.Timestamp(since, tz="UTC") if since.tzinfo is None else pd.Timestamp(since)
+            frame = frame.loc[frame["timestamp"] >= since_ts]
+        if until is not None:
+            until_ts = pd.Timestamp(until, tz="UTC") if until.tzinfo is None else pd.Timestamp(until)
+            frame = frame.loc[frame["timestamp"] <= until_ts]
+        return frame.copy()
 
     def build_for_session(self, session_id: int, until_message_id: int | None = None) -> UserAnalyticsData:
         """Like build(), but scoped to exactly one session — a single

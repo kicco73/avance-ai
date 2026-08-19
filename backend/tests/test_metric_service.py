@@ -88,3 +88,27 @@ def test_merge_if_referenced_does_not_mutate_the_original_names_dict(db):
     _metrics(db).merge_if_referenced(automaton, "a", names)
 
     assert names == {"mySignal": 60}
+
+
+def test_for_turn_exposes_only_the_all_sessions_per_user_metrics(db):
+    namespace = _metrics(db).for_turn()
+
+    assert namespace.retention() is not None
+    assert namespace.activity_consistency() is not None
+    assert not hasattr(namespace, "engagement")
+
+
+def test_for_turn_reuses_the_same_calculator_across_metrics(db):
+    namespace = _metrics(db).for_turn()
+
+    namespace.retention()
+    calculator_after_first_call = namespace._calculator
+    namespace.activity_consistency()
+
+    assert namespace._calculator is calculator_after_first_call
+
+
+def test_for_turn_returns_a_fresh_namespace_every_call(db):
+    metrics = _metrics(db)
+
+    assert metrics.for_turn() is not metrics.for_turn()

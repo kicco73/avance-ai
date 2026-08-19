@@ -12,6 +12,9 @@ from ai.ai_service import AiService
 from session import Session
 
 from tracking.env import PersistedEnv
+from tracking.evaluation_scope import EvaluationScopeBuilder
+from tracking.session_facts import SessionFacts
+from tracking.system_facts import SystemFacts
 from chat.errors import ChatServiceError
 from tracking.metadata_handler import MetadataHandler
 from chat.session_manager import ChatSessionManager
@@ -39,11 +42,16 @@ class ChatService(object):
 		self._session_manager = session_manager
 		self.tracking_service = tracking_service
 		self.metric_service = metric_service
-		self.env = PersistedEnv(
-			db, get_username=lambda: Session().user, get_active_project_name=lambda: project_service.get_active_project_name()
+		get_username = lambda: Session().user
+		get_active_project_name = lambda: project_service.get_active_project_name()
+		self.env = PersistedEnv(db, get_username=get_username, get_active_project_name=get_active_project_name)
+		self._system_facts = SystemFacts()
+		self._session_facts = SessionFacts(db, get_username=get_username, get_active_project_name=get_active_project_name)
+		self.evaluation_scope_builder = EvaluationScopeBuilder(
+			self.env, metric_service, self._system_facts, self._session_facts
 		)
 		self._metadata_handler = MetadataHandler()
-		self._tracking_engine = TrackingEngine(DbTrackingSink(db), self.env, metric_service)
+		self._tracking_engine = TrackingEngine(DbTrackingSink(db), self.env, self.evaluation_scope_builder)
 
 		# Single-user prototype: serializes chat-turn processing across
 		# both transports and against a concurrent reset/activate/upload/
@@ -79,14 +87,20 @@ class ChatService(object):
 		model during normal chat."""
 		return [{"role": m["role"], "content": m["content"]} for m in history]
 
-	def _session_payload(self, session: dict, *, active: bool, has_annotations: bool) -> dict:
+	def _session_payload(self, session: dict, *, active: bool) -> dict:
 		return {
 			"id": session["id"],
 			"project_name": session["project_name"],
+			"source": session["source"],
+			"title": session["title"],
 			"datetime_start": _utc_iso(session["datetime_start"]),
 			"datetime_end": _utc_iso(session["datetime_end"]),
 			"start_state": session["start_state"],
 			"end_state": session["end_state"],
+			# An imported session (see ChatSession.source) has no
+			# datetime_end — it never had a live conversation window to
+			# begin with, so it's never "open" (ChatSessionManager.is_open
+			# itself is null-safe about this for exactly that reason).
 			"open": self._session_manager.is_open(session),
 			# Distinct from "open" (see session_manager.py's module
 			# docstring): the single open session with the most recent
@@ -94,10 +108,13 @@ class ChatService(object):
 			# trust to decide whether this session still accepts chat
 			# turns/manual actions, never computed client-side.
 			"active": active,
-			# Whether any of this session's own Tracking rows carry an
-			# expert annotation (see db.session_has_annotations) — the
-			# "Label sessions" view's own Sessions panel marker.
-			"has_annotations": has_annotations,
+			# A domain expert's own explicit, persisted verdict (see
+			# ChatSession.labeled/ChatService.mark_session_labeled) — the
+			# "Label sessions" view's own Sessions panel marker and "Mark
+			# done" button state. Read straight off `session` itself now,
+			# not recomputed per call the way the old any-Tracking-row-
+			# has-an-annotation heuristic needed to be.
+			"has_annotations": session["labeled"],
 		}
 
 	def _require_active_session(self, session_id: int | None, project_name: str, current_state: str) -> dict:
@@ -118,19 +135,41 @@ class ChatService(object):
 	def get_or_create_current_session(self, session_id: int | None) -> dict:
 		"""Bootstrap for a client with no (or a possibly-stale) session_id:
 		resolves — or creates — the one session currently writable for the
-		active project (see ChatSessionManager)."""
+		active project (see ChatSessionManager). Always a real, published-
+		revision session — see get_or_create_current_draft_session for
+		EditProjectView.vue's own embedded "Test" chat, the only caller
+		allowed a draft one instead (see db.create_draft_chat_session's own
+		docstring). ValueError (see db.create_chat_session — a project with
+		no published revision yet can't have a real chat session) becomes a
+		409, same convention as _require_active_session's own."""
 		project_name = self._active_project_name
-		_, state = self._project_service.get_active_automaton_and_state()
-		session = self._session_manager.get_or_create_current_session(
-			self._username, project_name, session_id, state.key
-		)
+		try:
+			_, state = self._project_service.get_active_automaton_and_state()
+			session = self._session_manager.get_or_create_current_session(
+				self._username, project_name, session_id, state.key
+			)
+		except ValueError as exc:
+			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 		# Always the active one by construction — see
-		# ChatSessionManager.get_or_create_current_session. Resolves an
-		# existing session as easily as a brand new one, so its own
-		# has_annotations is checked for real rather than assumed False.
-		return self._session_payload(
-			session, active=True, has_annotations=self._db.session_has_annotations(session["id"])
-		)
+		# ChatSessionManager.get_or_create_current_session.
+		return self._session_payload(session, active=True)
+
+	def get_or_create_current_draft_session(self, session_id: int | None) -> dict:
+		"""Like get_or_create_current_session, but the one session currently
+		writable for the active project's own *draft* — see db.create_
+		draft_chat_session's own docstring for why this exists at all:
+		EditProjectView.vue's own embedded "Test" chat (see its own
+		ensureDraftChatSession) is the one place a session is allowed to
+		exist against a revision nobody's published yet."""
+		project_name = self._active_project_name
+		try:
+			_, state = self._project_service.get_active_draft_automaton_and_state()
+			session = self._session_manager.get_or_create_current_draft_session(
+				self._username, project_name, session_id, state.key
+			)
+		except ValueError as exc:
+			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
+		return self._session_payload(session, active=True)
 
 	def create_session(self) -> dict:
 		"""Explicit "new session" action (see session_manager.py's module
@@ -143,36 +182,75 @@ class ChatService(object):
 		state other sessions have since moved the project's automaton to
 		(that position is a single project-wide fact, unaffected by this;
 		see ChatSession.start_state/end_state as just this session's own
-		bookkeeping, not the authoritative current state)."""
+		bookkeeping, not the authoritative current state). Always a real,
+		published-revision session — see create_draft_session for
+		EditProjectView.vue's own embedded "Test" chat, the only caller
+		allowed a draft one instead. ValueError (see db.create_chat_session
+		— a project with no published revision yet can't have a real chat
+		session) becomes a 409, same convention as _require_active_
+		session's own."""
 		project_name = self._active_project_name
-		automaton, _ = self._project_service.get_active_automaton_and_state()
-		session = self._session_manager.create_session(
-			self._username, project_name, automaton.init_action.target
-		)
-		# A brand new session has no messages/Tracking rows yet at all —
-		# correct by construction, no query needed.
-		return self._session_payload(session, active=True, has_annotations=False)
-
-	def list_sessions(self) -> list[dict]:
-		"""Every session for the active project, most recently started
-		first — for the "Sessions" panel (see ChatWindow.vue). `active`
-		on each one (see _session_payload) is what the frontend must
-		trust to decide whether that particular session still accepts
-		chat turns/manual actions — never computed client-side (see
-		ChatSessionManager's module docstring)."""
-		project_name = self._active_project_name
-		sessions = self._db.list_chat_sessions(self._username, project_name)
-		active = self._session_manager.get_active_session(self._username, project_name)
-		active_id = active["id"] if active is not None else None
-		# One query for the whole list, not one per session — see
-		# db.get_annotated_session_ids's own docstring.
-		annotated_ids = self._db.get_annotated_session_ids(self._username, project_name)
-		return [
-			self._session_payload(
-				s, active=(s["id"] == active_id), has_annotations=s["id"] in annotated_ids
+		try:
+			automaton, _ = self._project_service.get_active_automaton_and_state()
+			session = self._session_manager.create_session(
+				self._username, project_name, automaton.init_action.target
 			)
-			for s in sessions
-		]
+		except ValueError as exc:
+			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
+		# A brand new session has never been marked reviewed — correct by
+		# construction (see ChatSession.labeled's own default), no query
+		# needed.
+		return self._session_payload(session, active=True)
+
+	def create_draft_session(self) -> dict:
+		"""Like create_session, but always against the active project's own
+		current *draft* revision instead (see db.create_draft_chat_session's
+		own docstring) — EditProjectView.vue's own embedded "Test" chat is
+		the only caller."""
+		project_name = self._active_project_name
+		try:
+			automaton, _ = self._project_service.get_active_draft_automaton_and_state()
+			session = self._session_manager.create_draft_session(
+				self._username, project_name, automaton.init_action.target
+			)
+		except ValueError as exc:
+			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
+		return self._session_payload(session, active=True)
+
+	def _list_sessions_by_source(self, project_name: str, source: str | tuple[str, ...], active_source: str) -> list[dict]:
+		sessions = self._db.list_chat_sessions(self._username, project_name, source=source)
+		active = self._session_manager.get_active_session(self._username, project_name, source=active_source)
+		active_id = active["id"] if active is not None else None
+		return [self._session_payload(s, active=(s["id"] == active_id)) for s in sessions]
+
+	def list_sessions(self, include_imported: bool = False) -> list[dict]:
+		"""Every real (native, and optionally imported) session for the
+		active project, most recently started first — for the "Sessions"
+		panel (see ChatWindow.vue). `active` on each one (see
+		_session_payload) is what the frontend must trust to decide
+		whether that particular session still accepts chat turns/manual
+		actions — never computed client-side (see ChatSessionManager's
+		module docstring). `include_imported` widens this to native and
+		imported alike — used by BenchmarkProjectView's own sessions
+		panel, the one place that annotates/tests imported transcripts
+		alongside live ones; every other caller keeps seeing native
+		sessions only. Never a 'test' session either way (see
+		list_test_sessions instead, EditProjectView.vue's own embedded
+		"Test" chat) — those are a completely separate pool, not just a
+		third source this could also opt into."""
+		project_name = self._active_project_name
+		source = ('native', 'imported') if include_imported else 'native'
+		return self._list_sessions_by_source(project_name, source, active_source='native')
+
+	def list_test_sessions(self) -> list[dict]:
+		"""Like list_sessions, but the active project's own 'test' sessions
+		(see db.create_draft_chat_session) — EditProjectView.vue's own
+		embedded "Test" chat's own Sessions panel, the only caller. Native/
+		imported sessions never appear here, symmetric to how a test
+		session never appears in list_sessions — the two pools never mix
+		in either direction."""
+		project_name = self._active_project_name
+		return self._list_sessions_by_source(project_name, 'test', active_source='test')
 
 	def _require_own_session(self, session_id: int) -> None:
 		"""Raises (404) unless `session_id` still exists and belongs to
@@ -191,6 +269,33 @@ class ChatService(object):
 		never someone else's by guessing an id."""
 		self._require_own_session(session_id)
 		self._db.delete_chat_session(session_id)
+
+	def mark_session_labeled(self, session_id: int, labeled: bool) -> dict:
+		"""The "Label sessions" view's own "Mark done" button (see
+		ChatSession.labeled's own docstring) — a domain expert's explicit
+		confirmation that this session's been reviewed. A toggle, not a
+		one-way action: `labeled=False` un-marks it again, same button,
+		same endpoint. Returns the updated session payload so the
+		frontend can refresh its own Sessions panel marker from the
+		response directly, without a second round trip."""
+		self._require_own_session(session_id)
+		self._db.set_session_labeled(session_id, labeled)
+		session = self._db.get_chat_session(session_id)
+		assert session is not None
+		# An imported session (see ChatSession.source) is never "active" —
+		# same convention _list_sessions_by_source's own active_source
+		# always follows ('native', never 'imported'): "active" means "the
+		# one session a user may currently write to", which an imported
+		# transcript never was and never can be. Resolving it as if it
+		# could be would also crash — an imported session's own
+		# datetime_end is always None (see ChatSessionManager.is_open),
+		# not a real window to compare "still open" against at all.
+		if session["source"] == "imported":
+			active = False
+		else:
+			resolved = self._session_manager.get_active_session(self._username, session["project_name"], source=session["source"])
+			active = resolved is not None and resolved["id"] == session_id
+		return self._session_payload(session, active=active)
 
 	def truncate_session(self, session_id: int, timestamp: str) -> None:
 		""""Restart from here" (EditProjectView.vue's own chat only — see
@@ -212,7 +317,7 @@ class ChatService(object):
 		session = self._db.get_chat_session(session_id)
 		assert session is not None
 		latest = self._db.latest_message_or_signal_timestamp(session_id)
-		_, state = self._project_service.get_active_automaton_and_state()
+		_, state = self._project_service.get_automaton_and_state_for_session(session_id)
 		self._db.touch_chat_session(session_id, latest or session["datetime_start"], state.key)
 
 	async def get_messages(self, session_id: int, last_n: int | None = None) -> list[dict]:
@@ -279,24 +384,21 @@ class ChatService(object):
 		return self.metric_service.calculate_all(until=until)
 
 	def get_env(self, message_id: int | None = None) -> dict:
-		"""{"stored": ..., "action_set": ..., "computed": ...} — see
-		tracking.env.PersistedEnv.stored/action_set/Env.computed,
-		reported separately (not merged, unlike Env.to_dict's own use in
-		the turn prompt) so the Inspector Env tab knows which section
-		each value belongs in ("AI"/"SET"/"COMPUTED") and which are
-		actually editable/deletable (see set_env_value/delete_env_key:
-		only the stored — "AI" — ones are). `stored`/`action_set`:
-		live/current, or (`message_id` given) as of that exact message —
-		same point-in-time convention as get_metrics. `computed`: always
-		live — Env.computed() no longer takes a point-in-time bound (see
-		its own docstring: that's now an internal, per-turn replay-only
-		concept, set via set_replay_instant/set_last_transition_instant,
-		never wired up to a `message_id` read like this one)."""
+		"""{"stored": ..., "action_set": ...} — see tracking.env.
+		PersistedEnv.stored/action_set, reported separately (not merged,
+		unlike Env.serialise_as_text's own use in the turn prompt) so the
+		Inspector Env tab knows which section each value belongs in
+		("AI"/"SET") and which are actually editable/deletable (see
+		set_env_value/delete_env_key: only the stored — "AI" — ones are).
+		Live/current, or (`message_id` given) as of that exact message —
+		same point-in-time convention as get_metrics. No "computed" key
+		anymore (system/session facts, see tracking.env's own docstring)
+		— those are evaluation-scope-only now, never rendered in the
+		Inspector."""
 		until = self._until_from_message(message_id)
 		return {
 			"stored": self.env.stored(until),
 			"action_set": self.env.action_set(until),
-			"computed": self.env.computed(),
 		}
 
 	def set_env_value(self, key: str, value: str) -> dict:
@@ -374,8 +476,26 @@ class ChatService(object):
 		self.tracking_service.clear_session_annotations(session_id)
 
 	async def open_if_needed(self, session_id: int) -> dict | None:
+		# An imported session (see ChatSession.source) is a fixed
+		# historical transcript, never a live conversation — nothing below
+		# ever applies to it (no init transition of its own to bootstrap,
+		# no opening message to generate). Without this early return, a
+		# project whose *live* conversation currently sits in a final/
+		# no-chat state falls into _should_generate_opening_message's own
+		# chat_blocked branch, which gates on message timestamps this
+		# session's own messages never have (see tracking.session_import's
+		# own save_message(..., timestamp=None)) — has_messages_since's
+		# `Message.timestamp > since` silently excludes every NULL-
+		# timestamp row, so it wrongly reports "no messages since
+		# gate_since" and tries to generate one for a session that can
+		# never accept it, crashing with "Session is not active" (see
+		# _require_active_session, reached via process_turn).
+		session = self._db.get_chat_session(session_id)
+		if session is not None and session["source"] == "imported":
+			return None
+
 		project_name = self._active_project_name
-		automaton, state = self._project_service.get_active_automaton_and_state()
+		automaton, state = self._project_service.get_automaton_and_state_for_session(session_id)
 
 		init_message = None
 		if self._db.get_current_state(project_name) is None:
@@ -464,15 +584,22 @@ class ChatService(object):
 			raise ChatServiceError("A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT)
 		async with self.lock:
 			project_name = self._active_project_name
-			_, source_state = self._project_service.get_active_automaton_and_state()
+			# Same "no session specified" ValueError require_active_session
+			# itself would raise below — checked explicitly here instead of
+			# just letting it happen naturally, since get_automaton_and_state_
+			# for_session (unlike get_active_automaton_and_state before it)
+			# needs a real session_id to resolve against, not an optional one.
+			if session_id is None:
+				raise ChatServiceError("No session specified.", status_code=HTTPStatus.CONFLICT)
+			_, source_state = self._project_service.get_automaton_and_state_for_session(session_id)
 			# Resolved before applying the action: save_transition (inside
 			# project_service.apply_manual_action) now needs a session_id.
 			session = self._require_active_session(session_id, project_name, source_state.key)
 			state_payload, action, source_state_key = self._project_service.apply_manual_action(
 				action_name, session["id"]
 			)
-			automaton, state = self._project_service.get_active_automaton_and_state()
-			self._tracking_engine.apply_action_env(automaton, action, {})
+			automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
+			self._tracking_engine.apply_action_env(automaton, action, {}, source_state_key)
 			reply = await self._messages_for_transition(
 				action, project_name, session["id"], state, is_self_loop=(action.target == source_state_key)
 			)
@@ -493,7 +620,7 @@ class ChatService(object):
 		extra_prompt: str | None = None,
 	) -> dict:
 		project_name = self._active_project_name
-		_, state = self._project_service.get_active_automaton_and_state()
+		_, state = self._project_service.get_automaton_and_state_for_session(session_id)
 		self._require_active_session(session_id, project_name, state.key)
 		reply = await self.tracking_service.process(session_id, text, on_metadata, extra_prompt=extra_prompt)
 		# touch_session wants the plain state key (see apply_manual_action's

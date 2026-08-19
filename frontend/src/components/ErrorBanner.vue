@@ -7,36 +7,64 @@
 // of which screen triggered it, so this is the one place that ever needs
 // to render it — no props, no per-screen copy of this markup to keep in
 // sync.
-import { ref, watch } from 'vue'
-import { errorDetail, errorMessage } from '../errorStore.js'
+import { onUnmounted, ref, watch } from 'vue'
+import { clearApiError, errorDetail, errorMessage } from '../errorStore.js'
 
 const showDetail = ref(false)
 
 // A new error replaces whatever was being inspected — stale expanded
 // detail from a previous, unrelated failure would otherwise linger open.
-watch(errorMessage, () => {
+// It also restarts the auto-dismiss timer below — each error gets its
+// own full 10s, not whatever was left over from the one it replaced.
+const AUTO_DISMISS_MS = 10000
+let dismissTimer = null
+watch(errorMessage, (message) => {
   showDetail.value = false
+  if (dismissTimer) clearTimeout(dismissTimer)
+  dismissTimer = message ? setTimeout(clearApiError, AUTO_DISMISS_MS) : null
+})
+onUnmounted(() => {
+  if (dismissTimer) clearTimeout(dismissTimer)
 })
 </script>
 
 <template>
-  <div v-if="errorMessage" class="error-banner-wrap">
-    <div class="error-banner-row">
-      <p class="error-banner-message">{{ errorMessage }}</p>
-      <button
-        v-if="errorDetail"
-        type="button"
-        class="error-banner-details-btn"
-        @click="showDetail = !showDetail"
-      >
-        {{ showDetail ? 'Hide details' : 'Details' }}
-      </button>
+  <Transition name="error-banner-collapse">
+    <div v-if="errorMessage" class="error-banner-wrap">
+      <div class="error-banner-row">
+        <p class="error-banner-message">{{ errorMessage }}</p>
+        <button
+          v-if="errorDetail"
+          type="button"
+          class="error-banner-details-btn"
+          @click="showDetail = !showDetail"
+        >
+          {{ showDetail ? 'Hide details' : 'Details' }}
+        </button>
+        <button type="button" class="error-banner-close-btn" title="Dismiss" @click="clearApiError">×</button>
+      </div>
+      <pre v-if="errorDetail && showDetail" class="error-banner-detail">{{ errorDetail }}</pre>
     </div>
-    <pre v-if="errorDetail && showDetail" class="error-banner-detail">{{ errorDetail }}</pre>
-  </div>
+  </Transition>
 </template>
 
 <style scoped>
+/* "Slide up" — the banner's own height (message + expanded detail, if
+   any) collapses to 0, so whatever sits below it in the page visibly
+   scrolls up over where it used to be, rather than just fading in place. */
+.error-banner-collapse-enter-active, .error-banner-collapse-leave-active {
+  transition: max-height 0.25s ease, opacity 0.2s ease;
+  overflow: hidden;
+}
+.error-banner-collapse-enter-from, .error-banner-collapse-leave-to {
+  max-height: 0;
+  opacity: 0;
+}
+.error-banner-collapse-enter-to, .error-banner-collapse-leave-from {
+  max-height: 320px;
+  opacity: 1;
+}
+
 .error-banner-row {
   display: flex;
   align-items: center;
@@ -62,6 +90,23 @@ watch(errorMessage, () => {
   color: #c62828;
   cursor: pointer;
   font-size: 0.8rem;
+}
+
+.error-banner-close-btn {
+  flex: none;
+  width: 1.6rem;
+  height: 1.6rem;
+  line-height: 1;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: #c62828;
+  cursor: pointer;
+  font-size: 1.05rem;
+}
+
+.error-banner-close-btn:hover {
+  background: rgba(198, 40, 40, 0.12);
 }
 
 .error-banner-detail {

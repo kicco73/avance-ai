@@ -232,6 +232,8 @@ def test_undo_does_not_reset_or_reload_the_active_conversation(client):
         "/api/projects/proj2", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"}
     )
     assert resp.status_code == 200, resp.text
+    resp = client.post("/api/projects/proj2/publish", json={})
+    assert resp.status_code == 200, resp.text
     session = client.get("/api/chat/session").json()
     action_resp = client.post("/api/action", json={"action_name": "go", "session_id": session["id"]})
     assert action_resp.status_code == 200, action_resp.text

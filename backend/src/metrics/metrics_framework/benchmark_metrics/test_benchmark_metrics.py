@@ -4,13 +4,15 @@ import unittest
 
 import pandas as pd
 
-from .dto import BenchmarkConfiguration
+from .dto import BenchmarkConfiguration, BenchmarkObservation
 from .metrics import (
     BenchmarkAccuracyMetric,
     BenchmarkConsistencyMetric,
     BenchmarkStabilityMetric,
     SignalAccuracyMetric,
     StateAccuracyMetric,
+    StateAccuracyStableMetric,
+    StateAccuracyTransitionMetric,
     TransitionResponsivenessMetric,
 )
 from .observations import BenchmarkData, BenchmarkObservationBuilder
@@ -29,6 +31,7 @@ class BenchmarkMetricsTest(unittest.TestCase):
             [
                 {
                     "id": 10,
+                    "message_id": 1,
                     "session_id": 1,
                     "timestamp": pd.Timestamp("2026-01-01T00:00:00Z"),
                     "values": '{"score": 80}',
@@ -39,6 +42,7 @@ class BenchmarkMetricsTest(unittest.TestCase):
                 },
                 {
                     "id": 11,
+                    "message_id": 2,
                     "session_id": 1,
                     "timestamp": pd.Timestamp("2026-01-01T00:12:00Z"),
                     "values": '{"score": 60}',
@@ -79,10 +83,67 @@ class BenchmarkMetricsTest(unittest.TestCase):
         self.assertGreaterEqual(result.value, 0.0)
         self.assertLessEqual(result.value, 100.0)
 
+    @staticmethod
+    def _observation(*, expected_transition: bool, state_agreement: float | None) -> BenchmarkObservation:
+        return BenchmarkObservation(
+            session_id=1,
+            message_id=1,
+            expected_state="a",
+            actual_state="a",
+            state_agreement=state_agreement,
+            expected_transition=expected_transition,
+        )
+
+    def test_state_accuracy_stable_uses_only_non_transition_points(self) -> None:
+        observations = (
+            self._observation(expected_transition=False, state_agreement=100.0),
+            self._observation(expected_transition=False, state_agreement=0.0),
+        )
+        result = StateAccuracyStableMetric().calculate(observations)
+        self.assertEqual(result.value, 50.0)
+        self.assertEqual(result.sample_count, 2)
+
+    def test_state_accuracy_transition_uses_only_transition_points(self) -> None:
+        observations = (
+            self._observation(expected_transition=True, state_agreement=100.0),
+            self._observation(expected_transition=True, state_agreement=100.0),
+        )
+        result = StateAccuracyTransitionMetric().calculate(observations)
+        self.assertEqual(result.value, 100.0)
+        self.assertEqual(result.sample_count, 2)
+
+    def test_state_accuracy_stable_and_transition_split_a_mixed_set(self) -> None:
+        observations = (
+            self._observation(expected_transition=False, state_agreement=100.0),
+            self._observation(expected_transition=False, state_agreement=100.0),
+            self._observation(expected_transition=True, state_agreement=0.0),
+        )
+        stable = StateAccuracyStableMetric().calculate(observations)
+        transition = StateAccuracyTransitionMetric().calculate(observations)
+        self.assertEqual(stable.value, 100.0)
+        self.assertEqual(stable.sample_count, 2)
+        self.assertEqual(transition.value, 0.0)
+        self.assertEqual(transition.sample_count, 1)
+        # state_accuracy itself stays unaffected by the split — still
+        # every point regardless of expected_transition.
+        overall = StateAccuracyMetric().calculate(observations)
+        self.assertAlmostEqual(overall.value, 200.0 / 3.0)
+        self.assertEqual(overall.sample_count, 3)
+
+    def test_state_accuracy_stable_and_transition_are_empty_with_no_observations(self) -> None:
+        stable = StateAccuracyStableMetric().calculate(())
+        transition = StateAccuracyTransitionMetric().calculate(())
+        self.assertEqual(stable.value, 0.0)
+        self.assertEqual(stable.sample_count, 0)
+        self.assertEqual(transition.value, 0.0)
+        self.assertEqual(transition.sample_count, 0)
+
     def test_all_results_are_normalized(self) -> None:
         observations = BenchmarkObservationBuilder(BenchmarkConfiguration()).build(self._data())
         metrics = (
             StateAccuracyMetric(),
+            StateAccuracyStableMetric(),
+            StateAccuracyTransitionMetric(),
             SignalAccuracyMetric(),
             TransitionResponsivenessMetric(),
             BenchmarkAccuracyMetric(),

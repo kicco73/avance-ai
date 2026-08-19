@@ -130,6 +130,57 @@ class TestUserAnalyticsDataBuilder:
         assert list(data.sessions["id"]) == [1]
 
     @pytest.mark.contract
+    def test_since_excludes_messages_before_the_cutoff(self):
+        # The session's own start sits exactly at `since` — same
+        # "current session" shape tracking.session_facts.SessionFacts.
+        # metric actually builds (since = that session's own start) —
+        # so the session-level filter below (datetime_start >= since)
+        # keeps it, and only the message-level one actually gets
+        # exercised.
+        db = FakeAnalyticsDb(
+            sessions=[session_row(1, datetime(2026, 1, 1, 10), datetime(2026, 1, 1, 10))],
+            messages_by_session={
+                1: [
+                    {"id": 1, "role": "user", "content": "before", "audio_text": None, "timestamp": _iso(datetime(2026, 1, 1, 9))},
+                    {"id": 2, "role": "user", "content": "after", "audio_text": None, "timestamp": _iso(datetime(2026, 1, 1, 11))},
+                ]
+            },
+        )
+        data = UserAnalyticsDataBuilder(db, "user", "proj").build(since=datetime(2026, 1, 1, 10))
+
+        assert list(data.messages["content"]) == ["after"]
+
+    @pytest.mark.contract
+    def test_since_excludes_sessions_that_had_already_ended(self):
+        db = FakeAnalyticsDb(
+            sessions=[
+                session_row(1, datetime(2026, 1, 1), datetime(2026, 1, 1)),
+                session_row(2, datetime(2026, 1, 5), datetime(2026, 1, 5)),
+            ],
+        )
+        data = UserAnalyticsDataBuilder(db, "user", "proj").build(since=datetime(2026, 1, 2))
+
+        assert list(data.sessions["id"]) == [2]
+
+    @pytest.mark.contract
+    def test_since_and_until_together_restrict_to_a_bounded_window(self):
+        db = FakeAnalyticsDb(
+            sessions=[session_row(1, datetime(2026, 1, 1, 9), datetime(2026, 1, 1, 9))],
+            messages_by_session={
+                1: [
+                    {"id": 1, "role": "user", "content": "too-early", "audio_text": None, "timestamp": _iso(datetime(2026, 1, 1, 8))},
+                    {"id": 2, "role": "user", "content": "in-window", "audio_text": None, "timestamp": _iso(datetime(2026, 1, 1, 10))},
+                    {"id": 3, "role": "user", "content": "too-late", "audio_text": None, "timestamp": _iso(datetime(2026, 1, 1, 12))},
+                ]
+            },
+        )
+        data = UserAnalyticsDataBuilder(db, "user", "proj").build(
+            since=datetime(2026, 1, 1, 9), until=datetime(2026, 1, 1, 11),
+        )
+
+        assert list(data.messages["content"]) == ["in-window"]
+
+    @pytest.mark.contract
     def test_until_none_behaves_exactly_like_the_full_history(self):
         db = FakeAnalyticsDb(
             sessions=[session_row(1, datetime(2026, 1, 1), datetime(2026, 1, 1))],
@@ -246,6 +297,25 @@ class TestAnalyticsCalculator:
         full_engagement = {r.name: r.value for r in full.calculate_all()}["engagement"]
 
         assert cutoff_engagement < full_engagement
+
+    @pytest.mark.regression
+    def test_since_restricts_metrics_to_the_history_at_or_after_it(self):
+        db = FakeAnalyticsDb(
+            sessions=[session_row(1, datetime(2026, 1, 1), datetime(2026, 1, 1))],
+            messages_by_session={
+                1: [
+                    {"id": 1, "role": "user", "content": "hi", "audio_text": None, "timestamp": _iso(datetime(2026, 1, 1, 9))},
+                    {"id": 2, "role": "user", "content": "hi2", "audio_text": None, "timestamp": _iso(datetime(2026, 1, 1, 11))},
+                ]
+            },
+        )
+        windowed = AnalyticsCalculator(db, "user", "proj", since=datetime(2026, 1, 1, 10))
+        full = AnalyticsCalculator(db, "user", "proj")
+
+        windowed_engagement = {r.name: r.value for r in windowed.calculate_all()}["engagement"]
+        full_engagement = {r.name: r.value for r in full.calculate_all()}["engagement"]
+
+        assert windowed_engagement < full_engagement
 
     @pytest.mark.regression
     def test_empty_history_scores_every_metric_at_or_near_the_floor(self):

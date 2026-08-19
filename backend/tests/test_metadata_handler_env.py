@@ -98,7 +98,13 @@ class _RecordingProtocol(TurnProtocol):
         raise NotImplementedError
 
 
-def test_generate_reply_renders_an_env_block_with_stored_and_computed_values(db):
+def test_generate_reply_renders_an_env_block_with_stored_values_only(db):
+    """No system/session facts here anymore (see tracking.env.Env's own
+    docstring) — those are the `system`/`session` evaluation-scope
+    namespaces now (see tracking.evaluation_scope.EvaluationScopeBuilder),
+    never rendered into the prompt."""
+    db.ensure_project(PROJECT_NAME)
+    db.publish_project(PROJECT_NAME)
     db.create_chat_session(
         username=USERNAME, project_name=PROJECT_NAME,
         datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
@@ -112,7 +118,8 @@ def test_generate_reply_renders_an_env_block_with_stored_and_computed_values(db)
 
     prompt = protocol.recorded_prompt
     assert "favorite_color: blue" in prompt
-    assert "number_of_user_sessions: 1" in prompt
+    assert "number_of_user_sessions" not in prompt
+    assert "today:" not in prompt
 
 
 def test_generate_reply_embeds_the_given_signal_definition_verbatim(db):

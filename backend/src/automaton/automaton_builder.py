@@ -1,10 +1,16 @@
-from automaton.automaton import Action, MemoryArchive, Automaton, Signal, SourceDict, State, trigger_signal_names
+from automaton.automaton import (
+    Action, MemoryArchive, Automaton, Signal, SourceDict, State,
+    trigger_bare_names, trigger_namespace_refs, trigger_type_violations,
+)
+from automaton.identifier_registry import build_registry
 from typing import Any
 from metrics.metrics_framework import metric_names
 
-import yaml
+from ruamel.yaml import YAML
 import base64
 from pathlib import Path
+
+_yaml = YAML(typ='rt')
 
 EXTENSION_TO_MEDIA_TYPE = {
     ".yml": "text/plain",
@@ -14,22 +20,6 @@ EXTENSION_TO_MEDIA_TYPE = {
 }
 
 VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
-
-# The fixed set of always-computed keys chat.env.Env provides on every
-# read (never persisted — see its own module docstring), reserved here
-# too so a trigger can reference one (e.g. "state_duration_in_minutes >= 30")
-# without failing the same undefined-name validation signal/metric names
-# already go through below — chat.env.Env imports this constant back,
-# rather than the reverse, to keep automaton/ free of any dependency on
-# chat/ (chat/ already depends on automaton/, never the other way around).
-ENV_COMPUTED_KEYS = (
-    "today",
-    "time",
-    "current_session_duration_in_minutes",
-    "last_user_session_datetime",
-    "number_of_user_sessions",
-    "state_duration_in_minutes",
-)
 
 class AutomatonBuilder(object):
     """Builds an Automaton from a project's index.yml: parses the YAML,
@@ -120,8 +110,18 @@ class AutomatonBuilder(object):
 
     def _build_state(self, key: str, raw_state: dict, all_archives: dict[str, MemoryArchive]) -> State:
         raw_actions = raw_state.get("actions", [])
-        actions = [self._build_action(key, raw_action, all_archives)
-                   for raw_action in raw_actions]
+        actions: list[Action] = []
+        action_names_by_ui_label: dict[str, str] = {}
+        for raw_action in raw_actions:
+            action = self._build_action(key, raw_action, all_archives)
+            existing_name = action_names_by_ui_label.get(action.ui_label)
+            if existing_name is not None:
+                raise ValueError(
+                    f"State '{key}': actions '{existing_name}' and '{action.name}' both use "
+                    f"ui-label '{action.ui_label}' — ui-label must be unique within a state."
+                )
+            action_names_by_ui_label[action.ui_label] = action.name
+            actions.append(action)
         fixed_message = raw_state.get("fixed-message")
         contextual_prompt = raw_state.get("contextual-prompt")
 
@@ -155,55 +155,75 @@ class AutomatonBuilder(object):
             chat=raw_state.get("chat", True),
         )
 
-    def _actions_sanity_check(self, key: str, state: State, declared_states: set[str], valid_trigger_names: set[str]):
-        """`valid_trigger_names` is every name a trigger expression may
-        reference: this project's own declared signals, every core metric
-        name (see metrics_framework.metric_names), and every always-
-        computed env key (see ENV_COMPUTED_KEYS) — a trigger can compare
-        against any of the three interchangeably, see automaton.py's
-        Automaton.triggers_reference/evaluate_triggers. A project's own
-        free-form [env] values (see chat.env.Env/chat.metadata_handler.
-        MetadataHandler) are deliberately not included here: their names
-        are only ever known at runtime (whatever the model has reported
-        so far), never at build time, so they can't be validated the same
-        way — referencing one in a trigger fails this check exactly like
-        referencing any other genuinely undefined name would. An action's
-        own `env` expressions (see Action.env/Automaton.eval_action_env)
-        get only a syntax check here, deliberately not the same
-        unknown-name check: unlike a trigger, an env expression's whole
-        point is often to reference (and update) a project's own
-        free-form env key — e.g. `number_of_steps: number_of_steps + 1`
-        — which is exactly one of these runtime-only names this method
-        can't see at build time either."""
+    @staticmethod
+    def _validate_namespaced_expression(expression: str, context: str, registry: dict[str, dict[str, str]]) -> None:
+        """Syntax + per-namespace identifier validation shared by both
+        `trigger:` and an action's own `env:` expressions (see automaton.
+        automaton's RESERVED_NAMESPACES/trigger_namespace_refs/
+        trigger_bare_names) — `context` is just this expression's own
+        description, for the error message. `registry` (see automaton.
+        identifier_registry.build_registry) is the single source of every
+        valid identifier per namespace — including `env.*`, whose valid
+        names are only known project-wide at build time: every action's
+        own declared `env:` key, collected across the whole project
+        before this ever runs (see build()), so there's no longer a
+        runtime-only name it can't see. Any bare (unnamespaced) identifier
+        left over must be a core metric (see metrics_framework.
+        metric_names) — anything else, namespaced or not, is undefined."""
+        try:
+            namespace_refs = trigger_namespace_refs(expression)
+            bare_names = trigger_bare_names(expression)
+        except SyntaxError as exc:
+            raise ValueError(f"{context} ('{expression}') is not a valid expression: {exc}") from exc
+
+        unknown = set()
+        for namespace, refs in namespace_refs.items():
+            valid = registry.get(namespace, {}).keys()
+            unknown |= {f"{namespace}.{n}" for n in refs - valid}
+        unknown |= bare_names - metric_names()
+        if unknown:
+            raise ValueError(f"{context} references undefined name(s): {', '.join(sorted(unknown))}")
+
+    @staticmethod
+    def _validate_trigger_types(expression: str, context: str) -> None:
+        """Only for `trigger:` (see _actions_sanity_check's own call
+        site) — never `env:`, which has no comparison shape to
+        type-check in the first place (see Action.env's own docstring:
+        "any simple value", not a boolean condition). See
+        trigger_type_violations' own docstring for exactly what this
+        catches (a comparison between two statically-known-incompatible
+        types, e.g. `system.today() >= 5`) and why that's a build-time-
+        checkable thing at all, unlike a signal's actual runtime value."""
+        violations = trigger_type_violations(expression)
+        if violations:
+            raise ValueError(f"{context} ('{expression}'): {'; '.join(violations)}")
+
+    def _actions_sanity_check(
+        self, key: str, state: State, declared_states: set[str], registry: dict[str, dict[str, str]]
+    ):
+        """`registry` (see automaton.identifier_registry.build_registry):
+        every valid identifier for this project, one set per namespace —
+        `signal.*`/`env.*` project-specific, `system.*`/`session.*`/
+        `session.metric.*`/`metric.*` the same fixed sets for every
+        project (see that module's own docstring)."""
         for action in state.actions:
-                if action.target not in declared_states:
-                    raise ValueError(
-                        f"State '{state.key}', action '{action.name}': "
-                        f"target '{action.target}' is not a valid state"
+            if action.target not in declared_states:
+                raise ValueError(
+                    f"State '{state.key}', action '{action.name}': "
+                    f"target '{action.target}' is not a valid state"
+                )
+            if action.trigger:
+                self._validate_namespaced_expression(
+                    action.trigger, f"State {key}, action '{action.name}': trigger", registry,
+                )
+                self._validate_trigger_types(
+                    action.trigger, f"State {key}, action '{action.name}': trigger",
+                )
+            if action.env:
+                for env_key, expression in action.env.items():
+                    self._validate_namespaced_expression(
+                        expression, f"State {key}, action '{action.name}': env expression for '{env_key}'", registry,
                     )
-                if action.trigger:
-                    try:
-                     referenced_names = trigger_signal_names(action.trigger)
-                    except SyntaxError as exc:
-                        raise ValueError(
-                            f"State {key}, action '{action.name}': "
-                            f"trigger '{action.trigger}' is not a valid expression: {exc}"
-                        ) from exc
-                    unknown_names = referenced_names - valid_trigger_names
-                    if unknown_names:
-                        raise ValueError(
-                            f"Action '{action.name}': "
-                            f"trigger references undefined signal(s)/metric(s)/env value(s): {', '.join(sorted(unknown_names))}"
-                        )
-                if action.env:
-                    for env_key, expression in action.env.items():
-                        try:
-                            trigger_signal_names(expression)
-                        except SyntaxError as exc:
-                            raise ValueError(
-                                f"State {key}, action '{action.name}': "
-                                f"env expression for '{env_key}' ('{expression}') is not a valid expression: {exc}"
-                            ) from exc
 
     def _build_init_action(self, raw: dict) -> Action:
         raw_init_action = raw.get("init-action")
@@ -226,16 +246,24 @@ class AutomatonBuilder(object):
     def build(self, contents: dict) -> Automaton:
         all_archives = self._convert_contents_to_archives(contents=contents)
 
-        raw = yaml.safe_load(contents['index.yml'])
+        raw = _yaml.load(contents['index.yml'])
 
         raw_signals = raw.get("signals", {})
         if not isinstance(raw_signals, dict):
             raise ValueError(f"'signals' must be a mapping of signal name -> fields, got {type(raw_signals).__name__}.")
 
-        signals = {
-            name: self._build_signal(name, raw_signal, all_archives)
-            for name, raw_signal in raw_signals.items()
-        }
+        signals: dict[str, Signal] = {}
+        signal_names_by_ui_label: dict[str, str] = {}
+        for name, raw_signal in raw_signals.items():
+            signal = self._build_signal(name, raw_signal, all_archives)
+            existing_name = signal_names_by_ui_label.get(signal.ui_label)
+            if existing_name is not None:
+                raise ValueError(
+                    f"Signals '{existing_name}' and '{name}' both use ui-label "
+                    f"'{signal.ui_label}' — ui-label must be unique across all signals."
+                )
+            signal_names_by_ui_label[signal.ui_label] = name
+            signals[name] = signal
 
         reserved_names = set(signals.keys()) & metric_names()
         if reserved_names:
@@ -243,12 +271,6 @@ class AutomatonBuilder(object):
                 "Signal name(s) reserved for core metrics (see metrics_framework) cannot be "
                 f"reused as signal names: {', '.join(sorted(reserved_names))}"
             )
-        # A trigger may reference a declared signal, a core metric, or an
-        # always-computed env key interchangeably — see automaton.py's
-        # Automaton.evaluate_triggers, whose caller merges metric/env
-        # values into the same flat `names` dict (see chat/metrics_
-        # service.py's merge_if_referenced, chat/env.py's own equivalent).
-        valid_trigger_names = set(signals.keys()) | metric_names() | set(ENV_COMPUTED_KEYS)
 
         raw_states = raw["states"]
         if not isinstance(raw_states, dict):
@@ -259,11 +281,16 @@ class AutomatonBuilder(object):
                 "and cannot be declared in 'states'."
             )
 
+        # Pass 1: build every state/action, no expression validation yet
+        # — every action's own declared `env:` keys (see valid_env_attrs
+        # below) can only be known project-wide, once every one of them
+        # has actually been built, so validation itself has to wait for
+        # a second pass (see _actions_sanity_check's own calls below).
         init_action = self._build_init_action(raw)
         states: dict[str, State] = {}
         states[""] = State(key="", ui_label="", final=False, ui_description="", actions=[init_action])
-        self._actions_sanity_check(init_action.name, states[""], set(raw_states.keys()), valid_trigger_names)
 
+        state_keys_by_ui_label: dict[str, str] = {}
         for key, raw_state in raw_states.items():
             if not isinstance(raw_state, dict):
                 raise ValueError(
@@ -275,7 +302,24 @@ class AutomatonBuilder(object):
                 )
 
             states[key] = self._build_state(key, raw_state, all_archives)
-            self._actions_sanity_check(key, states[key], set(raw_states.keys()), valid_trigger_names)
+            existing_key = state_keys_by_ui_label.get(states[key].ui_label)
+            if existing_key is not None:
+                raise ValueError(
+                    f"States '{existing_key}' and '{key}' both use ui-label "
+                    f"'{states[key].ui_label}' — ui-label must be unique across all states."
+                )
+            state_keys_by_ui_label[states[key].ui_label] = key
+
+        # Pass 2: every action's own env: keys, across every state
+        # (including the synthetic "" state's own init_action), plus
+        # every declared signal — the project's own identifier registry
+        # (see automaton.identifier_registry.build_registry), the single
+        # source _actions_sanity_check validates every trigger/env:
+        # expression's own namespace references against below.
+        registry = build_registry(list(signals.values()), states)
+        for key, state in states.items():
+            context_key = init_action.name if key == "" else key
+            self._actions_sanity_check(context_key, state, set(raw_states.keys()), registry)
 
         general_attachments = self._extract_required_archives(raw.get('attachments', []), all_archives, for_field="global")
         autotracking_on_ai_message = raw.get("signal-tracking-on-ai-message", False)

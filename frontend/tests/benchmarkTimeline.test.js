@@ -60,14 +60,14 @@ describe('signalValuesAsOf', () => {
       transitionRow(3, { timestamp: '2026-01-01T10:00:10', values: JSON.stringify({ risk: 100 }) })
     ]
 
-    expect(signalValuesAsOf(log, '2026-01-01T10:00:07')).toEqual({ risk: { value: 0, error: null } })
-    expect(signalValuesAsOf(log, '2026-01-01T10:00:10')).toEqual({ risk: { value: 100, error: null } })
+    expect(signalValuesAsOf(log, [], '2026-01-01T10:00:07')).toEqual({ risk: { value: 0, error: null } })
+    expect(signalValuesAsOf(log, [], '2026-01-01T10:00:10')).toEqual({ risk: { value: 100, error: null } })
   })
 
   it('returns an empty object when nothing precedes the given timestamp', () => {
     const log = [transitionRow(1, { timestamp: '2026-01-01T10:00:10', values: JSON.stringify({ risk: 100 }) })]
 
-    expect(signalValuesAsOf(log, '2026-01-01T10:00:00')).toEqual({})
+    expect(signalValuesAsOf(log, [], '2026-01-01T10:00:00')).toEqual({})
   })
 })
 
@@ -115,6 +115,59 @@ describe('signalValuesFor — the off-by-one bug this session found and fixed', 
     const selected = { kind: 'transition', transition: synthetic }
 
     expect(signalValuesFor(selected, log)).toEqual({})
+  })
+})
+
+describe('an imported session — signals/state resolve by transcript position, not by real annotation time', () => {
+  // Reproduces the reported bug: reviewing an imported session (see
+  // session_import.py — every message has timestamp=null), an expert
+  // annotates message 1 first, then later (in real wall-clock time)
+  // annotates message 4 (see TrackingService._materialize_imported_
+  // session_row — each Tracking row's own `timestamp` is stamped at
+  // *annotation* time, unrelated to the message's own position in the
+  // transcript). Selecting the unannotated message 3, in between, must
+  // show message 1's own signal values (the last one *before* it in the
+  // transcript), never message 4's (the globally last-annotated one,
+  // even though it comes *after* the selection) — the old bug, since a
+  // plain "row.timestamp > (null) selected.message.timestamp" comparison
+  // never skips anything and always ends up picking whichever row has
+  // the greatest raw timestamp, i.e. whichever was annotated most
+  // recently in real time, full stop.
+  const m0 = message(0, null) // before any annotation at all
+  const m1 = message(1, null)
+  const m3 = message(3, null) // unannotated, selected below
+  const m4 = message(4, null)
+  const messages = [m0, m1, m3, m4]
+  const rowForM1 = transitionRow(10, {
+    timestamp: '2026-01-01T09:00:00', // annotated first, in real time
+    values: JSON.stringify({ mood: 10 }),
+    messageId: 1,
+    expectedState: 'early-state'
+  })
+  const rowForM4 = transitionRow(11, {
+    timestamp: '2026-01-01T09:05:00', // annotated later, in real time
+    values: JSON.stringify({ mood: 90 }),
+    messageId: 4,
+    expectedState: 'late-state'
+  })
+  const log = [rowForM1, rowForM4]
+
+  it('shows the last-annotated message before the selection in transcript order, not the globally last one', () => {
+    const selected = { kind: 'message', message: m3 }
+
+    expect(signalValuesFor(selected, log, messages)).toEqual({ mood: { value: 10, error: null } })
+  })
+
+  it('a selection before any annotation at all shows nothing, never a later one', () => {
+    const selected = { kind: 'message', message: m0 }
+
+    expect(signalValuesFor(selected, log, messages)).toEqual({})
+  })
+
+  it('resolves the same way for state highlighting, through the actually-built timeline', () => {
+    const timeline = buildTimeline(messages, log, null, { imported: true })
+
+    expect(highlightedStateKeyFor({ kind: 'message', message: m3 }, timeline, null)).toBe('early-state')
   })
 })
 
@@ -260,6 +313,16 @@ describe('transitionAnnotationStatus', () => {
   it('is incorrect when the expected state differs', () => {
     expect(transitionAnnotationStatus({ expected_state: 'a', new_state: 'b' })).toBe('incorrect')
   })
+
+  it('is labelled (never correct/incorrect) for an imported session, whatever new_state says', () => {
+    expect(transitionAnnotationStatus({ expected_state: 'a', new_state: 'a' }, { imported: true })).toBe('labelled')
+    expect(transitionAnnotationStatus({ expected_state: 'a', new_state: 'b' }, { imported: true })).toBe('labelled')
+    expect(transitionAnnotationStatus({ expected_state: 'a', new_state: null }, { imported: true })).toBe('labelled')
+  })
+
+  it('stays null for an unannotated imported row', () => {
+    expect(transitionAnnotationStatus({ expected_state: null, new_state: null }, { imported: true })).toBeNull()
+  })
 })
 
 describe('actualStateAtOrBefore', () => {
@@ -298,6 +361,20 @@ describe('resolveTransitionRow', () => {
     // transitionAnnotationStatus must read this as "correct" — the expert
     // said "action" and that's genuinely what was in effect.
     expect(transitionAnnotationStatus(resolved)).toBe('correct')
+  })
+
+  it('an imported row resolves new_state straight to its own expected_state, ignoring sessionStartState/signalsLog entirely', () => {
+    // Imported sessions never have a real avance-computed new_state at
+    // all (see TrackingService._materialize_imported_session_row's own
+    // save_transition(None, None, None, ...)) — actualStateAtOrBefore
+    // would just keep returning sessionStartState (itself null for an
+    // import) for every row, so it must never be consulted here.
+    const row = transitionRow(1, { timestamp: '2026-01-01T10:00:00', expectedState: 'action' })
+
+    const resolved = resolveTransitionRow(row, [], null, { imported: true })
+
+    expect(resolved.old_state).toBeNull()
+    expect(resolved.new_state).toBe('action')
   })
 })
 
@@ -485,6 +562,41 @@ describe('buildTimeline', () => {
 
     const transitionIds = timeline.filter((e) => e.kind === 'transition').map((e) => e.transition.id)
     expect(transitionIds).toEqual([1])
+  })
+
+  describe('an imported session (no real timestamps at all — see session_import.py)', () => {
+    // Every message/transition timestamp is null (see effectiveTimestamp's
+    // own null collapse for an import) — without a message-id fallback,
+    // every annotated separator sorts *after every message* instead of
+    // right after the one it annotates (the reported bug).
+    const importedMessages = [message(1, null), message(2, null), message(3, null)]
+
+    it('places each annotated separator right after its own linked message, not appended at the end', () => {
+      const annotation = transitionRow(1, { timestamp: null, expectedState: 'action', messageId: 2 })
+
+      const timeline = buildTimeline(importedMessages, [annotation], null, { imported: true })
+
+      expect(timeline.map((e) => (e.kind === 'message' ? `m${e.message.id}` : 't'))).toEqual(['m1', 'm2', 't', 'm3'])
+    })
+
+    it('keeps multiple annotated separators each pinned right after their own message', () => {
+      const first = transitionRow(1, { timestamp: null, expectedState: 'a', messageId: 1 })
+      const second = transitionRow(2, { timestamp: null, expectedState: 'b', messageId: 3 })
+
+      const timeline = buildTimeline(importedMessages, [first, second], null, { imported: true })
+
+      expect(timeline.map((e) => (e.kind === 'message' ? `m${e.message.id}` : 't'))).toEqual(['m1', 't', 'm2', 'm3', 't'])
+    })
+
+    it("every entry's own annotationStatus is 'labelled', never correct/incorrect", () => {
+      const annotation = transitionRow(1, { timestamp: null, expectedState: 'action', messageId: 2 })
+
+      const timeline = buildTimeline(importedMessages, [annotation], null, { imported: true })
+
+      const transitionEntry = timeline.find((e) => e.kind === 'transition')
+      expect(transitionEntry.annotationStatus).toBe('labelled')
+      expect(transitionEntry.transition.new_state).toBe('action')
+    })
   })
 
   it('appends the synthetic session-start entry when the session has no real one', () => {

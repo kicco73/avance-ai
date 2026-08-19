@@ -15,7 +15,8 @@ import {
   deleteProject,
   downloadProject,
   getBackup,
-  postRestoreBackup
+  postRestoreBackup,
+  postPublishProject
 } from './api.js'
 import { disconnect as disconnectChat } from './chatClient.js'
 import { clearApiError } from './errorStore.js'
@@ -26,9 +27,7 @@ import {
   loadMessages,
   loadAutoTracking,
   loadAiModels,
-  clearChatUi,
-  sessionsPanelOpen,
-  toggleSessionsPanel
+  clearChatUi
 } from './chatStore.js'
 
 const showEditProject = ref(false)
@@ -164,6 +163,12 @@ async function handleModelUploadChange(event) {
   clearChatUi()
   try {
     await putProject(projectName, file)
+    // A freshly uploaded project has never been published — nothing can
+    // chat with it yet (see db.create_chat_session, which requires a
+    // published_revision) until someone opens "Edit project" and clicks
+    // Publish. Doing that automatically here means an upload is usable
+    // right away, same as it always visibly appeared to be.
+    await postPublishProject(projectName)
     await refreshStateAndProjects()
   } catch {
     // already surfaced via apiFetch
@@ -218,6 +223,11 @@ async function handleModelDownload(projectName) {
     link.click()
     link.remove()
     URL.revokeObjectURL(url)
+    // After the download actually happened, never before (see
+    // handleDownloadBackup's own same-order notice) — shared by both the
+    // Projects menu's own "Download" item and EditProjectView.vue's own
+    // toolbar button, both wired to this same handler.
+    alert(`Project "${projectName}" downloaded to your local folder.`)
   } catch {
     // already surfaced via apiFetch
   }
@@ -290,16 +300,6 @@ onBeforeUnmount(() => {
     <header class="topbar">
       <StateBar :state="state" />
       <div class="topbar-actions">
-        <button
-          type="button"
-          class="sessions-btn"
-          :class="{ 'sessions-btn-active': sessionsPanelOpen }"
-          :disabled="!state?.key"
-          title="Sessions"
-          @click="toggleSessionsPanel"
-        >
-          Sessions
-        </button>
         <ProjectsMenu
           ref="projectsMenu"
           @select="handleProjectSwitch"
@@ -384,27 +384,4 @@ onBeforeUnmount(() => {
   display: none;
 }
 
-.sessions-btn {
-  padding: 0.4rem 1rem;
-  border-radius: 6px;
-  border: 1px solid #4a6fa5;
-  background: white;
-  color: #4a6fa5;
-  cursor: pointer;
-}
-
-.sessions-btn:hover:not(:disabled) {
-  background: #4a6fa5;
-  color: white;
-}
-
-.sessions-btn-active {
-  background: #4a6fa5;
-  color: white;
-}
-
-.sessions-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
 </style>

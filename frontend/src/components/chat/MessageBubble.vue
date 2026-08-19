@@ -25,7 +25,13 @@ const props = defineProps({
   // message's own evaluation produced has an expert-annotated
   // expected_values (see Signals.expected_values). Shows a small "this
   // bubble has a signal annotation" marker; the live chat never sets this.
-  signalsAnnotated: { type: Boolean, default: false }
+  signalsAnnotated: { type: Boolean, default: false },
+  // Whether this belongs to an imported session (see ChatSession.source)
+  // — there's no real avance-computed value to compare an annotation
+  // against there (see benchmarkTimeline.js's own transitionAnnotationStatus),
+  // so the marker reads as a neutral "labelled" tick instead of the
+  // amber "pay attention" one a live session's own annotation gets.
+  imported: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['resend'])
@@ -88,12 +94,13 @@ const {
           v-if="signalsAnnotated"
           ref="annotationIconRef"
           class="bubble-annotation-icon"
+          :class="{ 'bubble-annotation-icon-labelled': imported }"
           tabindex="0"
           @mouseenter="showAnnotationTooltip"
           @mouseleave="hideAnnotationTooltip"
           @focus="showAnnotationTooltip"
           @blur="hideAnnotationTooltip"
-        >!</span>
+        >{{ imported ? '✓' : '!' }}</span>
         <Teleport to="body">
           <span
             v-if="signalsAnnotated && annotationTooltipVisible"
@@ -175,6 +182,14 @@ const {
   justify-content: center;
   border: 1.5px solid white;
   cursor: help;
+}
+
+/* An imported session (see the imported prop's own docstring) has no
+   avance ground truth to be "wrong" against — a green circled tick
+   ("labelled", not "pay attention") instead of the amber "!" above. */
+.bubble-annotation-icon-labelled {
+  background: #2e7d32;
+  color: white;
 }
 
 /* Teleported to <body>, position: fixed — see useFloatingTooltip.js. */

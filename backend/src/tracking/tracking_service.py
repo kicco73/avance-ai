@@ -14,7 +14,11 @@ from metrics.metric_service import MetricService
 from .errors import TrackingServiceError
 from .turn_callbacks import OnMetadata
 from .env import PersistedEnv
+from .evaluation_scope import EvaluationScopeBuilder
+from .session_facts import SessionFacts
+from .system_facts import SystemFacts
 from .definitions import Signals
+from .session_import import SessionImportManager
 from .tracking_processor import UserVariables
 from .tracking_processor_ai import TrackingProcessorAfterAiMessage
 from .tracking_processor_user import TrackingProcessorAfterUserMessage
@@ -36,7 +40,14 @@ class TrackingService(object):
 		self._ai_service = ai_service
 		self._project_service = project_service
 		self._metrics = metrics_service
+		self._session_import_manager = SessionImportManager(db)
 		self.auto_tracking_enabled = True
+
+	def import_session(self, username: str, project_name: str, text: str, title: str | None = None) -> int:
+		try:
+			return self._session_import_manager.import_transcript(username, project_name, text, title=title)
+		except ValueError as exc:
+			raise TrackingServiceError(str(exc), status_code=HTTPStatus.BAD_REQUEST) from exc
 
 	@property
 	def automaton(self) -> Automaton:
@@ -59,11 +70,42 @@ class TrackingService(object):
 		if row is None:
 			row = self._materialize_session_start_row(message_id)
 		if row is None:
+			row = self._materialize_imported_session_row(message_id)
+		if row is None:
 			raise TrackingServiceError(
 				"This message isn't an evaluation point — nothing to annotate.",
 				status_code=HTTPStatus.CONFLICT,
 			)
 		return row
+
+	def _materialize_imported_session_row(self, message_id: int) -> dict | None:
+		"""An imported session (see ChatSession.source) never has any real
+		Tracking rows at all — it was never played live through the
+		automaton (see tracking.session_import's own module docstring), so
+		unlike a live session's own first-message bootstrap (see
+		_materialize_session_start_row), there's no old_state/new_state to
+		resolve for it — every row this creates carries None for both.
+		Only a message on whichever side automaton.autotracking_on_ai_message
+		says a live turn would actually have evaluated on (the assistant's
+		own reply if True, the user's own message if False — same
+		convention a live session already follows, see TrackingService.
+		process's own dispatch between TrackingProcessorAfterAiMessage/
+		TrackingProcessorAfterUserMessage) is eligible to annotate at all —
+		every other message of an imported session still has nothing to
+		annotate against, same as before this existed."""
+		message = self._db.get_message(message_id)
+		if message is None:
+			return None
+		session = self._db.get_chat_session(message["session_id"])
+		if session is None or session["source"] != "imported":
+			return None
+		expected_role = "assistant" if self.automaton.autotracking_on_ai_message else "user"
+		if message["role"] != expected_role:
+			return None
+		self._db.save_transition(
+			None, None, None, message["session_id"], transition_log_level="INFO", message_id=message_id
+		)
+		return self._db.get_signal_row_by_message(message_id)
 
 	def _materialize_session_start_row(self, message_id: int) -> dict | None:
 		"""Every session conceptually starts at its own `start_state`, but
@@ -97,7 +139,17 @@ class TrackingService(object):
 			self._db.link_signal_to_message(existing["id"], message_id)
 			return self._db.get_signal_row_by_message(message_id)
 		session = self._db.get_chat_session(session_id)
-		if session is None:
+		# old_state == "" specifically means "the automaton's own init
+		# transition" elsewhere (see benchmarkTimeline.js's own
+		# hasOwnStartRow/resolveTransitionRow) — an imported session (see
+		# ChatSession.source) never actually ran through the automaton at
+		# all, so it has no start_state to pair that with (see tracking.
+		# session_import's own create_chat_session call, start_state=
+		# None): writing ""->None here would claim a real init transition
+		# happened when none did, rather than "nothing is known here" (see
+		# _materialize_imported_session_row instead, which that falls
+		# through to).
+		if session is None or session["source"] == "imported":
 			return None
 		self._db.save_transition(
 			"", "", session["start_state"], session_id, transition_log_level="INFO", message_id=message_id
@@ -182,7 +234,7 @@ class TrackingService(object):
 		extra_prompt: str | None = None,
 		):
 
-		automaton, state = self._project_service.get_active_automaton_and_state()
+		automaton, state = self._project_service.get_automaton_and_state_for_session(session_id)
 
 		user_vars = UserVariables(
 			automaton=automaton,
@@ -196,18 +248,21 @@ class TrackingService(object):
 		else:
 			TrackingProcessor = TrackingProcessorAfterAiMessage
 
-		env = PersistedEnv(
-			self._db, get_username=lambda: Session().user,
-			get_active_project_name=self._project_service.get_active_project_name
-		)
+		get_username = lambda: Session().user
+		get_active_project_name = self._project_service.get_active_project_name
+		env = PersistedEnv(self._db, get_username=get_username, get_active_project_name=get_active_project_name)
+		system_facts = SystemFacts()
+		session_facts = SessionFacts(self._db, get_username=get_username, get_active_project_name=get_active_project_name)
+		scope_builder = EvaluationScopeBuilder(env, self._metrics, system_facts, session_facts)
 
 		def on_metadata_sync_to_async(key: str, value: Any):
 			if on_metadata:
 				asyncio.ensure_future(on_metadata(key, value))
 
 		tracking_processor = TrackingProcessor(
-			self._ai_service, self._metrics, 
-			env, self._db, user_vars
+			self._ai_service, scope_builder,
+			env, self._db, user_vars,
+			auto_tracking_enabled=self.auto_tracking_enabled,
 		)
 
 		return tracking_processor.process(text, on_metadata=on_metadata_sync_to_async, extra_prompt=extra_prompt)

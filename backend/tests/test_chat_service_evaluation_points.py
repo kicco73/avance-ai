@@ -60,7 +60,7 @@ pytestmark = pytest.mark.asyncio
 PROJECT_NAME = "proj"
 
 
-def _automaton(*, autotracking_on_ai_message=False, trigger="foo >= 0") -> Automaton:
+def _automaton(*, autotracking_on_ai_message=False, trigger="signal.foo >= 0") -> Automaton:
     action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger=trigger)
     state_a = State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action])
     state_b = State(key="b", ui_label="B", final=True, actions=[])
@@ -91,6 +91,9 @@ class FakeProjectService:
         self._state_key = state_key
 
     def get_active_automaton_and_state(self):
+        return self._automaton, self._automaton.states[self._state_key]
+
+    def get_automaton_and_state_for_session(self, session_id: int):
         return self._automaton, self._automaton.states[self._state_key]
 
     def get_active_project_name(self) -> str:
@@ -135,6 +138,9 @@ class FakeSchemaAiService:
 
 @pytest.fixture
 def chat_service_for(db):
+    db.ensure_project(PROJECT_NAME)
+    db.publish_project(PROJECT_NAME)
+
     def make(automaton: Automaton, *, ai_service=None) -> ChatService:
         ai_service = ai_service or FakeSchemaAiService([{"signals": '{"foo": 1}'}])
         project_service = FakeProjectService(automaton)

@@ -16,7 +16,7 @@ from project.project_service import ProjectService
 from session import Session
 from tracking.tracking_service import TrackingService
 
-SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples"
+SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
 
 
 @pytest.fixture
@@ -105,7 +105,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
 
     fastapi_app = FastAPI(title="Avance State Engine (test)")
     register_error_handlers(fastapi_app)
-    controller = AvanceController(chat_service, project_service, None, None, app_db)
+    controller = AvanceController(chat_service, project_service, None, None, app_db, tracking_service)
     fastapi_app.include_router(controller.router)
     return fastapi_app
 
@@ -117,14 +117,17 @@ def client(app: FastAPI) -> TestClient:
 
 @pytest.fixture
 def hello_project(client: TestClient) -> str:
-    """Uploads and activates the bundled "Hello world" sample project —
-    for tests that need a real active project/automaton, not just an
-    empty one. Returns its project_name."""
+    """Uploads, activates, and publishes the bundled "Hello world" sample
+    project — for tests that need a real active project/automaton, not
+    just an empty one. Published because a project with no published
+    revision yet can't have chat sessions (see Db.create_chat_session)."""
     content = (SAMPLES_DIR / "Hello world.zip").read_bytes()
     response = client.put(
         "/api/projects/hello", content=content, headers={"Content-Type": "application/zip"}
     )
     assert response.status_code == 200, response.text
     response = client.put("/api/projects/hello/activate")
+    assert response.status_code == 200, response.text
+    response = client.post("/api/projects/hello/publish", json={})
     assert response.status_code == 200, response.text
     return "hello"

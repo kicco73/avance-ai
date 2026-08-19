@@ -1,4 +1,5 @@
 <script setup>
+import { ref } from 'vue'
 import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 
 // The sessions list content (header + rows) shared by every chat surface
@@ -17,14 +18,62 @@ const props = defineProps({
   // just that row's own delete button. Ignored when allowDelete is false.
   deletingSessionId: { type: [Number, String], default: null },
   allowCreate: { type: Boolean, default: true },
-  allowDelete: { type: Boolean, default: true }
+  allowDelete: { type: Boolean, default: true },
+  // BenchmarkProjectView's own — only an imported session (see
+  // ChatSession.source) is ever deletable there, never a native one
+  // (ChatWindow.vue's own live-chat contexts leave this at its default
+  // false, since allowDelete there already means "any session").
+  deleteImportedOnly: { type: Boolean, default: false },
+  // BenchmarkProjectView's own — a transcript import produces a session
+  // annotatable/testable without ever running live (see ChatSession.
+  // source), meaningful only for review/labeling, not for the main chat
+  // or the "Edit project" embedded chat (see ChatWindow.vue, which
+  // leaves this at its default false).
+  allowImport: { type: Boolean, default: false },
+  // ChatWindow.vue's own live-chat contexts (main app + EditProjectView's
+  // embedded chat) — an imported session can never become the live
+  // conversation's own current/active session (see ChatSession.source),
+  // so selecting one there must be a no-op, not a click that quietly
+  // hands currentSessionId a session nothing downstream is prepared to
+  // treat as live. BenchmarkProjectView leaves this at its default false:
+  // reviewing/annotating an imported transcript is exactly its own
+  // purpose, so selecting one there must keep working.
+  restrictSelectionToNative: { type: Boolean, default: false },
+  // Same always-mounted collapse/expand pattern as Inspector.vue's own
+  // `collapsed` — the parent (ChatWindow.vue/BenchmarkProjectView.vue)
+  // owns the actual width/layout collapse, this only owns its own
+  // header's toggle button and hiding its own content while collapsed.
+  collapsed: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['select', 'create', 'delete'])
+const emit = defineEmits(['select', 'create', 'delete', 'import', 'update:collapsed'])
+
+const importInput = ref(null)
+
+function triggerImport() {
+  importInput.value?.click()
+}
+
+function onImportFileChosen(event) {
+  const file = event.target.files?.[0]
+  if (file) emit('import', file)
+  // Reset so choosing the exact same file again still fires 'change'.
+  event.target.value = ''
+}
 
 function formatSessionTimestamp(iso) {
+  if (!iso) return 'Timeline not available'
   const date = new Date(iso)
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString()
+}
+
+function notSelectable(session) {
+  return props.restrictSelectionToNative && session.source !== 'native'
+}
+
+function selectSession(session) {
+  if (notSelectable(session)) return
+  emit('select', session)
 }
 
 // The "has expert annotations" tag icon's own tooltip — one shared
@@ -41,16 +90,32 @@ const {
 
 <template>
   <div class="sessions-panel-header">
-    <span class="sessions-panel-title">Sessions</span>
-    <div v-if="allowCreate" class="sessions-panel-header-actions">
-      <button type="button" class="sessions-panel-icon-btn" title="New session" @click="emit('create')">
+    <span v-if="!collapsed" class="sessions-panel-title">Sessions</span>
+    <div style="display: flex">
+
+    <div v-if="!collapsed && (allowCreate || allowImport)" class="sessions-panel-header-actions">
+      <button v-if="allowImport" type="button" class="sessions-panel-icon-btn" title="Import transcript" @click="triggerImport">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+          <path d="M12 3l4 4h-3v6h-2V7H8l4-4zM5 19v-6h2v6h10v-6h2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z" />
+        </svg>
+      </button>
+      <input v-if="allowImport" ref="importInput" type="file" accept=".txt,text/plain" class="sessions-panel-import-input" @change="onImportFileChosen" />
+      <button v-if="allowCreate" type="button" class="sessions-panel-icon-btn" title="New session" @click="emit('create')">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
           <path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z" />
         </svg>
       </button>
     </div>
+    <button
+      class="collapse-toggle-btn"
+      :title="collapsed ? 'Expand sessions' : 'Collapse sessions'"
+      @click="emit('update:collapsed', !collapsed)"
+    >{{ collapsed ? '◂' : '▸' }}</button>
   </div>
 
+  </div>
+
+  <template v-if="!collapsed">
   <p v-if="loading" class="sessions-status">Loading…</p>
   <p v-else-if="!sessions.length" class="sessions-status">No sessions yet.</p>
 
@@ -59,12 +124,14 @@ const {
       <button
         type="button"
         class="session-item"
-        :class="{ 'session-item-active': session.id === currentSessionId }"
-        @click="emit('select', session)"
+        :class="{ 'session-item-active': session.id === currentSessionId, 'session-item-disabled': notSelectable(session) }"
+        :disabled="notSelectable(session)"
+        :title="notSelectable(session) ? 'Imported sessions can\'t become the active conversation.' : null"
+        @click="selectSession(session)"
       >
         <span class="session-badge-row">
           <span class="session-badge" :class="{ 'session-badge-inactive': !session.active }">
-            {{ session.end_state }}
+            {{ session.title || session.end_state }}
           </span>
           <span
             v-if="session.has_annotations"
@@ -80,7 +147,7 @@ const {
         <span class="session-timestamp">{{ formatSessionTimestamp(session.datetime_start) }}</span>
       </button>
       <button
-        v-if="allowDelete"
+        v-if="allowDelete && (!deleteImportedOnly || session.source === 'imported')"
         type="button"
         class="session-delete-btn"
         :disabled="deletingSessionId === session.id"
@@ -91,6 +158,7 @@ const {
       </button>
     </li>
   </ul>
+  </template>
 
   <Teleport to="body">
     <span v-if="annotationTooltipVisible" class="session-annotation-tooltip-floating" :style="annotationTooltipStyle">
@@ -142,6 +210,27 @@ const {
   color: white;
 }
 
+.collapse-toggle-btn {
+  flex-shrink: 0;
+  width: 1.4rem;
+  height: 1.4rem;
+  line-height: 1;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: #666;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.collapse-toggle-btn:hover {
+  background: #eee;
+}
+
+.sessions-panel-import-input {
+  display: none;
+}
+
 .sessions-status {
   margin: 0;
   padding: 0.75rem 0.9rem;
@@ -183,6 +272,15 @@ const {
 
 .session-item-active {
   background: #e3ebf7;
+}
+
+.session-item-disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.session-item-disabled:hover {
+  background: none;
 }
 
 .session-delete-btn {

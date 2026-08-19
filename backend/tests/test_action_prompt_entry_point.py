@@ -54,6 +54,9 @@ class FakeProjectService:
     def get_active_automaton_and_state(self):
         return self._automaton, self._automaton.states[self._state_key]
 
+    def get_automaton_and_state_for_session(self, session_id: int):
+        return self._automaton, self._automaton.states[self._state_key]
+
     def get_active_project_name(self) -> str:
         return PROJECT_NAME
 
@@ -66,6 +69,8 @@ class FakeProjectService:
 
 
 def _chat_service(db, automaton: Automaton) -> tuple[ChatService, FakeAiService]:
+    db.ensure_project(PROJECT_NAME)
+    db.publish_project(PROJECT_NAME)
     ai_service = FakeAiService()
     project_service = FakeProjectService(automaton)
     metric_service = MetricService(

@@ -3,10 +3,14 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ChatTimeline from './chat/ChatTimeline.vue'
 import SessionsPanel from './chat/SessionsPanel.vue'
 import Inspector from './inspector/Inspector.vue'
+import InspectorGraphTab from './inspector/InspectorGraphTab.vue'
+import InspectorSignalsTab from './inspector/InspectorSignalsTab.vue'
+import InspectorMetricsTab from './inspector/InspectorMetricsTab.vue'
+import InspectorPerformanceTab from './inspector/InspectorPerformanceTab.vue'
 import ErrorBanner from './ErrorBanner.vue'
 import {
-  getMessages, getSessionSignals, getSessions, putMessageExpectedState, putMessageExpectedSignals,
-  deleteSessionAnnotations
+  getMessages, getSessionSignals, getSessions, getProjectGraph, postImportSession, putMessageExpectedState,
+  putMessageExpectedSignals, putSessionLabeled, deleteSessionAnnotations, deleteSession
 } from '../api.js'
 import { currentSessionId, sessions, sessionsLoading, loadSessions, refreshSessionsQuietly, selectSession } from '../chatStore.js'
 import {
@@ -36,9 +40,36 @@ const rawMessages = ref([])
 // further backend round trips.
 const signalsLog = ref([])
 const sessionStartState = ref(null)
+// Project-wide, fetched once (see onMounted below) — whether a live turn
+// evaluates on the assistant's own reply (true) or the user's own
+// message (false). An imported session (see ChatSession.source) has no
+// real Tracking rows to consult at all, so annotatableSignalsRow below
+// falls back to this same convention instead, to decide which side of
+// an imported session's own messages is a legitimate mark point.
+const autotrackingOnAiMessage = ref(false)
 
 const inspectorRef = ref(null)
 const inspectorWidth = ref(360)
+const inspectorCollapsed = ref(false)
+// This view's own tab set — Performance instead of Env (see Inspector.
+// vue's own slot-based contract; EditProjectView.vue passes a different
+// set for its own live chat). An imported session (see
+// currentSessionIsImported below) has no real avance-computed metrics
+// history of its own to show at all — Metrics/Performance both read off
+// live Tracking rows an import never produces (see MetricService/
+// BenchmarkCalculator) — so only States/Signals (annotation surfaces)
+// make sense there. Inspector.vue's own tabs watcher already falls back
+// to the first tab whenever the active one stops being valid, so
+// switching sessions never needs to reset inspectorActiveTab by hand.
+const inspectorTabs = computed(() => {
+  const base = [
+    { id: 'states', label: 'States' },
+    { id: 'signals', label: 'Signals' }
+  ]
+  if (currentSessionIsImported.value) return base
+  return [...base, { id: 'metrics', label: 'Metrics' }, { id: 'performance', label: 'Performance' }]
+})
+const inspectorActiveTab = ref('states')
 // The Sessions panel starts open — reviewing a specific session is the
 // point of this view, so the picker should always be immediately visible
 // rather than tucked behind a toggle.
@@ -69,14 +100,34 @@ function stopDrag() {
   dragTarget = null
 }
 
-// Toggled by the header's own Sessions button, same as ChatWindow.vue's
-// own panel — but a local, independent open/closed flag: the main page's
-// own Sessions panel (see chatStore.js's sessionsPanelOpen) is a separate
-// piece of UI, hidden behind this full-screen overlay while it's open,
-// and shouldn't change just because this view's own panel did.
+// Toggled by SessionsPanel.vue's own collapse button, same as
+// ChatWindow.vue's own panel — but a local, independent open/closed flag:
+// the main page's own Sessions panel (see chatStore.js's
+// sessionsPanelOpen) is a separate piece of UI, hidden behind this
+// full-screen overlay while it's open, and shouldn't change just because
+// this view's own panel did.
 function toggleBenchmarkSessionsPanel() {
   benchmarkSessionsPanelOpen.value = !benchmarkSessionsPanelOpen.value
-  if (benchmarkSessionsPanelOpen.value) loadSessions()
+  if (benchmarkSessionsPanelOpen.value) loadSessions(true)
+}
+
+// This view's own Sessions panel is the one place that reviews imported
+// transcripts (see ChatSession.source) alongside live ones (see
+// SessionsPanel.vue's own allowImport) — every load/refresh below passes
+// includeImported so an imported session doesn't disappear from the list
+// again after the very next reload.
+async function handleImportSession(file) {
+  try {
+    const { session_id } = await postImportSession(file)
+    // The list must actually contain the new session before it can be
+    // looked up in it — refresh first, select second, not the other way
+    // around.
+    await refreshSessionsQuietly(true)
+    const imported = sessions.value.find((s) => s.id === session_id)
+    if (imported) selectSession(imported)
+  } catch {
+    // already surfaced via apiFetch (see <ErrorBanner /> above)
+  }
 }
 
 // Picking a session here uses the exact same shared mechanism as every
@@ -85,6 +136,28 @@ function toggleBenchmarkSessionsPanel() {
 // one source of truth, and the watcher below reacts to it changing.
 function onSelectSession(session) {
   selectSession(session)
+}
+
+// Only an imported session is ever deletable here (see SessionsPanel.
+// vue's own deleteImportedOnly) — a live/native one is the record of a
+// real conversation, not this view's own to discard. Mirrors chatStore.
+// js's own handleDeleteSession, just against this view's own session
+// list (refreshSessionsQuietly(true) — see handleImportSession's own
+// docstring on why includeImported matters here) rather than the main
+// chat's.
+const deletingSessionId = ref(null)
+async function handleDeleteSession(session) {
+  if (!window.confirm(`Delete this imported session (${session.title || session.end_state})? This cannot be undone.`)) return
+  deletingSessionId.value = session.id
+  try {
+    await deleteSession(session.id)
+    if (session.id === currentSessionId.value) currentSessionId.value = null
+    await refreshSessionsQuietly(true)
+  } catch {
+    // already surfaced via apiFetch
+  } finally {
+    deletingSessionId.value = null
+  }
 }
 
 function handleWindowResize() {
@@ -106,7 +179,7 @@ async function loadTimeline() {
     const [messageRows, signalRows, allSessions] = await Promise.all([
       getMessages(sessionId),
       getSessionSignals(sessionId),
-      getSessions()
+      getSessions(true)
     ])
     rawMessages.value = messageRows
     signalsLog.value = signalRows
@@ -115,15 +188,14 @@ async function loadTimeline() {
     // now" — a stale point-in-time cutoff from the previous session's
     // own selection would otherwise linger) and the session-scoped
     // Performance tab need a fresh fetch for *this* session — neither
-    // reactively recomputes on its own (see Inspector.vue's own
-    // refreshMetrics/refreshPerformance, each a no-op unless its own tab
-    // is the one currently showing). Relying on the `selected` reset
-    // above alone isn't enough: switching sessions while nothing was
-    // ever selected leaves `selected` at null both before and after,
-    // so that watcher never fires at all.
+    // reactively recomputes on its own (see InspectorMetricsTab.vue/
+    // InspectorPerformanceTab.vue's own refresh(active), each a no-op
+    // unless its own tab is the one currently showing). Relying on the
+    // `selected` reset above alone isn't enough: switching sessions
+    // while nothing was ever selected leaves `selected` at null both
+    // before and after, so that watcher never fires at all.
     await nextTick()
-    inspectorRef.value?.refreshMetrics()
-    inspectorRef.value?.refreshPerformance()
+    inspectorRef.value?.refresh()
   } catch {
     // already surfaced via apiFetch
   } finally {
@@ -143,7 +215,9 @@ watch(currentSessionId, loadTimeline)
 // for the actual logic (and its own regression tests) — every function
 // there is pure, taking rawMessages/signalsLog/sessionStartState
 // explicitly instead of closing over these refs.
-const timeline = computed(() => buildTimeline(rawMessages.value, signalsLog.value, sessionStartState.value))
+const timeline = computed(() =>
+  buildTimeline(rawMessages.value, signalsLog.value, sessionStartState.value, { imported: currentSessionIsImported.value })
+)
 
 // The point in time currently reflected by the Inspector — a message or a
 // transition clicked in the timeline (see selectMessage/selectTransition).
@@ -190,7 +264,25 @@ const untilMessageId = computed(() => {
   return selected.value.transition.message_id ?? nearestMessageIdAtOrBefore(rawMessages.value, selected.value.transition.timestamp)
 })
 
-const signalValues = computed(() => signalValuesFor(selected.value, signalsLog.value))
+const signalValues = computed(() => signalValuesFor(selected.value, signalsLog.value, rawMessages.value))
+
+// Whether the session currently being reviewed was imported (see
+// ChatSession.source) rather than played live — the one case with no
+// real Tracking rows at all to consult for annotatableSignalsRow below
+// (see tracking.session_import's own module docstring).
+const currentSessionIsImported = computed(() => {
+  return sessions.value.find((s) => s.id === currentSessionId.value)?.source === 'imported'
+})
+
+// A message is a legitimate mark point for an imported session (which
+// has no real Tracking row to prove it) only on whichever side a live
+// turn would actually have evaluated on — assistant if
+// autotrackingOnAiMessage, user otherwise (see TrackingService.
+// _materialize_imported_session_row, the backend's own mirror of this
+// same rule).
+function isImportedAnnotationPoint(message) {
+  return message.role === (autotrackingOnAiMessage.value ? 'assistant' : 'user')
+}
 
 // The Signals row backing the current selection's own evaluation, if
 // any — the row itself for a clicked transition auto-tracking produced
@@ -200,13 +292,23 @@ const signalValues = computed(() => signalValuesFor(selected.value, signalsLog.v
 // null: see project_service.apply_manual_action), or a message
 // auto-tracking never evaluated anything after (see Signals.message's own
 // docstring) — the Inspector's annotation controls only ever show for a
-// non-null value here.
+// non-null value here. An imported session never has a real row for any
+// message (see currentSessionIsImported) — a virtual one (no id yet,
+// materialized backend-side the first time an annotation is actually
+// written, see TrackingService._materialize_imported_session_row) steps
+// in for whichever message is a legitimate mark point on its own session.
 const annotatableSignalsRow = computed(() => {
   if (!selected.value) return null
   if (selected.value.kind === 'transition') {
     return selected.value.transition.message_id != null ? selected.value.transition : null
   }
-  return signalsLog.value.find((s) => s.message_id === selected.value.message.id) ?? null
+  const message = selected.value.message
+  const row = signalsLog.value.find((s) => s.message_id === message.id)
+  if (row) return row
+  if (currentSessionIsImported.value && isImportedAnnotationPoint(message)) {
+    return { id: null, message_id: message.id, old_state: null, new_state: null, expected_state: null, expected_values: null, values: null }
+  }
+  return null
 })
 
 // The message id to PUT an annotation change against — the annotation
@@ -258,7 +360,7 @@ async function reloadSignalsLog() {
   // the panel is toggled closed and reopened. Quiet: a full loadSessions()
   // would flash the panel to "Loading…" for something the user never
   // asked to reload.
-  await refreshSessionsQuietly()
+  await refreshSessionsQuietly(true)
 }
 
 async function onUpdateExpectedState(value) {
@@ -267,7 +369,7 @@ async function onUpdateExpectedState(value) {
   try {
     await putMessageExpectedState(messageId, value)
     await reloadSignalsLog()
-    inspectorRef.value?.refreshPerformance()
+    inspectorRef.value?.refresh()
   } catch {
     // already surfaced via apiFetch
   }
@@ -279,7 +381,7 @@ async function onUpdateExpectedSignals(values) {
   try {
     await putMessageExpectedSignals(messageId, values)
     await reloadSignalsLog()
-    inspectorRef.value?.refreshPerformance()
+    inspectorRef.value?.refresh()
   } catch {
     // already surfaced via apiFetch
   }
@@ -300,7 +402,7 @@ async function onUnlabelAll() {
   try {
     await deleteSessionAnnotations(currentSessionId.value)
     await reloadSignalsLog()
-    inspectorRef.value?.refreshPerformance()
+    inspectorRef.value?.refresh()
   } catch {
     // already surfaced via apiFetch
   } finally {
@@ -308,12 +410,39 @@ async function onUnlabelAll() {
   }
 }
 
-// Metrics aren't reactive to props on their own (see Inspector.vue's
-// refreshMetrics docstring) — every selection change needs an explicit
-// nudge, same as EditProjectView.vue's turnCount watcher. No Env tab
-// here (see this view's own :show-env-tab="false"), so no matching nudge.
+// The current session's own persisted "reviewed" flag (see backend
+// ChatSession.labeled) — read straight off the Sessions panel's own list
+// (its has_annotations field, see chatStore.js's sessions/ChatService.
+// _session_payload), the single source of truth for it now, not
+// recomputed from signalsLog the way hasAnyAnnotations above still is
+// for "Unlabel all" (a genuinely different question: "is there anything
+// to clear" vs. "has an expert signed off on this session").
+const currentSessionLabeled = computed(() => {
+  return sessions.value.find((s) => s.id === currentSessionId.value)?.has_annotations ?? false
+})
+
+const markingDone = ref(false)
+
+async function onToggleMarkDone() {
+  if (!currentSessionId.value) return
+  markingDone.value = true
+  try {
+    await putSessionLabeled(currentSessionId.value, !currentSessionLabeled.value)
+    await refreshSessionsQuietly(true)
+  } catch {
+    // already surfaced via apiFetch
+  } finally {
+    markingDone.value = false
+  }
+}
+
+// Metrics aren't reactive to props on their own (see
+// InspectorMetricsTab.vue's own refresh(active) docstring) — every
+// selection change needs an explicit nudge, same as EditProjectView.vue's
+// turnCount watcher. No Env tab here (see this view's own tabs, below),
+// so no matching nudge.
 watch(selected, () => {
-  nextTick(() => inspectorRef.value?.refreshMetrics())
+  nextTick(() => inspectorRef.value?.refresh())
 })
 
 onMounted(() => {
@@ -321,7 +450,12 @@ onMounted(() => {
   // The Sessions panel starts open (see benchmarkSessionsPanelOpen) —
   // toggleBenchmarkSessionsPanel only loads on a closed-to-open flip, so
   // the initial open needs its own load.
-  loadSessions()
+  loadSessions(true)
+  getProjectGraph(props.projectName).then((graph) => {
+    autotrackingOnAiMessage.value = graph.autotracking_on_ai_message
+  }).catch(() => {
+    // already surfaced via apiFetch
+  })
   window.addEventListener('mousemove', onDrag)
   window.addEventListener('mouseup', stopDrag)
   window.addEventListener('resize', handleWindowResize)
@@ -338,13 +472,6 @@ onBeforeUnmount(() => {
     <div class="benchmark-header">
       <h2>Label sessions — {{ projectName }}</h2>
       <div class="benchmark-header-actions">
-        <button
-          class="sessions-toggle-btn"
-          :class="{ 'sessions-toggle-btn-on': benchmarkSessionsPanelOpen }"
-          @click="toggleBenchmarkSessionsPanel"
-        >
-          Sessions
-        </button>
         <button class="close-btn" @click="emit('close')">Back</button>
       </div>
     </div>
@@ -353,33 +480,49 @@ onBeforeUnmount(() => {
 
     <div class="benchmark-body">
       <div class="benchmark-chat-pane">
-        <Transition name="panel-slide-left">
-          <div v-if="benchmarkSessionsPanelOpen" class="sessions-panel-wrap">
-            <div class="sessions-panel" :style="{ width: sessionsPanelWidth + 'px' }">
-              <SessionsPanel
-                :sessions="sessions"
-                :loading="sessionsLoading"
-                :current-session-id="currentSessionId"
-                :allow-create="false"
-                :allow-delete="false"
-                @select="onSelectSession"
-              />
-            </div>
-            <div class="split-divider" @mousedown="startSessionsDrag"></div>
+        <div class="sessions-panel-wrap">
+          <div class="sessions-panel" :class="{ 'sessions-panel-collapsed': !benchmarkSessionsPanelOpen }" :style="benchmarkSessionsPanelOpen ? { width: sessionsPanelWidth + 'px' } : null">
+            <SessionsPanel
+              :sessions="sessions"
+              :loading="sessionsLoading"
+              :current-session-id="currentSessionId"
+              :deleting-session-id="deletingSessionId"
+              :allow-create="false"
+              :allow-delete="true"
+              :delete-imported-only="true"
+              :allow-import="true"
+              :collapsed="!benchmarkSessionsPanelOpen"
+              @update:collapsed="toggleBenchmarkSessionsPanel"
+              @select="onSelectSession"
+              @import="handleImportSession"
+              @delete="handleDeleteSession"
+            />
           </div>
-        </Transition>
+          <div v-if="benchmarkSessionsPanelOpen" class="split-divider" @mousedown="startSessionsDrag"></div>
+        </div>
 
         <div class="benchmark-chat-content">
           <div class="benchmark-chat-toolbar">
             <span class="benchmark-chat-title">Chat</span>
-            <button
-              type="button"
-              class="benchmark-unlabel-all-btn"
-              :disabled="!hasAnyAnnotations || unlabelingAll"
-              @click="onUnlabelAll"
-            >
-              {{ unlabelingAll ? 'Unlabelling…' : 'Unlabel all' }}
-            </button>
+            <div class="benchmark-chat-toolbar-actions">
+              <button
+                type="button"
+                class="benchmark-unlabel-all-btn"
+                :disabled="!hasAnyAnnotations || unlabelingAll"
+                @click="onUnlabelAll"
+              >
+                {{ unlabelingAll ? 'Unlabelling…' : 'Unlabel all' }}
+              </button>
+              <button
+                type="button"
+                class="benchmark-mark-done-btn"
+                :class="{ 'benchmark-mark-done-btn-active': currentSessionLabeled }"
+                :disabled="!currentSessionId || markingDone"
+                @click="onToggleMarkDone"
+              >
+                {{ currentSessionLabeled ? '✓ Done' : 'Mark done' }}
+              </button>
+            </div>
           </div>
 
           <p v-if="loading" class="benchmark-status">Loading…</p>
@@ -393,6 +536,7 @@ onBeforeUnmount(() => {
             :timeline="timeline"
             :signals-log="signalsLog"
             :selected="selected"
+            :imported="currentSessionIsImported"
             @select-message="selectMessage"
             @select-transition="selectTransition"
           />
@@ -401,25 +545,48 @@ onBeforeUnmount(() => {
 
       <div class="split-divider inspector-divider" @mousedown="startInspectorDrag"></div>
 
-      <div class="benchmark-inspector-panel" :style="{ '--inspector-width': inspectorWidth + 'px' }">
+      <div
+        class="benchmark-inspector-panel"
+        :class="{ 'benchmark-inspector-panel-collapsed': inspectorCollapsed }"
+        :style="inspectorCollapsed ? null : { '--inspector-width': inspectorWidth + 'px' }"
+      >
         <Inspector
           ref="inspectorRef"
-          :project-name="projectName"
-          :highlighted-state-key="highlightedStateKey"
-          :fired-action-edge="firedActionEdge"
-          :signal-values="signalValues"
-          :until-message-id="untilMessageId"
-          :annotatable="annotatableSignalsRow != null"
-          :annotatable-signals="annotatableExpectedSignals"
-          :expected-state="expectedState"
-          :expected-values="expectedValues"
-          :show-performance-tab="true"
-          :show-env-tab="false"
-          :benchmark-session-id="currentSessionId"
-          :closable="false"
-          @update-expected-state="onUpdateExpectedState"
-          @update-expected-signals="onUpdateExpectedSignals"
-        />
+          :tabs="inspectorTabs"
+          v-model:active-tab="inspectorActiveTab"
+          v-model:collapsed="inspectorCollapsed"
+        >
+          <template #tab-states="{ registerTab }">
+            <InspectorGraphTab
+              :ref="registerTab('states')"
+              :project-name="projectName"
+              :highlighted-state-key="highlightedStateKey"
+              :fired-action-edge="firedActionEdge"
+              :annotatable="annotatableSignalsRow != null"
+              :expected-state="expectedState"
+              :imported="currentSessionIsImported"
+              @update-expected-state="onUpdateExpectedState"
+            />
+          </template>
+          <template #tab-signals="{ registerTab }">
+            <InspectorSignalsTab
+              :ref="registerTab('signals')"
+              :project-name="projectName"
+              :signal-values="signalValues"
+              :annotatable="annotatableExpectedSignals"
+              :expected-values="expectedValues"
+              :state-key="highlightedStateKey"
+              :imported="currentSessionIsImported"
+              @update-expected-signals="onUpdateExpectedSignals"
+            />
+          </template>
+          <template #tab-metrics="{ registerTab }">
+            <InspectorMetricsTab :ref="registerTab('metrics')" :until-message-id="untilMessageId" />
+          </template>
+          <template #tab-performance="{ registerTab }">
+            <InspectorPerformanceTab :ref="registerTab('performance')" :benchmark-session-id="currentSessionId" />
+          </template>
+        </Inspector>
       </div>
     </div>
   </div>
@@ -516,17 +683,6 @@ onBeforeUnmount(() => {
   min-height: 0;
 }
 
-.panel-slide-left-enter-active,
-.panel-slide-left-leave-active {
-  transition: opacity 0.18s ease, transform 0.18s ease;
-}
-
-.panel-slide-left-enter-from,
-.panel-slide-left-leave-to {
-  opacity: 0;
-  transform: translateX(-16px);
-}
-
 .sessions-panel {
   display: flex;
   flex-direction: column;
@@ -534,6 +690,13 @@ onBeforeUnmount(() => {
   min-height: 0;
   border-right: 1px solid #ddd;
   background: #f9fafb;
+  transition: width 0.15s ease;
+}
+
+/* Collapsed (see SessionsPanel.vue's own always-visible header toggle) —
+   a slim strip, same pattern as ChatWindow.vue's own equivalent. */
+.sessions-panel-collapsed {
+  width: 2.4rem !important;
 }
 
 .benchmark-chat-content {
@@ -564,6 +727,12 @@ onBeforeUnmount(() => {
   letter-spacing: 0.03em;
 }
 
+.benchmark-chat-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 .benchmark-unlabel-all-btn {
   padding: 0.3rem 0.7rem;
   border-radius: 6px;
@@ -580,6 +749,32 @@ onBeforeUnmount(() => {
 }
 
 .benchmark-unlabel-all-btn:disabled {
+  border-color: #ccc;
+  color: #ccc;
+  cursor: not-allowed;
+}
+
+.benchmark-mark-done-btn {
+  padding: 0.3rem 0.7rem;
+  border-radius: 6px;
+  border: 1px solid #2e7d32;
+  background: white;
+  color: #2e7d32;
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+
+.benchmark-mark-done-btn:hover:not(:disabled) {
+  background: #2e7d32;
+  color: white;
+}
+
+.benchmark-mark-done-btn-active {
+  background: #2e7d32;
+  color: white;
+}
+
+.benchmark-mark-done-btn:disabled {
   border-color: #ccc;
   color: #ccc;
   cursor: not-allowed;
@@ -611,5 +806,14 @@ onBeforeUnmount(() => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+/* Collapsed (see Inspector.vue's own always-visible header toggle) —
+   without this, width stayed pinned to --inspector-width regardless (the
+   bug: an empty docked panel that never actually gave its own space back
+   to the timeline/sessions split next to it). Same slim-strip convention
+   EditProjectView.vue's own .inspector-panel-collapsed uses. */
+.benchmark-inspector-panel-collapsed {
+  width: 2.4rem !important;
 }
 </style>

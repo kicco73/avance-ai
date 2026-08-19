@@ -2,7 +2,10 @@ import { nextTick, ref } from 'vue'
 import {
   getCurrentSession,
   postCreateSession,
+  getCurrentTestSession,
+  postCreateTestSession,
   getSessions,
+  getTestSessions,
   deleteSession,
   getMessages,
   postAction,
@@ -34,11 +37,32 @@ export const currentSessionId = ref(null)
 // most recently started *open* one, so "active" and "open" aren't the
 // same thing), set to the backend's own `active` flag only when the user
 // picks a session from the sessions panel (see selectSession) — never
-// computed client-side.
-export const selectedSessionActive = ref(true)
+// computed client-side. Starts false, not true: nothing has actually
+// resolved a session yet at this point, and a project that's never been
+// published can't create one at all (see db.create_chat_session) — the
+// bootstrap in loadMessages()/ensureSession() then simply never gets to
+// set this true, so ChatWindow.vue's own ActionButtons (gated on this,
+// not recomputed from state.value, which the automaton alone can already
+// populate with no session behind it at all) correctly stays out of the
+// render path instead of showing manual-action buttons with nothing to
+// fire them against.
+export const selectedSessionActive = ref(false)
 export const sessions = ref([])
 export const sessionsLoading = ref(false)
 export const sessionsPanelOpen = ref(false)
+// null in every context but one: EditProjectView.vue's own embedded
+// "Test" chat sets this to its own projectName the instant 'test' mode
+// becomes active (see its own watch(mode, ...)), and clears it back to
+// null the instant it isn't — mode itself, and unmounting the view
+// entirely, are the only two things that ever touch this, so it can
+// never outlive the actual Test chat surface it describes. Read
+// internally by every session bootstrap/list/refresh function below
+// (ensureSession, loadSessions, toggleSessionsPanel, handleDeleteSession,
+// ...) instead of threading a parameter through each one individually —
+// several of those are reached from deep inside fully generic,
+// mode-agnostic turn-processing code (handleSend/handleAction/...), where
+// explicit threading would mean touching nearly every call in this file.
+export const testModeProjectName = ref(null)
 export const messages = ref([])
 export const historyLoaded = ref(false)
 export const chatLoading = ref(false)
@@ -96,8 +120,16 @@ function toStoreMessage(m) {
   return { role: m.role, content: m.content, audioText: m.audio_text, timestamp: m.timestamp, failed: false, messageId: m.id }
 }
 
+// testModeProjectName (see its own docstring) set: EditProjectView.vue's
+// own embedded "Test" chat, the one place a session is allowed to exist
+// against a revision nobody's published yet — routed to a completely
+// different pair of endpoints (getCurrentTestSession/postCreateTestSession
+// below), never a flag on the shared ones (see api.js's own docstring on
+// why). null: every other caller.
 async function ensureSession() {
-  const session = await getCurrentSession(currentSessionId.value)
+  const session = testModeProjectName.value != null
+    ? await getCurrentTestSession(currentSessionId.value, testModeProjectName.value)
+    : await getCurrentSession(currentSessionId.value)
   currentSessionId.value = session.id
   selectedSessionActive.value = session.active
   return session.id
@@ -121,10 +153,17 @@ export async function loadMessages() {
   }
 }
 
-export async function loadSessions() {
+// testModeProjectName set (see its own docstring): EditProjectView.vue's
+// own embedded "Test" chat's own sessions — includeImported is ignored
+// there, since a "Test" session and an imported one are never the same
+// list. testModeProjectName null: every other caller, unchanged
+// (includeImported only ever true from BenchmarkProjectView.vue).
+export async function loadSessions(includeImported = false) {
   sessionsLoading.value = true
   try {
-    sessions.value = await getSessions()
+    sessions.value = testModeProjectName.value != null
+      ? await getTestSessions(testModeProjectName.value)
+      : await getSessions(includeImported)
   } catch {
     // already surfaced via apiFetch
   } finally {
@@ -138,9 +177,11 @@ export async function loadSessions() {
 // panel (main page, EditProjectView, BenchmarkProjectView all read the
 // same sessionsLoading) to its "Loading…" placeholder over something the
 // user never asked to reload.
-export async function refreshSessionsQuietly() {
+export async function refreshSessionsQuietly(includeImported = false) {
   try {
-    sessions.value = await getSessions()
+    sessions.value = testModeProjectName.value != null
+      ? await getTestSessions(testModeProjectName.value)
+      : await getSessions(includeImported)
   } catch {
     // already surfaced via apiFetch
   }
@@ -510,6 +551,9 @@ export function clearChatUi() {
   sessions.value = []
 }
 
+// testModeProjectName (see its own docstring) is read internally by
+// loadMessages/ensureSession — still works from EditProjectView.vue's own
+// embedded "Test" chat toolbar for a project that's never been published.
 export async function handleReset() {
   if (!window.confirm('Reset the conversation, signals, and transitions? This cannot be undone.')) return
   clearChatUi()
@@ -524,13 +568,18 @@ export async function handleReset() {
   }
 }
 
+// testModeProjectName (see its own docstring), read internally — its own
+// SessionsPanel "new session" button is what reaches this, from either
+// context alike.
 export async function handleNewSession() {
   // Only one session is ever active per project (see ChatSessionManager) —
   // starting a new one always supersedes whichever one was current, so
   // this is a real "close the current session" action, not just an addition.
   if (!window.confirm('Start a new session? This will close the current session for this project — only one can be active at a time.')) return
   try {
-    const session = await postCreateSession()
+    const session = testModeProjectName.value != null
+      ? await postCreateTestSession(testModeProjectName.value)
+      : await postCreateSession()
     currentSessionId.value = session.id
     selectedSessionActive.value = session.active
     clearApiError()

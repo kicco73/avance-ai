@@ -23,7 +23,14 @@ async function loadPerformanceMetrics() {
   }
 }
 
-defineExpose({ loadPerformanceMetrics })
+// Only reloaded while this tab is the one actually visible (matches
+// Inspector.vue's old refreshPerformance(), gated on inspectorTab.value
+// === 'performance').
+async function refresh(active) {
+  if (active) await loadPerformanceMetrics()
+}
+
+defineExpose({ loadPerformanceMetrics, refresh })
 </script>
 
 <template>

@@ -32,6 +32,10 @@ async function apiFetch(url, options, { parse = 'json' } = {}) {
     throw err
   }
 
+  // A 204 (see e.g. deleteState/deleteAction/deleteSignal below) never
+  // has a body at all — res.json() on an empty one throws a parse error,
+  // regardless of which `parse` mode the caller asked for.
+  if (res.status === 204) return null
   if (parse === 'blob') return res.blob()
   if (parse === 'text') return res.text()
   return res.json()
@@ -50,8 +54,32 @@ export function postCreateSession() {
   return apiFetch(`${API_URL}/chat/sessions`, { method: 'POST' })
 }
 
-export function getSessions() {
-  return apiFetch(`${API_URL}/chat/sessions`)
+// EditProjectView.vue's own embedded "Test" chat — the one place a
+// session is allowed to exist against a revision nobody's published yet
+// (see backend ChatService.create_draft_session/get_or_create_current_
+// draft_session's own docstrings). Which revision a session may exist
+// against is decided solely by which endpoint is called now, never by a
+// caller-supplied flag on the two above.
+export function getCurrentTestSession(sessionId, projectName) {
+  const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/test-sessions/current${query}`)
+}
+
+export function postCreateTestSession(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/test-sessions`, { method: 'POST' })
+}
+
+export function getSessions(includeImported = false) {
+  const query = includeImported ? '?include_imported=true' : ''
+  return apiFetch(`${API_URL}/chat/sessions${query}`)
+}
+
+// EditProjectView.vue's own embedded "Test" chat's own Sessions panel —
+// the draft-session equivalent of getSessions, a fully separate list
+// (see backend ChatService.list_test_sessions's own docstring): a "Test"
+// session never appears in getSessions, and a real one never appears here.
+export function getTestSessions(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/test-sessions`)
 }
 
 export function deleteSession(sessionId) {
@@ -88,6 +116,20 @@ export function putMessageExpectedSignals(messageId, expectedValues) {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ expected_values: expectedValues })
+  })
+}
+
+// Sets (or clears) a session's own persisted "reviewed by a domain
+// expert" flag — the "Label sessions" view's own "Mark done" button
+// (see backend ChatSession.labeled/ChatService.mark_session_labeled),
+// the source of truth for that session's own has_annotations marker
+// from here on, replacing the old any-annotation heuristic. A toggle:
+// the same call with `false` un-marks it again.
+export function putSessionLabeled(sessionId, labeled) {
+  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/labeled`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ labeled })
   })
 }
 
@@ -180,8 +222,27 @@ export function postListenTranscribe(audioBlob) {
   })
 }
 
+export function postImportSession(file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return apiFetch(`${API_URL}/chat/sessions/import`, {
+    method: 'POST',
+    body: formData
+  })
+}
+
 export function getSignals() {
   return apiFetch(`${API_URL}/chat/signals`)
+}
+
+// The active project's own identifier registry (see backend's automaton.
+// identifier_registry.build_registry) — {identifier: description} per
+// namespace (signal, env, system, session, "session.metric", metric) a
+// trigger/env: expression can reference. InspectorDetailCard.vue's own
+// trigger editor (see TriggerEditor.vue) is the one consumer, for its own
+// autocomplete/syntax coloring.
+export function getIdentifiers() {
+  return apiFetch(`${API_URL}/chat/identifiers`)
 }
 
 // The active user+project's current "environment" memory (see backend's
@@ -437,6 +498,107 @@ export function deleteProject(projectName) {
   })
 }
 
+// index.yml structural editing — add/edit/delete/reorder states,
+// actions, and signals without hand-writing YAML (see backend's
+// AutomatonYamlEditor). Every one of these returns just the affected
+// object's own payload (StatePayload/ActionPayload/SignalPayload), never
+// the whole YAML text — see controller.py's own docstring for the whole
+// family.
+
+export function postAddState(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/states`, { method: 'POST' })
+}
+
+export function postAddSignal(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/signals`, { method: 'POST' })
+}
+
+export function postAddAction(projectName, stateName) {
+  return apiFetch(
+    `${API_URL}/projects/${encodeURIComponent(projectName)}/states/${encodeURIComponent(stateName)}/actions`,
+    { method: 'POST' }
+  )
+}
+
+export function putStateField(projectName, stateName, field, value) {
+  return apiFetch(
+    `${API_URL}/projects/${encodeURIComponent(projectName)}/states/${encodeURIComponent(stateName)}/${encodeURIComponent(field)}`,
+    { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value }) }
+  )
+}
+
+export function putActionField(projectName, stateName, actionName, field, value) {
+  return apiFetch(
+    `${API_URL}/projects/${encodeURIComponent(projectName)}/states/${encodeURIComponent(stateName)}/actions/${encodeURIComponent(actionName)}/${encodeURIComponent(field)}`,
+    { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value }) }
+  )
+}
+
+// The init-action lives outside `states:` in the YAML (see
+// AutomatonYamlEditor.set_init_action_field) — putActionField above looks
+// an action up inside a real state's own `actions:` list, and the
+// init-action isn't in one, so every one of its own editable fields
+// (target, ui-label, ...) goes through this dedicated endpoint instead.
+export function putInitActionField(projectName, field, value) {
+  return apiFetch(
+    `${API_URL}/projects/${encodeURIComponent(projectName)}/init-action/${encodeURIComponent(field)}`,
+    { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value }) }
+  )
+}
+
+export function putSignalField(projectName, signalName, field, value) {
+  return apiFetch(
+    `${API_URL}/projects/${encodeURIComponent(projectName)}/signals/${encodeURIComponent(signalName)}/${encodeURIComponent(field)}`,
+    { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value }) }
+  )
+}
+
+// 0-based index the action should end up at, within its own state's
+// actions list.
+export function putActionOrder(projectName, stateName, actionName, position) {
+  return apiFetch(
+    `${API_URL}/projects/${encodeURIComponent(projectName)}/states/${encodeURIComponent(stateName)}/actions/${encodeURIComponent(actionName)}/order`,
+    { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: position }) }
+  )
+}
+
+export function deleteState(projectName, stateName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/states/${encodeURIComponent(stateName)}`, {
+    method: 'DELETE'
+  })
+}
+
+export function deleteProjectAction(projectName, stateName, actionName) {
+  return apiFetch(
+    `${API_URL}/projects/${encodeURIComponent(projectName)}/states/${encodeURIComponent(stateName)}/actions/${encodeURIComponent(actionName)}`,
+    { method: 'DELETE' }
+  )
+}
+
+export function deleteProjectSignal(projectName, signalName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/signals/${encodeURIComponent(signalName)}`, {
+    method: 'DELETE'
+  })
+}
+
 export function downloadProject(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}`, {}, { parse: 'blob' })
+}
+
+export function getProjectRevision(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/revision`)
+}
+
+export function getPublishPreview(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/publish/preview`)
+}
+
+export function postPublishProject(projectName, remapTo = null) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/publish`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ remap_to: remapTo })
+  })
+}
+
+export function postRevertProject(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/revert`, { method: 'POST' })
 }

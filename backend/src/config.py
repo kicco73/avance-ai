@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-import yaml
+from ruamel.yaml import YAML
 
 from ai.llm_provider import AIServiceConfig
+
+_yaml = YAML(typ='rt')
 
 class ConfigError(Exception):
     """Raised when backend/.config.yml is missing or structurally invalid."""
@@ -47,7 +49,7 @@ class AppConfig:
             if not path.is_file():
                 continue
             with path.open("r", encoding="utf-8") as f:
-                raw = yaml.safe_load(f)
+                raw = _yaml.load(f)
                 return raw, path
         return None, None
 

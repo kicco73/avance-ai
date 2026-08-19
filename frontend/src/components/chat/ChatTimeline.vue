@@ -22,8 +22,32 @@ const props = defineProps({
   // the caller (EditProjectView.vue's chat, via chatStore.js's shared
   // toggle) decides. Defaults to false so BenchmarkProjectView.vue,
   // which never passes this at all, is unaffected.
-  spokenTextEnabled: { type: Boolean, default: false }
+  spokenTextEnabled: { type: Boolean, default: false },
+  // Whether the session this timeline is showing was imported (see
+  // ChatSession.source) rather than played live — there's no real
+  // avance-computed state to compare an annotation against there (see
+  // benchmarkTimeline.js's own buildTimeline `imported` option, which the
+  // caller must pass this same value into so entry.annotationStatus is
+  // already 'labelled' rather than 'correct'/'incorrect'), so both the
+  // transition badge and MessageBubble's own signal marker read as a
+  // neutral "labelled" tick instead of a correct/incorrect verdict.
+  imported: { type: Boolean, default: false },
+  // (stateKey) => displayLabel — every transition's own old_state/
+  // new_state (see benchmarkTimeline.js) is always the automaton's own
+  // internal state *key*, never its human-facing ui-label (the two just
+  // happen to read the same until someone actually renames one without
+  // renaming the other). Optional: BenchmarkProjectView.vue's own review
+  // timeline doesn't pass this at all and keeps showing the raw key
+  // exactly as before — only EditProjectView.vue's live "Test" timeline
+  // passes one (resolved off its own always-current-draft state list),
+  // since that's the one place a stale key/label mismatch is actually
+  // confusing (testing exactly what's being edited right now).
+  resolveStateLabel: { type: Function, default: null }
 })
+
+function stateLabel(stateKey) {
+  return props.resolveStateLabel ? props.resolveStateLabel(stateKey) : stateKey
+}
 
 const emit = defineEmits(['select-message', 'select-transition'])
 
@@ -92,6 +116,7 @@ function isSelfLoop(transition) {
           show-timestamp
           :spoken-text-enabled="spokenTextEnabled"
           :signals-annotated="messageHasAnnotatedSignals(entry.message, signalsLog)"
+          :imported="imported"
         />
       </div>
 
@@ -108,7 +133,7 @@ function isSelfLoop(transition) {
           class="timeline-transition-arrow"
           :title="isSelfLoop(entry.transition) ? 'No actual state change here' : ''"
         >{{ isSelfLoop(entry.transition) ? '↻' : '→' }}</span>
-        <span class="timeline-transition-badge">{{ entry.transition.new_state }}</span>
+        <span class="timeline-transition-badge">{{ stateLabel(entry.transition.new_state) }}</span>
         <span
           v-if="entry.annotationStatus === 'correct'"
           class="timeline-transition-annotation-icon timeline-transition-annotation-icon-correct"
@@ -119,6 +144,11 @@ function isSelfLoop(transition) {
           class="timeline-transition-annotation-icon timeline-transition-annotation-icon-incorrect"
           title="Differs from the expert-annotated expected state"
         >✕</span>
+        <span
+          v-else-if="entry.annotationStatus === 'labelled'"
+          class="timeline-transition-annotation-icon timeline-transition-annotation-icon-labelled"
+          title="Expert-labelled — no avance-computed state to compare against on an imported session"
+        >✓</span>
       </div>
     </template>
   </div>
@@ -216,6 +246,22 @@ function isSelfLoop(transition) {
   background: #f5c6c2;
 }
 
+/* An imported session (see the imported prop's own docstring) has
+   nothing genuine to compare an annotation against — same green as
+   -correct above, but under its own class name so the semantics
+   ("labelled", not "verified correct") stay clear in the markup. */
+.timeline-transition-row-labelled {
+  background: #e8f5e9;
+}
+
+.timeline-transition-row-labelled:hover {
+  background: #dcefdd;
+}
+
+.timeline-transition-row-labelled.timeline-row-selected {
+  background: #c8e6c9;
+}
+
 .timeline-transition-arrow {
   color: #8a6d3b;
   font-weight: 600;
@@ -249,5 +295,9 @@ function isSelfLoop(transition) {
 
 .timeline-transition-annotation-icon-incorrect {
   background: #c62828;
+}
+
+.timeline-transition-annotation-icon-labelled {
+  background: #2e7d32;
 }
 </style>

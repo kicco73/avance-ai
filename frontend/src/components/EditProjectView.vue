@@ -1,31 +1,47 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Compartment } from '@codemirror/state'
-import { EditorView, basicSetup } from 'codemirror'
-import { keymap } from '@codemirror/view'
-import { yaml } from '@codemirror/lang-yaml'
 import ChatWindow from './chat/ChatWindow.vue'
 import ChatTimeline from './chat/ChatTimeline.vue'
 import RestartFromHereButton from './chat/RestartFromHereButton.vue'
 import ModelMenu from './ModelMenu.vue'
 import Inspector from './inspector/Inspector.vue'
-import DocInfoButton from './DocInfoButton.vue'
+import InspectorGraphTab from './inspector/InspectorGraphTab.vue'
+import InspectorSignalsTab from './inspector/InspectorSignalsTab.vue'
+import InspectorMetricsTab from './inspector/InspectorMetricsTab.vue'
+import InspectorEnvTab from './inspector/InspectorEnvTab.vue'
+import InspectorStateTab from './inspector/InspectorStateTab.vue'
+import InspectorActionsTab from './inspector/InspectorActionsTab.vue'
+import CodeEditor from './CodeEditor.vue'
+import IndexYmlEditorView from './IndexYmlEditorView.vue'
 import {
   getProjectFiles,
-  getProjectFile,
   putProjectFile,
-  undoProjectFile,
-  redoProjectFile,
   deleteProjectFile,
   clearProjectHistory,
   getSignals,
   getSessionSignals,
   getSessions,
   getProjectGraph,
-  postTriggersPreview
+  postTriggersPreview,
+  postAddState,
+  postAddSignal,
+  postAddAction,
+  putStateField,
+  putActionField,
+  putInitActionField,
+  putSignalField,
+  putActionOrder,
+  deleteState,
+  deleteProjectAction,
+  deleteProjectSignal,
+  getProjectRevision,
+  getPublishPreview,
+  postPublishProject,
+  postRevertProject
 } from '../api.js'
 import { clearApiError, setApiError } from '../errorStore.js'
 import ErrorBanner from './ErrorBanner.vue'
+import { refreshIdentifierRegistry } from '../identifierRegistry.js'
 import { buildTimeline, highlightedStateKeyFor, nearestMessageIdAtOrBefore, resultingStateKeyFor, signalValuesFor } from '../benchmarkTimeline.js'
 // Aliased: this file already uses "state" to mean an automaton state node
 // — `liveState` is specifically the live conversation's current state,
@@ -43,9 +59,9 @@ import {
   handleReset,
   handleSend,
   handleTruncateFrom,
-  sessionsPanelOpen,
-  toggleSessionsPanel,
-  spokenTextEnabled
+  loadMessages,
+  spokenTextEnabled,
+  testModeProjectName
 } from '../chatStore.js'
 
 const props = defineProps({
@@ -58,7 +74,6 @@ const props = defineProps({
 const emit = defineEmits(['close', 'saved', 'download'])
 
 const UPLOADABLE_PATTERN = /\.(txt|ya?ml)$/i
-const YAML_PATTERN = /\.ya?ml$/i
 
 function lineIndent(line) {
   const m = line.match(/^[ \t]*/)
@@ -104,6 +119,39 @@ function findStateLine(lines, stateKey) {
 
 function findSignalLine(lines, signalName) {
   return findTopLevelChildLine(lines, 'signals', signalName)
+}
+
+// Within stateKey's block, finds the line of the `attachments:` list item
+// naming fileName — a plain scalar list (`- filename`), unlike actions'
+// own `- name: ...` mappings (see findActionLine), so this only has to
+// match the whole trimmed item text once unwrapped from its leading
+// `- ` and optional quotes. Used to jump from clicking an attachment
+// button in the state's own editable form to where it's actually
+// declared, instead of opening the attachment file itself.
+function findAttachmentLine(lines, stateKey, fileName) {
+  const stateLine = findStateLine(lines, stateKey)
+  if (stateLine === null) return null
+  const stateIndent = lineIndent(lines[stateLine])
+  let inAttachments = false
+  let attachmentsIndent = null
+  for (let i = stateLine + 1; i < lines.length; i++) {
+    const raw = lines[i]
+    const trimmed = raw.trim()
+    if (isBlankOrComment(trimmed)) continue
+    const indent = lineIndent(raw)
+    if (indent <= stateIndent) break // left the state's own block
+    if (!inAttachments) {
+      if (/^attachments\s*:\s*(#.*)?$/.test(trimmed)) {
+        inAttachments = true
+        attachmentsIndent = indent
+      }
+      continue
+    }
+    if (indent <= attachmentsIndent) break // left the attachments: list
+    const m = trimmed.match(/^-\s*(['"]?)(.*)\1\s*$/)
+    if (m && m[2] === fileName) return i
+  }
+  return null
 }
 
 // The one action with no source state to search under (see
@@ -162,13 +210,21 @@ const filesLoading = ref(true)
 const files = ref([])
 const currentFileName = ref('index.yml')
 
-const loading = ref(true)
-const saving = ref(false)
 const uploading = ref(false)
 const creatingFile = ref(false)
 const deletingFile = ref(null)
-const editorHost = ref(null)
 const uploadInput = ref(null)
+
+// Whichever one of these is actually mounted right now (see the editor
+// pane's own v-if/v-else, keyed off currentFileName === 'index.yml') —
+// CodeEditor.vue/IndexYmlEditorView.vue each own their own loading/
+// saving/isDirty state internally now (see activeEditorIsDirty below,
+// the closest thing this view has to the old shared isDirty ref).
+const codeEditorRef = ref(null)
+const indexYmlEditorRef = ref(null)
+const activeEditorIsDirty = computed(() =>
+  currentFileName.value === 'index.yml' ? (indexYmlEditorRef.value?.isDirty ?? false) : (codeEditorRef.value?.isDirty ?? false)
+)
 
 // Inspect panel: the shared Inspector component (see Inspector.vue) shows
 // the last-saved project's state graph, its signal definitions, and the
@@ -180,6 +236,114 @@ const uploadInput = ref(null)
 const inspecting = ref(true)
 const inspectorRef = ref(null)
 const inspectorWidth = ref(360)
+// The Graph/State-tab/Actions-tab shared selection ({kind, data} | null)
+// — while editorOpen is on, index.yml's own dedicated graph (see
+// IndexYmlEditorView.vue) is the one producing it instead of the
+// Inspector's own "States" tab (which the tab set below drops entirely
+// in that case) — same shape either way (see InspectorGraph.vue's own
+// 'select' emit), so stateTabElement/actionsTabList below don't care
+// which one it actually came from.
+const selectedGraphElement = ref(null)
+
+// Identifies whatever a state/action/signal add-button just created — a
+// state/action/signal card matching this (see InspectorDetailCard.vue's
+// own elementIdentity/InspectorSignalsTab.vue) plays a yellow-fade
+// highlight so a brand new entry is obviously the one that just appeared,
+// without any of the actual selection/tab-switch/scroll logic needing to
+// know why. Same string shape as InspectorDetailCard.vue's own
+// elementIdentity ('state:<key>' / 'action:<stateKey>/<actionName>'),
+// plus 'signal:<name>' for InspectorSignalsTab.vue.
+const recentlyAddedKey = ref(null)
+const RECENTLY_ADDED_FLASH_MS = 1600
+let recentlyAddedTimer = null
+function flashRecentlyAdded(key) {
+  recentlyAddedKey.value = key
+  if (recentlyAddedTimer) clearTimeout(recentlyAddedTimer)
+  recentlyAddedTimer = setTimeout(() => { recentlyAddedKey.value = null }, RECENTLY_ADDED_FLASH_MS)
+}
+onBeforeUnmount(() => { if (recentlyAddedTimer) clearTimeout(recentlyAddedTimer) })
+
+// The state key "State"/"Actions" should reflect — the selection itself
+// when it's already a state, or the state an already-selected action
+// belongs to (see InspectorGraph.vue's own edgeToCyData: matchStateKey).
+// Not gated on index.yml actually being the open file: IndexYmlEditorView
+// (and its own InspectorGraph, the thing stateTabElement/actionsTabList
+// below actually resolve this against) now stays mounted regardless of
+// which file the explorer has open (see this view's own template, v-show
+// not v-if) precisely so a selection made in the Graph keeps resolving
+// while the user is off looking at some attachment file — clearing it
+// here just because a different file is open would silently undo that.
+const selectedStateKey = computed(() => {
+  if (!selectedGraphElement.value) return null
+  return selectedGraphElement.value.kind === 'state'
+    ? selectedGraphElement.value.data.id
+    : selectedGraphElement.value.data.matchStateKey
+})
+
+// Resolved off index.yml's own already-loaded graph data (see
+// IndexYmlEditorView.vue's own stateElementFor/actionsForState,
+// delegating to InspectorGraph.vue) rather than a second fetch of their
+// own — null/[] whenever nothing is selected, or the dedicated view
+// isn't even mounted (editorOpen off, or some other file open).
+const stateTabElement = computed(() => {
+  const key = selectedStateKey.value
+  return key == null ? null : (indexYmlEditorRef.value?.stateElementFor(key) ?? null)
+})
+// No selection at all falls back to the init-action — the one action of
+// the automaton's own synthetic "" state (see InspectorGraph.vue's own
+// edgeToCyData/isInitEdge) — rather than an empty list, so "Actions" always
+// has something to show (see inspectorTabs below, no longer gated on a
+// selection existing first).
+const actionsTabList = computed(() => {
+  const key = selectedStateKey.value ?? ''
+  return indexYmlEditorRef.value?.actionsForState(key) ?? []
+})
+
+// The tab set this view's own Inspector shows — see Inspector.vue's own
+// slot-based contract (BenchmarkProjectView.vue passes a different set,
+// including Performance and excluding Env — see its own tabs). "State"/
+// "Actions"/"Signals" are index.yml's own — index.yml's graph is what
+// they're resolved against (see stateTabElement/actionsTabList) and what
+// "Signals" reads state-key context off of, none of which means anything
+// about an attachment file's own content. So while some *other* file is
+// the one open, this collapses to a single "Info" tab (see this view's
+// own #tab-info slot — just that file's own media type, off CodeEditor.
+// vue's own mediaType) rather than leaving State/Actions/Signals up
+// showing index.yml's own selection while an unrelated file fills the
+// editor pane next to them. Metrics/Env are both live-conversation
+// concepts (a metric run, the persisted env for *this* session) that
+// don't apply while editing (see mode/highlightedStateKey's own "no
+// current state in edit mode") — shown only in 'test'.
+const inspectorTabs = computed(() => {
+  if (mode.value === 'test') {
+    return [
+      { id: 'states', label: 'States' },
+      { id: 'signals', label: 'Signals' },
+      { id: 'metrics', label: 'Metrics' },
+      { id: 'env', label: 'Env' }
+    ]
+  }
+  if (currentFileName.value !== 'index.yml') {
+    return [{ id: 'info', label: 'Info' }]
+  }
+  return [
+    { id: 'state', label: 'State' },
+    { id: 'actions', label: 'Actions' },
+    { id: 'signals', label: 'Signals' }
+  ]
+})
+const inspectorActiveTab = ref('states')
+
+// A selection made in edit mode (a Graph tap, a jump-to-definition from
+// elsewhere) drives the Inspector's own "State"/"Actions" tab, not just
+// the graph itself — the user shouldn't have to also manually click over
+// to whichever tab now has something to show (see InspectorActionsTab.
+// vue's own scroll-into-view for the row-level half of "make the
+// selection visible").
+watch(selectedGraphElement, (element) => {
+  if (mode.value !== 'edit' || !element) return
+  inspectorActiveTab.value = element.kind === 'state' ? 'state' : 'actions'
+})
 // Live value/error per signal name — fed to the Inspector's signal-values
 // prop, refreshed on its own cadence (see refreshSignalValues), never a
 // concern the Inspector itself resolves (see Inspector.vue's own
@@ -268,13 +432,40 @@ async function refreshSessionStartState() {
 // its own current state) would have nowhere valid to land.
 const validStateKeys = ref(new Set())
 
+// Every real state's own {key, uiLabel} — the Actions tab's own target
+// <select> options (see InspectorDetailCard.vue's availableStates prop),
+// refreshed alongside validStateKeys since both come from the same
+// getProjectGraph call and change together.
+const availableStates = ref([])
+
+// The live chat's own timeline (see ChatTimeline.vue's own
+// resolveStateLabel prop) shows a transition's ui-label instead of its
+// raw state key — always resolved against availableStates' own current
+// draft (refreshed after every edit, see refreshValidStateKeys), so
+// renaming a state's ui-label without touching its key (exactly what
+// prompted this) is reflected here immediately, not just in the Graph.
+// Falls back to the raw key itself for a transition landing on a state
+// that's since been renamed/removed entirely (see isStateGone) — better
+// than showing nothing.
+function stateLabelFor(key) {
+  return availableStates.value.find((s) => s.key === key)?.uiLabel ?? key
+}
+
 async function refreshValidStateKeys() {
   try {
     const { nodes } = await getProjectGraph(props.projectName)
-    validStateKeys.value = new Set(nodes.map((n) => n.key))
+    validStateKeys.value = new Set(nodes.map((n) => n.state.key))
+    availableStates.value = nodes.map((n) => ({ key: n.state.key, uiLabel: n.state.ui_label }))
   } catch {
     // already surfaced via apiFetch
   }
+  // The single common point every project edit already funnels through —
+  // both a structural edit (see refreshAfterProjectEdit) and a manual
+  // Code-editor Save (see handleFileSaved) call this, plus the initial
+  // mount below — so refreshing the shared trigger-autocomplete registry
+  // here (see identifierRegistry.js) covers every way a signal/action
+  // can come into existence without a second call site of its own.
+  refreshIdentifierRegistry()
 }
 
 // The state a given message's own turn left the conversation in — see
@@ -304,10 +495,16 @@ function selectTransition(transition) {
 // same helpers BenchmarkProjectView.vue uses for its own selection, just
 // falling back to the *live* current state/signals (rather than null)
 // whenever nothing is selected, since there's always a live conversation
-// here to fall back to.
-const highlightedStateKey = computed(() =>
-  selected.value ? highlightedStateKeyFor(selected.value, timeline.value, sessionStartState.value) : (liveState.value?.key ?? null)
-)
+// here to fall back to. "Current state" only means anything in 'test'
+// mode at all — 'edit' has no live conversation driving the graph (the
+// embedded chat is closed there, see `mode`), so nothing is ever
+// "current" while editing (the Inspector's own "Current" badge — see
+// InspectorDetailCard.vue's isSelectedStateCurrent — simply never
+// matches null).
+const highlightedStateKey = computed(() => {
+  if (mode.value !== 'test') return null
+  return selected.value ? highlightedStateKeyFor(selected.value, timeline.value, sessionStartState.value) : (liveState.value?.key ?? null)
+})
 
 // old_state === '' (the automaton's own init transition) is a real,
 // clickable edge in the graph too now — a transparent pseudo-node's own
@@ -343,7 +540,7 @@ const envEditable = computed(() =>
 )
 
 const effectiveSignalValues = computed(() =>
-  selected.value ? signalValuesFor(selected.value, signalsLog.value) : signalValueByName.value
+  selected.value ? signalValuesFor(selected.value, signalsLog.value, rawLiveMessages.value) : signalValueByName.value
 )
 
 // "Restart from here" (RestartFromHereButton.vue, this view's chat only —
@@ -370,41 +567,60 @@ async function restartAndResend(message) {
 // once applied, or if the user cancels a pending file-switch dialog.
 const pendingCursorTarget = ref(null)
 
-// Embedded chat: a second view of the exact same conversation as the main
-// app's (see chatStore.js) — docked below the file explorer/editor, with
-// its own minimal toolbar (just Reset). Open by default, toggled like
-// Inspect. Height in px, adjusted by dragging the horizontal divider above it.
-const chatOpen = ref(true)
-const chatHeight = ref(280)
+// Single "Edit | Test" segmented control, replacing what used to be two
+// independent Edit/Chat toggles (both could be open together, split
+// vertically) — now mutually exclusive: 'edit' shows the file explorer +
+// editor with the embedded chat closed, 'test' shows the embedded chat
+// (full height, nothing to split against) with the editor closed. Also
+// gates the Inspector's own tab set — see inspectorTabs above — and
+// whether "current state" has any meaning at all (see highlightedStateKey
+// below: only 'test' ever has a live conversation to be "current" in).
+const mode = ref('edit')
+const editorOpen = computed(() => mode.value === 'edit')
+const chatOpen = computed(() => mode.value === 'test')
 
-// File explorer + editor row: v-show, not v-if (see toggleEditor) — the
-// CodeMirror view is mounted once, imperatively, straight into
-// editorHost.value (see mountEditor's own `parent:` below); an v-if here
-// would tear that DOM node down and leave the EditorView pointing at a
-// detached node on the next open, exactly the same reason editorHost's
-// own v-show (below) exists. Open by default, toggled like Chat/Inspect.
-const editorOpen = ref(true)
+// Entering 'test' mode is this view's own chance to bootstrap a chat
+// session against the draft — App.vue's own boot-time loadMessages() (the
+// main app, always a real published-revision session) may well have
+// already failed silently for a project that's never been published (see
+// chatStore.js's loadMessages/handleReset, both of which read
+// testModeProjectName internally now), leaving currentSessionId null;
+// this is what lets this view's own embedded chat still work then,
+// without the main app's live chat ever gaining the same ability. A
+// no-op once a session already exists (e.g. a published project's own
+// already-successful main-app bootstrap) — ensureSession itself already
+// just touches/returns whichever one that is.
+async function ensureDraftChatSession() {
+  if (currentSessionId.value != null) return
+  await loadMessages()
+}
 
-// The editor's own doc is the source of truth for content while it's
-// mounted — this ref only mirrors it (via the updateListener below) so
-// save() has something to send without querying the view directly.
-const content = ref('')
-// What was last loaded/saved for the current file — compared against
-// `content` to decide whether switching/closing needs a confirmation.
-const originalContent = ref('')
-const isDirty = computed(() => content.value !== originalContent.value)
+// testModeProjectName (see chatStore.js's own docstring) is this view's
+// own signal to every session bootstrap/list/refresh function there
+// (ensureSession, loadSessions, handleNewSession, ...) that "Test" mode's
+// own separate session pool is in effect, not the real one — set the
+// instant 'test' becomes the active mode, cleared the instant it isn't.
+// Also cleared on unmount below, defensively: navigating away from this
+// view entirely must never leave the main app's own chat silently
+// resolving against this project's "Test" sessions afterward.
+function setMode(next) {
+  mode.value = next
+  testModeProjectName.value = next === 'test' ? props.projectName : null
+  if (next === 'test') ensureDraftChatSession()
+}
 
-// Whether the currently open file's Undo/Redo buttons are enabled — the
-// backend decides this (see db.Db.has_undo/has_redo, scoped to the
-// current user), refreshed from its response on every load/save/undo/redo.
-// The frontend never tracks version numbers or navigates by them: it just
-// asks for undo/redo and the backend returns whatever content that yields.
-const canUndo = ref(false)
-const canRedo = ref(false)
+onBeforeUnmount(() => { testModeProjectName.value = null })
 
-// Set while the unsaved-changes dialog is blocking a switch to this file —
-// resolved one way or another by confirmSwitchSave/Discard/Cancel.
-const pendingFileName = ref(null)
+// Whatever's queued behind the unsaved-changes dialog below — set
+// whenever something that would discard the active editor's own dirty
+// buffer (see activeEditorIsDirty) is requested while it's actually
+// dirty: a file switch (see selectFile) or a structural edit (add/
+// delete/field-edit on a state/action/signal, a reorder — see each
+// handler below). `run` performs the action itself (already fully bound
+// in its own closure); `label` is what the dialog shows the user (e.g.
+// 'switch to "notes.txt"', 'add a new state'). Resolved one way or
+// another by confirmPendingSave/Discard/Cancel.
+const pendingAction = ref(null) // { run: () => void, label: string } | null
 
 // Left panel width in px, adjusted by dragging the split divider.
 const explorerWidth = ref(220)
@@ -412,59 +628,8 @@ const explorerWidth = ref(220)
 // 'inspector' — read by the single shared onDrag/stopDrag pair below.
 let dragTarget = null
 
-let view = null
-const editableCompartment = new Compartment()
-
-// Bumped by every loadFileContent/applyHistoryNavigation call, each of
-// which captures its own value at the start and checks it again after its
-// own await — whichever such call was the *last* one started always wins.
-// Without this, clicking a different file (or Undo/Redo) again while a
-// previous fetch for the old one is still in flight let both eventually
-// call createEditor(), each appending its own EditorView into
-// editorHost.value (the constructor never clears the parent — see
-// @codemirror/view's own EditorView), leaving two live, DOM-attached
-// editors at once; or let a stale undo/redo response overwrite the
-// now-current file's content/undo-redo state after the fact.
-let requestToken = 0
-
-function createEditor(doc, fileName) {
-  const extensions = [
-    basicSetup,
-    EditorView.lineWrapping,
-    editableCompartment.of(EditorView.editable.of(true)),
-    EditorView.updateListener.of((update) => {
-      if (update.docChanged) content.value = update.state.doc.toString()
-    }),
-    // Ctrl-S (Cmd-S on Mac, via CodeMirror's own "Mod-" alias) — same
-    // guard as the toolbar's Save button (:disabled), and always swallows
-    // the key itself so the browser's native "Save page as" never opens,
-    // even when there's nothing to save.
-    keymap.of([
-      {
-        key: 'Mod-s',
-        run: () => {
-          if (!loading.value && !saving.value && isDirty.value) saveCurrentFile()
-          return true
-        }
-      }
-    ])
-  ]
-  if (YAML_PATTERN.test(fileName)) extensions.splice(1, 0, yaml())
-  view = new EditorView({ doc, extensions, parent: editorHost.value })
-}
-
-function destroyEditor() {
-  view?.destroy()
-  view = null
-}
-
-// Replaces the editor's whole document in place (undo/redo, and
-// refreshing after a save) — `content` updates itself via the
-// updateListener already wired in createEditor, so callers never set it
-// directly.
-function setEditorDoc(newContent) {
-  if (!view) return
-  view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: newContent } })
+function activeEditor() {
+  return currentFileName.value === 'index.yml' ? indexYmlEditorRef.value : codeEditorRef.value
 }
 
 async function loadFiles() {
@@ -478,167 +643,450 @@ async function loadFiles() {
   }
 }
 
-async function loadFileContent(fileName) {
-  const token = ++requestToken
-  loading.value = true
-  clearApiError()
-  destroyEditor()
-  try {
-    const file = await getProjectFile(props.projectName, fileName)
-    if (token !== requestToken) return // superseded by a newer switch/undo/redo
-    content.value = file.content
-    originalContent.value = file.content
-    canUndo.value = file.can_undo
-    canRedo.value = file.can_redo
-  } catch {
-    if (token === requestToken) loading.value = false
-    return
-  }
-  loading.value = false
-  await nextTick() // editorHost is v-show, but wait a tick anyway for layout to settle
-  if (token !== requestToken) return
-  createEditor(content.value, fileName)
-  if (fileName === 'index.yml') applyPendingCursorTarget()
-}
-
 // Moves the editor's cursor to a definition clicked in the Inspect panel
-// (see jumpToDefinition). Best-effort: a target that findStateLine/
-// findActionLine/findSignalLine can't locate (e.g. hand-edited YAML with
-// unusual indentation) just leaves the cursor where it was.
+// (see jumpToDefinition), once index.yml's own dedicated view has
+// actually finished loading its own code buffer. Best-effort: a target
+// that findStateLine/findActionLine/findSignalLine can't locate (e.g.
+// hand-edited YAML with unusual indentation) just leaves the cursor
+// where it was. IndexYmlEditorView's own jumpToLine already never
+// switches the Graph/Code segment on this call's behalf (see its own
+// docstring) — only moves the cursor while "code" is already showing —
+// so there's nothing left for this to decide silent/non-silent about.
 function applyPendingCursorTarget() {
-  if (!pendingCursorTarget.value || !view) return
+  if (!pendingCursorTarget.value) return
+  const text = indexYmlEditorRef.value?.content
+  if (!text) return
   const target = pendingCursorTarget.value
   pendingCursorTarget.value = null
-  const lines = content.value.split('\n')
+  const lines = text.split('\n')
   let lineIndex = null
   if (target.kind === 'state') lineIndex = findStateLine(lines, target.stateKey)
   else if (target.kind === 'action') {
     lineIndex = target.stateKey === '' ? findInitActionLine(lines) : findActionLine(lines, target.stateKey, target.actionName)
   } else if (target.kind === 'signal') lineIndex = findSignalLine(lines, target.signalName)
+  else if (target.kind === 'attachment') lineIndex = findAttachmentLine(lines, target.stateKey, target.fileName)
   if (lineIndex === null) return
-  const lineInfo = view.state.doc.line(lineIndex + 1) // CodeMirror lines are 1-based
-  view.dispatch({
-    selection: { anchor: lineInfo.from, head: lineInfo.from },
-    effects: EditorView.scrollIntoView(lineInfo.from, { y: 'center' })
-  })
-  view.focus()
+  indexYmlEditorRef.value?.jumpToLine(lineIndex)
 }
 
-// Entry point for the graph's node/edge taps and the Signals tab's rows.
-// index.yml is the only file definitions ever live in — if it isn't the
-// one open, routes through the normal (possibly dialog-gated) file switch
-// and applies once loadFileContent finishes; already on it, applies right
-// away since content/view are already current.
-function jumpToDefinition(target) {
+// Entry point for the graph's node/edge taps, the Signals tab's rows, and
+// the Inspector's own "State"/"Actions" tabs. index.yml is the only file
+// definitions ever live in — if it isn't the one open, routes through
+// the normal (possibly dialog-gated) file switch first; either way,
+// waits for IndexYmlEditorView's own code buffer to actually have
+// content before looking up a line in it (its own CodeEditor loads
+// asynchronously on mount, unlike the old single shared editor this
+// replaced, which was always already loaded whenever index.yml was
+// already the open file). Never touches the Graph/Code segment itself —
+// see applyPendingCursorTarget/IndexYmlEditorView's own jumpToLine, which
+// only ever moves the cursor while "code" is already the segment
+// showing, regardless of caller: that choice is the user's own, never
+// something a click elsewhere should override on its behalf.
+//
+// `silent`: whether this may switch the open *file* to index.yml on its
+// own — a plain row selection in the Inspector's own State/Actions/
+// Signals tabs shouldn't yank the user out of whatever file/attachment
+// they're actually looking at just to move a cursor they can't even see;
+// this does nothing at all there instead. A direct Graph tap, or an
+// explicit "show me its definition" action, still forces the file switch
+// (the default) — locating the definition is the whole point of the click.
+async function jumpToDefinition(target, { silent = false } = {}) {
   pendingCursorTarget.value = target
-  if (currentFileName.value === 'index.yml') {
-    applyPendingCursorTarget()
-  } else {
-    selectFile('index.yml')
+  if (currentFileName.value !== 'index.yml') {
+    if (silent) {
+      pendingCursorTarget.value = null
+      return
+    }
+    await selectFile('index.yml')
+    if (currentFileName.value !== 'index.yml') return // blocked by the unsaved-changes dialog
   }
+  await nextTick()
+  while (indexYmlEditorRef.value && !indexYmlEditorRef.value.content) {
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+  applyPendingCursorTarget()
 }
 
-// Saves whatever file is currently open, in place — purely persistence,
-// never navigation: the editor toolbar's own Save button calls this
-// directly and stays open regardless of outcome, same as the switch-file
-// dialog's "Save" choice. Only Back (see handleClose) ever leaves the
-// editor. Returns whether it succeeded; on failure the shared error store
-// already has the message.
-async function saveCurrentFile() {
-  saving.value = true
-  clearApiError()
-  try {
-    const result = await putProjectFile(props.projectName, currentFileName.value, content.value)
-    // Refresh from the server's own response (can_undo/can_redo, plus
-    // content for consistency) rather than trusting what was typed.
-    setEditorDoc(result.content)
-    originalContent.value = result.content
-    canUndo.value = result.can_undo
-    canRedo.value = result.can_redo
-    emit('saved')
-    // The Inspect panel reflects the last saved state, so a successful
-    // save is exactly when it needs to catch up (see toggleInspect).
-    if (inspecting.value) await inspectorRef.value?.refresh()
-    // A save is the only thing that can change which states exist at all
-    // — see isStateGone, which every bubble's own restart-from-here
-    // button depends on.
-    refreshValidStateKeys()
-    return true
-  } catch {
-    return false
-  } finally {
-    saving.value = false
-  }
+function switchFile(fileName) {
+  currentFileName.value = fileName
+  // selectedGraphElement is deliberately left alone here — IndexYmlEditor
+  // View stays mounted regardless of which file this switches to (see
+  // this view's own template), so the Inspector's "State"/"Actions"
+  // selection stays just as valid while browsing an attachment file as it
+  // was before switching to it.
 }
 
-// Undo/redo ask the backend to preview the previous/next content from
-// the current user's own history (see api.js's undoProjectFile/
-// redoProjectFile), sending the editor's own current content along so a
-// later redo/undo can bring it back. Unlike Save, this is a pure editor
-// preview: nothing is persisted, and the active project/conversation is
-// never reloaded or reconciled (no 'saved' emit, no Inspector/valid-
-// state-keys refresh) — only an explicit Save does any of that (see
-// saveCurrentFile). `originalContent` deliberately stays put, so the
-// editor's content now differing from it is exactly what lights the Save
-// button back up. The frontend never navigates by version number, just
-// "undo" / "redo".
-async function applyHistoryNavigation(action) {
-  const token = ++requestToken
+// Every entry point that would discard unsaved code — switching files in
+// the Explorer, or any structural edit (add/delete/field-edit on a
+// state/action/signal, a reorder) — routes through here instead of
+// running `run` directly: dirty means ask first (queuing `run` behind
+// the dialog below, see pendingAction), clean means there's nothing to
+// lose, so it just runs immediately.
+function guardedAction(label, run) {
+  if (!activeEditorIsDirty.value) {
+    run()
+    return
+  }
+  pendingAction.value = { label, run }
+}
+
+// Entry point for both explorer clicks and post-upload auto-open.
+function selectFile(fileName) {
+  if (fileName === currentFileName.value) return
+  guardedAction(`switch to "${fileName}"`, () => switchFile(fileName))
+}
+
+async function confirmPendingSave() {
+  const action = pendingAction.value
+  pendingAction.value = null
+  if (await activeEditor()?.save?.()) action.run()
+}
+
+function confirmPendingDiscard() {
+  const action = pendingAction.value
+  pendingAction.value = null
+  // The whole point of "Discard": the active editor's own dirty buffer
+  // (whichever file it's currently showing — index.yml's embedded one,
+  // or a plain attachment's) actually reverts to its last-loaded
+  // content, not just "the dialog goes away while the edit lingers."
+  activeEditor()?.discard?.()
+  action.run()
+}
+
+function confirmPendingCancel() {
+  pendingAction.value = null
+  // A cursor jump that triggered this action is moot once it's declined
+  // — don't let it fire on some later, unrelated action.
+  pendingCursorTarget.value = null
+}
+
+// Common tail for every Add/edit/delete/reorder handler below: the
+// backend already persisted the change (through put_project_file, same
+// as a normal Save), so both index.yml's own dedicated view (graph +
+// code buffer) and the Inspector need to catch up — same two refreshes
+// a normal Save already triggers (see handleFileSaved).
+async function refreshAfterProjectEdit() {
+  await indexYmlEditorRef.value?.refresh(false)
+  await indexYmlEditorRef.value?.reloadCode()
+  if (inspecting.value) await inspectorRef.value?.refresh()
+  refreshValidStateKeys()
+  refreshProjectRevision()
+}
+
+// {revision, published_revision} — null while not yet loaded. A save can
+// fork (see Db.save_project_files' own fork-on-first-edit-after-publish),
+// bumping `revision` — refreshed after every save (see handleFileSaved/
+// refreshAfterProjectEdit) and after every publish, never assumed stable
+// across either.
+const projectRevision = ref(null)
+const publishing = ref(false)
+// Set only while ProjectService.preview_publish reported needs_remap —
+// the modal below is shown exactly while this is non-null. Cleared on
+// both confirm and cancel.
+const publishRemapPrompt = ref(null)
+const publishRemapChoice = ref('')
+
+async function refreshProjectRevision() {
   try {
-    const file = await action(props.projectName, currentFileName.value, content.value)
-    // Superseded by a newer switch/undo/redo (see requestToken's own
-    // docstring) — applying it now would overwrite whichever file is
-    // actually open with this now-stale one's content.
-    if (token !== requestToken) return
-    setEditorDoc(file.content)
-    canUndo.value = file.can_undo
-    canRedo.value = file.can_redo
+    projectRevision.value = await getProjectRevision(props.projectName)
   } catch {
     // already surfaced via apiFetch
   }
 }
 
-function undo() {
-  if (canUndo.value) applyHistoryNavigation(undoProjectFile)
+const publishUpToDate = computed(
+  () => projectRevision.value != null && projectRevision.value.revision === projectRevision.value.published_revision
+)
+
+async function handlePublish() {
+  if (publishUpToDate.value || publishing.value) return
+  publishing.value = true
+  try {
+    const preview = await getPublishPreview(props.projectName)
+    if (preview.needs_remap) {
+      publishRemapChoice.value = ''
+      publishRemapPrompt.value = preview
+      return
+    }
+    // Only ask when it's actually consequential — a live conversation
+    // still running on the currently published revision (see
+    // ProjectService.preview_publish's own has_active_sessions). Nobody
+    // mid-conversation on it means nothing to warn about.
+    if (
+      preview.has_active_sessions &&
+      !window.confirm(`Publish revision ${projectRevision.value?.revision}? There's an active session on the currently published revision — it will stay frozen there; this one becomes the new one.`)
+    ) {
+      return
+    }
+    projectRevision.value = await postPublishProject(props.projectName)
+  } catch {
+    // already surfaced via apiFetch
+  } finally {
+    publishing.value = false
+  }
 }
 
-function redo() {
-  if (canRedo.value) applyHistoryNavigation(redoProjectFile)
+async function confirmPublishRemap(stateKey) {
+  publishing.value = true
+  try {
+    projectRevision.value = await postPublishProject(props.projectName, stateKey)
+    publishRemapPrompt.value = null
+  } catch {
+    // already surfaced via apiFetch — leave the modal open so the user
+    // can pick a different state or cancel
+  } finally {
+    publishing.value = false
+  }
 }
 
-async function switchFile(fileName) {
-  currentFileName.value = fileName
-  await loadFileContent(fileName)
+function cancelPublishRemap() {
+  publishRemapPrompt.value = null
+  publishing.value = false
 }
 
-// Entry point for both explorer clicks and post-upload auto-open — routes
-// through the unsaved-changes dialog when there's something to lose.
-async function selectFile(fileName) {
-  if (fileName === currentFileName.value) return
-  if (isDirty.value) {
-    pendingFileName.value = fileName
+// The "Rev. X" split button's own dropdown arrow — only ever rendered
+// (see the template below) when there's both a draft ahead of the
+// published revision and a prior publication to revert to in the first
+// place; a stale open flag surviving past that (revision info reloading
+// out from under it) is harmless, the arrow/dropdown just won't be there
+// to click.
+const canRevert = computed(
+  () => !publishUpToDate.value && projectRevision.value?.published_revision != null
+)
+const publishMenuOpen = ref(false)
+function closePublishMenu() {
+  publishMenuOpen.value = false
+}
+function handleDocumentClickForPublishMenu(event) {
+  if (publishMenuOpen.value && !event.target.closest('.publish-split-btn')) closePublishMenu()
+}
+onMounted(() => document.addEventListener('click', handleDocumentClickForPublishMenu))
+onBeforeUnmount(() => document.removeEventListener('click', handleDocumentClickForPublishMenu))
+
+async function handleRevert() {
+  if (!canRevert.value || publishing.value) return
+  const targetRevision = projectRevision.value.published_revision
+  if (
+    !window.confirm(
+      `Revert to rev. ${targetRevision}? This permanently discards every unpublished change on rev. ${projectRevision.value.revision} — there's no undo for this.`
+    )
+  ) {
     return
   }
-  await switchFile(fileName)
+  publishing.value = true
+  try {
+    await postRevertProject(props.projectName)
+    selectedGraphElement.value = null
+    await refreshAfterProjectEdit()
+  } catch {
+    // already surfaced via apiFetch
+  } finally {
+    publishing.value = false
+  }
 }
 
-async function confirmSwitchSave() {
-  const target = pendingFileName.value
-  pendingFileName.value = null
-  if (await saveCurrentFile()) await switchFile(target)
+function handleAddState() {
+  guardedAction('add a new state', async () => {
+    try {
+      const state = await postAddState(props.projectName)
+      await refreshAfterProjectEdit()
+      selectedGraphElement.value = indexYmlEditorRef.value?.stateElementFor(state.key) ?? null
+      flashRecentlyAdded(`state:${state.key}`)
+    } catch {
+      // already surfaced via apiFetch
+    }
+  })
 }
 
-async function confirmSwitchDiscard() {
-  const target = pendingFileName.value
-  pendingFileName.value = null
-  await switchFile(target)
+function handleAddSignal() {
+  guardedAction('add a new signal', async () => {
+    try {
+      const signal = await postAddSignal(props.projectName)
+      await refreshAfterProjectEdit()
+      flashRecentlyAdded(`signal:${signal.name}`)
+    } catch {
+      // already surfaced via apiFetch
+    }
+  })
 }
 
-function confirmSwitchCancel() {
-  pendingFileName.value = null
-  // A cursor jump that triggered this switch is moot once the switch
-  // itself is declined — don't let it fire on some later, unrelated switch.
-  pendingCursorTarget.value = null
+function handleAddAction() {
+  const stateKey = selectedStateKey.value
+  if (!stateKey) return
+  guardedAction('add a new action', async () => {
+    try {
+      const action = await postAddAction(props.projectName, stateKey)
+      await refreshAfterProjectEdit()
+      // The new action itself, not its containing state — selecting the
+      // state here used to flip the Inspector's own active tab back to
+      // "State" (see the selectedGraphElement watch above), which is
+      // exactly the "view resets" bug this was reported as.
+      selectedGraphElement.value = indexYmlEditorRef.value?.actionsForState(stateKey).find(
+        (a) => a.data.actionName === action.name
+      ) ?? null
+      flashRecentlyAdded(`action:${stateKey}/${action.name}`)
+    } catch {
+      // already surfaced via apiFetch
+    }
+  })
+}
+
+function handleSetStateField(stateName, field, value) {
+  guardedAction(`edit "${field}"`, async () => {
+    try {
+      await putStateField(props.projectName, stateName, field, value)
+      await refreshAfterProjectEdit()
+      selectedGraphElement.value = indexYmlEditorRef.value?.stateElementFor(stateName) ?? null
+    } catch {
+      // already surfaced via apiFetch
+    }
+  })
+}
+
+function handleSetActionField(stateName, actionName, field, value) {
+  guardedAction(`edit "${field}"`, async () => {
+    try {
+      // The init-action (stateName '' — see InspectorGraph.vue's own
+      // isInitEdge) lives outside `states:` entirely, so putActionField's
+      // own state/action lookup can't reach it — every one of its own
+      // editable fields (target, ui-label, ...) goes through the
+      // dedicated endpoint instead.
+      if (stateName === '') {
+        await putInitActionField(props.projectName, field, value)
+      } else {
+        await putActionField(props.projectName, stateName, actionName, field, value)
+      }
+      await refreshAfterProjectEdit()
+      selectedGraphElement.value = indexYmlEditorRef.value?.actionsForState(stateName).find(
+        (a) => a.data.actionName === actionName
+      ) ?? null
+    } catch {
+      // already surfaced via apiFetch
+    }
+  })
+}
+
+function handleSetSignalField(signalName, field, value) {
+  guardedAction(`edit "${field}"`, async () => {
+    try {
+      const signal = await putSignalField(props.projectName, signalName, field, value)
+      await refreshAfterProjectEdit()
+      // Only a ui-label edit can rename the signal (see AutomatonYamlEditor.
+      // set_signal_field's own ui-label special case) — state/action never
+      // move for a field edit, since their own name/key never changes, but
+      // a renamed signal's own line in the YAML does: reuse the same
+      // cursor-repositioning heuristic a direct jump already uses, off the
+      // *new* name the response just reported.
+      if (field === 'ui-label') await jumpToDefinition({ kind: 'signal', signalName: signal.name }, { silent: true })
+    } catch {
+      // already surfaced via apiFetch
+    }
+  })
+}
+
+function handleDeleteState(stateName) {
+  guardedAction('delete this state', async () => {
+    try {
+      await deleteState(props.projectName, stateName)
+      selectedGraphElement.value = null
+      await refreshAfterProjectEdit()
+    } catch {
+      // already surfaced via apiFetch
+    }
+  })
+}
+
+function handleDeleteAction(stateName, actionName) {
+  guardedAction('delete this action', async () => {
+    try {
+      await deleteProjectAction(props.projectName, stateName, actionName)
+      // The containing state is still selected — only the action itself
+      // (if it happened to be the literal selection) is now gone.
+      if (selectedGraphElement.value?.kind === 'action' && selectedGraphElement.value.data.actionName === actionName) {
+        selectedGraphElement.value = indexYmlEditorRef.value?.stateElementFor(stateName) ?? null
+      }
+      await refreshAfterProjectEdit()
+    } catch {
+      // already surfaced via apiFetch
+    }
+  })
+}
+
+function handleDeleteSignal(signalName) {
+  guardedAction('delete this signal', async () => {
+    try {
+      await deleteProjectSignal(props.projectName, signalName)
+      await refreshAfterProjectEdit()
+    } catch {
+      // already surfaced via apiFetch
+    }
+  })
+}
+
+function handleReorderAction({ actionName, position }) {
+  const stateKey = selectedStateKey.value
+  if (!stateKey) return
+  guardedAction('reorder actions', async () => {
+    try {
+      await putActionOrder(props.projectName, stateKey, actionName, position)
+      await refreshAfterProjectEdit()
+    } catch {
+      // already surfaced via apiFetch
+    }
+  })
+}
+
+// Common tail for a successful Save on either kind of editor (see
+// CodeEditor.vue/IndexYmlEditorView.vue's own 'saved' emit) — re-emitted
+// up (see App.vue's own listener) plus the same two refreshes a
+// structural edit's own refreshAfterProjectEdit triggers, minus
+// reloading the buffer that was just the one doing the saving.
+async function handleFileSaved() {
+  emit('saved')
+  // A manual Save from the Code segment writes index.yml directly too
+  // (same file, same endpoint as every structural edit) — the Graph
+  // segment's own cytoscape data needs the same refresh a structural
+  // edit already triggers (see refreshAfterProjectEdit), or it just
+  // keeps showing whatever it last had until the user happens to switch
+  // segments away and back. A no-op via optional chaining when a
+  // *different* file was the one just saved (nothing to refresh — an
+  // attachment save never touches index.yml's own graph).
+  await indexYmlEditorRef.value?.refresh(false)
+  if (inspecting.value) await inspectorRef.value?.refresh()
+  refreshValidStateKeys()
+  refreshProjectRevision()
+}
+
+// The Inspector's own "State"/"Actions" tabs share the exact same
+// selection the Graph itself drives (see selectedGraphElement above),
+// but unlike a direct Graph click (see InspectorGraph.vue's own
+// handleNodeTap/handleEdgeTap, which already emit jump-to-definition
+// separately alongside their own 'select') a row click here only ever
+// emits the one event — this is the tab-side equivalent of both at once.
+// Silent (see jumpToDefinition's own `silent` option): selecting a row
+// here shouldn't yank the user into the Code segment if they're looking
+// at the Graph — only the cursor moves, and only if Code is already
+// showing.
+function handleTabSelect(element) {
+  selectedGraphElement.value = element
+  if (!element) return
+  if (element.kind === 'state') jumpToDefinition({ kind: 'state', stateKey: element.data.id }, { silent: true })
+  else jumpToDefinition(
+    { kind: 'action', stateKey: element.data.matchStateKey, actionName: element.data.actionName },
+    { silent: true }
+  )
+}
+
+// The state edit form's own attachment buttons (see InspectorDetailCard.
+// vue's own selectAttachment) jump to where the file is declared in
+// index.yml rather than opening it (unlike every other attachment button
+// elsewhere in the app, still routed through selectFile). Silent, same
+// as every other edit-mode jump — the Graph/Code segmented control is
+// never switched automatically, only the user's own click on it does that.
+function handleJumpToAttachment(fileName) {
+  const stateKey = stateTabElement.value?.data.id
+  if (stateKey == null) return
+  jumpToDefinition({ kind: 'attachment', stateKey, fileName }, { silent: true })
 }
 
 function triggerUpload() {
@@ -668,7 +1116,12 @@ async function handleUploadFile(event) {
 }
 
 async function handleNewFile() {
-  const rawName = window.prompt('New file name (e.g. notes.txt or extra.yml):')
+  // .yml/.yaml is technically accepted (see UPLOADABLE_PATTERN) but never
+  // a sensible choice here — index.yml is the only YAML file the
+  // automaton itself ever reads, so a second one could only ever be an
+  // inert attachment — the example below steers toward what an
+  // attachment is actually for instead.
+  const rawName = window.prompt('New file name (e.g. notes.txt):')
   if (rawName === null) return // cancelled
   const name = rawName.trim()
   if (!name) return
@@ -716,7 +1169,7 @@ async function handleDeleteFile(fileName) {
 // (nothing typed, or already saved) closes straight away. Undo/redo
 // history itself is cleared on entry, not here — see onMounted.
 function handleClose() {
-  if (isDirty.value && !window.confirm('Discard unsaved changes to this file?')) return
+  if (activeEditorIsDirty.value && !window.confirm('Discard unsaved changes to this file?')) return
   emit('close')
 }
 
@@ -766,39 +1219,28 @@ async function refreshNextAction() {
 }
 
 // Shared by the initial mount (Inspect is open by default) and every
-// later re-open via toggleInspect. Inspector.vue loads its own graph/
-// signals definitions on mount (see its own onMounted) — this view only
-// owns the live/point-in-time pieces layered on top of them.
+// later re-expand (see handleInspectorCollapsedChange). Inspector.vue
+// loads its own graph/signals definitions on mount (see its own
+// onMounted, always-mounted now — no more v-if teardown/remount) — this
+// view only owns the live/point-in-time pieces layered on top of them.
 async function openInspect() {
-  await nextTick() // Inspector only exists once the v-if block above mounts
+  await nextTick()
   await Promise.all([refreshNextAction(), refreshSignalValues()])
 }
 
-// Toggled by the Inspect button and by the panel's own Close button, same
-// as SignalsView's autotracking/close pair. Inspector.vue's own
-// onBeforeUnmount handles its cytoscape cleanup when it unmounts (v-if).
-function toggleInspect() {
-  inspecting.value = !inspecting.value
+// Inspector.vue's own collapse toggle (see its own header) drives this —
+// no more separate toolbar button/× close pair (see this view's own
+// header, which no longer has an "Inspect" button at all).
+function handleInspectorCollapsedChange(collapsed) {
+  inspecting.value = !collapsed
   if (inspecting.value) openInspect()
 }
 
-// The embedded chat has no data of its own to load/unload — it's just a
-// second view of chatStore.js's shared conversation (see ChatWindow.vue) —
-// so toggling it is nothing more than showing/hiding the panel.
-function toggleChat() {
-  chatOpen.value = !chatOpen.value
-}
-
-// See editorOpen's own docstring for why this is a plain visibility
-// flip (v-show) rather than the mount/unmount toggleChat/toggleInspect
-// otherwise use (v-if) — nothing here needs loading or tearing down.
-function toggleEditor() {
-  editorOpen.value = !editorOpen.value
-}
-
 function handleDownload() {
+  // App.vue's own handleModelDownload does the actual download and shows
+  // the "downloaded" notice itself, once it's actually finished — not
+  // here, and not before it's even started.
   emit('download', props.projectName)
-  alert("Project " + props.projectName + " downloaded to your local folder.")
 }
 
 function startExplorerDrag(event) {
@@ -811,11 +1253,6 @@ function startInspectorDrag(event) {
   event.preventDefault()
 }
 
-function startChatDrag(event) {
-  dragTarget = 'chat'
-  event.preventDefault()
-}
-
 function onDrag(event) {
   if (dragTarget === 'explorer') {
     explorerWidth.value = Math.min(420, Math.max(160, explorerWidth.value + event.movementX))
@@ -824,10 +1261,6 @@ function onDrag(event) {
     // (negative movementX) needs to grow the panel, not shrink it.
     inspectorWidth.value = Math.min(560, Math.max(240, inspectorWidth.value - event.movementX))
     inspectorRef.value?.resize()
-  } else if (dragTarget === 'chat') {
-    // The chat divider sits above the chat panel, so dragging it up
-    // (negative movementY) needs to grow the panel, not shrink it.
-    chatHeight.value = Math.min(600, Math.max(160, chatHeight.value - event.movementY))
   }
 }
 
@@ -842,18 +1275,15 @@ function handleWindowResize() {
   inspectorRef.value?.resize()
 }
 
-watch(saving, (isSaving) => {
-  view?.dispatch({ effects: editableCompartment.reconfigure(EditorView.editable.of(!isSaving)) })
-})
-
 // A turn can shift signal values enough to change which action would fire
 // next even without a state change — see chatStore.js's turnCount. Metrics
 // are heavier to compute, so unlike signals they're only refreshed while
 // the Inspector's own Metrics tab is the one actually open (see
-// Inspector.vue's refreshMetrics) — never prefetched in the background.
-// signalsLog, unlike those, feeds the chat timeline itself (transition
-// rows, annotation icons) — visible whenever the chat panel is, whether
-// or not Inspect is open, so it refreshes unconditionally.
+// InspectorMetricsTab.vue's own refresh(active)) — never prefetched in
+// the background. signalsLog, unlike those, feeds the chat timeline
+// itself (transition rows, annotation icons) — visible whenever the chat
+// panel is, whether or not Inspect is open, so it refreshes
+// unconditionally (see InspectorSignalsTab.vue's own refresh()).
 watch(turnCount, () => {
   // A completed turn always adds a new message — whatever was selected
   // before now belongs to older history, so the Inspector should follow
@@ -865,21 +1295,25 @@ watch(turnCount, () => {
   if (!inspecting.value) return
   refreshNextAction()
   refreshSignalValues()
-  inspectorRef.value?.refreshMetrics()
-  inspectorRef.value?.refreshEnv()
+  inspectorRef.value?.refresh()
+  // The Inspector's own "States" tab (and its own graph) only exists
+  // while editorOpen is off (see inspectorTabs) — while it's on,
+  // index.yml's own dedicated view holds the one graph there is, so
+  // it's the one that needs the same nudge instead.
+  if (editorOpen.value) indexYmlEditorRef.value?.refresh(false)
 })
 
-// Metrics aren't reactive to a prop change on their own (see Inspector.
-// vue's refreshMetrics docstring) — a selection change needs its own
-// explicit nudge, same as BenchmarkProjectView.vue's own watch(selected).
-// Env gets the same nudge: it isn't prop-driven either (it's fetched
-// straight from the db, see InspectorEnvTab.vue's own loadEnv), so
-// switching which message is selected wouldn't otherwise re-pull it.
+// Metrics aren't reactive to a prop change on their own (see
+// InspectorMetricsTab.vue's own refresh(active) docstring) — a selection
+// change needs its own explicit nudge, same as BenchmarkProjectView.vue's
+// own watch(selected). Env gets the same nudge: it isn't prop-driven
+// either (it's fetched straight from the db, see InspectorEnvTab.vue's
+// own loadEnv), so switching which message is selected wouldn't
+// otherwise re-pull it.
 watch(selected, () => {
   if (!inspecting.value) return
   nextTick(() => {
-    inspectorRef.value?.refreshMetrics()
-    inspectorRef.value?.refreshEnv()
+    inspectorRef.value?.refresh()
   })
 })
 
@@ -893,27 +1327,37 @@ watch(currentSessionId, () => {
   refreshSignalsLog()
 })
 
+// Gates mounting CodeEditor/IndexYmlEditorView in the template below —
+// each one loads its own content as soon as it mounts, so without this
+// they could start (and finish) that fetch concurrently with, or even
+// before, the clearProjectHistory call two lines down, leaving their
+// very first can_undo/can_redo reflecting pre-clear history instead of
+// the fresh slate a just-opened editing session is supposed to start
+// from (see the old, single-shared-editor code this replaced, which
+// sequenced the same two calls explicitly for exactly this reason).
+const historyCleared = ref(false)
+
 onMounted(async () => {
-  // A fresh editing session starts with a clean undo/redo slate — cleared
-  // here (entry), not on Back, and awaited before the first file loads so
-  // its own can_undo/can_redo already reflects the cleared state.
-  try {
-    await clearProjectHistory(props.projectName)
-  } catch {
-    // already surfaced via apiFetch — the session still opens either way
-  }
   loadFiles()
-  loadFileContent(currentFileName.value)
   refreshSessionStartState()
   refreshSignalsLog()
   refreshValidStateKeys()
+  refreshProjectRevision()
   if (inspecting.value) openInspect()
   window.addEventListener('mousemove', onDrag)
   window.addEventListener('mouseup', stopDrag)
   window.addEventListener('resize', handleWindowResize)
+  // A fresh editing session starts with a clean undo/redo slate — cleared
+  // here (entry), not on Back.
+  try {
+    await clearProjectHistory(props.projectName)
+  } catch {
+    // already surfaced via apiFetch — the session still opens either way
+  } finally {
+    historyCleared.value = true
+  }
 })
 onBeforeUnmount(() => {
-  destroyEditor()
   window.removeEventListener('mousemove', onDrag)
   window.removeEventListener('mouseup', stopDrag)
   window.removeEventListener('resize', handleWindowResize)
@@ -925,29 +1369,42 @@ onBeforeUnmount(() => {
     <div class="edit-project-header">
       <h2>Edit project — {{ projectName }}</h2>
       <div class="edit-project-header-actions">
-        <button
-          class="chat-toggle-btn"
-          :class="{ 'chat-toggle-btn-on': editorOpen }"
-          @click="toggleEditor"
-        >
-          Edit
-        </button>
-        <button
-          class="chat-toggle-btn"
-          :class="{ 'chat-toggle-btn-on': chatOpen }"
-          @click="toggleChat"
-        >
-          Chat
-        </button>
-        <button
-          class="inspect-btn"
-          :class="{ 'inspect-btn-on': inspecting }"
-          @click="toggleInspect"
-        >
-          Inspect
-        </button>
-        <button class="inspect-btn" @click="handleDownload">Download</button>
-        <button class="reset-btn" @click="handleReset">Reset</button>
+        <div class="mode-segment">
+          <button
+            class="mode-segment-btn"
+            :class="{ 'mode-segment-btn-active': mode === 'edit' }"
+            @click="setMode('edit')"
+          >Design</button>
+          <button
+            class="mode-segment-btn"
+            :class="{ 'mode-segment-btn-active': mode === 'test' }"
+            @click="setMode('test')"
+          >Test</button>
+        </div>
+        <div v-if="projectRevision" class="publish-split-btn">
+          <button
+            class="publish-btn"
+            :disabled="publishUpToDate || publishing"
+            :title="`Draft revision ${projectRevision.revision} — published: ${projectRevision.published_revision ?? 'never'}`"
+            @click="handlePublish"
+          >{{ publishing ? 'Publishing…' : `Rev. ${projectRevision.revision}` }}</button>
+          <template v-if="canRevert">
+            <button
+              type="button"
+              class="publish-menu-toggle"
+              title="More publish options"
+              @click="publishMenuOpen = !publishMenuOpen"
+            >▾</button>
+            <div v-if="publishMenuOpen" class="publish-menu-dropdown">
+              <button type="button" class="publish-menu-item" @click="closePublishMenu(); handlePublish()">Publish</button>
+              <button
+                type="button"
+                class="publish-menu-item publish-menu-item-danger"
+                @click="closePublishMenu(); handleRevert()"
+              >Revert to rev. {{ projectRevision.published_revision }}</button>
+            </div>
+          </template>
+        </div>
         <button class="close-btn" @click="handleClose">Back</button>
       </div>
     </div>
@@ -961,12 +1418,12 @@ onBeforeUnmount(() => {
             <div class="file-explorer-header">
               <span class="file-explorer-title">Files</span>
               <div class="file-explorer-header-actions">
-                <button class="file-explorer-new-btn" :disabled="creatingFile" @click="handleNewFile">
-                  {{ creatingFile ? 'Creating…' : '+ New' }}
+                <button class="file-explorer-icon-btn" :disabled="uploading" title="Upload file" @click="triggerUpload">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                    <path d="M12 3l4 4h-3v6h-2V7H8l4-4zM5 19v-6h2v6h10v-6h2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z" />
+                  </svg>
                 </button>
-                <button class="file-explorer-upload-btn" :disabled="uploading" @click="triggerUpload">
-                  {{ uploading ? 'Uploading…' : '+ Upload' }}
-                </button>
+                <button class="file-explorer-icon-btn" :disabled="creatingFile" title="New file" @click="handleNewFile">+</button>
               </div>
               <input
                 ref="uploadInput"
@@ -998,49 +1455,75 @@ onBeforeUnmount(() => {
                 </button>
               </li>
             </ul>
+            <button class="file-explorer-download-btn" @click="handleDownload">Download project</button>
           </div>
 
           <div class="split-divider" @mousedown="startExplorerDrag"></div>
 
           <div class="edit-project-editor-pane">
-            <div class="edit-project-editor-toolbar">
-              <span class="edit-project-editor-filename">{{ currentFileName }}</span>
-              <div class="edit-project-editor-toolbar-actions">
-                <button
-                  class="undo-redo-btn"
-                  title="Undo"
-                  :disabled="loading || saving || !canUndo"
-                  @click="undo"
-                >↶</button>
-                <button
-                  class="undo-redo-btn"
-                  title="Redo"
-                  :disabled="loading || saving || !canRedo"
-                  @click="redo"
-                >↷</button>
-                <button class="save-btn" :disabled="loading || saving || !isDirty" @click="saveCurrentFile">
-                  {{ saving ? 'Saving…' : 'Save' }}
-                </button>
-                <DocInfoButton doc-name="project-specs" title="Project format specification" />
+            <p v-if="!historyCleared" class="edit-project-status">Loading…</p>
+            <template v-else>
+              <!-- Stays mounted (v-show, not v-if) even while a different
+                   file is open — its own InspectorGraph is the one and
+                   only place the Inspector's "State"/"Actions" selection
+                   is resolved from (see stateTabElement/actionsTabList),
+                   so unmounting it just because an attachment is being
+                   viewed used to blank the Inspector out from under a
+                   selection that's still perfectly valid. Same v-show
+                   (not v-if) pattern this view's own Graph/Code segments
+                   already use internally, for the same reason. -->
+              <IndexYmlEditorView
+                v-show="currentFileName === 'index.yml'"
+                ref="indexYmlEditorRef"
+                :project-name="projectName"
+                :highlighted-state-key="highlightedStateKey"
+                :auto-jump-on-highlight-change="true"
+                :next-action-edge="selected ? null : nextAction"
+                :fired-action-edge="firedActionEdge"
+                @jump-to-definition="(target) => jumpToDefinition(target, { silent: true })"
+                @select="selectedGraphElement = $event"
+                @saved="handleFileSaved"
+              />
+              <div v-if="currentFileName !== 'index.yml'" class="edit-project-editor-attachment">
+                <div class="edit-project-editor-toolbar">
+                  <span class="edit-project-editor-filename">{{ currentFileName }}</span>
+                  <div class="edit-project-editor-toolbar-actions">
+                    <button
+                      class="undo-redo-btn"
+                      title="Undo"
+                      :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.canUndo"
+                      @click="codeEditorRef?.undo()"
+                    >↶</button>
+                    <button
+                      class="undo-redo-btn"
+                      title="Redo"
+                      :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.canRedo"
+                      @click="codeEditorRef?.redo()"
+                    >↷</button>
+                    <button
+                      class="save-btn"
+                      :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.isDirty"
+                      @click="codeEditorRef?.save()"
+                    >{{ codeEditorRef?.saving ? 'Saving…' : 'Save' }}</button>
+                  </div>
+                </div>
+                <div class="edit-project-editor-content">
+                  <CodeEditor
+                    :key="currentFileName"
+                    ref="codeEditorRef"
+                    :project-name="projectName"
+                    :file-name="currentFileName"
+                    @saved="handleFileSaved"
+                  />
+                </div>
               </div>
-            </div>
-            <div class="edit-project-editor-content">
-              <p v-if="loading" class="edit-project-status">Loading…</p>
-              <div v-show="!loading" ref="editorHost" class="edit-project-editor"></div>
-            </div>
+            </template>
           </div>
         </div>
 
         <Transition name="panel-slide-bottom">
-        <div v-if="chatOpen" class="edit-project-chat-wrap" :class="{ 'edit-project-chat-wrap-full': !editorOpen }">
-          <!-- Nothing to split against once the editor row is hidden (see
-               editorOpen) — the divider drags the boundary between it and
-               chat, which no longer exists, and the chat panel below
-               switches to filling the whole column instead of its own
-               fixed, drag-adjusted chatHeight. -->
-          <div v-if="editorOpen" class="split-divider-horizontal" @mousedown="startChatDrag"></div>
-
-          <div class="edit-project-chat-panel" :style="editorOpen ? { height: chatHeight + 'px' } : null">
+        <div v-if="chatOpen" class="edit-project-chat-wrap edit-project-chat-wrap-full">
+          <div class="edit-project-chat-panel">
             <div class="edit-project-chat-toolbar">
               <label
                 class="dev-mode-toggle"
@@ -1055,14 +1538,7 @@ onBeforeUnmount(() => {
                 Dev mode: freeze automatic state transitions
               </label>
               <div class="edit-project-chat-toolbar-actions">
-                <button
-                  class="sessions-btn"
-                  :class="{ 'sessions-btn-active': sessionsPanelOpen }"
-                  title="Sessions"
-                  @click="toggleSessionsPanel"
-                >
-                  Sessions
-                </button>
+                <button class="reset-btn" @click="handleReset()">Reset</button>
                 <ModelMenu />
               </div>
             </div>
@@ -1073,6 +1549,7 @@ onBeforeUnmount(() => {
                   :signals-log="signalsLog"
                   :selected="selected"
                   :spoken-text-enabled="spokenTextEnabled"
+                  :resolve-state-label="stateLabelFor"
                   @select-message="selectMessage"
                   @select-transition="selectTransition"
                 >
@@ -1092,38 +1569,122 @@ onBeforeUnmount(() => {
         </Transition>
       </div>
 
-      <Transition name="panel-slide-right">
-      <div v-if="inspecting" class="inspector-wrap">
-        <div class="split-divider inspector-divider" @mousedown="startInspectorDrag"></div>
+      <div class="inspector-wrap">
+        <div v-if="inspecting" class="split-divider inspector-divider" @mousedown="startInspectorDrag"></div>
 
-        <div class="inspector-panel" :style="{ '--inspector-width': inspectorWidth + 'px' }">
+        <div class="inspector-panel" :class="{ 'inspector-panel-collapsed': !inspecting }" :style="inspecting ? { '--inspector-width': inspectorWidth + 'px' } : null">
           <Inspector
             ref="inspectorRef"
-            :project-name="projectName"
-            :highlighted-state-key="highlightedStateKey"
-            :auto-jump-on-highlight-change="true"
-            :next-action-edge="selected ? null : nextAction"
-            :fired-action-edge="firedActionEdge"
-            :signal-values="effectiveSignalValues"
-            :until-message-id="untilMessageId"
-            :env-editable="envEditable"
-            :editable-files="files"
-            @jump-to-definition="jumpToDefinition"
-            @select-attachment="selectFile"
-            @close="toggleInspect"
-          />
+            :tabs="inspectorTabs"
+            v-model:active-tab="inspectorActiveTab"
+            :collapsed="!inspecting"
+            @update:collapsed="handleInspectorCollapsedChange"
+          >
+            <template #tab-states="{ registerTab }">
+              <InspectorGraphTab
+                :ref="registerTab('states')"
+                :project-name="projectName"
+                :highlighted-state-key="highlightedStateKey"
+                :auto-jump-on-highlight-change="true"
+                :next-action-edge="selected ? null : nextAction"
+                :fired-action-edge="firedActionEdge"
+                :editable-files="files"
+                @jump-to-definition="jumpToDefinition"
+                @select-attachment="selectFile"
+              />
+            </template>
+            <template #tab-state="{ registerTab }">
+              <InspectorStateTab
+                :ref="registerTab('state')"
+                :selected-element="stateTabElement"
+                :editable-files="files"
+                :highlighted-state-key="highlightedStateKey"
+                :recently-added-key="recentlyAddedKey"
+                @select="handleTabSelect"
+                @select-attachment="selectFile"
+                @jump-to-attachment="handleJumpToAttachment"
+                @set-field="(field, value) => handleSetStateField(stateTabElement?.data.id, field, value)"
+                @delete="handleDeleteState"
+                @add-state="handleAddState"
+              />
+            </template>
+            <template #tab-actions="{ registerTab }">
+              <InspectorActionsTab
+                :ref="registerTab('actions')"
+                :actions="actionsTabList"
+                :editable-files="files"
+                :selected-element="selectedGraphElement"
+                :next-action-edge="selected ? null : nextAction"
+                :fired-action-edge="firedActionEdge"
+                :highlighted-state-key="highlightedStateKey"
+                :available-states="availableStates"
+                :allow-add="!!selectedStateKey"
+                :recently-added-key="recentlyAddedKey"
+                @select="handleTabSelect"
+                @select-attachment="selectFile"
+                @reorder="handleReorderAction"
+                @set-field="handleSetActionField"
+                @delete="handleDeleteAction"
+                @add-action="handleAddAction"
+              />
+            </template>
+            <template #tab-info>
+              <p v-if="codeEditorRef?.mediaType" class="inspector-info-tab-mediatype">type: {{ codeEditorRef.mediaType }}</p>
+            </template>
+            <template #tab-signals="{ registerTab }">
+              <InspectorSignalsTab
+                :ref="registerTab('signals')"
+                :project-name="projectName"
+                :signal-values="effectiveSignalValues"
+                :editable-files="mode === 'edit' ? files : null"
+                :state-key="mode === 'edit' ? selectedStateKey : highlightedStateKey"
+                :recently-added-key="recentlyAddedKey"
+                @jump-to-definition="(target) => jumpToDefinition(target, { silent: true })"
+                @select-attachment="selectFile"
+                @set-field="handleSetSignalField"
+                @add-signal="handleAddSignal"
+                @delete="handleDeleteSignal"
+              />
+            </template>
+            <template #tab-metrics="{ registerTab }">
+              <InspectorMetricsTab :ref="registerTab('metrics')" :until-message-id="untilMessageId" />
+            </template>
+            <template #tab-env="{ registerTab }">
+              <InspectorEnvTab :ref="registerTab('env')" :until-message-id="untilMessageId" :editable="envEditable" />
+            </template>
+          </Inspector>
         </div>
       </div>
-      </Transition>
     </div>
 
-    <div v-if="pendingFileName" class="switch-dialog-overlay">
+    <div v-if="pendingAction" class="switch-dialog-overlay">
       <div class="switch-dialog">
-        <p>"{{ currentFileName }}" has unsaved changes. Save before switching to "{{ pendingFileName }}"?</p>
+        <p>"{{ currentFileName }}" has unsaved changes. Save before you {{ pendingAction.label }}?</p>
         <div class="switch-dialog-actions">
-          <button class="switch-dialog-save-btn" :disabled="saving" @click="confirmSwitchSave">Save</button>
-          <button class="switch-dialog-discard-btn" :disabled="saving" @click="confirmSwitchDiscard">Discard</button>
-          <button class="switch-dialog-cancel-btn" :disabled="saving" @click="confirmSwitchCancel">Cancel</button>
+          <button class="switch-dialog-save-btn" :disabled="activeEditor()?.saving" @click="confirmPendingSave">Save</button>
+          <button class="switch-dialog-discard-btn" :disabled="activeEditor()?.saving" @click="confirmPendingDiscard">Discard</button>
+          <button class="switch-dialog-cancel-btn" :disabled="activeEditor()?.saving" @click="confirmPendingCancel">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="publishRemapPrompt" class="switch-dialog-overlay">
+      <div class="switch-dialog">
+        <p>
+          The conversation's own current state ("{{ publishRemapPrompt.missing_state }}") no longer exists in this
+          revision. Pick the state it now corresponds to before publishing.
+        </p>
+        <select v-model="publishRemapChoice" class="remap-select">
+          <option disabled value="">Select a state…</option>
+          <option v-for="key in publishRemapPrompt.available_states" :key="key" :value="key">{{ key }}</option>
+        </select>
+        <div class="switch-dialog-actions">
+          <button
+            class="switch-dialog-save-btn"
+            :disabled="publishing || !publishRemapChoice"
+            @click="confirmPublishRemap(publishRemapChoice)"
+          >Publish</button>
+          <button class="switch-dialog-cancel-btn" :disabled="publishing" @click="cancelPublishRemap">Cancel</button>
         </div>
       </div>
     </div>
@@ -1193,48 +1754,134 @@ onBeforeUnmount(() => {
   color: white;
 }
 
-.chat-toggle-btn {
+.mode-segment {
+  display: flex;
+  gap: 0.2rem;
+  padding: 0.2rem;
+  border-radius: 8px;
+  background: #eef1f5;
+}
+
+.mode-segment-btn {
+  padding: 0.4rem 1rem;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  font-size: 0.88rem;
+  color: #555;
+}
+
+.mode-segment-btn:hover {
+  color: #333;
+}
+
+.mode-segment-btn-active {
+  background: white;
+  color: #2c4d7a;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.publish-split-btn {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+
+.publish-btn {
   padding: 0.4rem 1rem;
   border-radius: 6px;
-  border: 1px solid #4a6fa5;
-  background: white;
-  color: #4a6fa5;
+  border: 1px solid #2e7d32;
+  background: #2e7d32;
+  color: white;
   cursor: pointer;
 }
 
-.chat-toggle-btn:hover {
-  background: #eef2f9;
+/* The arrow half only ever renders alongside the main button (see
+   canRevert) — rounding the main button's right edge only when it does
+   keeps a plain, arrow-less "Rev. X" (nothing to revert to yet) looking
+   like an ordinary single button rather than a split one missing a half. */
+.publish-btn:has(+ .publish-menu-toggle) {
+  border-right: none;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
-.chat-toggle-btn-on {
-  background: #4a6fa5;
-  color: white;
+.publish-btn:hover:not(:disabled) {
+  background: #256428;
 }
 
-.chat-toggle-btn-on:hover {
-  background: #3d5c8a;
+.publish-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
-.inspect-btn {
-  padding: 0.4rem 1rem;
+.publish-menu-toggle {
+  padding: 0.4rem 0.5rem;
   border-radius: 6px;
-  border: 1px solid #4a6fa5;
+  border: 1px solid #2e7d32;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  background: #2e7d32;
+  color: white;
+  cursor: pointer;
+  font-size: 0.7rem;
+}
+
+.publish-menu-toggle:hover {
+  background: #256428;
+}
+
+.publish-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: 11rem;
+  padding: 0.3rem;
+  border-radius: 8px;
+  border: 1px solid #ddd;
   background: white;
-  color: #4a6fa5;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+}
+
+.publish-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.45rem 0.6rem;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  font-size: 0.82rem;
+  color: #333;
   cursor: pointer;
 }
 
-.inspect-btn:hover {
-  background: #eef2f9;
+.publish-menu-item:hover {
+  background: #f0f4fa;
 }
 
-.inspect-btn-on {
-  background: #4a6fa5;
-  color: white;
+.publish-menu-item-danger {
+  color: #c62828;
+  font-weight: 700;
 }
 
-.inspect-btn-on:hover {
-  background: #3d5c8a;
+.publish-menu-item-danger:hover {
+  background: #fdecea;
+}
+
+.remap-select {
+  display: block;
+  width: 100%;
+  margin-bottom: 1rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  font-size: 0.85rem;
 }
 
 .edit-project-body {
@@ -1258,19 +1905,6 @@ onBeforeUnmount(() => {
   min-height: 0;
 }
 
-.split-divider-horizontal {
-  flex-shrink: 0;
-  height: 6px;
-  margin: 0.4rem 0;
-  border-radius: 3px;
-  background: transparent;
-  cursor: row-resize;
-}
-
-.split-divider-horizontal:hover {
-  background: #dbe4f0;
-}
-
 .edit-project-chat-wrap {
   display: flex;
   flex-direction: column;
@@ -1278,9 +1912,9 @@ onBeforeUnmount(() => {
   min-height: 0;
 }
 
-/* editorOpen is false — see the v-if/v-else... above: no fixed
-   chatHeight to honor anymore, so this (and its own chat-panel) grow to
-   fill whatever space the now-hidden top-row would have used instead. */
+/* Always full — 'edit'/'test' are mutually exclusive (see `mode`), so
+   whenever the chat is showing at all, the top-row (explorer/editor)
+   isn't, and this fills the whole column instead of splitting against it. */
 .edit-project-chat-wrap-full {
   flex: 1;
 }
@@ -1328,36 +1962,17 @@ onBeforeUnmount(() => {
   gap: 0.5rem;
 }
 
-.edit-project-chat-toolbar-actions .sessions-btn {
+.edit-project-chat-toolbar-actions .reset-btn {
   padding: 0.35rem 0.9rem;
-  border-radius: 6px;
-  border: 1px solid #4a6fa5;
-  background: white;
-  color: #4a6fa5;
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-
-.edit-project-chat-toolbar-actions .sessions-btn:hover {
-  background: #4a6fa5;
-  color: white;
-}
-
-.edit-project-chat-toolbar-actions .sessions-btn-active {
-  background: #4a6fa5;
-  color: white;
-}
-
-.edit-project-header-actions .reset-btn {
-  padding: 0.4rem 1rem;
   border-radius: 6px;
   border: 1px solid #c62828;
   background: white;
   color: #c62828;
+  font-size: 0.85rem;
   cursor: pointer;
 }
 
-.edit-project-header-actions .reset-btn:hover {
+.edit-project-chat-toolbar-actions .reset-btn:hover {
   background: #c62828;
   color: white;
 }
@@ -1388,26 +2003,6 @@ onBeforeUnmount(() => {
   gap: 0.4rem;
 }
 
-.file-explorer-new-btn {
-  padding: 0.25rem 0.6rem;
-  border-radius: 6px;
-  border: 1px solid #4a6fa5;
-  background: white;
-  color: #4a6fa5;
-  cursor: pointer;
-  font-size: 0.78rem;
-}
-
-.file-explorer-new-btn:hover:not(:disabled) {
-  background: #4a6fa5;
-  color: white;
-}
-
-.file-explorer-new-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 .file-explorer-title {
   font-size: 0.8rem;
   font-weight: 600;
@@ -1416,24 +2011,48 @@ onBeforeUnmount(() => {
   letter-spacing: 0.03em;
 }
 
-.file-explorer-upload-btn {
-  padding: 0.25rem 0.6rem;
+.file-explorer-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
   border-radius: 6px;
   border: 1px solid #4a6fa5;
   background: white;
   color: #4a6fa5;
   cursor: pointer;
-  font-size: 0.78rem;
+  padding: 0;
+  font-size: 0.9rem;
+  line-height: 1;
 }
 
-.file-explorer-upload-btn:hover:not(:disabled) {
+.file-explorer-icon-btn:hover:not(:disabled) {
   background: #4a6fa5;
   color: white;
 }
 
-.file-explorer-upload-btn:disabled {
+.file-explorer-icon-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.file-explorer-download-btn {
+  flex-shrink: 0;
+  width: 100%;
+  padding: 0.5rem;
+  border: none;
+  border-top: 1px solid #ddd;
+  border-radius: 0;
+  background: #f7f8fa;
+  color: #4a6fa5;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.file-explorer-download-btn:hover {
+  background: #eef2f9;
 }
 
 .file-explorer-upload-input {
@@ -1534,6 +2153,16 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
+/* Same shape as IndexYmlEditorView's own root .index-yml-editor — the two
+   fill this same pane, one hidden via v-show while the other's showing
+   (see the template above). */
+.edit-project-editor-attachment {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .edit-project-editor-toolbar {
   display: flex;
   align-items: center;
@@ -1591,6 +2220,13 @@ onBeforeUnmount(() => {
   display: flex;
 }
 
+.inspector-info-tab-mediatype {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #444;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
 .edit-project-status {
   margin: auto;
   color: #444;
@@ -1632,17 +2268,6 @@ onBeforeUnmount(() => {
   min-height: 0;
 }
 
-.panel-slide-right-enter-active,
-.panel-slide-right-leave-active {
-  transition: opacity 0.18s ease, transform 0.18s ease;
-}
-
-.panel-slide-right-enter-from,
-.panel-slide-right-leave-to {
-  opacity: 0;
-  transform: translateX(16px);
-}
-
 .inspector-panel {
   position: fixed;
   inset: 0;
@@ -1665,7 +2290,24 @@ onBeforeUnmount(() => {
     border: 1px solid #ddd;
     border-radius: 8px;
     overflow: hidden;
+    transition: width 0.15s ease;
   }
+}
+
+/* Collapsed (see Inspector.vue's own always-visible header toggle) —
+   always just a slim docked strip, on any screen size, overriding the
+   narrow-screen full-overlay behavior above (nothing to overlay: a
+   collapsed panel has no tabs/body showing, see Inspector.vue's own
+   v-show). */
+.inspector-panel-collapsed {
+  position: static !important;
+  inset: auto !important;
+  z-index: auto !important;
+  flex-shrink: 0;
+  width: 2.4rem !important;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .dev-mode-toggle {

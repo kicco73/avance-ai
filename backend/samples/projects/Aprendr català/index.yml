@@ -157,7 +157,7 @@ states:
     history-cutoff: True
     actions:
       - <<: *results
-        trigger: "progress == 100"
+        trigger: "signal.progress == 100"
       - <<: *grammar
         action-prompt: |
           Show a table with the rules to conjugate regular verbs in this mode and tense.
@@ -197,7 +197,7 @@ states:
     history-cutoff: yes
     actions:
       - <<: *results
-        trigger: "progress == 100"
+        trigger: "signal.progress == 100"
       - <<: *grammar
         action-prompt: |
           - explain the trick: all verbs whose infinitive ends in -jar , -car, -çar, -gar have hortographic alterations
@@ -232,7 +232,7 @@ states:
     history-cutoff: True
     actions:
       - <<: *results
-        trigger: "progress == 100"
+        trigger: "signal.progress == 100"
       - <<: *grammar
         action-prompt: |
           - explain the trick: all verbs that end in -c (like creure, jo crec -> cregui) in the first person indicative present tense, will need the ortographic change in -gu.
@@ -264,7 +264,7 @@ states:
     history-cutoff: True
     actions:
       - <<: *results
-        trigger: "progress == 100"
+        trigger: "signal.progress == 100"
       - <<: *grammar
         action-prompt: |
           - show quick table with conjugations for some important random irregular verbs of the subjuntive - present tense.
@@ -291,7 +291,7 @@ states:
     history-cutoff: True
     actions:
       - <<: *results
-        trigger: "progress == 100"
+        trigger: "signal.progress == 100"
       - <<: *help
       - <<: *unit-subjuntive
 
@@ -314,7 +314,7 @@ states:
           - Show one sentence per step, specifying the subjuntive structure you expect the user to answer (e.g. with Cal que, Dubto que)
     actions:
       - <<: *results
-        trigger: "progress == 100"
+        trigger: "signal.progress == 100"
       - <<: *help
       - <<: *unit-subjuntive
 

@@ -1,9 +1,10 @@
 """Automaton.triggerable_signal_names — the subset of a project's own
-declared signals actually referenced by at least one triggerable action
-leaving a given state, used to scope auto-tracking's own signal
-computation (see chat/signal_evaluator.py, chat/auto_tracker.py,
-chat_service.py's _build_turn_prompt) down to only what could ever affect
-which action fires from there.
+declared signals actually referenced (as `signal.<name>`, see
+RESERVED_NAMESPACES) by at least one triggerable action leaving a given
+state, used to scope auto-tracking's own signal computation (see
+tracking/evaluator.py, tracking/tracking_engine.py, chat_service.py's
+_build_turn_prompt) down to only what could ever affect which action
+fires from there.
 """
 from __future__ import annotations
 
@@ -32,14 +33,14 @@ def _automaton(actions: list[Action], signals: list[Signal]) -> Automaton:
 
 
 def test_returns_a_signal_referenced_by_the_states_own_trigger():
-    action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="a", trigger="mood >= 50")
+    action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="a", trigger="signal.mood >= 50")
     automaton = _automaton([action], [Signal(name="mood", ui_label="Mood", definition="d")])
 
     assert automaton.triggerable_signal_names("a") == {"mood"}
 
 
 def test_excludes_a_declared_signal_no_trigger_here_references():
-    action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="a", trigger="mood >= 50")
+    action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="a", trigger="signal.mood >= 50")
     automaton = _automaton(
         [action],
         [Signal(name="mood", ui_label="Mood", definition="d"), Signal(name="unused", ui_label="Unused", definition="d")],
@@ -56,8 +57,8 @@ def test_excludes_a_metric_name_even_though_it_is_referenced():
 
 
 def test_combines_signals_from_multiple_actions():
-    action1 = Action(name="a1", ui_label="A1", ui_button="A1", target="a", trigger="mood >= 50")
-    action2 = Action(name="a2", ui_label="A2", ui_button="A2", target="a", trigger="retention >= 1 and stability >= 1")
+    action1 = Action(name="a1", ui_label="A1", ui_button="A1", target="a", trigger="signal.mood >= 50")
+    action2 = Action(name="a2", ui_label="A2", ui_button="A2", target="a", trigger="retention >= 1 and signal.stability >= 1")
     automaton = _automaton(
         [action1, action2],
         [Signal(name="mood", ui_label="Mood", definition="d"), Signal(name="stability", ui_label="Stability", definition="d")],
@@ -82,7 +83,7 @@ def test_empty_for_a_final_state_with_no_actions_at_all():
 def test_includes_a_signal_referenced_only_in_the_env_field():
     action = Action(
         name="advance", ui_label="Advance", ui_button="Advance", target="a",
-        env={"last_mood": "mood"},
+        env={"last_mood": "signal.mood"},
     )
     automaton = _automaton([action], [Signal(name="mood", ui_label="Mood", definition="d")])
 
@@ -92,7 +93,7 @@ def test_includes_a_signal_referenced_only_in_the_env_field():
 def test_combines_signals_from_trigger_and_env_on_the_same_action():
     action = Action(
         name="advance", ui_label="Advance", ui_button="Advance", target="a",
-        trigger="mood >= 50", env={"last_stability": "stability"},
+        trigger="signal.mood >= 50", env={"last_stability": "signal.stability"},
     )
     automaton = _automaton(
         [action],
@@ -104,7 +105,7 @@ def test_combines_signals_from_trigger_and_env_on_the_same_action():
 
 def test_env_field_signal_on_one_action_and_trigger_signal_on_another():
     action1 = Action(name="a1", ui_label="A1", ui_button="A1", target="a", env={"reset": "True"})
-    action2 = Action(name="a2", ui_label="A2", ui_button="A2", target="a", trigger="mood >= 50")
+    action2 = Action(name="a2", ui_label="A2", ui_button="A2", target="a", trigger="signal.mood >= 50")
     automaton = _automaton([action1, action2], [Signal(name="mood", ui_label="Mood", definition="d")])
 
     assert automaton.triggerable_signal_names("a") == {"mood"}
@@ -113,7 +114,7 @@ def test_env_field_signal_on_one_action_and_trigger_signal_on_another():
 def test_excludes_a_metric_or_free_form_env_key_referenced_only_in_env():
     action = Action(
         name="advance", ui_label="Advance", ui_button="Advance", target="a",
-        env={"number_of_steps": "number_of_steps + 1", "last_engagement": "engagement"},
+        env={"number_of_steps": "env.number_of_steps + 1", "last_engagement": "engagement"},
     )
     automaton = _automaton([action], [Signal(name="mood", ui_label="Mood", definition="d")])
 
@@ -142,8 +143,8 @@ def _multi_state_automaton(signals: list[Signal], actions_a: list[Action], actio
 
 
 def test_all_triggerable_signal_names_unions_across_every_state():
-    action_a = Action(name="a1", ui_label="A1", ui_button="A1", target="a", trigger="mood >= 50")
-    action_b = Action(name="b1", ui_label="B1", ui_button="B1", target="b", trigger="stability >= 1")
+    action_a = Action(name="a1", ui_label="A1", ui_button="A1", target="a", trigger="signal.mood >= 50")
+    action_b = Action(name="b1", ui_label="B1", ui_button="B1", target="b", trigger="signal.stability >= 1")
     automaton = _multi_state_automaton(
         [Signal(name="mood", ui_label="Mood", definition="d"), Signal(name="stability", ui_label="Stability", definition="d")],
         [action_a], [action_b],
@@ -153,7 +154,7 @@ def test_all_triggerable_signal_names_unions_across_every_state():
 
 
 def test_all_triggerable_signal_names_excludes_a_signal_no_state_references():
-    action_a = Action(name="a1", ui_label="A1", ui_button="A1", target="a", trigger="mood >= 50")
+    action_a = Action(name="a1", ui_label="A1", ui_button="A1", target="a", trigger="signal.mood >= 50")
     automaton = _multi_state_automaton(
         [Signal(name="mood", ui_label="Mood", definition="d"), Signal(name="unused", ui_label="Unused", definition="d")],
         [action_a], [],

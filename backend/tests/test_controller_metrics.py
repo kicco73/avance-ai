@@ -52,10 +52,12 @@ def test_engagement_rises_after_sending_messages(client, hello_project):
 
 @pytest.mark.contract
 def test_metrics_are_scoped_to_the_active_project(client):
-    samples_dir = Path(__file__).resolve().parent.parent / "samples"
+    samples_dir = Path(__file__).resolve().parent.parent / "samples" / "projects"
     for name, sample in (("hello", "Hello world.zip"), ("cat", "Aprendr català.zip")):
         content = (samples_dir / sample).read_bytes()
         resp = client.put(f"/api/projects/{name}", content=content, headers={"Content-Type": "application/zip"})
+        assert resp.status_code == 200, resp.text
+        resp = client.post(f"/api/projects/{name}/publish", json={})
         assert resp.status_code == 200, resp.text
 
     client.put("/api/projects/hello/activate")

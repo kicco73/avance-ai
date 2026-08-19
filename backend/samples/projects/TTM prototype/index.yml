@@ -116,7 +116,7 @@ states:
         ui-label: "User acknowledges a possible problem"
         ui-button: Raise awareness
         target: Contemplation
-        trigger: "problemRecognition >= 75"
+        trigger: "signal.problemRecognition >= 75"
 
   Contemplation:
     ui-label: Contemplation
@@ -133,7 +133,7 @@ states:
         ui-label: "Decisional balance shifts toward change"
         ui-button: "Resolve ambivalence"
         target: Preparation
-        trigger: "decisionalBalanceShift >= 75"
+        trigger: "signal.decisionalBalanceShift >= 75"
 
   Preparation:
     ui-label: Preparation
@@ -149,7 +149,7 @@ states:
         ui-label: "User sets a concrete date/step and reduces baseline consumption"
         ui-button: "Mark: plan defined"
         target: action
-        trigger: "planConcreteness >= 75"
+        trigger: "signal.planConcreteness >= 75"
         on-enter: celebrate
 
   action:
@@ -169,17 +169,17 @@ states:
         ui-label: "Acute risk signal detected (e.g. self-harm ideation)"
         ui-button: "Detect acute risk"
         target: Crisis
-        trigger: "detectRisk == 100"
+        trigger: "signal.detectRisk == 100"
       - name: encounter risk
         ui-label: "High-risk situation without effective coping, followed by a lapse"
         ui-button: "Encounter risk"
         target: Relapse
-        trigger: "encounterRisk == 100"
+        trigger: "signal.encounterRisk == 100"
       - name: sustain behaviour
         ui-label: "Behavior sustained continuously for >= 6 months"
         ui-button: "Mark: behavior sustained"
         target: Maintenance
-        trigger: "stabilityConfidence >= 70" #daysSinceLastEvent >= 85 and 
+        trigger: "signal.stabilityConfidence >= 70" #daysSinceLastEvent >= 85 and
 
   Maintenance:
     ui-label: Maintenance
@@ -197,12 +197,12 @@ states:
         ui-label: "Acute risk signal detected (e.g. self-harm ideation)"
         ui-button: "Detect acute risk"
         target: Crisis
-        trigger: "detectRisk == 100"
+        trigger: "signal.detectRisk == 100"
       - name: encounter risk
         ui-label: "High-risk situation without effective coping, followed by a lapse"
         ui-button: "Encounter risk"
         target: Relapse
-        trigger: "encounterRisk == 100"
+        trigger: "signal.encounterRisk == 100"
 
   Relapse:
     ui-label: Relapse
@@ -220,7 +220,7 @@ states:
         ui-label: "Contact re-established after relapse, user re-engages"
         ui-button: "Resume path"
         target: Contemplation
-        trigger: "reengagementSignal >= 70"
+        trigger: "signal.reengagementSignal >= 70"
 
   Crisis:
     ui-label: Crisis

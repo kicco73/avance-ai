@@ -67,12 +67,11 @@ Any other top-level key is ignored (not an error).
 - **Signal names** (the keys under `signals:`) **must be valid
   identifiers**: letters, digits, underscore, not starting with a digit
   (e.g. `mood`, `problem_recognition`). This isn't cosmetic: a trigger
-  expression references a signal as a bare name (§6.2), parsed the same
-  way a Python expression would be — `my-signal >= 5` parses as
-  `my - signal >= 5` (two different, undefined names), not one signal
-  called `my-signal`. A hyphenated (or otherwise non-identifier) signal
-  name will build without error but can never be referenced by any
-  trigger.
+  expression references a signal as `signal.<name>` (§6.2), parsed the
+  same way a Python attribute access would be — `signal.my-signal >= 5`
+  doesn't parse as one signal called `my-signal` at all. A hyphenated
+  (or otherwise non-identifier) signal name will build without error but
+  can never be referenced by any trigger.
 - **Reserved names**: a signal cannot be named after a **core metric** —
   building rejects it outright. As of this writing the reserved set is
   exactly:
@@ -87,9 +86,10 @@ Any other top-level key is ignored (not an error).
 
   These are `metrics_framework`'s domain-agnostic metrics, computed from
   the stored conversation/session history (never from the model) — see
-  `backend/src/metrics_framework/README.md`. A trigger expression may
-  reference either a declared signal or one of these metric names,
-  interchangeably, in the same expression (§6.2).
+  `backend/src/metrics_framework/README.md`. Unlike a signal (`signal.
+  <name>`), a metric is referenced as a **bare** name, with no namespace
+  prefix — the two can appear interchangeably in the same expression
+  (§6.2).
 
 ## 4. `signals:`
 
@@ -193,13 +193,13 @@ actions:
     ui-label: "User is ready to move on"
     ui-button: "Move on"
     target: next_state          # omit for a self-loop (stays on this state)
-    trigger: "mood >= 70 and engagement >= 20"
+    trigger: "signal.mood >= 70 and engagement >= 20"
     action-prompt: |
       Briefly acknowledge the mood/engagement trigger, then continue.
     on-enter: celebrate
     env:
       reset_counter: True
-      number_of_steps: number_of_steps + 1
+      number_of_steps: env.number_of_steps + 1
     attachments: []
 ```
 
@@ -237,25 +237,43 @@ result regardless, for inspection, without ever applying a transition.
 
 A boolean-ish expression evaluated with
 [`simpleeval`](https://pypi.org/project/simpleeval/) — comparisons,
-boolean logic, and arithmetic only, **not** arbitrary Python (no function
-calls, imports, attribute/subscript access):
+boolean logic, and arithmetic, plus attribute access and calls **only**
+on the four reserved namespaces below (never arbitrary Python — no
+imports, no calling anything else):
 
 ```text
-mood >= 70
+signal.mood >= 70
 engagement >= 20 and retention >= 1
-(mood >= 40 and engagement >= 10) or signal_stability < 20
+(signal.mood >= 40 and engagement >= 10) or signal_stability < 20
+session.number_of_user_sessions() >= 3 and system.time() > "18:00:00"
 ```
 
-Every bare name in the expression must be either a signal declared in
-this same project's `signals:`, or one of the reserved core metric names
-(§3) — anything else fails validation at build/upload time with an
-"undefined signal(s)/metric(s)" error, and a syntactically invalid
-expression fails the same way with a parse error. At evaluation time (not
-build time): if any referenced name's current value is `None` (not yet
-computed — e.g. before the first auto-tracking pass), the whole
-expression short-circuits to `false` without attempting evaluation; any
-other evaluation failure is logged and also treated as `false` — a
-trigger can never crash a turn.
+Four reserved namespaces, each resolving to a dict-or-proxy object:
+
+| Namespace | Resolves to | Access |
+| --- | --- | --- |
+| `signal.<name>` | A signal declared in this project's own `signals:` | attribute (a value, or `None` before it's ever been computed) |
+| `env.<name>` | A key set by **some action's own** `env:` field, anywhere in this project (§6.4) — never a model-reported free-form value | attribute |
+| `system.<name>` | An engine fact independent of any user/session (`today`, `time`) | **call** — `system.today()`, not `system.today` |
+| `session.<name>` | An engine fact about the current user+project's own session/transition history (`current_session_duration_in_minutes`, `last_user_session_datetime`, `number_of_user_sessions`, `state_duration_in_minutes`) | **call** — `session.number_of_user_sessions()`, not the bare attribute |
+
+A **bare** (unnamespaced) name is only ever a core metric (§3) — nothing
+else may appear unnamespaced anymore.
+
+Every reference is validated at build/upload time: `signal.<name>` must
+name a declared signal, `env.<name>` must name a key **some** action's
+own `env:` field sets somewhere in the project, `system.<name>`/
+`session.<name>` must be one of the fixed method names above, and a bare
+name must be a recognized metric — anything else fails with an
+"undefined name(s)" error, and a syntactically invalid expression fails
+the same way with a parse error. At evaluation time (not build time): if
+any referenced `signal.<name>` is currently `None` (not yet computed —
+e.g. before the first auto-tracking pass), the whole expression
+short-circuits to `false` without attempting evaluation; any other
+evaluation failure (an `env.<name>` never actually set yet, despite
+being a recognized name — the project-wide declaration check only
+proves the *name* is legitimate, not that a value has been set yet) is
+logged and also treated as `false` — a trigger can never crash a turn.
 
 ### 6.3 `action-prompt`
 
@@ -282,55 +300,59 @@ message (if one would normally be generated there) follows afterward.
 ### 6.4 Action `env`
 
 Every project also has a free-form **environment memory**: `key: value`
-facts (always strings when the model itself reports one — see the
+facts the model itself reports (always strings — see the
 `[env]...[/env]` block every prompt embeds) persisted per user+project
-and rendered back into every subsequent prompt, alongside a handful of
-values the engine always computes fresh: `today`, `time`,
-`current_session_duration_in_minutes`, `last_user_session_datetime`,
-`number_of_user_sessions`, `state_duration_in_minutes`.
+and rendered back into every subsequent prompt. `system`/`session`
+facts (§6.2) are never part of this — they're evaluation-scope-only,
+never rendered into any prompt.
 
-An action's own `env:` field updates this memory as a **side effect of
-the action firing** (manually or via its `trigger`) — each entry is
-`key: expression`, evaluated with the same mechanics as `trigger` (§6.2:
-`simpleeval`, no function calls/imports/attribute access), just without
-the boolean cast — a result can be any simple value (string, number,
-bool, `None`, ...), not only true/false:
+An action's own `env:` field updates a **separate**, deterministic part
+of this memory — the `env.<name>` namespace §6.2's trigger expressions
+themselves read from — as a **side effect of the action firing**
+(manually or via its `trigger`). Each entry is `key: expression`,
+evaluated with the exact same namespaced scope/mechanics as `trigger`
+(§6.2: `signal.`/`env.`/`system.`/`session.`, plus any bare metric
+name), just without the boolean cast — a result can be any simple value
+(string, number, bool, `None`, ...), not only true/false:
 
 ```yaml
 env:
   reset_counter: True
-  number_of_steps: number_of_steps + 1
+  number_of_steps: env.number_of_steps + 1
 ```
 
-The variable scope is the same one a `trigger` sees (declared signals,
-core metric names, the engine's own always-computed env keys above) —
-**plus** every key already stored in the environment memory itself,
-since referencing (and updating) one of those is this field's whole
-purpose. That's also why build-time validation differs from `trigger`'s:
-a syntactically invalid expression still fails at build time, but
-referencing an unfamiliar name never does — there's no way to tell a
-typo apart from a free-form env key that simply hasn't been set yet
-(e.g. `number_of_steps` before its very first increment).
+Self-referencing a key this same `env:` mapping also sets (as above) is
+this field's own common case — and build-time validation allows it
+because `env.<name>`'s own valid-name set is collected **project-wide**,
+across every action's own declared `env:` keys, before any expression is
+checked (§6.2) — so a key declared anywhere (including by the very
+action referencing it) is always a legitimate `env.<name>` reference.
+Unlike before this refactor, `env:` now gets the **exact same**
+build-time validation `trigger` does — both syntax *and* unknown-name
+checks — there's no longer a special case here.
 
-At evaluation time, a failure (a referenced name that's still `None`, a
-free-form key that was never set at all, or a runtime error like
-division by zero) is never silent — it's logged as a warning, with the
-action name, the key, and the underlying error, and that one key's
-previous stored value, if any, is left untouched rather than being
-overwritten with a spurious result. One bad key never blocks the others
-in the same `env:` mapping. Updated values merge onto (rather than
-replace) the rest of the environment memory, and the merge happens
-**before** anything else that turn/transition generates a
-model reply for (`action-prompt`, the destination state's own opening
-message, or a normal chat turn — §6.3, §5) — so the very next prompt
-already reflects the new value.
+At evaluation time, a failure (an `env.<name>` reference that's a
+recognized name but has no value yet, or a runtime error like division
+by zero) is never silent — it's logged as a warning, with the action
+name, the key, and the underlying error, and that one key's previous
+stored value, if any, is left untouched rather than being overwritten
+with a spurious result. One bad key never blocks the others in the same
+`env:` mapping. Updated values merge onto (rather than replace) the rest
+of this action-set store, and the merge happens **before** anything else
+that turn/transition generates a model reply for (`action-prompt`, the
+destination state's own opening message, or a normal chat turn — §6.3,
+§5) — so the very next prompt already reflects the new value.
 
-Persisted separately from the model's own `[env]`-reported values (the
-prompt sees both merged together, but they're kept apart everywhere
-else): the "Edit project" view's Inspector Env tab shows them in their
-own **ACTION** section, distinct from the model-reported **AI** one and the
-engine's own **COMPUTED** one — never editable/deletable through that
-UI, only ever a side effect of the action that set them firing again.
+Persisted separately from the model's own `[env]`-reported free-form
+values, and it's this action-set store alone — never the free-form one —
+that a trigger's own `env.<name>` reads from (§6.2): a free-form value
+the model reports has no name known at build time, so it can never be
+validated as a legitimate `env.<name>` reference the way an action's own
+declared `env:` key can. The "Edit project" view's Inspector Env tab
+shows the two in their own separate sections regardless — **ACTION** for
+this action-set store, distinct from the model-reported **AI** one —
+never editable/deletable through that UI, only ever a side effect of the
+action that set them firing again.
 
 ## 7. Attachments
 
@@ -388,11 +410,14 @@ how you're likely to hit them:
   `INFO` / `WARNING` / `ERROR` / `CRITICAL`.
 - Every action's `target` (including `init-action`'s) names a real state
   key (or is omitted/self-referential for a self-loop).
-- Every action's `trigger`, if given, is syntactically valid and
-  references only declared signals and/or reserved metric names.
+- Every action's `trigger`, if given, is syntactically valid and every
+  reference resolves: `signal.<name>` to a declared signal, `env.<name>`
+  to a key some action's own `env:` declares somewhere in the project,
+  `system.<name>`/`session.<name>` to one of the fixed proxy methods
+  (§6.2), and a bare name to a reserved metric name.
 - Every action's `env`, if given, is a mapping, and each of its
-  expressions is syntactically valid — referencing an unfamiliar name is
-  **not** checked here (§6.4), unlike `trigger`.
+  expressions gets the exact same validation `trigger` does — syntax and
+  unknown-name checks alike (§6.4).
 - No signal is named after a reserved core metric name (§3).
 - Every `attachments:` entry (global, per-signal, per-state — not
   per-action) names a file actually present in the upload.

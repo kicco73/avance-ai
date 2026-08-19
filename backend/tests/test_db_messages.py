@@ -11,6 +11,8 @@ pytestmark = pytest.mark.contract
 
 
 def _make_session(db, *, username="user", project_name="proj", start=datetime(2026, 1, 1)):
+    db.ensure_project(project_name)
+    db.publish_project(project_name)
     return db.create_chat_session(
         username=username,
         project_name=project_name,

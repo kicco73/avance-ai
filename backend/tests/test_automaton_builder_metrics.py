@@ -91,13 +91,13 @@ states:
     actions:
       - name: advance
         target: b
-        trigger: "myOwnSignal >= 50 and {metric} >= 10"
+        trigger: "signal.myOwnSignal >= 50 and {metric} >= 10"
   b:
     contextual-prompt: "bye"
 """
     automaton = AutomatonBuilder().build({"index.yml": content})
 
-    assert automaton.states["a"].actions[0].trigger == f"myOwnSignal >= 50 and {metric} >= 10"
+    assert automaton.states["a"].actions[0].trigger == f"signal.myOwnSignal >= 50 and {metric} >= 10"
 
 
 def test_a_trigger_referencing_a_truly_unknown_name_is_still_rejected():
@@ -114,5 +114,5 @@ states:
   b:
     contextual-prompt: "bye"
 """
-    with pytest.raises(ValueError, match="undefined signal"):
+    with pytest.raises(ValueError, match="undefined name"):
         AutomatonBuilder().build({"index.yml": content})

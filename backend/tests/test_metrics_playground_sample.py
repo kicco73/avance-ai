@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples"
+SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
 
 
 def _upload_and_activate(client, name: str = "metrics-playground"):
@@ -27,6 +27,8 @@ def _upload_and_activate(client, name: str = "metrics-playground"):
     response = client.put(f"/api/projects/{name}", content=content, headers={"Content-Type": "application/zip"})
     assert response.status_code == 200, response.text
     response = client.put(f"/api/projects/{name}/activate")
+    assert response.status_code == 200, response.text
+    response = client.post(f"/api/projects/{name}/publish", json={})
     assert response.status_code == 200, response.text
     return name
 

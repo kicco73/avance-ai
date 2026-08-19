@@ -12,8 +12,10 @@ import tempfile
 from pathlib import Path
 from typing import Awaitable, Callable
 
-from automaton.automaton import Action, Automaton, State, StatePayload
-from automaton.automaton_builder import AutomatonBuilder
+from automaton.automaton import Action, ActionPayload, Automaton, SignalPayload, State, StatePayload
+from automaton.automaton_builder import AutomatonBuilder, EXTENSION_TO_MEDIA_TYPE
+from automaton.automaton_yaml_editor import AutomatonYamlEditor, InitActionTargetError
+from automaton.identifier_registry import build_registry
 from session import Session
 from db import Db
 
@@ -37,14 +39,20 @@ CommitCallback = Callable[[Automaton], Awaitable[None]]
 # samples/ ships alongside backend/src/ in every deployment (see the
 # repo's own Dockerfile: `COPY . .` copies the whole repo before src/
 # ever runs), so this never depends on the dev checkout specifically.
-NEW_PROJECT_TEMPLATE = Path(__file__).resolve().parents[2] / "samples" / "Hello world.zip"
+NEW_PROJECT_TEMPLATE = Path(__file__).resolve().parents[2] / "samples" / "projects" / "Hello world.zip"
 NEW_PROJECT_NAME = "Hello world"
 
 
 class ProjectService(object):
     def __init__(self, db: Db) -> None:
         self._db = db
-        self._automaton_cache: dict[str, Automaton] = {}
+        # (project_name, revision) -> Automaton. Revision-keyed (not just
+        # project_name) so a caller pinned to one specific revision (see
+        # _load_project_at_revision, get_automaton_and_state_for_session)
+        # and a caller that always wants "whatever's current" (see
+        # _load_project/get_active_automaton_and_state) can share the same
+        # cache without one silently serving the other's revision.
+        self._automaton_cache: dict[tuple[str, int], Automaton] = {}
 
     @staticmethod
     def _is_safe_project_name(project_name: str) -> bool:
@@ -55,30 +63,59 @@ class ProjectService(object):
             return False
         return Path(project_name).name == project_name
 
-    def _load_project(self, project_name: str) -> Automaton:
-        cached = self._automaton_cache.get(project_name)
+    def _invalidate_automaton_cache(self, project_name: str) -> None:
+        """Drops every cached revision of `project_name` at once — a write
+        path (revert_to_published/delete_project) that needs this has no
+        reason to work out exactly which revision number(s) might now be
+        stale, so this just clears all of them. Never needed after an
+        ordinary edit (put_project_file/delete_project_file/...): those go
+        through _finalize_project_update instead, which already knows
+        exactly which one revision it just built and re-caches only that."""
+        for key in [k for k in self._automaton_cache if k[0] == project_name]:
+            del self._automaton_cache[key]
+
+    def _load_project_at_revision(self, project_name: str, revision: int) -> Automaton:
+        cache_key = (project_name, revision)
+        cached = self._automaton_cache.get(cache_key)
         if cached is not None:
             return cached
 
         if not ProjectService._is_safe_project_name(project_name):
             raise ValueError(f"Invalid project name: '{project_name}'.")
 
-        archives = self._db.get_archives(project_name)
+        archives = self._db.get_archives(project_name, revision=revision)
 
         if not archives:
             raise  FileNotFoundError(f"Project '{project_name}' does not exist.")
         if 'index.yml' not in archives:
             raise  FileNotFoundError(f"Project '{project_name}' does not contain 'index.yml'.")
-        
+
         automaton = AutomatonBuilder().build(archives)
-        self._automaton_cache[project_name] = automaton
+        self._automaton_cache[cache_key] = automaton
         return automaton
+
+    def _load_project(self, project_name: str) -> Automaton:
+        """Whatever's current for `project_name` right now — the most
+        recent draft, published or not (see Db.get_project_revision). Every
+        existing caller of this keeps exactly that behavior; a caller that
+        instead needs a specific, possibly older revision (the published
+        one specifically, or a particular session's own — see
+        get_active_automaton_and_state/get_automaton_and_state_for_session)
+        goes through _load_project_at_revision directly instead."""
+        revision = self._db.get_project_revision(project_name)
+        return self._load_project_at_revision(project_name, revision)
 
     def _project_update_changed(self, existing: dict[str, str], files: dict[str, str]) -> bool:
         """Whether `files` (new content for some subset of a project's
         own files — see _prepare_project_update) is a genuine change
-        against `existing`."""
-        return any(existing.get(name, "") != content for name, content in files.items())
+        against `existing`. A file `existing` doesn't have at all yet is
+        always a change, even when its own new content happens to be ""
+        (the Explorer's own "+ new file" always creates one this way) —
+        `existing.get(name, "")` used to fold that case into "unchanged"
+        indistinguishably from a real no-op edit, so the file was never
+        actually persisted (see put_project_file's own to_persist branch)
+        and the very next read of it 404'd."""
+        return any(name not in existing or existing[name] != content for name, content in files.items())
 
     def _prepare_project_update(self, project_name: str, files: dict[str, str]) -> tuple[Automaton, dict[str, str] | None]:
         """Builds+validates the Automaton for `files` (new content for
@@ -107,10 +144,18 @@ class ProjectService(object):
         if content is None:
             raise FileNotFoundError(f"File '{file_name}' does not exist in project '{project_name}'.")
         user = Session().user
+        # Same extension-based rule AutomatonBuilder._convert_contents_to_
+        # archives uses to build each MemoryArchive's own SourceDict —
+        # reused here (rather than re-derived) so the "Edit project" view's
+        # file explorer can display it without that meaning something
+        # different than what the automaton itself would resolve.
+        extension = Path(file_name).suffix.lower()
+        media_type = EXTENSION_TO_MEDIA_TYPE.get(extension, "application/octet-stream")
         return {
             "content": content,
             "can_undo": self._db.has_undo(user, project_name, file_name),
             "can_redo": self._db.has_redo(user, project_name, file_name),
+            "media_type": media_type,
         }
 
     async def _finalize_project_update(
@@ -131,7 +176,8 @@ class ProjectService(object):
         exactly where it was, rather than restarting on every single save
         regardless of whether anything relevant to it actually changed."""
 
-        self._automaton_cache[project_name] = automaton
+        revision = self._db.get_project_revision(project_name)
+        self._automaton_cache[(project_name, revision)] = automaton
         if project_name == self.get_active_project_name():
             current_state_key = self._db.get_current_state(project_name)
             if current_state_key is None or current_state_key not in automaton.states:
@@ -204,37 +250,126 @@ class ProjectService(object):
             raise FileNotFoundError("No project is currently active.")
         return name
     
+    def _resolve_state(self, project_name: str, automaton: Automaton) -> State:
+        """The State half of get_active_automaton_and_state/
+        get_automaton_and_state_for_session, factored out since both need
+        the exact same resolution against `automaton` — only how
+        `automaton` itself gets picked (published-only vs. one session's
+        own pinned revision) differs between them. No state persisted yet
+        (nothing has ever run) still falls back to init_action.target,
+        same as always — that's a legitimate default, not a broken
+        reference. A persisted state that no longer exists in `automaton`
+        is different: it means a publish once renamed/removed it out from
+        under an in-progress conversation, and StateRemap (written at that
+        publish, see ProjectService.publish_project — a single lookup no
+        matter how many publishes have happened since, since every
+        publish that would otherwise orphan a still-open state writes its
+        own fresh entry pointing straight at the *current* remap target)
+        is the only thing allowed to resolve it — no more silent fallback
+        to init_action.target. If StateRemap doesn't have an answer
+        either, that's an inconsistency the publish-time check should
+        have prevented; raising here is a guardrail, not the expected
+        path. A pure read, no side effect: never returns the reserved
+        implicit state ("") itself, so every caller of this (not just
+        ChatService.open_if_needed) always sees a real state, whether or
+        not init_action has actually been resolved/persisted yet."""
+        state_key = self._db.get_current_state(project_name)
+        if state_key is None:
+            state_key = automaton.init_action.target
+        elif state_key not in automaton.states:
+            remapped = self._db.get_state_remap(project_name, state_key)
+            if remapped is None or remapped not in automaton.states:
+                raise ValueError(
+                    f"Project '{project_name}': persisted state '{state_key}' no longer exists "
+                    "and has no StateRemap entry — this should have been caught at publish time."
+                )
+            state_key = remapped
+        return automaton.get_state(state_key)
+
     def get_active_automaton_and_state(self) -> tuple[Automaton, State]:
-        """The active Automaton paired with its current State — falls back
-        to init_action.target if none is persisted yet, or the persisted
-        one was renamed/removed on disk since. A pure read, no side
-        effect: never returns the reserved implicit state ("") itself, so
-        every caller of this (not just ChatService.open_if_needed) always
-        sees a real state, whether or not init_action has actually been
-        resolved/persisted yet. Raises FileNotFoundError (same exception
-        _load_project itself raises for an unknown project name) when
-        there's no active project at all — see get_active_project_name's
-        own docstring for when that happens."""
+        """The active project's *published* Automaton paired with its
+        current State — never the in-progress draft, whatever it happens
+        to look like right now (see _resolve_state's own docstring for
+        the State half). Every caller of this that's about a specific,
+        already-existing session instead (see the "6 places" in
+        get_automaton_and_state_for_session's own docstring) uses that one
+        instead, pinned to that session's own project_revision — this one
+        is for every other caller, which never has a session of its own
+        to pin to and must never see draft content it didn't explicitly
+        ask for (see EditProjectView.vue's own dedicated draft entry
+        points, the one place that's still allowed to). Raises
+        FileNotFoundError (same exception _load_project itself raises for
+        an unknown project name) when there's no active project at all —
+        see get_active_project_name's own docstring for when that
+        happens — and ValueError, same as db.create_chat_session's own
+        "never published" case, when the active project has no published
+        revision yet."""
+        project_name = self.get_active_project_name()
+        if project_name is None:
+            raise FileNotFoundError("No project is currently active.")
+        published_revision = self._db.get_project_published_revision(project_name)
+        if published_revision is None:
+            raise ValueError(f"Project '{project_name}' has never been published.")
+        automaton = self._load_project_at_revision(project_name, published_revision)
+        return automaton, self._resolve_state(project_name, automaton)
+
+    def get_automaton_and_state_for_session(self, session_id: int) -> tuple[Automaton, State]:
+        """The Automaton `session_id`'s own turns must run against, paired
+        with its current State (see _resolve_state) — every chat-turn-
+        shaped operation that already has a concrete session_id to work
+        from (chat_service.py's own truncate_session/open_if_needed/
+        apply_manual_action/process_turn, this module's own apply_manual_
+        action, tracking_service.py's own process) uses this instead of
+        get_active_automaton_and_state.
+
+        A native session is pinned to the Automaton it was actually
+        stamped against at creation time (see ChatSession.project_revision's
+        own docstring — whatever was published the moment this session
+        started), so an in-progress draft edit elsewhere never
+        retroactively changes what an already-running session's own turns
+        see, and a session pinned to an old, already-superseded revision
+        keeps behaving exactly as it did when it was created.
+
+        A 'test' session (see db.create_draft_chat_session) is the one
+        exception: EditProjectView.vue's own embedded "Test" chat exists
+        precisely to test whatever's being edited *right now*, not
+        whatever the draft happened to look like when the session was
+        first bootstrapped — every turn re-resolves against the live
+        draft (same _load_project call as get_active_draft_automaton_and_
+        state), same as create_draft_session/get_or_create_current_draft_
+        session already do for a brand new session."""
+        session = self._db.get_chat_session(session_id)
+        if session is None:
+            raise FileNotFoundError(f"Session {session_id} does not exist.")
+        project_name = session["project_name"]
+        if session["source"] == "test":
+            automaton = self._load_project(project_name)
+        else:
+            automaton = self._load_project_at_revision(project_name, session["project_revision"])
+        return automaton, self._resolve_state(project_name, automaton)
+
+    def get_active_draft_automaton_and_state(self) -> tuple[Automaton, State]:
+        """Like get_active_automaton_and_state, but the in-progress draft
+        (whatever _load_project resolves to right now) rather than
+        published-only — EditProjectView.vue's own dedicated draft session
+        entry points (ChatService.create_draft_session/get_or_create_
+        current_draft_session) are the only callers: a "Test" session must
+        stay creatable against a project that's never been published at
+        all yet (see db.create_draft_chat_session), which get_active_
+        automaton_and_state's own published-only requirement would
+        otherwise block outright before a session (and this call) ever
+        even happens."""
         project_name = self.get_active_project_name()
         if project_name is None:
             raise FileNotFoundError("No project is currently active.")
         automaton = self._load_project(project_name)
-        state_key = self._db.get_current_state(project_name)
-        if state_key is None or state_key not in automaton.states:
-            if state_key is not None:
-                logger.warning(
-                    "Project '%s': persisted state '%s' no longer exists (renamed/removed on "
-                    "disk?) — falling back to init_action.target '%s'.",
-                    project_name, state_key, automaton.init_action.target,
-                )
-            state_key = automaton.init_action.target
-        return automaton, automaton.get_state(state_key)
+        return automaton, self._resolve_state(project_name, automaton)
 
     def apply_manual_action(self, action_name: str, session_id: int) -> tuple[StatePayload, Action, str]:
         """Applies a manual (button) action and returns the destination
         state's payload, the Action that fired, and the source state's
         key (e.g. to detect a self-loop)."""
-        automaton, state = self.get_active_automaton_and_state()
+        automaton, state = self.get_automaton_and_state_for_session(session_id)
         action = automaton.move(state.key, action_name)
         new_state = automaton.get_state(action.target)
         # Always saved, self-loop or not — a real history entry either
@@ -288,14 +423,26 @@ class ProjectService(object):
             relevant_names = automaton.all_triggerable_signal_names()
         return [
             {
-                "name": signal.name,
-                "ui_label": signal.ui_label,
-                "ui_description": signal.ui_description,
-                "attachments": [a.filename for a in signal.attachments.values()],
+                "signal": Automaton.get_signal_payload(signal),
                 "relevant": signal.name in relevant_names,
+                # Not part of SignalPayload itself (see its own
+                # get_signal_payload docstring on why attachments stays
+                # empty there) — filenames only, same as a state/action's
+                # own attachments (see get_project_graph's node/edge
+                # wrappers below), never full content.
+                "attachments": [a.filename for a in signal.attachments.values()],
             }
             for signal in automaton.signals
         ]
+
+    def get_active_identifier_registry(self) -> dict[str, dict[str, str]]:
+        """Every identifier the active project's own trigger/`env:`
+        expressions can reference, one dict per namespace (see automaton.
+        identifier_registry.build_registry) — for GET /api/chat/
+        identifiers, the "Edit project" view's own reference for what's
+        actually usable in a trigger/env: field."""
+        automaton, _ = self.get_active_automaton_and_state()
+        return build_registry(automaton.signals, automaton.states)
 
     def get_project_graph(self, project_name: str) -> dict:
         """The project's state machine as nodes (states) and edges
@@ -319,35 +466,42 @@ class ProjectService(object):
         real_states = [state for state in automaton.states.values() if state.key != ""]
         nodes = [
             {
-                "key": state.key,
-                "ui_label": state.ui_label,
-                "ui_description": state.ui_description,
-                "final": state.final,
+                "state": Automaton.get_state_payload(state),
                 "is_start": state.key == automaton.init_action.target,
-                "chat": state.chat,
                 "history_cutoff": state.history_cutoff,
                 "transition_log_level": state.transition_log_level,
                 "attachments": list(state.attachments.keys()),
+                # Not part of StatePayload itself (see its own
+                # get_state_payload docstring on why) — a state's own
+                # system-prompt text never reaches a live chat client,
+                # only this "Edit project" Inspect-panel-only node wrapper
+                # (same treatment as action_prompt on the edge wrapper
+                # below).
+                "contextual_prompt": state.contextual_prompt,
             }
             for state in real_states
         ]
         edges = [
             {
+                "action": Automaton.get_action_payload(action),
                 "source": state.key,
-                "target": action.target,
-                "action_name": action.name,
-                "ui_label": action.ui_label,
-                "ui_description": action.ui_description,
-                "ui_button": action.ui_button,
+                # None of these three belong in ActionPayload itself (see
+                # its own get_action_payload docstring) — `trigger`
+                # especially never reaches a live chat client, only this
+                # "Edit project" Inspect-panel-only edge wrapper.
                 "trigger": action.trigger,
-                "has_trigger": action.trigger is not None,
                 "action_prompt": action.action_prompt,
-                "on-enter": action.on_enter,
+                "ui_description": action.ui_description,
             }
             for state in automaton.states.values()
             for action in state.actions
         ]
-        return {"nodes": nodes, "edges": edges}
+        # BenchmarkProjectView.vue's own — an imported session (see
+        # ChatSession.source) has no real Tracking rows to resolve which
+        # message a mark/annotation point belongs to, so it falls back to
+        # whichever side a live turn would actually have evaluated on (see
+        # TrackingService._materialize_imported_session_row).
+        return {"nodes": nodes, "edges": edges, "autotracking_on_ai_message": automaton.autotracking_on_ai_message}
 
     def list_projects(self) -> dict:
         names = self._db.list_projects()
@@ -356,6 +510,88 @@ class ProjectService(object):
         except FileNotFoundError:
             active = None
         return {"projects": names, "active": active}
+
+    def get_project_revision_info(self, project_name: str) -> dict:
+        """{revision, published_revision} — the "Edit project" toolbar's
+        own revision display, refreshed after every save (a save can fork,
+        bumping `revision`) and after every publish."""
+        if project_name not in self._db.list_projects():
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+        return {
+            "revision": self._db.get_project_revision(project_name),
+            "published_revision": self._db.get_project_published_revision(project_name),
+        }
+
+    def preview_publish(self, project_name: str) -> dict:
+        """Whether publishing `project_name` right now needs a human state
+        remap decision first — the one case where the app itself never
+        picks: the current persisted state (mono-user today, see
+        Db.get_current_state) has gone missing from the draft that's about
+        to become the published revision. No session ever having happened
+        (current_state_key is None) is not this case — nothing to remap.
+        Also reports `has_active_sessions` — whether any live conversation
+        is still actually running on the revision about to be superseded
+        (see Db.has_open_sessions_for_revision) — EditProjectView.vue's own
+        handlePublish only asks the user to confirm when this is true;
+        publishing over a revision nobody's mid-conversation on needs no
+        extra prompt."""
+        if project_name not in self._db.list_projects():
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+        draft = self._load_project(project_name)
+        current_state_key = self._db.get_current_state(project_name)
+        published_revision = self._db.get_project_published_revision(project_name)
+        has_active_sessions = (
+            published_revision is not None
+            and self._db.has_open_sessions_for_revision(project_name, published_revision)
+        )
+        if current_state_key is None or current_state_key in draft.states:
+            return {"needs_remap": False, "has_active_sessions": has_active_sessions}
+        return {
+            "needs_remap": True,
+            "missing_state": current_state_key,
+            "available_states": [state.key for state in draft.states.values() if state.key != ""],
+            "has_active_sessions": has_active_sessions,
+        }
+
+    def publish_project(self, project_name: str, remap_to: str | None = None) -> dict:
+        """Sets published_revision = revision for `project_name` — freezing
+        the current draft forever (see Db.save_project_files' own fork-on-
+        first-edit-after-publish). If the currently persisted state has
+        gone missing from that draft (see preview_publish), `remap_to`
+        must name a real state in it; the resulting StateRemap entry is
+        what get_active_automaton_and_state consults from then on, instead
+        of ever guessing (no fallback to init_action.target, no heuristic
+        match — the choice is always the caller's, made explicit here)."""
+        if project_name not in self._db.list_projects():
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+        draft = self._load_project(project_name)
+        current_state_key = self._db.get_current_state(project_name)
+        if current_state_key is not None and current_state_key not in draft.states:
+            if remap_to is None:
+                raise ValueError(
+                    f"State '{current_state_key}' no longer exists in this revision — a remap target is required."
+                )
+            if remap_to == "" or remap_to not in draft.states:
+                raise ValueError(f"'{remap_to}' is not a valid state in this revision.")
+            self._db.write_state_remap(project_name, current_state_key, remap_to)
+        self._db.publish_project(project_name)
+        return self.get_project_revision_info(project_name)
+
+    async def revert_to_published(self, project_name: str, commit: CommitCallback) -> dict:
+        """Discards the entire in-progress draft revision, reverting to
+        whatever was last published (see Db.revert_to_published) — the
+        "Rev. X" split button's own "Revert to rev. X-1" option (see
+        EditProjectView.vue), only ever offered there when both a draft-
+        ahead-of-published revision and a prior publication exist (a
+        stale/duplicate click past that point is a safe no-op, same as
+        publish_project)."""
+        if project_name not in self._db.list_projects():
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+        self._db.revert_to_published(project_name)
+        self._invalidate_automaton_cache(project_name)
+        new_automaton = self._load_project(project_name)
+        await self._finalize_project_update(project_name, new_automaton, commit)
+        return self.get_project_revision_info(project_name)
 
     async def activate_project(self, project_name: str, commit: CommitCallback) -> Automaton:
         """Validates via _load_and_validate(), persists `project_name` as
@@ -405,6 +641,7 @@ class ProjectService(object):
             raise ValueError(f"Invalid project definition: {exc}") from exc
 
         self._db.set_active_project_name(project_name, Session().user)
+        self._db.ensure_project(project_name)
         if to_persist is not None:
             self._db.save_project_files(project_name, to_persist)
         await self._finalize_project_update(project_name, new_automaton, commit)
@@ -505,6 +742,73 @@ class ProjectService(object):
 
         return {"success": True, "project_name": project_name, **self._file_undo_redo_info(project_name, file_name)}
 
+    async def _edit_index_yml(self, project_name: str, commit: CommitCallback, operation):
+        """Runs `operation(editor: AutomatonYamlEditor) -> T` against
+        `project_name`'s own current index.yml text, persists whatever it
+        produced through the exact same validation/history/commit path as
+        any other file edit (see put_project_file — never a parallel
+        write path of its own), and returns `operation`'s own result
+        untouched: the newly added/edited/reordered object's own payload,
+        never the whole YAML text (see AutomatonYamlEditor's own module
+        docstring — every one of its methods already returns exactly
+        that shape, or None for a delete)."""
+        current = self._file_undo_redo_info(project_name, "index.yml")["content"]
+        editor = AutomatonYamlEditor(current)
+        result = operation(editor)
+        await self.put_project_file(project_name, "index.yml", editor.serialize(), commit)
+        return result
+
+    async def add_state(self, project_name: str, commit: CommitCallback) -> StatePayload:
+        return await self._edit_index_yml(project_name, commit, lambda editor: editor.add_state())
+
+    async def add_signal(self, project_name: str, commit: CommitCallback) -> SignalPayload:
+        return await self._edit_index_yml(project_name, commit, lambda editor: editor.add_signal())
+
+    async def add_action(self, project_name: str, state_name: str, commit: CommitCallback) -> ActionPayload:
+        return await self._edit_index_yml(project_name, commit, lambda editor: editor.add_action(state_name))
+
+    async def set_state_field(
+        self, project_name: str, state_name: str, field: str, value, commit: CommitCallback
+    ) -> StatePayload:
+        return await self._edit_index_yml(
+            project_name, commit, lambda editor: editor.set_state_field(state_name, field, value)
+        )
+
+    async def set_action_field(
+        self, project_name: str, state_name: str, action_name: str, field: str, value, commit: CommitCallback
+    ) -> ActionPayload:
+        return await self._edit_index_yml(
+            project_name, commit, lambda editor: editor.set_action_field(state_name, action_name, field, value)
+        )
+
+    async def set_signal_field(
+        self, project_name: str, signal_name: str, field: str, value, commit: CommitCallback
+    ) -> SignalPayload:
+        return await self._edit_index_yml(
+            project_name, commit, lambda editor: editor.set_signal_field(signal_name, field, value)
+        )
+
+    async def set_init_action_field(self, project_name: str, field: str, value, commit: CommitCallback):
+        return await self._edit_index_yml(
+            project_name, commit, lambda editor: editor.set_init_action_field(field, value)
+        )
+
+    async def delete_state(self, project_name: str, state_name: str, commit: CommitCallback) -> None:
+        await self._edit_index_yml(project_name, commit, lambda editor: editor.delete_state(state_name))
+
+    async def delete_action(self, project_name: str, state_name: str, action_name: str, commit: CommitCallback) -> None:
+        await self._edit_index_yml(project_name, commit, lambda editor: editor.delete_action(state_name, action_name))
+
+    async def delete_signal(self, project_name: str, signal_name: str, commit: CommitCallback) -> None:
+        await self._edit_index_yml(project_name, commit, lambda editor: editor.delete_signal(signal_name))
+
+    async def reorder_actions(
+        self, project_name: str, state_name: str, action_name: str, position: int, commit: CommitCallback
+    ) -> list[ActionPayload]:
+        return await self._edit_index_yml(
+            project_name, commit, lambda editor: editor.reorder_actions(state_name, action_name, position)
+        )
+
     async def undo_project_file(self, project_name: str, file_name: str, content: bytes) -> dict:
         """A pure editor preview, not a persisted change (see db.Db.
         undo_project_file) — unlike put_project_file, this never touches
@@ -583,7 +887,7 @@ class ProjectService(object):
     async def delete_project(self, project_name: str, commit: CommitCallback) -> None:
         self._db.reset_project(project_name)
         self._db.delete_archives(project_name)
-        self._automaton_cache.pop(project_name, None)
+        self._invalidate_automaton_cache(project_name)
 
         if project_name == self.get_active_project_name():
             # No project name is reserved/preferred for continuity anymore
