@@ -1374,7 +1374,7 @@ onBeforeUnmount(() => {
             class="mode-segment-btn"
             :class="{ 'mode-segment-btn-active': mode === 'edit' }"
             @click="setMode('edit')"
-          >Edit</button>
+          >Design</button>
           <button
             class="mode-segment-btn"
             :class="{ 'mode-segment-btn-active': mode === 'test' }"

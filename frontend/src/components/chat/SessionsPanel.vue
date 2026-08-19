@@ -91,6 +91,8 @@ const {
 <template>
   <div class="sessions-panel-header">
     <span v-if="!collapsed" class="sessions-panel-title">Sessions</span>
+    <div style="display: flex">
+
     <div v-if="!collapsed && (allowCreate || allowImport)" class="sessions-panel-header-actions">
       <button v-if="allowImport" type="button" class="sessions-panel-icon-btn" title="Import transcript" @click="triggerImport">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
@@ -109,6 +111,8 @@ const {
       :title="collapsed ? 'Expand sessions' : 'Collapse sessions'"
       @click="emit('update:collapsed', !collapsed)"
     >{{ collapsed ? '◂' : '▸' }}</button>
+  </div>
+
   </div>
 
   <template v-if="!collapsed">

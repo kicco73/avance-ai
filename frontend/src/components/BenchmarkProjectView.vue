@@ -507,20 +507,20 @@ onBeforeUnmount(() => {
             <div class="benchmark-chat-toolbar-actions">
               <button
                 type="button"
+                class="benchmark-unlabel-all-btn"
+                :disabled="!hasAnyAnnotations || unlabelingAll"
+                @click="onUnlabelAll"
+              >
+                {{ unlabelingAll ? 'Unlabelling…' : 'Unlabel all' }}
+              </button>
+              <button
+                type="button"
                 class="benchmark-mark-done-btn"
                 :class="{ 'benchmark-mark-done-btn-active': currentSessionLabeled }"
                 :disabled="!currentSessionId || markingDone"
                 @click="onToggleMarkDone"
               >
                 {{ currentSessionLabeled ? '✓ Done' : 'Mark done' }}
-              </button>
-              <button
-                type="button"
-                class="benchmark-unlabel-all-btn"
-                :disabled="!hasAnyAnnotations || unlabelingAll"
-                @click="onUnlabelAll"
-              >
-                {{ unlabelingAll ? 'Unlabelling…' : 'Unlabel all' }}
               </button>
             </div>
           </div>
