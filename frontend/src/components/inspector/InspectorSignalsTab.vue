@@ -259,7 +259,12 @@ onMounted(loadSignals)
               @click.stop
               @blur="commitSignalField('ui-description', editUiDescription, entry.signal.ui_description ?? '')"
             ></textarea>
-            <label class="inspector-signal-form-label">Definition</label>
+            <label class="inspector-signal-form-label">
+              Definition
+              <span class="inspector-ai-field-icon" title="Read by the AI">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zM11.5 9.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>
+              </span>
+            </label>
             <textarea
               v-model="editDefinition"
               v-autosize
@@ -328,8 +333,12 @@ onMounted(loadSignals)
    to read as one consistent editing affordance across the Inspector. */
 .inspector-signal-label-input { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; border: 1px solid transparent; border-radius: 4px; padding: 0.1rem 0.3rem; background: transparent; }
 .inspector-signal-label-input:hover, .inspector-signal-label-input:focus { border-color: #ccc; background: white; }
-.inspector-signal-form-label { display: block; margin: 0.4rem 0 0.15rem; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #777; }
-.inspector-signal-textarea { display: block; width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 0.78rem; padding: 0.35rem 0.5rem; border-radius: 6px; border: 1px solid #ccc; }
+.inspector-signal-form-label { display: block; margin: 12px 0 0.15rem; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #777; }
+/* Marks a field the AI itself reads (as opposed to a purely
+   human-facing one like Description) — same purple used for its
+   InspectorDetailCard.vue counterpart on Contextual prompt. */
+.inspector-ai-field-icon { display: inline-flex; vertical-align: middle; margin-left: 0.3rem; color: #8b5cf6; }
+.inspector-signal-textarea { display: block; width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 0.78rem; line-height: 1.54; padding: 0.35rem 0.5rem; border-radius: 6px; border: 1px solid #ccc; }
 .inspector-signal-ui_description { font-size: 0.78rem; color: #666; line-height: 1.4; }
 .inspector-signal-bar-track { position: relative; margin-top: 0.4rem; height: 10px; border-radius: 999px; background: #eee; overflow: visible; }
 .inspector-signal-bar-fill { height: 100%; background: #4a6fa5; border-radius: 999px; transition: width 0.3s ease; }

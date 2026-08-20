@@ -18,6 +18,16 @@ const props = defineProps({
   autoJumpOnHighlightChange: { type: Boolean, default: false },
   nextActionEdge: { type: Object, default: null },
   firedActionEdge: { type: Object, default: null },
+  // The Inspector's own "State"/"Actions" tab selection ({kind, data} |
+  // null, see InspectorGraph.vue's own 'select' emit shape) — fed back in
+  // by a caller whose selection can also change from *outside* this
+  // graph (e.g. IndexYmlEditorView.vue's own Actions-tab row click),
+  // so a selection made there still shows up highlighted here even
+  // though no tap on this graph itself produced it. A tap on this graph
+  // still applies the highlight immediately, synchronously, via
+  // selectGraphElement below — this prop is what keeps every *other*
+  // selection path in sync with it.
+  selectedElement: { type: Object, default: null },
   annotatable: { type: Boolean, default: false },
   expectedState: { type: String, default: null },
   // Whether the session being annotated was imported (see ChatSession.
@@ -160,6 +170,18 @@ function selectGraphElement(kind, data) {
   emit('select', kind == null ? null : { kind, data })
 }
 
+// Mirrors whatever selectedElement now is onto the graph's own highlight
+// — the counterpart to selectGraphElement above for a selection this
+// graph didn't itself produce (see selectedElement's own docstring).
+// Deliberately doesn't emit 'select' back out: that would just hand the
+// exact same {kind, data} straight back to whoever's already holding it
+// as this very prop.
+function applySelectedElementHighlight() {
+  if (!cyGraph) return
+  const element = props.selectedElement
+  applySelectionHighlight(element?.kind ?? null, element?.data ?? null)
+}
+
 function handleNodeTap(evt) {
   const data = evt.target.data()
   if (data.isPseudoStart) return // not a real state — nothing to select/jump to
@@ -234,6 +256,7 @@ function renderGraph(nodes, edges) {
   applyNextActionHighlight()
   applyFiredActionHighlight()
   syncSelectionToSelection()
+  applySelectedElementHighlight()
 }
 
 async function loadGraph() {
@@ -324,6 +347,7 @@ async function refresh(active) {
 watch(() => props.highlightedStateKey, () => { applyCurrentStateHighlight(); syncSelectionToSelection({ emitJump: props.autoJumpOnHighlightChange }) })
 watch(() => props.nextActionEdge, applyNextActionHighlight, { deep: true })
 watch(() => props.firedActionEdge, () => { applyFiredActionHighlight(); syncSelectionToSelection({ emitJump: props.autoJumpOnHighlightChange }) }, { deep: true })
+watch(() => props.selectedElement, applySelectedElementHighlight, { deep: true })
 
 // Lookups for the Inspector's own "State"/"Actions" tabs (see
 // EditProjectView.vue's own inspectorTabs, shown instead of this

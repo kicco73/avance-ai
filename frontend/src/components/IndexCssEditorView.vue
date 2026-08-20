@@ -112,23 +112,25 @@ defineExpose({ content, isDirty, saving, save, discard, undo, redo })
           <option value="">— Preview state —</option>
           <option v-for="node in stateNodes" :key="node.key" :value="node.key">{{ node.ui_label }}</option>
         </select>
-        <button
-          class="undo-redo-btn"
-          title="Undo"
-          :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.canUndo"
-          @click="codeEditorRef?.undo()"
-        >↶</button>
-        <button
-          class="undo-redo-btn"
-          title="Redo"
-          :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.canRedo"
-          @click="codeEditorRef?.redo()"
-        >↷</button>
-        <button
-          class="save-btn"
-          :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.isDirty"
-          @click="codeEditorRef?.save()"
-        >{{ codeEditorRef?.saving ? 'Saving…' : 'Save' }}</button>
+        <template v-if="segment === 'code'">
+          <button
+            class="undo-redo-btn"
+            title="Undo"
+            :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.canUndo"
+            @click="codeEditorRef?.undo()"
+          >↶</button>
+          <button
+            class="undo-redo-btn"
+            title="Redo"
+            :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.canRedo"
+            @click="codeEditorRef?.redo()"
+          >↷</button>
+          <button
+            class="save-btn"
+            :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.isDirty"
+            @click="codeEditorRef?.save()"
+          >{{ codeEditorRef?.saving ? 'Saving…' : 'Save' }}</button>
+        </template>
       </div>
     </div>
 

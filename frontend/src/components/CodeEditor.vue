@@ -15,6 +15,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Compartment } from '@codemirror/state'
 import { EditorView, basicSetup } from 'codemirror'
 import { keymap } from '@codemirror/view'
+import { indentWithTab } from '@codemirror/commands'
 import { yaml } from '@codemirror/lang-yaml'
 import { css } from '@codemirror/lang-css'
 import { getProjectFile, putProjectFile, undoProjectFile, redoProjectFile } from '../api.js'
@@ -84,7 +85,8 @@ function createEditor(doc) {
           if (!loading.value && !saving.value && isDirty.value) save()
           return true
         }
-      }
+      },
+      indentWithTab
     ])
   ]
   if (contentType.value === 'text/yaml') extensions.splice(1, 0, yaml())

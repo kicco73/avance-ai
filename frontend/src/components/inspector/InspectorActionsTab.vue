@@ -133,7 +133,8 @@ function handleDragEnd() {
 
 <template>
   <div class="inspector-actions-tab">
-    <p v-if="!actions.length" class="inspector-actions-tab-empty">This state has no actions.</p>
+    <p v-if="!actions.length && !selectedElement" class="inspector-actions-tab-empty">No action selected.</p>
+    <p v-else-if="!actions.length" class="inspector-actions-tab-empty">This state has no actions.</p>
     <div
       v-for="(action, index) in actions"
       :key="action.data.actionName"

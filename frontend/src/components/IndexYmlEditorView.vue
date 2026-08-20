@@ -28,7 +28,13 @@ const props = defineProps({
   highlightedStateKey: { type: String, default: null },
   autoJumpOnHighlightChange: { type: Boolean, default: false },
   nextActionEdge: { type: Object, default: null },
-  firedActionEdge: { type: Object, default: null }
+  firedActionEdge: { type: Object, default: null },
+  // EditProjectView.vue's own Inspector "State"/"Actions" tab selection —
+  // forwarded straight to InspectorGraph so a selection made there (e.g.
+  // clicking a row in the Actions tab) still shows up highlighted in this
+  // view's own graph, not just a selection made by tapping the graph
+  // itself (see InspectorGraph.vue's own selectedElement prop docstring).
+  selectedElement: { type: Object, default: null }
 })
 
 const emit = defineEmits(['jump-to-definition', 'select', 'saved'])
@@ -146,6 +152,7 @@ defineExpose({
         :auto-jump-on-highlight-change="autoJumpOnHighlightChange"
         :next-action-edge="nextActionEdge"
         :fired-action-edge="firedActionEdge"
+        :selected-element="selectedElement"
         @jump-to-definition="emit('jump-to-definition', $event)"
         @select="emit('select', $event)"
       />

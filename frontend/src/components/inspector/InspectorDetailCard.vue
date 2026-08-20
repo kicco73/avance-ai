@@ -317,7 +317,12 @@ function selectAttachment(fileName) {
               @click.stop
               @blur="commitUiDescription"
             ></textarea>
-            <label class="inspector-detail-form-label">Contextual prompt</label>
+            <label class="inspector-detail-form-label">
+              Contextual prompt
+              <span class="inspector-ai-field-icon" title="Read by the AI">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zM11.5 9.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>
+              </span>
+            </label>
             <textarea
               v-model="editContextualPrompt"
               v-autosize
@@ -429,8 +434,12 @@ function selectAttachment(fileName) {
 .inspector-detail-title { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .inspector-detail-title-input { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; border: 1px solid transparent; border-radius: 4px; padding: 0.1rem 0.3rem; background: transparent; }
 .inspector-detail-title-input:hover, .inspector-detail-title-input:focus { border-color: #ccc; background: white; }
-.inspector-detail-form-label { display: block; margin: 0.5rem 0 0.2rem; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #777; }
-.inspector-detail-textarea { display: block; width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 0.8rem; padding: 0.4rem 0.5rem; border-radius: 6px; border: 1px solid #ccc; }
+.inspector-detail-form-label { display: block; margin: 12px 0 0.2rem; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #777; }
+/* Marks a field the AI itself reads (as opposed to a purely
+   human-facing one like Description) — same purple used for its
+   InspectorSignalsTab.vue counterpart on Definition. */
+.inspector-ai-field-icon { display: inline-flex; vertical-align: middle; margin-left: 0.3rem; color: #8b5cf6; }
+.inspector-detail-textarea { display: block; width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 0.8rem; line-height: 1.54; padding: 0.4rem 0.5rem; border-radius: 6px; border: 1px solid #ccc; }
 .inspector-detail-target-select { display: inline-block; width: auto; max-width: 100%; font: inherit; font-weight: 700; font-size: inherit; color: #333; padding: 0.05rem 0.2rem; border-radius: 4px; border: 1px solid transparent; background: transparent; cursor: pointer; }
 .inspector-detail-target-select:hover, .inspector-detail-target-select:focus { border-color: #ccc; background: white; }
 .close-x-btn { flex-shrink: 0; width: 1.4rem; height: 1.4rem; line-height: 1; border: none; border-radius: 6px; background: none; color: #666; cursor: pointer; font-size: 1rem; }

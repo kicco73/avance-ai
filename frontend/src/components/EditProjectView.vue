@@ -313,14 +313,13 @@ const stateTabElement = computed(() => {
   const key = selectedStateKey.value
   return key == null ? null : (indexYmlEditorRef.value?.stateElementFor(key) ?? null)
 })
-// No selection at all falls back to the init-action — the one action of
-// the automaton's own synthetic "" state (see InspectorGraph.vue's own
-// edgeToCyData/isInitEdge) — rather than an empty list, so "Actions" always
-// has something to show (see inspectorTabs below, no longer gated on a
-// selection existing first).
+// No selection at all means an empty list — showing the init-action's
+// own state (key "", see InspectorGraph.vue's own edgeToCyData/
+// isInitEdge) here without anything actually selected in the Graph would
+// make "Actions" look like a selection exists when it doesn't.
 const actionsTabList = computed(() => {
-  const key = selectedStateKey.value ?? ''
-  return indexYmlEditorRef.value?.actionsForState(key) ?? []
+  const key = selectedStateKey.value
+  return key == null ? [] : (indexYmlEditorRef.value?.actionsForState(key) ?? [])
 })
 
 // The tab set this view's own Inspector shows — see Inspector.vue's own
@@ -1535,6 +1534,7 @@ onBeforeUnmount(() => {
                 :auto-jump-on-highlight-change="true"
                 :next-action-edge="selected ? null : nextAction"
                 :fired-action-edge="firedActionEdge"
+                :selected-element="selectedGraphElement"
                 @jump-to-definition="(target) => jumpToDefinition(target, { silent: true })"
                 @select="selectedGraphElement = $event"
                 @saved="handleFileSaved"
