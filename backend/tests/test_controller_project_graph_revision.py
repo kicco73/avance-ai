@@ -52,7 +52,7 @@ def _setup_pinned_session(client) -> int:
     session_response = client.get("/api/chat/session")
     assert session_response.status_code == 200, session_response.text
     session_id = session_response.json()["id"]
-    action_response = client.post("/api/action", json={"action_name": "go", "session_id": session_id})
+    action_response = client.post(f"/api/chat/sessions/{session_id}/action", json={"action_name": "go"})
     assert action_response.status_code == 200, action_response.text
     return session_id
 
@@ -101,7 +101,7 @@ class TestGetProjectGraphRevision:
         # with no real action fired yet is wiped by _finalize_project_
         # update's own "current_state can't be determined" cleanup, the
         # next time the active project is edited.
-        action_response = client.post("/api/action", json={"action_name": "go", "session_id": test_session_id})
+        action_response = client.post(f"/api/chat/sessions/{test_session_id}/action", json={"action_name": "go"})
         assert action_response.status_code == 200, action_response.text
 
         client.put("/api/projects/proj", content=THREE_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
@@ -125,7 +125,7 @@ class TestGetProjectSignalsRevision:
         client.post("/api/projects/proj/publish", json={})
         session_response = client.get("/api/chat/session")
         session_id = session_response.json()["id"]
-        client.post("/api/action", json={"action_name": "go", "session_id": session_id})
+        client.post(f"/api/chat/sessions/{session_id}/action", json={"action_name": "go"})
 
         client.put(
             "/api/projects/proj",
@@ -147,7 +147,7 @@ class TestGetProjectEnvKeysRevision:
         client.post("/api/projects/proj/publish", json={})
         session_response = client.get("/api/chat/session")
         session_id = session_response.json()["id"]
-        client.post("/api/action", json={"action_name": "go", "session_id": session_id})
+        client.post(f"/api/chat/sessions/{session_id}/action", json={"action_name": "go"})
 
         client.put(
             "/api/projects/proj",

@@ -60,7 +60,7 @@ def _upload_and_activate(client, name: str, yaml_text: str):
 def test_returns_one_dict_per_namespace_for_the_active_project(client):
     _upload_and_activate(client, "identifiers-proj", PROJECT)
 
-    response = client.get("/api/chat/identifiers")
+    response = client.get("/api/projects/identifiers-proj/identifiers")
 
     assert response.status_code == 200
     body = response.json()
@@ -85,10 +85,10 @@ def test_returns_one_dict_per_namespace_for_the_active_project(client):
     assert set(body["metric"]) == {"retention", "activity_consistency"}
 
 
-def test_404_when_no_project_is_active(client):
-    response = client.get("/api/chat/identifiers")
+def test_400_for_a_project_that_has_never_been_published(client):
+    response = client.get("/api/projects/does-not-exist/identifiers")
 
-    assert response.status_code == 404
+    assert response.status_code == 400
 
 
 OTHER_PROJECT = """
@@ -112,7 +112,7 @@ def test_automaton_namespace_lists_every_other_project_never_the_active_one(clie
     _upload_and_activate(client, "other-proj", OTHER_PROJECT)
     _upload_and_activate(client, "identifiers-proj", PROJECT)  # re-activates identifiers-proj
 
-    response = client.get("/api/chat/identifiers")
+    response = client.get("/api/projects/identifiers-proj/identifiers")
 
     assert response.status_code == 200
     body = response.json()

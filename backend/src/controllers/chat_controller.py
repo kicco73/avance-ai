@@ -79,21 +79,9 @@ class ChatController(BaseController):
 
     @get("/api/chat/env")
     def get_env(self, message_id: int | None = None):
-        """{"stored": ..., "action_set": ...} — the active user+project's
-        current "environment" memory (see tracking.env.Env), split so the
-        "Edit project" view's Inspector Env tab knows which section each
-        value belongs in ("AI"/"ACTION") and which are actually
-        editable/deletable (only the stored — "AI" — ones, see PUT/DELETE
-        below; "ACTION" values are only ever cleared as a whole, see
-        DELETE /api/chat/action-env). No "computed" section anymore —
-        system/session/metric facts (see tracking.evaluation_scope.
-        EvaluationScopeBuilder) are evaluation-scope-only now, never
-        rendered in the Inspector (see GET /api/chat/identifiers instead,
-        for what's actually referenceable). Live/current, or
-        (`message_id` given) as of that exact message — same
-        point-in-time convention as GET /api/chat/metrics. ChatServiceError
-        (404 for an unknown/not-yours `message_id`) is handled globally,
-        see error_handlers.py."""
+        """{"stored": ..., "action_set": ...} — the active project's
+        "environment" memory, split so the Inspector Env tab knows which
+        section each value belongs in (only "stored" is editable)."""
         return self.chat_service.get_env(message_id)
 
     @delete("/api/chat/env")
@@ -137,32 +125,25 @@ class ChatController(BaseController):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/chat/identifiers")
-    def get_identifiers(self, project_name: str | None = None):
-        """`project_name`'s own identifier registry (omitted: the active
-        project — see automaton.identifier_registry.build_registry/
-        ProjectService.get_active_identifier_registry) — every identifier
-        a trigger/`env:` expression can reference, one {identifier:
-        description} dict per namespace (signal, env, system, session,
-        session.metric, metric)."""
+    @get("/api/projects/{project_name}/identifiers")
+    def get_identifiers(self, project_name: str):
+        """`project_name`'s own identifier registry — every identifier a
+        trigger/`env:` expression can reference, one {identifier:
+        description} dict per namespace."""
         try:
-            return self.project_service.get_active_identifier_registry(project_name)
+            return self.project_service.get_identifier_registry(project_name)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/chat/metrics")
-    def get_metrics(self, message_id: int | None = None, project_name: str | None = None):
-        """Computes the metrics_framework's core metrics for
-        `project_name` (omitted: the active project) on demand — no
-        caching, see metrics_framework/README.md. For the "Edit project"
-        view's Inspector Metrics tab (no `message_id`/`project_name`,
-        always the active project's live/current history) and the
-        "Label sessions" view's point-in-time Inspector (`message_id`
-        restricts the history to what existed at or before that exact
-        message, `project_name` its own props.projectName explicitly).
-        ChatServiceError (404 for an unknown/not-yours `message_id`) is
+    @get("/api/projects/{project_name}/metrics")
+    def get_metrics(self, project_name: str, message_id: int | None = None):
+        """Core metrics for `project_name`, live or (`message_id` given)
+        as of that exact message — no caching, see metrics_framework/
+        README.md. ChatServiceError (unknown/not-yours message_id) is
         handled globally, see error_handlers.py."""
-        return self.chat_service.get_metrics(message_id, project_name=project_name)
+        return self.chat_service.get_metrics(project_name=project_name, message_id=message_id)
 
     @get("/api/state")
     def get_state(self):
@@ -224,28 +205,27 @@ class ChatController(BaseController):
         superseding whichever session was previously current."""
         return self.chat_service.create_session()
 
-    @get("/api/chat/sessions")
-    def get_sessions(self, include_imported: bool = False, project_name: str | None = None):
-        """Every session for `project_name` (omitted: the active
-        project), for the chat's "Sessions" side panel — see
-        ChatService.list_sessions."""
+    @get("/api/projects/{project_name}/sessions")
+    def get_sessions(self, project_name: str, include_imported: bool = False):
+        """Every session for `project_name`, for the "Sessions" side
+        panel — see ChatService.list_sessions."""
         return self.chat_service.list_sessions(include_imported=include_imported, project_name=project_name)
 
-    @get("/api/chat/messages")
+    @get("/api/chat/sessions/{session_id}/messages")
     async def get_messages(self, session_id: int):
         return await self.chat_service.get_messages(session_id)
 
-    @post("/api/chat/messages")
-    async def post_message(self, req: ChatMessageRequest):
+    @post("/api/chat/sessions/{session_id}/messages")
+    async def post_message(self, session_id: int, req: ChatMessageRequest):
         text = req.message.strip()
         if not text:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Message cannot be empty.")
-        return await self.chat_service.process_turn(req.session_id, text)
+        return await self.chat_service.process_turn(session_id, text)
 
-    @post("/api/action")
-    async def post_action(self, req: ActionRequest):
+    @post("/api/chat/sessions/{session_id}/action")
+    async def post_action(self, session_id: int, req: ActionRequest):
         try:
-            return await self.chat_service.apply_manual_action(req.action_name, req.session_id)
+            return await self.chat_service.apply_manual_action(req.action_name, session_id)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 

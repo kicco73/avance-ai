@@ -6,7 +6,7 @@
 // every piece of state here is a prop owned by EditProjectView.vue, every
 // user action is emitted back up to the exact same handler that already
 // existed there (handleUploadFile, handleNewFile, handleDeleteFile,
-// selectFile, handleDownload) rather than reimplemented locally.
+// selectFile) rather than reimplemented locally.
 import { ref } from 'vue'
 
 defineProps({
@@ -19,7 +19,7 @@ defineProps({
   explorerWidth: { type: Number, required: true }
 })
 
-const emit = defineEmits(['new-file', 'delete-file', 'select-file', 'download', 'upload-file'])
+const emit = defineEmits(['new-file', 'delete-file', 'select-file', 'upload-file'])
 
 const fileInputRef = ref(null)
 
@@ -74,7 +74,6 @@ function triggerUpload() {
         </button>
       </li>
     </ul>
-    <button class="file-explorer-download-btn" @click="emit('download')">Download project</button>
   </div>
 </template>
 
@@ -86,8 +85,6 @@ function triggerUpload() {
 .file-explorer-icon-btn { display: flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: 6px; border: 1px solid #4a6fa5; background: white; color: #4a6fa5; cursor: pointer; padding: 0; font-size: 0.9rem; line-height: 1; }
 .file-explorer-icon-btn:hover:not(:disabled) { background: #4a6fa5; color: white; }
 .file-explorer-icon-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.file-explorer-download-btn { flex-shrink: 0; width: 100%; padding: 0.5rem; border: none; border-top: 1px solid #ddd; border-radius: 0; background: #f7f8fa; color: #4a6fa5; cursor: pointer; font-size: 0.8rem; font-weight: 600; }
-.file-explorer-download-btn:hover { background: #eef2f9; }
 .file-explorer-upload-input { display: none; }
 .file-explorer-status { margin: 0; padding: 0.6rem; font-size: 0.85rem; color: #444; }
 .file-explorer-list { list-style: none; margin: 0; padding: 0.3rem; overflow-y: auto; flex: 1; }

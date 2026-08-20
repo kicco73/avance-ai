@@ -30,7 +30,7 @@ def _upload_and_reach_b(client):
     assert resp.status_code == 200, resp.text
 
     session = client.get("/api/chat/session").json()
-    action_resp = client.post("/api/action", json={"action_name": "go", "session_id": session["id"]})
+    action_resp = client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "go"})
     assert action_resp.status_code == 200, action_resp.text
     assert action_resp.json()["state"]["key"] == "b"
     return session
@@ -45,7 +45,7 @@ def test_editing_a_file_without_touching_the_current_state_keeps_the_conversatio
     resp = client.put("/api/projects/proj/files/index.yml", content=yml_v2.encode())
     assert resp.status_code == 200, resp.text
 
-    sessions = client.get("/api/chat/sessions").json()
+    sessions = client.get("/api/projects/proj/sessions").json()
     assert [s["id"] for s in sessions] == [session["id"]]
     assert client.get("/api/state").json()["key"] == "b"
 
@@ -58,7 +58,7 @@ def test_editing_a_file_that_removes_the_current_state_resets_the_conversation(c
     resp = client.put("/api/projects/proj/files/index.yml", content=yml_v2.encode())
     assert resp.status_code == 200, resp.text
 
-    assert client.get("/api/chat/sessions").json() == []
+    assert client.get("/api/projects/proj/sessions").json() == []
     assert client.get("/api/state").json()["key"] == "a"
 
 
@@ -84,7 +84,7 @@ def test_editing_a_file_that_renames_the_current_state_resets_the_conversation(c
     resp = client.put("/api/projects/proj/files/index.yml", content=yml_v2.encode())
     assert resp.status_code == 200, resp.text
 
-    assert client.get("/api/chat/sessions").json() == []
+    assert client.get("/api/projects/proj/sessions").json() == []
     assert client.get("/api/state").json()["key"] == "a"
 
 
@@ -105,6 +105,6 @@ def test_editing_an_unrelated_project_does_not_touch_the_active_ones_conversatio
     resp = client.put("/api/projects/other/files/index.yml", content=b"init-action:\n  target: y\nstates:\n  y:\n    contextual-prompt: hi\n")
     assert resp.status_code == 200, resp.text
 
-    sessions = client.get("/api/chat/sessions").json()
+    sessions = client.get("/api/projects/proj/sessions").json()
     assert [s["id"] for s in sessions] == [session["id"]]
     assert client.get("/api/state").json()["key"] == "b"

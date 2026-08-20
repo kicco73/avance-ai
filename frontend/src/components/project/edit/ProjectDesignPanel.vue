@@ -9,7 +9,7 @@
 // EditProjectView.vue and handed down as a prop, every user action is
 // emitted back up to the exact same handler that already existed there
 // (selectFile, handleUploadFile, handleNewFile, handleDeleteFile,
-// handleDownload, jumpToDefinition, handleFileSaved, ...) rather than
+// jumpToDefinition, handleFileSaved, ...) rather than
 // re-implemented locally — this component owns no persistence, no
 // unsaved-changes guarding, none of that.
 //
@@ -50,7 +50,7 @@ defineProps({
 })
 
 const emit = defineEmits([
-  'start-explorer-drag', 'new-file', 'delete-file', 'select-file', 'download', 'upload-file',
+  'start-explorer-drag', 'new-file', 'delete-file', 'select-file', 'upload-file',
   'jump-to-definition', 'select', 'saved'
 ])
 
@@ -74,7 +74,6 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef })
       @new-file="emit('new-file')"
       @delete-file="emit('delete-file', $event)"
       @select-file="emit('select-file', $event)"
-      @download="emit('download')"
       @upload-file="emit('upload-file', $event)"
     />
 

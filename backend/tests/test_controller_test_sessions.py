@@ -100,7 +100,7 @@ def test_a_test_session_never_appears_in_the_regular_sessions_list(client):
     _publish(client, "isolation-1")
     test_session = client.post("/api/projects/isolation-1/test-sessions").json()
 
-    body = client.get("/api/chat/sessions").json()
+    body = client.get("/api/projects/isolation-1/sessions").json()
 
     assert test_session["id"] not in [s["id"] for s in body]
 
@@ -138,9 +138,7 @@ def test_a_chat_turn_against_a_test_session_is_accepted_as_active(client):
     _publish(client, "isolation-4")
     test_session = client.post("/api/projects/isolation-4/test-sessions").json()
 
-    response = client.post(
-        "/api/chat/messages", json={"message": "hi", "session_id": test_session["id"]}
-    )
+    response = client.post(f"/api/chat/sessions/{test_session['id']}/messages", json={"message": "hi"})
 
     assert response.status_code == 200
 
@@ -177,7 +175,7 @@ def test_a_turn_against_a_test_session_sees_a_draft_edit_made_after_it_was_creat
     # _finalize_project_update's own reset-on-save (current_state_key is
     # None, "genuinely nowhere valid to resume from") wipes this session
     # right back out from under the test, unrelated to the bug under test.
-    assert client.get(f"/api/chat/messages?session_id={test_session['id']}").status_code == 200
+    assert client.get(f"/api/chat/sessions/{test_session['id']}/messages").status_code == 200
 
     # Edits the draft *after* the test session above already exists —
     # never published, so a native/pinned session would have no idea
@@ -186,8 +184,6 @@ def test_a_turn_against_a_test_session_sees_a_draft_edit_made_after_it_was_creat
         "/api/projects/test-session-sees-live-draft/states/a/actions"
     ).json()
 
-    response = client.post(
-        "/api/action", json={"action_name": new_action["name"], "session_id": test_session["id"]}
-    )
+    response = client.post(f"/api/chat/sessions/{test_session['id']}/action", json={"action_name": new_action["name"]})
 
     assert response.status_code == 200

@@ -22,7 +22,7 @@ import ErrorBanner from '../ErrorBanner.vue'
 // clearChatUi), this only emits the same events those buttons used to,
 // so App.vue's own handlers/wiring didn't need to change at all, just
 // which component they're attached to.
-const emit = defineEmits(['close', 'new-project', 'upload', 'delete', 'edit', 'benchmark'])
+const emit = defineEmits(['close', 'new-project', 'upload', 'delete', 'edit', 'benchmark', 'download'])
 
 const rows = ref([])
 const loading = ref(true)
@@ -84,6 +84,10 @@ function selectBenchmark(name) {
   emit('benchmark', name)
 }
 
+function selectDownload(name) {
+  emit('download', name)
+}
+
 function statusLabel(status) {
   if (status === 'running') return 'Running'
   if (status === 'manually_paused') return 'Manually paused'
@@ -128,6 +132,7 @@ defineExpose({ refresh: load })
             <th>Revision</th>
             <th>Published</th>
             <th class="manage-projects-col-benchmark"></th>
+            <th class="manage-projects-col-download"></th>
             <th class="manage-projects-col-delete"></th>
           </tr>
         </thead>
@@ -161,6 +166,18 @@ defineExpose({ refresh: load })
               >
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
                   <path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.41l9 9c.36.36.86.59 1.41.59s1.05-.23 1.41-.59l7-7c.37-.36.59-.86.59-1.41s-.23-1.06-.59-1.42zM6.5 8C5.67 8 5 7.33 5 6.5S5.67 5 6.5 5 8 5.67 8 6.5 7.33 8 6.5 8z" />
+                </svg>
+              </button>
+            </td>
+            <td class="manage-projects-col-download">
+              <button
+                type="button"
+                class="manage-projects-download-btn"
+                title="Download project"
+                @click="selectDownload(row.name)"
+              >
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
+                  <path d="M12 3a1 1 0 0 1 1 1v9.59l2.3-2.3a1 1 0 1 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.42l2.3 2.3V4a1 1 0 0 1 1-1zM5 19a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1z" />
                 </svg>
               </button>
             </td>
@@ -281,6 +298,10 @@ defineExpose({ refresh: load })
   width: 2.2rem;
 }
 
+.manage-projects-col-download {
+  width: 2.2rem;
+}
+
 .manage-projects-col-delete {
   width: 2.2rem;
 }
@@ -365,6 +386,24 @@ defineExpose({ refresh: load })
 }
 
 .manage-projects-benchmark-btn:hover {
+  background: #f0f4fa;
+}
+
+.manage-projects-download-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: #4a6fa5;
+  cursor: pointer;
+}
+
+.manage-projects-download-btn:hover {
   background: #f0f4fa;
 }
 

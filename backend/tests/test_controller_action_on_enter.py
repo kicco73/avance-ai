@@ -38,7 +38,7 @@ def _upload_and_get_session(client):
 def test_manual_action_reports_the_fired_actions_own_on_enter(client):
     session = _upload_and_get_session(client)
 
-    resp = client.post("/api/action", json={"action_name": "go-loud", "session_id": session["id"]})
+    resp = client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "go-loud"})
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -49,7 +49,7 @@ def test_manual_action_reports_the_fired_actions_own_on_enter(client):
 def test_manual_action_without_on_enter_reports_none_even_for_the_same_target_state(client):
     session = _upload_and_get_session(client)
 
-    resp = client.post("/api/action", json={"action_name": "go-quiet", "session_id": session["id"]})
+    resp = client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "go-quiet"})
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -62,7 +62,7 @@ def test_state_payload_never_carries_on_enter_itself(client):
     from there for good, not just unused."""
     session = _upload_and_get_session(client)
 
-    resp = client.post("/api/action", json={"action_name": "go-loud", "session_id": session["id"]})
+    resp = client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "go-loud"})
 
     assert "on-enter" not in resp.json()["state"]
     for action in resp.json()["state"]["actions"]:

@@ -15,7 +15,7 @@ pytestmark = pytest.mark.contract
 @pytest.mark.contract
 def test_put_comment_sets_and_is_visible_in_session_signals(client, hello_project):
     session = client.get("/api/chat/session").json()
-    turn = client.post("/api/chat/messages", json={"message": "hi", "session_id": session["id"]}).json()
+    turn = client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}).json()
     message_id = turn["assistant_message_id"]
 
     response = client.put(f"/api/chat/messages/{message_id}/comment", json={"comment": "Worth a second look."})
@@ -30,7 +30,7 @@ def test_put_comment_sets_and_is_visible_in_session_signals(client, hello_projec
 @pytest.mark.contract
 def test_put_comment_clears_with_null(client, hello_project):
     session = client.get("/api/chat/session").json()
-    turn = client.post("/api/chat/messages", json={"message": "hi", "session_id": session["id"]}).json()
+    turn = client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}).json()
     message_id = turn["assistant_message_id"]
     client.put(f"/api/chat/messages/{message_id}/comment", json={"comment": "note"})
 
@@ -43,7 +43,7 @@ def test_put_comment_clears_with_null(client, hello_project):
 @pytest.mark.contract
 def test_put_comment_strips_whitespace_and_treats_blank_as_clear(client, hello_project):
     session = client.get("/api/chat/session").json()
-    turn = client.post("/api/chat/messages", json={"message": "hi", "session_id": session["id"]}).json()
+    turn = client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}).json()
     message_id = turn["assistant_message_id"]
 
     padded = client.put(f"/api/chat/messages/{message_id}/comment", json={"comment": "  spaced out  "})
@@ -61,7 +61,7 @@ def test_put_comment_succeeds_for_a_non_evaluation_point_message(client, hello_p
     _require_commentable_message, which materializes a bare row rather
     than raising)."""
     session = client.get("/api/chat/session").json()
-    turn = client.post("/api/chat/messages", json={"message": "hi", "session_id": session["id"]}).json()
+    turn = client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}).json()
     message_id = turn["assistant_message_id"]
 
     response = client.put(f"/api/chat/messages/{message_id}/comment", json={"comment": "still commentable"})
@@ -79,13 +79,13 @@ def test_put_comment_is_404_for_an_unknown_message(client, hello_project):
 @pytest.mark.regression
 def test_put_comment_does_not_disturb_expected_state_on_the_same_row(client, hello_project):
     session = client.get("/api/chat/session").json()
-    client.post("/api/chat/messages", json={"message": "hi", "session_id": session["id"]})
+    client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})
     # "Hello world" evaluates on the user's own message by default — pick
     # whichever side already has a real Tracking row so this exercises a
     # comment written alongside an existing expected_state, not a bare
     # materialized row.
     session_id = session["id"]
-    messages = client.get(f"/api/chat/messages?session_id={session_id}").json()
+    messages = client.get(f"/api/chat/sessions/{session_id}/messages").json()
     user_message_id = next(m["id"] for m in messages if m["role"] == "user")
     client.put(f"/api/chat/messages/{user_message_id}/expected-state", json={"expected_state": "Hello"})
 

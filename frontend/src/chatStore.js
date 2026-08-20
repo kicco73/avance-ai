@@ -211,26 +211,17 @@ export async function loadMessages() {
   }
 }
 
-// testModeProjectName set (see its own docstring): EditProjectView.vue's
-// own embedded "Test" chat's own sessions — includeImported is ignored
-// there, since a "Test" session and an imported one are never the same
-// list. testModeProjectName null: every other caller, unchanged
-// (includeImported only ever true from LabelProjectView.vue).
-// `projectName`, when given, is passed straight through to getSessions —
-// LabelProjectView.vue's own caller always passes its own
-// props.projectName explicitly (never relying on "whichever project is
-// currently active" the way the main chat's own Sessions panel omitting
-// it intentionally does), so reviewing project A's sessions never
-// silently follows project B becoming active in the meantime (e.g. via
-// uploading it). Ignored whenever testModeProjectName is set — that pool
-// (EditProjectView.vue's own embedded "Test" chat) is already scoped by
-// testModeProjectName instead, a separate mechanism of its own.
+// testModeProjectName set: EditProjectView.vue's own embedded "Test"
+// chat's own sessions, a separate pool of its own. `projectName` omitted
+// falls back to currentProjectName (the main chat's own case); Label/
+// Auto views always pass their own props.projectName explicitly, so
+// reviewing project A never silently follows project B becoming active.
 export async function loadSessions(includeImported = false, projectName = null) {
   sessionsLoading.value = true
   try {
     sessions.value = testModeProjectName.value != null
       ? await getTestSessions(testModeProjectName.value)
-      : await getSessions(includeImported, projectName)
+      : await getSessions(projectName ?? currentProjectName.value, includeImported)
   } catch {
     // already surfaced via apiFetch
   } finally {
@@ -239,16 +230,13 @@ export async function loadSessions(includeImported = false, projectName = null) 
 }
 
 // Same fetch as loadSessions, but never touches sessionsLoading — for a
-// caller that just wants `sessions` (e.g. its own has_annotations flags)
-// brought current in the background, without flashing the shared Sessions
-// panel (main page, EditProjectView, LabelProjectView all read the
-// same sessionsLoading) to its "Loading…" placeholder over something the
-// user never asked to reload.
+// caller that just wants `sessions` brought current in the background,
+// without flashing the shared Sessions panel to "Loading…".
 export async function refreshSessionsQuietly(includeImported = false, projectName = null) {
   try {
     sessions.value = testModeProjectName.value != null
       ? await getTestSessions(testModeProjectName.value)
-      : await getSessions(includeImported, projectName)
+      : await getSessions(projectName ?? currentProjectName.value, includeImported)
   } catch {
     // already surfaced via apiFetch
   }

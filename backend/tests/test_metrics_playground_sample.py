@@ -4,8 +4,9 @@ as an end-to-end check that the sample stays loadable and its triggers
 behave as documented.
 
 Every assertion below cross-checks POST /api/triggers/preview's `result`
-against the *actual* value GET /api/chat/metrics reports for the same
-metric, rather than hand-deriving the metrics_framework formulas here —
+against the *actual* value GET /api/projects/{project_name}/metrics
+reports for the same metric, rather than hand-deriving the
+metrics_framework formulas here —
 that's exactly the integration this sample exists to prove: that a
 trigger expression sees the same metric values the Inspector's Metrics
 tab does. Real chat turns aren't used (auto-tracking would call the AI to
@@ -34,13 +35,13 @@ def _upload_and_activate(client, name: str = "metrics-playground"):
 
 
 def _metric_values(client) -> dict[str, float]:
-    return {m["name"]: m["value"] for m in client.get("/api/chat/metrics").json()}
+    return {m["name"]: m["value"] for m in client.get("/api/projects/metrics-playground/metrics").json()}
 
 
 def _enter_engaged(client, session: dict):
     # "warm_up" also carries a trigger, but manual invocation (like a
     # user clicking its button) never checks it — see Automaton.move.
-    response = client.post("/api/action", json={"action_name": "warm_up", "session_id": session["id"]})
+    response = client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "warm_up"})
     assert response.status_code == 200, response.text
     assert response.json()["state"]["key"] == "engaged"
 

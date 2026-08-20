@@ -7,10 +7,10 @@ env are variables, every other namespace is proxies).
 
 Not itself the source of truth for *whether* an identifier is valid (see
 automaton.automaton.RESERVED_NAMESPACES/trigger_namespace_refs) — this
-module exists so GET /api/chat/identifiers (see project_service.py's
-get_active_identifier_registry, and controller.py) and automaton_builder.
-py's own build-time validation (_validate_namespaced_expression) share
-one identifier list, never two that could silently drift apart.
+module exists so GET /api/projects/{project_name}/identifiers (see
+project_service.py's get_identifier_registry) and automaton_builder.py's
+own build-time validation (_validate_namespaced_expression) share one
+identifier list, never two that could silently drift apart.
 
 `system`/`session`/`session.metric`/`metric` are the same for every
 project — hand-kept in sync with the classes that actually implement them

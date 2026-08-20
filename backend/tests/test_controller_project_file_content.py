@@ -191,7 +191,7 @@ class TestGetProjectFileContent:
         session_response = client.get("/api/chat/session")
         assert session_response.status_code == 200, session_response.text
         session_id = session_response.json()["id"]
-        action_response = client.post("/api/action", json={"action_name": "go", "session_id": session_id})
+        action_response = client.post(f"/api/chat/sessions/{session_id}/action", json={"action_name": "go"})
         assert action_response.status_code == 200, action_response.text
 
         # A later edit + publish moves the draft/published revision ahead —
@@ -213,7 +213,7 @@ class TestGetProjectFileContent:
         test_session_response = client.post("/api/projects/proj/test-sessions")
         assert test_session_response.status_code == 200, test_session_response.text
         test_session_id = test_session_response.json()["id"]
-        action_response = client.post("/api/action", json={"action_name": "go", "session_id": test_session_id})
+        action_response = client.post(f"/api/chat/sessions/{test_session_id}/action", json={"action_name": "go"})
         assert action_response.status_code == 200, action_response.text
 
         # Edited *after* the Test session was already open — a 'test'

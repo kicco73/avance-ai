@@ -132,14 +132,9 @@ def missing_css_references(css_text: str, known_archive_names: set[str]) -> list
 # have committed it.
 CommitCallback = Callable[[Automaton], Awaitable[None]]
 
-# "New project" (see controller.py's POST /api/projects/new) starts from
-# this exact sample zip, exactly as if a user had picked it in the
-# upload file dialog — same repo-relative layout as every other file
-# this module resolves off its own location (see e.g. controller.py's
-# own DOCS_DIR), not the process's current working directory. backend/
-# samples/ ships alongside backend/src/ in every deployment (see the
-# repo's own Dockerfile: `COPY . .` copies the whole repo before src/
-# ever runs), so this never depends on the dev checkout specifically.
+# "New project" (see settings_controller.py's POST /api/projects) starts
+# from this exact sample zip, as if a user had picked it in the upload
+# dialog — resolved off this module's own location, not the cwd.
 NEW_PROJECT_TEMPLATE = Path(__file__).resolve().parents[2] / "samples" / "projects" / "Hello world.zip"
 NEW_PROJECT_NAME = "Hello world"
 
@@ -701,16 +696,8 @@ class ProjectService(object):
 
     def get_automaton_and_state(self, project_name: str) -> tuple[Automaton, State]:
         """`project_name`'s own *published* Automaton paired with its
-        current State — never the in-progress draft (see _resolve_state's
-        own docstring for the State half). Explicit-project_name sibling
-        of get_active_automaton_and_state below (which is now just a thin
-        wrapper over this, pinned to get_active_project_name()) — for
-        callers that already know exactly which project they mean (e.g.
-        LabelProjectView.vue's own Metrics tab, GET /api/chat/identifiers)
-        and must never silently drift onto whatever else happens to be
-        globally active instead. Raises ValueError, same as db.
-        create_chat_session's own "never published" case, when
-        `project_name` has no published revision yet."""
+        current State — never the in-progress draft. Raises ValueError
+        when `project_name` has no published revision yet."""
         published_revision = self._db.get_project_published_revision(project_name)
         if published_revision is None:
             raise ValueError(f"Project '{project_name}' has never been published.")
@@ -957,47 +944,18 @@ class ProjectService(object):
             "ui_description": automaton.project_ui_description,
         }
 
-    def get_active_identifier_registry(self, project_name: str | None = None) -> dict[str, dict[str, str]]:
-        """Every identifier `project_name`'s own trigger/`env:`
-        expressions can reference, one dict per namespace (see automaton.
-        identifier_registry.build_registry) — for GET /api/chat/
-        identifiers, the "Edit project" view's own reference for what's
-        actually usable in a trigger/env: field. `project_name` omitted
-        falls back to the active project (same as before this parameter
-        existed) — EditProjectView.vue's own caller always passes its own
-        props.projectName explicitly instead, so a trigger editor open on
-        project A never silently reflects whatever project B happens to
-        be globally active right now.
-
-        build_registry itself stays single-project (see its own
-        docstring) — the "automaton" namespace is cross-project by
-        nature (see automaton.trigger_automaton_project_refs, Prompt 6),
-        so it's folded in here instead, straight off every *other*
-        project's own declared project.id (Prompt 8/9 — automaton.*
-        resolves against project_id, never the raw project_name, and a
-        project with no declared project_id is never exposed to another
-        project's own automaton.* at all): "automaton" itself (always
-        present, even empty, so it's offered as a top-level namespace —
-        see triggerEditorSupport.js's own completeIdentifiers, which
-        derives "automaton.<id>"/"automaton.<id>.env" as further sub-
-        namespaces to descend into purely from which registry keys
-        exist, the same generic mechanism session.metric already relied
-        on), then one "automaton.<id>" entry per other project that
-        declares one (just `state`) and one "automaton.<id>.env" entry
-        (that project's own declared env keys, see automaton_yaml_
-        editor.py's env: section) — never the active project itself,
-        since referencing your own current state through automaton.*
-        rather than plain state.key would be pointless indirection. A
-        project that currently fails to build still gets its own "state"
-        entry (offered, not guaranteed usable — same as any automaton.*
-        reference already resolves gracefully to None at runtime, see
-        AutomatonNamespace), just no env keys to show for it."""
-        resolved_project_name = project_name or self.get_active_project_name()
-        automaton, _ = self.get_automaton_and_state(resolved_project_name)
+    def get_identifier_registry(self, project_name: str) -> dict[str, dict[str, str]]:
+        """Every identifier `project_name`'s own trigger/`env:` expressions
+        can reference, one dict per namespace (see automaton.
+        identifier_registry.build_registry). Also folds in one
+        "automaton.<id>"/"automaton.<id>.env" entry per *other* project
+        that declares a project.id, since that namespace is cross-project
+        by nature and build_registry itself stays single-project."""
+        automaton, _ = self.get_automaton_and_state(project_name)
         registry = build_registry(automaton.signals, automaton.env_keys)
         registry["automaton"] = {}
         for name in self._db.list_projects():
-            if name == resolved_project_name:
+            if name == project_name:
                 continue
             project_id = self._db.get_project_id(name)
             if project_id is None:

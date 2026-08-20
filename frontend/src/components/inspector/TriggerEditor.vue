@@ -151,14 +151,10 @@ watch(model, (newValue) => {
 })
 
 onMounted(async () => {
-  // Only fetches on this editor's own *first-ever* mount across the
-  // whole app (an empty registry — see identifierRegistry.js's own
-  // default) — every later open reuses whatever's already shared,
-  // refreshed independently by every project edit (see
-  // EditProjectView.vue's own refreshValidStateKeys), so reopening an
-  // already-visited action's card never re-shows the loading placeholder
-  // just to re-fetch data that hasn't gone stale.
-  if (!Object.keys(identifierRegistry.value).length) await refreshIdentifierRegistry()
+  // identifierRegistry itself is populated by EditProjectView.vue's own
+  // refreshValidStateKeys (mount + every edit), not fetched here — every
+  // completion source reads identifierRegistry.value live at call time
+  // (see identifierRegistry.js), so this never needs its own fetch.
   loading.value = false
   await nextTick()
   createEditor()

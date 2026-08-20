@@ -1,4 +1,4 @@
-"""GET /api/projects/runtime-status, PUT /api/projects/{name}/pause,
+"""GET /api/settings/projects/runtime-status, PUT /api/projects/{name}/pause,
 PUT /api/projects/{name}/resume — the Settings > Runtime status view's
 own HTTP surface (see ProjectService.get_runtime_status/
 set_manually_paused/set_manually_running)."""
@@ -11,7 +11,7 @@ pytestmark = pytest.mark.contract
 
 @pytest.mark.regression
 def test_runtime_status_lists_every_project(client, hello_project):
-    response = client.get("/api/projects/runtime-status")
+    response = client.get("/api/settings/projects/runtime-status")
 
     assert response.status_code == 200
     body = response.json()
@@ -29,7 +29,7 @@ def test_pause_then_resume_round_trips(client, hello_project):
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "manually_paused"
 
-    status = client.get("/api/projects/runtime-status").json()["projects"][0]
+    status = client.get("/api/settings/projects/runtime-status").json()["projects"][0]
     assert status["status"] == "manually_paused"
     assert status["paused_reason"] == "Manually paused."
 

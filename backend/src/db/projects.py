@@ -38,9 +38,8 @@ class ProjectMixin:
         """The other direction of get_project_name_by_project_id below —
         None both for a project that never declared one and for a
         project that doesn't exist at all (see ProjectService.
-        get_active_identifier_registry, the one caller: a project with no
-        declared project_id is simply never offered as an automaton.*
-        completion target, see Prompt 8's own "never exposed" rule)."""
+        get_identifier_registry: a project with no declared project_id is
+        never offered as an automaton.* completion target)."""
         project = Project.get_or_none(Project.name == project_name)
         return project.project_id if project is not None else None
 

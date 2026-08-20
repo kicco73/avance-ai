@@ -29,11 +29,11 @@ class SettingsController(BaseController):
         self.project_service = project_service
         self.db = db
 
-    @get("/api/backup")
+    @get("/api/settings/backup")
     async def get_backup(self):
         """Downloads the whole working SQLite database file — every
-        project, session, message, and signal, not scoped to the active
-        project — as a restorable backup (see POST /api/backup)."""
+        project, session, message, and signal — as a restorable backup
+        (see POST /api/settings/backup)."""
         async with self.chat_service.lock:
             content = self.db.export_backup()
         filename = Path(self.db.backup_file_path()).stem + ".sqlite"
@@ -43,7 +43,7 @@ class SettingsController(BaseController):
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
-    @post("/api/backup")
+    @post("/api/settings/backup")
     async def post_backup(self, request: Request):
         """Restores the working SQLite database from an uploaded backup
         file — replaces it in place, at the exact path this server is
@@ -62,16 +62,11 @@ class SettingsController(BaseController):
     def get_projects(self):
         return self.project_service.list_projects()
 
-    # Named to sort alphabetically before get_project (its own literal
-    # "runtime-status" path segment would otherwise be swallowed by
-    # get_project's own {project_name} wildcard, registered first — see
-    # edit_project_controller.py's own move_action for the general
-    # mechanism this relies on, and BaseController's own docstring).
-    @get("/api/projects/runtime-status")
+    @get("/api/settings/projects/runtime-status")
     def get_all_projects_runtime_status(self):
         """One row per project — name/status/paused_reason/revision/
-        published_revision (see ProjectService.get_runtime_status) — the
-        Settings > Runtime status view's own table."""
+        published_revision — the Settings > Runtime status view's own
+        table."""
         return {"projects": self.project_service.get_runtime_status()}
 
     @put("/api/projects/{project_name}/pause")
@@ -100,12 +95,11 @@ class SettingsController(BaseController):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @post("/api/projects/new")
+    @post("/api/projects")
     async def post_new_project(self):
         """"New project" — same effect as PUT /api/projects/{project_name}
-        with backend/samples/Hello world.zip as the uploaded body, minus
-        having to pick a project name first (see ProjectService.
-        create_new_project's own de-duplication)."""
+        with backend/samples/Hello world.zip as the body, minus picking a
+        name first (see ProjectService.create_new_project)."""
         return await self.project_service.create_new_project(self._activate_project)
 
     @put("/api/projects/{project_name}/activate")

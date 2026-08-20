@@ -80,9 +80,7 @@ def test_truncate_deletes_trailing_turns_and_rolls_the_live_state_back(client):
     session = client.get("/api/chat/session").json()
     assert session["start_state"] == "welcome"
 
-    action_response = client.post(
-        "/api/action", json={"action_name": "unit-subjuntive", "session_id": session["id"]}
-    )
+    action_response = client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "unit-subjuntive"})
     assert action_response.status_code == 200
     moved_state = action_response.json()["state"]["key"]
     assert moved_state != "welcome"

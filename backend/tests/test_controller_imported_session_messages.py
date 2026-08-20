@@ -55,15 +55,15 @@ def test_reading_an_imported_sessions_messages_survives_a_final_live_state(clien
     # gets to importing anything in the Benchmark view.
     native = client.post("/api/chat/sessions")
     assert native.status_code == 200, native.text
-    assert client.get("/api/chat/messages", params={"session_id": native.json()["id"]}).status_code == 200
+    assert client.get(f"/api/chat/sessions/{native.json()['id']}/messages").status_code == 200
 
     imported = client.post(
-        "/api/chat/sessions/import", files={"file": ("t.txt", "user: hi\nassistant: hello\n", "text/plain")}
+        "/api/projects/proj/sessions/import", files={"file": ("t.txt", "user: hi\nassistant: hello\n", "text/plain")}
     )
     assert imported.status_code == 200, imported.text
     session_id = imported.json()["session_id"]
 
-    resp = client.get("/api/chat/messages", params={"session_id": session_id})
+    resp = client.get(f"/api/chat/sessions/{session_id}/messages")
     assert resp.status_code == 200, resp.text
     messages = resp.json()
     assert [m["role"] for m in messages] == ["user", "assistant"]

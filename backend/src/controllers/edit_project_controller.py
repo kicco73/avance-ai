@@ -78,11 +78,8 @@ class EditProjectController(BaseController):
     @get("/api/projects/{project_name}/test-sessions")
     def get_test_sessions(self, project_name: str):
         """EditProjectView.vue's own embedded "Test" chat, its own
-        "Sessions" panel listing (see ChatService.list_test_sessions) —
-        the draft-session equivalent of GET /api/chat/sessions. Never
-        shows (and GET /api/chat/sessions never shows) the other pool's
-        own sessions — the two are fully isolated, not just filtered
-        views over one shared list."""
+        "Sessions" panel listing — the draft-session equivalent of GET
+        /api/projects/{project_name}/sessions. The two pools never mix."""
         return self.chat_service.list_test_sessions()
 
     @get("/api/projects/{project_name}/states")

@@ -37,13 +37,13 @@ def test_the_sample_loads_and_starts_at_lobby(client):
 def test_firing_notice_mood_actually_moves_to_its_own_dedicated_state(client):
     _upload_and_activate(client)
     session = client.get("/api/chat/session").json()
-    move = client.post("/api/action", json={"action_name": "warm_up", "session_id": session["id"]})
+    move = client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "warm_up"})
     assert move.json()["state"]["key"] == "engaged"
 
     # Manual invocation (like clicking the button) never checks the
     # trigger — see Automaton.move — so this exercises the real target
     # state without needing the "mood" signal to actually be >= 70.
-    response = client.post("/api/action", json={"action_name": "notice_mood", "session_id": session["id"]})
+    response = client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "notice_mood"})
 
     assert response.status_code == 200
     assert response.json()["state"]["key"] == "mood_reached"
@@ -55,7 +55,7 @@ def test_firing_notice_mood_actually_moves_to_its_own_dedicated_state(client):
 def test_every_engaged_branch_targets_its_own_distinct_final_state(client):
     _upload_and_activate(client)
     session = client.get("/api/chat/session").json()
-    client.post("/api/action", json={"action_name": "warm_up", "session_id": session["id"]})
+    client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "warm_up"})
 
     response = client.post("/api/triggers/preview", json={"signals": {"mood": 100}})
 

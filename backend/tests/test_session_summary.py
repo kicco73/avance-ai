@@ -16,7 +16,7 @@ pytestmark = pytest.mark.contract
 
 def test_closing_a_session_queues_its_summary(client, app_db, hello_project):
     session = client.get("/api/chat/session").json()
-    client.post("/api/chat/messages", json={"message": "hi", "session_id": session["id"]})
+    client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})
 
     # No content yet — nothing has queued a summary for it so far.
     assert client.get(f"/api/chat/sessions/{session['id']}/summary").json() == {"content": None}
@@ -42,7 +42,7 @@ def test_closing_a_session_queues_its_summary(client, app_db, hello_project):
 
 def test_a_still_open_session_is_never_queued(client, hello_project):
     session = client.get("/api/chat/session").json()
-    client.post("/api/chat/messages", json={"message": "hi", "session_id": session["id"]})
+    client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})
 
     # Calling get_or_create again immediately (session still well within
     # the open window) must never queue anything for it.

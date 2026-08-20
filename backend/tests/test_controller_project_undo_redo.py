@@ -235,7 +235,7 @@ def test_undo_does_not_reset_or_reload_the_active_conversation(client):
     resp = client.post("/api/projects/proj2/publish", json={})
     assert resp.status_code == 200, resp.text
     session = client.get("/api/chat/session").json()
-    action_resp = client.post("/api/action", json={"action_name": "go", "session_id": session["id"]})
+    action_resp = client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "go"})
     assert action_resp.status_code == 200, action_resp.text
     assert action_resp.json()["state"]["key"] == "b"
 
@@ -251,6 +251,6 @@ def test_undo_does_not_reset_or_reload_the_active_conversation(client):
     assert undo_resp.status_code == 200, undo_resp.text
 
     # The conversation is completely untouched by the undo preview.
-    sessions = client.get("/api/chat/sessions").json()
+    sessions = client.get("/api/projects/proj2/sessions").json()
     assert [s["id"] for s in sessions] == [session["id"]]
     assert client.get("/api/state").json()["key"] == "b"

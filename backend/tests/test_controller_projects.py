@@ -131,10 +131,10 @@ def test_uploading_a_project_activates_it_automatically(client):
 
 
 def test_new_project_creates_and_activates_hello_world(client):
-    """POST /api/projects/new is the "New project" menu option — same
+    """POST /api/projects is the "New project" menu option — same
     effect as uploading samples/Hello world.zip by hand, minus picking a
     name first."""
-    response = client.post("/api/projects/new")
+    response = client.post("/api/projects")
 
     assert response.status_code == 200, response.text
     body = response.json()
@@ -157,9 +157,9 @@ def test_new_project_creates_and_activates_hello_world(client):
 
 
 def test_new_project_de_duplicates_the_name_on_repeat_calls(client):
-    first = client.post("/api/projects/new").json()
-    second = client.post("/api/projects/new").json()
-    third = client.post("/api/projects/new").json()
+    first = client.post("/api/projects").json()
+    second = client.post("/api/projects").json()
+    third = client.post("/api/projects").json()
 
     assert first["project_name"] == "Hello world"
     assert second["project_name"] == "Hello world 2"

@@ -1,5 +1,5 @@
-"""GET /api/chat/sessions/export and POST /api/chat/sessions/import-json —
-the "Label sessions" view's own "Download all"/JSON-upload pair (see
+"""GET /api/projects/{project_name}/sessions/export and POST .../import-json
+— the "Label sessions" view's own "Download all"/JSON-upload pair (see
 tracking/session_export.py's own module docstring for the exact shape).
 """
 from __future__ import annotations
@@ -11,19 +11,19 @@ pytestmark = pytest.mark.contract
 
 def _import_transcript(client, text="user: hi there\nassistant: hello, world!\n", title="transcript.txt"):
     response = client.post(
-        "/api/chat/sessions/import", files={"file": (title, text, "text/plain")}
+        "/api/projects/hello/sessions/import", files={"file": (title, text, "text/plain")}
     )
     assert response.status_code == 200, response.text
     return response.json()["session_id"]
 
 
 def _messages(client, session_id):
-    return client.get(f"/api/chat/messages?session_id={session_id}").json()
+    return client.get(f"/api/chat/sessions/{session_id}/messages").json()
 
 
 @pytest.mark.regression
 def test_export_sessions_is_empty_for_a_project_with_no_sessions(client, hello_project):
-    response = client.get("/api/chat/sessions/export")
+    response = client.get("/api/projects/hello/sessions/export")
     assert response.status_code == 200
     assert response.json() == []
 
@@ -37,7 +37,7 @@ def test_export_sessions_includes_native_sessions_alongside_imported_ones(client
     native_session = client.get("/api/chat/session").json()
     _import_transcript(client)
 
-    response = client.get("/api/chat/sessions/export")
+    response = client.get("/api/projects/hello/sessions/export")
     assert response.status_code == 200
     exported = response.json()
 
@@ -56,7 +56,7 @@ def test_export_sessions_reflects_an_imported_session_and_its_annotations(client
     client.put(f"/api/chat/sessions/{session_id}/comment", json={"comment": "session-wide note"})
     client.put(f"/api/chat/sessions/{session_id}/labeled", json={"labeled": True})
 
-    response = client.get("/api/chat/sessions/export")
+    response = client.get("/api/projects/hello/sessions/export")
     assert response.status_code == 200
     [exported] = response.json()
 
@@ -78,14 +78,14 @@ def test_import_json_round_trips_an_exported_session_exactly(client, hello_proje
     user_message_id = _messages(client, session_id)[0]["id"]
     client.put(f"/api/chat/messages/{user_message_id}/expected-state", json={"expected_state": "Hello"})
     client.put(f"/api/chat/sessions/{session_id}/title", json={"title": "Original"})
-    [exported] = client.get("/api/chat/sessions/export").json()
+    [exported] = client.get("/api/projects/hello/sessions/export").json()
 
-    response = client.post("/api/chat/sessions/import-json", json=exported)
+    response = client.post("/api/projects/hello/sessions/import-json", json=exported)
     assert response.status_code == 200, response.text
     new_session_id = response.json()["session_id"]
     assert new_session_id != session_id
 
-    [_, reimported] = client.get("/api/chat/sessions/export").json()
+    [_, reimported] = client.get("/api/projects/hello/sessions/export").json()
     assert reimported["name"] == "Original"
     assert reimported["messages"] == exported["messages"]
 
@@ -110,25 +110,25 @@ def test_import_json_restores_a_native_looking_session_with_real_timestamps(clie
         ],
     }
 
-    response = client.post("/api/chat/sessions/import-json", json=payload)
+    response = client.post("/api/projects/hello/sessions/import-json", json=payload)
     assert response.status_code == 200, response.text
     session_id = response.json()["session_id"]
 
-    [exported] = client.get("/api/chat/sessions/export").json()
+    [exported] = client.get("/api/projects/hello/sessions/export").json()
     assert exported["timestamp"] == "2026-01-01T10:00:00+00:00"
     assert exported["start_state"] == "Hello"
     assert exported["end_state"] == "Hello"
     assert exported["messages"][1]["values"] == {"mood": 0.5}
     assert exported["messages"][1]["new_state"] == "Hello"
 
-    sessions = {s["id"]: s for s in client.get("/api/chat/sessions?include_imported=true").json()}
+    sessions = {s["id"]: s for s in client.get("/api/projects/hello/sessions?include_imported=true").json()}
     assert sessions[session_id]["source"] == "imported"
 
 
 @pytest.mark.contract
 def test_import_json_rejects_a_malformed_message(client, hello_project):
     response = client.post(
-        "/api/chat/sessions/import-json",
+        "/api/projects/hello/sessions/import-json",
         json={"name": "bad", "messages": [{"role": "user"}]},  # missing required 'text'
     )
     assert response.status_code == 422  # Pydantic validation, not TrackingServiceError

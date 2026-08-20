@@ -51,7 +51,7 @@ def test_download_includes_only_imported_sessions_never_native_ones(client, hell
     assert native_session["source"] == "native"
     # An imported session.
     resp = client.post(
-        "/api/chat/sessions/import", files={"file": ("t.txt", "user: hi\nassistant: yo\n", "text/plain")}
+        "/api/projects/hello/sessions/import", files={"file": ("t.txt", "user: hi\nassistant: yo\n", "text/plain")}
     )
     assert resp.status_code == 200, resp.text
 
@@ -64,7 +64,7 @@ def test_download_includes_only_imported_sessions_never_native_ones(client, hell
 
 
 def test_sessions_json_never_appears_among_the_projects_own_files(client, hello_project):
-    client.post("/api/chat/sessions/import", files={"file": ("t.txt", "user: hi\nassistant: yo\n", "text/plain")})
+    client.post("/api/projects/hello/sessions/import", files={"file": ("t.txt", "user: hi\nassistant: yo\n", "text/plain")})
 
     file_list = client.get(f"/api/projects/{hello_project}/files").json()["files"]
 
@@ -90,11 +90,11 @@ def test_uploading_a_zip_with_sessions_json_imports_them_automatically(client):
     })
     assert resp.status_code == 200, resp.text
 
-    sessions = client.get("/api/chat/sessions?include_imported=true").json()
+    sessions = client.get("/api/projects/proj/sessions?include_imported=true").json()
     assert len(sessions) == 1
     assert sessions[0]["source"] == "imported"
     assert sessions[0]["title"] == "Reference transcript"
-    messages = client.get(f"/api/chat/messages?session_id={sessions[0]['id']}").json()
+    messages = client.get(f"/api/chat/sessions/{sessions[0]['id']}/messages").json()
     assert [m["content"] for m in messages] == ["hi", "hello"]
 
 
@@ -106,7 +106,7 @@ def test_download_then_reupload_round_trips_the_imported_session(client):
     resp = client.post("/api/projects/roundtrip/publish", json={})
     assert resp.status_code == 200, resp.text
     resp = client.post(
-        "/api/chat/sessions/import", files={"file": ("t.txt", "user: hi\nassistant: yo\n", "text/plain")}
+        "/api/projects/roundtrip/sessions/import", files={"file": ("t.txt", "user: hi\nassistant: yo\n", "text/plain")}
     )
     assert resp.status_code == 200, resp.text
 
@@ -119,7 +119,7 @@ def test_download_then_reupload_round_trips_the_imported_session(client):
 
     resp = client.put("/api/projects/roundtrip-copy/activate")
     assert resp.status_code == 200, resp.text
-    sessions = client.get("/api/chat/sessions?include_imported=true").json()
+    sessions = client.get("/api/projects/roundtrip-copy/sessions?include_imported=true").json()
     assert len(sessions) == 1
     assert sessions[0]["title"] == "t.txt"
 
@@ -155,6 +155,6 @@ def test_a_malformed_individual_session_is_skipped_others_still_import(client):
     })
     assert resp.status_code == 200, resp.text
 
-    sessions = client.get("/api/chat/sessions?include_imported=true").json()
+    sessions = client.get("/api/projects/proj/sessions?include_imported=true").json()
     assert len(sessions) == 1
     assert sessions[0]["title"] == "Good one"

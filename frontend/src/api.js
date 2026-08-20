@@ -69,19 +69,9 @@ export function postCreateTestSession(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/test-sessions`, { method: 'POST' })
 }
 
-// `projectName`, when given, overrides the backend's own default of
-// "whichever project is currently active" — LabelProjectView.vue's own
-// caller always passes its own props.projectName explicitly, so
-// reviewing project A's sessions never silently follows project B
-// becoming active in the meantime (e.g. via uploading it). The main
-// chat's own Sessions panel omits it on purpose: it's meant to follow
-// the active project.
-export function getSessions(includeImported = false, projectName = null) {
-  const params = new URLSearchParams()
-  if (includeImported) params.set('include_imported', 'true')
-  if (projectName) params.set('project_name', projectName)
-  const query = params.toString()
-  return apiFetch(`${API_URL}/chat/sessions${query ? `?${query}` : ''}`)
+export function getSessions(projectName, includeImported = false) {
+  const query = includeImported ? '?include_imported=true' : ''
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/sessions${query}`)
 }
 
 // EditProjectView.vue's own embedded "Test" chat's own Sessions panel —
@@ -97,7 +87,7 @@ export function deleteSession(sessionId) {
 }
 
 export function getMessages(sessionId) {
-  return apiFetch(`${API_URL}/chat/messages?session_id=${encodeURIComponent(sessionId)}`)
+  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/messages`)
 }
 
 // The full Signals event log for a session (snapshots + transitions,
@@ -250,10 +240,10 @@ export function sendWebSocketMessage(payload, { onChunk, onStatus, onDone, onErr
 }
 
 export function postChatMessage(text, sessionId) {
-  return apiFetch(`${API_URL}/chat/messages`, {
+  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/messages`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: text, session_id: sessionId })
+    body: JSON.stringify({ message: text })
   })
 }
 
@@ -266,30 +256,20 @@ export function postListenTranscribe(audioBlob) {
   })
 }
 
-// `projectName`, when given, overrides the backend's own default of
-// "whichever project is currently active" — see getSessions' own
-// docstring for why LabelProjectView.vue always passes its own
-// props.projectName explicitly here.
-export function postImportSession(file, projectName = null) {
+export function postImportSession(projectName, file) {
   const formData = new FormData()
   formData.append('file', file)
-  const query = projectName ? `?project_name=${encodeURIComponent(projectName)}` : ''
-  return apiFetch(`${API_URL}/chat/sessions/import${query}`, {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/sessions/import`, {
     method: 'POST',
     body: formData
   })
 }
 
-// One session object out of a "Download all" .json export (see backend
-// tracking/session_export.py's own module docstring for the shape) —
-// LabelProjectView.vue's own handleImportSession calls this once per
-// session found inside an uploaded .json file, same per-item try/catch
-// loop it already runs per .txt file. `projectName` is a query param, not
-// part of `sessionData` itself — see backend's post_import_session_json's
-// own docstring on why.
-export function postImportSessionJson(sessionData, projectName = null) {
-  const query = projectName ? `?project_name=${encodeURIComponent(projectName)}` : ''
-  return apiFetch(`${API_URL}/chat/sessions/import-json${query}`, {
+// One session object out of a "Download all" .json export — LabelProjectView.vue's
+// own handleImportSession calls this once per session found inside an
+// uploaded .json file, same per-item try/catch loop it uses per .txt file.
+export function postImportSessionJson(projectName, sessionData) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/sessions/import-json`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(sessionData)
@@ -297,33 +277,22 @@ export function postImportSessionJson(sessionData, projectName = null) {
 }
 
 // The "Label sessions" view's own "Download all" button — every session
-// (native and imported alike) of `projectName` (omitted: the active
-// project), as one JSON array (see backend tracking/session_export.py).
-// A blob so the caller can trigger a real file download the same way
-// downloadProject already does for a project's own zip.
-export function getExportSessions(projectName = null) {
-  const query = projectName ? `?project_name=${encodeURIComponent(projectName)}` : ''
-  return apiFetch(`${API_URL}/chat/sessions/export${query}`, {}, { parse: 'blob' })
+// (native and imported alike) of `projectName`, as one JSON array. A blob
+// so the caller can trigger a real file download.
+export function getExportSessions(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/sessions/export`, {}, { parse: 'blob' })
 }
 
 export function getSignals() {
   return apiFetch(`${API_URL}/chat/signals`)
 }
 
-// The active project's own identifier registry (see backend's automaton.
-// identifier_registry.build_registry) — {identifier: description} per
+// `projectName`'s own identifier registry — {identifier: description} per
 // namespace (signal, env, system, session, "session.metric", metric) a
-// trigger/env: expression can reference. InspectorDetailCard.vue's own
-// trigger editor (see TriggerEditor.vue) is the one consumer, for its own
-// autocomplete/syntax coloring.
-// `projectName`, when given, overrides the backend's own default of
-// "whichever project is currently active" — EditProjectView.vue's own
-// caller always passes its own props.projectName explicitly, so a
-// trigger editor open on project A never silently reflects whatever
-// project B happens to be globally active right now.
-export function getIdentifiers(projectName = null) {
-  const query = projectName ? `?project_name=${encodeURIComponent(projectName)}` : ''
-  return apiFetch(`${API_URL}/chat/identifiers${query}`)
+// trigger/env: expression can reference. TriggerEditor.vue is the one
+// consumer, for its own autocomplete/syntax coloring.
+export function getIdentifiers(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/identifiers`)
 }
 
 // The active user+project's current "environment" memory (see backend's
@@ -377,23 +346,17 @@ export function clearActionEnv() {
 
 // `messageId`, when given, computes metrics as of that exact message's
 // own timestamp instead of the live/current history — see the
-// "Label sessions" view's point-in-time Inspector. `projectName`, when
-// given, overrides the backend's own default of "whichever project is
-// currently active" — LabelProjectView.vue's own caller always passes
-// its own props.projectName explicitly, same reasoning as getSessions.
-export function getMetrics(messageId, projectName = null) {
-  const params = new URLSearchParams()
-  if (messageId != null) params.set('message_id', messageId)
-  if (projectName) params.set('project_name', projectName)
-  const query = params.toString()
-  return apiFetch(`${API_URL}/chat/metrics${query ? `?${query}` : ''}`)
+// "Label sessions" view's point-in-time Inspector.
+export function getMetrics(projectName, messageId) {
+  const query = messageId != null ? `?message_id=${encodeURIComponent(messageId)}` : ''
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/metrics${query}`)
 }
 
 export function postAction(actionName, sessionId) {
-  return apiFetch(`${API_URL}/action`, {
+  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/action`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action_name: actionName, session_id: sessionId })
+    body: JSON.stringify({ action_name: actionName })
   })
 }
 
@@ -456,12 +419,10 @@ export function getProjects() {
   return apiFetch(`${API_URL}/projects`)
 }
 
-// Settings > Runtime status view's own table (see ProjectService.
-// get_runtime_status) — every project's own {name, status, paused_reason,
-// revision, published_revision}, status one of 'running'/'paused'/
-// 'manually_paused'.
+// Settings > Runtime status view's own table — every project's own
+// {name, status, paused_reason, revision, published_revision}.
 export function getProjectsRuntimeStatus() {
-  return apiFetch(`${API_URL}/projects/runtime-status`)
+  return apiFetch(`${API_URL}/settings/projects/runtime-status`)
 }
 
 // Manual pause/resume (see ProjectService.set_manually_paused/
@@ -480,15 +441,15 @@ export function putProjectResume(projectName) {
 // world.zip by hand (see putProject), minus picking a name first (the
 // backend derives/de-duplicates one on its own).
 export function postNewProject() {
-  return apiFetch(`${API_URL}/projects/new`, { method: 'POST' })
+  return apiFetch(`${API_URL}/projects`, { method: 'POST' })
 }
 
 export function getBackup() {
-  return apiFetch(`${API_URL}/backup`, {}, { parse: 'blob' })
+  return apiFetch(`${API_URL}/settings/backup`, {}, { parse: 'blob' })
 }
 
 export function postRestoreBackup(file) {
-  return apiFetch(`${API_URL}/backup`, {
+  return apiFetch(`${API_URL}/settings/backup`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/octet-stream' },
     body: file

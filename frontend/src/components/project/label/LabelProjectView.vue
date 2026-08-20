@@ -121,7 +121,7 @@ function toggleBenchmarkSessionsPanel() {
 // below) and returns the new session_id, or null on failure.
 async function importTranscriptFile(file, results) {
   try {
-    const { session_id } = await postImportSession(file, props.projectName)
+    const { session_id } = await postImportSession(props.projectName, file)
     results.push({ file, ok: true })
     return session_id
   } catch (err) {
@@ -157,7 +157,7 @@ async function importJsonFile(file, results) {
   for (const [index, sessionData] of sessionsData.entries()) {
     const label = { name: sessionData?.name || `${file.name} #${index + 1}` }
     try {
-      const { session_id } = await postImportSessionJson(sessionData, props.projectName)
+      const { session_id } = await postImportSessionJson(props.projectName, sessionData)
       results.push({ file: label, ok: true })
       lastId = session_id
     } catch (err) {
@@ -247,7 +247,7 @@ async function loadTimeline() {
     const [messageRows, signalRows, allSessions] = await Promise.all([
       getMessages(sessionId),
       getSessionSignals(sessionId),
-      getSessions(true, props.projectName)
+      getSessions(props.projectName, true)
     ])
     rawMessages.value = messageRows
     signalsLog.value = signalRows
@@ -662,12 +662,34 @@ watch(selected, () => {
   nextTick(() => inspectorRef.value?.refresh())
 })
 
-onMounted(() => {
-  loadTimeline()
-  // The Sessions panel starts open (see benchmarkSessionsPanelOpen) —
-  // toggleBenchmarkSessionsPanel only loads on a closed-to-open flip, so
-  // the initial open needs its own load.
-  loadSessions(true, props.projectName)
+onMounted(async () => {
+  // currentSessionId is chatStore.js's own shared ref — also driven by
+  // the main chat window (and EditProjectView.vue's embedded "Test"
+  // chat), so on entry it can easily still be pointing at some *other*
+  // project's own session (e.g. whichever one is currently active
+  // there). Loading the session list *first* and checking membership
+  // before ever calling loadTimeline() is what keeps this view from
+  // opening straight into that stale session's own timeline — silently
+  // showing another project's conversation under this project's own
+  // header — the exact same class of bug the sessions-list fix above
+  // addresses, just for the chat pane instead of the picker.
+  await loadSessions(true, props.projectName)
+  const stillBelongsHere = sessions.value.some((s) => s.id === currentSessionId.value)
+  if (stillBelongsHere) {
+    loadTimeline()
+  } else {
+    const mostRecent = sessions.value[0] ?? null
+    if (mostRecent) {
+      selectSession(mostRecent) // ids necessarily differ here, so this always triggers watch(currentSessionId, loadTimeline)
+    } else {
+      // No sessions at all for this project — watch() above only fires
+      // on an actual change, so a currentSessionId that was already
+      // null (e.g. a fresh mount) would otherwise never clear
+      // `loading`/populate the empty state at all.
+      currentSessionId.value = null
+      loadTimeline()
+    }
+  }
   window.addEventListener('mousemove', onDrag)
   window.addEventListener('mouseup', stopDrag)
   window.addEventListener('resize', handleWindowResize)

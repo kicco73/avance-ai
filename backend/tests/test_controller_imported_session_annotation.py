@@ -76,17 +76,17 @@ def _setup_project(client, *, autotracking_on_ai_message: bool) -> int:
     session_resp = client.post("/api/chat/sessions")
     assert session_resp.status_code == 200, session_resp.text
     session_id = session_resp.json()["id"]
-    assert client.get("/api/chat/messages", params={"session_id": session_id}).status_code == 200
+    assert client.get(f"/api/chat/sessions/{session_id}/messages").status_code == 200
     return session_id
 
 
 def _import_and_get_messages(client) -> tuple[int, dict]:
     response = client.post(
-        "/api/chat/sessions/import", files={"file": ("transcript.txt", TRANSCRIPT, "text/plain")}
+        "/api/projects/proj/sessions/import", files={"file": ("transcript.txt", TRANSCRIPT, "text/plain")}
     )
     assert response.status_code == 200, response.text
     session_id = response.json()["session_id"]
-    messages = client.get("/api/chat/messages", params={"session_id": session_id}).json()
+    messages = client.get(f"/api/chat/sessions/{session_id}/messages").json()
     by_role = {m["role"]: m for m in messages}
     assert set(by_role) == {"user", "assistant"}
     return session_id, by_role
@@ -142,3 +142,51 @@ def test_a_native_sessions_message_is_unaffected_by_the_imported_fallback(client
         f"/api/chat/messages/{user_message_id}/expected-state", json={"expected_state": "a"}
     )
     assert resp.status_code == 409, resp.text
+
+
+@pytest.mark.regression
+def test_annotation_validates_against_the_messages_own_project_not_whatever_is_now_active(client):
+    """Prompt 13's own fix — TrackingService.set_message_expected_state/
+    set_message_expected_signals used to validate expected_state/
+    expected_values against self.automaton (whichever project is
+    currently *active*), not the message's own project. Opening
+    "Label sessions" for project A while project B happens to be active
+    (e.g. B was just uploaded — see ProjectService.put_project's own
+    auto-activate) used to validate every annotation on A's own messages
+    against B's states/signals instead — this locks down that the
+    message's own session's own project is what actually decides,
+    regardless of which one is globally active right now."""
+    _setup_project(client, autotracking_on_ai_message=True)
+    _, by_role = _import_and_get_messages(client)
+    message_id = by_role["user"]["id"]
+
+    # A second, unrelated project becomes active — its own automaton has
+    # no state "a" (and no signal "mood") at all, only state "x".
+    other_index_yml = """
+init-action:
+  target: x
+states:
+  x:
+    contextual-prompt: hi
+    actions: []
+"""
+    response = client.put(
+        "/api/projects/other",
+        content=_zip_of({"index.yml": other_index_yml}),
+        headers={"Content-Type": "application/zip"},
+    )
+    assert response.status_code == 200, response.text
+    assert client.put("/api/projects/other/activate").status_code == 200
+    assert client.post("/api/projects/other/publish", json={}).status_code == 200
+
+    # Still succeeds — "a" is a real state in the *message's own* project
+    # ("proj"), regardless of "other" now being the active one.
+    resp = client.put(f"/api/chat/messages/{message_id}/expected-state", json={"expected_state": "a"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["expected_state"] == "a"
+
+    # And a state that's real in "other" but not in "proj" must still be
+    # rejected — validation is scoped to "proj", never to "whatever is
+    # active", in both directions.
+    resp = client.put(f"/api/chat/messages/{message_id}/expected-state", json={"expected_state": "x"})
+    assert resp.status_code == 422, resp.text

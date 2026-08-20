@@ -47,68 +47,36 @@ class LabelProjectController(BaseController):
         self.tracking_service = tracking_service
         self.benchmark_run_service = benchmark_run_service
 
-    @get("/api/chat/benchmark-metrics")
-    def get_benchmark_metrics(self, session_id: int | None = None, project_name: str | None = None):
-        """Expert-annotation-vs-actual benchmark metrics (see
-        metrics_framework/benchmark_metrics) for `project_name` (omitted:
-        the active project) — every annotated session, or (session_id
-        given) just that one. For the "Label sessions" view's Performance
-        tab. ChatServiceError (404 for an unknown/not-yours session_id)
-        is handled globally, see error_handlers.py."""
-        return self.chat_service.get_benchmark_metrics(session_id, project_name=project_name)
+    @get("/api/projects/{project_name}/benchmark-metrics")
+    def get_benchmark_metrics(self, project_name: str, session_id: int | None = None):
+        """Expert-annotation-vs-actual benchmark metrics for
+        `project_name` — every annotated session, or (session_id given)
+        just that one. The "Label sessions" view's Performance tab."""
+        return self.chat_service.get_benchmark_metrics(project_name=project_name, session_id=session_id)
 
-    @post("/api/chat/sessions/import")
-    async def post_import_session(self, file: UploadFile, project_name: str | None = None):
-        """Imports a chat session from a plain-text transcript (see
-        TrackingService.import_session/tracking.session_import.
-        parse_transcript) — annotatable/testable without ever having run
-        through a live conversation. `project_name` omitted falls back to
-        the active project, same convention as POST /api/chat/sessions;
-        LabelProjectView.vue's own caller always passes its own
-        props.projectName explicitly instead, so importing into project
-        A never silently lands in whichever project B happens to be
-        globally active right now. No try/except: a malformed transcript
-        raises TrackingServiceError, already handled by the global
-        exception handler (see error_handlers.py)."""
+    @post("/api/projects/{project_name}/sessions/import")
+    async def post_import_session(self, project_name: str, file: UploadFile):
+        """Imports a chat session from a plain-text transcript — the
+        "Label sessions" view's own upload button. A malformed transcript
+        raises TrackingServiceError, handled globally."""
         content = await file.read()
         text = content.decode("utf-8")
-        session_id = self.tracking_service.import_session(
-            Session().user, project_name or self.project_service.get_active_project_name(), text, title=file.filename
-        )
+        session_id = self.tracking_service.import_session(Session().user, project_name, text, title=file.filename)
         return {"success": True, "session_id": session_id}
 
-    @post("/api/chat/sessions/import-json")
-    def post_import_session_json(self, req: SessionImportJsonRequest, project_name: str | None = None):
-        """Imports one session from the "Download all" JSON shape (see
-        TrackingService.import_session_json/tracking.session_export) —
-        the frontend's own batch-upload loop calls this once per session
-        object found inside an uploaded .json file, same per-item
-        try/except-and-continue convention it already uses per .txt file
-        (see LabelProjectView.vue's own handleImportSession). `project_
-        name` is a separate query parameter, not a field on `req` itself
-        — `req.model_dump()` is passed straight through as the session's
-        own content (see SessionImportJsonRequest's own docstring), so
-        project_name has no business inside that shape. Same explicit-
-        vs-active-project reasoning as post_import_session above. No
-        try/except here either: a malformed session raises
-        TrackingServiceError (400), same global-handler convention as
-        post_import_session above."""
-        session_id = self.tracking_service.import_session_json(
-            Session().user, project_name or self.project_service.get_active_project_name(), req.model_dump()
-        )
+    @post("/api/projects/{project_name}/sessions/import-json")
+    def post_import_session_json(self, project_name: str, req: SessionImportJsonRequest):
+        """Imports one session from a "Download all" JSON export — called
+        once per session object found inside an uploaded .json file (see
+        LabelProjectView.vue's own handleImportSession)."""
+        session_id = self.tracking_service.import_session_json(Session().user, project_name, req.model_dump())
         return {"success": True, "session_id": session_id}
 
-    @get("/api/chat/sessions/export")
-    def get_export_sessions(self, project_name: str | None = None):
+    @get("/api/projects/{project_name}/sessions/export")
+    def get_export_sessions(self, project_name: str):
         """The "Label sessions" view's own "Download all" button — every
-        session (native and imported alike) of `project_name` (omitted:
-        the active project), as one JSON array (see TrackingService.
-        export_sessions/tracking.session_export's own module docstring on
-        the exact shape). Same Response-with-Content-Disposition
-        convention as get_project's own zip download — built server-side
-        as bytes, not streamed, since a project's own session history is
-        never large enough to need it."""
-        project_name = project_name or self.project_service.get_active_project_name()
+        session (native and imported alike) of `project_name`, as one
+        JSON array."""
         payload = self.tracking_service.export_sessions(Session().user, project_name)
         content = json.dumps(payload, indent=2).encode("utf-8")
         encoded_project_name = quote(project_name)

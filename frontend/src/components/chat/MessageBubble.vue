@@ -1,4 +1,5 @@
 <script setup>
+import { computed } from 'vue'
 import { renderMarkdown as renderMarkdownBase } from '../../markdown.js'
 import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 
@@ -35,6 +36,12 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['resend'])
+
+// The placeholder assistant bubble submitMessage pushes before any chunk
+// has arrived (see chatStore.js) — content stays '' until the first
+// chunk lands (or the whole reply, over REST). Animated dots instead of
+// a static "..." so waiting reads as "in progress", not stalled.
+const isAwaitingReply = computed(() => props.message.role === 'assistant' && !getMessageText(props.message))
 
 function getMessageText(msg) {
   // Se l'utente vuole vedere lo spoken text ed è disponibile, usiamo audioText.
@@ -89,7 +96,12 @@ const {
           message.failed ? 'bubble-failed' : ''
         ]"
       >
-        <span v-html="renderMarkdown(getMessageText(message) || '...')" />
+        <span v-if="isAwaitingReply" class="typing-dots" aria-label="Waiting for reply">
+          <span class="typing-dot"></span>
+          <span class="typing-dot"></span>
+          <span class="typing-dot"></span>
+        </span>
+        <span v-else v-html="renderMarkdown(getMessageText(message))" />
         <span
           v-if="signalsAnnotated"
           ref="annotationIconRef"
@@ -223,6 +235,41 @@ const {
 
 .bubble-failed {
   background: #c62828;
+}
+
+.typing-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0;
+}
+
+.typing-dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.4;
+  animation: typing-dot-bounce 1.2s infinite ease-in-out;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing-dot-bounce {
+  0%, 60%, 100% {
+    opacity: 0.4;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-0.15rem);
+  }
 }
 
 .resend-icon {

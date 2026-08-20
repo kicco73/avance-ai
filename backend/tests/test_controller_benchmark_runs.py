@@ -25,7 +25,7 @@ def _wait_for_terminal_status(client, project_name, run_id, timeout=5.0, interva
 
 def _make_labeled_session(client):
     session = client.get("/api/chat/session").json()
-    client.post("/api/chat/messages", json={"message": "hi", "session_id": session["id"]})
+    client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})
     client.put(f"/api/chat/sessions/{session['id']}/labeled", json={"labeled": True})
     return session["id"]
 
@@ -86,7 +86,7 @@ def test_whole_project_run_scopes_to_labeled_sessions_only(client, hello_project
     labeled_id = _make_labeled_session(client)
     # An unlabeled session must never be pulled into a whole-project run.
     unlabeled = client.get("/api/chat/session").json()
-    client.post("/api/chat/messages", json={"message": "hi", "session_id": unlabeled["id"]})
+    client.post(f"/api/chat/sessions/{unlabeled['id']}/messages", json={"message": "hi"})
 
     run = client.post(
         f"/api/projects/{hello_project}/benchmark-runs", json={"session_id": None, "strategy": "turn_by_turn"},

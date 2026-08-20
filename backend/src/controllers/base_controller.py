@@ -6,24 +6,19 @@ still just decorates its own methods with @get/@post/@put/@delete (see
 route below); BaseController.register_routes is the one place that walks
 them onto a router, unchanged from before the split.
 
-Route registration order is load-bearing in exactly two places across
-the whole app — a literal path segment that must register before a
+Route registration order is load-bearing in exactly one place across the
+whole app — a literal path segment that must register before a
 same-depth {wildcard} route would otherwise swallow it as if it were that
 wildcard's own value (FastAPI/Starlette matches routes in registration
 order, and inspect.getmembers below walks a class's own methods
 alphabetically by name, not by source order):
 
-- get_all_projects_runtime_status ("/api/projects/runtime-status")
-  before get_project ("/api/projects/{project_name}") — see settings_
-  controller.py's own comment on that pair.
 - move_action ("/api/projects/{project_name}/states/{state_name}/
   actions/{action_name}/order") before put_action_field ("...{field}")
   — see edit_project_controller.py's own comment on that pair.
 
-Both pairs live entirely within one controller each, so this class's own
-per-controller alphabetical pass is all either one ever needed — nothing
-here (or in controller.py's own composition of all four) has to
-coordinate registration order *across* controllers at all.
+This pair lives entirely within a single controller, so this class's own
+per-controller alphabetical pass is all it ever needs.
 """
 from __future__ import annotations
 

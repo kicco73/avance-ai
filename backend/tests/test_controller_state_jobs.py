@@ -25,7 +25,7 @@ def _wait_for_terminal_state_job(client, project_name, job_id, timeout=5.0, inte
 
 def _make_session_annotated_at_hello(client):
     session = client.get("/api/chat/session").json()
-    turn = client.post("/api/chat/messages", json={"message": "hi", "session_id": session["id"]}).json()
+    turn = client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}).json()
     client.put(
         f"/api/chat/messages/{turn['assistant_message_id']}/expected-state", json={"expected_state": "Hello"},
     )

@@ -82,7 +82,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['close', 'saved', 'download'])
+const emit = defineEmits(['close', 'saved'])
 
 // "New file" (handleNewFile below) only ever makes sense for a blank text
 // file — an image has to come from an actual upload.
@@ -462,7 +462,7 @@ async function refreshSessionStartState() {
     return
   }
   try {
-    const allSessions = await getSessions(false, props.projectName)
+    const allSessions = await getSessions(props.projectName)
     sessionStartState.value = allSessions.find((s) => s.id === currentSessionId.value)?.start_state ?? null
   } catch {
     // already surfaced via apiFetch
@@ -1440,13 +1440,6 @@ function handleInspectorCollapsedChange(collapsed) {
   if (inspecting.value) openInspect()
 }
 
-function handleDownload() {
-  // App.vue's own handleModelDownload does the actual download and shows
-  // the "downloaded" notice itself, once it's actually finished — not
-  // here, and not before it's even started.
-  emit('download', props.projectName)
-}
-
 function startExplorerDrag(event) {
   dragTarget = 'explorer'
   event.preventDefault()
@@ -1651,7 +1644,6 @@ onBeforeUnmount(() => {
           @new-file="handleNewFile"
           @delete-file="handleDeleteFile"
           @select-file="selectFile"
-          @download="handleDownload"
           @upload-file="handleUploadFile"
           @jump-to-definition="(target) => jumpToDefinition(target, { silent: true })"
           @select="selectedGraphElement = $event"
@@ -1754,7 +1746,7 @@ onBeforeUnmount(() => {
               />
             </template>
             <template #tab-metrics="{ registerTab }">
-              <InspectorMetricsTab :ref="registerTab('metrics')" :until-message-id="untilMessageId" />
+              <InspectorMetricsTab :ref="registerTab('metrics')" :until-message-id="untilMessageId" :project-name="projectName" />
             </template>
             <template #tab-env="{ registerTab }">
               <InspectorEnvTab :ref="registerTab('env')" :until-message-id="untilMessageId" :editable="envEditable" />

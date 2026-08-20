@@ -389,7 +389,6 @@ onBeforeUnmount(() => {
       :project-name="editProjectName"
       @close="closeEditProject"
       @saved="handleModelEditSaved"
-      @download="handleModelDownload"
     />
 
     <LabelProjectView
@@ -407,6 +406,7 @@ onBeforeUnmount(() => {
       @delete="handleModelDelete"
       @edit="handleManageProjectsEdit"
       @benchmark="handleManageProjectsBenchmark"
+      @download="handleModelDownload"
     />
   </div>
 </template>
