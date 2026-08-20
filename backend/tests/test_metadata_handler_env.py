@@ -8,6 +8,7 @@ from datetime import datetime
 
 import pytest
 
+from tracking.fixed_project_context import FixedProjectContext
 from tracking.env import PersistedEnv
 from tracking.metadata_handler import MetadataHandler
 from tracking.turn_protocol import TurnProtocol
@@ -87,7 +88,7 @@ def test_generate_reply_renders_an_env_block_with_stored_values_only(db):
         start_state="a", end_state="a",
     )
     db.set_env(PROJECT_NAME, {"favorite_color": "blue"}, USERNAME)
-    env = PersistedEnv(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
+    env = PersistedEnv(db, FixedProjectContext(project_name=PROJECT_NAME))
     protocol = _RecordingProtocol()
 
     protocol.generate_reply("base prompt", "- Definition of signals:\n", env, [], lambda k, v: None)
@@ -101,7 +102,7 @@ def test_generate_reply_renders_an_env_block_with_stored_values_only(db):
 def test_generate_reply_embeds_the_given_signal_definition_verbatim(db):
     """__build_prompt takes the already-rendered definition text directly
     — it has no opinion of its own on which signals it describes."""
-    env = PersistedEnv(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
+    env = PersistedEnv(db, FixedProjectContext(project_name=PROJECT_NAME))
     protocol = _RecordingProtocol()
 
     protocol.generate_reply(

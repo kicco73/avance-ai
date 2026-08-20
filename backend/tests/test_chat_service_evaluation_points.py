@@ -98,9 +98,7 @@ def chat_service_for(db):
     def make(automaton: Automaton, *, ai_service=None) -> ChatService:
         ai_service = ai_service or FakeSchemaAiService([{"signals": '{"foo": 1}'}])
         project_service = FakeProjectService(automaton)
-        metric_service = MetricService(
-            db, get_username=lambda: "user", get_active_project_name=lambda: PROJECT_NAME,
-        )
+        metric_service = MetricService(db, project_service)
         tracking_service = TrackingService(
             db, ai_service, project_service, metric_service,
         )

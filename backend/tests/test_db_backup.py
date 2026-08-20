@@ -73,7 +73,8 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
         "title TEXT, project_revision INTEGER, datetime_start TEXT, datetime_end TEXT, start_state TEXT, "
         "end_state TEXT, labeled INTEGER, comment TEXT)",
         "CREATE TABLE message (id INTEGER PRIMARY KEY, role TEXT, content TEXT, timestamp TEXT, audio_text TEXT)",
-        "CREATE TABLE settings (user TEXT PRIMARY KEY, project TEXT)",
+        "CREATE TABLE user (id INTEGER PRIMARY KEY, provider TEXT, provider_user_id TEXT, email TEXT, "
+        "name TEXT, created_at TEXT, last_login TEXT, active_project TEXT)",
         "CREATE TABLE tracking (id INTEGER PRIMARY KEY, session_id INTEGER, timestamp TEXT, "
         "\"values\" TEXT, old_state TEXT, action TEXT, new_state TEXT, env TEXT)",
         "CREATE TABLE archive (project_name TEXT, archive_name TEXT, revision INTEGER, content BLOB)",

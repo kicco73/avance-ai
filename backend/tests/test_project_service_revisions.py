@@ -73,21 +73,21 @@ def test_get_active_automaton_and_state_uses_the_published_revision_not_the_draf
     assert state.key == "a"
 
 
-def test_get_active_draft_automaton_and_state_works_for_a_never_published_project(db, project_service):
+def test_get_draft_automaton_and_state_works_for_a_never_published_project(db, project_service):
     _save_index_yml(db, "a")
 
-    automaton, state = project_service.get_active_draft_automaton_and_state()
+    automaton, state = project_service.get_draft_automaton_and_state(PROJECT_NAME)
 
     assert set(automaton.states) == {"", "a"}
     assert state.key == "a"
 
 
-def test_get_active_draft_automaton_and_state_sees_the_in_progress_draft(db, project_service):
+def test_get_draft_automaton_and_state_sees_the_in_progress_draft(db, project_service):
     _save_index_yml(db, "a")
     db.publish_project(PROJECT_NAME)
     _save_index_yml(db, "b")
 
-    automaton, _ = project_service.get_active_draft_automaton_and_state()
+    automaton, _ = project_service.get_draft_automaton_and_state(PROJECT_NAME)
 
     assert set(automaton.states) == {"", "b"}
 

@@ -18,6 +18,12 @@ ai-service:
     - driver: gemini
       model: gemini-flash-lite-latest
       key: fake-key
+
+auth-service:
+  jwt-secret: fake-jwt-secret
+  providers:
+    - driver: google
+      key: fake-client-id
 """
 
 

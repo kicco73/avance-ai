@@ -68,9 +68,30 @@ class Message(BaseModel):
     audio_text = TextField(null=True)
     session = ForeignKeyField(ChatSession, null=False, backref='messages', on_delete='CASCADE')
 
-class Settings(BaseModel):
-    user = CharField(primary_key=True)
-    project = CharField()
+class User(BaseModel):
+    id = AutoField()
+    # "google", etc. — which AuthProvider verified this account. Nullable
+    # along with provider_user_id/name: UserMixin's get_active_project_name/
+    # set_active_project_name/clear_active_project_name still take a bare
+    # `user: str` (resolved against `email`, see db/users.py) rather than a
+    # real FK — a row created that way (DEFAULT_USER, or any pre-auth
+    # caller) has no provider identity at all.
+    provider = CharField(null=True)
+    # The provider's own opaque id for this account (Google: the "sub"
+    # claim) — stable identity, unlike email, which a provider account
+    # could in principle change.
+    provider_user_id = CharField(null=True)
+    email = CharField()
+    name = CharField(null=True)
+    created_at = DateTimeField(default=datetime.utcnow)
+    last_login = DateTimeField(null=True)
+    # Absorbs the old standalone Settings table — its only field, the
+    # user's own active_project, unrelated to any Project FK since a
+    # user with no projects yet still needs a row.
+    active_project = CharField(null=True)
+
+    class Meta:
+        indexes = ((('provider', 'provider_user_id'), True),)
 
 class Tracking(BaseModel):
     id = AutoField()

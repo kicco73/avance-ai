@@ -48,6 +48,15 @@ export const testModeProjectName = ref(null)
 // session payload inside ensureSession() below. ChatWindow's index.css
 // skin-loading fetch uses this to know which project's files to fetch.
 export const currentProjectName = ref(null)
+// Bumped by IndexCssEditorPanel.vue whenever index.css is saved — the
+// skin-loading fetch below only re-runs on a project/session change, so a
+// save that doesn't change either would otherwise leave the live Test
+// chat showing the pre-save CSS until the next unrelated project/session
+// switch. Value itself is meaningless, only used as a watch dependency.
+export const skinVersion = ref(0)
+export function invalidateSkin() {
+  skinVersion.value++
+}
 export const messages = ref([])
 export const historyLoaded = ref(false)
 export const chatLoading = ref(false)

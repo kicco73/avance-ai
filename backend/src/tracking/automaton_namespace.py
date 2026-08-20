@@ -4,28 +4,26 @@ project_id (not project_name). Failures resolve to None + SystemWarning
 rather than raising, so a broken reference never crashes the caller's turn."""
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any
 
 from db.db import Db
 from project.project_service import ProjectService
-
-GetUsername = Callable[[], str]
+from session import Session
 
 
 class AutomatonNamespace:
-    """`get_username` is a callable, not a plain string, so it's read
-    fresh each time rather than staled off the value at construction —
-    this object is constructed once and kept long-lived."""
+    """Reads Session().user fresh on every attribute access rather than
+    staling it off a value captured at construction — this object is
+    constructed once and kept long-lived."""
 
-    def __init__(self, db: Db, project_service: ProjectService, get_username: GetUsername) -> None:
+    def __init__(self, db: Db, project_service: ProjectService) -> None:
         self._db = db
         self._project_service = project_service
-        self._get_username = get_username
 
     def __getattr__(self, project_id: str) -> "_ProjectProxy":
         if project_id.startswith("__"):
             raise AttributeError(project_id)
-        return _ProjectProxy(self._db, self._project_service, self._get_username(), project_id)
+        return _ProjectProxy(self._db, self._project_service, Session().user, project_id)
 
 
 class _ProjectProxy:

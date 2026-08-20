@@ -41,20 +41,20 @@ class EditProjectController(BaseController):
     def post_create_test_session(self, project_name: str):
         """The embedded "Test" chat's explicit "start a new session"
         action — the one place a session may exist against an unpublished
-        revision. `project_name` is unused beyond the URL."""
-        return self.chat_service.create_draft_session()
+        revision."""
+        return self.chat_service.create_draft_session(project_name)
 
     @get("/api/projects/{project_name}/test-sessions/current")
     def get_current_test_session(self, project_name: str, session_id: int | None = None):
         """The embedded "Test" chat's bootstrap endpoint — the
         draft-session equivalent of GET /api/chat/session."""
-        return self.chat_service.get_or_create_current_draft_session(session_id)
+        return self.chat_service.get_or_create_current_draft_session(session_id, project_name)
 
     @get("/api/projects/{project_name}/test-sessions")
     def get_test_sessions(self, project_name: str):
         """The embedded "Test" chat's own "Sessions" panel listing — the
         draft-session equivalent of GET .../sessions. The two pools never mix."""
-        return self.chat_service.list_test_sessions()
+        return self.chat_service.list_test_sessions(project_name)
 
     @get("/api/projects/{project_name}/states")
     def get_project_states(self, project_name: str):

@@ -6,6 +6,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from auth.auth_service import AuthService
 from chat.chat_service import ChatService
 from chat.session_manager import ChatSessionManager
 from controller import AvanceController
@@ -16,7 +17,6 @@ from jobs import InMemoryJobSink, JobQueue, PersistedJobSink
 from metrics.benchmark_run_service import BenchmarkRunService
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
-from session import Session
 from tracking.tracking_service import TrackingService
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
@@ -94,11 +94,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     developer's real avance.db or make costly AI calls."""
     project_service = ProjectService(app_db)
     session_manager = ChatSessionManager(app_db)
-    metric_service = MetricService(
-        app_db,
-        get_username=lambda: Session().user,
-        get_active_project_name=lambda: project_service.get_active_project_name(),
-    )
+    metric_service = MetricService(app_db, project_service)
     tracking_service = TrackingService(
         app_db, fake_ai_service, project_service, metric_service,
     )
@@ -110,11 +106,16 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     benchmark_run_service = BenchmarkRunService(
         app_db, fake_ai_service, tracking_service, persisted_jobs, ephemeral_jobs,
     )
+    # No real providers: this app fixture never goes through AuthMiddleware
+    # (that's only wired in main.py's create_app(), not here) or exercises
+    # /api/auth/*, so nothing needs a real Google client id to resolve.
+    auth_service = AuthService(app_db, "test-jwt-secret", [])
 
     fastapi_app = FastAPI(title="Avance State Engine (test)")
     register_error_handlers(fastapi_app)
     controller = AvanceController(
         chat_service, project_service, None, None, app_db, tracking_service, benchmark_run_service,
+        auth_service, "test-version",
     )
     fastapi_app.include_router(controller.router)
     return fastapi_app

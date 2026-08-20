@@ -5,14 +5,20 @@ scopes Core Metrics to just this session, unlike the cross-session `metric`."""
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Callable
+from typing import TYPE_CHECKING
 
 from db import Db, _utc_iso
 from metrics.metric_namespace import SessionMetricNamespace
 from metrics.metrics_framework import AnalyticsCalculator
+from session import Session
 
-GetUsername = Callable[[], str]
-GetActiveProjectName = Callable[[], str]
+if TYPE_CHECKING:
+    # Deferred: project.project_service -> tracking.tracking_engine ->
+    # tracking.evaluation_scope -> SessionFacts from this very module —
+    # a real top-level import here would be circular. Safe as a type-only
+    # import since `from __future__ import annotations` (above) never
+    # evaluates it at runtime.
+    from project.project_service import ProjectService
 
 # Distinguishes "never called" (production) from "called, and given
 # None" (replay, no real elapsed time) — None is itself a meaningful
@@ -25,10 +31,9 @@ class SessionFacts(object):
     set_replay_instant/set_last_transition_instant. A benchmark replay
     can call those once per turn, scoping every fact to that turn's instant."""
 
-    def __init__(self, db: Db, get_username: GetUsername, get_active_project_name: GetActiveProjectName) -> None:
+    def __init__(self, db: Db, project_service: "ProjectService") -> None:
         self._db = db
-        self._get_username = get_username
-        self._get_active_project_name = get_active_project_name
+        self._project_service = project_service
         self._replay_instant: datetime | None | object = _UNSET
         self._last_transition_instant: datetime | None | object = _UNSET
         self._metric: SessionMetricNamespace | None = None
@@ -49,7 +54,7 @@ class SessionFacts(object):
         if self._last_transition_instant is _UNSET:
             # Production: no last transition yet is a routine 0.0, never
             # a "nothing to report" None.
-            project_name = self._get_active_project_name()
+            project_name = self._project_service.get_active_project_name()
             last_transition = self._db.get_last_transition_timestamp(project_name)
             if last_transition is None or now is None:
                 return 0.0
@@ -69,8 +74,8 @@ class SessionFacts(object):
         now = self._now()
         if now is None:
             return None
-        username = self._get_username()
-        project_name = self._get_active_project_name()
+        username = Session().user
+        project_name = self._project_service.get_active_project_name()
         session = self._db.get_latest_chat_session(username, project_name, until=self._replay_bound())
         if session is None:
             return 0.0
@@ -80,8 +85,8 @@ class SessionFacts(object):
         now = self._now()
         if now is None:
             return None
-        username = self._get_username()
-        project_name = self._get_active_project_name()
+        username = Session().user
+        project_name = self._project_service.get_active_project_name()
         # index 0 is the current/most recent session (as of `now`) —
         # "last" means the one immediately before it, most-recent-first
         # ordering. None for a user's very first session ever.
@@ -93,8 +98,8 @@ class SessionFacts(object):
         now = self._now()
         if now is None:
             return None
-        username = self._get_username()
-        project_name = self._get_active_project_name()
+        username = Session().user
+        project_name = self._project_service.get_active_project_name()
         return len(self._db.list_chat_sessions(username, project_name, until=self._replay_bound()))
 
     @property
@@ -108,8 +113,8 @@ class SessionFacts(object):
 
     def _build_session_metric_calculator(self) -> AnalyticsCalculator:
         now = self._now()
-        username = self._get_username()
-        project_name = self._get_active_project_name()
+        username = Session().user
+        project_name = self._project_service.get_active_project_name()
         session = self._db.get_latest_chat_session(username, project_name, until=self._replay_bound())
         since = session["datetime_start"] if session is not None else None
         return AnalyticsCalculator(self._db, username, project_name, since=since, until=now)

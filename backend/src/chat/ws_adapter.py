@@ -4,6 +4,7 @@ import logging
 
 from fastapi import WebSocket, WebSocketDisconnect
 
+from auth.auth_service import SESSION_COOKIE_NAME, AuthService
 from db import Db
 from service_error import ServiceError
 from session import Session
@@ -13,9 +14,10 @@ logger = logging.getLogger(__name__)
 
 
 class WsAdapter(object):
-    def __init__(self, chat_service: ChatService, db: Db) -> None:
+    def __init__(self, chat_service: ChatService, db: Db, auth_service: AuthService) -> None:
         self._chat_service = chat_service
         self._db = db
+        self._auth_service = auth_service
         # username -> the one open connection shared across every project:
         # the frontend keeps at most one websocket per tab, reused across
         # every project's own chat, so a per-project connection was never needed.
@@ -23,8 +25,18 @@ class WsAdapter(object):
 
     async def chat_loop(self, websocket: WebSocket) -> None:
         """Accepts the /ws/chat connection and dispatches every non-empty
-        frame to ChatService.process_turn(), one at a time. Registers
-        this socket under Session().user immediately after accept()."""
+        frame to ChatService.process_turn(), one at a time. The login
+        wall's own middleware (see auth/auth_middleware.py) never sees a
+        websocket handshake at all, so this checks the same cookie by
+        hand — before accept(), so an unauthenticated client gets a
+        clean close instead of a connection it can still send frames on."""
+        token = websocket.cookies.get(SESSION_COOKIE_NAME)
+        identity = self._auth_service.verify_token(token) if token else None
+        if identity is None:
+            await websocket.close(code=4401)
+            return
+        Session().user = identity.email
+
         username = Session().user
         await websocket.accept()
         self._connections[username] = websocket

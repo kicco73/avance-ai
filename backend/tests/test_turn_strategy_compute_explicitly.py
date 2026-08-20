@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import pytest
 
+from tracking.fixed_project_context import FixedProjectContext
 from tracking.env import PersistedEnv
 from tracking.turn_protocol_using_text_extraction import TurnProcotolUsingTextExtraction
 from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
@@ -17,7 +18,7 @@ pytestmark = pytest.mark.contract
 
 
 def _env(db) -> PersistedEnv:
-    return PersistedEnv(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
+    return PersistedEnv(db, FixedProjectContext(project_name=PROJECT_NAME))
 
 
 class FakeAiServiceV1:

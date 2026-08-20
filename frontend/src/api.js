@@ -1,4 +1,5 @@
 import { setApiError } from './errorStore.js'
+import { requireLogin } from './authStore.js'
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 const WS_URL = import.meta.env.VITE_WS_URL ?? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/chat`
@@ -6,7 +7,10 @@ const WS_URL = import.meta.env.VITE_WS_URL ?? `${location.protocol === 'https:' 
 async function apiFetch(url, options, { parse = 'json' } = {}) {
   let res
   try {
-    res = await fetch(url, options)
+    // The session cookie is httpOnly and, in dev, often cross-origin
+    // (VITE_API_URL pointing at a separate backend port) — without this
+    // it simply never gets sent, and every call 401s regardless of login.
+    res = await fetch(url, { ...options, credentials: 'include' })
   } catch (err) {
     if (err.name === 'AbortError') throw err
     setApiError('Unable to reach the backend.', err.message)
@@ -23,9 +27,15 @@ async function apiFetch(url, options, { parse = 'json' } = {}) {
         detail = body.error.detail ?? ''
       }
     } catch {
-      
+
     }
-    setApiError(message, detail)
+    // A 401 means "not logged in" — LoginView.vue takes over the whole
+    // screen for that, so it doesn't also need an error banner.
+    if (res.status === 401) {
+      requireLogin()
+    } else {
+      setApiError(message, detail)
+    }
     const err = new Error(message)
     err.status = res.status
     err.detail = detail
@@ -42,6 +52,26 @@ async function apiFetch(url, options, { parse = 'json' } = {}) {
 
 export function getState(signal) {
   return apiFetch(`${API_URL}/state`, { signal })
+}
+
+// `credential` is the Google Identity Services ID token JWT off the
+// "Sign in with Google" callback — see LoginView.vue. The backend sets
+// the session cookie itself (Set-Cookie on this response); there's
+// nothing in the returned body the caller needs to store.
+export function postLogin(provider, credential) {
+  return apiFetch(`${API_URL}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider, credential })
+  })
+}
+
+export function postLogout() {
+  return apiFetch(`${API_URL}/auth/logout`, { method: 'POST' })
+}
+
+export function getMe() {
+  return apiFetch(`${API_URL}/auth/me`)
 }
 
 export function getCurrentSession(sessionId) {
@@ -416,6 +446,12 @@ export function putProjectResume(projectName) {
 // backend derives/de-duplicates one on its own).
 export function postNewProject() {
   return apiFetch(`${API_URL}/projects`, { method: 'POST' })
+}
+
+// Settings > "About Avance..." dialog — {name, version}, version being
+// whatever the running backend's own __version__ (main.py) currently is.
+export function getAbout() {
+  return apiFetch(`${API_URL}/settings/about`)
 }
 
 export function getBackup() {

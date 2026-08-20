@@ -6,8 +6,10 @@ from __future__ import annotations
 from db import Db
 from ai.ai_service import AiService
 from automaton.automaton import Automaton
+from session import Session
 from tracking.definitions import Signals
 from tracking.env import Env, PersistedEnv
+from tracking.fixed_project_context import FixedProjectContext
 from tracking.metadata_handler import MetadataHandler
 from tracking.tracking_service import TrackingService
 from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
@@ -43,7 +45,7 @@ class TurnByTurnSignalSource:
             if real_state:
                 signal_names |= self._automaton.triggerable_signal_names(real_state)
 
-        signal_definition = Signals(lambda: self._automaton, self._db).get_definition(signal_names)
+        signal_definition = Signals(FixedProjectContext(self._automaton), self._db).get_definition(signal_names)
 
         state = self._automaton.get_state(current_state)
         base_prompt = f"{self._automaton.general_prompt}\n\n{state.contextual_prompt}"
@@ -123,7 +125,7 @@ class BatchSignalSource:
 
     async def _call_from(self, message_id: int) -> None:
         turn_ids = self._turns_from(message_id)
-        signal_definition = Signals(lambda: self._automaton, self._db).get_definition(self._signal_names)
+        signal_definition = Signals(FixedProjectContext(self._automaton), self._db).get_definition(self._signal_names)
 
         tag_specs: list[tuple[str, str]] = []
         for i, _turn_id in enumerate(turn_ids, start=1):
@@ -173,10 +175,18 @@ class BatchSignalSource:
         session = self._db.get_chat_session(self._session_id)
         if session is None or session['datetime_start'] is None:
             return {}
-        persisted_env = PersistedEnv(
-            self._db, get_username=lambda: session['username'], get_active_project_name=lambda: session['project_name'],
-        )
-        return persisted_env.stored(until=session['datetime_start'])
+        # PersistedEnv now reads Session().user itself rather than taking
+        # it as a constructor argument — pinned to this historical
+        # session's own username for the one call that needs it, then
+        # restored, so a concurrent request's own Session().user (a
+        # separate context already, but belt-and-suspenders) is never at risk.
+        previous_user = Session().user
+        Session().user = session['username']
+        try:
+            persisted_env = PersistedEnv(self._db, FixedProjectContext(self._automaton, session['project_name']))
+            return persisted_env.stored(until=session['datetime_start'])
+        finally:
+            Session().user = previous_user
 
     def _user_message_ids(self) -> list[int]:
         return [m['id'] for m in self._db.get_messages(self._session_id) if m['role'] == 'user']

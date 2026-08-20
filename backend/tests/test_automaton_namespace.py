@@ -47,7 +47,8 @@ states:
 
 
 def _namespace(db) -> AutomatonNamespace:
-    return AutomatonNamespace(db, ProjectService(db), lambda: USERNAME)
+    # USERNAME matches DEFAULT_USER, so Session().user already resolves to it.
+    return AutomatonNamespace(db, ProjectService(db))
 
 
 def test_state_resolves_to_none_and_warns_when_the_project_does_not_exist(db):

@@ -1,16 +1,103 @@
-/* Avance — index.css di esempio, progetto TTM prototype
-   Cambia solo il colore di sfondo di .chat-body in base allo stato corrente
-   (classe .state-<key> su .chat-window-shell). Nessun'altra proprietà
-   toccata: header/footer restano quelli di base. */
- 
-.chat-body {
-  transition: background-color 0.4s ease;
+.chat-header, .chat-body, .chat-footer {
+  transition: background-color 0.4s ease, border-color 0.4s ease;
 }
- 
-.state-Precontemplation .chat-body { background-color: #f4f4f5; }
-.state-Contemplation    .chat-body { background-color: #eff6ff; }
-.state-Preparation      .chat-body { background-color: #fffbeb; }
-.state-Action           .chat-body { background-color: #ecfdf5; }
-.state-Maintenance      .chat-body { background-color: #f0fdfa; }
-.state-Relapse          .chat-body { background-color: #faf5ff; }
-.state-Crisis           .chat-body { background-color: #fef2f2; }
+
+.chat-header {
+  background: #14141f;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.chat-header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.7;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1px 1px at 10% 20%, #fff 100%, transparent),
+    radial-gradient(1px 1px at 30% 70%, #fff 100%, transparent),
+    radial-gradient(1px 1px at 50% 30%, #fff 100%, transparent),
+    radial-gradient(1px 1px at 70% 80%, #fff 100%, transparent),
+    radial-gradient(1px 1px at 85% 15%, #fff 100%, transparent),
+    radial-gradient(1px 1px at 90% 55%, #fff 100%, transparent),
+    radial-gradient(1px 1px at 15% 55%, #fff 100%, transparent),
+    radial-gradient(1px 1px at 60% 10%, #fff 100%, transparent);
+}
+.chat-header .chat-header-icon {
+  position: relative;
+  z-index: 1;
+  width: 56px;
+  height: 56px;
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+
+.chat-header-icon {
+  animation-duration: 0.5s;
+  animation-timing-function: ease-out;
+}
+@keyframes icon-pop-precontemplation { from { opacity: 0; transform: scale(0.7); filter: brightness(1.6); } to { opacity: 1; transform: scale(1); filter: brightness(1); } }
+@keyframes icon-pop-contemplation    { from { opacity: 0; transform: scale(0.7); filter: brightness(1.6); } to { opacity: 1; transform: scale(1); filter: brightness(1); } }
+@keyframes icon-pop-preparation      { from { opacity: 0; transform: scale(0.7); filter: brightness(1.6); } to { opacity: 1; transform: scale(1); filter: brightness(1); } }
+@keyframes icon-pop-action           { from { opacity: 0; transform: scale(0.7); filter: brightness(1.6); } to { opacity: 1; transform: scale(1); filter: brightness(1); } }
+@keyframes icon-pop-maintenance      { from { opacity: 0; transform: scale(0.7); filter: brightness(1.6); } to { opacity: 1; transform: scale(1); filter: brightness(1); } }
+@keyframes icon-pop-relapse          { from { opacity: 0; transform: scale(0.7); filter: brightness(1.6); } to { opacity: 1; transform: scale(1); filter: brightness(1); } }
+@keyframes icon-pop-crisis           { from { opacity: 0; transform: scale(0.7); filter: brightness(1.6); } to { opacity: 1; transform: scale(1); filter: brightness(1); } }
+
+.state-Precontemplation .chat-header-icon { animation-name: icon-pop-precontemplation; }
+.state-Contemplation    .chat-header-icon { animation-name: icon-pop-contemplation; }
+.state-Preparation      .chat-header-icon { animation-name: icon-pop-preparation; }
+.state-Action           .chat-header-icon { animation-name: icon-pop-action; }
+.state-Maintenance      .chat-header-icon { animation-name: icon-pop-maintenance; }
+.state-Relapse          .chat-header-icon { animation-name: icon-pop-relapse; }
+.state-Crisis           .chat-header-icon { animation-name: icon-pop-crisis; }
+
+/* Transizione mirata: relapse -> crisis, l'eclissi "si chiude" invece del pop generico */
+@keyframes icon-eclipse-deepen { from { filter: brightness(1.4); } to { filter: brightness(1); } }
+[data-prev-state="Relapse"][data-state="Crisis"] .chat-header-icon {
+  animation-name: icon-eclipse-deepen;
+  animation-duration: 0.6s;
+  animation-timing-function: ease;
+}
+
+.chat-body { background: #10101c; }
+.chat-footer { background: #14141f; border-top: 1px solid #2a2a3c; }
+
+/* Precontemplation: luna nuova, nessuna parte illuminata */
+.state-Precontemplation .chat-header-icon {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%231e1e2f' stroke='%233f3f52' stroke-width='1.5'/%3E%3C/svg%3E");
+}
+
+/* Contemplation: crescente sottile */
+.state-Contemplation .chat-header-icon {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%231e1e2f' stroke='%233f3f52' stroke-width='1.5'/%3E%3Cpath d='M 50 5 A 45 45 0 0 1 50 95 A 25 45 0 0 0 50 5 Z' fill='%23f5f1e6'/%3E%3C/svg%3E");
+}
+
+/* Preparation: primo quarto */
+.state-Preparation .chat-header-icon {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%231e1e2f' stroke='%233f3f52' stroke-width='1.5'/%3E%3Cpath d='M 50 5 A 45 45 0 0 1 50 95 A 0 45 0 0 0 50 5 Z' fill='%23f5f1e6'/%3E%3C/svg%3E");
+}
+
+/* Action, Maintenance: piena — stesso data URI, Maintenance aggiunge solo un alone */
+.state-Action .chat-header-icon,
+.state-Maintenance .chat-header-icon {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%23f5f1e6' stroke='%23e8dfc8' stroke-width='1.5'/%3E%3C/svg%3E");
+}
+.state-Maintenance .chat-header-icon {
+  box-shadow: 0 0 0 3px rgba(245, 241, 230, 0.25);
+  border-radius: 50%;
+}
+
+/* Relapse: eclissi parziale rossastra */
+.state-Relapse .chat-header-icon {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%231e1e2f' stroke='%233f3f52' stroke-width='1.5'/%3E%3Cpath d='M 50 5 A 45 45 0 0 1 50 95 A 20 45 0 0 1 50 5 Z' fill='%23a8452f'/%3E%3C/svg%3E");
+}
+
+/* Crisis: eclissi totale + accento di sicurezza sul bordo header */
+.state-Crisis .chat-header-icon {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%234a1010' stroke='%237f1d1d' stroke-width='2'/%3E%3C/svg%3E");
+}
+.state-Crisis .chat-header { border-bottom: 2px solid #7f1d1d; }

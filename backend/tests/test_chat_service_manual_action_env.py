@@ -8,6 +8,7 @@ import pytest
 
 from automaton.automaton import Action, Automaton, State
 from chat.chat_service import ChatService
+from tracking.fixed_project_context import FixedProjectContext
 from tracking.env import PersistedEnv
 from chat.session_manager import ChatSessionManager
 from conftest import FakeAiService
@@ -68,9 +69,7 @@ def _chat_service(db, automaton: Automaton) -> ChatService:
     db.publish_project(PROJECT_NAME)
     ai_service = FakeAiService()
     project_service = FakeProjectService(automaton)
-    metric_service = MetricService(
-        db, get_username=lambda: "user", get_active_project_name=lambda: PROJECT_NAME,
-    )
+    metric_service = MetricService(db, project_service)
     tracking_service = TrackingService(
         db, ai_service, project_service, metric_service,
     )
@@ -86,7 +85,7 @@ def _chat_service(db, automaton: Automaton) -> ChatService:
 
 
 def _env_for(db) -> PersistedEnv:
-    return PersistedEnv(db, get_username=lambda: "user", get_active_project_name=lambda: PROJECT_NAME)
+    return PersistedEnv(db, FixedProjectContext(project_name=PROJECT_NAME))
 
 
 async def test_a_manually_fired_actions_env_is_persisted(db):

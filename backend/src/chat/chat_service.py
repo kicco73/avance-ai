@@ -49,12 +49,10 @@ class ChatService(object):
 		# Shares persisted_jobs with BenchmarkRunService (see main.py's own
 		# wiring) — never its own private queue.
 		self._session_summary_manager = SessionSummaryManager(db, ai_service, persisted_jobs, session_manager)
-		get_username = lambda: Session().user
-		get_active_project_name = lambda: project_service.get_active_project_name()
-		self.env = PersistedEnv(db, get_username=get_username, get_active_project_name=get_active_project_name)
+		self.env = PersistedEnv(db, project_service)
 		self._system_facts = SystemFacts()
-		self._session_facts = SessionFacts(db, get_username=get_username, get_active_project_name=get_active_project_name)
-		self._automaton_namespace = AutomatonNamespace(db, project_service, get_username)
+		self._session_facts = SessionFacts(db, project_service)
+		self._automaton_namespace = AutomatonNamespace(db, project_service)
 		self.evaluation_scope_builder = EvaluationScopeBuilder(
 			self.env, metric_service, self._system_facts, self._session_facts, self._automaton_namespace
 		)
@@ -160,13 +158,14 @@ class ChatService(object):
 		# ChatSessionManager.get_or_create_current_session.
 		return self._session_payload(session, active=True)
 
-	def get_or_create_current_draft_session(self, session_id: int | None) -> dict:
-		"""Like get_or_create_current_session, but for the active
-		project's own *draft* — the embedded "Test" chat is the one place
-		a session is allowed to exist against an unpublished revision."""
-		project_name = self._active_project_name
+	def get_or_create_current_draft_session(self, session_id: int | None, project_name: str) -> dict:
+		"""Like get_or_create_current_session, but for `project_name`'s own
+		*draft* — the embedded "Test" chat is the one place a session is
+		allowed to exist against an unpublished revision. `project_name`
+		comes from the URL, never the active-project pointer — see
+		ProjectService.get_draft_automaton_and_state for why."""
 		try:
-			_, state = self._project_service.get_active_draft_automaton_and_state()
+			_, state = self._project_service.get_draft_automaton_and_state(project_name)
 			session = self._session_manager.get_or_create_current_draft_session(
 				self._username, project_name, session_id, state.key
 			)
@@ -191,12 +190,13 @@ class ChatService(object):
 		# transition reports, just for init_action instead of a regular Action.
 		return {**self._session_payload(session, active=True), "on-enter": automaton.init_action.on_enter}
 
-	def create_draft_session(self) -> dict:
-		"""Like create_session, but against the active project's own
-		current *draft* revision — the embedded "Test" chat is the only caller."""
-		project_name = self._active_project_name
+	def create_draft_session(self, project_name: str) -> dict:
+		"""Like create_session, but against `project_name`'s own current
+		*draft* revision — the embedded "Test" chat is the only caller.
+		`project_name` comes from the URL, never the active-project
+		pointer — see ProjectService.get_draft_automaton_and_state for why."""
 		try:
-			automaton, _ = self._project_service.get_active_draft_automaton_and_state()
+			automaton, _ = self._project_service.get_draft_automaton_and_state(project_name)
 			session = self._session_manager.create_draft_session(
 				self._username, project_name, automaton.init_action.target
 			)
@@ -217,11 +217,10 @@ class ChatService(object):
 		source = ('native', 'imported') if include_imported else 'native'
 		return self._list_sessions_by_source(project_name, source, active_source='native')
 
-	def list_test_sessions(self) -> list[dict]:
-		"""Like list_sessions, but the active project's own 'test'
-		sessions — native/imported never appear here, symmetric to how a
-		test session never appears in list_sessions."""
-		project_name = self._active_project_name
+	def list_test_sessions(self, project_name: str) -> list[dict]:
+		"""Like list_sessions, but `project_name`'s own 'test' sessions —
+		native/imported never appear here, symmetric to how a test session
+		never appears in list_sessions."""
 		return self._list_sessions_by_source(project_name, 'test', active_source='test')
 
 	def _require_own_session(self, session_id: int) -> None:

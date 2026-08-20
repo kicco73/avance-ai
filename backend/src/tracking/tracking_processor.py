@@ -20,6 +20,7 @@ from .turn_protocol_using_text_extraction import TurnProcotolUsingTextExtraction
 from .metadata_handler import MetadataHandler
 from .definitions import Signals
 from .errors import TrackingServiceError
+from .fixed_project_context import FixedProjectContext
 
 logger = logging.getLogger(__name__)
 
@@ -179,7 +180,10 @@ class TrackingProcessor(object):
 			return FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message), None, []
 
 		# which action fires from here.
-		signals = Signals(lambda: automaton, self.db)
+		# Pinned to THIS turn's own already-resolved automaton (never
+		# whatever project happens to be "active" right now, which need
+		# not be the same one this session actually belongs to).
+		signals = Signals(FixedProjectContext(automaton), self.db)
 		signal_names = automaton.triggerable_signal_names(state.key)
 		signal_definition = signals.get_definition(signal_names)
 		base_prompt = f"{automaton.general_prompt}\n\n{state.contextual_prompt}"

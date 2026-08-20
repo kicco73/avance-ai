@@ -12,6 +12,7 @@ import pytest
 
 from automaton.automaton import Action, Automaton, Signal, State
 from metrics.metric_service import MetricService
+from tracking.fixed_project_context import FixedProjectContext
 from tracking.tracking_service import TrackingService
 
 USERNAME = "user"
@@ -75,7 +76,7 @@ class FakeSchemaAiService:
 def _tracking_service(db, automaton: Automaton, signals_json: str = '{"mySignal": 1}') -> TrackingService:
     ai_service = FakeSchemaAiService(signals_json)
     project_service = FakeProjectService(automaton)
-    metrics = MetricService(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
+    metrics = MetricService(db, FixedProjectContext(project_name=PROJECT_NAME))
     return TrackingService(db, ai_service, project_service, metrics)
 
 

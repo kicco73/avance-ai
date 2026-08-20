@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
 
 USERNAME = "user"
@@ -15,7 +16,7 @@ PROJECT_NAME = "proj"
 
 
 def _session_facts(db) -> SessionFacts:
-    return SessionFacts(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
+    return SessionFacts(db, FixedProjectContext(project_name=PROJECT_NAME))
 
 
 @pytest.mark.regression

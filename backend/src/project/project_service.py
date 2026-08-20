@@ -533,13 +533,16 @@ class ProjectService(object):
         automaton = self._load_project_at_revision(project_name, session["project_revision"])
         return automaton, self._resolve_state(project_name, automaton)
 
-    def get_active_draft_automaton_and_state(self) -> tuple[Automaton, State]:
-        """Like get_active_automaton_and_state, but the in-progress draft
-        rather than published-only — needed so a "Test" session stays
-        creatable against a project that's never been published yet."""
-        project_name = self.get_active_project_name()
-        if project_name is None:
-            raise FileNotFoundError("No project is currently active.")
+    def get_draft_automaton_and_state(self, project_name: str) -> tuple[Automaton, State]:
+        """Like get_automaton_and_state, but the in-progress draft rather
+        than published-only — needed so a "Test" session stays creatable
+        against a project that's never been published yet. Takes
+        `project_name` explicitly (the embedded "Test" chat's own URL
+        already carries it) rather than resolving it off the
+        active-project pointer — that pointer is keyed per Session().user
+        and can easily be unset or pointing elsewhere for whoever's
+        making this call, even though the URL already says exactly which
+        project this is about."""
         automaton = self._load_project(project_name)
         return automaton, self._resolve_state(project_name, automaton)
 

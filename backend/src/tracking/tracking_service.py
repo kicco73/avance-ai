@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import asyncio
 from http import HTTPStatus
-from typing import Any, Callable
+from typing import Any
 
 from automaton.automaton import Automaton, SignalPayload
 from ai.ai_service import AiService
 from project.project_service import ProjectService
-from session import Session
 from db import Db
 from metrics.metric_service import MetricService
 
@@ -24,10 +23,6 @@ from .session_export import SessionExportManager
 from .tracking_processor import UserVariables
 from .tracking_processor_ai import TrackingProcessorAfterAiMessage
 from .tracking_processor_user import TrackingProcessorAfterUserMessage
-
-GetActiveAutomaton = Callable[[], Automaton]
-GetUsername = Callable[[], str]
-GetActiveProjectName = Callable[[], str]
 
 
 class TrackingService(object):
@@ -90,11 +85,11 @@ class TrackingService(object):
 		return automaton
 
 	def get_definition(self, names: set[str] | None = None) -> str:
-		signals = Signals(lambda: self.automaton, self._db)
+		signals = Signals(self._project_service, self._db)
 		return signals.get_definition(names)
 
 	def get_latest_signals(self) -> list[SignalPayload]:
-		signals = Signals(lambda: self.automaton, self._db)
+		signals = Signals(self._project_service, self._db)
 		return signals.get_latest_signals()
 
 	def get_session_signals(self, session_id: int) -> list[dict]:
@@ -267,12 +262,10 @@ class TrackingService(object):
 		else:
 			TrackingProcessor = TrackingProcessorAfterAiMessage
 
-		get_username = lambda: Session().user
-		get_active_project_name = self._project_service.get_active_project_name
-		env = PersistedEnv(self._db, get_username=get_username, get_active_project_name=get_active_project_name)
+		env = PersistedEnv(self._db, self._project_service)
 		system_facts = SystemFacts()
-		session_facts = SessionFacts(self._db, get_username=get_username, get_active_project_name=get_active_project_name)
-		automaton_namespace = AutomatonNamespace(self._db, self._project_service, get_username)
+		session_facts = SessionFacts(self._db, self._project_service)
+		automaton_namespace = AutomatonNamespace(self._db, self._project_service)
 		scope_builder = EvaluationScopeBuilder(env, self._metrics, system_facts, session_facts, automaton_namespace)
 
 		def on_metadata_sync_to_async(key: str, value: Any):

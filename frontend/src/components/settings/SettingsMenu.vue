@@ -3,7 +3,7 @@
 // offering Manage projects and backup download/restore actions.
 import { onBeforeUnmount, ref } from 'vue'
 
-const emit = defineEmits(['manage-projects', 'download-backup', 'restore-backup'])
+const emit = defineEmits(['manage-projects', 'download-backup', 'restore-backup', 'about', 'logout'])
 
 const open = ref(false)
 const rootEl = ref(null)
@@ -26,6 +26,16 @@ function selectDownloadBackup() {
 function selectRestoreBackup() {
   open.value = false
   restoreInput.value?.click()
+}
+
+function selectAbout() {
+  open.value = false
+  emit('about')
+}
+
+function selectLogout() {
+  open.value = false
+  emit('logout')
 }
 
 function handleRestoreFileChange(event) {
@@ -67,6 +77,13 @@ onBeforeUnmount(() => {
         </li>
         <li>
           <button class="settings-item" @click="selectRestoreBackup">Restore backup...</button>
+        </li>
+        <li class="settings-separator" role="separator"></li>
+        <li>
+          <button class="settings-item" @click="selectAbout">About Avance...</button>
+        </li>
+        <li>
+          <button class="settings-item" @click="selectLogout">Logout</button>
         </li>
       </ul>
     </div>

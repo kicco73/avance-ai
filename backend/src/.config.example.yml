@@ -78,3 +78,15 @@ listen-service:
       model: small
       language: ca
       # ui-label/ui-description: same optional fields as ai-service above.
+
+auth-service:
+  # Not provider-specific — needed regardless of which provider below
+  # actually authenticates the user.
+  jwt-secret: <your-jwt-secret>
+  providers:
+    # `key` is mandatory here (unlike talk-service/listen-service): for
+    # google it's the OAuth client ID. Interpreting it is the provider
+    # implementation's job, not this schema's.
+    - driver: google
+      key: <your-google-client-id>
+      # ui-label/ui-description: same optional fields as ai-service above.

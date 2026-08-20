@@ -27,6 +27,7 @@ import {
   draft,
   currentSessionId,
   currentProjectName,
+  skinVersion,
   selectedSessionActive,
   sessions,
   sessionsLoading,
@@ -204,7 +205,12 @@ async function loadSkin() {
   }
   let css
   try {
-    const response = await fetch(projectFileContentUrl(projectName, 'index.css', sessionId))
+    // credentials: 'include' — this bypasses api.js's apiFetch (which
+    // already sets it), so without this explicit option the request
+    // drops the session cookie behind AuthMiddleware whenever frontend
+    // and backend aren't same-origin, 401s, and loadSkin silently treats
+    // that the same as "no index.css".
+    const response = await fetch(projectFileContentUrl(projectName, 'index.css', sessionId), { credentials: 'include' })
     if (!response.ok) {
       clearSkin()
       return
@@ -220,7 +226,7 @@ async function loadSkin() {
   skinStyleEl.textContent = css
 }
 
-watch([currentProjectName, currentSessionId], loadSkin, { immediate: true })
+watch([currentProjectName, currentSessionId, skinVersion], loadSkin, { immediate: true })
 onBeforeUnmount(clearSkin)
 </script>
 
@@ -251,7 +257,9 @@ onBeforeUnmount(clearSkin)
     </div>
 
     <div class="chat-window">
-    <div class="chat-header"></div>
+    <div class="chat-header">
+      <div class="chat-header-icon"></div>
+    </div>
 
     <div class="messages chat-body" ref="scrollEl">
       <slot name="timeline">

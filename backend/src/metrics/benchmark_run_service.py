@@ -22,8 +22,10 @@ from metrics.metrics_framework.benchmark_metrics.dto import BenchmarkConfigurati
 from metrics.metrics_framework.benchmark_metrics.metrics import SignalAccuracyMetric
 from metrics.metrics_framework.benchmark_metrics.observations import BenchmarkObservationBuilder
 from project.project_service import decode_text_archives
+from session import Session
 from tracking.env import Env, PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
+from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
 from tracking.system_facts import SystemFacts
 from tracking.tracking_engine import BenchmarkRunObservationSink, TrackingEngine
@@ -128,11 +130,17 @@ class BenchmarkRunService:
     def _build_seed_env(self, session: dict) -> Env:
         if session['datetime_start'] is None:
             return Env()
-        persisted_env = PersistedEnv(
-            self._db, get_username=lambda: session['username'], get_active_project_name=lambda: session['project_name'],
-        )
-        until = session['datetime_start']
-        return Env(stored=persisted_env.stored(until=until), action_set=persisted_env.action_set(until=until))
+        # PersistedEnv now reads Session().user itself — pinned to this
+        # historical session's own username for the two calls that need
+        # it, then restored (see FixedProjectContext's own docstring).
+        previous_user = Session().user
+        Session().user = session['username']
+        try:
+            persisted_env = PersistedEnv(self._db, FixedProjectContext(project_name=session['project_name']))
+            until = session['datetime_start']
+            return Env(stored=persisted_env.stored(until=until), action_set=persisted_env.action_set(until=until))
+        finally:
+            Session().user = previous_user
 
     def _build_replay_work(
         self, run: dict, automaton: Automaton, session_ids: list[int], signal_source_cls: type,
@@ -141,35 +149,45 @@ class BenchmarkRunService:
             warnings: list[str] = []
             completed_turns = 0
 
-            for session_id in session_ids:
-                session = self._db.get_chat_session(session_id)
-                env = self._build_seed_env(session)
-                system_facts = SystemFacts()
-                session_facts = SessionFacts(
-                    self._db, get_username=lambda: run['username'], get_active_project_name=lambda: run['project_name'],
-                )
-                metrics = BenchmarkMetricsProvider(self._db, run['username'], run['project_name'], session_id)
-                scope_builder = EvaluationScopeBuilder(env, metrics, system_facts, session_facts)
-                sink = BenchmarkRunObservationSink(run['id'])
-                tracking_engine = TrackingEngine(sink, env, scope_builder)
-                signal_source = signal_source_cls(self._ai_service, self._tracking_service, self._db, automaton, session_id)
-                processor = BenchmarkProcessor(
-                    self._db, automaton, tracking_engine, env, session_facts, metrics, signal_source, sink,
-                )
+            # SessionFacts (like PersistedEnv) now reads Session().user
+            # itself rather than taking it as a constructor argument —
+            # pinned to this run's own username for the whole replay,
+            # then restored, since a job worker may reuse this same
+            # context/task across unrelated jobs afterward (see
+            # FixedProjectContext's own docstring for why it must never
+            # read whatever's live instead).
+            previous_user = Session().user
+            Session().user = run['username']
+            try:
+                for session_id in session_ids:
+                    session = self._db.get_chat_session(session_id)
+                    env = self._build_seed_env(session)
+                    system_facts = SystemFacts()
+                    session_facts = SessionFacts(self._db, FixedProjectContext(project_name=run['project_name']))
+                    metrics = BenchmarkMetricsProvider(self._db, run['username'], run['project_name'], session_id)
+                    scope_builder = EvaluationScopeBuilder(env, metrics, system_facts, session_facts)
+                    sink = BenchmarkRunObservationSink(run['id'])
+                    tracking_engine = TrackingEngine(sink, env, scope_builder)
+                    signal_source = signal_source_cls(self._ai_service, self._tracking_service, self._db, automaton, session_id)
+                    processor = BenchmarkProcessor(
+                        self._db, automaton, tracking_engine, env, session_facts, metrics, signal_source, sink,
+                    )
 
-                def report_progress() -> None:
-                    nonlocal completed_turns
-                    completed_turns += 1
-                    on_progress(completed_turns)
+                    def report_progress() -> None:
+                        nonlocal completed_turns
+                        completed_turns += 1
+                        on_progress(completed_turns)
 
-                warning = await processor.run_session(session_id, run, report_progress=report_progress)
-                if warning is not None:
-                    warnings.append(warning)
+                    warning = await processor.run_session(session_id, run, report_progress=report_progress)
+                    if warning is not None:
+                        warnings.append(warning)
 
-                if isinstance(signal_source, BatchSignalSource):
-                    self._db.add_benchmark_run_batch_segments(run['id'], signal_source.batch_segments)
+                    if isinstance(signal_source, BatchSignalSource):
+                        self._db.add_benchmark_run_batch_segments(run['id'], signal_source.batch_segments)
 
-            self._calculate_and_save_results(run)
+                self._calculate_and_save_results(run)
+            finally:
+                Session().user = previous_user
 
             return ("; ".join(warnings) if warnings else None), None
 

@@ -7,7 +7,7 @@ import { getProjectsRuntimeStatus, putProjectPause, putProjectResume } from '../
 import ErrorBanner from '../ErrorBanner.vue'
 
 // Emits events only; App.vue owns the actual new/upload/delete actions.
-const emit = defineEmits(['close', 'new-project', 'upload', 'delete', 'edit', 'benchmark', 'download'])
+const emit = defineEmits(['close', 'new-project', 'upload', 'delete', 'edit', 'benchmark', 'download', 'chat'])
 
 const rows = ref([])
 const loading = ref(true)
@@ -65,6 +65,10 @@ function selectBenchmark(name) {
   emit('benchmark', name)
 }
 
+function selectChat(name) {
+  emit('chat', name)
+}
+
 function selectDownload(name) {
   emit('download', name)
 }
@@ -112,6 +116,7 @@ defineExpose({ refresh: load })
             <th>Reason</th>
             <th>Revision</th>
             <th>Published</th>
+            <th class="manage-projects-col-chat"></th>
             <th class="manage-projects-col-benchmark"></th>
             <th class="manage-projects-col-download"></th>
             <th class="manage-projects-col-delete"></th>
@@ -138,6 +143,18 @@ defineExpose({ refresh: load })
             <td class="manage-projects-reason">{{ row.paused_reason ?? '—' }}</td>
             <td>{{ row.revision }}</td>
             <td>{{ row.published_revision ?? '—' }}</td>
+            <td class="manage-projects-col-chat">
+              <button
+                type="button"
+                class="manage-projects-chat-btn"
+                title="Open chat"
+                @click="selectChat(row.name)"
+              >
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
+                  <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" />
+                </svg>
+              </button>
+            </td>
             <td class="manage-projects-col-benchmark">
               <button
                 type="button"
@@ -275,6 +292,10 @@ defineExpose({ refresh: load })
   width: 2.2rem;
 }
 
+.manage-projects-col-chat {
+  width: 2.2rem;
+}
+
 .manage-projects-col-benchmark {
   width: 2.2rem;
 }
@@ -350,6 +371,24 @@ defineExpose({ refresh: load })
 
 .manage-projects-icon-manually_paused .manage-projects-dot {
   background: #607d8b;
+}
+
+.manage-projects-chat-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: #4a6fa5;
+  cursor: pointer;
+}
+
+.manage-projects-chat-btn:hover {
+  background: #f0f4fa;
 }
 
 .manage-projects-benchmark-btn {

@@ -73,9 +73,7 @@ def _chat_service(db, automaton: Automaton) -> tuple[ChatService, FakeAiService]
     db.publish_project(PROJECT_NAME)
     ai_service = FakeAiService()
     project_service = FakeProjectService(automaton)
-    metric_service = MetricService(
-        db, get_username=lambda: "user", get_active_project_name=lambda: PROJECT_NAME,
-    )
+    metric_service = MetricService(db, project_service)
     tracking_service = TrackingService(db, ai_service, project_service, metric_service)
     chat_service = ChatService(
         db=db, ai_service=ai_service, project_service=project_service,

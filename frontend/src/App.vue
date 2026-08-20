@@ -4,9 +4,11 @@ import ChatWindow from './components/chat/ChatWindow.vue'
 import StateBar from './components/StateBar.vue'
 import EditProjectView from './components/project/edit/EditProjectView.vue'
 import LabelProjectView from './components/project/label/LabelProjectView.vue'
+import LoginView from './components/LoginView.vue'
 import ProjectsMenu from './components/ProjectsMenu.vue'
 import SettingsMenu from './components/settings/SettingsMenu.vue'
 import ManageProjectsView from './components/settings/ManageProjectsView.vue'
+import AboutDialog from './components/settings/AboutDialog.vue'
 import SplashScreen from './components/SplashScreen.vue'
 import ErrorBanner from './components/ErrorBanner.vue'
 import ToastContainer from './components/ToastContainer.vue'
@@ -19,10 +21,12 @@ import {
   downloadProject,
   getBackup,
   postRestoreBackup,
-  postPublishProject
+  postPublishProject,
+  postLogout
 } from './api.js'
 import { disconnect as disconnectChat } from './chatClient.js'
 import { clearApiError } from './errorStore.js'
+import { needsLogin, requireLogin } from './authStore.js'
 import {
   state,
   setCapabilities,
@@ -39,6 +43,7 @@ const editProjectName = ref(null)
 const showBenchmarkProject = ref(false)
 const benchmarkProjectName = ref(null)
 const showManageProjects = ref(false)
+const showAbout = ref(false)
 const modelUploadInput = ref(null)
 const projectsMenu = ref(null)
 const manageProjectsView = ref(null)
@@ -129,6 +134,23 @@ function startBootSequence() {
   runPingAttempt(bootSequenceToken)
 }
 
+// LoginView.vue's own 'logged-in' — the session cookie is set, so the
+// exact same startup path a fresh page load takes now succeeds instead
+// of 401ing.
+function handleLoggedIn() {
+  startBootSequence()
+}
+
+async function handleLogout() {
+  try {
+    await postLogout()
+  } catch {
+    // already surfaced via apiFetch
+  }
+  disconnectChat()
+  requireLogin()
+}
+
 function triggerModelUpload() {
   modelUploadInput.value?.click()
 }
@@ -217,6 +239,14 @@ function handleManageProjectsEdit(projectName) {
 function handleManageProjectsBenchmark(projectName) {
   showManageProjects.value = false
   handleModelBenchmark(projectName)
+}
+
+// "Open chat" on a project's own row: same switch as picking it from
+// ProjectsMenu, then back to the main chat screen (closing Manage
+// projects is what actually reveals it — there's no separate route).
+function handleManageProjectsChat(projectName) {
+  showManageProjects.value = false
+  handleProjectSwitch(projectName)
 }
 
 // Edit/Label are only ever opened from Manage projects now (ProjectsMenu.vue
@@ -341,7 +371,11 @@ onBeforeUnmount(() => {
        already up. -->
   <ToastContainer />
 
-  <SplashScreen v-if="bootStatus === 'waiting'" variant="connecting" />
+  <!-- Overrides everything below regardless of bootStatus — a 401 (see
+       api.js's apiFetch) can happen at any point, including mid-boot. -->
+  <LoginView v-if="needsLogin" @logged-in="handleLoggedIn" />
+
+  <SplashScreen v-else-if="bootStatus === 'waiting'" variant="connecting" />
   <SplashScreen v-else-if="bootStatus === 'failed'" variant="failed" @retry="startBootSequence" />
 
   <div v-else-if="bootStatus === 'ready'" class="app">
@@ -355,6 +389,8 @@ onBeforeUnmount(() => {
         />
         <SettingsMenu
           @manage-projects="showManageProjects = true"
+          @about="showAbout = true"
+          @logout="handleLogout"
           @download-backup="handleDownloadBackup"
           @restore-backup="handleRestoreBackup"
         />
@@ -398,8 +434,11 @@ onBeforeUnmount(() => {
       @delete="handleModelDelete"
       @edit="handleManageProjectsEdit"
       @benchmark="handleManageProjectsBenchmark"
+      @chat="handleManageProjectsChat"
       @download="handleModelDownload"
     />
+
+    <AboutDialog v-if="showAbout" @close="showAbout = false" />
   </div>
 </template>
 

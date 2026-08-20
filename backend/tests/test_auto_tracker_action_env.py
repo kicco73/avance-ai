@@ -10,6 +10,7 @@ from datetime import datetime
 import pytest
 
 from automaton.automaton import Action, Automaton, Signal, State
+from tracking.fixed_project_context import FixedProjectContext
 from tracking.env import PersistedEnv
 from metrics.metric_service import MetricService
 from tracking.tracking_service import TrackingService
@@ -92,7 +93,7 @@ class FakeSchemaAiService:
 def _tracking_service(db, automaton: Automaton, signals_json: str = '{"mySignal": 1}') -> TrackingService:
     ai_service = FakeSchemaAiService(signals_json)
     project_service = FakeProjectService(automaton)
-    metrics = MetricService(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
+    metrics = MetricService(db, FixedProjectContext(project_name=PROJECT_NAME))
     return TrackingService(db, ai_service, project_service, metrics)
 
 
@@ -107,7 +108,7 @@ def _session_id(db) -> int:
 
 
 def _env(db) -> PersistedEnv:
-    return PersistedEnv(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
+    return PersistedEnv(db, FixedProjectContext(project_name=PROJECT_NAME))
 
 
 async def test_a_fired_actions_env_is_persisted(db):

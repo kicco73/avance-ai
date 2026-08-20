@@ -6,6 +6,7 @@ import { computed, onMounted, ref } from 'vue'
 import CodeEditor from '../../../CodeEditor.vue'
 import ChatPreview from './ChatPreview.vue'
 import { getProjectGraph } from '../../../../api.js'
+import { invalidateSkin } from '../../../../chatStore.js'
 
 const props = defineProps({
   projectName: { type: String, required: true }
@@ -70,6 +71,15 @@ function onSelectState() {
   codeEditorRef.value?.jumpToLine(lineIndex)
 }
 
+// The live Test chat (a real ChatWindow, unlike ChatPreview above which
+// already reflects `content` live) fetches its skin over HTTP and only
+// re-fetches on a project/session change — a save alone wouldn't
+// otherwise reach it, so this is what tells it the file actually changed.
+function onCodeSaved(result) {
+  invalidateSkin()
+  emit('saved', result)
+}
+
 defineExpose({ content, isDirty, saving, save, discard, undo, redo, reload })
 </script>
 
@@ -124,7 +134,7 @@ defineExpose({ content, isDirty, saving, save, discard, undo, redo, reload })
         ref="codeEditorRef"
         :project-name="projectName"
         file-name="index.css"
-        @saved="emit('saved', $event)"
+        @saved="onCodeSaved"
       />
     </div>
   </div>

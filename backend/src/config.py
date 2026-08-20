@@ -23,6 +23,17 @@ class TalkServiceConfig:
 
 
 @dataclass(frozen=True)
+class AuthProviderConfig:
+    driver: str
+    # Mandatory here — Google always requires a client ID; revisit whether
+    # this should become optional if a future provider doesn't need one.
+    key: str
+    # Optional: falls back to `driver` (see AppConfig._parse_auth_providers).
+    ui_label: str
+    ui_description: str | None = None
+
+
+@dataclass(frozen=True)
 class ListenServiceConfig:
     driver: str
     model: str
@@ -207,6 +218,30 @@ class AppConfig:
         return services
 
     @classmethod
+    def _parse_auth_providers(cls, raw: dict, path: Path) -> list[AuthProviderConfig]:
+        # Always required (unlike talk-service/listen-service, which are
+        # opt-in via _get_optional_providers): authentication isn't an
+        # optional feature once the login wall exists.
+        entries = cls._get_providers(raw, "auth-service", path)
+
+        providers = []
+        for i, entry in enumerate(entries):
+            if not isinstance(entry, dict):
+                raise ConfigError(f"{path}: 'auth-service.providers[{i}]' must be a mapping.")
+            driver = entry.get("driver")
+            key = entry.get("key")
+            if not isinstance(driver, str) or not driver.strip():
+                raise ConfigError(f"{path}: 'auth-service.providers[{i}].driver' is missing or empty.")
+            if not isinstance(key, str) or not key.strip():
+                raise ConfigError(f"{path}: 'auth-service.providers[{i}].key' is missing or empty.")
+            driver = driver.strip()
+            ui_label, ui_description = cls._parse_ui_fields(entry, driver, "auth-service", i, path)
+            providers.append(AuthProviderConfig(
+                driver=driver, key=key.strip(), ui_label=ui_label, ui_description=ui_description,
+            ))
+        return providers
+
+    @classmethod
     def _parse_ai_services(cls, raw: dict, path: Path) -> list[AIServiceConfig]:
         entries = cls._get_providers(raw, "ai-service", path)
 
@@ -273,5 +308,10 @@ class AppConfig:
         self.ai_services = self._parse_ai_services(raw, path)
         self.talk_services = self._parse_talk_services(raw, path)
         self.listen_services = self._parse_listen_services(raw, path)
+
+        # Not provider-specific — needed regardless of which auth provider
+        # actually authenticated the user.
+        self.auth_jwt_secret = self._require_str(raw, "auth-service", "jwt-secret", path)
+        self.auth_providers = self._parse_auth_providers(raw, path)
 
 
