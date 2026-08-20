@@ -11,15 +11,14 @@ facade remains the only database-access layer.
 
 ## Required Db facade methods
 
-The current DB implementation needs one additional public method because the
-existing API does not expose the complete Tracking event log:
+The framework relies on one Db method for the complete Tracking event log:
 
 ```python
 def get_signals(self, session_id: int) -> list[dict]:
     ...
 ```
 
-It should return, chronologically or not, rows shaped as:
+It returns, chronologically or not, rows shaped as:
 
 ```text
 id, timestamp, values, old_state, action, new_state

@@ -9,7 +9,7 @@ an action ("trigger").
 
 A project is just a `.zip` (an `index.yml` plus optional attachment files);
 the format itself — states, actions, signals, triggers, attachments — is
-documented separately in [`backend/samples/README.md`](backend/samples/README.md),
+documented separately in [`backend/src/docs/PROJECT_SPECS.md`](backend/src/docs/PROJECT_SPECS.md),
 not here. This file covers the technical solution and how to install and
 configure it.
 
@@ -23,7 +23,10 @@ backend/
   src/      FastAPI app.
     main.py                 entrypoint: wires everything below, exposes
                              the REST API (and an optional /ws/chat socket)
-    controller.py            every REST route (AvanceController)
+    controller.py            composition root — merges the 4 screen-scoped
+                             controllers below onto one router
+    controllers/             every REST route, one file per FE screen
+                             (chat/edit_project/label_project/settings)
     chat/                    turn processing, auto-tracking, sessions
     automaton/                index.yml parsing + the DFA itself
     project/                  project CRUD/activation/validation
@@ -135,18 +138,21 @@ only read once at process start).
 
 ## What the API covers
 
-The full, authoritative route list is `backend/src/controller.py`
-(`AvanceController`) — grouped here by area:
+The full, authoritative route list is `backend/src/controllers/` (one file
+per FE screen) — grouped here by area. Every endpoint scoped to a project
+or a session takes that id as a URL path segment, never a query param or
+request-body field:
 
 | Area | Examples |
 | --- | --- |
-| Chat | `GET/POST /api/chat/session(s)`, `DELETE /api/chat/sessions/{id}`, `GET/POST /api/chat/messages`, `POST /api/action`, `GET/POST /api/chat/autotracking`, `POST /api/chat/reset` |
-| Live analytics | `GET /api/chat/signals` (last computed signal values), `GET /api/chat/metrics` (metrics_framework, computed on demand), `POST /api/triggers/preview` |
+| Chat | `GET/POST /api/chat/session(s)`, `DELETE /api/chat/sessions/{id}`, `GET/POST /api/chat/sessions/{id}/messages`, `POST /api/chat/sessions/{id}/action`, `POST /api/chat/reset` |
+| Auto-tracking | `GET/POST /api/chat/sessions/{id}/autotracking` — "Dev mode: freeze automatic state transitions", scoped to one 'test' session (EditProjectView.vue's own embedded "Test" chat); a native/imported session is always auto-tracked |
+| Live analytics | `GET /api/chat/signals` (last computed signal values, active project), `GET /api/projects/{name}/metrics` (metrics_framework, computed on demand), `POST /api/triggers/preview` |
 | AI model | `GET /api/ai/models`, `POST /api/ai/models/selection` |
 | Voice | `GET /api/chat/messages/{id}/audio` (TTS), `POST /api/listen/transcribe` (STT) |
-| Projects | `GET /api/projects`, `PUT /api/projects/{name}/activate`, `GET/PUT/DELETE /api/projects/{name}`, `GET /api/projects/{name}/graph`, `GET /api/projects/{name}/signals` |
+| Projects | `GET/POST /api/projects`, `PUT /api/projects/{name}/activate`, `GET/PUT/DELETE /api/projects/{name}`, `GET /api/projects/{name}/graph`, `GET /api/projects/{name}/signals`, `GET /api/projects/{name}/sessions`, `GET /api/projects/{name}/identifiers` |
 | Project files | `GET /api/projects/{name}/files(/{file})`, `PUT/DELETE /api/projects/{name}/files/{file}` — the "Edit project" view's file explorer |
-| Backup | `GET/POST /api/backup` — the whole database (every project, every user's sessions) as a single restorable `.sqlite` file |
+| Settings | `GET/POST /api/settings/backup` (the whole database, every project and every user's sessions, as a single restorable `.sqlite` file), `GET /api/settings/projects/runtime-status` |
 | Status | `GET /api/state` |
 | Chat (optional) | `WS /ws/chat` — only when `chat-service.transport: websocket` |
 
@@ -166,7 +172,7 @@ these metric names, or combine both in the same expression. Metric names
 are reserved: a project can't declare a signal that shadows one.
 
 None of this — signal/state/action/trigger syntax — is described here; see
-[`backend/samples/README.md`](backend/samples/README.md) for the complete
+[`backend/src/docs/PROJECT_SPECS.md`](backend/src/docs/PROJECT_SPECS.md) for the complete
 project-format specification, and `backend/samples/` for worked examples
 (including `Metrics Playground.zip` and its state-based sibling
 `Metrics Playground (states).zip`, both built specifically to exercise
