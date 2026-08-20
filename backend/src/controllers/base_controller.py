@@ -68,6 +68,11 @@ class BaseController:
         # actually lands. Shared here (rather than duplicated on both
         # EditProjectController and SettingsController, the two that
         # actually pass this) since it only ever needs self.chat_service,
-        # which every controller subclassing this already has.
+        # which every controller subclassing this already has. The lock
+        # itself is the whole point — it serializes this commit against a
+        # concurrent chat turn (see ChatService's own self.lock docstring);
+        # nothing else needs doing here now that auto-tracking is a
+        # per-test-session flag (see TrackingService), not a global one a
+        # project commit needs to reset.
         async with self.chat_service.lock:
-            self.chat_service.tracking_service.auto_tracking_enabled = True
+            pass

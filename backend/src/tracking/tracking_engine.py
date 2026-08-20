@@ -117,8 +117,9 @@ class TrackingEngine:
         self._env = env
         self._scope_builder = scope_builder
         # EditProjectView.vue's own "Dev mode: freeze automatic state
-        # transitions" toggle (see TrackingService.auto_tracking_enabled,
-        # threaded down through TrackingProcessor.__init__) — False means
+        # transitions" toggle (see TrackingService.is_auto_tracking_enabled,
+        # per-test-session, threaded down through TrackingProcessor.
+        # __init__) — False means
         # a triggerable action is never *selected* here, so apply_transition
         # always falls into its own action-is-None branch below and just
         # logs the evaluation (see evaluate_triggered_action's own

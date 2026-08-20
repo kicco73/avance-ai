@@ -372,12 +372,15 @@ export function postAiModelSelection(index) {
   })
 }
 
-export function getAutoTracking() {
-  return apiFetch(`${API_URL}/chat/autotracking`)
+// "Dev mode: freeze automatic state transitions" — EditProjectView.vue's
+// own embedded "Test" chat only, per test session (see backend's
+// TrackingService.is_auto_tracking_enabled) — never global.
+export function getAutoTracking(sessionId) {
+  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/autotracking`)
 }
 
-export function postAutoTracking(enabled) {
-  return apiFetch(`${API_URL}/chat/autotracking`, {
+export function postAutoTracking(sessionId, enabled) {
+  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/autotracking`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled })

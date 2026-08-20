@@ -134,7 +134,7 @@ def test_a_native_sessions_message_is_unaffected_by_the_imported_fallback(client
     before: only the session's own literal first message gets the
     existing _materialize_session_start_row treatment, never a later one."""
     native_session_id = _setup_project(client, autotracking_on_ai_message=False)
-    turn = client.post("/api/chat/messages", json={"session_id": native_session_id, "message": "hi"})
+    turn = client.post(f"/api/chat/sessions/{native_session_id}/messages", json={"message": "hi"})
     assert turn.status_code == 200, turn.text
     user_message_id = turn.json()["user_message_id"]
 

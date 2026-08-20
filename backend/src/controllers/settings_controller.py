@@ -55,7 +55,7 @@ class SettingsController(BaseController):
                 self.db.restore_backup(content)
             except ValueError as exc:
                 raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-            self.chat_service.tracking_service.auto_tracking_enabled = True
+            self.chat_service.tracking_service.clear_auto_tracking_overrides()
         return {"success": True}
 
     @get("/api/projects")

@@ -1,12 +1,15 @@
-"""TrackingService.auto_tracking_enabled — EditProjectView.vue's own "Dev
-mode: freeze automatic state transitions" toggle. Signal evaluation
-itself is never gated by this (the AI still computes/reports signal
-values on every turn, same prompt either way) — only whether a
-triggered action actually gets *selected* and applied (see
-TrackingEngine.evaluate_triggered_action). Frozen or not, the signal
-values a turn actually saw are always persisted (see TrackingEngine.
-apply_transition's own action-is-None branch) so the Signals tab still
-has something to show even while nothing is moving.
+"""TrackingService.set_auto_tracking_enabled/is_auto_tracking_enabled —
+EditProjectView.vue's own "Dev mode: freeze automatic state transitions"
+toggle, per 'test' session (see db.create_chat_session's own `source`
+param) — a native session can never be frozen (see TrackingService.
+process's own is_test_session check). Signal evaluation itself is never
+gated by this (the AI still computes/reports signal values on every
+turn, same prompt either way) — only whether a triggered action actually
+gets *selected* and applied (see TrackingEngine.evaluate_triggered_
+action). Frozen or not, the signal values a turn actually saw are always
+persisted (see TrackingEngine.apply_transition's own action-is-None
+branch) so the Signals tab still has something to show even while
+nothing is moving.
 """
 from __future__ import annotations
 
@@ -84,13 +87,13 @@ def _tracking_service(db, automaton: Automaton, signals_json: str = '{"mySignal"
     return TrackingService(db, ai_service, project_service, metrics)
 
 
-def _session_id(db) -> int:
+def _session_id(db, *, source: str = "test") -> int:
     db.ensure_project(PROJECT_NAME)
     db.publish_project(PROJECT_NAME)
     return db.create_chat_session(
         username=USERNAME, project_name=PROJECT_NAME,
         datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
-        start_state="a", end_state="a",
+        start_state="a", end_state="a", source=source,
     )
 
 
@@ -109,7 +112,7 @@ async def test_a_matching_trigger_does_not_fire_when_auto_tracking_is_frozen(db)
     automaton = _automaton("signal.mySignal >= 1")
     session_id = _session_id(db)
     service = _tracking_service(db, automaton, '{"mySignal": 1}')
-    service.auto_tracking_enabled = False
+    service.set_auto_tracking_enabled(session_id, False)
 
     result = await service.process(session_id, "hello")
 
@@ -123,10 +126,42 @@ async def test_signals_are_still_computed_and_logged_while_frozen(db):
     automaton = _automaton("signal.mySignal >= 1")
     session_id = _session_id(db)
     service = _tracking_service(db, automaton, '{"mySignal": 1}')
-    service.auto_tracking_enabled = False
+    service.set_auto_tracking_enabled(session_id, False)
 
     await service.process(session_id, "hello")
 
     logged = service.get_session_signals(session_id)
     assert len(logged) == 1
     assert json.loads(logged[0]["values"])["mySignal"] == 1
+
+
+async def test_freezing_a_native_session_has_no_effect(db):
+    """The whole point of this refactor: auto-tracking freeze only ever
+    applies to 'test' sessions (EditProjectView.vue's own embedded "Test"
+    chat) — a native session's own trigger still fires normally even if
+    something did call set_auto_tracking_enabled(session_id, False) for
+    it (see TrackingService.process's own is_test_session check)."""
+    automaton = _automaton("signal.mySignal >= 1")
+    session_id = _session_id(db, source="native")
+    service = _tracking_service(db, automaton, '{"mySignal": 1}')
+    service.set_auto_tracking_enabled(session_id, False)
+
+    result = await service.process(session_id, "hello")
+
+    assert result["state_changed"] is True
+    assert result["new_state"] == "b"
+
+
+async def test_freezing_one_test_session_never_affects_another(db):
+    """Not global: freezing session A must never freeze session B, even
+    though both are 'test' sessions of the same project."""
+    automaton = _automaton("signal.mySignal >= 1")
+    frozen_session_id = _session_id(db)
+    other_session_id = _session_id(db)
+    service = _tracking_service(db, automaton, '{"mySignal": 1}')
+    service.set_auto_tracking_enabled(frozen_session_id, False)
+
+    result = await service.process(other_session_id, "hello")
+
+    assert result["state_changed"] is True
+    assert result["new_state"] == "b"

@@ -34,7 +34,8 @@ class AiService(object):
 		self._configs = configs or []
 		# None = auto (use auto_provider); an index pins to that entry of
 		# selectable_providers/configs instead. In-memory only, like the
-		# rest of this prototype's mutable state (e.g. auto_tracking_enabled).
+		# rest of this prototype's mutable state (e.g. TrackingService's
+		# own per-test-session auto-tracking overrides).
 		self._selected_index: int | None = None
 
 	@classmethod

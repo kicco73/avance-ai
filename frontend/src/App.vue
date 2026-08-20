@@ -28,7 +28,6 @@ import {
   setCapabilities,
   handleStateChange,
   loadMessages,
-  loadAutoTracking,
   loadAiModels,
   clearChatUi,
   projectPaused,
@@ -92,7 +91,6 @@ function bootSucceeded() {
   // still be sitting in the shared store the moment the chat UI mounts.
   clearApiError()
   loadMessages()
-  loadAutoTracking()
   loadAiModels()
   // No proactive chat-socket connect here: chatClient.js connects lazily
   // on the first sendMessage() call, and the opening message (if any) is

@@ -44,7 +44,29 @@ class TrackingService(object):
 		self._metrics = metrics_service
 		self._session_import_manager = SessionImportManager(db)
 		self._session_export_manager = SessionExportManager(db)
-		self.auto_tracking_enabled = True
+		# EditProjectView.vue's own "Dev mode: freeze automatic state
+		# transitions" toggle — per 'test' session (see db.create_draft_
+		# chat_session), never global: a native/imported session is always
+		# auto-tracked (see process()'s own is_test_session check below),
+		# and one test session's own freeze never leaks into another's.
+		# Absent = enabled, same default `True` always meant.
+		self._disabled_test_sessions: set[int] = set()
+
+	def is_auto_tracking_enabled(self, session_id: int) -> bool:
+		return session_id not in self._disabled_test_sessions
+
+	def set_auto_tracking_enabled(self, session_id: int, enabled: bool) -> None:
+		if enabled:
+			self._disabled_test_sessions.discard(session_id)
+		else:
+			self._disabled_test_sessions.add(session_id)
+
+	def clear_auto_tracking_overrides(self) -> None:
+		"""A full DB restore (see SettingsController.post_backup) can
+		reuse session ids the in-memory freeze set still refers to from
+		before the restore — clears it outright rather than risk a stale
+		entry silently freezing an unrelated, newly-restored session."""
+		self._disabled_test_sessions.clear()
 
 	def import_session(self, username: str, project_name: str, text: str, title: str | None = None) -> int:
 		try:
@@ -305,6 +327,8 @@ class TrackingService(object):
 		):
 
 		automaton, state = self._project_service.get_automaton_and_state_for_session(session_id)
+		session = self._db.get_chat_session(session_id)
+		is_test_session = session is not None and session["source"] == "test"
 
 		user_vars = UserVariables(
 			automaton=automaton,
@@ -333,7 +357,7 @@ class TrackingService(object):
 		tracking_processor = TrackingProcessor(
 			self._ai_service, scope_builder,
 			env, self._db, user_vars,
-			auto_tracking_enabled=self.auto_tracking_enabled,
+			auto_tracking_enabled=self.is_auto_tracking_enabled(session_id) if is_test_session else True,
 		)
 
 		return tracking_processor.process(text, on_metadata=on_metadata_sync_to_async, extra_prompt=extra_prompt)

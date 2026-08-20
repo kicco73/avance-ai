@@ -189,6 +189,7 @@ async function ensureSession() {
   currentSessionId.value = session.id
   selectedSessionActive.value = session.active
   currentProjectName.value = session.project_name
+  if (testModeProjectName.value != null) await loadAutoTracking()
   return session.id
 }
 
@@ -325,9 +326,14 @@ export async function handleDeleteSession(session) {
   }
 }
 
-export async function loadAutoTracking() {
+// Test-session-only (see backend's TrackingService.is_auto_tracking_
+// enabled) — called from ensureSession() below, gated on testModeProjectName,
+// the same way that function already branches for everything else
+// Test-mode-specific. currentSessionId is always the test session by
+// the time this runs.
+async function loadAutoTracking() {
   try {
-    const res = await getAutoTracking()
+    const res = await getAutoTracking(currentSessionId.value)
     autoTrackingEnabled.value = res.enabled
   } catch {
     // already surfaced via apiFetch
@@ -337,7 +343,7 @@ export async function loadAutoTracking() {
 export async function toggleAutoTracking() {
   autoTrackingLoading.value = true
   try {
-    const res = await postAutoTracking(!autoTrackingEnabled.value)
+    const res = await postAutoTracking(currentSessionId.value, !autoTrackingEnabled.value)
     autoTrackingEnabled.value = res.enabled
   } catch {
     // already surfaced via apiFetch

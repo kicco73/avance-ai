@@ -229,14 +229,17 @@ class ChatController(BaseController):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/chat/autotracking")
-    def get_autotracking(self):
-        return {"enabled": self.chat_service.tracking_service.auto_tracking_enabled}
+    @get("/api/chat/sessions/{session_id}/autotracking")
+    def get_autotracking(self, session_id: int):
+        """"Dev mode: freeze automatic state transitions" — EditProjectView.
+        vue's own embedded "Test" chat only; a native/imported session is
+        always auto-tracked (see TrackingService.process)."""
+        return {"enabled": self.chat_service.tracking_service.is_auto_tracking_enabled(session_id)}
 
-    @post("/api/chat/autotracking")
-    def post_autotracking(self, req: AutoTrackingRequest):
-        self.chat_service.tracking_service.auto_tracking_enabled = req.enabled
-        return {"enabled": self.chat_service.tracking_service.auto_tracking_enabled}
+    @post("/api/chat/sessions/{session_id}/autotracking")
+    def post_autotracking(self, session_id: int, req: AutoTrackingRequest):
+        self.chat_service.tracking_service.set_auto_tracking_enabled(session_id, req.enabled)
+        return {"enabled": self.chat_service.tracking_service.is_auto_tracking_enabled(session_id)}
 
     @get("/api/chat/messages/{message_id}/audio")
     def get_message_audio(self, message_id: int, request: Request):
@@ -308,6 +311,5 @@ class ChatController(BaseController):
         exactly one, just not modeled as firing an Action per se."""
         async with self.chat_service.lock:
             self.project_service.reset_active_project()
-            self.chat_service.tracking_service.auto_tracking_enabled = True
         automaton, state = self.project_service.get_active_automaton_and_state()
         return {**Automaton.get_state_payload(state), "on-enter": automaton.init_action.on_enter}
