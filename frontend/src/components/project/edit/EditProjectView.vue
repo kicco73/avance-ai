@@ -865,6 +865,15 @@ const publishing = ref(false)
 // both confirm and cancel.
 const publishRemapPrompt = ref(null)
 const publishRemapChoice = ref('')
+// Set only while handleClose's own "publish before leaving?" confirm was
+// accepted — handlePublish's own success paths (direct, or via
+// confirmPublishRemap once a remap is resolved) close the view themselves
+// once the publish they were asked to run actually lands; every other
+// exit from handlePublish (declined has_active_sessions confirm, a
+// failed request, a cancelled remap) clears this back to false instead,
+// so a *later*, unrelated Publish click never accidentally closes the
+// view too.
+const closeAfterPublish = ref(false)
 
 async function refreshProjectRevision() {
   try {
@@ -891,8 +900,27 @@ async function refreshActiveEditorHistory() {
   await activeEditor()?.reload?.()
 }
 
+// Closes the view once a publish handleClose itself asked for actually
+// lands — see closeAfterPublish's own docstring. Both handlePublish's own
+// direct-success path and confirmPublishRemap's (once a remap is
+// resolved) call this the same way; every other exit from either instead
+// falls through to resetCloseAfterPublish below, never closing on a
+// failed/declined/cancelled attempt.
+function closeIfRequested() {
+  if (!closeAfterPublish.value) return
+  closeAfterPublish.value = false
+  emit('close')
+}
+
+function resetCloseAfterPublish() {
+  closeAfterPublish.value = false
+}
+
 async function handlePublish() {
-  if (publishUpToDate.value || publishing.value) return
+  if (publishUpToDate.value || publishing.value) {
+    resetCloseAfterPublish()
+    return
+  }
   publishing.value = true
   try {
     const preview = await getPublishPreview(props.projectName)
@@ -909,12 +937,15 @@ async function handlePublish() {
       preview.has_active_sessions &&
       !window.confirm(`Publish revision ${projectRevision.value?.revision}? There's an active session on the currently published revision — it will stay frozen there; this one becomes the new one.`)
     ) {
+      resetCloseAfterPublish()
       return
     }
     projectRevision.value = await postPublishProject(props.projectName)
     await refreshActiveEditorHistory()
+    closeIfRequested()
   } catch {
     // already surfaced via apiFetch
+    resetCloseAfterPublish()
   } finally {
     publishing.value = false
   }
@@ -926,6 +957,7 @@ async function confirmPublishRemap(stateKey) {
     projectRevision.value = await postPublishProject(props.projectName, stateKey)
     publishRemapPrompt.value = null
     await refreshActiveEditorHistory()
+    closeIfRequested()
   } catch {
     // already surfaced via apiFetch — leave the modal open so the user
     // can pick a different state or cancel
@@ -937,6 +969,7 @@ async function confirmPublishRemap(stateKey) {
 function cancelPublishRemap() {
   publishRemapPrompt.value = null
   publishing.value = false
+  resetCloseAfterPublish()
 }
 
 // The "Rev. X" split button's own dropdown arrow — only ever rendered
@@ -1322,8 +1355,25 @@ async function handleDeleteFile(fileName) {
 // history itself is cleared on entry, not here — see onMounted.
 const { confirmLeaveIfNeeded } = useLeaveConfirmation(activeEditorIsDirty, 'Discard unsaved changes to this file?')
 
+// Unsaved-file changes (confirmLeaveIfNeeded) are checked first — that's
+// the more urgent, data-loss-risk concern, and there's no point asking
+// about publishing at all if the user backs out right there. Only past
+// that does a genuinely pending (draft-ahead-of-published) revision get
+// its own separate question: publish it before leaving, or leave it
+// pending exactly as today. "No" (or dismissing the browser confirm)
+// still closes — publishUpToDate itself never blocks Back, only offers
+// to resolve it first.
 function handleClose() {
   if (!confirmLeaveIfNeeded()) return
+  if (!publishUpToDate.value) {
+    if (window.confirm(
+      `Revision ${projectRevision.value?.revision} isn't published yet. Publish it before leaving? Cancel leaves it pending, exactly as now.`
+    )) {
+      closeAfterPublish.value = true
+      handlePublish()
+      return
+    }
+  }
   emit('close')
 }
 

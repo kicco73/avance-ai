@@ -998,9 +998,8 @@ class ProjectService(object):
         transparent pseudo-node, same convention "" already has everywhere
         else (Tracking.old_state, benchmarkTimeline.js's own synthetic
         session-start entry) for "there was no real prior state"."""
-        automaton = self._load_project_at_revision(
-            project_name, self._resolve_inspector_revision(project_name, session_id)
-        )
+        revision = self._resolve_inspector_revision(project_name, session_id)
+        automaton = self._load_project_at_revision(project_name, revision)
         real_states = [state for state in automaton.states.values() if state.key != ""]
         nodes = [
             {
@@ -1039,7 +1038,16 @@ class ProjectService(object):
         # message a mark/annotation point belongs to, so it falls back to
         # whichever side a live turn would actually have evaluated on (see
         # TrackingService._materialize_imported_session_row).
-        return {"nodes": nodes, "edges": edges, "autotracking_on_ai_message": automaton.autotracking_on_ai_message}
+        return {
+            "nodes": nodes, "edges": edges, "autotracking_on_ai_message": automaton.autotracking_on_ai_message,
+            # The exact revision this graph was actually built from (see
+            # _resolve_inspector_revision) — InspectorGraph.vue's own
+            # "Rev. X" badge reads this straight off the same response
+            # rather than a second, possibly out-of-sync fetch, so it's
+            # always right regardless of whether session_id pinned this to
+            # something other than the current draft.
+            "revision": revision,
+        }
 
     def list_projects(self) -> dict:
         projects = self._db.list_projects_with_availability()

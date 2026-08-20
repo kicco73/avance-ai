@@ -78,6 +78,17 @@ class TestGetProjectGraphRevision:
         assert response.status_code == 200
         assert {n["state"]["key"] for n in response.json()["nodes"]} == {"a", "b"}
 
+    def test_response_reports_the_exact_revision_it_was_resolved_against(self, client):
+        session_id = _setup_pinned_session(client)
+        client.put("/api/projects/proj", content=THREE_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
+        client.post("/api/projects/proj/publish", json={})
+
+        pinned = client.get(f"/api/projects/proj/graph?session_id={session_id}")
+        current = client.get("/api/projects/proj/graph")
+
+        assert pinned.json()["revision"] == 0
+        assert current.json()["revision"] == 1
+
     def test_a_test_session_always_tracks_the_live_draft(self, client):
         client.put("/api/projects/proj", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
         client.post("/api/projects/proj/publish", json={})

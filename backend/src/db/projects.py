@@ -237,6 +237,28 @@ class ProjectMixin:
         StateRemap.delete().where(StateRemap.project_name == project_name).execute()
         Project.delete().where(Project.name == project_name).execute()
 
+    def delete_draft_test_sessions(self, project_name: str) -> None:
+        """Deletes every 'test' session (EditProjectView.vue's own
+        embedded Test chat, see ChatSessionManager.create_draft_session)
+        of `project_name` — called by publish_project/revert_to_published,
+        the two moments a Test session's own anchored revision stops
+        meaning anything (see ChatSessionManager.
+        get_or_create_current_draft_session's own "an existing active
+        session is reused as-is, whatever revision it carried"
+        docstring): reopening Test after either must never resume a
+        session still pointing at a draft that no longer exists in that
+        shape. A plain revision-number comparison can't replace this —
+        revert_to_published resets Project.revision back to
+        published_revision's own value, so the number can coincide again
+        with an old Test session's own project_revision by pure
+        coincidence, even though the content has since changed. Message/
+        Tracking rows cascade via their own on_delete='CASCADE' FK (see
+        models.py) — no separate delete needed for those. A no-op, not an
+        error, when there's nothing to delete."""
+        ChatSession.delete().where(
+            (ChatSession.project_name == project_name) & (ChatSession.source == 'test')
+        ).execute()
+
     def publish_project(self, project_name: str) -> None:
         """Sets published_revision = revision — a no-op (not an error) if
         they already match, so a concurrent double-click is harmless. Note
@@ -250,7 +272,10 @@ class ProjectMixin:
         revision don't fork until the *next* edit (see _ensure_draft_
         revision's own docstring), so undo/redo would otherwise still work
         past a publish, letting it silently rewrite content that's now
-        live."""
+        live. delete_draft_test_sessions runs unconditionally (not gated
+        on `changed`) — see its own docstring on why a stale Test session
+        must never survive a publish, even a no-op one a caller mistakenly
+        double-fires."""
         with database.atomic():
             changed = Project.update(published_revision=Project.revision).where(
                 (Project.name == project_name)
@@ -258,6 +283,7 @@ class ProjectMixin:
             ).execute()
             if changed:
                 History.delete().where(History.project_name == project_name).execute()
+            self.delete_draft_test_sessions(project_name)
 
     def revert_to_published(self, project_name: str) -> None:
         """Discards the entire in-progress draft at once — the current
@@ -270,7 +296,8 @@ class ProjectMixin:
         published one — same "safe against a stale/duplicate click"
         convention as publish_project. History (now describing edits to a
         revision that no longer exists) is cleared right alongside it,
-        same as a fork's own History wipe."""
+        same as a fork's own History wipe — delete_draft_test_sessions
+        too, for the same reason (see its own docstring)."""
         with database.atomic():
             project = Project.get(Project.name == project_name)
             if project.published_revision is None or project.revision == project.published_revision:
@@ -280,6 +307,7 @@ class ProjectMixin:
             ).execute()
             Project.update(revision=project.published_revision).where(Project.name == project_name).execute()
             History.delete().where(History.project_name == project_name).execute()
+            self.delete_draft_test_sessions(project_name)
 
     def get_state_remap(self, project_name: str, old_key: str) -> str | None:
         row = StateRemap.get_or_none((StateRemap.project_name == project_name) & (StateRemap.old_key == old_key))

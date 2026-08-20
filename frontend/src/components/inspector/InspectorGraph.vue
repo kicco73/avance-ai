@@ -83,6 +83,14 @@ const graphHost = ref(null)
 let cyGraph = null
 const graphNodes = ref([])
 const graphEdges = ref([])
+// The exact revision this graph was actually built from (see api.js's own
+// getProjectGraph/backend ProjectService._resolve_inspector_revision) —
+// shown as a small "Rev. X" badge overlaid on the graph itself (see the
+// template below), so whichever project revision is on screen is never
+// ambiguous — the live draft while editing, or (LabelProjectView.vue's
+// own sessionId prop) the exact revision the session under review
+// actually ran against, which can differ from today's draft.
+const graphRevision = ref(null)
 
 function destroyGraph() {
   cyGraph?.destroy()
@@ -274,9 +282,10 @@ function renderGraph(nodes, edges) {
 async function loadGraph() {
   graphLoading.value = true
   try {
-    const { nodes, edges } = await getProjectGraph(props.projectName, props.sessionId)
+    const { nodes, edges, revision } = await getProjectGraph(props.projectName, props.sessionId)
     graphNodes.value = nodes
     graphEdges.value = edges
+    graphRevision.value = revision
     renderGraph(nodes, edges)
   } catch {} finally {
     graphLoading.value = false
@@ -393,6 +402,7 @@ onBeforeUnmount(destroyGraph)
     <div class="inspector-graph-host-wrap">
       <p v-if="graphLoading" class="signals-status inspector-graph-status">Loading…</p>
       <div ref="graphHost" class="inspector-graph-host"></div>
+      <span v-if="graphRevision != null" class="inspector-graph-revision-badge">Rev. {{ graphRevision }}</span>
     </div>
 
     <div v-if="annotatable" class="inspector-annotation-bar">
@@ -471,4 +481,17 @@ onBeforeUnmount(destroyGraph)
 .inspector-graph-host-wrap { position: relative; flex: 1; min-height: 0; border: 1px solid #ddd; border-radius: 8px; background: #fcfcfd; overflow: hidden; }
 .inspector-graph-host { width: 100%; height: 100%; }
 .inspector-graph-status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.inspector-graph-revision-badge {
+  position: absolute;
+  bottom: 0.5rem;
+  right: 0.6rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(74, 111, 165, 0.85);
+  color: white;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
 </style>
