@@ -27,7 +27,7 @@ vi.mock('../src/api.js', () => ({
   postReset: vi.fn(),
   postTruncateSession: vi.fn()
 }))
-vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn() }))
+vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn() }))
 
 describe('testModeProjectName routes session bootstrap/list to the right pool', () => {
   let chatStore

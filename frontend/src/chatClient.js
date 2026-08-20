@@ -8,6 +8,18 @@ let socket = null
 let socketConnectingPromise = null
 let pendingTurn = null // { resolve, reject, onStatus, onChunk }
 
+// Server-pushed cross-project wake-up (see backend's WakeupService.
+// _reevaluate_and_apply / WsAdapter.push) — never a response to
+// anything this client asked for, so it never touches pendingTurn, and
+// can arrive for a project other than the one currently displayed
+// (unlike every other message type here, which is always about
+// whichever turn is in flight on the currently-open project).
+let notificationHandler = null
+
+export function onNotification(handler) {
+  notificationHandler = handler
+}
+
 function normalizeResult(data) {
   return {
     reply: data.reply || [],
@@ -72,6 +84,19 @@ function handleSocketMessage(event) {
     const { resolve } = pendingTurn
     pendingTurn = null
     resolve(normalizeResult(data))
+    return
+  }
+
+  // 5. NOTIFICATION: push del server (wake-up cross-project), mai
+  // legato a pendingTurn — puo arrivare per un progetto diverso da
+  // quello attualmente visualizzato, tocca a chi si registra decidere
+  // come mostrarlo.
+  if (data.type === 'notification') {
+    notificationHandler?.({
+      project_name: data.project_name,
+      state: data.state,
+      'on-enter': data['on-enter']
+    })
   }
 }
 

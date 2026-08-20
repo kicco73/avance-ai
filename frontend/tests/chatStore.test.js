@@ -15,7 +15,7 @@ vi.mock('../src/api.js', () => ({
   getSessions: vi.fn(),
   getAiModels: vi.fn()
 }))
-vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn() }))
+vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn() }))
 
 describe('handleAction (manual test action) runs the on-enter script', () => {
   let chatStore

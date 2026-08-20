@@ -18,7 +18,7 @@ import {
   postReset,
   postTruncateSession
 } from './api.js'
-import { sendMessage as sendChatMessage } from './chatClient.js'
+import { sendMessage as sendChatMessage, onNotification } from './chatClient.js'
 import { playMessageChime, playMessageAudio } from './audio.js'
 import { runOnEnterScript } from './onEnterActions.js'
 import { clearApiError } from './errorStore.js'
@@ -136,6 +136,29 @@ export function handleStateChange(newState, onEnter) {
     runOnEnterScript(onEnter)
   }
 }
+
+// Server-pushed cross-project wake-up (see backend's WakeupService/
+// WsAdapter.push, wired through chatClient.js's own onNotification) —
+// never tied to whichever turn is in flight, and can land for a project
+// other than the one currently open. Only applies state.value/StateBar
+// when the notification is actually about the project currently
+// displayed (currentProjectName) — a foreign project's state would
+// otherwise silently overwrite what the user is looking at. The
+// on-enter script itself always runs regardless: its own locals
+// (celebrate/notify, see onEnterActions.js) are project-agnostic UI, the
+// same way a real turn's on-enter always runs whether or not this
+// specific state looks new.
+export function handleNotification({ project_name, state: newState, 'on-enter': onEnter }) {
+  if (project_name === currentProjectName.value) {
+    handleStateChange(newState, onEnter)
+    return
+  }
+  if (onEnter) {
+    runOnEnterScript(onEnter)
+  }
+}
+
+onNotification(handleNotification)
 
 // Shape every backend message row (id, role, content, audio_text,
 // timestamp) into what the chat UI actually renders (see MessageBubble.

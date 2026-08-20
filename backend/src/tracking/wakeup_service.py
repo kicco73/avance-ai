@@ -115,17 +115,25 @@ class WakeupService:
             )
             # Delivers the transition to a client that's actually
             # connected right now but not mid-turn on *this* project (see
-            # WsAdapter.push's own docstring) — same shape a normal turn's
-            # own "done" frame already carries (state/on-enter), so
-            # nothing downstream needs a new format to recognize this.
+            # WsAdapter.push's own docstring). Never "done" (Prompt 13 —
+            # correction to Prompt 12's own reuse of that type): that's
+            # the frame type a normal turn's own response uses, and
+            # chatClient.js drops any "done" with no pendingTurn actually
+            # in flight, which a push never is — a push is never the
+            # answer to something the client itself asked for, so it
+            # needs its own "notification" type, plus project_name (no
+            # longer implied by the lookup key itself, see WsAdapter's own
+            # username-only registry) so the client can tell whether this
+            # is about the project it's currently showing.
             # None whenever there's no websocket transport configured at
             # all (see __init__), or (push's own return) nobody's
-            # actually connected to observer_project_name right now —
-            # either way, the transition above is already persisted
-            # regardless; this is purely a best-effort live nudge.
+            # actually connected right now — either way, the transition
+            # above is already persisted regardless; this is purely a
+            # best-effort live nudge.
             if self._ws_adapter is not None:
-                await self._ws_adapter.push(username, observer_project_name, {
-                    "type": "done",
+                await self._ws_adapter.push(username, {
+                    "type": "notification",
+                    "project_name": observer_project_name,
                     "state": Automaton.get_state_payload(state),
                     "on-enter": action.on_enter,
                 })

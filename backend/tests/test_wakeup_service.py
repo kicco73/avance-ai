@@ -132,8 +132,9 @@ def test_reevaluate_and_apply_fires_the_self_loop_when_the_observed_state_now_ma
 
 class _FakeWebSocket:
     """Just enough to stand in for a real connection in WsAdapter's own
-    _connections registry (see test_ws_adapter_registry.py's own
-    identically-shaped fake) — push only ever calls send_json on it."""
+    username -> WebSocket _connections registry (see test_ws_adapter_
+    registry.py's own identically-shaped fake) — push only ever calls
+    send_json on it."""
 
     def __init__(self):
         self.sent: list[dict] = []
@@ -143,12 +144,16 @@ class _FakeWebSocket:
 
 
 class TestWsAdapterPush:
-    """Prompt 12 — a fired self-loop wake-up pushes the same shape a
-    normal turn's own "done" frame already carries (state/on-enter) to
-    whichever connection is registered for (username, observer_project_
-    name), if any."""
+    """Prompt 13 — a fired self-loop wake-up pushes a "notification"
+    frame (state/on-enter/project_name) to whichever connection is
+    registered for `username`, if any — never "done" (that type is
+    reserved for a normal turn's own response to a client-initiated
+    request, which a push never is), and never keyed on project_name
+    (the registry itself is username-only now, see WsAdapter's own
+    docstring) — project_name only ever rides along inside the payload,
+    so the client can tell which project this notification is about."""
 
-    def test_pushes_state_and_on_enter_when_the_self_loop_fires_and_a_connection_exists(self, db, project_service):
+    def test_pushes_state_on_enter_and_project_name_when_the_self_loop_fires_and_a_connection_exists(self, db, project_service):
         _publish_project(db, project_service, "observed", OBSERVED_YML)
         _publish_project(db, project_service, "watcher", WATCHER_YML)
         db.create_chat_session(username=USERNAME, project_name="watcher")
@@ -158,14 +163,15 @@ class TestWsAdapterPush:
 
         ws_adapter = WsAdapter(chat_service=None, db=db)
         websocket = _FakeWebSocket()
-        ws_adapter._connections[(USERNAME, "watcher")] = websocket
+        ws_adapter._connections[USERNAME] = websocket
 
         ephemeral_jobs = JobQueue(InMemoryJobSink(), max_concurrent=1)
         service = WakeupService(db, project_service, ephemeral_jobs, ws_adapter)
         asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
 
         assert len(websocket.sent) == 1
-        assert websocket.sent[0]["type"] == "done"
+        assert websocket.sent[0]["type"] == "notification"
+        assert websocket.sent[0]["project_name"] == "watcher"
         assert websocket.sent[0]["state"]["key"] == "x"  # self-loop — the state itself never changes
         assert "on-enter" in websocket.sent[0]
 
@@ -178,7 +184,7 @@ class TestWsAdapterPush:
         db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
         watcher_session = db.get_latest_chat_session(USERNAME, "watcher")
 
-        ws_adapter = WsAdapter(chat_service=None, db=db)  # nobody registered for (USERNAME, "watcher")
+        ws_adapter = WsAdapter(chat_service=None, db=db)  # nobody registered for USERNAME
 
         ephemeral_jobs = JobQueue(InMemoryJobSink(), max_concurrent=1)
         service = WakeupService(db, project_service, ephemeral_jobs, ws_adapter)
@@ -212,7 +218,7 @@ class TestWsAdapterPush:
 
         ws_adapter = WsAdapter(chat_service=None, db=db)
         websocket = _FakeWebSocket()
-        ws_adapter._connections[(USERNAME, "watcher")] = websocket
+        ws_adapter._connections[USERNAME] = websocket
 
         ephemeral_jobs = JobQueue(InMemoryJobSink(), max_concurrent=1)
         service = WakeupService(db, project_service, ephemeral_jobs, ws_adapter)
