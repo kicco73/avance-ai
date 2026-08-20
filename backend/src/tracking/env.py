@@ -1,31 +1,14 @@
 """Per-(user, project) "environment" memory — free-form key:value facts
-the model can extend at will via [env]...[/env] (see chat.
-metadata_handler.MetadataHandler), persisted as a dedicated env-only row
-on the db.py Tracking event log (see db.Db.get_env/set_env, and
-Tracking's own docstring) — every project a user has ever talked to
-keeps its own independent one, just like an automaton instance's own
-live state. Scoped through the same session -> ChatSession relationship
-as the rest of Tracking: a "Reset conversation" or project deletion
-wipes it right along with everything else, exactly like any other
-Tracking row for that session. Instantiated as ChatService's `env`, same
-DI style as tracking/definitions.py's Signals and metrics/metric_
-service.py's MetricService.
+the model can extend at will via [env]...[/env], persisted per project
+per user just like an automaton instance's own live state.
 
-Two stores only — `stored()` (free-form, model-reported via [env]) and
+Two stores only — `stored()` (free-form, model-reported) and
 `action_set()` (deterministic, set by an action's own YAML `env:` field)
 — kept separate so the Inspector Env tab can badge the two apart ("AI"
 vs "ACTION") and know which are actually editable/deletable (only the
-stored ones, see set_value/delete_key). The "always computed fresh"
-facts this class used to also carry (today/time/session duration/...,
-see ENV_COMPUTED_KEYS) now live in their own dedicated classes, entirely
-outside Env — see tracking.system_facts.SystemFacts/tracking.
-session_facts.SessionFacts and tracking.evaluation_scope.
-EvaluationScopeBuilder, the one place all four (signal/env/system/
-session) get assembled into one evaluation scope.
+stored ones).
 
-`Env` itself is a plain in-memory store — a benchmark replay (not
-introduced here) can use it directly, updating that internal state once
-per turn as it orchestrates its own loop. `PersistedEnv` is production's
+`Env` itself is a plain in-memory store; `PersistedEnv` is production's
 own subclass, reading/writing through `db` instead.
 """
 from __future__ import annotations
@@ -55,35 +38,24 @@ class Env(object):
         self._action_set = values
 
     def action_set(self) -> dict[str, Any]:
-        """Just the persisted values an action's own YAML `env:` field set
-        (see automaton_builder.py's _build_action/Automaton.
-        eval_action_env, and update_action_set below) — kept in a
-        separate store from `stored()`'s model-reported ones so the
-        Inspector Env tab can badge the two apart ("SET" vs "AI"), even
-        though both are merged together into what actually reaches the
-        turn's own prompt (see serialise_as_text) — and so
-        EvaluationScopeBuilder can populate the `env` namespace with
-        *only* this, deliberately excluding stored()'s free-form values
-        (see that class's own docstring for why)."""
+        """Just the persisted values an action's own YAML `env:` field set —
+        kept separate from stored()'s model-reported values so the `env`
+        evaluation-scope namespace can deliberately exclude free-form ones."""
         return dict(self._action_set)
 
     def update_action_set(self, values: dict[str, Any]) -> None:
-        """action_set()'s own update — an action firing (see
-        chat_service.py's/tracking_engine.py's own apply_action_env),
-        never the model itself (that's update(), for `[env]`-reported
-        values). Merges onto whatever's already action-set, same
-        no-op-for-falsy rule as update()."""
+        """action_set()'s own update — fired by an action, never the model
+        itself (that's update(), for `[env]`-reported values). Merges
+        onto whatever's already action-set."""
         if not values:
             return
         merged = {**self.action_set(), **values}
         self._write_action_set(merged)
 
     def stored(self) -> dict[str, Any]:
-        """Just the persisted, free-form key:values. Public — unlike the
-        rest of this class's read path, the Inspector's own Env tab needs
-        stored and action-set values reported separately so it knows
-        which are actually editable/deletable (see set_value/delete_key:
-        only these are)."""
+        """The persisted, free-form key:values — reported separately from
+        action_set() so the Inspector Env tab knows which are actually
+        editable/deletable (only these are)."""
         return dict(self._stored)
 
     def update(self, values: dict[str, Any], message_id: int | None = None) -> None:
@@ -97,13 +69,12 @@ class Env(object):
         self._write_stored(merged, message_id)
 
     def set_value(self, key: str, value: str) -> None:
-        """The Inspector Env tab's own "click a value to edit it" — a
-        thin, explicit alias for update({key: value})."""
+        """Alias for update({key: value}), used by the Inspector Env
+        tab's edit-in-place."""
         self.update({key: value})
 
     def delete_key(self, key: str) -> None:
-        """The Inspector Env tab's own "delete this pair" — a no-op if
-        `key` isn't currently stored (nothing to remove)."""
+        """Used by the Inspector Env tab's "delete this pair" action."""
         current = self.stored()
         if key not in current:
             return
@@ -111,35 +82,27 @@ class Env(object):
         self._write_stored(current)
 
     def clear(self) -> None:
-        """The Inspector Env tab's own "clear all" for the AI section —
-        wipes every stored key at once. Action-set ones (see action_set/
-        clear_action_set) live in a separate store, untouched by this."""
+        """Wipes every stored (free-form) key. Action-set values live in
+        a separate store and are untouched by this — see clear_action_set."""
         self._write_stored({})
 
     def clear_action_set(self) -> None:
-        """The Inspector Env tab's own "clear all" for the ACTION
-        section — action_set()'s own equivalent of clear() above. An
-        action whose `env:` field still fires afterward will simply
-        re-populate whatever it sets again on its next turn, same as any
-        other action-set write (see update_action_set)."""
+        """clear()'s equivalent for action-set values. An action whose
+        `env:` field still fires will simply re-populate what it sets on
+        its next turn."""
         self._write_action_set({})
 
     def get(self, key: str, default: Any = None) -> Any:
         # action_set() takes priority on a name collision — an action's
         # own `env:` field is the more deliberate/authoritative source
-        # for a key it manages, vs. whatever the model itself happened
-        # to report under the same name (see stored/action_set's own
-        # docstrings; collisions aren't expected by design, but this
-        # keeps precedence well-defined if one ever occurs).
+        # than whatever the model itself reported under the same name.
         return {**self.stored(), **self.action_set()}.get(key, default)
 
     def serialise_as_text(self) -> str:
-        """Every stored value plus every action-set one, freshly
-        assembled — what MetadataHandler.build_prompt renders back into
-        the turn's own [env]...[/env] block. No system/session facts
-        here anymore (see this module's own docstring) — those are the
-        `system`/`session` namespaces now, evaluation-scope-only, never
-        rendered into the prompt."""
+        """Every stored value plus every action-set one, merged into the
+        text rendered back into the turn's [env]...[/env] block.
+        System/session facts are never included here — those are
+        evaluation-scope-only."""
         merged = {**self.stored(), **self.action_set()}
         return "\n".join(f"{key}: {value}" for key, value in merged.items())
 

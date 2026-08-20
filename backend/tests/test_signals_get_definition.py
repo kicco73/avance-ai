@@ -1,7 +1,6 @@
 """Signals.get_definition — the "Definition of signals:" block embedded
 in every turn/signals-computation prompt, optionally scoped to a subset
-of declared signals (see Automaton.triggerable_signal_names/chat/
-signal_evaluator.py, chat_service.py's _build_turn_prompt).
+of declared signals.
 """
 from __future__ import annotations
 

@@ -1,17 +1,7 @@
-"""Coerces raw signal values (however they were actually obtained — an
-already-generated reply's own embedded report, or a TurnStrategy's own
-dedicated compute_explicitly call, see tracking.auto_tracker.
-AutoTracker.run) against the automaton's own declared signals. Provider-
-agnostic on purpose: *getting* the raw values is a TurnStrategy's own
-job now (see chat.turn_strategy.TurnStrategy.compute_explicitly's own
-docstring for why — v1/v2 speak different wire formats, tags vs.
-on_metadata), so this module never needs to know which one produced
-them, only how to validate the result either way.
-Replaces Signals.compute()'s own, now-deprecated standalone prompt
-(SIGNALS_SYSTEM_PROMPT_TEMPLATE asked for bare JSON, a second format to
-maintain and parse) — Signals itself keeps only signal definitions and
-payload-building, nothing AI-call-shaped.
-"""
+"""Coerces raw signal values (however they were actually obtained)
+against the automaton's own declared signals. Provider-agnostic on
+purpose: getting the raw values is the caller's job, so this module
+never needs to know which method produced them."""
 from __future__ import annotations
 
 from automaton.automaton import Automaton
@@ -30,14 +20,9 @@ class SignalEvaluator(object):
     def validate(
         self, automaton: Automaton, raw_values: dict | None, names: set[str] | None = None
     ) -> dict[str, int | float | None]:
-        """Coerces whatever was reported (embedded or explicit) against
-        `automaton`'s own declared signals: exactly one entry per
-        declared signal in the result (or, when `names` is given — see
-        Automaton.triggerable_signal_names — per signal in that subset
-        only, the current state's own auto-tracking scope), unknown/
-        malformed values become None, anything extra in `raw_values` is
-        dropped. Omitted `names` means every declared signal, unchanged
-        from before this parameter existed."""
+        """Exactly one entry per declared signal (or, when `names` is
+        given, per signal in that subset only); unknown/malformed values
+        become None, anything extra in `raw_values` is dropped."""
         raw_values = raw_values or {}
         relevant = automaton.signals if names is None else [s for s in automaton.signals if s.name in names]
         return {s.name: self._validate_one(raw_values.get(s.name)) for s in relevant}

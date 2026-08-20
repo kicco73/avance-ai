@@ -11,11 +11,9 @@ from metrics_helpers import message_row, session_row, signal_row
 
 
 class FakeAnalyticsDb:
-    """Protocol-shaped fake (see metrics_framework.interfaces.AnalyticsDb) —
-    exercises UserAnalyticsDataBuilder/AnalyticsCalculator exactly the way
-    the real Db facade is consumed, without touching Peewee/SQLite (see
-    metrics_framework/README.md #18's "database integration tests should
-    separately verify the transformation from persisted records")."""
+    """Protocol-shaped fake that exercises UserAnalyticsDataBuilder/
+    AnalyticsCalculator the way the real Db facade is consumed, without
+    touching Peewee/SQLite."""
 
     def __init__(self, sessions=None, messages_by_session=None, signals_by_session=None):
         self._sessions = sessions or []
@@ -131,12 +129,8 @@ class TestUserAnalyticsDataBuilder:
 
     @pytest.mark.contract
     def test_since_excludes_messages_before_the_cutoff(self):
-        # The session's own start sits exactly at `since` — same
-        # "current session" shape tracking.session_facts.SessionFacts.
-        # metric actually builds (since = that session's own start) —
-        # so the session-level filter below (datetime_start >= since)
-        # keeps it, and only the message-level one actually gets
-        # exercised.
+        # The session's start sits exactly at `since`, so the session-level
+        # filter keeps it and only the message-level filter is exercised.
         db = FakeAnalyticsDb(
             sessions=[session_row(1, datetime(2026, 1, 1, 10), datetime(2026, 1, 1, 10))],
             messages_by_session={
@@ -327,13 +321,8 @@ class TestAnalyticsCalculator:
 
     @pytest.mark.contract
     def test_default_metrics_are_filtered_to_a_one_session_context(self):
-        """Every current caller (metrics/metric_service.py's MetricService, for
-        both the "Benchmark"/"Edit project" views' own metrics displays and
-        trigger evaluation) only ever runs within one session — retention/
-        activity_consistency's own scope excludes that (see
-        RetentionMetric/ActivityConsistencyMetric.scope), so neither is
-        ever part of the default set an instance actually evaluates,
-        unlike the *full*, unfiltered registry default_metrics() itself
-        returns (see test_default_metrics_covers_all_five_core_metrics)."""
+        """Every caller runs within one session — retention/
+        activity_consistency's scope excludes that, so neither is part of
+        the default set an instance actually evaluates."""
         calculator = AnalyticsCalculator(FakeAnalyticsDb(), "user", "proj")
         assert {m.name for m in calculator.metrics} == {"engagement", "state_stability", "signal_stability"}

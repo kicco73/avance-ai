@@ -1,8 +1,6 @@
-"""Integration test for SessionSummaryManager's own auto-queue hook (see
-ChatService.get_or_create_current_session) — exercises the whole path:
-a session discovered closed the moment a new one is about to be created,
-its summary job submitted to the persisted queue, and the summary
-eventually readable via GET /api/chat/sessions/{session_id}/summary.
+"""Integration test for SessionSummaryManager's auto-queue hook: a
+session discovered closed the moment a new one is about to be created
+gets its summary job submitted and eventually readable via the API.
 """
 from __future__ import annotations
 

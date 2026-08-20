@@ -1,11 +1,8 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
-// EditProjectView.vue's own embedded "Test" chat (see TestChat.vue) hides
-// this panel entirely — a Test/draft session is a single, ephemeral
-// conversation to try out whatever's currently being edited, not
-// something with a history of past sessions worth browsing/switching
-// between the way the main app's live chat's own Sessions panel is for.
+// A Test/draft session is a single, ephemeral conversation, so the
+// embedded test chat hides the sessions panel entirely.
 const props = defineProps({
   hideSessionsPanel: { type: Boolean, default: false }
 })
@@ -46,17 +43,9 @@ import {
   toggleSpokenText
 } from '../../chatStore.js'
 
-// No transcript import here: this window is either the main app's live
-// chat, or EditProjectView.vue's own embedded "Test" chat (see
-// chatStore.js's testModeProjectName) — an imported session is a
-// separate, 'imported'-source pool of its own (see backend db.py's
-// ChatSession.source) that never shows up in either one's own sessions
-// list (list_sessions/list_test_sessions both filter it out), so
-// importing from here would silently succeed server-side and then just
-// vanish from view. Only LabelProjectView.vue's own dedicated
-// review panel — which actually lists imported sessions — offers import
-// (it renders SessionsPanel.vue directly, with its own allow-import,
-// rather than going through this component at all).
+// No transcript import here: imported sessions are a separate pool that
+// never shows up in this component's own sessions list, so importing
+// from here would silently succeed and then vanish from view.
 
 function createSession() {
   handleNewSession()
@@ -76,25 +65,12 @@ async function onDeleteSession(session) {
   }
 }
 
-// No `state.value.key` means there's no active project/state at all (see
-// controller.py's GET /api/state, which returns just the talk/listen
-// flags in that case) — chat must stay disabled rather than defaulting
-// to enabled. selectedSessionActive reflects the backend's own "active"
-// verdict for whichever session is currently displayed (see chatStore.js's
-// selectSession) — never recomputed here from a timestamp. A session can
-// be individually open (not expired) without being this one: only the
-// single most recently started open session per project is ever active
-// (see ChatSessionManager), every other one is inactive regardless of
-// its own open/closed status.
+// selectedSessionActive reflects the backend's "active" verdict for the
+// displayed session, never recomputed here from a timestamp — only the
+// most recently started open session per project is ever active.
 const chatDisabled = computed(() => !state.value?.key || !state.value?.chat || !selectedSessionActive.value)
 
-// Mirrors chatDisabled's own three conditions — no project/state at all
-// is checked first (the most fundamental one), then whichever reason
-// selectedSessionActive is false (see its own docstring in chatStore.js:
-// "never resolved a session yet" — currentSessionId still null — reads
-// differently than "resolved one, then it got superseded by a newer
-// one"), then a chat-blocked state (e.g. final, see backend
-// chat_service.py's own "doesn't accept messages" wording).
+// Mirrors chatDisabled's own conditions, in the same order.
 const chatDisabledReason = computed(() => {
   if (!state.value?.key) return 'Please select a project from the menu.'
   if (!selectedSessionActive.value) {
@@ -105,8 +81,7 @@ const chatDisabledReason = computed(() => {
   return "This state doesn't accept messages; use an action instead."
 })
 
-// Draggable divider between the sessions panel and the chat itself (same
-// mousedown/movementX pattern as EditProjectView.vue's own split panes).
+// Draggable divider between the sessions panel and the chat itself.
 const sessionsWidth = ref(240)
 let draggingSessions = false
 
@@ -171,7 +146,7 @@ function scrollToBottom() {
   })
 }
 
-// Scroll in automatico quando arrivano nuovi messaggi o aggiornamenti in streaming
+// Auto-scroll when new messages arrive or stream in.
 watch(
   messages,
   () => {
@@ -198,10 +173,9 @@ async function onAction(actionName) {
   focusInput()
 }
 
-// Tracks the state key just left, for the data-prev-state attribute below
-// — set once on the first real transition and never cleared back out
-// afterward (a caller styling a "leaving state X" transition still wants
-// to know X even once the transition itself is long over).
+// Tracks the state key just left, for the data-prev-state attribute below.
+// Set once per transition and never cleared, so it stays available for
+// styling a "leaving state X" transition after the fact.
 const prevStateKey = ref(null)
 watch(
   () => state.value?.key,
@@ -210,16 +184,10 @@ watch(
   }
 )
 
-// index.css, injected as a plain <style> element appended to <head> (so it
-// lands after every component's own scoped styles, and can override them)
-// — the custom "skin" a project's own draft/published index.css defines
-// for its chat UI. Resolved against currentSessionId's own revision (see
-// api.js's projectFileContentUrl/controller.py's get_project_file_content):
-// a live session sees whatever was published when it started, a Test
-// session (EditProjectView.vue's embedded chat) always sees the current
-// draft — same distinction the automaton itself already makes for that
-// session, no special-casing needed here. A project with no index.css at
-// all 404s silently: no stylesheet, not an error.
+// index.css is injected as a <style> element appended to <head> (so it
+// lands after scoped styles and can override them) — a project's own
+// custom "skin" for its chat UI. A project with no index.css 404s
+// silently: no stylesheet, not an error.
 let skinStyleEl = null
 
 function clearSkin() {
@@ -368,9 +336,7 @@ onBeforeUnmount(clearSkin)
   transition: width 0.15s ease;
 }
 
-/* Collapsed (see SessionsPanel.vue's own always-visible header toggle) —
-   a slim strip, same pattern as EditProjectView.vue's own
-   .inspector-panel-collapsed. */
+/* Collapsed to a slim strip; the header toggle stays visible. */
 .sessions-panel-collapsed {
   width: 2.4rem !important;
 }
@@ -404,8 +370,7 @@ onBeforeUnmount(clearSkin)
   font-size: 0.85rem;
 }
 
-/* Empty of functional content on its own — a pure style hook (see this
-   component's own docstring) so a project's own index.css can target
+/* Empty on its own: a style hook so a project's index.css can target
    .chat-header/.chat-body/.chat-footer without reaching into internals. */
 .chat-header {
   flex-shrink: 0;

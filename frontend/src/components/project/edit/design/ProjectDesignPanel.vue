@@ -1,26 +1,8 @@
 <script setup>
-// "Design" mode's own markup — the file explorer plus whichever editor
-// fits the currently open file (index.yml's own dedicated graph/code
-// view, index.css's own, an image preview, or the generic CodeEditor for
-// any other attachment). Extracted straight out of EditProjectView.vue's
-// own template (see its own docstring on why Design/Test/Auto used to
-// live nested inside one shared column, fighting each other's CSS) —
-// purely presentational: every piece of state here is owned by
-// EditProjectView.vue and handed down as a prop, every user action is
-// emitted back up to the exact same handler that already existed there
-// (selectFile, handleUploadFile, handleNewFile, handleDeleteFile,
-// jumpToDefinition, handleFileSaved, ...) rather than
-// re-implemented locally — this component owns no persistence, no
-// unsaved-changes guarding, none of that.
-//
-// The three editor instances (IndexYmlEditorPanel/IndexCssEditorPanel/
-// CodeEditor) are still reached *directly* by EditProjectView.vue's own
-// script for a long list of things a plain prop/emit can't express
-// (stateElementFor/actionsForState, jumpToLine, save/discard/undo/redo,
-// reload, mediaType, ...) — defineExpose hands those same three refs
-// back up so the parent's own indexYmlEditorRef/indexCssEditorRef/
-// codeEditorRef can keep working exactly as before, just one level
-// removed (see EditProjectView.vue's own computed proxies over these).
+// Design mode's file explorer plus whichever editor fits the current file:
+// index.yml/index.css get dedicated panels, images get a preview, anything
+// else falls back to CodeEditor. Purely presentational — state is owned by
+// EditProjectView.vue and reached only through props/emits.
 import { ref } from 'vue'
 import FileExplorer from './FileExplorer.vue'
 import CodeEditor from '../../../CodeEditor.vue'
@@ -37,9 +19,8 @@ defineProps({
   creatingFile: { type: Boolean, default: false },
   deletingFile: { type: String, default: null },
   explorerWidth: { type: Number, required: true },
-  // Gates mounting IndexYmlEditorPanel/CodeEditor — see EditProjectView.
-  // vue's own historyCleared docstring: each one loads its own content as
-  // soon as it mounts, so without this they could race the project's own
+  // Gates mounting IndexYmlEditorPanel/CodeEditor: each loads its content
+  // as soon as it mounts, so without this they could race the project's
   // undo/redo history being cleared on entry.
   historyCleared: { type: Boolean, default: false },
   currentFileIsImage: { type: Boolean, default: false },
@@ -58,6 +39,8 @@ const codeEditorRef = ref(null)
 const indexYmlEditorRef = ref(null)
 const indexCssEditorRef = ref(null)
 
+// Exposed so EditProjectView.vue can reach the editor instances directly for
+// things a prop/emit can't express (jumpToLine, save/discard/undo/redo, reload, mediaType, ...).
 defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef })
 </script>
 
@@ -82,13 +65,10 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef })
     <div class="edit-project-editor-pane">
       <p v-if="!historyCleared" class="edit-project-status">Loading…</p>
       <template v-else>
-        <!-- Stays mounted (v-show, not v-if) even while a different file
-             is open — its own InspectorGraph is the one and only place
-             the Inspector's "State"/"Actions" selection is resolved from
-             (see EditProjectView.vue's own stateTabElement/
-             actionsTabList), so unmounting it just because an attachment
-             is being viewed used to blank the Inspector out from under a
-             selection that's still perfectly valid. -->
+        <!-- Stays mounted (v-show, not v-if) even while a different file is
+             open: its InspectorGraph is the only place the Inspector's
+             "State"/"Actions" selection is resolved from, so unmounting it
+             would drop a still-valid selection whenever an attachment is viewed. -->
         <IndexYmlEditorPanel
           v-show="currentFileName === 'index.yml'"
           ref="indexYmlEditorRef"
@@ -161,8 +141,8 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef })
 .split-divider:hover { background: #dbe4f0; }
 
 .edit-project-editor-pane { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; }
-/* Same shape as IndexYmlEditorPanel's own root .index-yml-editor — the two
-   fill this same pane, one hidden via v-show while the other's showing. */
+/* Same shape as IndexYmlEditorPanel's root .index-yml-editor — the two
+   fill this pane, one hidden via v-show while the other's showing. */
 .edit-project-editor-attachment { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .edit-project-editor-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.5rem 0.75rem; background: #f5f5f7; border-bottom: 1px solid #ddd; flex-shrink: 0; }
 .edit-project-editor-filename { min-width: 0; font-size: 0.85rem; font-weight: 600; color: #333; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

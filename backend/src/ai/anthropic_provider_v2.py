@@ -164,10 +164,8 @@ class AnthropicProvider(LLMProviderWithSchema):
 			schema
 		)
 
-		# Anthropic's generated SDK types currently do not expose the
-		# dynamic JSON-schema shape precisely enough for Pylance.
-		# Keeping this boundary as Any avoids false-positive diagnostics
-		# while preserving the exact runtime payload.
+		# Any: Anthropic's SDK types don't expose the dynamic JSON-schema
+		# shape precisely enough to type this without false positives.
 		return {
 			"format": {
 				"type": "json_schema",

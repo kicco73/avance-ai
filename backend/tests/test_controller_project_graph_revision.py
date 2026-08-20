@@ -1,12 +1,6 @@
-"""GET .../graph, .../signals, .../env-keys all gained an optional
-`session_id` query param (see ProjectService._resolve_inspector_revision) —
-omitted, they read the current draft exactly as before; given, they pin to
-the exact revision that session's own automaton actually ran against, the
-same live/native-vs-'test' distinction GET .../files/{file_name}/content's
-own session_id already follows (see test_controller_project_file_content.
-py's own TestGetProjectFileContent, the pattern this mirrors). This is what
-lets LabelProjectView.vue's own Inspect panel show an older session's real
-structure instead of today's, once the project has moved on since.
+"""GET .../graph, .../signals, .../env-keys take an optional `session_id`
+query param: omitted, they read the current draft; given, they pin to
+the exact revision that session's automaton actually ran against.
 """
 from __future__ import annotations
 
@@ -43,9 +37,8 @@ THREE_STATE_YML = (
 
 def _setup_pinned_session(client) -> int:
     """A live session pinned to revision 0 (a two-state project) — firing
-    a real action first, same reasoning as test_controller_project_file_
-    content.py's own identically-named helper's own docstring (establishes
-    current_state reliably before the later edit/publish below)."""
+    a real action first establishes current_state reliably before the
+    later edit/publish below."""
     client.put("/api/projects/proj", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
     client.post("/api/projects/proj/publish", json={})
 
@@ -96,11 +89,9 @@ class TestGetProjectGraphRevision:
         test_session_response = client.post("/api/projects/proj/test-sessions")
         assert test_session_response.status_code == 200, test_session_response.text
         test_session_id = test_session_response.json()["id"]
-        # Establishes current_state reliably first — same reasoning as
-        # _setup_pinned_session's own live-session equivalent: a session
-        # with no real action fired yet is wiped by _finalize_project_
-        # update's own "current_state can't be determined" cleanup, the
-        # next time the active project is edited.
+        # Establishes current_state reliably first — a session with no
+        # real action fired yet is wiped the next time the project is
+        # edited.
         action_response = client.post(f"/api/chat/sessions/{test_session_id}/action", json={"action_name": "go"})
         assert action_response.status_code == 200, action_response.text
 

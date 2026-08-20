@@ -8,14 +8,9 @@ from .base import BaseMetric
 
 
 class StateStabilityMetric(BaseMetric):
-    """Measures how rarely the observed state changes over elapsed time.
-
-    The metric is domain-agnostic: state names have no ordering and no
-    semantic value. Only real transitions (`old_state != new_state`) count.
-    Transition density is normalized as transitions per 30 observed days.
-    A configurable density reference maps that rate to zero stability; zero
-    transitions maps to 100.
-    """
+    """How rarely the observed state changes over elapsed time. Domain-
+    agnostic: state names carry no ordering, only real transitions
+    (`old_state != new_state`) count."""
 
     def __init__(self, reference_transitions_per_30_days: float = 4.0) -> None:
         self._reference_transitions_per_30_days = reference_transitions_per_30_days

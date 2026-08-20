@@ -1,6 +1,5 @@
 """GET /api/settings/projects/runtime-status, PUT /api/projects/{name}/pause,
-PUT /api/projects/{name}/resume — the Settings > Runtime status view's
-own HTTP surface (see ProjectService.get_runtime_status/
+PUT /api/projects/{name}/resume (ProjectService.get_runtime_status/
 set_manually_paused/set_manually_running)."""
 from __future__ import annotations
 

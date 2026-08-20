@@ -1,19 +1,7 @@
 <script setup>
-// A CodeMirror-backed mini-editor for exactly one action's own `trigger:`
-// expression — replaces InspectorDetailCard.vue's own plain textarea for
-// that one field. Deliberately narrow, unlike CodeEditor.vue (which owns
-// a whole file's own load/save/undo/redo): this component only ever
-// holds one expression's own text, two-way bound via defineModel, with
-// no persistence of its own — InspectorDetailCard.vue still owns
-// editTrigger/commitTrigger exactly as it did with the plain textarea,
-// this only changes what renders the input itself.
-//
-// Two things on top of plain CodeMirror: autocomplete (namespace names,
-// then — after a namespace's own dot — that namespace's own identifiers,
-// sourced from the active project's own identifier registry, see
-// api.js's getIdentifiers/automaton.identifier_registry.build_registry)
-// and syntax coloring (one fixed color per namespace, decided here —
-// the registry itself never carries styling).
+// CodeMirror-backed editor for a single trigger/env `value` expression,
+// two-way bound via defineModel with no persistence of its own. Adds
+// autocomplete and per-namespace syntax coloring on top of plain CodeMirror.
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { EditorState } from '@codemirror/state'
 import {
@@ -44,29 +32,16 @@ const loading = ref(true)
 const editorHost = ref(null)
 let view = null
 
-// The one completion source this editor's own autocompletion() (below)
-// registers — basicSetup's own copy activates the extension but wires no
-// source of its own (see triggerEditorSupport.js's own completeIdentifiers
-// for the actual two-case logic — kept there, not here, so it has a real
-// test against a plain CompletionContext, no live view/DOM needed). Reads
-// identifierRegistry.value fresh on every call (see identifierRegistry.js)
-// rather than a local snapshot, so a signal/action added elsewhere while
-// this editor is already open and mounted is visible the very next
-// keystroke, not just on the next open.
+// Reads identifierRegistry.value fresh on every call rather than a local
+// snapshot, so an identifier added elsewhere while this editor is open is
+// visible on the very next keystroke.
 function completeIdentifiers(context) {
   return completeIdentifiersFor(context, identifierRegistry.value)
 }
 
-// Matches a complete namespace reference (e.g. "signal.mood",
-// "session.metric.engagement") anywhere in the text — group 1 (see
-// REFERENCE_PATTERN_SOURCE's own docstring) is the namespace path, used
-// to look up its own fixed color. Doesn't match the trailing "()" a
-// proxy reference is always called with — that's fine, left in the
-// editor's own default color: it's already what visually marks a proxy
-// namespace apart from a plain variable one (see this component's own
-// docstring), no extra coloring needed on top. A fresh RegExp per mount
-// (own /g flag — a shared instance would carry lastIndex state across
-// unrelated editor instances).
+// Matches a namespace reference (e.g. "signal.mood") — group 1 is the
+// namespace path, used to look up its color. A fresh RegExp per mount:
+// the /g flag makes a shared instance carry lastIndex across instances.
 const namespaceMatcher = new MatchDecorator({
   regexp: new RegExp(REFERENCE_PATTERN_SOURCE, 'g'),
   decoration: (match) => {
@@ -88,11 +63,9 @@ const namespaceHighlighter = ViewPlugin.fromClass(
   { decorations: (instance) => instance.decorations }
 )
 
-// Same as codemirror's own basicSetup, minus every gutter piece
-// (lineNumbers/highlightActiveLineGutter/foldGutter) — a one-line trigger
-// expression has no use for a line-number column, and dropping lineNumbers
-// alone would still leave the other two rendering their own empty gutter
-// strip next to it.
+// Same as CodeMirror's basicSetup, minus gutter pieces (lineNumbers etc.)
+// — a one-line expression needs no line-number column, and dropping just
+// lineNumbers would still leave an empty gutter strip.
 const editorSetup = [
   highlightSpecialChars(),
   history(),
@@ -141,20 +114,16 @@ function setEditorDoc(newContent) {
   view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: newContent } })
 }
 
-// A change to `model` this editor's own updateListener didn't itself
-// just cause — InspectorDetailCard.vue's own resetEditBuffers, switching
-// this same still-open editor to a different action's own trigger (see
-// this component's own docstring: it isn't necessarily remounted on
-// every selection change).
+// Handles a model change this editor's own updateListener didn't cause —
+// e.g. the caller switching this still-open editor to a different
+// expression without remounting it.
 watch(model, (newValue) => {
   if (view && newValue !== view.state.doc.toString()) setEditorDoc(newValue)
 })
 
 onMounted(async () => {
-  // identifierRegistry itself is populated by EditProjectView.vue's own
-  // refreshValidStateKeys (mount + every edit), not fetched here — every
-  // completion source reads identifierRegistry.value live at call time
-  // (see identifierRegistry.js), so this never needs its own fetch.
+  // identifierRegistry is populated elsewhere; completion sources read it
+  // live at call time, so this component never needs its own fetch.
   loading.value = false
   await nextTick()
   createEditor()
@@ -188,10 +157,9 @@ onBeforeUnmount(() => {
 </style>
 
 <style>
-/* Unscoped: CodeMirror renders its own completion "info" panel (see
-   triggerEditorSupport.js's own completionInfo) into a tooltip appended
-   straight to <body>, outside this component's own DOM subtree — a
-   scoped style's own data-v-* attribute selector would never match it. */
+/* Unscoped: CodeMirror renders the completion "info" panel into a tooltip
+   appended to <body>, outside this component's DOM subtree — a scoped
+   style's data-v-* selector would never match it. */
 .cm-trigger-completion-info {
   padding: 0.4rem 0.5rem;
   max-width: 22rem;

@@ -7,13 +7,9 @@ from .base import BaseMetric
 
 
 class ActivityConsistencyMetric(BaseMetric):
-    """Regularity of user activity across calendar days.
-
-    The score is based on the coefficient of variation of user-message counts
-    over active calendar days. A lower variation means more consistent use.
-    With fewer than two active days there is not enough evidence and the score
-    is zero.
-    """
+    """Regularity of user activity across calendar days: lower variation
+    in per-day message counts scores higher. Needs at least two active
+    days, otherwise the score is zero for lack of evidence."""
 
     # Regularity across calendar days is meaningless within a single
     # session — needs the user's own broader activity history.

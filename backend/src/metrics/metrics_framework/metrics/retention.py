@@ -8,15 +8,11 @@ from .base import BaseMetric
 
 
 class RetentionMetric(BaseMetric):
-    """Measures return behavior rather than raw activity volume.
+    """Measures return behavior, not raw activity volume: the fraction of
+    gaps that end with another session inside the retention horizon.
+    With fewer than two sessions the score is zero — retention can't be observed yet."""
 
-    Uses the fraction of observed gaps that end with another session inside
-    the configured retention horizon. With fewer than two sessions the score
-    is zero because retention cannot be observed yet.
-    """
-
-    # Return behavior is meaningless within a single session — needs at
-    # least the user's own session history to observe a gap at all.
+    # Meaningless within a single session — needs session history to observe a gap.
     scope = frozenset({"all_sessions_per_user", "all_sessions"})
 
     def __init__(self, horizon_days: float = 14.0) -> None:

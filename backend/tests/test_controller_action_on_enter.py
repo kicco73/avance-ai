@@ -1,9 +1,6 @@
-"""POST /api/action's own "on-enter" — the fired action's own on_enter
-(see automaton.Action.on_enter/ChatService.apply_manual_action), sent
-over the wire as "on-enter" (kebab-case, matching the YAML field's own
-spelling — unlike every other snake_case response key), not anything
-read off the destination state. Two different actions landing on the
-same state can disagree on whether entering it celebrates.
+"""POST /api/action reports the fired action's own on_enter (sent as
+kebab-case "on-enter"), not anything read off the destination state —
+two actions landing on the same state can disagree on it.
 """
 from __future__ import annotations
 
@@ -58,8 +55,7 @@ def test_manual_action_without_on_enter_reports_none_even_for_the_same_target_st
 
 
 def test_state_payload_never_carries_on_enter_itself(client):
-    """on-enter used to live on the state payload — confirming it's gone
-    from there for good, not just unused."""
+    """on-enter is per-action, never present on the state payload itself."""
     session = _upload_and_get_session(client)
 
     resp = client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "go-loud"})

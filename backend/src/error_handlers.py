@@ -44,9 +44,8 @@ async def ai_service_error_handler(request: Request, exc: AIServiceError) -> JSO
 
 async def service_error_handler(request: Request, exc: ServiceError) -> JSONResponse:
     """Covers every service-layer error — ChatServiceError, TrackingServiceError,
-    any future subclass — in one handler: Starlette resolves an exception
-    handler by walking the raised exception's own MRO, not by exact type
-    match, so registering this for the base class alone is enough."""
+    any future subclass — in one handler, since Starlette resolves handlers
+    by walking the exception's MRO rather than requiring an exact type match."""
     logger.exception("Service error on %s %s", request.method, request.url.path)
     return JSONResponse(status_code=exc.status_code, content=_error_body(exc.message, exc.detail))
 

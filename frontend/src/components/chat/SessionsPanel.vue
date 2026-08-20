@@ -2,14 +2,10 @@
 import { ref } from 'vue'
 import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 
-// The sessions list content (header + rows) shared by every chat surface
-// that lets a user pick a past/present session — the main page and the
-// "Edit project" view's embedded chat (both via ChatWindow.vue) and the
-// "Label sessions" view (LabelProjectView.vue), which reviews a
-// session read-only and so never creates/deletes one (see
-// allowCreate/allowDelete). Layout (the sliding wrap, its width, the drag
-// divider) stays each parent's own concern, same as Inspector.vue's own
-// width — this component is just the list itself.
+// The sessions list content (header + rows), shared by every chat surface
+// that lets a user pick a past/present session. Layout (the sliding wrap,
+// its width, the drag divider) stays each parent's own concern — this
+// component is just the list itself.
 const props = defineProps({
   sessions: { type: Array, required: true },
   loading: { type: Boolean, default: false },
@@ -19,37 +15,21 @@ const props = defineProps({
   deletingSessionId: { type: [Number, String], default: null },
   allowCreate: { type: Boolean, default: true },
   allowDelete: { type: Boolean, default: true },
-  // LabelProjectView's own — only an imported session (see
-  // ChatSession.source) is ever deletable there, never a native one
-  // (ChatWindow.vue's own live-chat contexts leave this at its default
-  // false, since allowDelete there already means "any session").
+  // When true, only an imported session is ever deletable, never a
+  // native one.
   deleteImportedOnly: { type: Boolean, default: false },
-  // LabelProjectView's own — a transcript import produces a session
-  // annotatable/testable without ever running live (see ChatSession.
-  // source), meaningful only for review/labeling, not for the main chat
-  // or the "Edit project" embedded chat (see ChatWindow.vue, which
-  // leaves this at its default false).
+  // Whether transcript import is offered — meaningful only for
+  // review/labeling, not for a live chat.
   allowImport: { type: Boolean, default: false },
-  // ChatWindow.vue's own live-chat contexts (main app + EditProjectView's
-  // embedded chat) — an imported session can never become the live
-  // conversation's own current/active session (see ChatSession.source),
-  // so selecting one there must be a no-op, not a click that quietly
-  // hands currentSessionId a session nothing downstream is prepared to
-  // treat as live. LabelProjectView leaves this at its default false:
-  // reviewing/annotating an imported transcript is exactly its own
-  // purpose, so selecting one there must keep working.
+  // An imported session can never become the live conversation's active
+  // session, so selecting one must be a no-op rather than handing
+  // currentSessionId a session nothing downstream treats as live.
   restrictSelectionToNative: { type: Boolean, default: false },
-  // Same always-mounted collapse/expand pattern as Inspector.vue's own
-  // `collapsed` — the parent (ChatWindow.vue/LabelProjectView.vue)
-  // owns the actual width/layout collapse, this only owns its own
-  // header's toggle button and hiding its own content while collapsed.
+  // The parent owns the actual width/layout collapse; this only owns its
+  // own header toggle button and hiding its content while collapsed.
   collapsed: { type: Boolean, default: false },
-  // LabelProjectView.vue's own — a footer button, same placement/style
-  // as FileExplorer.vue's own "Download project" (see this component's
-  // own <style>), for every session of this project as one .json file.
-  // ChatWindow.vue's own live-chat contexts leave this at its default
-  // false: downloading "every session" only means something in the
-  // review/label context, not the live conversation.
+  // A footer button to download every session of this project as one
+  // .json file.
   allowDownloadAll: { type: Boolean, default: false },
   downloadingAll: { type: Boolean, default: false }
 })
@@ -63,11 +43,8 @@ function triggerImport() {
 }
 
 function onImportFileChosen(event) {
-  // `multiple` (see the <input> below) means files can be a whole batch —
-  // emitted as one array rather than one 'import' per file so the parent
-  // (LabelProjectView.vue's own handleImportSession) can refresh the
-  // session list exactly once after the whole batch settles, not once per
-  // file.
+  // Emitted as one array rather than one 'import' per file so the parent
+  // can refresh the session list once after the whole batch settles.
   const files = Array.from(event.target.files ?? [])
   if (files.length) emit('import', files)
   // Reset so choosing the exact same file(s) again still fires 'change'.
@@ -89,10 +66,8 @@ function selectSession(session) {
   emit('select', session)
 }
 
-// The "has expert annotations" tag icon's own tooltip — one shared
-// instance for the whole list (see useFloatingTooltip's own docstring on
-// why a per-row template ref doesn't work inside v-for), since only one
-// row can be hovered at a time anyway.
+// The "has expert annotations" tag icon's tooltip — one shared instance
+// for the whole list, since only one row can be hovered at a time.
 const {
   visible: annotationTooltipVisible,
   style: annotationTooltipStyle,
@@ -192,7 +167,6 @@ const {
   border-bottom: 1px solid #ddd;
 }
 
-/* Same style as Inspector.vue's own .inspector-title. */
 .sessions-panel-title {
   font-size: 0.8rem;
   font-weight: 600;
@@ -263,8 +237,6 @@ const {
   min-height: 0;
 }
 
-/* Same footer-button placement/style as FileExplorer.vue's own
-   "Download project". */
 .sessions-panel-download-btn {
   flex-shrink: 0;
   width: 100%;
@@ -380,9 +352,8 @@ const {
   color: #666;
 }
 
-/* "Label sessions" view's own marker (see session.has_annotations) —
-   shown wherever this list is used, since it's just accurate information
-   about the session, not something specific to reviewing it. */
+/* Shown wherever this list is used — accurate info about the session,
+   not something specific to reviewing it. */
 .session-annotation-icon {
   flex-shrink: 0;
   font-size: 0.8rem;

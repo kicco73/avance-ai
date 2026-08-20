@@ -31,14 +31,8 @@ def test_open_window_is_configurable(db):
 
 @pytest.mark.regression
 def test_is_open_is_false_never_a_crash_for_a_session_with_no_datetime_end(manager):
-    """An imported session (see ChatSession.source) always has
-    datetime_end=None — it never had a live conversation window to begin
-    with (see tracking.session_import's own create_chat_session call).
-    Regression for a real crash: marking an imported session done (see
-    ChatService.mark_session_labeled) used to call get_active_session
-    against the 'imported' pool, which reached this comparison and raised
-    TypeError: unsupported operand type(s) for -: 'datetime' and
-    'NoneType'."""
+    """Regression: an imported session always has datetime_end=None,
+    which must not crash the is_open comparison."""
     session = {"datetime_end": None}
     assert manager.is_open(session) is False
 
@@ -97,10 +91,9 @@ def test_creates_a_new_session_once_the_current_one_has_gone_idle(manager, monke
 
 @pytest.mark.contract
 def test_manual_create_session_supersedes_a_still_open_one(manager):
-    """The core constraint this manager enforces: at most one writable
-    session per user+project, the one with the latest datetime_start. An
-    explicit "new session" action must immediately become that one, even
-    though the previous session is still within its open window."""
+    """At most one writable session per user+project — an explicit "new
+    session" action must immediately become that one, even though the
+    previous session is still within its open window."""
     first = manager.get_or_create_current_session("user", "proj", None, "start")
 
     manual = manager.create_session("user", "proj", "start")
@@ -211,10 +204,8 @@ def test_get_active_session_is_the_most_recently_started_open_one(manager):
 
 @pytest.mark.regression
 def test_require_active_session_rejects_an_open_but_superseded_session(manager):
-    """The exact bug this guards against: an older session that is still
-    individually open (not expired) must NOT be usable for writes once a
-    newer one has superseded it — only one session is ever active per
-    user+project, regardless of how many others are still open."""
+    """An older session that is still individually open (not expired)
+    must not be usable for writes once a newer one has superseded it."""
     older = manager.create_session("user", "proj", "start")
     newer = manager.create_session("user", "proj", "start")
     assert manager.is_open(older)  # not expired — this is the crux of the bug

@@ -81,10 +81,8 @@ class AutomatonBuilder(object):
 
     @staticmethod
     def _build_env_key(name: str, raw_env_key: dict) -> EnvKey:
-        """One `env:` declaration (see EnvKey's own docstring) — `value`
-        is normalized to expression *source* exactly like an action's own
-        `env:` field (see _build_action_env), since it shares the same
-        simpleeval-based evaluator (Automaton.eval_action_env)."""
+        """One `env:` declaration. `value` is normalized to expression
+        *source*, exactly like an action's own `env:` field."""
         raw_value = (raw_env_key or {}).get("value", "")
         value = raw_value if isinstance(raw_value, str) else str(raw_value)
         raw_description = (raw_env_key or {}).get("ui-description")
@@ -97,14 +95,9 @@ class AutomatonBuilder(object):
 
     @staticmethod
     def _build_action_env(raw_env: Any, action_name: str) -> dict[str, str] | None:
-        """{key: expression} straight from YAML, normalized to always be
-        Python-expression *source* (see Action.env's own docstring) —
-        `True`/`42`/`null`/... parse as native YAML types rather than
-        strings, but still need to round-trip through the same
-        simpleeval-based evaluator a `trigger` does (see Automaton.
-        eval_action_env), so anything that isn't already a str is
-        stringified into its own Python-literal spelling here instead of
-        at every evaluation."""
+        """{key: expression} from YAML, normalized to always be
+        Python-expression *source*: `True`/`42`/`null`/... parse as
+        native YAML types, so anything not already a str is stringified here."""
         if not raw_env:
             return None
         if not isinstance(raw_env, dict):
@@ -117,12 +110,8 @@ class AutomatonBuilder(object):
     @staticmethod
     def _validate_on_enter(on_enter: str | None, location: str) -> None:
         """`location` (e.g. "state 'a', action 'go'") is prepended to
-        whatever OnEnterScriptSignatureParser.validate raises — same
-        "where exactly" convention every other build-time validator in
-        this file already follows (see e.g. _build_action_env's own
-        'env' errors) — re-raised as the same OnEnterScriptError type,
-        never downgraded to a bare ValueError, so a caller that wants to
-        distinguish this failure specifically still can."""
+        whatever OnEnterScriptSignatureParser.validate raises, re-raised
+        as the same OnEnterScriptError type rather than a bare ValueError."""
         try:
             _on_enter_parser.validate(on_enter)
         except OnEnterScriptError as exc:
@@ -195,20 +184,9 @@ class AutomatonBuilder(object):
 
     @staticmethod
     def _validate_namespaced_expression(expression: str, context: str, registry: dict[str, dict[str, str]]) -> None:
-        """Syntax + per-namespace identifier validation shared by both
-        `trigger:` and an action's own `env:` expressions (see automaton.
-        automaton's RESERVED_NAMESPACES/trigger_namespace_refs/
-        trigger_bare_names) — `context` is just this expression's own
-        description, for the error message. `registry` (see automaton.
-        identifier_registry.build_registry) is the single source of every
-        valid identifier per namespace — including `env.*`, whose valid
-        names are exactly the project's own declared `env:` section (see
-        build()'s own env_keys, parallel to `signals:`): an action's own
-        `env:` field may only ever *write* to one of these, never
-        introduce a new one on the fly (see _actions_sanity_check's own
-        declared-key check). Any bare (unnamespaced) identifier
-        left over must be a core metric (see metrics_framework.
-        metric_names) — anything else, namespaced or not, is undefined."""
+        """Syntax + per-namespace identifier validation shared by
+        `trigger:` and an action's `env:` expressions. Any bare
+        identifier left over must be a core metric."""
         try:
             namespace_refs = trigger_namespace_refs(expression)
             bare_names = trigger_bare_names(expression)
@@ -225,14 +203,9 @@ class AutomatonBuilder(object):
 
     @staticmethod
     def _validate_trigger_types(expression: str, context: str) -> None:
-        """Only for `trigger:` (see _actions_sanity_check's own call
-        site) — never `env:`, which has no comparison shape to
-        type-check in the first place (see Action.env's own docstring:
-        "any simple value", not a boolean condition). See
-        trigger_type_violations' own docstring for exactly what this
-        catches (a comparison between two statically-known-incompatible
-        types, e.g. `system.today() >= 5`) and why that's a build-time-
-        checkable thing at all, unlike a signal's actual runtime value."""
+        """Only for `trigger:`, never `env:` — `env:` allows any simple
+        value, not a boolean condition, so it has no comparison shape to
+        type-check. Catches comparisons between statically-incompatible types."""
         violations = trigger_type_violations(expression)
         if violations:
             raise ValueError(f"{context} ('{expression}'): {'; '.join(violations)}")
@@ -241,21 +214,9 @@ class AutomatonBuilder(object):
     def _validate_automaton_refs_exist(
         expression: str, referenced_projects: set[str], known_projects: dict[str, frozenset[str]], context: str
     ) -> None:
-        """Prompt 10 — the one thing the pre-existing self-loop-only check
-        (see _actions_sanity_check's own caller) never covered: whether
-        the project/env key an automaton.* reference actually names
-        exists at all. `known_projects` (see build's own docstring) maps
-        every *other* project's own declared project.id to its own
-        declared env key names — this project's own identifiers never
-        belong in it (an automaton.* reference is only ever meaningful
-        about a *different* project, see AutomatonYamlEditor's own
-        set_project_field docstring on `id` itself). A reference to a
-        project this one's own automaton.* namespace simply doesn't know
-        about yet — not present in known_projects at all — is exactly as
-        invalid as one naming a real project's own undeclared env key:
-        both are silently-wrong at runtime (see tracking.
-        automaton_namespace's own graceful-None + SystemWarning) unless
-        caught here."""
+        """Whether the project/env key an automaton.* reference actually
+        names exists at all. `known_projects` maps every *other*
+        project's own project.id to its declared env key names."""
         unknown_projects = referenced_projects - known_projects.keys()
         if unknown_projects:
             raise ValueError(
@@ -277,14 +238,9 @@ class AutomatonBuilder(object):
         self, key: str, state: State, declared_states: set[str], registry: dict[str, dict[str, str]],
         known_projects: dict[str, frozenset[str]] | None = None,
     ):
-        """`registry` (see automaton.identifier_registry.build_registry):
-        every valid identifier for this project, one set per namespace —
-        `signal.*`/`env.*` project-specific, `system.*`/`session.*`/
-        `session.metric.*`/`metric.*` the same fixed sets for every
-        project (see that module's own docstring). `known_projects`: see
-        build's own docstring (Prompt 10) — None skips the automaton.*
-        existence check entirely, same as every caller before this
-        parameter existed."""
+        """`registry`: every valid identifier for this project, one set
+        per namespace. `known_projects`: None skips the automaton.*
+        existence check entirely."""
         for action in state.actions:
             if action.target not in declared_states:
                 raise ValueError(
@@ -344,18 +300,8 @@ class AutomatonBuilder(object):
     @staticmethod
     def _build_project_metadata(raw: dict) -> tuple[str | None, str | None, str | None]:
         """The optional top-level `project:` section — id/ui-label/
-        ui-description, same convention as init-action/states/signals/env
-        each being their own top-level mapping. `id` is what *other*
-        projects reach this one as through automaton.* (see automaton.
-        trigger_automaton_project_refs) — global uniqueness across every
-        project is ProjectService's own concern (see its
-        _validate_project_id_globally_unique), since that needs the
-        database this pure YAML-to-Automaton builder never touches; this
-        only enforces the one thing checkable from the YAML alone: `id`,
-        if declared, must be a valid Python identifier (letters, digits,
-        underscore, never starting with a digit) — the same grammar
-        automaton.<id> itself requires to even parse as an attribute
-        reference."""
+        ui-description. `id` is what *other* projects reach this one as
+        through automaton.*; global uniqueness is ProjectService's concern."""
         raw_project = raw.get("project")
         if raw_project is None:
             return None, None, None
@@ -374,20 +320,9 @@ class AutomatonBuilder(object):
 
     @staticmethod
     def read_declared_env_keys(index_yml_text: str) -> tuple[str | None, frozenset[str]]:
-        """Reads only `project.id` and the top-level `env:` section's own
-        key names straight off `index_yml_text` — never a full build (no
-        state/signal/action parsing, no validation at all) — for
-        ProjectService's own known_projects (Prompt 10, see build's own
-        docstring), which needs every *other* project's own declared env
-        key names to validate an automaton.<id>.env.<key> reference
-        without paying for (or risking a circular/currently-invalid) full
-        build of every other project just to check one thing exists.
-        `id`/`env` malformed in whatever way build() itself would reject
-        (not a mapping, not a valid identifier, ...) simply reports
-        nothing here rather than raising — an unrelated other project's
-        own bad YAML must never block validating *this* one; build()
-        already rejects that other project's own definition on its own
-        turn to be built."""
+        """Reads only `project.id` and the top-level `env:` key names,
+        never a full build — lets ProjectService validate automaton.*
+        references without building every other project. Malformed id/env reports nothing."""
         raw = _yaml.load(index_yml_text)
         raw_project = raw.get("project")
         project_id = raw_project.get("id") if isinstance(raw_project, dict) else None
@@ -398,20 +333,9 @@ class AutomatonBuilder(object):
         return project_id, env_keys
 
     def build(self, contents: dict, known_projects: dict[str, frozenset[str]] | None = None) -> Automaton:
-        """`known_projects` (Prompt 10) — every *other* project's own
-        project.id mapped to the set of its own declared env key names
-        (Prompt 5), for validating that an automaton.<id>/automaton.
-        <id>.env.<key> reference actually names something that exists
-        (see _validate_automaton_refs_exist) — the one thing the pre-
-        existing self-loop-only check never covered. Deliberately just
-        dicts/sets of plain strings, never Project/Db/ProjectService
-        objects: this class stays pure YAML-to-Automaton, with zero
-        awareness of where those already-resolved values came from (see
-        ProjectService, the one caller that actually populates this — it
-        reads every other project's own declared `env:` section, nothing
-        else, to build it). None (the default) skips the check
-        entirely — every existing caller that doesn't pass this keeps
-        behaving exactly as before this parameter existed."""
+        """`known_projects`: every *other* project's own project.id
+        mapped to its declared env key names, for validating an
+        automaton.<id>.env.<key> reference. None skips that check."""
         all_archives = self._convert_contents_to_archives(contents=contents)
 
         raw = _yaml.load(contents['index.yml'])
@@ -458,12 +382,9 @@ class AutomatonBuilder(object):
                 "and cannot be declared in 'states'."
             )
 
-        # Pass 1: build every state/action, no expression validation yet —
-        # an action's own `target`/`trigger`/`env:` can reference a state
-        # or signal/env key declared anywhere else in the file (forward
-        # references are fine), so every state has to actually exist
-        # before any of that can be checked (see _actions_sanity_check's
-        # own calls below, once every state is built).
+        # Pass 1: build every state/action first, no expression validation
+        # yet — forward references to a state/signal/env key declared
+        # elsewhere in the file are fine, so every state must exist first.
         init_action = self._build_init_action(raw)
         states: dict[str, State] = {}
         states[""] = State(key="", ui_label="", final=False, ui_description="", actions=[init_action])
@@ -488,22 +409,17 @@ class AutomatonBuilder(object):
                 )
             state_keys_by_ui_label[states[key].ui_label] = key
 
-        # Pass 2: every declared signal plus every declared env key — the
-        # project's own identifier registry (see automaton.identifier_
-        # registry.build_registry), the single source _actions_sanity_
-        # check validates every trigger/env: expression's own namespace
-        # references against below (including, now, an action's own env:
-        # write-side keys — see that method's own env-key-declared check).
+        # Pass 2: build the identifier registry, the single source
+        # _actions_sanity_check validates every trigger/env: expression
+        # against below.
         registry = build_registry(list(signals.values()), list(env_keys.values()))
         for key, state in states.items():
             context_key = init_action.name if key == "" else key
             self._actions_sanity_check(context_key, state, set(raw_states.keys()), registry, known_projects)
 
-        # A declared env key's own `value` (its default) is a namespaced
-        # expression exactly like an action's own env: one — see EnvKey's
-        # own docstring — so it gets the same validation, self-reference
-        # to its own key included (already declared here, project-wide,
-        # same as any other).
+        # An env key's own `value` (its default) is a namespaced
+        # expression exactly like an action's own env: one, so it gets
+        # the same validation.
         for env_key in env_keys.values():
             if env_key.value:
                 self._validate_namespaced_expression(

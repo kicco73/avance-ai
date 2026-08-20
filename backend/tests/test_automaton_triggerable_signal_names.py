@@ -1,10 +1,6 @@
-"""Automaton.triggerable_signal_names — the subset of a project's own
-declared signals actually referenced (as `signal.<name>`, see
-RESERVED_NAMESPACES) by at least one triggerable action leaving a given
-state, used to scope auto-tracking's own signal computation (see
-tracking/evaluator.py, tracking/tracking_engine.py, chat_service.py's
-_build_turn_prompt) down to only what could ever affect which action
-fires from there.
+"""Automaton.triggerable_signal_names — the subset of a project's declared
+signals actually referenced (as `signal.<name>`) by at least one
+triggerable action leaving a given state.
 """
 from __future__ import annotations
 

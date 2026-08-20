@@ -16,24 +16,15 @@ class WsAdapter(object):
     def __init__(self, chat_service: ChatService, db: Db) -> None:
         self._chat_service = chat_service
         self._db = db
-        # username -> the one open connection shared across every project
-        # (Prompt 13 — correction to Prompt 12's own (username,
-        # project_name) keying): the frontend already keeps at most one
-        # websocket per tab, reused across every project's own chat, so a
-        # separate connection per project was never needed — and keying
-        # on it meant a project that was only ever opened, never written
-        # to (e.g. an initial greeting served over REST), stayed
-        # unregistered and unreachable by push for its entire lifetime.
+        # username -> the one open connection shared across every project:
+        # the frontend keeps at most one websocket per tab, reused across
+        # every project's own chat, so a per-project connection was never needed.
         self._connections: dict[str, WebSocket] = {}
 
     async def chat_loop(self, websocket: WebSocket) -> None:
         """Accepts the /ws/chat connection and dispatches every non-empty
-        frame to ChatService.process_turn(), one at a time (the loop only
-        calls receive_json() again once the previous turn is fully done).
-        Registers this socket under Session().user immediately after
-        accept() — Session is a process-wide singleton whose user is
-        always already known, so unlike the old per-project keying there's
-        no need to wait for a frame's own session_id before registering."""
+        frame to ChatService.process_turn(), one at a time. Registers
+        this socket under Session().user immediately after accept()."""
         username = Session().user
         await websocket.accept()
         self._connections[username] = websocket
@@ -101,15 +92,9 @@ class WsAdapter(object):
                 del self._connections[username]
 
     async def push(self, username: str, payload: dict) -> bool:
-        """Sends `payload` straight to `username`'s own single shared
-        connection, if one exists — WakeupService's own way to deliver a
-        cross-project self-loop transition to a client that isn't
-        actively mid-turn on the project that changed (see
-        _reevaluate_and_apply). No exception, and no special-casing, for
-        the common case of no connection at all: a dormant/disconnected
-        session is a perfectly normal outcome here, not an error — the
-        caller just gets False back and moves on, same as it always would
-        have before there was anyone to push to."""
+        """Sends `payload` to `username`'s single shared connection, if
+        one exists. No exception for the no-connection case — a
+        dormant/disconnected user just gets False back."""
         websocket = self._connections.get(username)
         if websocket is None:
             return False

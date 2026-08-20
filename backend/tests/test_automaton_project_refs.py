@@ -1,12 +1,6 @@
-"""automaton.automaton.trigger_automaton_project_refs — every project
-name referenced as `automaton.<project>...` in a trigger/env expression.
-Used by automaton_builder.py's own self-loop-only build-time check and
-by project_service.py's own reverse-index build.
-
-Also trigger_automaton_env_refs — the narrower automaton.<project>.env.
-<key> walk Prompt 10's own existence check (AutomatonBuilder.build's
-known_projects parameter) uses to validate the env-key half of a
-reference.
+"""trigger_automaton_project_refs finds every project name referenced as
+`automaton.<project>...` in a trigger/env expression; trigger_automaton_env_refs
+narrows that to the automaton.<project>.env.<key> references.
 """
 from __future__ import annotations
 

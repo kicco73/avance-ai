@@ -2,10 +2,7 @@
 session bootstrap/messaging, env/identifiers/metrics as the Inspector
 shows them there, AI model selection, talk/listen, and the handful of
 cross-screen utilities (GET /api/docs/{name}, GET /api/state) that don't
-belong to any one screen more than another. Split out of what used to be
-one single AvanceController class in controller.py — see that module's
-own docstring, and BaseController's for the shared registration
-mechanism/ordering-constraint notes every *_controller.py shares.
+belong to any one screen more than another.
 """
 from __future__ import annotations
 
@@ -32,9 +29,8 @@ from schemas import (
 from .base_controller import BaseController, delete, get, post, put
 
 # Slug -> filename under src/docs/ — a fixed allow-list, not a raw path
-# built from the request, so get_doc below can never be tricked into
-# reading anything outside this directory (no path-traversal surface at
-# all: an unknown slug is just a 404, never a filesystem lookup).
+# built from the request, so get_doc can never be tricked into reading
+# anything outside this directory.
 DOC_FILES = {
     "project-specs": "PROJECT_SPECS.md",
     "metrics": "METRICS.md",
@@ -60,11 +56,8 @@ class ChatController(BaseController):
     @get("/api/docs/{name}")
     def get_doc(self, name: str):
         """Raw markdown content of one of src/docs/'s fixed set of
-        reference docs (see DOC_FILES) — backs each "(?)" documentation
-        button (EditProjectView.vue's own, next to Save; the Inspector's
-        Metrics/Performance tabs) with the actual .md file's content
-        instead of duplicating it into the frontend bundle. `name` not in
-        DOC_FILES is a 404, not a filesystem error."""
+        reference docs — backs each "(?)" documentation button instead
+        of duplicating it into the frontend bundle. Unknown `name` is a 404."""
         filename = DOC_FILES.get(name)
         if filename is None:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=f"Unknown doc '{name}'.")
@@ -91,14 +84,9 @@ class ChatController(BaseController):
         section. Always live."""
         return self.chat_service.clear_env()
 
-    # A distinct top-level path, not /api/chat/env/action — this
-    # controller's own register_routes (see BaseController) registers
-    # routes in inspect.getmembers' own alphabetical-by-method-name
-    # order, not source order, so a path under /api/chat/env/{key} could
-    # easily end up registered before a literal /api/chat/env/action and
-    # swallow it as key="action". A completely different path sidesteps
-    # that footgun outright rather than relying on naming this method to
-    # sort correctly.
+    # A distinct top-level path, not /api/chat/env/action — routes
+    # register alphabetically by method name, so /api/chat/env/{key}
+    # could end up registered first and swallow it as key="action".
     @delete("/api/chat/action-env")
     def clear_action_env(self):
         """Wipes every action-set env key at once (see ChatService.
@@ -140,21 +128,15 @@ class ChatController(BaseController):
     @get("/api/projects/{project_name}/metrics")
     def get_metrics(self, project_name: str, message_id: int | None = None):
         """Core metrics for `project_name`, live or (`message_id` given)
-        as of that exact message — no caching, see metrics_framework/
-        README.md. ChatServiceError (unknown/not-yours message_id) is
-        handled globally, see error_handlers.py."""
+        as of that exact message — no caching. ChatServiceError for an
+        unknown message_id is handled globally, see error_handlers.py."""
         return self.chat_service.get_metrics(project_name=project_name, message_id=message_id)
 
     @get("/api/state")
     def get_state(self):
-        """Also the frontend's boot/readiness ping (see App.vue's
-        pingBackend) — piggybacks talk_enabled/listen_enabled here so it
-        stays the one call needed to know both "is the server up" and
-        "which voice features does it actually have configured". No
-        `-> StatePayload` annotation: when there's no active project/state
-        yet (see the except below), the payload deliberately doesn't have
-        StatePayload's fields, and FastAPI would otherwise reject that
-        response as invalid instead of returning it."""
+        """Also the frontend's boot/readiness ping — piggybacks
+        talk_enabled/listen_enabled here. No `-> StatePayload` annotation:
+        with no active project/state the payload lacks those fields."""
 
         try:
             payload = self.project_service.get_active_state_payload()
@@ -174,11 +156,9 @@ class ChatController(BaseController):
 
     @post("/api/ai/models/selection")
     def post_ai_model_selection(self, req: AiModelSelectionRequest):
-        """Sets which model generate()/generate_stream() use: `index: null`
-        for auto (the cascade's own fallback order), or `index` into GET
-        /api/ai/models' `models` to pin one directly. Returns the same
-        shape as GET /api/ai/models so the frontend can refresh in one
-        round trip."""
+        """Sets which model generate()/generate_stream() use: `index:
+        null` for auto (the cascade's fallback order), or `index` into
+        GET /api/ai/models' `models` to pin one directly."""
         try:
             self.chat_service.select_ai_model(req.index)
         except ValueError as exc:
@@ -188,15 +168,8 @@ class ChatController(BaseController):
     @get("/api/chat/session")
     def get_current_session(self, session_id: int | None = None):
         """Bootstrap endpoint: resolves (or creates) the active project's
-        current writable session — see chat/session_manager.py. Called by
-        the frontend before it has a known session_id, or to recover from
-        a stale one. Always a real, published-revision session — see
-        GET /api/projects/{project_name}/test-sessions/current for
-        EditProjectView.vue's own embedded "Test" chat, the only caller
-        allowed a draft one instead. No `allow_draft` parameter here or on
-        POST /api/chat/sessions below anymore: which revision a session
-        may exist against is decided solely by which endpoint is called,
-        never by a caller-supplied flag on a shared one."""
+        current writable session. Always a real, published-revision
+        session — see the test-sessions/current endpoint for the draft equivalent."""
         return self.chat_service.get_or_create_current_session(session_id)
 
     @post("/api/chat/sessions")
@@ -245,8 +218,7 @@ class ChatController(BaseController):
     def get_message_audio(self, message_id: int, request: Request):
         """Generates (or replays a cached/in-flight) audio for message_id,
         streaming-compatible. 404 if the message had no [audio] tag — the
-        frontend treats that as "no audio available", not a failure (see
-        api.js's messageAudioUrl)."""
+        frontend treats that as "no audio available", not a failure."""
         if self.talk_service is None:
             raise HTTPException(
                 status_code=HTTPStatus.SERVICE_UNAVAILABLE, detail=str(TalkServiceNotAvailableError())
@@ -259,11 +231,9 @@ class ChatController(BaseController):
         )
 
     async def _stream_audio_until_disconnected(self, request: Request, audio_text: str):
-        # A dropped/aborted fetch (see audio.js's stopCurrentAudio) doesn't
-        # reliably surface as a send() failure — Starlette can keep writing
-        # into a closed socket for a while. Polling is_disconnected() stops
-        # the provider's work immediately instead of wasting a full synthesis.
-
+        # A dropped/aborted fetch doesn't reliably surface as a send()
+        # failure — polling is_disconnected() stops the provider's work
+        # immediately instead of wasting a full synthesis.
         if self.talk_service is None:
             raise TalkServiceNotAvailableError("Talk service is not available")
 
@@ -301,14 +271,9 @@ class ChatController(BaseController):
 
     @post("/api/chat/reset")
     async def post_reset(self):
-        """Wipes this user's own sessions for the active project (see
-        ProjectService.reset_active_project) — the next state resolution
-        falls all the way back to init_action.target (see _resolve_state's
-        own docstring on that fallback), same as a session's very first
-        transition ever, so on-enter rides along here the same way it
-        does on every other real transition (see ChatService.
-        apply_manual_action/process_turn's own "on-enter") — this is
-        exactly one, just not modeled as firing an Action per se."""
+        """Wipes this user's own sessions for the active project — the
+        next state resolution falls back to init_action.target, so
+        on-enter rides along the same way it does on any real transition."""
         async with self.chat_service.lock:
             self.project_service.reset_active_project()
         automaton, state = self.project_service.get_active_automaton_and_state()

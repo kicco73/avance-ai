@@ -18,8 +18,8 @@ export function playMessageChime() {
   }
 }
 
-// Tracks whichever narration is currently playing, if any, so a new one
-// never overlaps a still-running previous one.
+// Tracks the currently playing narration, if any, so a new one never
+// overlaps a still-running previous one.
 let currentAudio = null
 
 function stopCurrentAudio() {
@@ -31,9 +31,8 @@ function stopCurrentAudio() {
 }
 
 // Fetches and plays a message's generated narration, if any. A missing
-// audio (404 — no [audio] tag on this message; see backend/talk/talk_service.py)
-// must fail silently: no visible error, a best-effort nicety on top of the
-// text that's already shown.
+// audio (404 — no narration for this message) fails silently: a
+// best-effort nicety on top of the text that's already shown.
 export function playMessageAudio(url) {
   try {
     stopCurrentAudio()

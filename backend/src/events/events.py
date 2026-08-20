@@ -11,10 +11,8 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
 class StateChanged:
-    """A real (non-self-loop) transition — published by
-    tracking.tracking_engine.TrackingEngine.notify_transition, right
-    after the transition itself is persisted (see that method's own
-    docstring for the exact two call sites)."""
+    """A real (non-self-loop) transition — published right after the
+    transition itself is persisted."""
     username: str
     project_name: str
     from_state: str
@@ -34,11 +32,8 @@ class EnvChanged:
 
 @dataclass(frozen=True, slots=True)
 class AvailabilityChanged:
-    """A project's own is_paused flag flipped (see project.
-    project_service.ProjectService's own availability recomputation) —
-    published only when the recomputed value actually differs from what
-    was already saved (see that module's own docstring: the guard that
-    makes a mutual dependency between two projects converge in a single
-    pass, with no cycle detection needed)."""
+    """A project's is_paused flag flipped — published only when the
+    recomputed value actually differs from what was already saved,
+    which is what makes a mutual dependency converge without cycle detection."""
     project_name: str
     available: bool

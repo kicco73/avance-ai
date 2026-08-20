@@ -1,8 +1,6 @@
-"""Exercises samples/Metrics Playground (states).zip — the state-based
-sibling of Metrics Playground.zip: same signal/metric triggers, but each
-one lands on its own dedicated final state instead of looping back to
-"engaged". See that file's own test module for the shared assertions;
-this one only covers what's specific to landing on a real target state.
+"""Exercises samples/Metrics Playground (states).zip: same signal/metric
+triggers as Metrics Playground.zip, but each lands on its own dedicated
+final state instead of looping back to "engaged".
 """
 from __future__ import annotations
 

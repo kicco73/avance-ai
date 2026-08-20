@@ -1,11 +1,6 @@
-"""Two interchangeable sources of (signal_values, stored_env) per turn
-for a benchmark replay (see metrics/benchmark_processor.py's
-BenchmarkProcessor, which drives either one through the exact same
-loop): TurnByTurnSignalSource asks the AI once per turn (high fidelity,
-one call per user message); BatchSignalSource asks once per session (or
-remaining stretch of one) via numbered tags, far fewer calls on a long
-session, at the cost of never evaluating under a specific state's own
-contextual_prompt (see BatchSignalSource's own docstring)."""
+"""Two interchangeable sources of (signal_values, stored_env) per turn:
+TurnByTurnSignalSource asks the AI once per message (high fidelity);
+BatchSignalSource batches per session for fewer calls, less context."""
 from __future__ import annotations
 
 from db import Db
@@ -20,19 +15,16 @@ from tracking.turn_protocol_using_text_extraction import TurnProcotolUsingTextEx
 
 
 class TurnByTurnSignalSource:
-    """One live AI call per turn — same fidelity as production's own
-    auto-tracking (evaluated under the current state's own
-    contextual_prompt), just replayed instead of driven by a real user."""
+    """One live AI call per turn, evaluated under the current state's
+    contextual_prompt — same fidelity as production's auto-tracking, just replayed."""
 
     def __init__(
         self, ai_service: AiService, tracking_service: TrackingService, db: Db, automaton: Automaton, session_id: int,
     ) -> None:
         self._ai_service = ai_service
-        # Not used for get_definition below (TrackingService.get_definition
-        # hardcodes its own "active project" automaton, not necessarily
-        # this run's own — see Signals(...) usage instead); kept for
-        # interface parity with how this class is wired (see
-        # BenchmarkRunService), in case a future prompt needs it.
+        # Unused here: TrackingService.get_definition hardcodes the "active
+        # project" automaton, not necessarily this run's; kept only for
+        # interface parity with how this class is constructed.
         self._tracking_service = tracking_service
         self._db = db
         self._automaton = automaton
@@ -60,9 +52,8 @@ class TurnByTurnSignalSource:
 
         protocol_cls = TurnProtocolUsingSchema if self._ai_service.is_provider_with_schema() else TurnProcotolUsingTextExtraction
         # Second positional param only affects generate_reply's own tag
-        # ordering (self.include_tags) — never read by generate_reply_
-        # with_schema, the only method this class calls (see
-        # TurnProtocol.__init__'s own body).
+        # ordering, never read by generate_reply_with_schema — the only
+        # method this class calls.
         protocol = protocol_cls(self._ai_service, True)
 
         chat_history = self._build_chat_history(message_id)
@@ -100,19 +91,9 @@ BATCH_TAG_INSTRUCTIONS = (
 
 
 class BatchSignalSource:
-    """One AI call per session (or remaining stretch of one) instead of
-    one per turn — optimistic: the first call covers the whole session
-    with whatever signals look necessary from the start; if a turn turns
-    out to need a signal that call never asked for (the replay diverged
-    into an unexpected state), a new, more targeted call re-covers only
-    from that point on, never discarding already-confirmed turns.
-
-    Known, unavoidable cost: unlike TurnByTurnSignalSource, a single call
-    can span turns that cross multiple states, none of which is known in
-    advance — so only automaton.general_prompt (project-wide context, not
-    state-specific) is ever used as a base, never any state's own
-    contextual_prompt. Worth keeping in mind when comparing the two
-    strategies' results on the same session."""
+    """One AI call per session (or remaining stretch) instead of per turn,
+    re-covering from the divergence point when a state needs an unasked
+    signal. Uses only general_prompt, since states aren't known upfront."""
 
     def __init__(
         self, ai_service: AiService, tracking_service: TrackingService, db: Db, automaton: Automaton, session_id: int,

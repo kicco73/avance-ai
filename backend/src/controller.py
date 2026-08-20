@@ -1,27 +1,7 @@
-"""Composition root — main.py/conftest.py construct exactly one
-AvanceController with the same 7 services this class always took, and
-register its single .router, same as when every endpoint lived on one
-class. Every actual endpoint now lives on one of four screen-scoped
-controllers under controllers/ (see each one's own module docstring for
-which FE screen it maps to):
-
-- controllers/chat_controller.py — ChatController (ChatWindow.vue)
-- controllers/edit_project_controller.py — EditProjectController
-  (EditProjectView.vue, "Edit project")
-- controllers/label_project_controller.py — LabelProjectController
-  (LabelProjectView.vue, "Label sessions")
-- controllers/settings_controller.py — SettingsController (Settings
-  menu / Manage projects)
-
-Splitting is purely organizational: every one of them still registers
-onto this exact same shared APIRouter (see controllers/base_controller.
-py's own BaseController.register_routes), in the exact same relative
-order the two registration-order-sensitive route pairs always needed —
-both pairs happen to already live entirely within one controller each
-(see BaseController's own docstring), so nothing here has to coordinate
-registration order *across* controllers at all; they're merged in
-whatever order this file lists them in.
-"""
+"""Composition root: builds the shared services once and registers each
+screen-scoped controller under controllers/ onto one shared APIRouter,
+in the list order below — see each controller's own module docstring
+for which FE screen it maps to."""
 from __future__ import annotations
 
 from fastapi import APIRouter

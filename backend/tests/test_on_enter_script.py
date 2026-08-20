@@ -1,7 +1,5 @@
 """OnEnterScriptSignatureParser — build-time validation for an action's
-own on-enter field (see automaton.on_enter_script's own module docstring
-and automaton_builder.py's own _build_action/_build_init_action, the two
-real callers)."""
+own on-enter field."""
 from __future__ import annotations
 
 import pytest

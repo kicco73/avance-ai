@@ -1,10 +1,6 @@
-"""Db-level tests for action-env-only Tracking rows (see
-db.Db.get_action_env/set_action_env, and Tracking's own docstring) — the
-persisted half of chat.env.Env's action_set/update_action_set, for values
-an action's own YAML `env:` field sets (see automaton_builder.py's
-_build_action/Automaton.eval_action_env), kept apart from get_env/set_env's
-own model-reported values (see test_db_env.py, which this mirrors) so the
-Inspector Env tab can badge the two apart ("SET" vs "AI").
+"""Db-level tests for action-env-only Tracking rows (Db.get_action_env/
+set_action_env) — values an action's YAML `env:` field sets, kept apart
+from get_env/set_env's model-reported values.
 """
 from __future__ import annotations
 
@@ -12,9 +8,6 @@ from datetime import datetime
 
 import pytest
 
-# Every test in this file verifies a specific persistence behavior/fact
-# (round-tripping, scoping, no-op semantics) rather than a response shape —
-# all regression.
 pytestmark = pytest.mark.regression
 
 
@@ -65,9 +58,8 @@ def test_action_env_is_scoped_per_user_and_project(db):
 
 
 def test_action_env_is_independent_of_env(db):
-    """The two stores (see Tracking's own docstring — `env` vs
-    `action_env` columns) never leak into each other, even for the same
-    (user, project)."""
+    """The `env` and `action_env` columns never leak into each other, even
+    for the same (user, project)."""
     _session(db)
     db.set_env("proj", {"favorite_color": "blue"}, "user")
     db.set_action_env("proj", {"number_of_steps": 1}, "user")

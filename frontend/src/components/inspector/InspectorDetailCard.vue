@@ -1,12 +1,7 @@
 <script setup>
-// The read-only badge/fields/attachments card for whatever's selected in
-// the Graph (a state or an action) — extracted out of InspectorGraphTab.vue
-// so InspectorGraphTab.vue can compose this alongside InspectorGraph.vue
-// (see that component's own docstring) instead of owning both concerns
-// itself. Purely a function of `selectedElement` — every "is this the
-// current/next/fired one" badge computed here from props, never from
-// internal state, so a parent can drive this from Graph's own emitted
-// selection without this component needing any cytoscape awareness at all.
+// Card for whatever's selected in the Graph (a state or an action) —
+// purely a function of `selectedElement` props, never internal state, so
+// a parent can drive it without this component needing cytoscape awareness.
 import { computed, ref, watch } from 'vue'
 import { vAutosize } from './textareaAutosize.js'
 import CardMenu from './CardMenu.vue'
@@ -20,50 +15,30 @@ const props = defineProps({
   nextActionEdge: { type: Object, default: null },
   firedActionEdge: { type: Object, default: null },
   highlightedStateKey: { type: String, default: null },
-  // Whether clicking the card's own body (not the × close button, not an
-  // attachment button) emits 'select' — off by default, since the
-  // original "States" tab usage (InspectorGraphTab.vue) has nothing
-  // useful to do with a click on a card that's already the Graph's own
-  // selection. The Inspector's "State"/"Actions" tabs turn this on: there
-  // the same card can represent an element that isn't the literal shared
-  // selection yet (e.g. "State" showing the state an already-selected
-  // action merely belongs to) — clicking it promotes it to become that
-  // selection, same as clicking it directly in the Graph would.
+  // Whether clicking the card body (not the × or an attachment button)
+  // emits 'select' — on for a card that can represent an element other
+  // than the current shared selection, so clicking it promotes it.
   selectable: { type: Boolean, default: false },
-  // The × close button — on by default (the original floating-card
-  // usage, and "State"). Off for a row inside "Actions"' own list: there
-  // every action is always shown, nothing for × to "close" without also
-  // meaning delete (a distinct, separate action of its own).
+  // The × close button — off for a row inside an actions list, where
+  // every action is always shown and × would be ambiguous with delete.
   closable: { type: Boolean, default: true },
   // Turns the read-only body into an editable form (see set-field below)
-  // — only the Inspector's own "State"/"Actions" tabs (always inside an
-  // active "Edit project" session) pass this; the original "States" tab
-  // (InspectorGraphTab.vue, shown even outside any editing context, e.g.
-  // the main chat window/LabelProjectView) leaves it at its default,
-  // staying read-only exactly as before.
+  // — only passed by callers inside an active edit session; elsewhere the
+  // card stays read-only.
   editable: { type: Boolean, default: false },
-  // Every real state's own {key, uiLabel} — the action form's own
-  // target <select> options. Irrelevant (and unused) for a state card.
+  // Every state's {key, uiLabel} — options for the action form's target
+  // <select>. Unused for a state card.
   availableStates: { type: Array, default: () => [] },
-  // Whether this card's own form is showing, open/closed a v-model
-  // (update:open) the *parent* owns rather than local state — the
-  // Actions tab hosts several of these at once and needs exactly one
-  // open at a time (an accordion), which only the parent (tracking one
-  // shared "which one" value) can enforce; InspectorStateTab.vue, with
-  // only ever one card, still owns its own single boolean the same way,
-  // just trivially.
+  // Whether the form is open — a v-model (update:open) the parent owns
+  // rather than local state, since a list of these cards needs an
+  // accordion (only one open at a time), which only a shared parent can enforce.
   open: { type: Boolean, default: false },
-  // See EditProjectView.vue's own docstring on this — matched against
-  // elementIdentity below to play a one-shot yellow-fade highlight when
-  // this card is the state/action a "+ Add" click just created.
+  // Matched against elementIdentity below to play a one-shot yellow-fade
+  // highlight when this card is the state/action a "+ Add" click just created.
   recentlyAddedKey: { type: String, default: null },
-  // A plain label ("START"/"END", ...) shown as its own badge, same slot
-  // "Current" already occupies — for a caller that already knows *which*
-  // state a card stands for by construction (see LabelProjectView.vue's
-  // own Info tab: one card fixed to a session's start_state, another to
-  // its end_state), rather than InspectorDetailCard re-deriving that from
-  // a shared highlightedStateKey comparison the way isSelectedStateCurrent
-  // does. State kind only; ignored for an action card.
+  // A plain label ("START"/"END", ...) shown in the same badge slot as
+  // "Current" — for a caller that already knows which state a card
+  // stands for, rather than deriving it from highlightedStateKey. State only.
   roleBadge: { type: String, default: null }
 })
 
@@ -71,28 +46,17 @@ const emit = defineEmits(['select-attachment', 'jump-to-attachment', 'close', 's
 
 const showEditForm = computed(() => props.editable && props.open)
 
-// A click anywhere on the card's own background toggles open/closed and
-// (when selectable) reselects — same convention as InspectorSignalsTab.
-// vue's own signal blocks. Safe for the same reason those are: every
-// actual form control inside (inputs, textareas, the target <select>,
-// badges, the delete button, attachment buttons) already carries its own
-// @click.stop, so a click that lands on one of those never reaches here
-// at all — only a click on genuine background/whitespace does.
+// A click anywhere on the card background toggles open/closed and (when
+// selectable) reselects. Safe because every actual form control inside
+// already carries its own @click.stop, so only whitespace reaches here.
 function handleCardClick() {
   if (props.editable) emit('update:open', !props.open)
   if (props.selectable) emit('select')
 }
 
-// Local editable buffers — separate from selectedElement's own props so
-// typing doesn't fight a parent re-render, and so a blur can compare
-// against the value it started from to skip a no-op PUT. Reset whenever
-// the selection's own identity changes (switching from editing one
-// state/action to another must never carry over the previous one's
-// buffer, and must close the form back down rather than silently keep
-// showing a stale one open) — never on every selectedElement prop
-// change, since the same element's own reference changes after every
-// refetch this component itself triggers (see EditProjectView.vue's
-// refreshAfterProjectEdit).
+// Local editable buffers, separate from selectedElement's props so
+// typing doesn't fight a parent re-render. Reset on identity change only
+// — the prop's own reference changes after every refetch this triggers.
 const editUiLabel = ref('')
 const editUiDescription = ref('')
 const editContextualPrompt = ref('')
@@ -120,11 +84,9 @@ function resetEditBuffers() {
 }
 
 watch(elementIdentity, resetEditBuffers, { immediate: true })
-// Also on every fresh open — the parent now owns open/closed (see the
-// `open` prop's own docstring), so this is what used to happen for free
-// as a side effect of resetEditBuffers also closing the form on an
-// identity change; opening back up should always start from whatever's
-// actually current, not a possibly-stale buffer from before it closed.
+// Also reset on every fresh open, so reopening always starts from
+// whatever's actually current rather than a stale buffer left over from
+// before it closed.
 watch(() => props.open, (isOpen) => { if (isOpen) resetEditBuffers() })
 
 function commitTextField(field, currentValue, originalValue) {
@@ -152,26 +114,19 @@ function commitTarget() {
   commitTextField('target', editTarget.value, props.selectedElement?.data.target ?? '')
 }
 
-// Wire key is "on-enter" (kebab, not "onEnter") — matching the backend's
-// own AutomatonYamlEditor.set_action_field/set_init_action_field, which
-// write it straight into the YAML under that literal key (see
-// automaton_builder.py's _build_action) — every other field here follows
-// the same convention (see 'ui-label', 'history-cutoff', ...).
+// Wire key is "on-enter" (kebab-case, not "onEnter") — it's written
+// straight into the YAML under that literal key on the backend, same
+// convention every other field here follows ('ui-label', 'history-cutoff', ...).
 function commitOnEnter() {
   commitTextField('on-enter', editOnEnter.value, props.selectedElement?.data.onEnter ?? '')
 }
 
 // history-cutoff/chat: a plain instant toggle, not a typed field — no
-// local buffer/blur dance needed, just commit straight off the prop's
-// own current value (see the badge's own @click below).
+// local buffer/blur dance needed.
 function commitBoolField(field, value) {
   emit('set-field', field, value)
 }
 
-// A state that's currently the automaton's own start, or the init-action
-// itself, isn't deletable at all — same rule the old inline "Delete"
-// button enforced (see this file's own git history), just relocated onto
-// this menu item.
 const isDeleteDisabled = computed(() => {
   const d = props.selectedElement?.data
   if (!d) return false
@@ -191,12 +146,9 @@ function handleDelete() {
 
 function attachmentLabel(index) { return String.fromCharCode(97 + index) }
 
-// An action's own source/target (see InspectorGraph.vue's own
-// edgeToCyData) are real state *keys* — cytoscape itself requires that
-// (they double as its own edge source/target ids) — never what a user
-// should read as a label; resolved against availableStates for display,
-// falling back to the raw key only for the synthetic pseudo-start id
-// (never a real state, so never in availableStates at all).
+// source/target are real state keys, not labels — cytoscape requires
+// them as-is for its own edge ids. Resolved against availableStates for
+// display; falls back to the raw key only for the synthetic pseudo-start id.
 function stateLabelFor(key) {
   return props.availableStates.find((s) => s.key === key)?.uiLabel ?? key
 }
@@ -225,31 +177,23 @@ const hasSelectedElementBadges = computed(() => {
   if (!props.selectedElement) return false
   if (props.selectedElement.kind === 'state') {
     // History cutoff/No chat are always-shown clickable badges once the
-    // form is actually open (see the template below) — so there's
-    // always something to show then. Closed, this card is read-only,
-    // same as the non-editable case entirely (see this component's own
-    // docstring on `editable`/showEditForm) — same conditional set, no
-    // clickable badges to change anything from here.
+    // form is open, so there's always something to show then. Closed,
+    // this card falls back to the same read-only badge set as non-editable.
     if (showEditForm.value) return true
     const d = props.selectedElement.data
     return !!props.roleBadge || isSelectedStateCurrent.value || d.isStart || d.final || !d.chat || d.historyCutoff
   }
-  // An open action's own badges are suppressed entirely (see the
-  // template below) — only the "Action" kind-badge in the header stays,
-  // which isn't part of this row at all. Closed, same read-only set as
-  // the non-editable case.
+  // An open action's badges are suppressed entirely — only the "Action"
+  // kind-badge in the header stays. Closed, same read-only set as
+  // non-editable.
   if (showEditForm.value) return false
   const d = props.selectedElement.data
   return isSelectedActionNext.value || isSelectedActionFired.value || !d.hasTrigger || d.isInitEdge
 })
 
-// Only ever reachable while showEditForm's own attachment list is
-// actually showing (see its own template comment) — always editable by
-// construction, so this only branches on state vs. action. A state's
-// own editable form is the one place clicking an attachment should jump
-// to where it's actually declared (index.yml's own `attachments:` list
-// under that state) rather than open the attachment file itself — an
-// action's own form keeps opening the file, unchanged.
+// Only reachable while the edit form's attachment list is showing. A
+// state's form jumps to where the attachment is declared in index.yml;
+// an action's form opens the attachment file directly.
 function selectAttachment(fileName) {
   if (props.selectedElement?.kind === 'state') emit('jump-to-attachment', fileName)
   else emit('select-attachment', fileName)
@@ -404,15 +348,8 @@ function selectAttachment(fileName) {
         </Transition>
       </template>
       <!-- Attachments are an editing concern only — never shown in a
-           read-only display, whether that's this card collapsed inside
-           EditProjectView.vue's own editable State/Actions tabs, or the
-           always-non-editable "States" tab (InspectorGraphTab.vue, shown
-           during normal chat and throughout LabelProjectView.vue,
-           `editable` false there). Only while the edit form itself is
-           actually open (showEditForm: editable AND open) does the
-           attachment list — and its own jump-to-definition/select
-           affordance, see selectAttachment above — have anything useful
-           to do. -->
+           read-only display, and only while the edit form is actually
+           open (showEditForm) does the attachment list do anything useful. -->
       <div v-if="showEditForm && selectedElement.data.attachments?.length" class="inspector-attachments">
         <button
           v-for="(fileName, idx) in selectedElement.data.attachments"
@@ -434,14 +371,9 @@ function selectAttachment(fileName) {
 .inspector-detail-card-flash { animation: inspector-detail-card-flash 1.5s ease-out; }
 .inspector-detail-card-selectable { cursor: pointer; }
 .inspector-detail-card-selectable:hover { border-color: #c9d6e8; background: #f0f4fa; }
-/* An editable card's own textarea can be dragged taller (resize:
-   vertical, see .inspector-detail-textarea) — the 45%/overflow:hidden
-   cap above exists for the read-only/list-row usages (Graph's floating
-   card, Actions-list rows), where several cards share the panel at once.
-   An editable card is always alone in its own already-scrollable tab
-   (see .inspector-state-tab/.inspector-actions-tab's own overflow-y),
-   so here the card should grow with its content instead of clipping or
-   scrolling internally. */
+/* The 45%/overflow:hidden cap above is for read-only/list-row usages,
+   where several cards share the panel. An editable card is always alone
+   in its own scrollable tab, so it should grow with its content instead. */
 .inspector-detail-card-editable { max-height: none; overflow: visible; }
 .inspector-detail-card-editable .inspector-detail-body { overflow: visible; }
 .inspector-detail-header { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem 0.6rem; border-bottom: 1px solid #eee; flex-shrink: 0; }
@@ -464,17 +396,14 @@ function selectAttachment(fileName) {
 .inspector-detail-title-input { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; border: 1px solid transparent; border-radius: 4px; padding: 0.1rem 0.3rem; background: transparent; }
 .inspector-detail-title-input:hover, .inspector-detail-title-input:focus { border-color: #ccc; background: white; }
 .inspector-detail-form-label { display: flex; align-items: center; gap: 0.35rem; margin: 20px 0 0.2rem; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #777; }
-/* Marks a field the AI itself reads (as opposed to a purely
-   human-facing one like Description) — same purple used for its
-   InspectorSignalsTab.vue counterpart on Definition. */
+/* Marks a field the AI itself reads, as opposed to a purely
+   human-facing one like Description. */
 .inspector-ai-field-icon { display: inline-flex; flex-shrink: 0; color: #8b5cf6; }
-/* Marks a field that runs as client-side JavaScript (see onEnterActions.js)
-   — same "JS" badge shorthand recognizable from the language's own logo,
-   just monochrome to match this panel's other small badges. */
+/* Marks a field that runs as client-side JavaScript — monochrome "JS"
+   badge to match this panel's other small badges. */
 .inspector-js-field-icon { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 1.1rem; height: 0.85rem; border-radius: 3px; background: #f0db4f; color: #222; font-size: 0.55rem; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: -0.02em; }
-/* Marks a field evaluated server-side as a Python expression (simpleeval —
-   see automaton.py) — same "language badge" convention as its JS
-   counterpart above, just Python's own blue. */
+/* Marks a field evaluated server-side as a Python expression — same
+   "language badge" convention as JS above, Python's own blue. */
 .inspector-py-field-icon { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 1.1rem; height: 0.85rem; border-radius: 3px; background: #4b8bbe; color: white; font-size: 0.55rem; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: -0.02em; }
 .inspector-detail-textarea { display: block; width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 0.8rem; line-height: 1.54; padding: 0.4rem 0.5rem; border-radius: 6px; border: 1px solid #ccc; }
 .inspector-detail-target-select { display: inline-block; width: auto; max-width: 100%; font: inherit; font-weight: 700; font-size: inherit; color: #333; padding: 0.05rem 0.2rem; border-radius: 4px; border: 1px solid transparent; background: transparent; cursor: pointer; }

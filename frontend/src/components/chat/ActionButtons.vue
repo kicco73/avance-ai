@@ -18,10 +18,8 @@ const props = defineProps({
 
 const emit = defineEmits(['action'])
 
-// An action without a trigger is manual-only — always offered as a
-// button. One with a trigger is handled by auto-tracking whenever that's
-// on, so offering it as a button too would be redundant; it only
-// reappears once auto-tracking is off and nothing else can fire it.
+// Actions with a trigger are handled by auto-tracking when it's on, so
+// only triggerless (manual-only) actions get a button in that case.
 const visibleActions = computed(() =>
   props.actions.filter((action) => !action.has_trigger || !props.autoTrackingEnabled)
 )

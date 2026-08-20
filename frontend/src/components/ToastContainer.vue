@@ -1,9 +1,7 @@
 <script setup>
-// The client-side surface for an on-enter script's own `notify(title,
-// body)` local (see onEnterActions.js) — mounted once, at App.vue's own
-// root, so it renders above every view (main chat, EditProjectView's
-// embedded Test chat, LabelProjectView) regardless of which one actually
-// fired the action.
+// Surface for an on-enter script's `notify(title, body)` local — mounted
+// once at the app root so it renders above every view regardless of
+// which one fired the action.
 import { toasts, dismissToast } from '../toastStore.js'
 import { renderMarkdown } from '../markdown.js'
 </script>

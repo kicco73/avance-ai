@@ -1,20 +1,7 @@
 <script setup>
-// A real chat instance for previewing a project's own index.css "skin"
-// while it's being edited — the same .chat-header/.chat-body/.chat-footer
-// markup and the same real MessageBubble/ActionButtons/ChatInput
-// components ChatWindow.vue itself uses (not a hand-rolled mock render),
-// just fed a static fake conversation via props instead of chatStore.js's
-// own live singleton (which has no notion of "unsaved, being-typed CSS"
-// or "state picked from a pulldown" at all).
-//
-// The live CSS is injected as a real <style> element appended to
-// document.head — the exact same technique ChatWindow.vue's own loadSkin
-// uses (see its own docstring) — updated in place on every keystroke
-// rather than replaced, so this is a plain reactive DOM update, never a
-// full reload: state changes just toggle a class, and any transition the
-// CSS itself defines (e.g. `transition: background-color .4s ease`)
-// animates normally, exactly as it would in the real chat. Cleaned up on
-// unmount so it never outlives this component.
+// Renders a real chat instance (not a mock) fed a static fake conversation, so a
+// project's index.css "skin" can be previewed live. The CSS is injected as a <style>
+// element in document.head, updated in place per keystroke, and removed on unmount.
 import { onBeforeUnmount, ref, watch } from 'vue'
 import MessageBubble from '../../../chat/MessageBubble.vue'
 import ActionButtons from '../../../chat/ActionButtons.vue'

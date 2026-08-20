@@ -1,18 +1,7 @@
-"""Exercises samples/Metrics Playground.zip — a project built specifically
-to declare triggers over every core metric (see its index.yml), used here
-as an end-to-end check that the sample stays loadable and its triggers
-behave as documented.
-
-Every assertion below cross-checks POST /api/triggers/preview's `result`
-against the *actual* value GET /api/projects/{project_name}/metrics
-reports for the same metric, rather than hand-deriving the
-metrics_framework formulas here —
-that's exactly the integration this sample exists to prove: that a
-trigger expression sees the same metric values the Inspector's Metrics
-tab does. Real chat turns aren't used (auto-tracking would call the AI to
-evaluate the "mood" signal, which FakeAiService can't do meaningfully) —
-sessions/state moves are driven directly through session-management and
-manual-action endpoints instead, neither of which touches the AI.
+"""Exercises samples/Metrics Playground.zip, a project that declares
+triggers over every core metric. Each assertion cross-checks POST
+/api/triggers/preview's `result` against the actual value GET
+/api/projects/{project_name}/metrics reports for the same metric.
 """
 from __future__ import annotations
 
@@ -58,10 +47,8 @@ def test_the_sample_loads_and_starts_at_lobby(client):
 @pytest.mark.regression
 def test_warm_up_fires_on_engagement_alone_right_after_bootstrap(client):
     _upload_and_activate(client)
-    # A freshly bootstrapped session (one session, no messages yet) already
-    # scores "engagement" a few points above zero from its own session
-    # count alone — enough to clear "lobby"'s "engagement >= 4" trigger
-    # with no messages sent at all.
+    # A freshly bootstrapped session already scores "engagement" a few
+    # points above zero, enough to clear "lobby"'s "engagement >= 4" trigger.
     client.get("/api/chat/session")
 
     response = client.post("/api/triggers/preview", json={"signals": {}})
@@ -92,13 +79,9 @@ def test_every_engaged_branch_matches_its_own_live_metric_or_signal_value(client
 
 @pytest.mark.contract
 def test_metric_values_never_include_a_non_session_scoped_metric(client):
-    """retention/activity_consistency's own scope is
-    {all_sessions_per_user, all_sessions} (see MetricCalculator.scope) —
-    never one_session, the only context a chat turn's own trigger
-    evaluation (and this sample's own Inspector-facing /api/chat/metrics)
-    ever runs in (see AnalyticsCalculator's own default-metric
-    filtering) — so neither ever appears here, and the sample's own
-    index.yml deliberately has no trigger referencing either."""
+    """retention/activity_consistency's scope excludes one_session, the
+    only context a chat turn's trigger evaluation runs in — so neither
+    metric appears here."""
     _upload_and_activate(client)
     client.get("/api/chat/session")
 
@@ -113,10 +96,8 @@ def test_notice_combo_needs_both_the_signal_and_the_metric_side_true(client):
     _upload_and_activate(client)
     session = client.get("/api/chat/session").json()
     _enter_engaged(client, session)
-    # Right after bootstrap, engagement's session-only baseline clears
-    # "lobby"'s low threshold (>= 4) but not "notice_combo"'s higher one
-    # (>= 10) — so a high mood value satisfies notice_mood but must not be
-    # enough, by itself, to satisfy notice_combo's "and".
+    # Engagement's baseline clears "lobby"'s threshold (>= 4) but not
+    # "notice_combo"'s higher one (>= 10).
     assert _metric_values(client)["engagement"] < 10
 
     response = client.post("/api/triggers/preview", json={"signals": {"mood": 100}})

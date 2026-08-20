@@ -1,15 +1,9 @@
 """The one place a trigger/`env:`-expression evaluation scope gets
-assembled — every reserved namespace (see automaton.automaton.
-RESERVED_NAMESPACES, plus `session`'s own `metric` sub-namespace) plus
-every core metric as a bare top-level name (unchanged, outside this
-component's own concern — see metrics.metric_service.MetricService/
-MetricsProvider). Constructed once (see chat.chat_service.ChatService)
-and shared by every caller that needs this scope: tracking.
-tracking_engine.TrackingEngine (auto-tracking's own trigger-eval/env-apply
-paths) and controller.py's own /api/triggers/preview (a live what-if
-preview of the same trigger evaluation, off already-known signal values
-instead of ones freshly computed this turn).
-"""
+assembled — every reserved namespace, plus every core metric as a bare
+top-level name. Constructed once and shared by every caller that needs
+this scope: TrackingEngine's auto-tracking trigger-eval/env-apply paths,
+and /api/triggers/preview's live what-if preview off already-known
+signal values."""
 from __future__ import annotations
 
 from typing import Any, TYPE_CHECKING
@@ -22,16 +16,9 @@ from tracking.session_facts import SessionFacts
 from tracking.system_facts import SystemFacts
 
 if TYPE_CHECKING:
-    # Import guarded: tracking.automaton_namespace itself depends on
-    # project.project_service.ProjectService (to resolve a *different*
-    # project's own live state/env — see that module's own docstring),
-    # and project_service.py in turn depends on tracking.tracking_engine
-    # (for TrackingEngine.notify_transition — see ProjectService.
-    # apply_manual_action) which depends on this module. A real
-    # (non-TYPE_CHECKING) import here would close that cycle; the type
-    # itself is only ever needed for the annotation below, never at
-    # runtime (see __init__'s own `automaton_namespace is not None` —
-    # this module never constructs or introspects one).
+    # Import guarded: automaton_namespace -> project_service ->
+    # tracking_engine -> this module would close a circular import if
+    # done eagerly. Only needed for the annotation below, never at runtime.
     from tracking.automaton_namespace import AutomatonNamespace
 
 
@@ -48,40 +35,15 @@ class EvaluationScopeBuilder(object):
         self._metrics = metrics
         self._system = system
         self._session = session
-        # Optional (see __init__'s own TYPE_CHECKING-guarded import
-        # above) — every existing construction site (benchmark_run_
-        # service.py, every test) omits it, meaning a benchmark replay's
-        # own scope simply has no "automaton" namespace at all: an
-        # automaton.* reference there fails to resolve (caught by
-        # Automaton._eval_trigger/eval_action_env's own generic
-        # try/except) rather than doing real cross-project work during a
-        # replay, which must never happen.
+        # Optional — a benchmark replay omits it, so its scope has no
+        # "automaton" namespace: an automaton.* reference there fails to
+        # resolve rather than doing real cross-project work during a replay.
         self._automaton_namespace = automaton_namespace
 
     def build(self, automaton: Automaton, state_key: str, raw_signal_values: dict[str, Any] | None) -> dict[str, Any]:
-        """`raw_signal_values`: whatever's actually known this turn (an
-        AI-reported/explicitly-computed dict, or {} for a manual action —
-        see chat_service.py's apply_manual_action) — always re-coerced
-        against every declared signal here (see SignalEvaluator.
-        validate), never assumed pre-validated by the caller.
-
-        `env`/`system`/`session`/`metric` are always included,
-        unconditionally: env.action_set() is a plain cheap read, and
-        system/session/metric are all zero-arg-callable proxies (see
-        their own modules) that only do any real work if an expression
-        actually calls one of their methods — so there's nothing left to
-        gain from the skip-if-unreferenced check env/system/session used
-        to need (see tracking.env.Env's own docstring: it used to compute
-        all of this itself). `session.metric.for_turn()`/self._metrics.
-        for_turn() are the same story: cheap to call every turn, since
-        the AnalyticsCalculator each one is backed by is itself only
-        built lazily, on first actual use (see metrics.metric_namespace.
-        LazyMetricNamespace). The bare, unnamespaced core-metric names
-        (see this module's own docstring) are the one exception still
-        gated behind MetricsProvider.merge_if_referenced, since
-        *that* mechanism does build its AnalyticsCalculator eagerly —
-        worth skipping whenever nothing in this state's own triggers
-        could reference one at all."""
+        """`raw_signal_values` is always re-coerced against every declared
+        signal, never assumed pre-validated. env/system/session/metric
+        are cheap, lazy proxies included unconditionally; only the bare core-metric names are gated, since building them is eager."""
         signal_values = SignalEvaluator().validate(automaton, raw_signal_values)
         scope: dict[str, Any] = {
             "signal": signal_values,

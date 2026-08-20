@@ -1,10 +1,6 @@
-"""The top-level `project:` section (parallel to init-action/states/
-signals/env, see AutomatonBuilder._build_project_metadata) — id/ui-label/
-ui-description. `id` is what *other* projects reach this one as through
-automaton.* (see automaton.trigger_automaton_project_refs, Prompt 8/9);
-this module covers the YAML-local half of its validation (must be a
-valid identifier) — global uniqueness across every project is
-ProjectService's own concern (see test_project_id_uniqueness.py).
+"""The top-level `project:` section (id/ui-label/ui-description, see
+AutomatonBuilder._build_project_metadata). `id` must be a valid Python
+identifier; cross-project uniqueness is ProjectService's concern.
 """
 from __future__ import annotations
 

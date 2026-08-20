@@ -1,13 +1,6 @@
-"""A trigger may reference any of SystemFacts'/SessionFacts' own methods
-(see automaton.identifier_registry.SYSTEM/SESSION) as `system.<name>()`/
-`session.<name>()`, without failing build-time validation, the same way
-`signal.<name>` and a core metric name already do — but not an
-arbitrary free-form [env] key (see tracking.env.Env's own stored()),
-since those are only ever known at runtime; only a project's own
-*declared* `env:` keys (the project-level `env:` section, parallel to
-`signals:` — see automaton.automaton.EnvKey/AutomatonBuilder.build's own
-env_keys) are valid `env.<name>` references (see automaton_builder.py's
-own _actions_sanity_check/_validate_namespaced_expression docstrings).
+"""A trigger may reference `system.<name>()`/`session.<name>()` and
+`signal.<name>` freely, but `env.<name>` references must match a key
+already declared in the project's top-level `env:` section.
 """
 from __future__ import annotations
 
@@ -76,9 +69,8 @@ states:
 
 
 def test_a_trigger_referencing_a_leftover_bare_signal_name_is_rejected():
-    """The pre-migration bare-name syntax (`mood >= 50` instead of
-    `signal.mood >= 50`) must fail loudly, not silently resolve to
-    nothing — see the "Migrazione" note in this refactor's own spec."""
+    """A bare name (`mood >= 50` instead of `signal.mood >= 50`) must
+    fail loudly, not silently resolve to nothing."""
     content = f"""
 init-action:
   target: a
@@ -119,11 +111,8 @@ states:
 
 
 def test_a_trigger_comparing_a_string_typed_identifier_against_a_number_is_rejected():
-    """See automaton.trigger_type_violations' own docstring — system.
-    today() is a date string (see identifier_registry.SYSTEM), never a
-    number, so comparing it with `>=` would raise a genuine TypeError the
-    moment this trigger is ever evaluated; build-time validation can
-    catch that statically, unlike a signal's actual runtime value."""
+    """system.today() is a date string, never a number, so comparing it
+    with `>=` is caught statically at build time."""
     content = _project_with_mood_signal("system.today() >= 5")
     with pytest.raises(ValueError, match="system.today\\(\\).*>=.*5"):
         AutomatonBuilder().build({"index.yml": content})

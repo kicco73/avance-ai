@@ -58,16 +58,9 @@ def test_app_keeps_working_after_a_rejected_restore(client, tmp_path):
 
 @pytest.mark.regression
 def test_switching_projects_right_after_a_restore_does_not_crash(client, hello_project):
-    """Regression test for the exact reported bug: restoring from an
-    (effectively) empty db works and responds fine, but the very next
-    request that touches the database — activating a project — used to
-    fail with peewee.OperationalError: attempt to write a readonly
-    database. Root cause: restore_backup() closes/reopens peewee's
-    connection, but that's thread-local, and several endpoints ran as
-    plain `def` routes dispatched to FastAPI's threadpool on a different
-    thread than the one restore_backup() fixed up — now every db-touching
-    endpoint is `async def`, so they all share the single event-loop
-    thread restore_backup() actually reconnects."""
+    """Regression: restore_backup() reconnects peewee's thread-local
+    connection on the event-loop thread, so db-touching endpoints must
+    stay `async def` to share that thread rather than a threadpool one."""
     backup = client.get("/api/settings/backup").content
 
     response = client.post(
@@ -75,10 +68,9 @@ def test_switching_projects_right_after_a_restore_does_not_crash(client, hello_p
     )
     assert response.status_code == 200
 
-    # The exact next step that used to crash: switching the active project.
     response = client.put(f"/api/projects/{hello_project}/activate")
     assert response.status_code == 200
 
-    # And the bootstrap call the frontend makes right after any switch.
+    # The bootstrap call the frontend makes right after any switch.
     response = client.get("/api/chat/session")
     assert response.status_code == 200

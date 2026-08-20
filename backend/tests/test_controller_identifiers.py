@@ -49,10 +49,7 @@ def _upload_and_activate(client, name: str, yaml_text: str):
     assert response.status_code == 200, response.text
     response = client.put(f"/api/projects/{name}/activate")
     assert response.status_code == 200, response.text
-    # get_active_automaton_and_state (see ProjectService) now requires a
-    # published revision — a draft-only project can no longer resolve an
-    # active automaton at all outside EditProject's own dedicated draft
-    # entry points.
+    # get_active_automaton_and_state requires a published revision.
     response = client.post(f"/api/projects/{name}/publish", json={})
     assert response.status_code == 200, response.text
 
@@ -64,17 +61,10 @@ def test_returns_one_dict_per_namespace_for_the_active_project(client):
 
     assert response.status_code == 200
     body = response.json()
-    # "automaton" itself is always present (even empty — see Project
-    # Service.get_active_identifier_registry) so it's offered as a
-    # top-level namespace, but there's no other project here for it to
-    # hold any "automaton.<project>" entries yet (see the cross-project
-    # test below).
+    # "automaton" is always present, even empty with no other project.
     assert set(body) == {"signal", "env", "system", "session", "session.metric", "metric", "automaton"}
     assert body["automaton"] == {}
     assert body["signal"] == {"myOwnSignal": "whatever this measures"}
-    # Sourced from the project's own declared env: section (parallel to
-    # signals:), not left empty (see automaton.identifier_registry.
-    # build_registry).
     assert body["env"] == {"visits": "How many times this action has fired."}
     assert set(body["system"]) == {"today", "time"}
     assert set(body["session"]) == {

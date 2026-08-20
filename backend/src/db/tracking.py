@@ -33,12 +33,9 @@ class TrackingMixin:
         values: dict | None, expected_state: str | None, expected_values: dict | None, comment: str | None,
         message_id: int | None, timestamp: datetime | None,
     ) -> int:
-        """Restores one exported Tracking row exactly (see tracking.
-        session_export.SessionExportManager/session_import.SessionImport
-        Manager.import_session_json) — unlike save_transition (a live
-        turn's own logging-focused write, always "now"), this is a plain
-        restore: every field, including the original timestamp, set
-        explicitly rather than derived."""
+        """Restores one exported Tracking row exactly — unlike
+        save_transition (a live turn's logging-focused write, always
+        "now"), this sets every field, including the timestamp, explicitly."""
         row = Tracking.create(
             session=session_id, old_state=old_state, action=action, new_state=new_state,
             values=json.dumps(values) if values is not None else None,
@@ -71,8 +68,7 @@ class TrackingMixin:
     def get_session_ids_with_expected_state(self, username: str, project_name: str, state_key: str) -> set[int]:
         """Every session (of this user+project) with at least one real
         Tracking row annotated expected_state == state_key — the "Stati"
-        branch's own definition of "touches this state" (see
-        BenchmarkRunService.start_job)."""
+        branch's definition of "touches this state"."""
         rows = (
             Tracking
             .select(Tracking.session)
@@ -86,13 +82,9 @@ class TrackingMixin:
         return {row.session_id for row in rows}
 
     def get_nearest_tracking_row_by_message(self, session_id: int, message_id: int) -> dict | None:
-        """Nearest real (production) Tracking row to `message_id` within
-        this session, by message-id proximity — never by timestamp: a
-        benchmark replay's own turns don't share production's timeline,
-        but they do share the same underlying Message ids (see
-        metrics.benchmark_signal_sources.TurnByTurnSignalSource, which
-        widens its signal ask with whatever state production was
-        actually in around this point of the conversation)."""
+        """Nearest real (production) Tracking row to `message_id`, by
+        message-id proximity — never by timestamp: a benchmark replay's
+        turns don't share production's timeline."""
         row = (
             Tracking
             .select()

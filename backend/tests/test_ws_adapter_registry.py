@@ -1,12 +1,7 @@
-"""WsAdapter's own username -> WebSocket registry and push (Prompt 13 —
-correction to Prompt 12's own (username, project_name) registry). Keyed
-by username alone now: the frontend already keeps at most one websocket
-per tab, reused across every project's own chat, so a separate
-connection per project was never needed. Registered immediately after
-accept() under Session().user, not off a frame's own session_id — a
-project that's only ever opened, never written to (e.g. an initial
-greeting served over REST), used to stay unregistered and unreachable by
-push for its entire lifetime; registering at accept() fixes that.
+"""WsAdapter's username -> WebSocket registry and push. Keyed by
+username alone: the frontend keeps at most one websocket per tab, reused
+across every project's chat. Registered immediately after accept() under
+Session().user, not off a frame's own session_id.
 """
 from __future__ import annotations
 
@@ -25,10 +20,8 @@ USERNAME = "user"
 
 @pytest.fixture(autouse=True)
 def _session_user():
-    """WsAdapter.chat_loop reads Session().user at accept() time — pins
-    the process-wide singleton to USERNAME for every test in this file,
-    then restores it, so this file can't leak state into any other
-    test's own Session()."""
+    """Pins the process-wide Session().user singleton to USERNAME for
+    every test in this file, then restores it."""
     session = Session()
     previous = session.user
     session.user = USERNAME
@@ -46,11 +39,9 @@ class _FakeChatService:
 
 
 class _FakeWebSocket:
-    """Drives WsAdapter.chat_loop without any real network/ASGI
-    machinery — accept() is a no-op, receive_json() replays `messages`
-    one at a time then raises WebSocketDisconnect (same as a real client
-    closing the connection), and send_json() just records every frame
-    sent, for assertions."""
+    """Drives WsAdapter.chat_loop without real network/ASGI machinery:
+    receive_json() replays `messages` then raises WebSocketDisconnect,
+    and send_json() records every frame sent."""
 
     def __init__(self, messages: list[dict]):
         self._messages = list(messages)
@@ -114,8 +105,7 @@ class TestChatLoopRegistration:
         class _SelfPushingChatService(_FakeChatService):
             async def process_turn(self, sid, text, on_metadata=None):
                 # Registration happens at accept(), before this frame is
-                # even processed — so a push already works on the very
-                # first frame, unlike the old per-frame registration.
+                # even processed — so a push already works on the first frame.
                 pushed["result"] = await adapter.push(USERNAME, {"type": "notification", "probe": True})
                 return await super().process_turn(sid, text, on_metadata)
 

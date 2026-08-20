@@ -1,18 +1,7 @@
 <script setup>
-// "Test" mode's own markup — the embedded live chat, full height (see
-// EditProjectView.vue's own docstring on `mode`: 'edit'/'test'/'auto' are
-// mutually exclusive now, so this never has to share space with Design's
-// own split-view the way it used to). Extracted straight out of
-// EditProjectView.vue's own template — purely presentational, same
-// contract as ProjectDesignPanel.vue: every piece of state here not
-// pulled straight from chatStore.js's own shared singleton is a prop,
-// every user action reaching back into EditProjectView.vue's own
-// `selected`-driven Inspector state is an emit.
-//
-// autoTrackingEnabled/autoTrackingLoading/toggleAutoTracking/handleReset/
-// spokenTextEnabled are read straight from chatStore.js instead of being
-// prop-drilled — they're a plain module-level store, not view-specific
-// state, so there's nothing EditProjectView.vue needs to mediate here.
+// Test mode's embedded live chat, full height (mode is 'edit'/'test'/'auto', mutually
+// exclusive, so this never shares space with Design's split-view). Auto-tracking state
+// comes straight from chatStore.js's shared singleton rather than being prop-drilled.
 import ChatWindow from '../../../chat/ChatWindow.vue'
 import ChatTimeline from '../../../chat/ChatTimeline.vue'
 import RestartFromHereButton from '../../../chat/RestartFromHereButton.vue'
@@ -23,13 +12,8 @@ defineProps({
   timeline: { type: Array, required: true },
   signalsLog: { type: Array, default: () => [] },
   selected: { type: Object, default: null },
-  // EditProjectView.vue's own stateLabelFor/isStateGone — pure functions
-  // over state (availableStates/validStateKeys) that stays owned there,
-  // same function-as-prop pattern ChatTimeline.vue's own resolve-state-
-  // label prop already used before this extraction.
+  // Function-as-prop: the parent owns the underlying state, this component just renders.
   resolveStateLabel: { type: Function, required: true },
-  // EditProjectView.vue's own actionLabelFor(stateKey, actionName) — see
-  // ChatTimeline.vue's own resolve-action-label prop.
   resolveActionLabel: { type: Function, required: true },
   isStateGone: { type: Function, required: true }
 })

@@ -1,25 +1,8 @@
 """Shared route-registration mechanism for every screen-scoped
-*_controller.py (chat/edit_project/label_project/settings — each mapped
-to one FE screen, see its own module docstring) — split out of what used
-to be one single AvanceController class in controller.py. Each of those
-still just decorates its own methods with @get/@post/@put/@delete (see
-route below); BaseController.register_routes is the one place that walks
-them onto a router, unchanged from before the split.
-
-Route registration order is load-bearing in exactly one place across the
-whole app — a literal path segment that must register before a
-same-depth {wildcard} route would otherwise swallow it as if it were that
-wildcard's own value (FastAPI/Starlette matches routes in registration
-order, and inspect.getmembers below walks a class's own methods
-alphabetically by name, not by source order):
-
-- move_action ("/api/projects/{project_name}/states/{state_name}/
-  actions/{action_name}/order") before put_action_field ("...{field}")
-  — see edit_project_controller.py's own comment on that pair.
-
-This pair lives entirely within a single controller, so this class's own
-per-controller alphabetical pass is all it ever needs.
-"""
+*_controller.py. Registration order matters in one place: a literal
+path segment must register before a same-depth {wildcard} route, since
+inspect.getmembers walks methods alphabetically, not by source order
+(see edit_project_controller.py's move_action/put_action_field)."""
 from __future__ import annotations
 
 import inspect
@@ -63,16 +46,7 @@ class BaseController:
 
     async def _activate_project(self, new_automaton: Automaton) -> None:
         # Unused param: kept only to match ProjectService's own
-        # CommitCallback shape — every project-mutating ProjectService
-        # method takes one of these and awaits it once its own write
-        # actually lands. Shared here (rather than duplicated on both
-        # EditProjectController and SettingsController, the two that
-        # actually pass this) since it only ever needs self.chat_service,
-        # which every controller subclassing this already has. The lock
-        # itself is the whole point — it serializes this commit against a
-        # concurrent chat turn (see ChatService's own self.lock docstring);
-        # nothing else needs doing here now that auto-tracking is a
-        # per-test-session flag (see TrackingService), not a global one a
-        # project commit needs to reset.
+        # CommitCallback shape. The lock itself is the whole point — it
+        # serializes this commit against a concurrent chat turn.
         async with self.chat_service.lock:
             pass

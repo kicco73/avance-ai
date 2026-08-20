@@ -73,9 +73,8 @@ class AppConfig:
     @staticmethod
     def _get_optional_section(raw: dict, section: str, path: Path) -> dict:
         """Like _get_section, but an absent section is treated as empty
-        rather than an error — for a section (e.g. `jobs`) that's allowed
-        to be omitted entirely, unlike chat-service/database which are
-        always present for other, required fields."""
+        rather than an error — for optional sections (e.g. `jobs`) that may
+        be omitted entirely, unlike required sections such as chat-service."""
         sub = raw.get(section, {})
         if not isinstance(sub, dict):
             raise ConfigError(f"{path}: '{section}' section is not a mapping.")
@@ -132,10 +131,9 @@ class AppConfig:
 
     @classmethod
     def _get_optional_providers(cls, raw: dict, section: str, path: Path) -> list | None:
-        """None if the whole section is absent, or `section.enabled` is
-        absent/false — the caller skips the service entirely, off by
-        default. Otherwise the same non-empty providers list as
-        _get_providers."""
+        """None if the whole section is absent or `section.enabled` is
+        falsy, meaning the caller skips the service (off by default).
+        Otherwise the same non-empty providers list as _get_providers."""
         sub = raw.get(section)
         if sub is None:
             return None
@@ -243,10 +241,9 @@ class AppConfig:
             raise ConfigError(f"{path} must contain a YAML mapping at the top level.")
 
         self.database_url = self._require_str(raw, "database", "url", path)
-        # Off by default — destructive (see db.Db._drop_and_recreate_if_incompatible):
-        # only opt in for an environment where a stale/incompatible schema
-        # should be wiped and rebuilt automatically rather than left for a
-        # human to migrate/restore by hand.
+        # Off by default: this is destructive, wiping and rebuilding a
+        # stale/incompatible schema automatically instead of leaving it
+        # for a human to migrate or restore by hand.
         self.database_force_drop_and_create_when_incompatible = self._get_optional_bool(
             raw, "database", "force-drop-and-create-when-incompatible", path, default=False
         )
@@ -263,10 +260,9 @@ class AppConfig:
             raw, "chat-service", "max_session_duration_in_minutes", path, default=60.0
         )
 
-        # Two independent worker pools (see jobs/job_queue.py's JobQueue) —
+        # Two independent worker pools (see jobs/job_queue.py's JobQueue),
         # one per JobSink implementation, never shared between them. Both
-        # optional, and so is the whole `jobs` section: a job kind that
-        # doesn't exist yet in this codebase needs neither to be configured.
+        # optional, and so is the whole `jobs` section.
         self.jobs_max_concurrent_persisted = self._get_optional_positive_int(
             raw, "jobs", "max_concurrent_persisted", path, default=2
         )

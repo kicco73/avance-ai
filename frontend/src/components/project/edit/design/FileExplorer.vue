@@ -1,12 +1,7 @@
 <script setup>
-// The "Design" mode's own file list — upload/new/delete/select, extracted
-// out of ProjectDesignPanel.vue's own template so the explorer itself is
-// a distinct component instead of markup buried inside the editor pane's
-// own file. Purely presentational, same contract as its own parent:
-// every piece of state here is a prop owned by EditProjectView.vue, every
-// user action is emitted back up to the exact same handler that already
-// existed there (handleUploadFile, handleNewFile, handleDeleteFile,
-// selectFile) rather than reimplemented locally.
+// Design mode's file list — upload/new/delete/select. Purely presentational: state
+// comes in as props, user actions are emitted back up to the parent's own handlers
+// (handleUploadFile, handleNewFile, handleDeleteFile, selectFile).
 import { ref } from 'vue'
 
 defineProps({
@@ -23,10 +18,8 @@ const emit = defineEmits(['new-file', 'delete-file', 'select-file', 'upload-file
 
 const fileInputRef = ref(null)
 
-// Opening the native file picker is purely local — no parent state is
-// involved until a file is actually chosen (see the input's own @change,
-// which is what actually reaches EditProjectView.vue's own
-// handleUploadFile).
+// Purely local: no parent state is involved until a file is actually chosen
+// (see the input's own @change, which emits upload-file to the parent).
 function triggerUpload() {
   fileInputRef.value?.click()
 }

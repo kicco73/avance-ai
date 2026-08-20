@@ -1,11 +1,8 @@
-"""Cross-project wake-up (Prompt 6), end to end — a self-loop action in
-one project ("watcher") references another ("observed") via automaton.*;
-a real transition in "observed" publishes StateChanged (see
-tracking.tracking_engine.TrackingEngine.notify_transition), the reverse
-index (built at "watcher"'s own last save, see project.project_service.
-ProjectService._finalize_project_update) resolves "observed" back to
-"watcher" as an observer, and re-evaluating "watcher"'s own triggers
-fires its self-loop action, recording a new transition for it too.
+"""Cross-project wake-up, end to end: a self-loop action in one project
+("watcher") references another ("observed") via automaton.*. A real
+transition in "observed" publishes StateChanged, the reverse index
+resolves it back to "watcher", and re-evaluating its triggers fires
+the self-loop, recording a new transition.
 """
 from __future__ import annotations
 
@@ -51,30 +48,19 @@ states:
 
 
 def _publish_project(db, project_service: ProjectService, project_name: str, index_yml: str) -> None:
-    """Same low-level db.save_project_files/publish_project write every
-    other project-fixture test in this suite uses, plus the one step
-    those skip: _finalize_project_update — the reverse index (see
-    ProjectService's own docstring) is only ever refreshed there, not by
-    a raw db write, so a test exercising it has to go through this
-    exact call, same as a real save (put_project/put_project_file)
-    already does."""
-    # Auto-declares `project: {id: <project_name>}` (Prompt 8/9's
-    # project.id) whenever project_name is a valid identifier — every
-    # automaton.observed reference in this file's own fixtures expects
-    # "observed" itself to resolve, so its own project.id has to equal
-    # its project_name (see test_project_availability.py's own identical
-    # helper for the full reasoning).
+    """A real save, through _finalize_project_update, so the reverse
+    index is actually refreshed, same as a real save (put_project/
+    put_project_file) does."""
+    # Auto-declares `project: {id: <project_name>}` whenever project_name
+    # is a valid identifier, so automaton.observed references resolve.
     if project_name.isidentifier() and "project:" not in index_yml:
         index_yml = f"project:\n  id: {project_name}\n{index_yml}"
     db.ensure_project(project_name)
     db.save_project_files(project_name, {"index.yml": index_yml.encode("utf-8")}, {"index.yml": "text/yaml"})
     db.publish_project(project_name)
-    # _finalize_project_update always calls get_active_project_name(),
-    # which raises outright when *nothing* is active yet (see its own
-    # docstring) — never actually reached in the real app (some project
-    # is always active by the time a save happens), but this bare test
-    # helper has no session/activation flow of its own to make that true
-    # on its own.
+    # _finalize_project_update calls get_active_project_name(), which
+    # raises when nothing is active yet — this bare helper has no
+    # activation flow of its own to make that true.
     db.set_active_project_name(project_name, USERNAME)
     automaton = AutomatonBuilder().build({"index.yml": index_yml})
 
@@ -131,9 +117,8 @@ def test_reevaluate_and_apply_fires_the_self_loop_when_the_observed_state_now_ma
 
 
 class _FakeWebSocket:
-    """Just enough to stand in for a real connection in WsAdapter's own
-    username -> WebSocket _connections registry (see test_ws_adapter_
-    registry.py's own identically-shaped fake) — push only ever calls
+    """Just enough to stand in for a real connection in WsAdapter's
+    username -> WebSocket _connections registry — push only calls
     send_json on it."""
 
     def __init__(self):
@@ -144,14 +129,10 @@ class _FakeWebSocket:
 
 
 class TestWsAdapterPush:
-    """Prompt 13 — a fired self-loop wake-up pushes a "notification"
-    frame (state/on-enter/project_name) to whichever connection is
-    registered for `username`, if any — never "done" (that type is
-    reserved for a normal turn's own response to a client-initiated
-    request, which a push never is), and never keyed on project_name
-    (the registry itself is username-only now, see WsAdapter's own
-    docstring) — project_name only ever rides along inside the payload,
-    so the client can tell which project this notification is about."""
+    """A fired self-loop wake-up pushes a "notification" frame (state/
+    on-enter/project_name) to whichever connection is registered for
+    `username`, never keyed on project_name (which only rides along
+    inside the payload)."""
 
     def test_pushes_state_on_enter_and_project_name_when_the_self_loop_fires_and_a_connection_exists(self, db, project_service):
         _publish_project(db, project_service, "observed", OBSERVED_YML)
@@ -243,11 +224,9 @@ def test_reevaluate_and_apply_does_nothing_when_the_observed_state_does_not_matc
 
 
 def test_publishing_state_changed_wakes_up_every_observer_with_a_session(app_db):
-    # File-backed, not the plain `db` fixture (see app_db's own
-    # docstring) — JobQueue really does run `work` on a separate thread
-    # with its own event loop, and a second thread opening its own
-    # connection to a ":memory:" database gets a distinct, empty one,
-    # not a shared connection to the same data this test just wrote.
+    # File-backed, not the plain `db` fixture — JobQueue runs `work` on a
+    # separate thread, and a second thread opening its own connection to a
+    # ":memory:" database would get a distinct, empty one.
     db = app_db
     project_service = ProjectService(db)
     _publish_project(db, project_service, "observed", OBSERVED_YML)
@@ -292,8 +271,7 @@ def test_a_user_with_no_session_in_the_observer_project_is_never_woken(app_db):
     import time
     time.sleep(0.1)
 
-    # Nothing to assert on directly (no session id to check) — the real
-    # assertion is that this doesn't raise/log an exception; get_observers
-    # itself still resolves "watcher" as an observer, but the "has a
-    # session" guard (see WakeupService._on_event) skips it.
+    # The real assertion is that this doesn't raise/log an exception;
+    # get_observers still resolves "watcher", but the "has a session"
+    # guard skips it.
     assert db.get_observers("observed") == ["watcher"]

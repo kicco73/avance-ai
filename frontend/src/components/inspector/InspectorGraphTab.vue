@@ -1,9 +1,7 @@
 <script setup>
-// Composes InspectorGraph.vue (the graph itself) and InspectorDetailCard.vue
-// (the read-only card for whatever's selected) for the "States" tab — the
-// two were one component before this session's Inspector slot refactor
-// (see Inspector.vue's own docstring); this is now just their wiring,
-// holding the shared `selectedElement` Graph emits and Card reads.
+// Composes InspectorGraph.vue (the graph) and InspectorDetailCard.vue (the
+// read-only card for whatever's selected) for the "States" tab, holding the
+// shared `selectedElement` that Graph emits and Card reads.
 import { nextTick, ref } from 'vue'
 import InspectorGraph from './InspectorGraph.vue'
 import InspectorDetailCard from './InspectorDetailCard.vue'
@@ -28,11 +26,9 @@ const emit = defineEmits(['jump-to-definition', 'select-attachment', 'update-exp
 const graphRef = ref(null)
 const selectedElement = ref(null)
 
-// Closing/opening the detail card changes how much height the graph
-// container itself has (see InspectorGraph.vue's own flex layout) — a
-// cytoscape canvas doesn't pick that up on its own, so every selection
-// change nudges it to resize, same as the pre-extraction component did
-// internally.
+// Closing/opening the detail card changes how much height the graph container
+// has — a cytoscape canvas doesn't pick that up on its own, so every selection
+// change nudges it to resize.
 function handleSelect(element) {
   selectedElement.value = element
   nextTick(() => graphRef.value?.resize())
@@ -46,11 +42,9 @@ function loadGraph() { return graphRef.value?.loadGraph() }
 function resize() { graphRef.value?.resize() }
 function fit() { graphRef.value?.fit() }
 function refresh(active) { return graphRef.value?.refresh(active) }
-// Straight pass-through to InspectorGraph.vue's own lookup — for a
-// caller that wants a specific state's own read-only card data without
-// it ever being the Graph's actual selection (see LabelProjectView.vue's
-// own Info tab: a session's start_state/end_state, shown in their own
-// dedicated cards alongside whatever's actually selected here).
+// Straight pass-through to InspectorGraph.vue's own lookup — lets a caller get
+// a specific state's read-only card data without it becoming the Graph's actual
+// selection (e.g. showing a session's start/end state in their own dedicated cards).
 function stateElementFor(stateKey) { return graphRef.value?.stateElementFor(stateKey) ?? null }
 
 defineExpose({ loadGraph, resize, fit, refresh, stateElementFor })

@@ -1,11 +1,7 @@
-"""ProjectService's own half of Prompt 8/9's project.id/ui-label/ui-
-description: global uniqueness (AutomatonBuilder can't see what other
-projects have already claimed — no database of its own), syncing
-Project.project_id/ui_label/ui_description on every successful save
-(ProjectsMenu.vue can't afford to parse every project's own index.yml
-just to list them), and translating automaton.* reference tokens
-(project_id values) into the project_name each one's own declaring
-project is actually stored under, for the reverse index.
+"""Tests for project.id/ui-label/ui-description: global uniqueness,
+syncing Project.project_id/ui_label/ui_description on every successful
+save, and translating automaton.* project_id tokens into project_name
+for the reverse index.
 """
 from __future__ import annotations
 
@@ -69,16 +65,9 @@ def test_changing_a_project_id_frees_up_the_old_one(client):
 
 def test_availability_resolves_automaton_star_against_project_id_not_project_name(client, app_db: Db):
     """The reverse index operates on project_id, never the raw
-    project_name (Prompt 8/9) — this project's own on-disk name ("Weird
-    Name With Spaces") isn't even a valid identifier, so the only way
-    "watcher" can ever resolve its own automaton.dep_id reference is
-    through the declared project.id. Checked directly against the
-    reverse index itself (db.get_observers), not through an HTTP-
-    triggered cascade — the test app fixture doesn't wire ProjectService.
-    register_availability_cascade the way main.py does for the real app,
-    so there's nothing here to actually propagate an AvailabilityChanged
-    event; that cascade mechanism itself is already covered end-to-end,
-    project_name-only, in test_project_availability.py."""
+    project_name — this project's on-disk name ("Weird Name With
+    Spaces") isn't a valid identifier, so "watcher" can only resolve its
+    automaton.dep_id reference through the declared project.id."""
     resp = _put(
         client, "Weird Name With Spaces",
         "project:\n  id: dep_id\n" + MINIMAL,
@@ -98,11 +87,9 @@ def test_availability_resolves_automaton_star_against_project_id_not_project_nam
 
 
 def test_referencing_a_project_with_no_declared_id_anywhere_is_rejected(client):
-    """Prompt 10 — a build-time existence check on top of Prompt 6's own
-    self-loop-only one: referencing automaton.<id> where no project
-    anywhere has ever declared that id is now a real validation error,
-    not a silently-accepted dangling reference (the old behavior this
-    test used to assert)."""
+    """Referencing automaton.<id> where no project anywhere has declared
+    that id is a real validation error, not a silently-accepted dangling
+    reference."""
     resp = _put(client, "silent", MINIMAL)
     assert resp.status_code == 200, resp.text
 

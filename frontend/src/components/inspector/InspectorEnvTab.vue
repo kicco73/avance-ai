@@ -3,15 +3,11 @@ import { computed, nextTick, ref } from 'vue'
 import { clearActionEnv, clearEnv, deleteEnvValue, getEnv, putEnvValue } from '../../api.js'
 
 const props = defineProps({
-  // See InspectorMetricsTab.vue's own untilMessageId — when set, this
-  // tab shows a historical point-in-time snapshot (see backend's
-  // ChatService.get_env).
+  // When set, shows a historical point-in-time snapshot instead of live env.
   untilMessageId: { type: [Number, String], default: null },
-  // Whether edits are allowed at this untilMessageId — the caller's
-  // call (see Inspector.vue's own envEditable prop): edits only ever
-  // apply going forward from "now", so this is only ever true when
-  // untilMessageId is null (live) or pinned to the conversation's own
-  // latest message (still "now", nothing happened after it yet).
+  // Edits only ever apply going forward from "now", so this is true only
+  // when untilMessageId is null (live) or pinned to the latest message
+  // (still effectively "now").
   editable: { type: Boolean, default: true }
 })
 
@@ -20,14 +16,9 @@ const stored = ref({})
 const actionSet = ref({})
 const isLive = computed(() => props.editable)
 
-// Stored ("AI") entries are free-form and editable/deletable; action-set
-// ("ACTION" — see automaton_builder.py's action-level `env:` field)
-// never is — both reported separately by the backend for exactly this
-// reason, not merged (see backend/src/tracking/env.py's Env.
-// serialise_as_text vs stored/action_set). No "computed" section
-// anymore — system/session facts (see tracking.evaluation_scope.
-// EvaluationScopeBuilder) are evaluation-scope-only now, never rendered
-// here.
+// Stored ("AI") entries are free-form and editable; action-set entries
+// (from an action's own env:) are read-only — reported separately by the
+// backend rather than merged.
 const storedEntries = computed(() => Object.entries(stored.value))
 const actionSetEntries = computed(() => Object.entries(actionSet.value))
 
@@ -44,15 +35,11 @@ async function loadEnv() {
   }
 }
 
-// Which stored key is currently being edited inline, if any — a plain
-// text input replaces its value display while this is set.
 const editingKey = ref(null)
 const editingValue = ref('')
-// A plain (non-ref-array) element ref: `ref="editInputRef"` inside the
-// v-for below would make Vue collect it into an array regardless of how
-// many rows actually render one at a time (only the row currently being
-// edited does, via v-if) — this function-ref form assigns the single
-// live element directly instead.
+// Function-ref instead of ref="editInputRef": inside the v-for below, a
+// plain ref string would make Vue collect it into an array even though
+// only one row ever renders the input at a time.
 let editInputEl = null
 function setEditInputRef(el) {
   editInputEl = el
@@ -118,10 +105,8 @@ async function clearActionAll() {
   }
 }
 
-// Always reloads regardless of `active` — matches this tab's pre-slot-
-// refactor behavior (Inspector.vue's old refreshEnv() always fetched,
-// tab open or not: cheap, and both stored/action-set values can change
-// out from under this tab any time it's not the one currently showing).
+// Always reloads regardless of whether this tab is active — cheap, and
+// values can change while this tab isn't the one showing.
 async function refresh() {
   await loadEnv()
 }

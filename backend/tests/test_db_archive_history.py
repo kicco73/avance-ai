@@ -1,11 +1,6 @@
-"""Db-level tests for the Archive/History redesign: Archive holds only a
-file's current content (one row per project+file, no version history),
-and per-(user, project, file) undo/redo lives entirely in History — see
-backend/src/db.py's own Archive/History docstrings.
-
-Archive.content/History.content are bytes-native (BlobField) with a
-persisted Archive.content_type — every save here passes bytes plus a
-content_types dict, and every read comes back as bytes.
+"""Db-level tests for Archive (a file's current content, one row per
+project+file) and History (per-(user, project, file) undo/redo trail).
+Content is bytes-native (BlobField), with a persisted content_type.
 """
 from __future__ import annotations
 

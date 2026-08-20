@@ -1,10 +1,7 @@
 """Importing a chat session — from a plain-text transcript (source
-'imported', no Tracking rows at all: no estimate has ever run over one
-until a Test does), or from the richer JSON shape session_export.py's own
-SessionExportManager produces (source 'imported' too, but with every
-message's own linked Tracking row restored alongside it — see
-import_session_json). Both are TrackingService.import_session/import_
-session_json's own owner."""
+'imported', no Tracking rows at all), or from the richer JSON shape
+SessionExportManager produces (source 'imported' too, but with each
+message's linked Tracking row restored alongside it)."""
 from __future__ import annotations
 
 import re
@@ -12,10 +9,9 @@ import re
 from db import Db
 from db.utils import _parse_iso
 
-# A line opens a new message when it starts (ignoring leading whitespace)
-# with "user:" or "assistant:", case-insensitive; at most one space right
-# after the colon is dropped from that message's own first line of
-# content.
+# A line opens a new message when it starts with "user:" or "assistant:"
+# (case-insensitive, leading whitespace ignored); at most one space
+# after the colon is dropped from the first line of content.
 _PREFIX_RE = re.compile(r"^\s*(user|assistant):[ \t]?(.*)$", re.IGNORECASE)
 
 
@@ -73,16 +69,9 @@ class SessionImportManager:
         return session_id
 
     def import_session_json(self, username: str, project_name: str, session_data: dict) -> int:
-        """Restores one session_export.py-produced session object exactly
-        — ChatSession + Message rows + whichever Tracking row each
-        message originally carried (see SessionExportManager's own
-        docstring on the inline shape). Always `source='imported'`,
-        regardless of what the session originally was: a round-tripped
-        session never ran against *this* automaton/revision, same
-        reasoning import_transcript already follows for a plain
-        transcript. Raises KeyError/TypeError on a malformed `messages`
-        entry — the caller (TrackingService.import_session_json) is the
-        one that turns that into a real 4xx."""
+        """Restores one session_export.py-produced session exactly. Always
+        `source='imported'`, since a round-tripped session never ran
+        against *this* automaton/revision. Raises KeyError/TypeError on malformed input."""
         messages = session_data.get('messages', [])
         session_id = self._db.create_chat_session(
             username, project_name,
@@ -100,19 +89,14 @@ class SessionImportManager:
             for message in messages:
                 self._import_message(session_id, message)
         except (KeyError, TypeError):
-            # No cross-call transaction of its own (Db exposes no atomic()
-            # here) — cleaned up by hand instead, so a malformed session
-            # never leaves a real, message-less ChatSession row behind
-            # for a caller retrying/skipping it (see ProjectService.
-            # put_project's own best-effort sessions.json loop) to
-            # mistake for a genuine one.
+            # No transaction of its own — cleaned up by hand instead, so a
+            # malformed session never leaves a message-less ChatSession row
+            # behind for a retrying caller to mistake for a genuine one.
             self._db.delete_chat_session(session_id)
             raise
         return session_id
 
-    # Every one of these is optional on a message entry (see session_
-    # export.py's own _export_message: only present at all when the
-    # message had a linked Tracking row to begin with) — a plain
+    # Every one of these is optional on a message entry — a plain
     # `message.get(key)` for each, rather than requiring the caller's
     # JSON to carry every key on every message.
     _TRACKING_FIELDS = ('old_state', 'action', 'new_state', 'values', 'expected_state', 'expected_values', 'comment')

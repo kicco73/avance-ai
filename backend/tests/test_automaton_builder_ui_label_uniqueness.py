@@ -32,8 +32,7 @@ states:
 
 
 def test_duplicate_signal_ui_label_via_the_name_fallback_is_rejected():
-    # ui-label absent falls back to the signal's own name (see
-    # _build_signal's raw_signal.get("ui-label", name)) — a fallback
+    # ui-label absent falls back to the signal's own name — a fallback
     # colliding with an explicit ui-label elsewhere is still a collision.
     content = """
 init-action:

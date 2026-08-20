@@ -1,12 +1,10 @@
-// Microphone capture for the voice-message button (see ChatWindow.vue).
-// Mirrors audio.js's playback-side module: this one is recording-side,
-// wrapping the browser's MediaRecorder behind a simple start/stop pair.
+// Microphone capture for the voice-message button — wraps the browser's
+// MediaRecorder behind a simple start/stop pair.
 let mediaRecorder = null
 let chunks = []
 
 // Rejects if the user denies the permission prompt (or no mic exists) —
-// the caller surfaces that through the shared error store, same as any
-// other REST failure.
+// the caller surfaces that through the shared error store.
 export async function startRecording() {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
   chunks = []
@@ -18,9 +16,8 @@ export async function startRecording() {
 }
 
 // Resolves with the recorded audio as a Blob (or null if nothing was
-// recording) once the recorder has actually flushed its last chunk, and
-// releases the microphone track so the browser's recording indicator
-// turns off.
+// recording), and releases the microphone track so the browser's
+// recording indicator turns off.
 export function stopRecording() {
   const recorder = mediaRecorder
   mediaRecorder = null

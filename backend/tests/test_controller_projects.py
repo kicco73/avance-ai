@@ -16,10 +16,7 @@ def _upload(client, name, sample):
 
 
 def test_put_project_returns_a_success_payload(client):
-    """Regression test: PUT /api/projects/{project_name} used to return
-    nothing at all (a missing `return result`, see SettingsController.
-    put_project) — the request succeeded and the project was actually
-    created, but the response body was always `null`."""
+    """The response body must reflect the created project, not be null."""
     content = (SAMPLES_DIR / "Hello world.zip").read_bytes()
     response = client.put("/api/projects/proj", content=content, headers={"Content-Type": "application/zip"})
     assert response.status_code == 200, response.text
@@ -27,10 +24,8 @@ def test_put_project_returns_a_success_payload(client):
 
 
 def test_fresh_install_has_no_active_project(client):
-    """Regression test: no project name is reserved/defaulted-to anymore
-    (see ProjectService.get_active_project_name) — a user with no
-    Settings row yet has genuinely no active project, not a "default"
-    that may or may not actually exist."""
+    """A user with no Settings row yet has genuinely no active project,
+    not a "default" that may or may not actually exist."""
     projects = client.get("/api/projects").json()
     assert projects["projects"] == []
     assert projects["active"] is None
@@ -41,8 +36,7 @@ def test_fresh_install_has_no_active_project(client):
 
 
 def test_deleting_the_active_project_falls_back_to_a_remaining_one(client):
-    """No project name is preferred for continuity — whatever's left
-    after deleting the active one becomes active instead."""
+    """Whatever's left after deleting the active project becomes active."""
     _upload(client, "hello", "Hello world.zip")
     _upload(client, "cat", "Aprendr català.zip")
     client.post("/api/projects/cat/publish", json={})
@@ -55,8 +49,7 @@ def test_deleting_the_active_project_falls_back_to_a_remaining_one(client):
     assert projects["projects"] == [{"name": "cat", "is_paused": False, "ui_label": None}]
     assert projects["active"] == "cat"
 
-    # The fallback must have actually activated it, not just recorded the
-    # name — a normal chat bootstrap must work against it.
+    # The fallback must actually be activated, not just recorded by name.
     assert client.get("/api/chat/session").status_code == 200
 
 
@@ -67,8 +60,7 @@ def test_deleting_the_last_project_does_not_crash(client):
     response = client.delete("/api/projects/hello")
     assert response.status_code == 200
 
-    # No project left at all — GET /api/state must degrade gracefully
-    # rather than error out trying to load a nonexistent active project.
+    # GET /api/state must degrade gracefully with no active project left.
     state = client.get("/api/state")
     assert state.status_code == 200
     assert "key" not in state.json()
@@ -79,8 +71,7 @@ def test_deleting_the_last_project_does_not_crash(client):
 
 def test_default_project_can_be_deleted(client):
     """"default" is just a name, like any other — not specially protected
-    from deletion (see ProjectService.delete_project's own fallback logic,
-    which no longer prefers it either)."""
+    from deletion."""
     _upload(client, "default", "Hello world.zip")
 
     response = client.delete("/api/projects/default")
@@ -93,11 +84,7 @@ MINIMAL_YML = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: 
 
 
 def test_uploading_a_bare_yaml_file_creates_a_single_file_project(client):
-    """Regression test: PUT /api/projects/{name} documents accepting "YAML
-    or zip" (see ProjectService.put_project/_looks_like_zip), but used to
-    hard-reject anything that wasn't a zip outright — rejecting exactly
-    the bare-.yml upload the frontend's own "Upload project..." picker
-    (accept=".zip,.yml,.yaml") invites."""
+    """A bare .yml upload (not a zip) must still be accepted."""
     response = client.put(
         "/api/projects/bare",
         content=MINIMAL_YML.encode(),
@@ -110,9 +97,8 @@ def test_uploading_a_bare_yaml_file_creates_a_single_file_project(client):
 
 
 def test_uploading_a_project_activates_it_automatically(client):
-    """Both the very first upload (nothing was active before) and a
-    second, unrelated one (something else was active) must land on the
-    project that was just uploaded."""
+    """Both the first upload and a later, unrelated one must activate
+    the project that was just uploaded."""
     response = client.put(
         "/api/projects/first",
         content=MINIMAL_YML.encode(),
@@ -131,9 +117,8 @@ def test_uploading_a_project_activates_it_automatically(client):
 
 
 def test_new_project_creates_and_activates_hello_world(client):
-    """POST /api/projects is the "New project" menu option — same
-    effect as uploading samples/Hello world.zip by hand, minus picking a
-    name first."""
+    """POST /api/projects creates and activates a "Hello world" project
+    without requiring a name up front."""
     response = client.post("/api/projects")
 
     assert response.status_code == 200, response.text
@@ -148,9 +133,7 @@ def test_new_project_creates_and_activates_hello_world(client):
     files = client.get("/api/projects/Hello world/files/index.yml").json()
     assert 'hello, world' in files["content"].lower()
 
-    # And it's actually usable, not just a stored blob — once published
-    # (see Db.create_chat_session, a project can't have chat sessions
-    # before its first publish).
+    # It's actually usable, not just a stored blob, once published.
     publish_resp = client.post("/api/projects/Hello world/publish", json={})
     assert publish_resp.status_code == 200, publish_resp.text
     assert client.get("/api/chat/session").status_code == 200

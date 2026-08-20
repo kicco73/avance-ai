@@ -1,10 +1,6 @@
 """SessionSummaryManager: auto-queues a summary job the moment a native
 session is discovered closed — see check_for_closed_sessions's own call
-site (ChatService.get_or_create_current_session). No periodic scan: the
-only discovery point is that hook, exactly as it is today (see this
-module's own docstring in the prompt this was built from — a scheduled
-scan for a session nobody ever comes back to is a natural extension for
-when scheduling infrastructure exists, not built here).
+site. No periodic scan: the only discovery point is that hook.
 """
 from __future__ import annotations
 
@@ -33,8 +29,7 @@ class SessionSummaryManager:
 
     def check_for_closed_sessions(self, username: str, project_name: str) -> None:
         # Only 'native' — an imported session and a "Test" (draft) one
-        # (see ChatSession.source) have no real usage timeline for
-        # "closed" to mean anything about (see this module's own docstring).
+        # have no real usage timeline for "closed" to mean anything about.
         sessions = self._db.list_chat_sessions(username, project_name, source='native')
         session_ids = [session['id'] for session in sessions]
         already_summarized = self._db.get_session_ids_with_summary(session_ids)

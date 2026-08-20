@@ -10,9 +10,7 @@ pytestmark = pytest.mark.contract
 @pytest.fixture(params=["persisted", "in_memory"])
 def sink(request, db):
     """Both JobSink implementations must satisfy the exact same contract
-    — PersistedJobSink is a thin delegate to Db's own job methods, so
-    this also exercises those directly, without a separate db-level test
-    file duplicating the same assertions."""
+    — PersistedJobSink is a thin delegate to Db's own job methods."""
     if request.param == "persisted":
         return PersistedJobSink(db)
     return InMemoryJobSink()

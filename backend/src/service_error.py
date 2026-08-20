@@ -1,11 +1,6 @@
-"""Shared HTTP-shaped exception base — {message, detail, status_code} —
-every service-layer error (chat.chat_service.ChatServiceError, tracking.
-tracking_service.TrackingServiceError, ...) inherits from. error_handlers.py
-registers exactly one handler, for ServiceError itself, that covers every
-subclass automatically (Starlette resolves an exception handler by
-walking the raised exception's own MRO, not by exact type match) —
-letting each service layer define its own narrowly-named subclass
-without error_handlers.py needing a matching handler for each one.
+"""Shared HTTP-shaped exception base ({message, detail, status_code}) that
+every service-layer error inherits from. error_handlers.py registers one
+handler for ServiceError itself; every subclass is covered via MRO.
 """
 from __future__ import annotations
 

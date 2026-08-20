@@ -1,9 +1,6 @@
-"""POST /api/chat/sessions/{id}/truncate — "Restart from here" (see
-ChatService.truncate_session, frontend's RestartFromHereButton.vue). The
-persistence-level cutoff behavior itself (>=, the init-row guard, the
-free state rollback) is covered by test_db_chat_truncate.py — these
-exercise the real HTTP surface: ownership, the response shape, and an
-end-to-end scenario against a real automaton.
+"""POST /api/chat/sessions/{id}/truncate ("Restart from here",
+ChatService.truncate_session) — exercises the HTTP surface: ownership,
+response shape, and an end-to-end scenario against a real automaton.
 """
 from __future__ import annotations
 
@@ -44,14 +41,9 @@ def test_truncate_rejects_a_malformed_timestamp(client, hello_project):
 
 @pytest.mark.contract
 def test_truncate_response_shape_is_a_bare_state_payload(client, hello_project):
-    """Same expression as post_reset's own return used to build on
-    (project_service.get_active_state_payload()) — a StatePayload, not
-    GET /api/state's superset (which also carries the talk/listen
-    capability flags). Unlike reset, truncate never fires init-action
-    (it rolls the live state *back* to wherever it already was, never
-    forward through init-action — see ChatService.truncate_session), so
-    it carries no "on-enter" key at all, one real difference from
-    reset's own shape now (see post_reset's own docstring)."""
+    """Truncate returns a bare StatePayload, unlike GET /api/state's
+    superset. It never fires init-action, so it carries no "on-enter"
+    key, unlike reset's response."""
     session = client.get("/api/chat/session").json()
 
     response = client.post(
@@ -67,10 +59,8 @@ def test_truncate_response_shape_is_a_bare_state_payload(client, hello_project):
 @pytest.mark.regression
 def test_truncate_deletes_trailing_turns_and_rolls_the_live_state_back(client):
     """End-to-end: move a real automaton away from its initial state via
-    a manual action (same project/action as test_controller_sessions.py's
-    own regression test), then truncate right at that transition's own
-    timestamp — the transition, and the state it produced, must both be
-    gone afterward, exactly as if the action had never been taken."""
+    a manual action, then truncate at that transition's timestamp — the
+    transition and the state it produced must both be gone."""
     content = (SAMPLES_DIR / "Aprendr català.zip").read_bytes()
     resp = client.put("/api/projects/cat", content=content, headers={"Content-Type": "application/zip"})
     assert resp.status_code == 200, resp.text

@@ -1,8 +1,5 @@
 """Tests for tracking.evaluator.SignalEvaluator.validate — coercing raw
-signal values (however they were actually obtained, see chat.
-turn_strategy.TurnStrategy.compute_explicitly/test_turn_strategy_compute_explicitly.py
-for the part that gets them) against an automaton's own declared
-signals.
+signal values against an automaton's own declared signals.
 """
 from __future__ import annotations
 

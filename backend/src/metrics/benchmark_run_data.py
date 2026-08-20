@@ -1,9 +1,6 @@
-"""Builds the hybrid BenchmarkData a BenchmarkRun's own metrics are
-calculated from (see BenchmarkCalculator.from_data): messages/sessions
-stay real (they carry expected_state, ground truth, never touched by a
-replay) — only signals/transitions come from BenchmarkRunObservation
-instead of Tracking, with expected_values still injected from the real
-Tracking row for the same message_id (a join, never a copy)."""
+"""Builds the hybrid BenchmarkData a run's metrics are calculated from:
+messages/sessions stay real (untouched by replay), while signals and
+transitions come from BenchmarkRunObservation with expected_values joined in."""
 from __future__ import annotations
 
 from typing import Any
@@ -22,9 +19,7 @@ def build_benchmark_run_data(db: Db, run: dict) -> BenchmarkData:
 
     sessions_rows = calculator._load_sessions()
     session_ids = [int(row['id']) for row in sessions_rows]
-    # Same real Tracking rows _load_messages/_load_signals already use —
-    # loaded once, reused both for messages' own expected_state and, here,
-    # for expected_values injected into the replayed signals below.
+    # Loaded once, reused both for expected_state and for expected_values below.
     signal_rows_by_session = {session_id: db.get_signals(session_id) for session_id in session_ids}
 
     messages = calculator._load_messages(session_ids, signal_rows_by_session)

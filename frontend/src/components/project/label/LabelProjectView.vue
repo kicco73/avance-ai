@@ -34,32 +34,21 @@ const props = defineProps({
 const emit = defineEmits(['close'])
 
 const loading = ref(true)
-// Raw backend rows (id, role, content, audio_text, timestamp,
-// session_id) — see db.get_messages. Kept as-is (not chatStore.js's live
-// `messages` shape) since this view reviews a fixed past session, never
-// the live conversation.
+// Raw backend message rows, kept as-is rather than chatStore.js's live
+// `messages` shape — this view reviews a fixed past session, not a live
+// conversation.
 const rawMessages = ref([])
-// The session's full Signals event log (id, timestamp, values,
-// expected_values, expected_state, old_state, action, new_state,
-// message_id) — see db.get_signals — from which the timeline's
-// transition rows, every point-in-time signal-values reconstruction, and
-// every annotation (see annotatableSignalsRow) are derived, with no
-// further backend round trips.
+// The session's full Signals event log — timeline transitions,
+// point-in-time signal reconstructions, and annotations are all derived
+// from this alone, with no further backend round trips.
 const signalsLog = ref([])
 const sessionStartState = ref(null)
 
 const inspectorRef = ref(null)
 const inspectorWidth = ref(360)
 const inspectorCollapsed = ref(false)
-// This view's own tab set — Metrics instead of Env (see Inspector.vue's
-// own slot-based contract; EditProjectView.vue passes a different set for
-// its own live chat). An imported session (see currentSessionIsImported
-// below) has no real avance-computed metrics history of its own to show
-// at all — Metrics reads off live Tracking rows an import never produces
-// (see MetricService) — so only States/Signals (annotation surfaces)
-// make sense there. Inspector.vue's own tabs watcher already falls back
-// to the first tab whenever the active one stops being valid, so
-// switching sessions never needs to reset inspectorActiveTab by hand.
+// Metrics reads off live Tracking rows, which an imported session never
+// has, so that tab is only included for native sessions.
 const inspectorTabs = computed(() => {
   const base = [
     { id: 'states', label: 'States' },
@@ -69,9 +58,7 @@ const inspectorTabs = computed(() => {
   return [...withMetrics, { id: 'info', label: 'Info' }]
 })
 const inspectorActiveTab = ref('states')
-// The Sessions panel starts open — reviewing a specific session is the
-// point of this view, so the picker should always be immediately visible
-// rather than tucked behind a toggle.
+// Starts open — reviewing a specific session is the point of this view.
 const benchmarkSessionsPanelOpen = ref(true)
 const sessionsPanelWidth = ref(240)
 let dragTarget = null
@@ -99,50 +86,36 @@ function stopDrag() {
   dragTarget = null
 }
 
-// Toggled by SessionsPanel.vue's own collapse button, same as
-// ChatWindow.vue's own panel — but a local, independent open/closed flag:
-// the main page's own Sessions panel (see chatStore.js's
-// sessionsPanelOpen) is a separate piece of UI, hidden behind this
-// full-screen overlay while it's open, and shouldn't change just because
-// this view's own panel did.
+// Independent of the main page's own Sessions panel state
+// (chatStore.js's sessionsPanelOpen) — this overlay has its own panel.
 function toggleBenchmarkSessionsPanel() {
   benchmarkSessionsPanelOpen.value = !benchmarkSessionsPanelOpen.value
   if (benchmarkSessionsPanelOpen.value) loadSessions(true, props.projectName)
 }
 
-// This view's own Sessions panel is the one place that reviews imported
-// transcripts (see ChatSession.source) alongside live ones (see
-// SessionsPanel.vue's own allowImport) — every load/refresh below passes
-// includeImported so an imported session doesn't disappear from the list
-// again after the very next reload.
-//
+// This view's Sessions panel reviews imported transcripts alongside live
+// ones, so every load/refresh below passes includeImported.
+
 // One .txt transcript, exactly one session — pushes its own {file, ok,
-// error?} onto the shared `results` accumulator (see handleImportSession
-// below) and returns the new session_id, or null on failure.
+// error?} onto the shared `results` accumulator and returns the new
+// session_id, or null on failure.
 async function importTranscriptFile(file, results) {
   try {
     const { session_id } = await postImportSession(props.projectName, file)
     results.push({ file, ok: true })
     return session_id
   } catch (err) {
-    // apiFetch already wrote this file's own failure to the shared error
-    // banner (see api.js) — summarizeImportFailures below builds the
-    // batch's own summary from `results` once every file is done, which
-    // is what should actually stay on screen when the batch has more
-    // than one item.
+    // apiFetch already wrote this failure to the error banner;
+    // summarizeImportFailures below builds the batch's own summary once
+    // every file is done, which is what should stay on screen.
     results.push({ file, ok: false, error: err.message })
     return null
   }
 }
 
-// A "Download all" .json export is a whole *array* of sessions in one
-// file (see backend tracking/session_export.py), unlike a .txt transcript
-// (always exactly one) — so this pushes one result per session found
-// inside it, each under its own pseudo-file label (`{name}`, mirroring
-// what summarizeImportFailures already reads off a real File) since no
-// real per-session File object exists to blame a failure on otherwise.
-// Same "one bad item never aborts the rest" contract as the .txt path,
-// just one level deeper.
+// A "Download all" .json export is an *array* of sessions in one file,
+// unlike a .txt transcript — pushes one result per session found inside
+// it, each under a pseudo-file label since no real File object exists.
 async function importJsonFile(file, results) {
   let sessionsData
   try {
@@ -167,12 +140,9 @@ async function importJsonFile(file, results) {
   return lastId
 }
 
-// `files` is a whole batch at once (see SessionsPanel.vue's own `multiple`
-// file input, now accepting .json alongside .txt) — one bad item must
-// never abort the rest (see importTranscriptFile/importJsonFile above).
-// The session list is only refreshed once, after every file has settled:
-// N sequential refreshes would just be N-1 wasted round trips for a list
-// that only needs to be right at the end.
+// One bad item must never abort the rest of the batch. The session list
+// is refreshed only once, after every file has settled — N sequential
+// refreshes would be wasted round trips for a list only needed at the end.
 async function handleImportSession(files) {
   const results = []
   let lastImportedId = null
@@ -184,10 +154,8 @@ async function handleImportSession(files) {
   }
 
   if (lastImportedId != null) {
-    // The list must actually contain the new session before it can be
-    // looked up in it — refresh first, select second, not the other way
-    // around. Only the most recently imported session is selected, same
-    // as the single-file flow this replaces.
+    // The list must contain the new session before it can be looked up
+    // in it — refresh first, select second, not the other way around.
     await refreshSessionsQuietly(true, props.projectName)
     const imported = sessions.value.find((s) => s.id === lastImportedId)
     if (imported) selectSession(imported)
@@ -198,21 +166,14 @@ async function handleImportSession(files) {
   else clearApiError()
 }
 
-// Picking a session here uses the exact same shared mechanism as every
-// other session picker in the app (see chatStore.js's own selectSession,
-// used by SessionsPanel.vue's other callers) — currentSessionId is the
-// one source of truth, and the watcher below reacts to it changing.
+// Uses the same shared selectSession as every other session picker in
+// the app — currentSessionId is the one source of truth.
 function onSelectSession(session) {
   selectSession(session)
 }
 
-// Only an imported session is ever deletable here (see SessionsPanel.
-// vue's own deleteImportedOnly) — a live/native one is the record of a
-// real conversation, not this view's own to discard. Mirrors chatStore.
-// js's own handleDeleteSession, just against this view's own session
-// list (refreshSessionsQuietly(true) — see handleImportSession's own
-// docstring on why includeImported matters here) rather than the main
-// chat's.
+// Only an imported session is ever deletable here — a live/native one
+// is the record of a real conversation, not this view's to discard.
 const deletingSessionId = ref(null)
 async function handleDeleteSession(session) {
   if (!window.confirm(`Delete this imported session (${session.title || session.end_state})? This cannot be undone.`)) return
@@ -252,15 +213,9 @@ async function loadTimeline() {
     rawMessages.value = messageRows
     signalsLog.value = signalRows
     sessionStartState.value = allSessions.find((s) => s.id === sessionId)?.start_state ?? null
-    // The core Metrics tab (project-wide, but "live" means "as of now" —
-    // a stale point-in-time cutoff from the previous session's own
-    // selection would otherwise linger) needs a fresh fetch for *this*
-    // session — it doesn't reactively recompute on its own (see
-    // InspectorMetricsTab.vue's own refresh(active), a no-op unless its
-    // own tab is the one currently showing). Relying on the `selected`
-    // reset above alone isn't enough: switching sessions while nothing
-    // was ever selected leaves `selected` at null both before and after,
-    // so that watcher never fires at all.
+    // The Metrics tab doesn't reactively recompute on session change, so
+    // it needs an explicit refresh here — the `selected` reset above
+    // isn't enough when `selected` was already null.
     await nextTick()
     inspectorRef.value?.refresh()
   } catch {
@@ -270,26 +225,19 @@ async function loadTimeline() {
   }
 }
 
-// A session switch (from this view's own Sessions panel, or the main
-// page's — currentSessionId is shared, see onSelectSession) always shows
-// *that* session's own timeline from scratch — whatever was selected
-// before belonged to a different session's history.
+// currentSessionId is shared with the main page, so a switch there also
+// reloads this view's timeline from scratch.
 watch(currentSessionId, loadTimeline)
 
-// Chronological, merged view of the session's messages and its state
+// Chronological, merged view of the session's messages and state
 // transitions — real ones, plus any evaluation point an expert annotated
-// even though nothing actually changed there. See benchmarkTimeline.js
-// for the actual logic (and its own regression tests) — every function
-// there is pure, taking rawMessages/signalsLog/sessionStartState
-// explicitly instead of closing over these refs.
+// even though nothing actually changed there. See benchmarkTimeline.js.
 const timeline = computed(() =>
   buildTimeline(rawMessages.value, signalsLog.value, sessionStartState.value, { imported: currentSessionIsImported.value })
 )
 
-// The point in time currently reflected by the Inspector — a message or a
-// transition clicked in the timeline (see selectMessage/selectTransition).
-// null until the first click, showing just the project's own definitions
-// with nothing highlighted.
+// The point in time currently reflected by the Inspector — a message or
+// transition clicked in the timeline. null until the first click.
 const selected = ref(null)
 
 function selectMessage(message) {
@@ -300,20 +248,15 @@ function selectTransition(transition) {
   selected.value = { kind: 'transition', transition }
 }
 
-// See benchmarkTimeline.js for the actual logic (and its own regression
-// tests) behind highlightedStateKey/signalValues below — both exist
-// specifically to avoid landing one point behind the current selection's
-// own evaluation (see highlightedStateKeyFor/signalValuesFor's own
-// docstrings).
+// See benchmarkTimeline.js — avoids landing one point behind the
+// current selection's own evaluation.
 const highlightedStateKey = computed(() =>
   highlightedStateKeyFor(selected.value, timeline.value, sessionStartState.value)
 )
 
 // Only a transition has "the action that produced it" to highlight.
-// old_state === '' (the automaton's own init transition) is a real,
-// clickable edge in the graph too now — a transparent pseudo-node's own
-// outgoing edge (see InspectorGraphTab.vue's isInitEdge) — so this no
-// longer excludes it: every transition selection highlights *some* edge.
+// old_state === '' (the automaton's init transition) is a real edge in
+// the graph too (see InspectorGraphTab.vue's isInitEdge).
 const firedActionEdge = computed(() => {
   if (selected.value?.kind !== 'transition') return null
   const t = selected.value.transition
@@ -323,55 +266,37 @@ const firedActionEdge = computed(() => {
 const untilMessageId = computed(() => {
   if (!selected.value) return null
   if (selected.value.kind === 'message') return selected.value.message.id
-  // A transition auto-tracking produced is linked straight back to the
-  // message whose evaluation caused it (see db.py's Signals.message) — an
-  // exact lookup, only falling back to the nearest-before heuristic for a
-  // manual action's transition, which was never evaluated from any
-  // message at all.
+  // A transition auto-tracking produced links straight back to the
+  // message that caused it; a manual action's transition falls back to
+  // the nearest-before heuristic since it was never evaluated from a message.
   return selected.value.transition.message_id ?? nearestMessageIdAtOrBefore(rawMessages.value, selected.value.transition.timestamp)
 })
 
 const signalValues = computed(() => signalValuesFor(selected.value, signalsLog.value, rawMessages.value))
 
-// The currently-selected session's own row out of the shared sessions
-// list (chatStore.js) — id/source/title/datetime_start/datetime_end/
-// start_state/end_state/labeled, see chat_service.py's own
-// _session_payload. Null before the list has loaded, or if the id it's
-// pinned to has since been deleted out from under it.
+// The currently-selected session's row out of the shared sessions list
+// (chatStore.js). Null before the list has loaded, or if its id has
+// since been deleted out from under it.
 const currentSession = computed(() => sessions.value.find((s) => s.id === currentSessionId.value) ?? null)
 
-// Whether the session currently being reviewed was imported (see
-// ChatSession.source) rather than played live — the one case with no
-// real Tracking rows at all to consult for annotatableSignalsRow below
-// (see tracking.session_import's own module docstring).
+// Whether the session currently being reviewed was imported rather than
+// played live — the one case with no real Tracking rows for
+// annotatableSignalsRow below to consult.
 const currentSessionIsImported = computed(() => currentSession.value?.source === 'imported')
 
-// The Info tab's own read-only start/end state cards (see the #tab-info
-// template below) — resolved through the "States" tab's own already-
-// loaded graph (statesTabRef, see the template's registerTab wiring)
-// rather than a second getProjectGraph fetch of their own.
+// The Info tab's read-only start/end state cards resolve through the
+// States tab's already-loaded graph rather than a second fetch.
 const statesTabRef = ref(null)
-// A plain script-scope setter, not `statesTabRef.value = el` written
-// directly in the template below — Vite's dev-mode (non-inlined)
-// <script setup> compile target resolves a template's own bare
-// identifiers through a ref-auto-unwrapping $setup proxy, so an
-// explicit `.value` write *inside a template expression* assigns onto
-// the already-unwrapped value (null, straight off ref(null)) instead of
-// the ref itself, throwing "Cannot set properties of null" the moment
-// this view ever mounts. A real function body, called from the
-// template rather than inlined into it, is genuine script scope in
-// every compile mode — see InspectorSignalsTab.vue's own setBlockRef/
-// setLabelInputRef for the same convention.
+// Not `statesTabRef.value = el` inline in the template — in dev-mode
+// compile, a template's auto-unwrapping proxy makes `.value = ` write
+// onto the unwrapped value instead of the ref, throwing on mount.
 function setStatesTabRef(el) {
   statesTabRef.value = el
 }
 
-// An imported session's own ChatSession.start_state/end_state are always
-// null (see tracking.session_import — it never ran against the automaton
-// at all), so there's nothing real to show there; a domain expert's own
-// expected_state annotations (see signalsLog, chronological already) are
-// the only "start"/"end" a session like that ever gets. A native
-// session's own real start_state/end_state need no such substitute.
+// An imported session's start_state/end_state are always null since it
+// never ran against the automaton, so a domain expert's own
+// expected_state annotations are the only "start"/"end" it gets.
 const importedAnnotatedStates = computed(() => signalsLog.value.map((row) => row.expected_state).filter(Boolean))
 const sessionStartStateKey = computed(() =>
   currentSessionIsImported.value ? (importedAnnotatedStates.value[0] ?? null) : (currentSession.value?.start_state ?? null)
@@ -382,37 +307,23 @@ const sessionEndStateKey = computed(() =>
 const startStateElement = computed(() => statesTabRef.value?.stateElementFor(sessionStartStateKey.value) ?? null)
 const endStateElement = computed(() => statesTabRef.value?.stateElementFor(sessionEndStateKey.value) ?? null)
 
-// Same "best-effort local format, fall back to the raw ISO string on a
-// bad/missing date" convention as SessionsPanel.vue's own
-// formatSessionTimestamp — this file's own "Info" tab reuses the idea
-// rather than that function itself (not exported there).
+// Same fallback convention as SessionsPanel.vue's own
+// formatSessionTimestamp, which isn't exported so is reimplemented here.
 function formatSessionTimestamp(iso) {
   if (!iso) return '—'
   const date = new Date(iso)
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString()
 }
 
-// An imported session has neither (see tracking.session_import) — no
-// real conversation window to show at all, rather than a pair of em
-// dashes implying one just wasn't recorded.
+// An imported session has neither — no real conversation window to show,
+// rather than a pair of em dashes implying one just wasn't recorded.
 const currentSessionHasTimestamps = computed(() =>
   currentSession.value?.datetime_start != null || currentSession.value?.datetime_end != null
 )
 
-// The Signals row backing the current selection's own evaluation, if
-// any — the row itself for a clicked transition auto-tracking produced
-// (see its own message_id), or (found by message_id) the row a clicked
-// message's own evaluation produced. null when there's no evaluation to
-// annotate against at all — a manual action's transition (message_id
-// null: see project_service.apply_manual_action), or a message
-// auto-tracking never evaluated anything after (see Signals.message's own
-// docstring) — the Inspector's annotation controls only ever show for a
-// non-null value here. An imported session never has a real row for any
-// message (see currentSessionIsImported) — a virtual one (no id yet,
-// materialized backend-side the first time an annotation is actually
-// written, see TrackingService._materialize_imported_session_row) steps
-// in instead, for *any* message of an imported session — every line of
-// the timeline is a legitimate mark point, native or imported alike.
+// The Signals row backing the current selection; null means no
+// evaluation exists to annotate against. An imported session never has a
+// real row, so a virtual placeholder stands in until the first write.
 const annotatableSignalsRow = computed(() => {
   if (!selected.value) return null
   if (selected.value.kind === 'transition') {
@@ -427,10 +338,8 @@ const annotatableSignalsRow = computed(() => {
   return null
 })
 
-// The message id to PUT an annotation change against — the annotation
-// API is message-centric (see api.js's putMessageExpectedState/
-// putMessageExpectedSignals), so a transition selection still resolves
-// back to whichever message its own row says caused it.
+// The annotation API is message-centric, so a transition selection
+// resolves back to whichever message its row says caused it.
 const annotatableMessageId = computed(() => {
   if (!annotatableSignalsRow.value) return null
   return selected.value.kind === 'message' ? selected.value.message.id : annotatableSignalsRow.value.message_id
@@ -442,25 +351,16 @@ const expectedValues = computed(() => {
   return raw ? JSON.parse(raw) : {}
 })
 
-// The automaton's own starting point (old_state === "" — see
-// resolveTransitionRow/syntheticSessionStartEntry, real or synthetic
-// alike) has no real signal evaluation behind it at all — nothing was
-// ever computed there to have an opinion about. An expert can still
-// disagree about *where the automaton starts* (the expected-state
-// control above), just never about signal values that don't exist.
+// The automaton's starting point (old_state === "") has no real signal
+// evaluation behind it — an expert can disagree about where the
+// automaton starts, but never about signal values that don't exist.
 const annotatableExpectedSignals = computed(() => {
   return annotatableSignalsRow.value != null && annotatableSignalsRow.value.old_state !== ''
 })
 
-// A full reload (rather than patching signalsLog in place) is needed
-// because an annotation write can now change *which* Signals row exists
-// for a message, not just its fields: annotating a session's own start
-// point materializes a brand-new row (see backend ChatService.
-// _materialize_session_start_row — the synthetic entry above has no real
-// row/id yet), and clearing the last annotation on that same kind of row
-// deletes it again (see _finalize_annotation_write). Re-selects the
-// current transition by message_id (its own row id may have just changed
-// underneath it) so the Inspector doesn't keep showing a stale snapshot.
+// A full reload is needed because an annotation write can change which
+// row exists for a message, not just its fields. Re-selects by
+// message_id since the row's own id may have just changed.
 async function reloadSignalsLog() {
   if (!currentSessionId.value) return
   signalsLog.value = await getSessionSignals(currentSessionId.value)
@@ -469,13 +369,9 @@ async function reloadSignalsLog() {
     const match = timeline.value.find((e) => e.kind === 'transition' && e.transition.message_id === messageId)
     selected.value = match ? { kind: 'transition', transition: match.transition } : null
   }
-  // Every caller of this is an annotation write (see onUpdateExpectedState/
-  // onUpdateExpectedSignals/onUnlabelAll) — the Sessions panel's own
-  // has_annotations tag for this exact session (see SessionsPanel.vue) can
-  // only just have flipped either way, and won't otherwise refresh until
-  // the panel is toggled closed and reopened. Quiet: a full loadSessions()
-  // would flash the panel to "Loading…" for something the user never
-  // asked to reload.
+  // The Sessions panel's has_annotations tag may have just flipped;
+  // quiet, so it doesn't flash the panel to "Loading…" for a reload the
+  // user never asked for.
   await refreshSessionsQuietly(true, props.projectName)
 }
 
@@ -503,12 +399,8 @@ async function onUpdateExpectedSignals(values) {
   }
 }
 
-// The comment icon's own save handler (see ChatTimeline.vue's
-// message-actions slot below) — message-centric like
-// onUpdateExpectedState/onUpdateExpectedSignals, but keyed directly off
-// the clicked message's own id rather than the current Inspector
-// selection: the icon sits on every message row, independent of
-// whichever message/transition happens to be selected right now.
+// Keyed directly off the clicked message's id rather than the current
+// Inspector selection — the comment icon sits on every message row.
 async function onSaveComment(messageId, comment) {
   try {
     await putMessageComment(messageId, comment)
@@ -541,13 +433,9 @@ async function onUnlabelAll() {
   }
 }
 
-// The current session's own persisted "reviewed" flag (see backend
-// ChatSession.labeled) — read straight off the Sessions panel's own list
-// (its has_annotations field, see chatStore.js's sessions/ChatService.
-// _session_payload), the single source of truth for it now, not
-// recomputed from signalsLog the way hasAnyAnnotations above still is
-// for "Unlabel all" (a genuinely different question: "is there anything
-// to clear" vs. "has an expert signed off on this session").
+// The persisted "reviewed" flag, read off the Sessions panel's list —
+// unlike hasAnyAnnotations above, "is there anything to clear" is a
+// different question than "has an expert signed off".
 const currentSessionLabeled = computed(() => {
   return sessions.value.find((s) => s.id === currentSessionId.value)?.has_annotations ?? false
 })
@@ -556,11 +444,9 @@ function handleClose() {
   emit('close')
 }
 
-// "Download all" — every session of this project as one .json file (see
-// backend tracking/session_export.py), re-uploadable through this same
-// view's own Import button (see handleImportSession/importJsonFile).
-// Same synthetic-<a> download trick App.vue's own handleModelDownload
-// uses for a project's own zip.
+// Every session of this project as one .json file, re-uploadable through
+// this view's own Import button. Same synthetic-<a> download trick as
+// App.vue's handleModelDownload.
 const downloadingSessions = ref(false)
 async function handleDownloadSessions() {
   downloadingSessions.value = true
@@ -596,14 +482,9 @@ async function onToggleMarkDone() {
   }
 }
 
-// The Info tab's own Name/Comment fields (see the #tab-info template
-// below) — both save on blur, same "commit on blur, no explicit Save
-// button" convention InspectorDetailCard.vue's own title/description
-// fields already use — local buffers synced from currentSession on every
-// session switch, committed (only if actually changed) on blur.
-// refreshSessionsQuietly(true) afterward so the Sessions panel's own row
-// (title badge) picks up a rename immediately, same as every other
-// session mutation in this file.
+// The Info tab's Name/Comment fields — local buffers synced from
+// currentSession on every session switch, committed on blur only if
+// actually changed.
 const editSessionTitle = ref('')
 const editSessionComment = ref('')
 watch(currentSession, (session) => {
@@ -611,14 +492,9 @@ watch(currentSession, (session) => {
   editSessionComment.value = session?.comment ?? ''
 }, { immediate: true })
 
-// The Info tab's own session card — unified with InspectorSignalsTab.vue/
-// InspectorEnvKeysTab.vue's own read-only/editable toggle (click the
-// card to open its form, click again to close), rather than always
-// showing an editable form the way this card used to. Collapses back
-// whenever the selection switches to a different session, same as
-// those two components' own expandedSignalName/expandedName resetting
-// on a stale identity — editing session A's own name/comment must never
-// carry over into session B's own still-open form.
+// Click-to-open, click-to-close, same as InspectorSignalsTab.vue's own
+// toggle. Collapses back on session switch so editing session A's
+// name/comment never carries over into session B's still-open form.
 const sessionInfoExpanded = ref(false)
 const sessionNameInputRef = ref(null)
 watch(currentSessionId, () => { sessionInfoExpanded.value = false })
@@ -653,26 +529,16 @@ async function onUpdateSessionComment() {
   }
 }
 
-// Metrics aren't reactive to props on their own (see
-// InspectorMetricsTab.vue's own refresh(active) docstring) — every
-// selection change needs an explicit nudge, same as EditProjectView.vue's
-// turnCount watcher. No Env tab here (see this view's own tabs, below),
-// so no matching nudge.
+// Metrics aren't reactive to props on their own — every selection
+// change needs an explicit nudge.
 watch(selected, () => {
   nextTick(() => inspectorRef.value?.refresh())
 })
 
 onMounted(async () => {
-  // currentSessionId is chatStore.js's own shared ref — also driven by
-  // the main chat window (and EditProjectView.vue's embedded "Test"
-  // chat), so on entry it can easily still be pointing at some *other*
-  // project's own session (e.g. whichever one is currently active
-  // there). Loading the session list *first* and checking membership
-  // before ever calling loadTimeline() is what keeps this view from
-  // opening straight into that stale session's own timeline — silently
-  // showing another project's conversation under this project's own
-  // header — the exact same class of bug the sessions-list fix above
-  // addresses, just for the chat pane instead of the picker.
+  // currentSessionId is a shared ref also driven by the main chat window,
+  // so it may still point at another project's session on entry. Loading
+  // the list first and checking membership avoids opening into it.
   await loadSessions(true, props.projectName)
   const stillBelongsHere = sessions.value.some((s) => s.id === currentSessionId.value)
   if (stillBelongsHere) {
@@ -682,10 +548,8 @@ onMounted(async () => {
     if (mostRecent) {
       selectSession(mostRecent) // ids necessarily differ here, so this always triggers watch(currentSessionId, loadTimeline)
     } else {
-      // No sessions at all for this project — watch() above only fires
-      // on an actual change, so a currentSessionId that was already
-      // null (e.g. a fresh mount) would otherwise never clear
-      // `loading`/populate the empty state at all.
+      // No sessions at all — watch() only fires on an actual change, so
+      // a currentSessionId already null would never clear `loading`.
       currentSessionId.value = null
       loadTimeline()
     }

@@ -1,7 +1,6 @@
-"""GET /api/projects/{name}/graph — see ProjectService.get_project_graph.
-Covers the one new thing added for the Inspector graph's own initial-state
-arrow: an edge with source="" (the automaton's own init_action, never
-attached to any real state) alongside every state's real outgoing edges.
+"""GET /api/projects/{name}/graph (ProjectService.get_project_graph). Includes
+an edge with source="" for the automaton's init_action alongside each
+state's real outgoing edges.
 """
 from __future__ import annotations
 
@@ -18,10 +17,8 @@ def test_graph_excludes_the_reserved_implicit_state_from_nodes(client, hello_pro
 
 
 def test_graph_includes_an_edge_from_the_reserved_state_for_init_action(client, hello_project):
-    """The one edge with no real source state — the automaton's own
-    "arrow from nowhere" into its start state (see InspectorGraphTab.vue's
-    transparent pseudo-node, and Tracking.old_state's own "" convention for
-    the same "no real prior state" idea elsewhere)."""
+    """The init-action edge has no real source state, unlike edges
+    between two real states."""
     graph = client.get("/api/projects/hello/graph").json()
 
     init_edges = [e for e in graph["edges"] if e.get("source") in ("", None)]

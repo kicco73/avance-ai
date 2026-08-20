@@ -1,7 +1,6 @@
-"""The session-replay loop, identical regardless of which signal source
-backs it (turn-by-turn or batch — see benchmark_signal_sources.py):
-BenchmarkProcessor only ever calls signal_source.get_turn_data(message_id,
-current_state), never anything strategy-specific of its own."""
+"""The session-replay loop is identical regardless of signal source
+(turn-by-turn or batch): BenchmarkProcessor only ever calls
+signal_source.get_turn_data(message_id, current_state)."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -21,27 +20,18 @@ class BenchmarkSignalSource(Protocol):
 
 
 def _parse_utc(iso_timestamp: str | None) -> datetime | None:
-    """Every Db dict method hands back timestamps as an _utc_iso() string
-    (see db/utils.py) — set_replay_instant/advance_to need a real naive-
-    UTC datetime instead, matching every other DateTimeField's own
-    convention (see db/db.py's _utc_iso docstring), so the timezone
-    offset fromisoformat parses back in is stripped again here rather
-    than compared against naive datetimes elsewhere and silently
-    mismatching."""
+    """Db dict methods return timestamps as timezone-aware ISO strings, but
+    downstream code compares against naive-UTC datetimes, so the parsed
+    timezone offset is stripped here to match."""
     if iso_timestamp is None:
         return None
     return datetime.fromisoformat(iso_timestamp).replace(tzinfo=None)
 
 
 class BenchmarkProcessor:
-    """Constructor extends the (tracking_engine, env, metrics,
-    signal_source, sink) shape with `db`/`automaton` (the loop needs both
-    directly — to walk the session's own messages and to evaluate/apply
-    against the automaton, see run_session below) and `session_facts`
-    (set_replay_instant/set_last_transition_instant live there, not on
-    Env — see tracking/session_facts.py's own docstring; this postdates
-    the tracking_engine.py refactor from TrackingEngine(sink, env,
-    metrics) to TrackingEngine(sink, env, scope_builder))."""
+    """Extends (tracking_engine, env, metrics, signal_source, sink) with
+    `db`/`automaton`, needed to walk session messages and evaluate/apply
+    against the automaton, and `session_facts` for replay/transition instants."""
 
     def __init__(
         self,

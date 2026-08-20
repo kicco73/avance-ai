@@ -8,21 +8,18 @@ export function hasSignalValue(signal) {
   return signal != null && signal.value !== null && !signal.error
 }
 
-// Tracks which signals just changed value, for a brief flash animation on
-// their bar (see each caller's own `-changed` CSS class/keyframes) — the
-// one place this diffing lives, shared by every UI that displays live
-// signal values.
+// Tracks which signals just changed value, for a brief flash animation on their
+// bar (see each caller's `-changed` CSS class/keyframes) — the one shared place
+// this diffing lives.
 export function useSignalChangeFlash() {
   // Reassigned wholesale (never mutated in place) so Vue's reactivity
   // picks up each change.
   const recentlyChanged = ref(new Set())
   let resetHandle = null
 
-  // Compares `nextSignals` against `previousSignals` — the caller must
-  // capture `previousSignals` before overwriting its own signal state,
-  // since that's the only "old" copy available. A signal with no prior
-  // value (first load, or was in error) never flashes: there's nothing to
-  // visibly change from. Both arrays are just {name, value, error}.
+  // Caller must capture `previousSignals` before overwriting its own signal state
+  // (it's diffed here against `nextSignals`) — that's the only "old" copy available.
+  // A signal with no prior value (first load, or was in error) never flashes.
   function markChanged(previousSignals, nextSignals) {
     const changed = new Set()
     for (const next of nextSignals) {

@@ -1,9 +1,6 @@
-"""BenchmarkRunService: creates/tracks a BenchmarkRun — a test-automatic
-replay of one annotated session, or every labeled session of a project at
-once (same session_id=None|int dual as BenchmarkCalculator). The run's own
-lifecycle (status/progress/error/timestamps) lives on the generic Job
-engine (see jobs/), linked by reference_id — BenchmarkRun itself only ever
-carries domain data (which session(s), which strategy, the results)."""
+"""BenchmarkRunService creates/tracks a BenchmarkRun — a replay of one
+annotated session, or every labeled session of a project at once. The
+run's lifecycle lives on the generic Job engine, linked by reference_id."""
 from __future__ import annotations
 
 import asyncio
@@ -113,11 +110,9 @@ class BenchmarkRunService:
 
     def _merge_with_job(self, run: dict) -> dict:
         job = self._db.get_job_by_reference('benchmark_run', run['id'])
-        # Revision comparison, not a timestamp: Project.revision only
-        # bumps on the first save after a publish (see Db._ensure_draft_
-        # revision) — a run stays "fresh" across further unpublished edits
-        # to the same draft, a known, accepted imprecision (a finer check
-        # would need a per-write Archive timestamp, which doesn't exist).
+        # Revision comparison, not a timestamp: Project.revision only bumps
+        # on publish, so a run stays "fresh" across further unpublished
+        # edits to the same draft — a known, accepted imprecision.
         current_revision = self._db.get_project_revision(run['project_name'])
         return {
             **run,
@@ -194,17 +189,9 @@ class BenchmarkRunService:
         self._db.set_benchmark_run_results(run['id'], json.dumps(results))
 
     def start_job(self, username: str, project_name: str, state_key: str, strategy: str) -> int:
-        """The "Stati" branch's own "play" — pure aggregation over
-        session-scoped BenchmarkRuns, no domain row of its own (see
-        jobs/job_queue.py's own module docstring on why an ephemeral,
-        in-memory job is the right shape here: nothing to persist,
-        entirely recomputable by pressing play again). Finding/launching
-        each session's own sub-run happens here, before submit — that's
-        what lets `total` (how many sub-runs to wait for) be known
-        upfront, and each create_run call still goes through the
-        *persisted* queue, never this one: two separate thread pools, no
-        dependency cycle (see JobQueue's own docstring on why a job must
-        never wait on another job from its own queue)."""
+        """Pure aggregation over per-session BenchmarkRuns; ephemeral since
+        nothing here needs persisting. Sub-runs are found/launched via the
+        *persisted* queue, never this one, to avoid a job waiting on its own queue."""
         if strategy not in VALID_STRATEGIES:
             raise ValueError(f"Unknown benchmark run strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
 

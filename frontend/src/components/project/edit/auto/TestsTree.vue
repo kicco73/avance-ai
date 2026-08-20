@@ -1,15 +1,11 @@
 <script setup>
-// Two-level tree under one root: "Sessioni" (a leaf per annotated
-// session) and "Stati" (a leaf per real state key of the project's
-// automaton) — see ProjectAutoPanel.vue, which owns all the actual data
-// fetching/launching/polling. This component only renders and emits;
-// it never calls an API itself.
+// Two-level tree under one root: "Sessioni" (a leaf per annotated session)
+// and "Stati" (a leaf per state key). ProjectAutoPanel.vue owns all data
+// fetching/launching/polling — this component only renders and emits.
 //
-// Node identifiers are plain strings, prefixed by kind — 'root',
-// 'sessions-branch', 'states-branch', `session:<id>`, `state:<key>` —
-// simple enough to use directly as both the emitted identifier and the
-// key into `statuses` below, and to tell a session node from a state one
-// at a glance.
+// Node identifiers are plain strings prefixed by kind — 'root',
+// 'sessions-branch', 'states-branch', `session:<id>`, `state:<key>` — used
+// directly as both the emitted identifier and the key into `statuses` below.
 import { computed } from 'vue'
 import TestNodeButton from './TestNodeButton.vue'
 

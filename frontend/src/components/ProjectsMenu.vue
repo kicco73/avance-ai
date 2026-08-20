@@ -9,20 +9,14 @@ const emit = defineEmits([
 
 const open = ref(false)
 const loading = ref(false)
-// {name, is_paused, ui_label}[] (see ProjectService.list_projects,
-// Prompt 7/9) — the status dot next to each project's own name (see the
-// template below) reads is_paused directly off this, never recomputed
-// client-side; ui_label (Prompt 9's own `project.ui-label`) is shown in
-// place of the raw name wherever declared, same "declared label, falls
-// back to the raw name/key" convention already used for a state/signal/
-// action's own ui-label.
+// {name, is_paused, ui_label}[] — the status dot reads is_paused directly
+// off this; ui_label is shown in place of the raw name wherever declared.
 const projects = ref([])
 const activeProjectName = ref(null)
 const rootEl = ref(null)
 
-// The active project's own row (for its declared ui_label) — falls back
-// to the raw name both before the initial loadProjects() call resolves
-// and for a project that never declared a ui_label at all.
+// Falls back to the raw name before loadProjects() resolves, and for a
+// project that never declared a ui_label.
 const activeProjectLabel = computed(() => {
   return projects.value.find((p) => p.name === activeProjectName.value)?.ui_label ?? activeProjectName.value
 })
@@ -126,14 +120,9 @@ onBeforeUnmount(() => {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  /* SettingsMenu.vue's own .settings-btn centers an 18px-tall SVG icon
-     inside the exact same 0.4rem top/bottom padding this has — but a
-     plain button's own text content doesn't reliably compute to that same
-     18px line box on its own (font metrics/UA default line-height are
-     never guaranteed to land there), which is what let the two buttons'
-     total heights drift apart despite matching padding. Pinning this to
-     the identical 18px closes that gap for good, not just by coincidence
-     of whatever font happens to be active. */
+  /* Pinned to 18px to match .settings-btn's icon height exactly — a
+     button's text content doesn't reliably compute to the same line box
+     across fonts, so this keeps both buttons' total heights aligned. */
   line-height: 18px;
 }
 
@@ -195,7 +184,7 @@ onBeforeUnmount(() => {
   border-top: 1px solid #eee;
 }
 
-/* Prompt 7 — running/paused status dot, next to each project's own name. */
+/* Running/paused status dot, next to each project's own name. */
 .projects-item-status {
   display: inline-block;
   flex-shrink: 0;

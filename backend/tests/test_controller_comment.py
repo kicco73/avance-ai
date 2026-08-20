@@ -1,9 +1,6 @@
-"""Integration tests for PUT .../comment — a domain expert's own free-
-text note on a chat message (see Tracking.comment/TrackingService.
-set_message_comment). Deliberately contrasted throughout against PUT
-.../expected-state (see test_controller_benchmark.py): unlike that one,
-a comment has no evaluation-point gating at all, so the same non-
-evaluation-point message that 409s there must succeed here.
+"""PUT .../comment — a free-text note on a chat message. Unlike PUT
+.../expected-state, a comment has no evaluation-point gating, so the same
+non-evaluation-point message that 409s there must succeed here.
 """
 from __future__ import annotations
 
@@ -55,11 +52,8 @@ def test_put_comment_strips_whitespace_and_treats_blank_as_clear(client, hello_p
 
 @pytest.mark.contract
 def test_put_comment_succeeds_for_a_non_evaluation_point_message(client, hello_project):
-    """The exact scenario test_put_expected_state_is_409_for_a_non_
-    evaluation_point_message (see test_controller_benchmark.py) 409s on —
-    a comment must never be gated on this at all (see TrackingService.
-    _require_commentable_message, which materializes a bare row rather
-    than raising)."""
+    """A comment is never gated on evaluation-point status, unlike
+    expected-state (see test_controller_benchmark.py)."""
     session = client.get("/api/chat/session").json()
     turn = client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}).json()
     message_id = turn["assistant_message_id"]
@@ -80,10 +74,8 @@ def test_put_comment_is_404_for_an_unknown_message(client, hello_project):
 def test_put_comment_does_not_disturb_expected_state_on_the_same_row(client, hello_project):
     session = client.get("/api/chat/session").json()
     client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})
-    # "Hello world" evaluates on the user's own message by default — pick
-    # whichever side already has a real Tracking row so this exercises a
-    # comment written alongside an existing expected_state, not a bare
-    # materialized row.
+    # Picks the side with a real Tracking row, so the comment is written
+    # alongside an existing expected_state rather than a bare row.
     session_id = session["id"]
     messages = client.get(f"/api/chat/sessions/{session_id}/messages").json()
     user_message_id = next(m["id"] for m in messages if m["role"] == "user")

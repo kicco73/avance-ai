@@ -56,10 +56,9 @@ def test_create_draft_chat_session_permits_an_unpublished_project(db):
 
 @pytest.mark.regression
 def test_create_draft_chat_session_stamps_the_current_draft_revision_not_published(db):
-    # Publish once (revision 0), then edit again so the draft moves ahead
-    # to revision 1 while published_revision stays frozen at 0 — a draft
-    # session must be stamped with the *draft* (1), unlike a normal
-    # session, which would be stamped with published_revision (0).
+    # After a publish plus an edit, the draft is at revision 1 while
+    # published_revision stays at 0 — a draft session must be stamped
+    # with the draft revision, not the published one.
     db.ensure_project("ahead-of-published")
     db.publish_project("ahead-of-published")
     db.save_project_file("user", "ahead-of-published", "index.yml", b"states: {}\n", "text/yaml")
@@ -209,11 +208,8 @@ def test_delete_chat_session_does_not_touch_other_sessions(db):
 
 @pytest.mark.contract
 def test_foreign_key_cascade_is_enforced_at_the_sqlite_level(db):
-    """Reinforces db.delete_chat_session's explicit ordered deletes:
-    even a raw ChatSession delete (bypassing delete_chat_session
-    entirely) must cascade to Message on its own, proving PRAGMA
-    foreign_keys + ON DELETE CASCADE (see db._enable_foreign_keys and
-    Message.session) are actually both in effect for this connection."""
+    """A raw ChatSession delete (bypassing delete_chat_session) must still
+    cascade to Message, proving FK enforcement is on for this connection."""
     from db.models import ChatSession, Message
 
     session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))

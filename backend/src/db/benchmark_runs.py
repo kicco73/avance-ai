@@ -39,8 +39,7 @@ class BenchmarkRunMixin:
 
     def add_benchmark_run_batch_segments(self, run_id: int, segments: int) -> None:
         """Atomic accumulate-across-sessions increment — a batch run's
-        own `work` calls this once per session it processes (see
-        metrics/benchmark_run_service.py), never overwriting what a
+        `work` calls this once per session, never overwriting what a
         previous session in the same run already added."""
         BenchmarkRun.update(
             batch_segments=fn.COALESCE(BenchmarkRun.batch_segments, 0) + segments

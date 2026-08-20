@@ -16,43 +16,18 @@ class Project(BaseModel):
     name = CharField(primary_key=True)
     revision = IntegerField(null=False, default=0)
     published_revision = IntegerField(null=True)
-    # See project.project_service.ProjectService's own availability
-    # recomputation (Prompt 7) — a project is paused when its own build
-    # fails, or when any project it references via automaton.* (always
-    # self-loop-only, see automaton_builder.py's own build-time check) is
-    # itself unavailable. paused_reason is a human-readable explanation
-    # (EditProjectView.vue's own warning banner), null exactly when
-    # is_paused is False.
+    # A project is paused when its own build fails, or when any project
+    # it references via automaton.* is itself unavailable. paused_reason
+    # is null exactly when is_paused is False.
     is_paused = BooleanField(default=False)
     paused_reason = TextField(null=True)
-    # Independent of is_paused/paused_reason above (the *automatic*
-    # mechanism, driven by recompute_availability) — an operator's own
-    # explicit override, set/cleared only through ProjectService.
-    # set_manually_paused/set_manually_running (see their own
-    # docstrings), never touched by recompute_availability itself beyond
-    # reading it: whenever this is True, recompute_availability forces
-    # is_paused True too (reason "Manually paused.") regardless of what
-    # the real build/dependency check would otherwise find, which is
-    # exactly what makes a manual pause survive every other event that
-    # would normally flip is_paused back — nothing un-pauses it but the
-    # matching manual resume.
+    # An operator's own explicit override, independent of the automatic
+    # is_paused mechanism — whenever True, recompute_availability forces
+    # is_paused True too, so nothing un-pauses it but a manual resume.
     manually_paused = BooleanField(default=False)
-    # The project's own declared `project:` section (see automaton_
-    # builder.py's own _build_project_metadata) — kept in sync on every
-    # successful save (see ProjectService._sync_project_metadata), never
-    # parsed from index.yml on demand: ProjectsMenu.vue shows every
-    # project at once and can't afford to load+build each one's own
-    # automaton just to list them. project_id is what *other* projects
-    # reach this one as through automaton.* (see automaton.trigger_
-    # automaton_project_refs) — null (not declared) means this project is
-    # never exposed to any other project's own automaton.* reference at
-    # all; unique so the same id can't ever ambiguously resolve to two
-    # projects (SQLite treats multiple NULLs as distinct even under a
-    # UNIQUE constraint, so any number of projects may leave this
-    # undeclared at once). ui_label/ui_description are purely cosmetic
-    # (ProjectsMenu.vue shows ui_label in place of the raw project name
-    # when set, same "declared label, falls back to the raw name/key"
-    # convention already used for a state/signal/action's own ui-label).
+    # The project's own declared `project:` section, kept in sync on
+    # every save rather than parsed from index.yml on demand. project_id
+    # is what *other* projects reach this one as through automaton.*.
     project_id = CharField(null=True, unique=True)
     ui_label = TextField(null=True)
     ui_description = TextField(null=True)
@@ -62,32 +37,23 @@ class ChatSession(BaseModel):
     username = CharField()
     project_name = ForeignKeyField(Project, field='name', column_name='project_name', backref='chat_sessions')
     source = CharField(default='native')
-    # Optional, freeform — an imported session always gets the uploaded
-    # transcript's own filename to start with (see SessionImportManager.
-    # import_transcript), a native one has none until renamed; either way
-    # a domain expert can (re)set it from the "Label sessions" view's own
-    # Info tab (see Db.set_session_title). Shown in the Sessions panel's
-    # own badge in place of end_state, when set.
+    # Optional, freeform — an imported session gets the uploaded
+    # transcript's filename to start with; a native one has none until
+    # renamed. Shown in the Sessions panel's badge in place of end_state.
     title = CharField(null=True)
-    # The project's own published_revision at the moment this session was
-    # created — never touched again after (see Db.save_project_files's own
-    # fork-on-first-edit-after-publish: a later fork must never silently
-    # reinterpret an already-created session's own state keys against a
-    # revision it never actually ran against).
+    # The project's own published_revision at the moment this session
+    # was created — never touched again, so a later fork never silently
+    # reinterprets a session's state keys against a revision it never ran against.
     project_revision = IntegerField(null=False)
     datetime_start = DateTimeField(null=True)
     datetime_end = DateTimeField(null=True)
     start_state = CharField(null=True)
     end_state = CharField(null=True)
-    # Explicitly set by a domain expert (see "Label sessions" view's own
-    # "Mark done" button, ChatService.mark_session_labeled) — the single
-    # source of truth for whether a session counts as reviewed, replacing
-    # the old heuristic (any Tracking row in it carries an expert
-    # annotation) that used to derive this implicitly. A toggle, not a
-    # one-way flag: pressing "Mark done" again clears it back to False.
+    # Explicitly set by a domain expert — the single source of truth for
+    # whether a session counts as reviewed. A toggle, not a one-way flag:
+    # pressing "Mark done" again clears it back to False.
     labeled = BooleanField(default=False)
-    # A domain expert's own free-text note on the session as a whole (see
-    # "Label sessions" view's own Info tab, Db.set_session_comment) —
+    # A domain expert's own free-text note on the session as a whole —
     # distinct from Tracking.comment, which is per-message.
     comment = TextField(null=True)
 
@@ -115,10 +81,9 @@ class Tracking(BaseModel):
     action_env = TextField(null=True)
     expected_state = CharField(null=True)
     expected_values = TextField(null=True)
-    # A domain expert's own free-text note on this row's linked message
-    # (see TrackingService.set_message_comment) — unlike expected_state/
-    # expected_values, never validated against the automaton at all: just
-    # a place to leave context for whoever reviews this session next.
+    # A domain expert's free-text note on this row's linked message —
+    # unlike expected_state/expected_values, never validated against the
+    # automaton, just context for whoever reviews this session next.
     comment = TextField(null=True)
     old_state = CharField(null=True, index=True)
     action = CharField(null=True)
@@ -141,12 +106,8 @@ class Archive(BaseModel):
 
 class StateRemap(BaseModel):
     """An administrative fact about a published revision, not a
-    conversation event (never goes in Tracking) — independent of how many
-    sessions/users exist, ready for a future multi-user resolution that
-    isn't built yet (see ProjectService.get_active_automaton_and_state).
-    Flattened on every write (see Db.write_state_remap) so resolving a key
-    is always a single lookup, never a chain, regardless of how many
-    publications have passed since it was first remapped."""
+    conversation event (never goes in Tracking). Flattened on every
+    write so resolving a key is always a single lookup, never a chain."""
     project_name = CharField()
     old_key = CharField()
     new_key = CharField()
@@ -197,10 +158,9 @@ class BenchmarkRun(BaseModel):
         indexes = ((('username', 'project_name'), False),)
 
 class BenchmarkRunObservation(BaseModel):
-    """A replay's own signal snapshot/transition — the exact same shape
-    Tracking carries for production, but on its own table: a replay must
-    never be mistaken for (or overwrite) real conversation data. See
-    tracking/tracking_engine.py's BenchmarkRunObservationSink."""
+    """A replay's own signal snapshot/transition — the same shape
+    Tracking carries for production, but on its own table so a replay
+    can never be mistaken for (or overwrite) real conversation data."""
     id = AutoField()
     run = ForeignKeyField(BenchmarkRun, null=False, backref='observations', on_delete='CASCADE')
     session = ForeignKeyField(ChatSession, null=False, backref='benchmark_run_observations', on_delete='CASCADE')
@@ -215,11 +175,9 @@ class BenchmarkRunObservation(BaseModel):
         indexes = ((('run', 'session'), False),)
 
 class SystemWarning(BaseModel):
-    """A cross-project reference (automaton.<project>.state/env.<key> —
-    see automaton.automaton.trigger_automaton_project_refs) that
-    resolved to None at runtime instead of raising — see tracking.
-    automaton_namespace's own three failure kinds ('project_not_found',
-    'no_session', 'env_key_not_declared')."""
+    """A cross-project reference (automaton.<project>.state/env.<key>)
+    that resolved to None at runtime instead of raising — one of three
+    failure kinds ('project_not_found', 'no_session', 'env_key_not_declared')."""
     id = AutoField()
     username = CharField()
     project_name = CharField(index=True)
@@ -228,17 +186,9 @@ class SystemWarning(BaseModel):
     timestamp = DateTimeField(index=True, default=datetime.utcnow)
 
 class ProjectObserverIndex(BaseModel):
-    """Reverse index of automaton.* cross-project references — one row
-    per (observed project, observer project) pair, rebuilt from scratch
-    for `observer_project_name` every time that project's own index.yml
-    is built (see project.project_service.ProjectService's own
-    _finalize_project_update). `project_name` is the project *being*
-    referenced (automaton.<project_name>...); `observer_project_name` is
-    the one whose own self-loop trigger contains that reference —
-    queried in that direction ("who observes me") by the wake-up
-    handler (see tracking.wakeup_service.WakeupService) and, in the
-    other direction ("who do I depend on"), by Prompt 7's own
-    availability recomputation."""
+    """Reverse index of automaton.* cross-project references, rebuilt
+    from scratch for `observer_project_name` on every index.yml build.
+    Queried both as "who observes me" and "who do I depend on"."""
     id = AutoField()
     project_name = CharField(index=True)
     observer_project_name = CharField(index=True)

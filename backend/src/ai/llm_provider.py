@@ -10,14 +10,9 @@ from cascade import OnRetry, ProviderError, ProviderRateLimitedError, ProviderUn
 
 logger = logging.getLogger(__name__)
 
-# Called sync, fire-and-forget style — never awaited by a provider (see
-# gemini_provider_v2.py's own generate/generate_stream) — once per
-# metadata key ("audio", "signals", "env", ...), each key populated at
-# most once per turn, in whatever order the provider itself resolves
-# them. A caller that needs to await something in response (e.g. pushing
-# a websocket frame) schedules its own asyncio.create_task, the same way
-# chat.text_filter.StreamingTagFilter's own on_tag already does for the
-# legacy tag-filtering path this replaces.
+# Called synchronously, fire-and-forget — never awaited by a provider.
+# Each metadata key ("audio", "signals", "env", ...) fires at most once
+# per turn; callers needing to await something schedule their own task.
 MetadataCallback = Callable[[str, Any], None]
 @dataclass(frozen=True)
 class AIServiceConfig:

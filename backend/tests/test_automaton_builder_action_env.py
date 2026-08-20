@@ -1,15 +1,6 @@
-"""Action-level `env:` (see automaton_builder.py's _build_action/
-_build_action_env) — a mapping of env-key -> expression, evaluated (see
-Automaton.eval_action_env) whenever the action fires and merged onto
-tracking.env.Env's own action_set() store. An env expression gets the
-exact same build-time validation a trigger does (see
-_validate_namespaced_expression) — every `env.<name>` reference (on
-either side: what an expression *reads*, and what an action's own env:
-key itself *writes* to — see _actions_sanity_check's own declared-key
-check) is checked against the project's own declared `env:` section
-(parallel to `signals:`, see EnvKey/AutomatonBuilder.build's own
-env_keys) — an action's `env:` field can no longer introduce a brand
-new key on the fly just by writing to it.
+"""Action-level `env:` — a mapping of env-key -> expression, evaluated
+whenever the action fires. Both what an expression reads and what a key
+writes to must already be declared in the project's `env:` section.
 """
 from __future__ import annotations
 
@@ -115,12 +106,8 @@ states:
 
 
 def test_env_referencing_an_undeclared_env_key_is_rejected():
-    """A genuinely undeclared `env.` *read* is still a build error, not a
-    routine no-op — `last_value` itself is declared here so this test
-    isolates the read-side check (see the module docstring's own
-    write-side counterpart, test_env_write_to_an_undeclared_key_is_
-    rejected below) from the RHS reference to `never_declared_anywhere`,
-    which is not."""
+    """A genuinely undeclared `env.` read is a build error. `last_value`
+    is declared, isolating this from the write-side check below."""
     with pytest.raises(ValueError, match="undefined name\\(s\\).*env.never_declared_anywhere"):
         _build(
             """
@@ -135,10 +122,8 @@ env:
 
 
 def test_env_write_to_an_undeclared_key_is_rejected():
-    """The write side of the same contract — unlike before this refactor,
-    an action's own `env:` field can no longer introduce a brand new key
-    just by writing to it; the key itself must already be declared in
-    the project's own top-level `env:` section."""
+    """The write side: an action's `env:` field cannot introduce a new
+    key just by writing to it; the key must already be declared."""
     with pytest.raises(ValueError, match="env key 'never_declared_anywhere' is not declared"):
         _build("""
         env:

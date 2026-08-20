@@ -1,10 +1,6 @@
-"""AutomatonYamlEditor — every add/edit/delete/reorder operation an "Edit
-project" view needs against a project's own index.yml, working directly
-on a ruamel.yaml round-trip tree. This class never validates the result
-as a whole (that's AutomatonBuilder's own job) — these tests check the
-structural edit itself and the payload shape returned, not end-to-end
-project validity, except where a test explicitly re-parses the result
-through AutomatonBuilder to confirm a round trip stays buildable.
+"""AutomatonYamlEditor — every add/edit/delete/reorder operation against a
+project's index.yml, working directly on a ruamel.yaml round-trip tree.
+These tests check the structural edit itself, not end-to-end validity.
 """
 from __future__ import annotations
 

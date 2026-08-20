@@ -1,8 +1,6 @@
-"""Validating/staging/committing project activations, uploads, and
-deletions — plus every db.py access tied to "which project/state is
-active", encapsulated here so other layers never reach into db.py
-themselves for that.
-"""
+"""Validates, stages, and commits project activations, uploads, and
+deletions. Also owns every db.py access tied to "which project/state is
+active", so other layers never reach into db.py directly for that."""
 from __future__ import annotations
 
 import hashlib
@@ -31,28 +29,18 @@ from tracking.session_import import SessionImportManager
 
 logger = logging.getLogger(__name__)
 
-# The project zip's own optional "bring your own sessions" file (see
-# export_project_zip/put_project below) — never a project file itself
-# (excluded from `files` before AutomatonBuilder ever sees it, and never
-# persisted as an Archive), just a session_export.py-shaped JSON array,
-# imported-only, consumed on upload the same way the "Label sessions"
-# view's own JSON upload already is (see SessionImportManager.
-# import_session_json) so a project and the reference transcripts it was
-# benchmarked against travel together in one file.
+# Optional "bring your own sessions" file in a project zip — a
+# session_export.py-shaped JSON array, imported-only, never a project file
+# (excluded before AutomatonBuilder sees `files`, never persisted as Archive).
 SESSIONS_EXPORT_FILENAME = "sessions.json"
 
-# What the file explorer/editor endpoints will read, write, list, or delete —
-# index.yml plus the text/plain attachment extensions from
-# AutomatonBuilder.EXTENSION_TO_MEDIA_TYPE (binary attachments like .pdf stay
-# out of scope for now).
+# What the file explorer/editor endpoints read, write, list, or delete —
+# index.yml plus the text/plain attachment extensions.
 TEXT_EDITABLE_EXTENSIONS = {".yml", ".yaml", ".txt", ".md", ".csv", ".css"}
 
-# Persisted Archive.content_type for each text extension — inferred from the
-# extension alone (never from the request), since a text save's own
-# Content-Type header is always the generic 'text/plain; charset=utf-8' api.js
-# sends regardless of which file it is (see putProjectFile). Unrecognized
-# text extensions (only reachable via put_project's zip-upload path, which
-# has no per-file extension whitelist of its own) fall back to 'text/plain'.
+# Persisted Archive.content_type per text extension, inferred from the
+# extension alone: the request's Content-Type header is always the generic
+# 'text/plain; charset=utf-8' regardless of which file it is.
 TEXT_CONTENT_TYPE_BY_EXTENSION = {
     ".yml": "text/yaml",
     ".yaml": "text/yaml",
@@ -62,9 +50,8 @@ TEXT_CONTENT_TYPE_BY_EXTENSION = {
     ".css": "text/css",
 }
 
-# Image attachments an index.css url(...) can reference — the opposite of
-# TEXT_EDITABLE_EXTENSIONS: never decoded, always the request's own
-# Content-Type (validated against this exact mapping, see put_project_file).
+# Image attachments an index.css url(...) can reference — opaque bytes,
+# never decoded, Content-Type validated against this exact mapping.
 IMAGE_CONTENT_TYPE_BY_EXTENSION = {
     ".png": "image/png",
     ".jpg": "image/jpeg",
@@ -76,27 +63,18 @@ IMAGE_CONTENT_TYPE_BY_EXTENSION = {
 IMAGE_EXTENSIONS = set(IMAGE_CONTENT_TYPE_BY_EXTENSION)
 IMAGE_CONTENT_TYPES = set(IMAGE_CONTENT_TYPE_BY_EXTENSION.values())
 
-# Everything _check_editable_file_name will let through — text (read,
-# decoded, validated as part of the project) or image (opaque bytes, only
-# ever referenced from index.css's own url(...), see _missing_css_references).
+# Everything _check_editable_file_name lets through: text or image.
 EDITABLE_EXTENSIONS = TEXT_EDITABLE_EXTENSIONS | IMAGE_EXTENSIONS
 
-# No request-size limit exists anywhere else in this stack (nginx.conf has no
-# client_max_body_size, and no application-level limit existed before this).
+# No other request-size limit exists anywhere in this stack (nginx.conf has
+# no client_max_body_size).
 MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024
 
 
 def decode_text_archives(archives: dict[str, bytes]) -> dict[str, str | bytes]:
-    """`db.get_archives`/`db.get_archive` are bytes-native (see their own
-    docstrings) — this is the one place that turns a raw-bytes archive dict
-    back into what AutomatonBuilder.build actually expects: `str` for every
-    text file (TEXT_EDITABLE_EXTENSIONS), untouched `bytes` for an image
-    (AutomatonBuilder._convert_contents_to_archives already base64-encodes a
-    raw-bytes archive correctly on its own, see its own media_type branch —
-    only a *text* archive left undecoded would be silently wrapped wrong).
-    Shared by every caller that feeds a whole archive dict into
-    AutomatonBuilder: _load_project_at_revision, _prepare_project_update,
-    and metrics.benchmark_run_service.BenchmarkRunService._load_automaton."""
+    """Turns a raw-bytes archive dict into what AutomatonBuilder.build
+    expects: `str` for text files (TEXT_EDITABLE_EXTENSIONS), untouched
+    `bytes` for images — a text archive left undecoded would be wrapped wrong."""
     decoded: dict[str, str | bytes] = {}
     for name, content in archives.items():
         if Path(name).suffix.lower() in TEXT_EDITABLE_EXTENSIONS and isinstance(content, (bytes, bytearray)):
@@ -111,13 +89,9 @@ _ABSOLUTE_URL_PATTERN = re.compile(r"^(https?:)?//|^data:", re.IGNORECASE)
 
 
 def missing_css_references(css_text: str, known_archive_names: set[str]) -> list[str]:
-    """Every `url(...)` target in `css_text` that isn't one of
-    `known_archive_names` — absolute ones (http(s)://, protocol-relative
-    //, data:) are never checked, they're not this project's own archives.
-    A project's archive namespace is flat (see _is_safe_project_name/
-    _check_editable_file_name rejecting any path separator everywhere
-    else), so a relative reference like './bg.png' or a bare 'bg.png'
-    both resolve the same way: by filename alone."""
+    """Every `url(...)` target in `css_text` not in `known_archive_names`.
+    Absolute URLs (http(s)://, //, data:) are skipped. A project's archive
+    namespace is flat, so any relative reference resolves by filename alone."""
     missing = []
     for _, target in _CSS_URL_PATTERN.findall(css_text):
         target = target.strip()
@@ -132,9 +106,8 @@ def missing_css_references(css_text: str, known_archive_names: set[str]) -> list
 # have committed it.
 CommitCallback = Callable[[Automaton], Awaitable[None]]
 
-# "New project" (see settings_controller.py's POST /api/projects) starts
-# from this exact sample zip, as if a user had picked it in the upload
-# dialog — resolved off this module's own location, not the cwd.
+# "New project" starts from this sample zip, resolved off this module's own
+# location, not the cwd.
 NEW_PROJECT_TEMPLATE = Path(__file__).resolve().parents[2] / "samples" / "projects" / "Hello world.zip"
 NEW_PROJECT_NAME = "Hello world"
 
@@ -142,20 +115,12 @@ NEW_PROJECT_NAME = "Hello world"
 class ProjectService(object):
     def __init__(self, db: Db) -> None:
         self._db = db
-        # Only ever used by export_project_zip/put_project's own
-        # sessions.json handling — see SESSIONS_EXPORT_FILENAME's own
-        # docstring. Both managers depend on nothing but `db` themselves
-        # (see their own modules), so constructing them here carries no
-        # circular-import risk the reverse direction (TrackingService
-        # already depends on ProjectService) would.
+        # Used only by export_project_zip/put_project's sessions.json handling.
         self._session_export_manager = SessionExportManager(db)
         self._session_import_manager = SessionImportManager(db)
-        # (project_name, revision) -> Automaton. Revision-keyed (not just
-        # project_name) so a caller pinned to one specific revision (see
-        # _load_project_at_revision, get_automaton_and_state_for_session)
-        # and a caller that always wants "whatever's current" (see
-        # _load_project/get_active_automaton_and_state) can share the same
-        # cache without one silently serving the other's revision.
+        # (project_name, revision) -> Automaton. Revision-keyed so a caller
+        # pinned to one specific revision and a caller wanting "whatever's
+        # current" can share the cache without cross-serving.
         self._automaton_cache: dict[tuple[str, int], Automaton] = {}
 
     @staticmethod
@@ -168,15 +133,9 @@ class ProjectService(object):
         return Path(project_name).name == project_name
 
     def _known_projects_env_keys(self, project_name: str) -> dict[str, frozenset[str]]:
-        """`known_projects` for AutomatonBuilder.build's own Prompt 10
-        existence check — every *other* project's own declared project.id
-        mapped to its own declared env key names, read via AutomatonBuilder.
-        read_declared_env_keys (raw YAML only, at that other project's own
-        current revision — never a full build of it, see that method's
-        own docstring on why). Skips `project_name` itself (an
-        automaton.* reference is only ever meaningful about a *different*
-        project) and any other project with no index.yml, or no declared
-        project.id at all — nothing to reference it by."""
+        """Every *other* project's declared project.id mapped to its
+        declared env key names, for AutomatonBuilder.build's automaton.*
+        existence check."""
         known: dict[str, frozenset[str]] = {}
         for other_name in self._db.list_projects():
             if other_name == project_name:
@@ -190,13 +149,9 @@ class ProjectService(object):
         return known
 
     def _invalidate_automaton_cache(self, project_name: str) -> None:
-        """Drops every cached revision of `project_name` at once — a write
-        path (revert_to_published/delete_project) that needs this has no
-        reason to work out exactly which revision number(s) might now be
-        stale, so this just clears all of them. Never needed after an
-        ordinary edit (put_project_file/delete_project_file/...): those go
-        through _finalize_project_update instead, which already knows
-        exactly which one revision it just built and re-caches only that."""
+        """Drops every cached revision of `project_name`, for callers that
+        can't tell which revisions are now stale. Ordinary edits go through
+        _finalize_project_update instead, which re-caches just one revision."""
         for key in [k for k in self._automaton_cache if k[0] == project_name]:
             del self._automaton_cache[key]
 
@@ -224,47 +179,23 @@ class ProjectService(object):
 
     def _load_project(self, project_name: str) -> Automaton:
         """Whatever's current for `project_name` right now — the most
-        recent draft, published or not (see Db.get_project_revision). Every
-        existing caller of this keeps exactly that behavior; a caller that
-        instead needs a specific, possibly older revision (the published
-        one specifically, or a particular session's own — see
-        get_active_automaton_and_state/get_automaton_and_state_for_session)
-        goes through _load_project_at_revision directly instead."""
+        recent draft, published or not. A caller needing a specific,
+        possibly older revision uses _load_project_at_revision directly."""
         revision = self._db.get_project_revision(project_name)
         return self._load_project_at_revision(project_name, revision)
 
     def _project_update_changed(self, existing: Mapping[str, str | bytes], files: Mapping[str, str | bytes]) -> bool:
-        """Whether `files` (new content for some subset of a project's
-        own files — see _prepare_project_update) is a genuine change
-        against `existing`. A file `existing` doesn't have at all yet is
-        always a change, even when its own new content happens to be ""
-        (the Explorer's own "+ new file" always creates one this way) —
-        `existing.get(name, "")` used to fold that case into "unchanged"
-        indistinguishably from a real no-op edit, so the file was never
-        actually persisted (see put_project_file's own to_persist branch)
-        and the very next read of it 404'd."""
+        """Whether `files` is a genuine change against `existing`. A file
+        `existing` doesn't have yet always counts as changed, even with ""
+        content — a brand-new empty file must still get persisted."""
         return any(name not in existing or existing[name] != content for name, content in files.items())
 
     def _prepare_project_update(
         self, project_name: str, files: Mapping[str, str | bytes]
     ) -> tuple[Automaton, dict[str, str | bytes] | None]:
-        """Builds+validates the Automaton for `files` (new content for
-        some subset of `project_name`'s own files — all of them for a
-        zip upload, just one for a single-file edit) merged onto its
-        current ones. `files` is `Mapping`, not `dict` — this never
-        writes into it (see the read-only note below), and a plain
-        `dict[str, str | bytes]` parameter would otherwise reject a
-        caller's own `dict[str, str]` (put_project's own zip/bare-YAML
-        branches, never bytes) outright: dict is invariant in its value
-        type, Mapping is covariant. Read-only — never writes anything. Returns
-        (automaton, to_persist): the second element is the full merged
-        file set (put_project hands it straight to db.save_project_files;
-        put_project_file only uses its presence as a changed/unchanged
-        signal, since it persists just its own single file via
-        db.save_project_file), or None when nothing actually changed (see
-        _project_update_changed) — the caller's signal to skip
-        persistence (and, likely, resetting the active conversation)
-        entirely."""
+        """Builds+validates the Automaton for `files` merged onto
+        `project_name`'s current files. Read-only. Returns (automaton,
+        to_persist), where to_persist is None if nothing actually changed."""
         existing = decode_text_archives(self._db.get_archives(project_name))
         merged = {**existing, **files}
 
@@ -276,12 +207,9 @@ class ProjectService(object):
         return automaton, merged
 
     def _validate_project_id_globally_unique(self, project_name: str, project_id: str | None) -> None:
-        """The one project.id check AutomatonBuilder itself can't do (see
-        its own _build_project_metadata docstring): whether some *other*
-        project has already claimed it. Raises before anything gets
-        persisted — same "read-only, never writes" contract _prepare_
-        project_update's own docstring already promises, so a failed
-        save here leaves nothing partially written."""
+        """The one project.id check AutomatonBuilder can't do itself:
+        whether some *other* project has already claimed it. Raises before
+        anything gets persisted, so a failed save leaves nothing partial."""
         if project_id is None:
             return
         owner = self._db.get_project_name_by_project_id(project_id)
@@ -297,17 +225,10 @@ class ProjectService(object):
             raise FileNotFoundError(f"File '{file_name}' does not exist in project '{project_name}'.")
         content_type = self._db.get_archive_content_type(project_name, file_name)
         user = Session().user
-        # Same extension-based rule AutomatonBuilder._convert_contents_to_
-        # archives uses to build each MemoryArchive's own SourceDict —
-        # reused here (rather than re-derived) so the "Edit project" view's
-        # file explorer can display it without that meaning something
-        # different than what the automaton itself would resolve.
         extension = Path(file_name).suffix.lower()
         media_type = EXTENSION_TO_MEDIA_TYPE.get(extension, "application/octet-stream")
-        # None for an image (or any other binary content_type) — raw bytes
-        # aren't JSON-serializable, and nothing reads `content` for a binary
-        # file client-side (the file explorer renders it via the raw
-        # GET .../content route instead, see get_project_file_content).
+        # None for binary content — raw bytes aren't JSON-serializable; the
+        # explorer renders those via the raw GET .../content route instead.
         is_text = extension in TEXT_EDITABLE_EXTENSIONS
         return {
             "content": content.decode("utf-8") if is_text else None,
@@ -320,54 +241,24 @@ class ProjectService(object):
     async def _finalize_project_update(
         self, project_name: str, automaton: Automaton, commit: CommitCallback
     ) -> bool:
-        """Used by every project-mutating path (put_project/put_project_file/
-        undo_project_file/redo_project_file/delete_project_file), before
-        awaiting `commit`. Archive persistence itself is each caller's own
-        responsibility (see db.save_project_files/db.save_project_file/
-        db.delete_archive) — this only refreshes the
-        in-memory automaton cache and, if `project_name` is the active
-        project, reconciles its live conversation against whatever just
-        changed: wiped only if the state it was actually in no longer
-        exists in the new definition (a rename/removal genuinely leaves it
-        nowhere valid to resume from) — an edit that leaves that one state
-        untouched (a wording tweak, a different state entirely, a new
-        state/action added alongside it) lets the conversation carry on
-        exactly where it was, rather than restarting on every single save
-        regardless of whether anything relevant to it actually changed."""
+        """Called by every project-mutating path before awaiting `commit`.
+        Refreshes the automaton cache and resets the active project's live
+        conversation only when its current state no longer exists."""
 
-        # Project metadata (project.id/ui-label/ui-description — see
-        # automaton_builder.py's own _build_project_metadata) — synced
-        # first: the reverse index below translates *other* projects' own
-        # already-synced project_id into their project_name, so this
-        # project's own row needs to be current before anything else
-        # (itself or another project referencing it) can resolve against
-        # it correctly. Global uniqueness was already checked in
-        # _prepare_project_update, before any of this ran.
+        # Synced first: the reverse index below translates other projects'
+        # project_id into project_name, so this project's own row must be
+        # current before anything can resolve against it.
         self._db.set_project_metadata(
             project_name, automaton.project_id, automaton.project_ui_label, automaton.project_ui_description,
         )
 
         revision = self._db.get_project_revision(project_name)
         self._automaton_cache[(project_name, revision)] = automaton
-        # Reverse index (Prompt 6) — every project this one's own
-        # self-loop actions reference via automaton.* (see automaton.
-        # automaton.trigger_automaton_project_refs), recomputed from
-        # scratch on every successful build regardless of whether
-        # `project_name` is the active project below (an observer's own
-        # reference is meaningful independent of which project the user
-        # happens to have open right now). automaton.* names project_id
-        # values, never project_name (see _resolve_automaton_project_refs
-        # — Prompt 8) — the reverse index itself still stores plain
-        # project_name throughout, same as every other project-
-        # identifying column in this schema; project_id only ever exists
-        # as this one translation.
+        # Reverse index of every project this one's self-loop actions
+        # reference via automaton.* — recomputed on every successful build
+        # regardless of whether `project_name` is currently active.
         observed_project_names = self._resolve_automaton_project_refs(self._automaton_project_refs(automaton))
         self._db.set_project_observers(project_name, observed_project_names)
-        # Availability (Prompt 7) — a successful build here already
-        # settles this project's own "does it build" half; the other
-        # half (every project it depends on is itself available) is
-        # exactly what recompute_availability re-checks, off the
-        # already-known dependency set set_project_observers just wrote.
         self.recompute_availability(project_name)
         if project_name == self.get_active_project_name():
             current_state_key = self._db.get_current_state(project_name)
@@ -379,15 +270,8 @@ class ProjectService(object):
 
     @staticmethod
     def _automaton_project_refs(automaton: Automaton) -> set[str]:
-        """Every project_id `automaton`'s own self-loop actions reference
-        via automaton.* — raw tokens, not yet resolved to a project_name
-        (see _resolve_automaton_project_refs, the one caller that does
-        that). Scoped to self-loop actions only (target == the action's
-        own containing state) even though automaton_builder.py's own
-        build-time check already guarantees no *other* kind of action can
-        reference automaton.* at all — the filter here is what actually
-        decides the index's own content, not a redundant re-validation of
-        something build already enforced."""
+        """Every project_id `automaton`'s self-loop actions reference via
+        automaton.* — raw tokens, not yet resolved to a project_name."""
         refs: set[str] = set()
         for state in automaton.states.values():
             for action in state.actions:
@@ -396,17 +280,9 @@ class ProjectService(object):
         return refs
 
     def _resolve_automaton_project_refs(self, project_ids: set[str]) -> set[str]:
-        """Translates automaton.* reference tokens (project_id values)
-        into the project_name each one's own declaring project is
-        actually stored under (see db.get_project_name_by_project_id) —
-        the reverse index (db.ProjectObserverIndex) stays project_name-
-        keyed throughout, same as every other project-identifying column
-        in this schema; project_id only ever exists at this one
-        translation boundary (Prompt 8). A token matching no known
-        project_id yet is silently dropped, not an error — same "a
-        dangling reference is a runtime concern, not a build-time
-        blocker" reasoning recompute_availability's own docstring already
-        documents for a project that doesn't exist at all."""
+        """Translates automaton.* project_id tokens into project_name. A
+        token matching no known project_id is silently dropped, not an
+        error — a dangling reference is a runtime concern, not build-time."""
         names: set[str] = set()
         for project_id in project_ids:
             name = self._db.get_project_name_by_project_id(project_id)
@@ -415,37 +291,9 @@ class ProjectService(object):
         return names
 
     def recompute_availability(self, project_name: str) -> None:
-        """Prompt 7 — a project is available exactly when (a) its own
-        build succeeds and (b) every project it depends on via
-        automaton.* (see _automaton_project_refs/db.get_observed_
-        projects) is itself available. (b) is always a cheap read of
-        that dependency's own already-computed Project.is_paused flag —
-        never a rebuild of its automaton, and never recursive on its
-        own: a dependency's own dependencies were already folded into
-        *its* own is_paused the last time *it* was recomputed (see the
-        AvailabilityChanged cascade below), so this never needs to walk
-        the whole chain itself.
-
-        Writes (and publishes AvailabilityChanged) only when the
-        recomputed value actually differs from what's already saved —
-        the one guard that makes this safe to call from a cascade
-        without any cycle detection of its own: a mutual dependency
-        between two projects just means each one's own recompute, in
-        turn, finds nothing changed on its second visit and stops
-        propagating right there (see _on_availability_changed below).
-
-        A manual pause (see Project.manually_paused/set_manually_paused)
-        short-circuits every other check below to "not available" — the
-        one thing that makes a manual pause survive an unrelated
-        recompute (a dependency changing, a rebuild after an unrelated
-        edit, ...) without this method needing any special-casing beyond
-        this one check: is_paused/paused_reason still go through the
-        exact same write-only-on-change path as the automatic case, so
-        every existing dependent of this project still sees it as
-        unavailable and cascades exactly as it already would for a real
-        build/dependency failure. Only set_manually_running (clearing the
-        flag) ever lets the real build/dependency state show through
-        again."""
+        """Available exactly when the build succeeds and every automaton.*
+        dependency is itself available. Writes only on change — this is
+        what makes it safe to call from a cascade with no cycle detection."""
         if self._db.get_manually_paused(project_name):
             available, reason = False, "Manually paused."
         else:
@@ -476,20 +324,9 @@ class ProjectService(object):
         publish(AvailabilityChanged(project_name=project_name, available=available))
 
     def register_availability_cascade(self) -> None:
-        """Subscribes once, for the whole process's lifetime (see
-        main.py's own wiring) — the other half of recompute_availability
-        above: whenever *some* project's own availability actually
-        changes, every project that depends on it gets a chance to
-        change too. Recursive by construction, not by explicit
-        recursion: recompute_availability's own guard means a project
-        whose recomputed value didn't change never re-publishes, so the
-        cascade started here naturally stops propagating outward the
-        instant nothing new happens — no queue, no visited-set, no
-        explicit BFS of this method's own. It also, for free, wakes
-        dependents in the right order when a project comes back: the
-        most directly affected one recomputes (and republishes) first,
-        which is what lets *its own* dependents react next, and so on
-        outward — never the other way around."""
+        """Subscribed once, for the process's lifetime. Recursive by
+        construction: recompute_availability's write-only-on-change guard
+        is what makes the cascade stop propagating on its own."""
         subscribe(AvailabilityChanged, self._on_availability_changed)
 
     def _on_availability_changed(self, event: AvailabilityChanged) -> None:
@@ -504,13 +341,9 @@ class ProjectService(object):
 
     @staticmethod
     def _project_status(is_paused: bool, manually_paused: bool) -> str:
-        """'running' | 'paused' | 'manually_paused' — the three-state
-        view of a project's own availability (see Project.is_paused/
-        manually_paused's own docstrings). manually_paused always implies
-        is_paused (recompute_availability's own short-circuit guarantees
-        this — see its own docstring), so checking it first is enough to
-        tell the two paused cases apart; 'paused' is only ever the
-        automatic one."""
+        """'running' | 'paused' | 'manually_paused'. manually_paused
+        always implies is_paused, so checking it first is enough to tell
+        the two paused cases apart."""
         if manually_paused:
             return "manually_paused"
         if is_paused:
@@ -518,10 +351,7 @@ class ProjectService(object):
         return "running"
 
     def get_runtime_status(self) -> list[dict]:
-        """One row per project — name, status ('running'/'paused'/
-        'manually_paused'), paused_reason, revision, published_revision —
-        for the Settings > Runtime status view (see db.list_projects_
-        runtime_status, the raw data this shapes)."""
+        """One row per project for the Settings > Runtime status view."""
         return [
             {
                 "name": row["name"],
@@ -534,16 +364,9 @@ class ProjectService(object):
         ]
 
     def set_manually_paused(self, project_name: str) -> dict:
-        """Only ever allowed from 'running' (see controller.py's own PUT
-        .../pause) — reinforced here, not just left to the UI only
-        disabling the button for every other status, since this is the
-        one place that actually matters. Persists the flag, then
-        immediately recomputes (forcing is_paused True with reason
-        "Manually paused." — see recompute_availability's own short-
-        circuit) so the existing AvailabilityChanged cascade picks this
-        up and propagates to every dependent exactly as it already would
-        for a real build/dependency failure, with no separate cascade
-        logic of its own."""
+        """Only allowed from 'running', enforced here rather than left to
+        the UI alone. Recomputing afterward reuses the normal
+        AvailabilityChanged cascade rather than a separate one."""
         if not self._db.project_exists(project_name):
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
         is_paused, _ = self._db.get_project_availability(project_name) or (False, None)
@@ -556,11 +379,9 @@ class ProjectService(object):
         return self.get_project_runtime_status(project_name)
 
     def set_manually_running(self, project_name: str) -> dict:
-        """The other half of set_manually_paused — only ever allowed from
-        'manually_paused', clearing the flag and letting
-        recompute_availability report the real, current build/dependency
-        state again (which may or may not actually be 'running' — a
-        dependency could have gone down in the meantime)."""
+        """Only allowed from 'manually_paused'. Clears the flag and lets
+        recompute_availability report the real state again, which may
+        still be unavailable if a dependency went down in the meantime."""
         if not self._db.project_exists(project_name):
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
         is_paused, _ = self._db.get_project_availability(project_name) or (False, None)
@@ -573,9 +394,8 @@ class ProjectService(object):
         return self.get_project_runtime_status(project_name)
 
     def get_project_runtime_status(self, project_name: str) -> dict:
-        """One row, same shape as get_runtime_status's own — the
-        pause/resume endpoints' own return value, so the caller can
-        refresh just that row without re-fetching the whole table."""
+        """One row, same shape as get_runtime_status — lets the
+        pause/resume endpoints refresh just this row."""
         is_paused, paused_reason = self._db.get_project_availability(project_name) or (False, None)
         manually_paused = self._db.get_manually_paused(project_name) or False
         return {
@@ -637,50 +457,22 @@ class ProjectService(object):
 
     def get_active_project_name(self) -> str:
         """The current session user's active project name, read fresh from
-        the DB every time — None if this user has no Settings row yet
-        (never activated anything), or their last-active project has since
-        been deleted (no project name is reserved/protected from deletion,
-        this one included) and nothing else was left to fall back to (see
-        delete_project). Every caller that resolves an active *automaton*
-        from this (get_active_automaton_and_state, and everything built on
-        it) already degrades gracefully when there's genuinely nothing
-        active — see GET /api/state's own bare except."""
+        the DB every time. Raises if nothing is active, e.g. never
+        activated anything or the active project was since deleted."""
         name = self._db.get_active_project_name(Session().user)
         if name is None:
             raise FileNotFoundError("No project is currently active.")
         return name
 
     def get_project_availability(self, project_name: str) -> tuple[bool, str | None]:
-        """(is_paused, paused_reason) — see recompute_availability's own
-        docstring for how these are decided. (False, None) for a project
-        that doesn't exist at all (never raises): every caller of this
-        already has its own, more specific way to report "no such
-        project" if that distinction actually matters to it."""
+        """(is_paused, paused_reason). Returns (False, None), never
+        raises, for a project that doesn't exist at all."""
         return self._db.get_project_availability(project_name) or (False, None)
 
     def _resolve_state(self, project_name: str, automaton: Automaton) -> State:
-        """The State half of get_active_automaton_and_state/
-        get_automaton_and_state_for_session, factored out since both need
-        the exact same resolution against `automaton` — only how
-        `automaton` itself gets picked (published-only vs. one session's
-        own pinned revision) differs between them. No state persisted yet
-        (nothing has ever run) still falls back to init_action.target,
-        same as always — that's a legitimate default, not a broken
-        reference. A persisted state that no longer exists in `automaton`
-        is different: it means a publish once renamed/removed it out from
-        under an in-progress conversation, and StateRemap (written at that
-        publish, see ProjectService.publish_project — a single lookup no
-        matter how many publishes have happened since, since every
-        publish that would otherwise orphan a still-open state writes its
-        own fresh entry pointing straight at the *current* remap target)
-        is the only thing allowed to resolve it — no more silent fallback
-        to init_action.target. If StateRemap doesn't have an answer
-        either, that's an inconsistency the publish-time check should
-        have prevented; raising here is a guardrail, not the expected
-        path. A pure read, no side effect: never returns the reserved
-        implicit state ("") itself, so every caller of this (not just
-        ChatService.open_if_needed) always sees a real state, whether or
-        not init_action has actually been resolved/persisted yet."""
+        """No persisted state yet falls back to init_action.target. A
+        persisted state that no longer exists means a publish renamed or
+        removed it — only StateRemap (written at that publish) may resolve it."""
         state_key = self._db.get_current_state(project_name)
         if state_key is None:
             state_key = automaton.init_action.target
@@ -705,50 +497,18 @@ class ProjectService(object):
         return automaton, self._resolve_state(project_name, automaton)
 
     def get_active_automaton_and_state(self) -> tuple[Automaton, State]:
-        """The active project's own get_automaton_and_state (see that
-        method's own docstring) — never the in-progress draft, whatever
-        it happens to look like right now. Every caller of this that's
-        about a specific, already-existing session instead (see the "6
-        places" in get_automaton_and_state_for_session's own docstring)
-        uses that one instead, pinned to that session's own
-        project_revision — this one is for every other caller, which
-        never has a session of its own to pin to and must never see draft
-        content it didn't explicitly ask for (see EditProjectView.vue's
-        own dedicated draft entry points, the one place that's still
-        allowed to). Raises FileNotFoundError (same exception
-        _load_project itself raises for an unknown project name) when
-        there's no active project at all — see get_active_project_name's
-        own docstring for when that happens."""
+        """The active project's published automaton and state — never the
+        in-progress draft. A caller with a concrete session_id uses
+        get_automaton_and_state_for_session instead."""
         project_name = self.get_active_project_name()
         if project_name is None:
             raise FileNotFoundError("No project is currently active.")
         return self.get_automaton_and_state(project_name)
 
     def get_automaton_and_state_for_session(self, session_id: int) -> tuple[Automaton, State]:
-        """The Automaton `session_id`'s own turns must run against, paired
-        with its current State (see _resolve_state) — every chat-turn-
-        shaped operation that already has a concrete session_id to work
-        from (chat_service.py's own truncate_session/open_if_needed/
-        apply_manual_action/process_turn, this module's own apply_manual_
-        action, tracking_service.py's own process) uses this instead of
-        get_active_automaton_and_state.
-
-        A native session is pinned to the Automaton it was actually
-        stamped against at creation time (see ChatSession.project_revision's
-        own docstring — whatever was published the moment this session
-        started), so an in-progress draft edit elsewhere never
-        retroactively changes what an already-running session's own turns
-        see, and a session pinned to an old, already-superseded revision
-        keeps behaving exactly as it did when it was created.
-
-        A 'test' session (see db.create_draft_chat_session) is the one
-        exception: EditProjectView.vue's own embedded "Test" chat exists
-        precisely to test whatever's being edited *right now*, not
-        whatever the draft happened to look like when the session was
-        first bootstrapped — every turn re-resolves against the live
-        draft (same _load_project call as get_active_draft_automaton_and_
-        state), same as create_draft_session/get_or_create_current_draft_
-        session already do for a brand new session."""
+        """The Automaton `session_id`'s turns must run against. A native
+        session is pinned to the revision published when it was created;
+        a 'test' session always re-resolves against the live draft."""
         session = self._db.get_chat_session(session_id)
         if session is None:
             raise FileNotFoundError(f"Session {session_id} does not exist.")
@@ -762,26 +522,9 @@ class ProjectService(object):
     def get_automaton_and_state_for_observer(
         self, project_name: str, username: str
     ) -> tuple[Automaton, State] | None:
-        """`project_name`'s own published Automaton, paired with its
-        current State, as seen by `username` right now — for
-        tracking.automaton_namespace's own automaton.<project>.state/
-        env.<key> resolution (a self-loop-only trigger in some *other*
-        project, referencing this one). None (never raised) when
-        `username` has no session in `project_name` at all — that's a
-        legitimate, routine outcome here (see automaton_namespace's own
-        'no_session' SystemWarning), not an error condition the way it
-        would be for get_automaton_and_state_for_session (which always
-        already has a concrete, real session_id to work from). Still
-        raises FileNotFoundError, same as _load_project_at_revision
-        itself, when `project_name` doesn't exist at all — the caller's
-        own 'project_not_found' case. Checked explicitly, before the
-        session lookup below (rather than just letting
-        _load_project_at_revision raise it naturally once reached): a
-        project that doesn't exist at all also has no ChatSession rows
-        for anyone, so the session check alone would otherwise report
-        'no_session' for it too, indistinguishable from a real,
-        never-talked-to *existing* project — exactly the two distinct
-        SystemWarning kinds this method exists to tell apart."""
+        """`project_name`'s published Automaton and State, as seen by
+        `username`. Returns None, never raises, when `username` has no
+        session — unlike a nonexistent `project_name`, which raises FileNotFoundError."""
         if not self._db.project_exists(project_name):
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
         session = self._db.get_latest_chat_session(username, project_name)
@@ -792,15 +535,8 @@ class ProjectService(object):
 
     def get_active_draft_automaton_and_state(self) -> tuple[Automaton, State]:
         """Like get_active_automaton_and_state, but the in-progress draft
-        (whatever _load_project resolves to right now) rather than
-        published-only — EditProjectView.vue's own dedicated draft session
-        entry points (ChatService.create_draft_session/get_or_create_
-        current_draft_session) are the only callers: a "Test" session must
-        stay creatable against a project that's never been published at
-        all yet (see db.create_draft_chat_session), which get_active_
-        automaton_and_state's own published-only requirement would
-        otherwise block outright before a session (and this call) ever
-        even happens."""
+        rather than published-only — needed so a "Test" session stays
+        creatable against a project that's never been published yet."""
         project_name = self.get_active_project_name()
         if project_name is None:
             raise FileNotFoundError("No project is currently active.")
@@ -814,9 +550,8 @@ class ProjectService(object):
         automaton, state = self.get_automaton_and_state_for_session(session_id)
         action = automaton.move(state.key, action_name)
         new_state = automaton.get_state(action.target)
-        # Always saved, self-loop or not — a real history entry either
-        # way. A self-loop just never counts toward history_cutoff's
-        # cutoff (see db.get_last_transition_timestamp).
+        # Always saved, self-loop or not: a self-loop just never counts
+        # toward history_cutoff.
         self._db.save_transition(
             state.key,
             action_name,
@@ -824,15 +559,10 @@ class ProjectService(object):
             session_id,
             transition_log_level=new_state.transition_log_level,
         )
-        # Events (Prompt 6) — the other of TrackingEngine.
-        # notify_transition's own two call sites (see that method's own
-        # docstring): this path never goes through TrackingEngine.
-        # apply_transition itself (it writes save_transition directly,
-        # above), so it has to publish explicitly. The session's own
-        # stored username (not Session().user) is the correct "whose
-        # transition this is" — see get_chat_session's own row shape.
+        # This path writes save_transition directly rather than going through
+        # TrackingEngine.apply_transition, so it must publish explicitly.
         session = self._db.get_chat_session(session_id)
-        assert session is not None  # get_automaton_and_state_for_session above already resolved this same session_id
+        assert session is not None  # already resolved by get_automaton_and_state_for_session above
         TrackingEngine.notify_transition(session["username"], session["project_name"], state.key, new_state.key)
         return automaton.get_state_payload(new_state), action, state.key
 
@@ -841,25 +571,14 @@ class ProjectService(object):
         return automaton.get_state_payload(state)
 
     def reset_active_project(self) -> None:
-        # User-scoped (see db.reset_project_for_user): only the current
-        # user's own sessions/messages/signals for this project are wiped
-        # — not every user's, unlike delete_project's full reset_project.
+        # User-scoped: wipes only the current user's own sessions/messages/
+        # signals, not every user's, unlike delete_project's reset_project.
         self._db.reset_project_for_user(Session().user, self.get_active_project_name())
 
     def _resolve_inspector_revision(self, project_name: str, session_id: int | None) -> int:
-        """The revision an Inspect-panel read (get_project_graph/
-        get_project_signals/get_project_env_keys/get_project_file_content)
-        should read `project_name` at. `session_id` omitted resolves
-        against the current draft — every "Edit project" caller's own
-        case, same as _load_project already does. Given, resolves the
-        exact same revision get_automaton_and_state_for_session would
-        build that session's own automaton against: whatever was stamped
-        on it at creation for a real session, or (a 'test' session, which
-        always tracks the live draft — see that method's own docstring on
-        why) the current draft too, never just session['project_revision']
-        uniformly. LabelProjectView.vue's own case — reviewing an older
-        session must never show today's structure once it's since
-        diverged (a renamed/deleted/added state or signal)."""
+        """The revision an Inspect-panel read should read `project_name`
+        at. Mirrors get_automaton_and_state_for_session's own resolution,
+        so reviewing an older session never shows today's structure."""
         if session_id is None:
             return self._db.get_project_revision(project_name)
         session = self._db.get_chat_session(session_id)
@@ -872,30 +591,9 @@ class ProjectService(object):
     def get_project_signals(
         self, project_name: str, state_key: str | None = None, session_id: int | None = None
     ) -> list[dict]:
-        """Signal definitions (name/ui_label/ui_description/attachments) of
-        `project_name`'s index.yml, for the "Edit project"/"Label sessions"
-        views' own Inspect panel — see _resolve_inspector_revision for
-        which revision that actually means. Reads through _load_project_at_
-        revision's own cache, which every mutating path (put_project/
-        put_project_file/delete_project_file, via _finalize_project_update)
-        keeps fresh as of its own last successful save for the current
-        draft specifically — an older, already-superseded revision's own
-        cache entry is immutable once built (that revision's own archives
-        can never change again), so never needs invalidating at all.
-        `relevant` is the authoritative, server-computed answer to "is this
-        signal referenced by some action's own trigger (or env: field)" —
-        the Inspector Signals tab's own "show only relevant signals" filter
-        reads this directly rather than re-deriving it client-side. Scoped
-        to `state_key`'s own outgoing actions (see Automaton.
-        triggerable_signal_names) when given — the Inspector's own
-        currently selected/highlighted state, or (an action selected
-        instead) the state it fires *from* — since that's the only scope
-        actually meaningful for "would this matter for deciding what
-        happens next here." Falls back to every state's triggers combined
-        (see Automaton.all_triggerable_signal_names) when `state_key` is
-        omitted or no longer a real state (e.g. a stale selection from
-        before a rename) — there's always something sensible to report,
-        never a hard error over this."""
+        """Signal definitions of `project_name`'s index.yml, for the
+        Inspect panel. `relevant` scopes to `state_key`'s outgoing
+        actions when given, or every state's triggers combined otherwise."""
         automaton = self._load_project_at_revision(
             project_name, self._resolve_inspector_revision(project_name, session_id)
         )
@@ -907,36 +605,25 @@ class ProjectService(object):
             {
                 "signal": Automaton.get_signal_payload(signal),
                 "relevant": signal.name in relevant_names,
-                # Not part of SignalPayload itself (see its own
-                # get_signal_payload docstring on why attachments stays
-                # empty there) — filenames only, same as a state/action's
-                # own attachments (see get_project_graph's node/edge
-                # wrappers below), never full content.
+                # Not part of SignalPayload itself — filenames only, never
+                # full content.
                 "attachments": [a.filename for a in signal.attachments.values()],
             }
             for signal in automaton.signals
         ]
 
     def get_project_env_keys(self, project_name: str, session_id: int | None = None) -> list[dict]:
-        """Env-key declarations (name/ui_description/value) of
-        `project_name`'s index.yml — the source for the "Edit project"
-        view's own Inspect panel Env tab, same revision/cache/staleness
-        contract as get_project_signals above."""
+        """Env-key declarations of `project_name`'s index.yml, for the
+        Inspect panel Env tab — same revision contract as get_project_signals."""
         automaton = self._load_project_at_revision(
             project_name, self._resolve_inspector_revision(project_name, session_id)
         )
         return [{"env_key": Automaton.get_env_key_payload(env_key)} for env_key in automaton.env_keys]
 
     def get_project_metadata(self, project_name: str) -> ProjectPayload:
-        """The optional top-level `project:` section (id/ui_label/
-        ui_description) of `project_name`'s last successfully saved
-        index.yml — the source for the "Edit project" view's own Inspect
-        panel Info tab, same cache/staleness contract as
-        get_project_signals/get_project_env_keys above. Read straight off
-        the already-built Automaton (see AutomatonBuilder._build_project_
-        metadata) rather than re-parsing the YAML text — this is exactly
-        the same project_id/project_ui_label/project_ui_description the
-        automaton.* namespace itself resolves against."""
+        """The optional top-level `project:` section of `project_name`'s
+        last saved index.yml, read off the already-built Automaton rather
+        than re-parsing the YAML text."""
         automaton = self._load_project(project_name)
         return {
             "id": automaton.project_id,
@@ -945,12 +632,9 @@ class ProjectService(object):
         }
 
     def get_identifier_registry(self, project_name: str) -> dict[str, dict[str, str]]:
-        """Every identifier `project_name`'s own trigger/`env:` expressions
-        can reference, one dict per namespace (see automaton.
-        identifier_registry.build_registry). Also folds in one
-        "automaton.<id>"/"automaton.<id>.env" entry per *other* project
-        that declares a project.id, since that namespace is cross-project
-        by nature and build_registry itself stays single-project."""
+        """Every identifier `project_name`'s trigger/`env:` expressions can
+        reference, plus an "automaton.<id>"/"automaton.<id>.env" entry per
+        *other* project with a project.id."""
         automaton, _ = self.get_automaton_and_state(project_name)
         registry = build_registry(automaton.signals, automaton.env_keys)
         registry["automaton"] = {}
@@ -972,36 +656,14 @@ class ProjectService(object):
 
     def get_project_states(self, project_name: str) -> list[str]:
         """Every real state key of `project_name`'s current draft
-        automaton, excluding the reserved "" pseudo-state (see
-        AutomatonBuilder.build) — same exclusion as get_project_graph's
-        own `real_states`, just the keys alone, for a caller (the "Stati"
-        branch's own node list — see TestsTree.vue) that has no use for
-        the rest of the graph payload."""
+        automaton, excluding the reserved "" pseudo-state."""
         automaton = self._load_project(project_name)
         return [state.key for state in automaton.states.values() if state.key != ""]
 
     def get_project_graph(self, project_name: str, session_id: int | None = None) -> dict:
         """The project's state machine as nodes (states) and edges
-        (actions) — the source for the "Edit project"/"Label sessions"
-        views' own Inspect panel graph (rendered client-side with
-        Cytoscape). Reads through the same _load_project_at_revision
-        cache as get_project_signals — see _resolve_inspector_revision for
-        which revision that actually means; a LabelProjectView.vue review
-        session pins this to the exact revision it ran against, so an
-        older session never shows a state/action that's since been
-        renamed or deleted (or is missing one added since). The reserved
-        implicit state ("", see AutomatonBuilder.build) is never a real
-        state and is excluded from `nodes` — each real node's own
-        `is_start` flag (state.key == automaton.init_action.target) is
-        what marks the actual starting state instead. `edges`, unlike
-        `nodes`, is built over *every* state including "" — its own single
-        action is exactly init_action (see AutomatonBuilder._build_init_action/
-        build), so this naturally includes one `source: ""` edge, the
-        automaton's own "arrow from nowhere" into its start state. The
-        frontend (InspectorGraphTab.vue) renders that edge's source as a
-        transparent pseudo-node, same convention "" already has everywhere
-        else (Tracking.old_state, benchmarkTimeline.js's own synthetic
-        session-start entry) for "there was no real prior state"."""
+        (actions). The reserved "" state is excluded from `nodes` but
+        `edges` still includes its init_action as a `source: ""` edge."""
         revision = self._resolve_inspector_revision(project_name, session_id)
         automaton = self._load_project_at_revision(project_name, revision)
         real_states = [state for state in automaton.states.values() if state.key != ""]
@@ -1012,12 +674,8 @@ class ProjectService(object):
                 "history_cutoff": state.history_cutoff,
                 "transition_log_level": state.transition_log_level,
                 "attachments": list(state.attachments.keys()),
-                # Not part of StatePayload itself (see its own
-                # get_state_payload docstring on why) — a state's own
-                # system-prompt text never reaches a live chat client,
-                # only this "Edit project" Inspect-panel-only node wrapper
-                # (same treatment as action_prompt on the edge wrapper
-                # below).
+                # Not part of StatePayload — a state's system-prompt text
+                # never reaches a live chat client, only this Inspect panel.
                 "contextual_prompt": state.contextual_prompt,
             }
             for state in real_states
@@ -1026,10 +684,8 @@ class ProjectService(object):
             {
                 "action": Automaton.get_action_payload(action),
                 "source": state.key,
-                # None of these three belong in ActionPayload itself (see
-                # its own get_action_payload docstring) — `trigger`
-                # especially never reaches a live chat client, only this
-                # "Edit project" Inspect-panel-only edge wrapper.
+                # None of these three belong in ActionPayload — `trigger`
+                # especially never reaches a live chat client.
                 "trigger": action.trigger,
                 "action_prompt": action.action_prompt,
                 "ui_description": action.ui_description,
@@ -1037,19 +693,10 @@ class ProjectService(object):
             for state in automaton.states.values()
             for action in state.actions
         ]
-        # BenchmarkProjectView.vue's own — an imported session (see
-        # ChatSession.source) has no real Tracking rows to resolve which
-        # message a mark/annotation point belongs to, so it falls back to
-        # whichever side a live turn would actually have evaluated on (see
-        # TrackingService._materialize_imported_session_row).
         return {
             "nodes": nodes, "edges": edges, "autotracking_on_ai_message": automaton.autotracking_on_ai_message,
-            # The exact revision this graph was actually built from (see
-            # _resolve_inspector_revision) — InspectorGraph.vue's own
-            # "Rev. X" badge reads this straight off the same response
-            # rather than a second, possibly out-of-sync fetch, so it's
-            # always right regardless of whether session_id pinned this to
-            # something other than the current draft.
+            # The exact revision this graph was actually built from — lets
+            # the "Rev. X" badge stay accurate without a second fetch.
             "revision": revision,
         }
 
@@ -1062,14 +709,9 @@ class ProjectService(object):
         return {"projects": projects, "active": active}
 
     def get_project_revision_info(self, project_name: str) -> dict:
-        """{revision, published_revision, is_paused, paused_reason} — the
-        "Edit project" toolbar's own revision display, refreshed after
-        every save (a save can fork, bumping `revision`) and after every
-        publish. is_paused/paused_reason (Prompt 7) ride along on this
-        same, already-refreshed-on-every-relevant-event payload rather
-        than a second endpoint of their own — EditProjectView.vue's own
-        "this project is paused" warning banner reads them straight off
-        it."""
+        """{revision, published_revision, is_paused, paused_reason} for the
+        "Edit project" toolbar's revision display, refreshed after every
+        save and publish."""
         if project_name not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
         is_paused, paused_reason = self._db.get_project_availability(project_name) or (False, None)
@@ -1081,18 +723,9 @@ class ProjectService(object):
         }
 
     def preview_publish(self, project_name: str) -> dict:
-        """Whether publishing `project_name` right now needs a human state
-        remap decision first — the one case where the app itself never
-        picks: the current persisted state (mono-user today, see
-        Db.get_current_state) has gone missing from the draft that's about
-        to become the published revision. No session ever having happened
-        (current_state_key is None) is not this case — nothing to remap.
-        Also reports `has_active_sessions` — whether any live conversation
-        is still actually running on the revision about to be superseded
-        (see Db.has_open_sessions_for_revision) — EditProjectView.vue's own
-        handlePublish only asks the user to confirm when this is true;
-        publishing over a revision nobody's mid-conversation on needs no
-        extra prompt."""
+        """Whether publishing `project_name` needs a human state remap
+        decision: the current persisted state has gone missing from the
+        draft about to be published. Also reports `has_active_sessions`."""
         if project_name not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
         draft = self._load_project(project_name)
@@ -1112,14 +745,9 @@ class ProjectService(object):
         }
 
     def publish_project(self, project_name: str, remap_to: str | None = None) -> dict:
-        """Sets published_revision = revision for `project_name` — freezing
-        the current draft forever (see Db.save_project_files' own fork-on-
-        first-edit-after-publish). If the currently persisted state has
-        gone missing from that draft (see preview_publish), `remap_to`
-        must name a real state in it; the resulting StateRemap entry is
-        what get_active_automaton_and_state consults from then on, instead
-        of ever guessing (no fallback to init_action.target, no heuristic
-        match — the choice is always the caller's, made explicit here)."""
+        """Sets published_revision = revision, freezing the current draft.
+        If the persisted state has gone missing from it, `remap_to` must
+        name a real state; the StateRemap written is consulted from then on."""
         if project_name not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
         draft = self._load_project(project_name)
@@ -1137,12 +765,7 @@ class ProjectService(object):
 
     async def revert_to_published(self, project_name: str, commit: CommitCallback) -> dict:
         """Discards the entire in-progress draft revision, reverting to
-        whatever was last published (see Db.revert_to_published) — the
-        "Rev. X" split button's own "Revert to rev. X-1" option (see
-        EditProjectView.vue), only ever offered there when both a draft-
-        ahead-of-published revision and a prior publication exist (a
-        stale/duplicate click past that point is a safe no-op, same as
-        publish_project)."""
+        whatever was last published."""
         if project_name not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
         self._db.revert_to_published(project_name)
@@ -1172,10 +795,8 @@ class ProjectService(object):
         self, project_name: str, content: bytes, content_type: str | None, commit: CommitCallback
     ) -> dict:
         """Creates or replaces `project_name` from a raw body — a zip
-        archive, or (see _looks_like_zip) a single bare YAML file, treated
-        as index.yml's own content with no attachments (same one-file
-        convention PUT .../files/index.yml already uses for an edit, just
-        for the initial upload)."""
+        archive, or a single bare YAML file treated as index.yml's own
+        content with no attachments."""
 
         if not self._is_safe_project_name(project_name):
             raise ValueError(f"Invalid project name: '{project_name}'.")
@@ -1191,12 +812,9 @@ class ProjectService(object):
                     }
             else:
                 files = {"index.yml": content.decode("utf-8")}
-            # SESSIONS_EXPORT_FILENAME (see its own docstring) is never a
-            # project file — pulled out before AutomatonBuilder ever sees
-            # `files`, parsed eagerly (a malformed one fails the whole
-            # upload here, same as a malformed index.yml would, rather
-            # than partially succeeding), imported for real only once the
-            # project itself is fully committed below.
+            # Pulled out before AutomatonBuilder sees `files`; a malformed
+            # sessions.json fails the whole upload rather than partially
+            # succeeding. Actually imported only once the project commits below.
             raw_sessions = files.pop(SESSIONS_EXPORT_FILENAME, None)
             sessions_to_import = self._parse_sessions_export(raw_sessions)
             new_automaton, to_persist = self._prepare_project_update(project_name, files)
@@ -1209,9 +827,8 @@ class ProjectService(object):
         self._db.set_active_project_name(project_name, Session().user)
         self._db.ensure_project(project_name)
         if to_persist is not None:
-            # This upload path is text-only (zip entries are always read via
-            # read_text() above, never as bytes) — content_type is inferred
-            # from each entry's own extension, same as put_project_file.
+            # This upload path is text-only; content_type is inferred from
+            # each entry's own extension, same as put_project_file.
             to_persist_bytes = {
                 name: value.encode("utf-8") if isinstance(value, str) else value
                 for name, value in to_persist.items()
@@ -1228,11 +845,8 @@ class ProjectService(object):
 
     @staticmethod
     def _parse_sessions_export(raw_sessions: str | None) -> list[dict]:
-        """None (SESSIONS_EXPORT_FILENAME wasn't in the upload at all) ->
-        []. Otherwise must be a JSON array of session objects (session_
-        export.py's own shape) — anything else raises ValueError, caught
-        by put_project's own broad except right alongside every other
-        upload-validation failure."""
+        """None -> []. Otherwise must be a JSON array of session objects;
+        anything else raises ValueError."""
         if raw_sessions is None:
             return []
         try:
@@ -1244,23 +858,9 @@ class ProjectService(object):
         return parsed
 
     def _import_sessions_export(self, project_name: str, sessions: list[dict]) -> None:
-        """Best-effort, one session at a time: a single malformed entry
-        (see SessionImportManager.import_session_json's own docstring on
-        what that looks like) is skipped, logged, and never blocks the
-        rest — the project itself is already fully committed by the time
-        this runs, so there's nothing left to roll back to, and rejecting
-        every *other*, perfectly good session over one bad one would only
-        make this feature less trustworthy to rely on.
-
-        A no-op for an empty list (no sessions.json in the upload at all
-        — the overwhelmingly common case) — but when there *is* at least
-        one session to import, this publishes `project_name` first: every
-        ChatSession, imported or not, is always stamped against a real
-        published revision (see db.create_chat_session), so without this
-        a brand-new upload's own sessions.json would fail outright until
-        someone separately hit Publish. Requiring that extra manual step
-        just to make sessions.json "just work" on upload would defeat
-        the point of it being automatic at all."""
+        """Best-effort, one session at a time: a malformed entry is
+        skipped and logged rather than blocking the rest. Publishes
+        `project_name` first, since every ChatSession needs a published revision."""
         if not sessions:
             return
         self._db.publish_project(project_name)
@@ -1275,10 +875,8 @@ class ProjectService(object):
                 )
 
     def _unique_project_name(self, base: str) -> str:
-        """`base` itself if free, else the first "`base` N" (N starting at
-        2) not already in use — same convention a human would fall back
-        to by hand rather than overwrite an existing project of the same
-        name."""
+        """`base` itself if free, else the first "`base` N" (N starting
+        at 2) not already in use."""
         existing = set(self._db.list_projects())
         if base not in existing:
             return base
@@ -1288,25 +886,17 @@ class ProjectService(object):
         return f"{base} {suffix}"
 
     async def create_new_project(self, commit: CommitCallback) -> dict:
-        """"New project": creates one from NEW_PROJECT_TEMPLATE exactly as
-        if the user had picked that same zip in the upload file dialog —
-        goes through put_project itself, so validation/staging/commit are
-        identical either way. `project_name` is derived from the
-        template's own name and de-duplicated (see _unique_project_name)
-        since nothing here ever asks the user to type one."""
+        """Creates a project from NEW_PROJECT_TEMPLATE, going through
+        put_project so validation/staging/commit stay identical to a
+        real upload."""
         content = NEW_PROJECT_TEMPLATE.read_bytes()
         project_name = self._unique_project_name(NEW_PROJECT_NAME)
         return await self.put_project(project_name, content, "application/zip", commit)
 
     def export_project_zip(self, project_name: str) -> bytes:
-        """`project_name`'s own files, round-trippable back through
-        put_project unchanged — plus, when there's at least one, a
-        SESSIONS_EXPORT_FILENAME holding every *imported* session (see
-        that constant's own docstring on why imported-only: a native
-        session only ever means something against the exact database it
-        was actually played against). Never added when there are none —
-        keeps a zip with nothing to carry along exactly as it always
-        looked before this existed."""
+        """`project_name`'s files, round-trippable back through
+        put_project, plus a SESSIONS_EXPORT_FILENAME holding every
+        *imported* session, omitted when there are none."""
         archives = self._db.get_archives(project_name)
         if archives is None:
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
@@ -1325,12 +915,8 @@ class ProjectService(object):
 
     @staticmethod
     def _check_editable_file_name(file_name: str) -> None:
-        """Everything the file explorer/editor endpoints (put_project_file/
-        undo_project_file/redo_project_file — the only three callers) will
-        write: a flat, non-hidden file name (no path traversal) with one of
-        EDITABLE_EXTENSIONS — index.yml, its text attachments, or an image
-        attachment. Anything else in a project's directory stays out of
-        scope."""
+        """A flat, non-hidden file name (no path traversal) with one of
+        EDITABLE_EXTENSIONS. Anything else stays out of scope."""
         if not file_name or file_name in (".", "..") or Path(file_name).name != file_name:
             raise ValueError(f"Invalid file name: '{file_name}'.")
         if file_name.startswith("."):
@@ -1343,10 +929,8 @@ class ProjectService(object):
             )
 
     def list_project_files(self, project_name: str) -> list[str]:
-        """Every text-editable file directly inside `project_name`'s
-        directory (index.yml plus any text attachments) — the source list
-        for the "Edit project" view's file explorer panel. index.yml sorts
-        first, then the rest alphabetically."""
+        """Every text-editable file in `project_name`, for the file
+        explorer panel. index.yml sorts first, then the rest alphabetically."""
 
         names = self._db.list_archives(project_name)
         names.sort(key=lambda name: (name != "index.yml", name))
@@ -1355,43 +939,21 @@ class ProjectService(object):
 
     def get_project_file(self, project_name: str, file_name: str) -> dict:
         """{content, can_undo, can_redo} for `file_name`'s current
-        content — can_undo/can_redo are what the "Edit project" view's
-        Undo/Redo buttons use to know whether they're enabled, scoped to
-        the current user (see db.Db.has_undo/has_redo)."""
+        content, scoped to the current user."""
         return self._file_undo_redo_info(project_name, file_name)
 
     def get_project_file_content(
         self, project_name: str, file_name: str, session_id: int | None
     ) -> tuple[bytes, str]:
-        """Raw (content, content_type) for `file_name` — the ChatWindow.vue
-        skin-loading fetch (index.css, injected as a stylesheet) and the
-        EditProjectView.vue file explorer's own image preview both read
-        through this, never the JSON get_project_file above (bytes aren't
-        JSON-serializable, and neither caller wants the JSON envelope).
-
-        `session_id` absent: the current draft (same default GET
-        .../files/{file_name} already uses) — the editor's own case.
-
-        `session_id` given: resolves the *exact same* revision
-        _resolve_inspector_revision (shared with get_project_graph/
-        get_project_signals/get_project_env_keys) would — deliberately
-        mirrored, not just "use session['project_revision']" uniformly: a
-        'test' session there always re-resolves against whatever the
-        draft currently is (see get_automaton_and_state_for_session's own
-        docstring on why — it's meant to reflect in-progress edits, not a
-        frozen snapshot from whenever the session was created), while
-        every other session is pinned to the exact revision stamped on it
-        at creation time. Getting this wrong would only misbehave in a
-        rare edge case (a publish + new edit elsewhere while a Test
-        session is still open), but it's the one place this route could
-        silently serve a stale skin, so it's worth doing right rather
-        than literally."""
+        """Raw (content, content_type) for `file_name` — bytes aren't
+        JSON-serializable, so this exists separately from get_project_file.
+        `session_id` resolves via _resolve_inspector_revision."""
         revision = self._resolve_inspector_revision(project_name, session_id)
         content = self._db.get_archive(project_name, file_name, revision=revision)
         if content is None:
             raise FileNotFoundError(f"File '{file_name}' does not exist in project '{project_name}'.")
         content_type = self._db.get_archive_content_type(project_name, file_name, revision=revision)
-        assert content_type is not None  # same Archive row get_archive above already found content for
+        assert content_type is not None  # same Archive row get_archive already found content for
         return content, content_type
 
     async def put_project_file(
@@ -1399,23 +961,8 @@ class ProjectService(object):
         commit: CommitCallback,
     ) -> dict:
         """Creates or edits one of `project_name`'s files in place. A text
-        extension (TEXT_EDITABLE_EXTENSIONS) is always decoded as UTF-8 and
-        its content_type inferred from the extension alone, regardless of
-        `content_type_header` (api.js's own putProjectFile always sends the
-        generic 'text/plain; charset=utf-8' for every text file — the
-        extension is the only thing that actually distinguishes them). An
-        image extension (IMAGE_EXTENSIONS) instead requires
-        `content_type_header` to be one of IMAGE_CONTENT_TYPES *and* match
-        the extension, stays raw bytes end to end, and is capped at
-        MAX_IMAGE_UPLOAD_BYTES — no other size limit exists anywhere in this
-        stack (see nginx.conf). `index.css` specifically also runs CSS
-        url(...) reference validation before anything is persisted (see
-        missing_css_references) — every other extension skips that step.
-        `content` accepts `str` directly (not just `bytes`) for a text
-        extension specifically — _edit_index_yml's own callers already
-        have AutomatonYamlEditor.serialize()'s own `str` in hand and would
-        otherwise have to encode it just to be decoded right back a few
-        lines down (see the isinstance check immediately below)."""
+        extension is decoded as UTF-8, content_type inferred from the
+        extension. An image extension requires a matching `content_type_header`."""
         if project_name not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
 
@@ -1435,10 +982,8 @@ class ProjectService(object):
             update_value: str | bytes = text_content
             to_save: bytes = text_content.encode("utf-8")
         else:
-            # Only a text extension (see the `str` branch above) ever
-            # legitimately hands this a `str` — an image upload is always
-            # real bytes off the request body, never AutomatonYamlEditor.
-            # serialize()'s own text.
+            # Only a text extension ever hands this a `str`; an image
+            # upload is always real bytes off the request body.
             assert isinstance(content, bytes)
             expected_content_type = IMAGE_CONTENT_TYPE_BY_EXTENSION[extension]
             if content_type_header != expected_content_type:
@@ -1465,14 +1010,8 @@ class ProjectService(object):
 
     async def _edit_index_yml(self, project_name: str, commit: CommitCallback, operation):
         """Runs `operation(editor: AutomatonYamlEditor) -> T` against
-        `project_name`'s own current index.yml text, persists whatever it
-        produced through the exact same validation/history/commit path as
-        any other file edit (see put_project_file — never a parallel
-        write path of its own), and returns `operation`'s own result
-        untouched: the newly added/edited/reordered object's own payload,
-        never the whole YAML text (see AutomatonYamlEditor's own module
-        docstring — every one of its methods already returns exactly
-        that shape, or None for a delete)."""
+        `project_name`'s index.yml text, persists it via put_project_file,
+        and returns `operation`'s own result untouched."""
         current = self._file_undo_redo_info(project_name, "index.yml")["content"]
         editor = AutomatonYamlEditor(current)
         result = operation(editor)
@@ -1549,14 +1088,9 @@ class ProjectService(object):
         )
 
     async def undo_project_file(self, project_name: str, file_name: str, content: bytes) -> dict:
-        """A pure editor preview, not a persisted change (see db.Db.
-        undo_project_file) — unlike put_project_file, this never touches
-        Archive, never rebuilds/caches the automaton, and never
-        reconciles the active conversation: only an explicit Save does
-        any of that (see put_project_file). `content` is whatever the
-        editor is currently showing (its own live, possibly-unsaved
-        state) — needed so a later redo can bring it back. Raises
-        ValueError if there's nothing to undo."""
+        """A pure editor preview, not a persisted change — never touches
+        Archive or the automaton cache. `content` is the editor's current
+        unsaved state, kept so a later redo can restore it."""
         if project_name not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
         self._check_editable_file_name(file_name)
@@ -1599,11 +1133,8 @@ class ProjectService(object):
         }
 
     def clear_project_history(self, project_name: str) -> None:
-        """Deletes the current user's own undo/redo history for every
-        file in `project_name` (see db.Db.clear_history) — called when
-        the "Edit project" view is opened, so a fresh editing session
-        never inherits a previous one's undo/redo trail (see
-        EditProjectView.vue's own onMounted)."""
+        """Deletes the current user's undo/redo history for every file
+        in `project_name`, so a fresh editing session starts clean."""
         if project_name not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
         self._db.clear_history(Session().user, project_name)
@@ -1631,11 +1162,8 @@ class ProjectService(object):
         self._invalidate_automaton_cache(project_name)
 
         if project_name == self.get_active_project_name():
-            # No project name is reserved/preferred for continuity anymore
-            # — whatever's left (in whatever order list_projects returns),
-            # or nothing at all (leaving the app on its own "select a
-            # project" empty state, see App.vue) when the deleted project
-            # was the last one.
+            # Falls back to whatever's left, or nothing at all (the
+            # "select a project" empty state) if that was the last one.
             remaining = self._db.list_projects()
             fallback = next(iter(remaining), None)
             if fallback is not None:

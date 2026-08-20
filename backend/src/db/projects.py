@@ -13,12 +13,7 @@ class ProjectMixin:
 
     def get_project_availability(self, project_name: str) -> tuple[bool, str | None] | None:
         """(is_paused, paused_reason) — None if `project_name` doesn't
-        exist at all (see ProjectService.recompute_availability, which
-        treats that as nothing left to update). A cheap single-row read,
-        never a full automaton build — see Project.is_paused's own
-        docstring on why a dependent project's own availability is
-        always just this, not a re-check of that dependency's own
-        content."""
+        exist at all. A cheap single-row read, never a full automaton build."""
         project = Project.get_or_none(Project.name == project_name)
         return (project.is_paused, project.paused_reason) if project is not None else None
 
@@ -37,23 +32,14 @@ class ProjectMixin:
     def get_project_id(self, project_name: str) -> str | None:
         """The other direction of get_project_name_by_project_id below —
         None both for a project that never declared one and for a
-        project that doesn't exist at all (see ProjectService.
-        get_identifier_registry: a project with no declared project_id is
-        never offered as an automaton.* completion target)."""
+        project that doesn't exist at all."""
         project = Project.get_or_none(Project.name == project_name)
         return project.project_id if project is not None else None
 
     def get_project_name_by_project_id(self, project_id: str) -> str | None:
         """The one translation boundary between project_id (what an
-        automaton.* reference names — see automaton.trigger_automaton_
-        project_refs) and project_name (what every other table/lookup in
-        this schema actually keys on) — see ProjectService's own
-        _resolve_automaton_project_refs (build-time, populating the
-        reverse index) and tracking.automaton_namespace's own
-        AutomatonNamespace (runtime resolution), its only two callers.
-        None both when no project declares this id at all, and when
-        `project_id` itself is falsy — a dangling/absent reference is
-        never an error here, only ever a "nothing to resolve to"."""
+        automaton.* reference names) and project_name (what every other
+        table keys on). None when unresolved — never an error."""
         if not project_id:
             return None
         project = Project.get_or_none(Project.project_id == project_id)
@@ -95,14 +81,9 @@ class ProjectMixin:
         return project.published_revision if project is not None else None
 
     def _ensure_draft_revision(self, project_name: str) -> int:
-        """The revision an Archive write/delete must target — forking
-        first, inside one transaction, if the current draft is exactly
-        the published one (the first edit after a publish): every row of
-        `Project.revision` is copied to `Project.revision + 1`, which then
-        becomes the new draft. A published revision's own rows are never
-        touched again after this point — see Meta.indexes on Archive
-        itself (project_name, archive_name, revision) being the unique
-        key now, not just (project_name, archive_name)."""
+        """The revision an Archive write/delete must target — forks
+        first, in one transaction, if the current draft is exactly the
+        published one: every Archive row is copied to revision + 1."""
         with database.atomic():
             project = Project.get(Project.name == project_name)
             if project.revision != project.published_revision:
@@ -116,11 +97,9 @@ class ProjectMixin:
                     revision=new_revision, content=archive.content, content_type=archive.content_type,
                 )
             Project.update(revision=new_revision).where(Project.name == project_name).execute()
-            # Every user's own Undo/Redo stack for this project just went
-            # stale — it referenced content belonging to the revision that
-            # was just frozen, not the new draft (see the resolved design
-            # question: clear on fork, rather than tag each entry with the
-            # revision it belongs to).
+            # Every user's Undo/Redo stack just went stale — it
+            # referenced content belonging to the revision just frozen,
+            # not the new draft.
             History.delete().where(History.project_name == project_name).execute()
             return new_revision
 
@@ -171,14 +150,8 @@ class ProjectMixin:
 
     def list_projects_with_availability(self) -> list[dict]:
         """{name, is_paused, ui_label} per project — ProjectsMenu.vue's
-        own status icon and display label (see ProjectService.
-        list_projects, the one caller — ui_label is None whenever the
-        project's own `project:` section never declared one, and the
-        frontend falls back to the raw name in that case, same
-        convention as every other declared-ui-label field in this app).
-        Plain list_projects above stays name-only: every *other* caller
-        just needs an existence/membership check, never these extra
-        columns."""
+        status icon and display label. Plain list_projects above stays
+        name-only: every other caller just needs an existence check."""
         return [
             {"name": p.name, "is_paused": p.is_paused, "ui_label": p.ui_label}
             for p in Project.select(Project.name, Project.is_paused, Project.ui_label)
@@ -187,10 +160,7 @@ class ProjectMixin:
     def list_projects_runtime_status(self) -> list[dict]:
         """One row per project — revision, published_revision, is_paused,
         paused_reason, manually_paused — for the Settings > Runtime
-        status view (see ProjectService.get_runtime_status, the one
-        caller). Every column this needs already lives on Project itself,
-        so this is a plain single-table select, no automaton build
-        involved."""
+        status view. A plain single-table select, no automaton build involved."""
         return [
             {
                 "name": p.name,
@@ -223,58 +193,26 @@ class ProjectMixin:
         History.delete().where((History.project_name == project_name) & (History.archive_name == archive_name)).execute()
 
     def delete_archives(self, project_name: str) -> None:
-        """The only caller is ProjectService.delete_project — deletes the
-        project entirely, every revision at once (unlike delete_archive,
-        this never goes through _ensure_draft_revision: there's no draft
-        to protect, the whole project is going away). The Project row
-        itself goes with it (list_projects() now reads from Project, not
-        from Archive's own distinct project names, so leaving the row
-        behind would make a deleted project keep showing up as one with
-        zero files)."""
+        """Deletes the project entirely, every revision at once — unlike
+        delete_archive, skips _ensure_draft_revision since the whole
+        project is going away. The Project row goes with it too."""
         Archive.delete().where(Archive.project_name == project_name).execute()
         History.delete().where(History.project_name == project_name).execute()
         StateRemap.delete().where(StateRemap.project_name == project_name).execute()
         Project.delete().where(Project.name == project_name).execute()
 
     def delete_draft_test_sessions(self, project_name: str) -> None:
-        """Deletes every 'test' session (EditProjectView.vue's own
-        embedded Test chat, see ChatSessionManager.create_draft_session)
-        of `project_name` — called by publish_project/revert_to_published,
-        the two moments a Test session's own anchored revision stops
-        meaning anything (see ChatSessionManager.
-        get_or_create_current_draft_session's own "an existing active
-        session is reused as-is, whatever revision it carried"
-        docstring): reopening Test after either must never resume a
-        session still pointing at a draft that no longer exists in that
-        shape. A plain revision-number comparison can't replace this —
-        revert_to_published resets Project.revision back to
-        published_revision's own value, so the number can coincide again
-        with an old Test session's own project_revision by pure
-        coincidence, even though the content has since changed. Message/
-        Tracking rows cascade via their own on_delete='CASCADE' FK (see
-        models.py) — no separate delete needed for those. A no-op, not an
-        error, when there's nothing to delete."""
+        """Deletes every 'test' session of `project_name` — called by
+        publish_project/revert_to_published, the two moments a Test
+        session's anchored revision stops meaning anything."""
         ChatSession.delete().where(
             (ChatSession.project_name == project_name) & (ChatSession.source == 'test')
         ).execute()
 
     def publish_project(self, project_name: str) -> None:
-        """Sets published_revision = revision — a no-op (not an error) if
-        they already match, so a concurrent double-click is harmless. Note
-        the explicit is_null() branch: published_revision IS NULL right up
-        until a project's first publish, and SQL's NULL != revision is
-        NULL (neither true nor false) under three-valued logic, not a
-        match — a plain != would silently skip that very first publish.
-        History is cleared right alongside a real publish (guarded on
-        `changed` so a no-op double-click never disrupts anyone's
-        in-progress undo stack for nothing) — Archive rows for this
-        revision don't fork until the *next* edit (see _ensure_draft_
-        revision's own docstring), so undo/redo would otherwise still work
-        past a publish, letting it silently rewrite content that's now
-        live. delete_draft_test_sessions runs unconditionally (not gated
-        on `changed`) — see its own docstring on why a stale Test session
-        must never survive a publish, even a no-op one a caller mistakenly
-        double-fires."""
+        """Sets published_revision = revision — a no-op if they already
+        match. The explicit is_null() branch matters: SQL's NULL !=
+        revision is NULL, not true, so a plain != would skip the first publish."""
         with database.atomic():
             changed = Project.update(published_revision=Project.revision).where(
                 (Project.name == project_name)
@@ -282,21 +220,14 @@ class ProjectMixin:
             ).execute()
             if changed:
                 History.delete().where(History.project_name == project_name).execute()
+            # Runs unconditionally: a stale Test session must never
+            # survive even a no-op double-fired publish.
             self.delete_draft_test_sessions(project_name)
 
     def revert_to_published(self, project_name: str) -> None:
-        """Discards the entire in-progress draft at once — the current
-        draft revision's own Archive rows (created by _ensure_draft_
-        revision's own fork-on-first-edit copy, see its own docstring) are
-        simply deleted, leaving Project.revision pointed back at
-        published_revision's own row set, never touched since the fork
-        happened. A no-op (not an error) when there's nothing to revert —
-        no prior publication at all, or the draft already *is* the
-        published one — same "safe against a stale/duplicate click"
-        convention as publish_project. History (now describing edits to a
-        revision that no longer exists) is cleared right alongside it,
-        same as a fork's own History wipe — delete_draft_test_sessions
-        too, for the same reason (see its own docstring)."""
+        """Discards the entire in-progress draft — the draft revision's
+        Archive rows are deleted, leaving Project.revision pointed back
+        at published_revision. A no-op when there's nothing to revert."""
         with database.atomic():
             project = Project.get(Project.name == project_name)
             if project.published_revision is None or project.revision == project.published_revision:

@@ -32,9 +32,8 @@ async function apiFetch(url, options, { parse = 'json' } = {}) {
     throw err
   }
 
-  // A 204 (see e.g. deleteState/deleteAction/deleteSignal below) never
-  // has a body at all — res.json() on an empty one throws a parse error,
-  // regardless of which `parse` mode the caller asked for.
+  // A 204 has no body — res.json() on an empty response throws, regardless
+  // of the requested `parse` mode.
   if (res.status === 204) return null
   if (parse === 'blob') return res.blob()
   if (parse === 'text') return res.text()
@@ -54,12 +53,9 @@ export function postCreateSession() {
   return apiFetch(`${API_URL}/chat/sessions`, { method: 'POST' })
 }
 
-// EditProjectView.vue's own embedded "Test" chat — the one place a
-// session is allowed to exist against a revision nobody's published yet
-// (see backend ChatService.create_draft_session/get_or_create_current_
-// draft_session's own docstrings). Which revision a session may exist
-// against is decided solely by which endpoint is called now, never by a
-// caller-supplied flag on the two above.
+// EditProjectView's embedded "Test" chat — the one place a session can
+// exist against an unpublished revision. Which revision applies is
+// decided by which endpoint is called, never by a caller-supplied flag.
 export function getCurrentTestSession(sessionId, projectName) {
   const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/test-sessions/current${query}`)
@@ -74,10 +70,9 @@ export function getSessions(projectName, includeImported = false) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/sessions${query}`)
 }
 
-// EditProjectView.vue's own embedded "Test" chat's own Sessions panel —
-// the draft-session equivalent of getSessions, a fully separate list
-// (see backend ChatService.list_test_sessions's own docstring): a "Test"
-// session never appears in getSessions, and a real one never appears here.
+// EditProjectView's embedded "Test" chat's own Sessions panel — a
+// separate list from getSessions: a "Test" session never appears there,
+// and a real one never appears here.
 export function getTestSessions(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/test-sessions`)
 }
@@ -97,8 +92,8 @@ export function getSessionSignals(sessionId) {
 }
 
 // Sets (expectedState given) or clears (null) messageId's expert-
-// annotated expected state — the "Label sessions" view's States tab.
-// 409 if messageId isn't an evaluation point, 422 for an unknown state.
+// annotated expected state. 409 if messageId isn't an evaluation point,
+// 422 for an unknown state.
 export function putMessageExpectedState(messageId, expectedState) {
   return apiFetch(`${API_URL}/chat/messages/${encodeURIComponent(messageId)}/expected-state`, {
     method: 'PUT',
@@ -107,10 +102,9 @@ export function putMessageExpectedState(messageId, expectedState) {
   })
 }
 
-// Sets or clears messageId's expert-annotated expected signal values —
-// the "Label sessions" view's Signals tab. `expectedValues` is the
-// whole replacement dict (a signal name missing from it is annotation-
-// cleared for that signal alone); null/{} clears every signal.
+// Sets or clears messageId's expert-annotated expected signal values.
+// `expectedValues` is the whole replacement dict (a signal name missing
+// from it is cleared for that signal alone); null/{} clears every signal.
 export function putMessageExpectedSignals(messageId, expectedValues) {
   return apiFetch(`${API_URL}/chat/messages/${encodeURIComponent(messageId)}/expected-signals`, {
     method: 'PUT',
@@ -119,10 +113,9 @@ export function putMessageExpectedSignals(messageId, expectedValues) {
   })
 }
 
-// Sets or clears messageId's expert-left free-text comment — the
-// "Label sessions" view's per-message comment bubble. Unlike
+// Sets or clears messageId's expert-left free-text comment. Unlike
 // putMessageExpectedState/putMessageExpectedSignals, every message is a
-// legitimate target (no 409 for "not an evaluation point").
+// valid target (no 409 for "not an evaluation point").
 export function putMessageComment(messageId, comment) {
   return apiFetch(`${API_URL}/chat/messages/${encodeURIComponent(messageId)}/comment`, {
     method: 'PUT',
@@ -131,12 +124,9 @@ export function putMessageComment(messageId, comment) {
   })
 }
 
-// Sets (or clears) a session's own persisted "reviewed by a domain
-// expert" flag — the "Label sessions" view's own "Mark done" button
-// (see backend ChatSession.labeled/ChatService.mark_session_labeled),
-// the source of truth for that session's own has_annotations marker
-// from here on, replacing the old any-annotation heuristic. A toggle:
-// the same call with `false` un-marks it again.
+// Sets/clears a session's persisted "reviewed by a domain expert" flag —
+// the source of truth for has_annotations. A toggle: calling with
+// `false` un-marks it again.
 export function putSessionLabeled(sessionId, labeled) {
   return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/labeled`, {
     method: 'PUT',
@@ -145,10 +135,9 @@ export function putSessionLabeled(sessionId, labeled) {
   })
 }
 
-// Renames a session — the "Label sessions" view's own Info tab. null (or
-// blank) clears it back to unset. Returns the same session payload
-// putSessionLabeled does, so the frontend can refresh its own Sessions
-// panel row from the response directly.
+// Renames a session; null (or blank) clears it back to unset. Returns
+// the same session payload putSessionLabeled does, so the Sessions panel
+// row can be refreshed directly from the response.
 export function putSessionTitle(sessionId, title) {
   return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/title`, {
     method: 'PUT',
@@ -168,9 +157,7 @@ export function putSessionComment(sessionId, comment) {
 }
 
 // Clears every expert annotation (expected_state and expected_values
-// alike) across sessionId's own Signals rows in one call — the
-// "Label sessions" view's "Unlabel all" action, after its own
-// confirmation dialog.
+// alike) across sessionId's Signals rows in one call.
 export function deleteSessionAnnotations(sessionId) {
   return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/annotations`, {
     method: 'DELETE'
@@ -287,24 +274,16 @@ export function getSignals() {
   return apiFetch(`${API_URL}/chat/signals`)
 }
 
-// `projectName`'s own identifier registry — {identifier: description} per
-// namespace (signal, env, system, session, "session.metric", metric) a
-// trigger/env: expression can reference. TriggerEditor.vue is the one
-// consumer, for its own autocomplete/syntax coloring.
+// `projectName`'s identifier registry — {identifier: description} per
+// namespace (signal, env, system, session, metric, ...) a trigger/env
+// expression can reference. Used by TriggerEditor's autocomplete.
 export function getIdentifiers(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/identifiers`)
 }
 
-// The active user+project's current "environment" memory (see backend's
-// chat.env.Env) — {stored, action_set, computed}: `stored` key:values the
-// model has reported via [env]...[/env] (or a person has edited directly,
-// see putEnvValue/deleteEnvValue below), `action_set` ones an action's own
-// YAML `env:` field set (see automaton_builder.py's _build_action — never
-// editable/deletable through this API, only ever a side effect of an
-// action firing), and every always-computed key — reported separately so
-// InspectorEnvTab.vue knows which section ("AI"/"SET"/"COMPUTED") each
-// value belongs in. `messageId`, when given, restricts to values as they
-// stood at or before that exact message (same convention as getMetrics).
+// The active project's "environment" memory: {stored, action_set,
+// computed}, reported separately so the Env tab knows which section each
+// value belongs in. `messageId` restricts to values as of that message.
 export function getEnv(messageId) {
   const query = messageId != null ? `?message_id=${encodeURIComponent(messageId)}` : ''
   return apiFetch(`${API_URL}/chat/env${query}`)
@@ -326,18 +305,16 @@ export function deleteEnvValue(key) {
   })
 }
 
-// Wipes every stored ("AI" section) env key at once — always live.
-// Returns the same {stored, action_set, computed} shape as getEnv.
+// Wipes every stored ("AI" section) env key at once. Returns the same
+// {stored, action_set, computed} shape as getEnv.
 export function clearEnv() {
   return apiFetch(`${API_URL}/chat/env`, {
     method: 'DELETE'
   })
 }
 
-// Wipes every action-set ("ACTION" section) env key at once — always
-// live. A distinct top-level path, not /chat/env/action — see
-// controller.py's own clear_action_env for why. Returns the same
-// {stored, action_set, computed} shape as getEnv.
+// Wipes every action-set ("ACTION" section) env key at once — a distinct
+// endpoint from clearEnv, not a query param on it.
 export function clearActionEnv() {
   return apiFetch(`${API_URL}/chat/action-env`, {
     method: 'DELETE'
@@ -372,9 +349,8 @@ export function postAiModelSelection(index) {
   })
 }
 
-// "Dev mode: freeze automatic state transitions" — EditProjectView.vue's
-// own embedded "Test" chat only, per test session (see backend's
-// TrackingService.is_auto_tracking_enabled) — never global.
+// "Dev mode: freeze automatic state transitions" — EditProjectView's
+// embedded "Test" chat only, per test session, never global.
 export function getAutoTracking(sessionId) {
   return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/autotracking`)
 }
@@ -403,13 +379,9 @@ export function postReset() {
   return apiFetch(`${API_URL}/chat/reset`, { method: 'POST' })
 }
 
-// "Restart from here" (EditProjectView.vue only): deletes every message
-// (and its own Signals rows) at or after `timestamp` in `sessionId`, and
-// rolls the live automaton state back to whatever it was immediately
-// before — see backend ChatService.truncate_session. `timestamp` must be
-// one of the UTC-explicit ISO strings the backend itself already handed
-// back (see db._utc_iso), never a client-constructed one. Returns the
-// fresh active state payload, same shape as postReset's.
+// "Restart from here": deletes every message (and its Signals rows) at
+// or after `timestamp` in `sessionId`, rolling state back to what it was
+// immediately before. `timestamp` must be a backend-issued ISO string.
 export function postTruncateSession(sessionId, timestamp) {
   return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/truncate`, {
     method: 'POST',
@@ -428,10 +400,9 @@ export function getProjectsRuntimeStatus() {
   return apiFetch(`${API_URL}/settings/projects/runtime-status`)
 }
 
-// Manual pause/resume (see ProjectService.set_manually_paused/
-// set_manually_running) — only ever valid from 'running'/'manually_paused'
-// respectively, enforced backend-side; a 400 here means the status shown
-// was already stale (someone/something else changed it first).
+// Manual pause/resume — only valid from 'running'/'manually_paused'
+// respectively, enforced backend-side; a 400 means the status shown was
+// already stale.
 export function putProjectPause(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/pause`, { method: 'PUT' })
 }
@@ -475,22 +446,16 @@ export function putProject(projectName, file) {
 }
 
 // `sessionId`, when given, pins the graph to the exact revision that
-// session's own automaton ran against instead of the current draft — see
-// backend ProjectService._resolve_inspector_revision. LabelProjectView.vue's
-// own "States" tab passes the session currently being reviewed; every
-// other caller (EditProjectView.vue) omits it and keeps reading the draft.
+// session ran against, instead of the current draft. The "States" tab
+// passes the session under review; EditProjectView omits it.
 export function getProjectGraph(projectName, sessionId) {
   const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/graph${query}`)
 }
 
-// `stateKey`, when given, scopes each signal's own `relevant` field (see
-// InspectorSignalsTab.vue's "show only relevant signals" filter) to that
-// state's own outgoing actions (see backend's Automaton.
-// triggerable_signal_names) — the Inspector's own currently selected/
-// highlighted state, or the state a selected action fires *from*.
-// Omitted, every state's triggers combine instead (Automaton.
-// all_triggerable_signal_names). `sessionId`: see getProjectGraph above.
+// `stateKey`, when given, scopes each signal's `relevant` field to that
+// state's outgoing actions; omitted, every state's triggers combine
+// instead. `sessionId`: see getProjectGraph above.
 export function getProjectSignals(projectName, stateKey, sessionId) {
   const params = new URLSearchParams()
   if (stateKey != null) params.set('state_key', stateKey)
@@ -500,16 +465,13 @@ export function getProjectSignals(projectName, stateKey, sessionId) {
 }
 
 // Declared env-key definitions (name/ui_description/value) of the
-// project's own top-level `env:` section — see InspectorEnvKeysTab.vue's
-// own Inspector tab, EditProjectView.vue's "Edit project" schema view.
+// project's top-level `env:` section.
 export function getProjectEnvKeys(projectName, sessionId) {
   const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/env-keys${query}`)
 }
 
-// The optional top-level `project:` section (id/ui_label/ui_description) —
-// see InspectorProjectCard.vue's own Info-tab usage, EditProjectView.vue's
-// "Edit project" schema view.
+// The optional top-level `project:` section (id/ui_label/ui_description).
 export function getProjectMetadata(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/project`)
 }
@@ -525,17 +487,15 @@ export function getProjectFiles(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/files`)
 }
 
-// Raw markdown content of one of backend/src/docs' fixed reference docs
-// (see controller.py's own DOC_FILES) — backs each "(?)" documentation
-// button (EditProjectView.vue's own, next to Save; the Inspector's
-// Metrics tab). `name` is one of 'project-specs' / 'metrics' / 'benchmark'.
+// Raw markdown content of a fixed reference doc, backing each "(?)" doc
+// button. `name` is one of 'project-specs' / 'metrics' / 'benchmark'.
 export function getDoc(name) {
   return apiFetch(`${API_URL}/docs/${encodeURIComponent(name)}`)
 }
 
 // {content, can_undo, can_redo} of fileName's current content —
-// can_undo/can_redo are what the Edit-project view's Undo/Redo buttons
-// use to know whether they're enabled, scoped to the current user.
+// can_undo/can_redo drive the editor's Undo/Redo buttons, scoped to the
+// current user.
 export function getProjectFile(projectName, fileName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}`)
 }
@@ -548,14 +508,9 @@ export function putProjectFile(projectName, fileName, content) {
   })
 }
 
-// Image attachments (see project_service.py's IMAGE_EXTENSIONS) — same
-// PUT .../files/{file_name} route as putProjectFile above, but the raw
-// File itself as the body with its own browser-reported type as
-// Content-Type (mirrors putProject's own zip/yaml upload, api.js:407-414
-// above), since the backend validates an image save against the request's
-// actual Content-Type header rather than inferring it (only a text save's
-// content_type is inferred from the extension — see put_project_file's
-// own docstring).
+// Image attachments: same PUT route as putProjectFile, but the raw File
+// as body with its own Content-Type — the backend validates an image
+// save against the request header, unlike a text save.
 export function putProjectFileBinary(projectName, fileName, file) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}`, {
     method: 'PUT',
@@ -564,25 +519,17 @@ export function putProjectFileBinary(projectName, fileName, file) {
   })
 }
 
-// Raw bytes of fileName's own content — for a plain <img src> (the file
-// explorer's own image preview, EditProjectView.vue) or a manual fetch
-// (ChatWindow.vue's own index.css skin loading, which needs the text body
-// rather than a JSON envelope). `sessionId` omitted resolves against the
-// current draft; given, resolves the same revision that session's own
-// automaton runs against (see controller.py's own get_project_file_content
-// docstring for the live/'test' distinction) — never encoded here, just
-// passed through as a query param exactly as given.
+// Raw bytes of fileName's content — for a plain <img src> or a manual
+// fetch needing the text body rather than a JSON envelope. `sessionId`
+// omitted resolves the current draft; given, resolves that session's revision.
 export function projectFileContentUrl(projectName, fileName, sessionId) {
   const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
   return `${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}/content${query}`
 }
 
-// A pure editor preview, not a save: nothing is persisted, the active
-// project/conversation is never reloaded. `content` is whatever the
-// editor currently shows, needed so a later redo/undo can bring it back
-// — the backend still decides which past/future content to restore, the
-// frontend never navigates by version. Response is {content, can_undo,
-// can_redo}.
+// A pure editor preview, not a save — nothing is persisted. `content` is
+// the editor's current text, needed so a later redo/undo can restore it;
+// the backend still decides what to restore. Response: {content, can_undo, can_redo}.
 export function undoProjectFile(projectName, fileName, content) {
   return apiFetch(
     `${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}/undo`,
@@ -603,9 +550,8 @@ export function deleteProjectFile(projectName, fileName) {
   })
 }
 
-// Clears the current user's own undo/redo history for every file in the
-// project — called by the Edit-project view when it opens, so a fresh
-// editing session never inherits a previous one's undo/redo trail.
+// Clears the current user's undo/redo history for every file in the
+// project, so a fresh editing session never inherits a previous trail.
 export function clearProjectHistory(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/history`, {
     method: 'DELETE'
@@ -618,12 +564,9 @@ export function deleteProject(projectName) {
   })
 }
 
-// index.yml structural editing — add/edit/delete/reorder states,
-// actions, and signals without hand-writing YAML (see backend's
-// AutomatonYamlEditor). Every one of these returns just the affected
-// object's own payload (StatePayload/ActionPayload/SignalPayload), never
-// the whole YAML text — see controller.py's own docstring for the whole
-// family.
+// index.yml structural editing — add/edit/delete/reorder states, actions,
+// and signals without hand-writing YAML. Each call returns just the
+// affected object's own payload, never the whole YAML text.
 
 export function postAddState(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/states`, { method: 'POST' })
@@ -658,11 +601,9 @@ export function putActionField(projectName, stateName, actionName, field, value)
   )
 }
 
-// The init-action lives outside `states:` in the YAML (see
-// AutomatonYamlEditor.set_init_action_field) — putActionField above looks
-// an action up inside a real state's own `actions:` list, and the
-// init-action isn't in one, so every one of its own editable fields
-// (target, ui-label, ...) goes through this dedicated endpoint instead.
+// The init-action lives outside `states:` in the YAML, so unlike
+// putActionField it isn't looked up inside a state's `actions:` list —
+// every editable field goes through this dedicated endpoint instead.
 export function putInitActionField(projectName, field, value) {
   return apiFetch(
     `${API_URL}/projects/${encodeURIComponent(projectName)}/init-action/${encodeURIComponent(field)}`,
@@ -740,9 +681,8 @@ export function postRevertProject(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/revert`, { method: 'POST' })
 }
 
-// The "Auto" tab's own replay launch (see ProjectAutoPanel.vue) — sessionId
-// null means the whole-project-scope run (every labeled session at once),
-// same convention as everywhere else this system uses session_id.
+// The "Auto" tab's own replay launch — sessionId null means the
+// whole-project-scope run (every labeled session at once).
 export function postBenchmarkRun(projectName, sessionId, strategy) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/benchmark-runs`, {
     method: 'POST',
@@ -760,8 +700,7 @@ export function getBenchmarkRuns(projectName, sessionId) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/benchmark-runs${query}`)
 }
 
-// Every real state key of the project's current draft automaton — the
-// "Stati" branch's own node list (see TestsTree.vue).
+// Every real state key of the project's current draft automaton.
 export function getProjectStates(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/states`)
 }

@@ -1,18 +1,7 @@
 <script setup>
-// The Inspector's own "Info" tab (shown instead of "States" while
-// EditProjectView.vue's editorOpen is on — see its own inspectorTabs) —
-// the project's own id/ui-label/ui-description (see InspectorProjectCard.
-// vue) always on top, followed by the same read-only detail card "States"
-// already shows for whichever state the *shared* Graph selection resolves
-// to (itself, or the one containing a selected action — see
-// EditProjectView.vue's own stateTabElement, resolved via
-// IndexYmlEditorPanel's stateElementFor). This component owns none of
-// that state resolution itself, purely a thin wrapper so the card is
-// clickable here (see selectable below) without making it clickable in
-// "States" too — it does, however, own the project card's own fetch
-// (self-contained the same way InspectorSignalsTab.vue/
-// InspectorEnvKeysTab.vue each own their own list's fetch), since nothing
-// about it is graph-selection-driven the way `selectedElement` is.
+// The Inspector's "Info" tab: the project's id/ui-label/ui-description on top,
+// followed by the same read-only detail card "States" shows for the shared Graph
+// selection. Owns its own project-metadata fetch, but not the state selection itself.
 import { onMounted, ref, watch } from 'vue'
 import { getProjectMetadata } from '../../api.js'
 import InspectorDetailCard from './InspectorDetailCard.vue'
@@ -33,12 +22,9 @@ const emit = defineEmits([
   'select', 'select-attachment', 'jump-to-attachment', 'set-field', 'set-project-field', 'delete', 'add-state'
 ])
 
-// This tab only ever has the one state card, but it's still the parent
-// that owns open/closed now (see InspectorDetailCard.vue's own `open`
-// prop) — closed whenever the selection moves to a genuinely different
-// state, same as before, *except* when it moved there because "+ Add
-// state" just created it — that one opens straight into its own edit form
-// instead of requiring a second click.
+// This tab owns the detail card's open/closed state: closed whenever the
+// selection moves to a different state, except when it moved there because
+// "+ Add state" just created it — that one opens straight into its edit form.
 const open = ref(false)
 watch(() => props.selectedElement?.data.id, (id) => {
   open.value = id != null && props.recentlyAddedKey === `state:${id}`
@@ -54,10 +40,9 @@ async function loadProjectMetadata() {
   }
 }
 
-// Inspector.vue's own registerTab dispatch (see its own refresh()) —
-// same "reload on demand, the shell never knows why" contract every other
-// self-fetching tab (InspectorSignalsTab.vue/InspectorEnvKeysTab.vue)
-// already implements.
+// Inspector.vue's own registerTab dispatch — same "reload on demand, the shell
+// never knows why" contract every other self-fetching tab (InspectorSignalsTab.vue/
+// InspectorEnvKeysTab.vue) implements.
 async function refresh() {
   await loadProjectMetadata()
 }

@@ -11,11 +11,9 @@ from .interfaces import AnalyticsDb
 
 
 class UserAnalyticsDataBuilder(object):
-    """Builds the analytical dataset from the application's Db facade.
-
-    The builder intentionally does not import Peewee models. The Db facade
-    remains the single point of database access.
-    """
+    """Builds the analytical dataset from the application's Db facade. Does
+    not import Peewee models directly — the Db facade stays the single
+    point of database access."""
 
     def __init__(self, db: AnalyticsDb, username: str, project_name: str) -> None:
         self._db = db
@@ -24,16 +22,8 @@ class UserAnalyticsDataBuilder(object):
 
     def build(self, since: datetime | None = None, until: datetime | None = None) -> UserAnalyticsData:
         """`since`/`until`, each independently optional, restrict every
-        dataset to what falls within [since, until] — sessions that
-        started before `since` or after `until`, and messages/signals
-        timestamped outside that same window, are excluded. `until` alone
-        is what lets a caller compute metrics "as of" a specific past
-        message (see chat/metrics_service.py's calculate_values_until);
-        `since` alongside it is what lets a caller restrict to a bounded
-        window instead — e.g. tracking.session_facts.SessionFacts scoping
-        to just the current session's own [start, now) — without either
-        metrics or this builder ever needing to know *why* the window is
-        what it is."""
+        dataset to what falls within [since, until]. `until` alone computes
+        metrics "as of" a past message; `since` alongside it bounds to a window."""
         sessions = self._db.list_chat_sessions(self._username, self._project_name)
         if since is not None:
             sessions = [row for row in sessions if row["datetime_start"] >= since]
@@ -63,16 +53,9 @@ class UserAnalyticsDataBuilder(object):
         return frame.copy()
 
     def build_for_session(self, session_id: int, until_message_id: int | None = None) -> UserAnalyticsData:
-        """Like build(), but scoped to exactly one session — a single
-        session's own data, never the user's whole cross-session
-        history (see build's own `list_chat_sessions`/session_ids call,
-        not used here at all). `until_message_id` (an id, never a
-        timestamp — always available and meaningful regardless of
-        whether the session has real timestamps at all) truncates
-        messages by `id <= until_message_id` and signals by
-        `message_id <= until_message_id` (see _load_signals' own
-        message_id column), mirroring build()'s own `until` truncation
-        but scoped by event order instead of by real elapsed time."""
+        """Like build(), but scoped to exactly one session, never the
+        user's whole cross-session history. `until_message_id` truncates
+        by id rather than timestamp, since an imported session may have no real timestamps."""
         session = self._db.get_chat_session(session_id)
         sessions = [session] if session is not None else []
 
@@ -155,9 +138,8 @@ class Timeline(object):
 
     def signal_series(self, signal_name: str) -> pd.Series:
         """Indexed/ordered by message_id, not timestamp — this measures
-        variation between consecutive values, which only ever needs the
-        correct order of events, never the real elapsed time between
-        them (see message_id's own addition to _load_signals)."""
+        variation between consecutive values, which only needs correct
+        event order, never real elapsed time."""
         if self._data.signals.empty:
             return pd.Series(dtype="float64", name=signal_name)
 

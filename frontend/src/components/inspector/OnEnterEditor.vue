@@ -1,11 +1,7 @@
 <script setup>
-// A CodeMirror-backed mini-editor for exactly one action's own on-enter
-// script (see onEnterActions.js) — JavaScript syntax highlighting instead
-// of TriggerEditor.vue's Python-expression namespace coloring/autocomplete
-// (a different grammar entirely), otherwise the exact same narrow
-// contract: two-way bound via defineModel, no persistence of its own —
-// InspectorDetailCard.vue still owns editOnEnter/commitOnEnter, this only
-// changes what renders the input itself.
+// A CodeMirror-backed mini-editor for one action's on-enter script, using
+// JavaScript syntax highlighting instead of TriggerEditor.vue's Python-expression
+// coloring. Two-way bound via defineModel; InspectorDetailCard.vue still owns persistence.
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { EditorState } from '@codemirror/state'
 import {
@@ -28,12 +24,9 @@ import { javascript } from '@codemirror/lang-javascript'
 const model = defineModel({ type: String, default: '' })
 const emit = defineEmits(['blur'])
 
-// The two functions onEnterActions.js's own onEnterLocals actually expose
-// (see that module) — wired in here by name/call-shape rather than
-// introspected, since there's only ever this handful and each has its own
-// argument shape worth spelling out (a snippet with real tab stops, not
-// just the bare name). A future third local just needs its own entry
-// added here, same as onEnterLocals itself.
+// The functions onEnterActions.js's onEnterLocals exposes, wired in here by name
+// rather than introspected, since each needs its own snippet with real tab stops,
+// not just the bare name. A new local needs its own entry added here too.
 const ON_ENTER_COMPLETIONS = [
   snippetCompletion('celebrate()', { label: 'celebrate', type: 'function', detail: 'confetti burst' }),
   snippetCompletion("notify('${title}', '${body}')", { label: 'notify', type: 'function', detail: 'toast — title, markdown body' })
@@ -48,18 +41,9 @@ function completeOnEnterLocals(context) {
 const editorHost = ref(null)
 let view = null
 
-// Same as TriggerEditor.vue's own editorSetup — codemirror's own
-// basicSetup minus every gutter piece (lineNumbers/
-// highlightActiveLineGutter/foldGutter): a short on-enter script has no
-// use for a line-number column next to it. Deliberately *no* bare
-// autocompletion() here (unlike TriggerEditor.vue's own copy of this
-// array) — this script's own grammar is a fixed, known set of calls
-// (see automaton_builder.py's own OnEnterScriptSignatureParser), never
-// arbitrary JavaScript, so the *only* completion source this editor ever
-// registers is completeOnEnterLocals below (see its own autocompletion({
-// override: [...] }) in createEditor) — never @codemirror/lang-
-// javascript's own generic keyword/local-variable completions, and never
-// two competing autocompletion() configs to reason about.
+// Codemirror's basicSetup minus every gutter piece — a short on-enter script
+// has no use for a line-number column. Deliberately no bare autocompletion():
+// the grammar is a fixed set of calls, so completeOnEnterLocals is the only source.
 const editorSetup = [
   highlightSpecialChars(),
   history(),
@@ -107,10 +91,9 @@ function setEditorDoc(newContent) {
   view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: newContent } })
 }
 
-// A change to `model` this editor's own updateListener didn't itself just
-// cause — InspectorDetailCard.vue's own resetEditBuffers, switching this
-// same still-open editor to a different action's own on-enter (see
-// TriggerEditor.vue's own identical comment on this).
+// Handles `model` changing from outside this editor's own updateListener —
+// e.g. InspectorDetailCard.vue's resetEditBuffers switching this still-open
+// editor to a different action's on-enter script.
 watch(model, (newValue) => {
   if (view && newValue !== view.state.doc.toString()) setEditorDoc(newValue)
 })

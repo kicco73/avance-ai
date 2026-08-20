@@ -1,24 +1,11 @@
-"""Exporting a project's own sessions (native and imported alike) as one
-JSON array — the "Label sessions" view's own "Download all" button. The
-inverse of session_import.py's own import_session_json: every message
-carries whatever Tracking row is linked to it (see Db.get_signals) inlined
-directly on the message itself, rather than as a separate parallel list —
-a message and "the transition/annotation attached to it" are one visual
-unit in the chat timeline this is meant to reconstruct (see benchmark
-Timeline.js's own buildTimeline), so the export mirrors that shape.
-
-Deliberately scoped to what BenchmarkTimeline.js/ChatTimeline.vue actually
-need to rebuild the "Label sessions" view exactly as saved: session
-metadata (name/timestamps/start-end state/labeled/comment) plus each
-message's own role/text/timestamp/audio_text plus whichever Tracking
-fields matter for the timeline and its own annotations (values/expected_
-state/expected_values/comment/old_state/action/new_state). A standalone
-Tracking row with no message_id (e.g. env/action_env bookkeeping, already
-excluded by Db.get_signals itself) never round-trips through here — the
-frontend already synthesizes a session's own opening transition from
-start_state alone (see ChatTimeline.js's syntheticSessionStartEntry),
-so there's nothing lost by leaving it out.
-"""
+"""Exports a project's sessions (native and imported) as one JSON array,
+for the "Label sessions" view's "Download all" button — the inverse of
+session_import.py's import_session_json. Each message carries its linked
+Tracking row inlined directly on it rather than as a separate parallel
+list. A standalone Tracking row with no message_id (env/action_env
+bookkeeping) never round-trips through here — nothing is lost, since the
+frontend already synthesizes a session's opening transition from
+start_state alone."""
 from __future__ import annotations
 
 import json
@@ -34,18 +21,9 @@ class SessionExportManager:
     def export_sessions(
         self, username: str, project_name: str, source: str | tuple[str, ...] = ('native', 'imported'),
     ) -> list[dict]:
-        """`source` defaults to every real session (native and imported
-        alike) — the "Label sessions" view's own "Download all" button.
-        ProjectService.export_project_zip's own sessions.json (see its
-        own docstring) is the one caller that narrows this to
-        source='imported' only: a project's own zip is meant to be a
-        portable, re-uploadable definition, and a *native* session only
-        ever means something against the exact database it was actually
-        played against — re-importing one into a fresh install would
-        silently misrepresent it as a real past conversation nobody had.
-        An imported session carries no such claim to begin with (see
-        ChatSession.source) — it's already just reference material, safe
-        to carry along."""
+        """`source` defaults to every real session. export_project_zip
+        narrows this to 'imported' only: a native session only means
+        something against the exact database it ran against, so re-importing it elsewhere would misrepresent it as a real conversation."""
         sessions = self._db.list_chat_sessions(username, project_name, source=source)
         return [self._export_session(session) for session in sessions]
 

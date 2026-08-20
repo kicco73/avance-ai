@@ -1,9 +1,7 @@
 <script setup>
-// The text input plus its side buttons (mic / audio / spoken-text) —
-// extracted out of ChatWindow.vue so the input row is a self-contained,
-// presentational piece. All chat business logic (chatStore.js wiring,
-// mic recording, disabled reasons) stays in the parent; this component
-// only renders and emits.
+// The text input plus its side buttons (mic / audio / spoken-text) — a
+// self-contained, presentational piece. All chat business logic stays in
+// the parent; this component only renders and emits.
 import { ref } from 'vue'
 
 defineProps({

@@ -60,11 +60,9 @@ class SetSessionTitleRequest(BaseModel):
 
 
 class SessionImportMessageJson(BaseModel):
-    # See tracking.session_export.SessionExportManager's own
-    # _export_message — the exact shape "Download all" produces, and
-    # what TrackingService.import_session_json restores from. Every
-    # field past role/text is optional: only present at all on export
-    # when the message actually had a linked Tracking row.
+    # See tracking.session_export.SessionExportManager._export_message —
+    # the exact shape "Download all" produces and TrackingService.
+    # import_session_json restores. Fields past role/text are optional.
     role: str
     text: str
     timestamp: str | None = None
@@ -93,9 +91,8 @@ class SessionImportJsonRequest(BaseModel):
 
 class TruncateSessionRequest(BaseModel):
     # ISO 8601, expected to be one of the UTC-explicit strings the
-    # backend itself already handed back (see db._utc_iso) — every
-    # Message/Tracking row at or after this instant is deleted. See
-    # ChatService.truncate_session.
+    # backend already handed back (see db._utc_iso). Every Message/
+    # Tracking row at or after this instant is deleted.
     timestamp: str
 
 
@@ -106,24 +103,17 @@ class SetEnvValueRequest(BaseModel):
 
 
 class SetProjectFieldRequest(BaseModel):
-    # See ProjectService.set_state_field/set_action_field/
-    # set_signal_field — a state/action/signal's own editable fields are
-    # either free text (ui-label, contextual-prompt, action-prompt,
-    # definition, target, trigger) or, for a state's own history-cutoff/
-    # chat, a plain boolean.
+    # See ProjectService.set_state_field/set_action_field/set_signal_field.
+    # Editable fields are free text (ui-label, contextual-prompt, etc.) or,
+    # for a state's history-cutoff/chat, a plain boolean.
     value: str | bool
 
     @field_validator("value")
     @classmethod
     def _strip_string_value(cls, value: str | bool) -> str | bool:
-        """Every put_*_field endpoint (state/action/signal/init-action)
-        shares this one request body — trimming a string value here,
-        the single point they all pass through, means incidental
-        leading/trailing whitespace from a UI text field can never make
-        "Action " and "Action" register as two distinct ui-labels (or
-        otherwise-identical values), regardless of which specific field
-        it came in on. A bare boolean (history-cutoff/chat) passes
-        through untouched."""
+        """Trims string values so incidental UI whitespace (e.g. "Action ")
+        never creates a duplicate distinct from "Action". A bare boolean
+        (history-cutoff/chat) passes through untouched."""
         return value.strip() if isinstance(value, str) else value
 
 
@@ -136,10 +126,8 @@ class ReorderActionRequest(BaseModel):
 
 class PublishProjectRequest(BaseModel):
     # Required only when ProjectService.preview_publish reports
-    # needs_remap — the state a human picked for the currently persisted
-    # state that's gone missing from the revision about to be published.
-    # None (the default, and the only valid value when no remap is
-    # needed) means "no remap decision to make".
+    # needs_remap — the replacement state a human picked for one that's
+    # gone missing from the revision being published. None otherwise.
     remap_to: str | None = None
 
 

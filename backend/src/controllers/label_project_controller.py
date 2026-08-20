@@ -1,9 +1,6 @@
 """LabelProjectView.vue's own backend surface ("Label sessions") —
 import/export/annotate/review past sessions, and the benchmark-run/
-state-aggregation machinery its own Performance tab drives. Split out of
-what used to be one single AvanceController class in controller.py — see
-that module's own docstring, and BaseController's for the shared
-registration mechanism every *_controller.py shares.
+state-aggregation machinery its own Performance tab drives.
 """
 from __future__ import annotations
 
@@ -90,19 +87,16 @@ class LabelProjectController(BaseController):
 
     @delete("/api/chat/sessions/{session_id}")
     def delete_session(self, session_id: int):
-        """Deletes a session and all its messages/signals — see
-        ChatService.delete_session. Raises ChatServiceError (404) if it
-        doesn't exist or belongs to someone else — handled by the global
-        exception handler (see error_handlers.py), no try/except needed here."""
+        """Deletes a session and all its messages/signals. Raises
+        ChatServiceError (404) if it doesn't exist or belongs to someone
+        else — handled by the global exception handler."""
         self.chat_service.delete_session(session_id)
         return {"success": True}
 
     @put("/api/chat/sessions/{session_id}/labeled")
     def put_session_labeled(self, session_id: int, req: SetSessionLabeledRequest):
-        """The "Label sessions" view's own "Mark done" button — see
-        ChatService.mark_session_labeled. Raises ChatServiceError (404)
-        for an unknown/not-yours session_id, same convention as
-        delete_session above."""
+        """The "Label sessions" view's "Mark done" button. Raises
+        ChatServiceError (404) for an unknown/not-yours session_id."""
         return self.chat_service.mark_session_labeled(session_id, req.labeled)
 
     @put("/api/chat/sessions/{session_id}/title")
@@ -113,27 +107,21 @@ class LabelProjectController(BaseController):
 
     @put("/api/chat/sessions/{session_id}/comment")
     def put_session_comment(self, session_id: int, req: CommentRequest):
-        """The "Label sessions" view's own Info tab — see ChatService.
-        set_session_comment (a whole-session note, distinct from
-        put_message_comment's own per-message one below). Same 404
-        convention as put_session_labeled."""
+        """The "Label sessions" view's Info tab — a whole-session note,
+        distinct from put_message_comment's per-message one below."""
         return self.chat_service.set_session_comment(session_id, req.comment)
 
     @get("/api/chat/sessions/{session_id}/summary")
     def get_session_summary(self, session_id: int):
-        """{content: str | None} — see ChatService.get_session_summary.
-        Auto-queued the moment this session was discovered closed (see
-        chat/session_summary_manager.py) — never triggered by this
-        endpoint itself, which only ever reads."""
+        """{content: str | None}. Auto-queued the moment this session was
+        discovered closed — never triggered by this endpoint itself, which only reads."""
         return self.chat_service.get_session_summary(session_id)
 
     @post("/api/chat/sessions/{session_id}/truncate")
     async def post_truncate_session(self, session_id: int, req: TruncateSessionRequest):
-        """"Restart from here" (EditProjectView.vue's chat only) — see
-        ChatService.truncate_session. Same lock/response shape as
-        post_reset: the live state may have just moved backward, so the
-        fresh payload is read back only once the mutation (which a
-        concurrent chat turn also touches) has released the lock."""
+        """"Restart from here". Same lock/response shape as post_reset:
+        the live state may have moved backward, so the fresh payload is
+        read back only once the mutation has released the lock."""
         try:
             async with self.chat_service.lock:
                 self.chat_service.truncate_session(session_id, req.timestamp)
@@ -144,56 +132,44 @@ class LabelProjectController(BaseController):
     @get("/api/chat/sessions/{session_id}/signals")
     def get_session_signals(self, session_id: int):
         """The full Tracking event log for `session_id` (snapshots and
-        transitions alike, chronological) — for the "Label sessions"
-        view, which reconstructs state/signal values at any point in the
-        session's timeline entirely client-side from this one call."""
+        transitions, chronological) — the "Label sessions" view
+        reconstructs the timeline entirely client-side from this call."""
         return self.chat_service.get_session_signals(session_id)
 
     @put("/api/chat/messages/{message_id}/expected-state")
     def put_message_expected_state(self, message_id: int, req: ExpectedStateRequest):
         """Sets or (expected_state: null) clears message_id's expert-
         annotated expected state — the "Label sessions" view's States
-        tab. ChatServiceError (404 unowned/unknown message, 409 not an
-        evaluation point, 422 unknown state) is handled globally, see
-        error_handlers.py."""
+        tab. ChatServiceError (404/409/422) is handled globally."""
         return self.chat_service.set_message_expected_state(message_id, req.expected_state)
 
     @put("/api/chat/messages/{message_id}/expected-signals")
     def put_message_expected_signals(self, message_id: int, req: ExpectedSignalsRequest):
         """Sets or clears message_id's expert-annotated expected signal
         values — the "Label sessions" view's Signals tab. Same error
-        handling as put_message_expected_state, plus 422 for an unknown
-        signal name or an out-of-range value."""
+        handling as put_message_expected_state."""
         return self.chat_service.set_message_expected_signals(message_id, req.expected_values)
 
     @put("/api/chat/messages/{message_id}/comment")
     def put_message_comment(self, message_id: int, req: CommentRequest):
         """Sets or (comment: null/empty) clears message_id's expert-left
-        free-text comment — the "Label sessions" view's per-message
-        comment bubble. Unlike put_message_expected_state/
-        put_message_expected_signals, every message is a legitimate
-        target: no 409 here, only the usual 404 for an unowned/unknown
-        message (handled globally, see error_handlers.py)."""
+        free-text comment. Unlike the expected-state/signals endpoints,
+        every message is a legitimate target: no 409 here, only 404."""
         return self.chat_service.set_message_comment(message_id, req.comment)
 
     @delete("/api/chat/sessions/{session_id}/annotations")
     def delete_session_annotations(self, session_id: int):
-        """Clears every expert annotation (expected_state and
-        expected_values alike) across session_id's own Tracking rows —
-        the "Label sessions" view's "Unlabel all" action, fired only
-        after its own confirmation dialog. ChatServiceError (404 for an
-        unknown/not-yours session_id) is handled globally, see
-        error_handlers.py."""
+        """Clears every expert annotation across session_id's Tracking
+        rows — the "Label sessions" view's "Unlabel all" action.
+        ChatServiceError (404) is handled globally."""
         self.chat_service.clear_session_annotations(session_id)
         return {"success": True}
 
     @post("/api/projects/{project_name}/benchmark-runs")
     def post_benchmark_run(self, project_name: str, req: CreateBenchmarkRunRequest):
         """Creates a BenchmarkRun and submits its replay job — returns
-        immediately with status='pending' (see BenchmarkRunService.
-        create_run), before the job's own worker thread has actually
-        started it. BenchmarkServiceError (see metrics/benchmark_errors.py)
-        is handled globally, see error_handlers.py."""
+        immediately with status='pending', before the job's worker
+        thread has actually started it. BenchmarkServiceError is handled globally."""
         try:
             return self.benchmark_run_service.create_run(
                 Session().user, project_name, req.session_id, req.strategy,
@@ -203,26 +179,23 @@ class LabelProjectController(BaseController):
 
     @get("/api/projects/{project_name}/benchmark-runs/{run_id}")
     def get_benchmark_run(self, project_name: str, run_id: int):
-        """One BenchmarkRun, its own domain data merged with its Job's
-        lifecycle (status/progress/error/timestamps) — see
-        BenchmarkRunService.get_run. BenchmarkServiceError (404 for an
-        unknown run_id) is handled globally, see error_handlers.py."""
+        """One BenchmarkRun, its domain data merged with its Job's
+        lifecycle (status/progress/error/timestamps). BenchmarkServiceError
+        (404 for an unknown run_id) is handled globally."""
         return self.benchmark_run_service.get_run(run_id)
 
     @get("/api/projects/{project_name}/benchmark-runs")
     def get_benchmark_runs(self, project_name: str, session_id: int | None = None):
         """Every BenchmarkRun for `project_name` with that exact
         session_id — None (the default) means every whole-project-scope
-        run, not "no filter" (same convention as everywhere else in this
-        system — see BenchmarkRunService.list_runs). Most recent first."""
+        run, not "no filter". Most recent first."""
         return self.benchmark_run_service.list_runs(project_name, session_id)
 
     @post("/api/projects/{project_name}/states/{state_key}/test")
     def post_state_test(self, project_name: str, state_key: str, req: StateTestRequest):
-        """Launches the "Stati" branch's own aggregation job for one state
-        — see BenchmarkRunService.start_job. Returns immediately with the
-        ephemeral job's own id; poll GET .../state-jobs/{job_id} for its
-        outcome (see get_state_job below)."""
+        """Launches the "Stati" branch's aggregation job for one state.
+        Returns immediately with the ephemeral job's id; poll GET
+        .../state-jobs/{job_id} for its outcome."""
         try:
             job_id = self.benchmark_run_service.start_job(Session().user, project_name, state_key, req.strategy)
         except ValueError as exc:
@@ -231,9 +204,7 @@ class LabelProjectController(BaseController):
 
     @get("/api/projects/{project_name}/state-jobs/{job_id}")
     def get_state_job(self, project_name: str, job_id: int):
-        """One ephemeral 'state_aggregation' job's own status/progress/
-        result — see BenchmarkRunService.get_job_status. None (never a
-        404) for an unknown job_id, e.g. after a backend restart — the
-        ephemeral queue's own JobSink already returns None for that case,
-        distinguishable from "in progress"/"completed" by every caller."""
+        """One ephemeral 'state_aggregation' job's status/progress/
+        result. None (never a 404) for an unknown job_id, e.g. after a
+        backend restart — distinguishable from "in progress"/"completed"."""
         return self.benchmark_run_service.get_job_status(job_id)

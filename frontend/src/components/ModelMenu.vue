@@ -17,24 +17,17 @@ const btnEl = ref(null)
 const panelEl = ref(null)
 const panelStyle = ref({})
 
-// Reads chatStore.js's shared aiModels/aiModelAuto/aiModelCurrentIndex —
-// loaded once at boot (App.vue's loadAiModels) and kept in sync by every
-// chat turn/action response (see chatStore.js's submitMessage/handleAction),
-// so this component never fetches on its own.
+// Reads chatStore.js's shared model state, kept in sync by every chat
+// turn/action response — this component never fetches on its own.
 const currentModel = computed(() => aiModels.value[aiModelCurrentIndex.value] ?? null)
 const currentLabel = computed(() => currentModel.value?.ui_label ?? 'Model')
 const buttonLabel = computed(() => (aiModelAuto.value ? `Auto: ${currentLabel.value}` : currentLabel.value))
 
-// The "(?)" info dialog — was the Inspector's own Model tab (see
-// InspectorModelTab.vue's git history), moved here so it lives right
-// next to the control that actually changes which model this describes.
 const infoOpen = ref(false)
 
-// The panel is teleported to <body> (see template) so it can't be clipped
-// by an ancestor's `overflow: hidden` (e.g. EditProjectView's chat panel) —
-// then positioned/clamped here against the actual viewport instead of
-// relying on CSS alone, and given its own scrollbar for whatever still
-// doesn't fit. Opens downward from the button, or upward if there isn't
+// The panel is teleported to <body> so it can't be clipped by an
+// ancestor's `overflow: hidden`, then positioned/clamped here against the
+// viewport. Opens downward from the button, or upward if there isn't
 // enough room below.
 async function positionPanel() {
   await nextTick()
@@ -65,11 +58,9 @@ function close() {
   open.value = false
 }
 
-// Both the "Auto" entry and each model row call this with either `null`
-// (auto) or an aiModels[] index — chatStore.js's selectAiModel is the only
-// place that relays the choice to the backend (AiService.select_model is
-// what actually translates it into a provider) and refreshes the shared
-// state from its response.
+// Called with either `null` (auto) or an aiModels[] index —
+// selectAiModel relays the choice to the backend and refreshes the
+// shared state from its response.
 async function select(index) {
   if (aiModelSelectionLoading.value) return
   if (index === (aiModelAuto.value ? null : aiModelCurrentIndex.value)) {

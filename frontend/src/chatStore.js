@@ -24,62 +24,29 @@ import { runOnEnterScript } from './onEnterActions.js'
 import { clearApiError } from './errorStore.js'
 
 export const state = ref(null)
-// The chat conversation's current session_id (see backend's
-// ChatSessionManager) — null until the first loadMessages()/ensureSession()
-// bootstrap. Every write call must carry it; the backend still resolves
-// the true writable session itself and this is kept in sync from each
-// response's own session_id (see submitMessage/handleAction).
+// The chat conversation's current session_id — null until the first
+// loadMessages()/ensureSession() bootstrap. Every write call must carry
+// it; kept in sync from each response's own session_id.
 export const currentSessionId = ref(null)
-// Whether the session currently displayed accepts new messages — always
-// true after the normal bootstrap/send/new-session flows (a session that
-// was just touched is the active one by definition — see
-// ChatSessionManager: at most one session is ever active per project, the
-// most recently started *open* one, so "active" and "open" aren't the
-// same thing), set to the backend's own `active` flag only when the user
-// picks a session from the sessions panel (see selectSession) — never
-// computed client-side. Starts false, not true: nothing has actually
-// resolved a session yet at this point, and a project that's never been
-// published can't create one at all (see db.create_chat_session) — the
-// bootstrap in loadMessages()/ensureSession() then simply never gets to
-// set this true, so ChatWindow.vue's own ActionButtons (gated on this,
-// not recomputed from state.value, which the automaton alone can already
-// populate with no session behind it at all) correctly stays out of the
-// render path instead of showing manual-action buttons with nothing to
-// fire them against.
+// Whether the session currently displayed accepts new messages. Set to
+// the backend's own `active` flag only when the user picks a session
+// (see selectSession) — never computed client-side.
 export const selectedSessionActive = ref(false)
-// Prompt 7 — GET /api/chat/session responds {paused: true, paused_reason}
-// instead of a real session payload while the active project is paused
-// (see ProjectService.recompute_availability); App.vue's own "Progetto
-// in manutenzione" screen reads these instead of rendering chat. Reset
-// to false at the top of every ensureSession() call, so switching to a
-// project that's *not* paused clears it again without needing its own
-// explicit reset anywhere else.
+// GET /api/chat/session responds {paused: true, paused_reason} instead
+// of a real session payload while the active project is paused; App.vue's
+// maintenance screen reads these instead of rendering chat.
 export const projectPaused = ref(false)
 export const projectPausedReason = ref('')
 export const sessions = ref([])
 export const sessionsLoading = ref(false)
 export const sessionsPanelOpen = ref(false)
-// null in every context but one: EditProjectView.vue's own embedded
-// "Test" chat sets this to its own projectName the instant 'test' mode
-// becomes active (see its own watch(mode, ...)), and clears it back to
-// null the instant it isn't — mode itself, and unmounting the view
-// entirely, are the only two things that ever touch this, so it can
-// never outlive the actual Test chat surface it describes. Read
-// internally by every session bootstrap/list/refresh function below
-// (ensureSession, loadSessions, toggleSessionsPanel, handleDeleteSession,
-// ...) instead of threading a parameter through each one individually —
-// several of those are reached from deep inside fully generic,
-// mode-agnostic turn-processing code (handleSend/handleAction/...), where
-// explicit threading would mean touching nearly every call in this file.
+// null except for EditProjectView's embedded "Test" chat, which sets
+// this to its own projectName while 'test' mode is active. Read
+// internally instead of threading a parameter through each call site.
 export const testModeProjectName = ref(null)
-// The project the current session actually belongs to — set from the
-// session payload's own project_name (see db.sessions._chat_session_to_
-// dict) inside ensureSession() below, for both a live and a Test session
-// alike. ChatWindow.vue's own index.css skin-loading fetch is the one
-// caller: it's mounted for both App.vue's live chat and EditProjectView.
-// vue's embedded Test chat, and unlike testModeProjectName (only ever set
-// by the latter) this is the one place either can learn which project's
-// files/index.css/content to actually fetch.
+// The project the current session actually belongs to, set from the
+// session payload inside ensureSession() below. ChatWindow's index.css
+// skin-loading fetch uses this to know which project's files to fetch.
 export const currentProjectName = ref(null)
 export const messages = ref([])
 export const historyLoaded = ref(false)
@@ -113,23 +80,9 @@ export function setCapabilities({ talkAvailable: talk, micAvailable: mic }) {
   micAvailable.value = mic
 }
 
-// `onEnter` is the *fired action's* own "on-enter" (see backend's
-// automaton.Action.on_enter, sent over the wire as "on-enter" — see
-// chat_service.py's apply_manual_action/_process_turn_locked) — not part
-// of `newState` itself, since on-enter now describes how a state was
-// entered, not the state itself. Callers with no actual transition to
-// report (session load, boot ping) simply omit it — undefined never runs
-// anything; every other caller (a real fired action, a brand new session
-// entering through init-action, a reset) always passes its own, however
-// it got it. Deliberately *not* gated on the state's own key having
-// actually changed — a self-loop action (target === source, the shape
-// every automaton.* trigger itself requires — see Prompt 6) still really
-// fired and still deserves its own on-enter running, same as any other
-// action; only whether the backend actually reported one at all decides
-// this, never whether newState looks different from before. A free-form
-// client-side script (see onEnterActions.js), not a fixed "celebrate"
-// keyword: any expression calling into onEnterLocals, e.g. "celebrate()"
-// or "notify('Nice!', 'You reached **state B**.')".
+// `onEnter` is the fired action's own "on-enter" script — not part of
+// `newState` itself. Callers with nothing to report simply omit it.
+// Deliberately not gated on the state key having changed — a self-loop still fires its own on-enter.
 export function handleStateChange(newState, onEnter) {
   state.value = newState
   if (onEnter) {
@@ -137,17 +90,9 @@ export function handleStateChange(newState, onEnter) {
   }
 }
 
-// Server-pushed cross-project wake-up (see backend's WakeupService/
-// WsAdapter.push, wired through chatClient.js's own onNotification) —
-// never tied to whichever turn is in flight, and can land for a project
-// other than the one currently open. Only applies state.value/StateBar
-// when the notification is actually about the project currently
-// displayed (currentProjectName) — a foreign project's state would
-// otherwise silently overwrite what the user is looking at. The
-// on-enter script itself always runs regardless: its own locals
-// (celebrate/notify, see onEnterActions.js) are project-agnostic UI, the
-// same way a real turn's on-enter always runs whether or not this
-// specific state looks new.
+// A server-pushed cross-project wake-up — can land for a project other
+// than the one currently open. Only applies state.value/StateBar when
+// the notification is about the currently displayed project.
 export function handleNotification({ project_name, state: newState, 'on-enter': onEnter }) {
   if (project_name === currentProjectName.value) {
     handleStateChange(newState, onEnter)
@@ -160,22 +105,14 @@ export function handleNotification({ project_name, state: newState, 'on-enter': 
 
 onNotification(handleNotification)
 
-// Shape every backend message row (id, role, content, audio_text,
-// timestamp) into what the chat UI actually renders (see MessageBubble.
-// vue/ChatTimeline.vue) — shared by every place that (re)loads a
-// session's full history from scratch (loadMessages/selectSession/
-// reloadMessages), so there's exactly one mapping to keep in sync with
-// the backend's own row shape.
+// Shapes a backend message row into what the chat UI renders — shared by
+// every place that (re)loads a session's full history from scratch.
 function toStoreMessage(m) {
   return { role: m.role, content: m.content, audioText: m.audio_text, timestamp: m.timestamp, failed: false, messageId: m.id }
 }
 
-// testModeProjectName (see its own docstring) set: EditProjectView.vue's
-// own embedded "Test" chat, the one place a session is allowed to exist
-// against a revision nobody's published yet — routed to a completely
-// different pair of endpoints (getCurrentTestSession/postCreateTestSession
-// below), never a flag on the shared ones (see api.js's own docstring on
-// why). null: every other caller.
+// testModeProjectName set: EditProjectView's embedded "Test" chat,
+// routed to a separate pair of endpoints. null: every other caller.
 async function ensureSession() {
   projectPaused.value = false
   const session = testModeProjectName.value != null
@@ -196,13 +133,12 @@ async function ensureSession() {
 export async function loadMessages() {
   try {
     const sessionId = await ensureSession()
-    if (sessionId == null) return  // paused — see ensureSession's own docstring
+    if (sessionId == null) return  // paused
     const history = await getMessages(sessionId)
     messages.value = history.map(toStoreMessage)
-    // Whichever project just became active, the sessions panel (if open)
-    // was still showing the *previous* project's list (or the empty one
-    // clearChatUi leaves it in) — without this, switching projects looks
-    // like it wiped the sessions, when nothing server-side was touched.
+    // The sessions panel (if open) was still showing the previous
+    // project's list — refresh it so switching projects doesn't look
+    // like it wiped the sessions.
     if (sessionsPanelOpen.value) await loadSessions()
   } catch {
     // already surfaced via apiFetch
@@ -212,11 +148,9 @@ export async function loadMessages() {
   }
 }
 
-// testModeProjectName set: EditProjectView.vue's own embedded "Test"
-// chat's own sessions, a separate pool of its own. `projectName` omitted
-// falls back to currentProjectName (the main chat's own case); Label/
-// Auto views always pass their own props.projectName explicitly, so
-// reviewing project A never silently follows project B becoming active.
+// testModeProjectName set: EditProjectView's embedded "Test" chat's own
+// sessions, a separate pool. `projectName` omitted falls back to
+// currentProjectName; Label/Auto views always pass their own explicitly.
 export async function loadSessions(includeImported = false, projectName = null) {
   sessionsLoading.value = true
   try {
@@ -231,8 +165,8 @@ export async function loadSessions(includeImported = false, projectName = null) 
 }
 
 // Same fetch as loadSessions, but never touches sessionsLoading — for a
-// caller that just wants `sessions` brought current in the background,
-// without flashing the shared Sessions panel to "Loading…".
+// caller that wants `sessions` refreshed without flashing the panel to
+// "Loading…".
 export async function refreshSessionsQuietly(includeImported = false, projectName = null) {
   try {
     sessions.value = testModeProjectName.value != null
@@ -250,13 +184,9 @@ export async function toggleSessionsPanel() {
   }
 }
 
-// Switches the chat view to a specific past/present session, read directly
-// (never through ensureSession/get_or_create_current_session — picking an
-// old session must show *that* session's own history, not silently land
-// on whichever one the backend considers "current"). `active` comes
-// straight off the sessions-list entry the user clicked — the backend's
-// own verdict, never recomputed here (a session can be individually
-// "open" without being the active one — see ChatSessionManager).
+// Switches the chat view to a specific past/present session, read
+// directly (never through ensureSession, which would land on the
+// "current" session instead of the one picked). `active` is never recomputed.
 export async function selectSession(session) {
   if (session.id === currentSessionId.value) return
   currentSessionId.value = session.id
@@ -274,11 +204,9 @@ export async function selectSession(session) {
   }
 }
 
-// Re-fetches the current session's own message history from scratch,
-// in place — unlike selectSession, never a no-op for "already the
-// current session" (that's exactly the case this exists for: the
-// session itself hasn't changed, but what's *in* it just did — see
-// handleTruncateFrom).
+// Re-fetches the current session's message history from scratch, in
+// place — unlike selectSession, never a no-op for "already the current
+// session" (the session hasn't changed, but what's in it just did).
 export async function reloadMessages() {
   if (currentSessionId.value == null) return
   try {
@@ -288,13 +216,9 @@ export async function reloadMessages() {
   }
 }
 
-// "Restart from here" (EditProjectView.vue's own chat only — see
-// RestartFromHereButton.vue): deletes every message at/after `timestamp`
-// in the current session, and rolls the live state back to match, then
-// refreshes every piece of local state that depended on any of it.
-// Callers decide what happens next with the cut-off message's own text
-// (preload into the draft, or resend outright) — this only ever performs
-// the truncation itself.
+// "Restart from here" (EditProjectView's chat only): deletes every
+// message at/after `timestamp` and rolls state back to match. Callers
+// decide what happens with the cut-off text — this only truncates.
 export async function handleTruncateFrom(timestamp) {
   if (currentSessionId.value == null) return
   try {
@@ -308,10 +232,9 @@ export async function handleTruncateFrom(timestamp) {
   }
 }
 
-// Deletes a session and everything in it server-side (see
-// db.delete_chat_session). If it was the one currently displayed, falls
-// back to the same bootstrap loadMessages() uses on first load — there's
-// no specific session left to keep showing.
+// Deletes a session and everything in it server-side. If it was the one
+// currently displayed, falls back to the same bootstrap loadMessages()
+// uses on first load.
 export async function handleDeleteSession(session) {
   if (!window.confirm(`Delete this session (${session.end_state})? This cannot be undone.`)) return
   try {
@@ -326,10 +249,8 @@ export async function handleDeleteSession(session) {
   }
 }
 
-// Test-session-only (see backend's TrackingService.is_auto_tracking_
-// enabled) — called from ensureSession() below, gated on testModeProjectName,
-// the same way that function already branches for everything else
-// Test-mode-specific. currentSessionId is always the test session by
+// Test-session-only — called from ensureSession() below, gated on
+// testModeProjectName. currentSessionId is always the test session by
 // the time this runs.
 async function loadAutoTracking() {
   try {
@@ -353,10 +274,8 @@ export async function toggleAutoTracking() {
 }
 
 // Applies the {auto, current_index, models} shape returned by both
-// GET /api/ai/models and POST /api/ai/models/selection, and — piggybacked
-// on every chat-turn/action response as `ai_model` (see chat_service.py) —
-// keeps this in sync whenever a turn's own AI call causes the backend's
-// cascade to fall back to a different model, with no extra round trip.
+// GET /api/ai/models and POST /api/ai/models/selection, and piggybacked
+// on every chat-turn response as `ai_model` when a turn falls back to a different model.
 function applyAiModelInfo(info) {
   aiModels.value = info.models
   aiModelAuto.value = info.auto
@@ -409,7 +328,7 @@ async function submitMessage(message) {
   setMessageFailed(message.id, false)
   chatLoading.value = true
 
-  // Creiamo subito la bolla dell'assistente che accoglierà i chunk in tempo reale
+  // Create the assistant bubble up front, to receive chunks as they stream in
   const assistantMsgId = ++nextMessageId
   const assistantMsg = {
     id: assistantMsgId,
@@ -422,13 +341,12 @@ async function submitMessage(message) {
   messages.value.push(assistantMsg)
 
   try {
-    // Passiamo le callback onStatus e onChunk a sendChatMessage
     const result = await sendChatMessage(message.content, currentSessionId.value, {
       onStatus: (text) => {
         chatStatus.value = text
       },
       onChunk: (chunkText) => {
-        // Troviamo l'indice del messaggio e aggiorniamo il valore creando un nuovo oggetto per scatenare la reattività di Vue
+        // Replace with a new object (not mutate in place) to trigger Vue reactivity
         const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
         if (idx !== -1) {
           messages.value[idx] = {
@@ -439,44 +357,29 @@ async function submitMessage(message) {
       }
     })
 
-    // Correla questa bolla con il suo vero id lato backend — serve a
-    // ChatTimeline/benchmarkTimeline.js's effectiveTimestamp per
-    // posizionare una transizione pre-turno (autotracking_on_user_
-    // message) esattamente su questo messaggio invece di ricadere sul
-    // timestamp grezzo lato server, confrontato — a torto — con
-    // l'orologio client della bolla assistant (vedi EditProjectView.vue's
-    // rawLiveMessages). Usa direttamente assistant_message_id/
-    // user_message_id — non result.reply, che chat_service.py's
-    // process_turn non popola mai (OutVariables.messages resta sempre
-    // [], vedi backend tests/test_chat_service_evaluation_points.py) —
-    // prima si leggeva da lì e la bolla non veniva mai correlata al suo
-    // vero id, perdendo la linea di separazione/i segnali per ogni turno.
+    // Correlate this bubble with its real backend id — needed by
+    // benchmarkTimeline.js's effectiveTimestamp to position a pre-turn
+    // transition exactly on this message rather than a raw server
+    // timestamp. Read directly from assistant_message_id/user_message_id,
+    // never from result.reply (always empty for a live turn).
     if (result.user_message_id != null) message.messageId = result.user_message_id
 
     const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
     if (idx !== -1) {
       if (result.assistant_message_id != null) {
-        // Anche il timestamp va ristampato qui, non solo messageId: quello
-        // originale risale a quando questa bolla placeholder è stata
-        // creata (submitMessage's own push, sostanzialmente lo stesso
-        // istante del messaggio utente che l'ha innescata), mai aggiornato
-        // con quanto la risposta ha davvero impiegato — così il prossimo
-        // turno, se inviato in fretta, può ricevere un timestamp locale
-        // vicinissimo (o persino coincidente) a quello di questa bolla.
-        // Un pareggio timestamp fa sì che buildTimeline's own tie-break
-        // (un messaggio precede sempre una transizione allo stesso istante
-        // effettivo) spinga la transizione oltre bolle successive che in
-        // realtà dovrebbe precedere.
+        // The timestamp must be re-stamped too, not just messageId — the
+        // placeholder's original timestamp predates however long the
+        // response actually took, which can tie (or nearly tie) with the
+        // next turn's own timestamp and confuse buildTimeline's tie-break.
         messages.value[idx] = {
           ...messages.value[idx],
           messageId: result.assistant_message_id,
           timestamp: new Date().toISOString()
         }
       } else {
-        // Nessuna risposta AI generata questo turno (es. una transizione
-        // pre-turno è atterrata in uno stato che non chatta affatto) —
-        // niente è mai stato trasmesso in questa bolla, quindi la
-        // rimuoviamo invece di lasciarla vuota e orfana.
+        // No AI reply was generated this turn (e.g. a pre-turn transition
+        // landed in a state that doesn't chat at all) — remove the empty,
+        // orphaned bubble instead of leaving it.
         messages.value.splice(idx, 1)
       }
     }
@@ -494,22 +397,20 @@ async function submitMessage(message) {
       applyAiModelInfo(result.ai_model)
     }
     if (result.session_id != null) {
-      // A turn always lands on a session it just touched (see
-      // ChatSessionManager) — open by definition.
+      // A turn always lands on a session it just touched — open by definition.
       currentSessionId.value = result.session_id
       selectedSessionActive.value = true
     }
     if (sessionsPanelOpen.value) loadSessions()
     bumpTurn()
   } catch (err) {
-    // In caso di errore durante l'invio, rimuoviamo la bolla vuota/incompleta
+    // On send failure, remove the empty/incomplete bubble
     const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
     if (idx !== -1) messages.value.splice(idx, 1)
 
     setMessageFailed(message.id, true)
-    // 409 = the backend rejected this exact session_id as closed (see
-    // ChatSessionManager.require_open_session) — reflect that immediately
-    // so the input disables and action buttons hide without a reload.
+    // 409 = the backend rejected this session_id as closed — reflect that
+    // immediately so the input disables without a reload.
     if (err.status === 409) selectedSessionActive.value = false
   } finally {
     chatLoading.value = false
@@ -567,13 +468,9 @@ export async function handleAction(actionName) {
         content,
         audioText: audio_text,
         messageId: id,
-        // The backend's own real timestamp (see ChatService.
-        // _messages_for_transition/db.get_message) — not the client's
-        // clock: two entries can land here from the very same action
-        // (an action_prompt reply plus a separate opening message), and
-        // stamping both with "now" risks the exact same tie/near-tie
-        // buildTimeline's own tie-break mishandled for submitMessage's
-        // assistant bubble (see its own comment there).
+        // The backend's real timestamp, not the client's clock — two
+        // entries can land here from the same action, and stamping both
+        // with "now" risks the same tie buildTimeline mishandles.
         timestamp
       })
     }
@@ -604,27 +501,23 @@ export function clearChatUi() {
   clearApiError()
   chatStatus.value = ''
   autoTrackingEnabled.value = true
-  // reset_project/reset_all wipe ChatSession rows too (see db.py) — a
-  // stale id here would just be ignored server-side, but a project
-  // switch is exactly when "the current session" should be re-resolved.
+  // A project switch is exactly when "the current session" should be re-resolved.
   currentSessionId.value = null
   currentProjectName.value = null
   selectedSessionActive.value = true
   sessions.value = []
 }
 
-// testModeProjectName (see its own docstring) is read internally by
-// loadMessages/ensureSession — still works from EditProjectView.vue's own
-// embedded "Test" chat toolbar for a project that's never been published.
+// testModeProjectName is read internally by loadMessages/ensureSession —
+// still works from EditProjectView's embedded "Test" chat toolbar for a
+// project that's never been published.
 export async function handleReset() {
   if (!window.confirm('Reset the conversation, signals, and transitions? This cannot be undone.')) return
   clearChatUi()
   try {
-    // A reset re-enters the automaton through init-action the same way a
-    // session's very first transition ever does (see controller.py's own
-    // post_reset docstring) — its own on-enter rides along on this same
-    // response, under the same "on-enter" wire key as every other real
-    // transition.
+    // A reset re-enters the automaton through init-action, same as a
+    // session's very first transition — its on-enter rides along under
+    // the same "on-enter" wire key as any other real transition.
     const { 'on-enter': onEnter, ...newState } = await postReset()
     state.value = null
     handleStateChange(newState, onEnter)
@@ -635,13 +528,11 @@ export async function handleReset() {
   }
 }
 
-// testModeProjectName (see its own docstring), read internally — its own
-// SessionsPanel "new session" button is what reaches this, from either
-// context alike.
+// testModeProjectName, read internally — the SessionsPanel "new session"
+// button reaches this from either context alike.
 export async function handleNewSession() {
-  // Only one session is ever active per project (see ChatSessionManager) —
-  // starting a new one always supersedes whichever one was current, so
-  // this is a real "close the current session" action, not just an addition.
+  // Only one session is ever active per project — starting a new one
+  // always supersedes the current one, not just adds to it.
   if (!window.confirm('Start a new session? This will close the current session for this project — only one can be active at a time.')) return
   try {
     const session = testModeProjectName.value != null
@@ -651,15 +542,13 @@ export async function handleNewSession() {
     selectedSessionActive.value = session.active
     clearApiError()
     messages.value = []
-    // A brand new session always starts by entering init_action.target
-    // *through* init_action itself (see ChatService.create_session's own
-    // docstring) — same "on-enter" wire key every other real transition
-    // reports.
+    // A brand new session enters init_action.target through init_action
+    // itself, reported under the same "on-enter" wire key as any other
+    // real transition.
     if (session['on-enter']) runOnEnterScript(session['on-enter'])
     await loadMessages()
-    // Opened unconditionally (not just refreshed when already open) so the
-    // new session is actually visible right away, wherever this was
-    // triggered from — not dependent on the sessions panel already being open.
+    // Opened unconditionally so the new session is visible right away,
+    // regardless of whether the panel was already open.
     sessionsPanelOpen.value = true
     await loadSessions()
     bumpTurn()

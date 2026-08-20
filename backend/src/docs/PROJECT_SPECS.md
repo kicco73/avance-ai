@@ -327,9 +327,8 @@ because `env.<name>`'s own valid-name set is collected **project-wide**,
 across every action's own declared `env:` keys, before any expression is
 checked (§6.2) — so a key declared anywhere (including by the very
 action referencing it) is always a legitimate `env.<name>` reference.
-Unlike before this refactor, `env:` now gets the **exact same**
-build-time validation `trigger` does — both syntax *and* unknown-name
-checks — there's no longer a special case here.
+`env:` gets the **exact same** build-time validation `trigger` does —
+both syntax *and* unknown-name checks.
 
 At evaluation time, a failure (an `env.<name>` reference that's a
 recognized name but has no value yet, or a runtime error like division

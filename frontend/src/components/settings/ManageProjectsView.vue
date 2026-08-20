@@ -1,34 +1,18 @@
 <script setup>
-// Settings > Manage projects (formerly "Runtime status", widened to
-// actually manage projects from here too — New/Upload/Delete, moved out
-// of ProjectsMenu.vue, which now stays scoped to switch/edit/label/
-// download only) — one row per project: its own three-state availability
-// (see backend's ProjectService._project_status: 'running'/'paused'/
-// 'manually_paused') and enough context (revision, published revision,
-// paused reason) to actually understand why. The status icon next to a
-// project's own name is also its own toggle: running -> pause,
-// manually_paused -> resume, both enforced backend-side (see
-// ProjectService.set_manually_paused/set_manually_running) — 'paused'
-// (the automatic case) has nothing to toggle from here at all, since the
-// real fix is whatever's actually broken (its own build, or a
-// dependency), not a button on this table.
+// Settings > Manage projects: one row per project with its three-state
+// status (see backend ProjectService._project_status) and revision info.
+// The status dot toggles running <-> manually_paused only; 'paused' needs an external fix.
 import { onMounted, ref } from 'vue'
 import { getProjectsRuntimeStatus, putProjectPause, putProjectResume } from '../../api.js'
 import ErrorBanner from '../ErrorBanner.vue'
 
-// "New project"/"Upload project..."/"delete" all live here now, not
-// ProjectsMenu.vue — App.vue still owns the actual actions
-// (postNewProject/the shared hidden file input/deleteProject+
-// clearChatUi), this only emits the same events those buttons used to,
-// so App.vue's own handlers/wiring didn't need to change at all, just
-// which component they're attached to.
+// Emits events only; App.vue owns the actual new/upload/delete actions.
 const emit = defineEmits(['close', 'new-project', 'upload', 'delete', 'edit', 'benchmark', 'download'])
 
 const rows = ref([])
 const loading = ref(true)
-// Which project's own status button has a pause/resume request in
-// flight — disables just that one row's button, same convention as
-// SessionsPanel.vue's own deletingSessionId.
+// Name of the project with a pause/resume request in flight; disables
+// only that row's button.
 const togglingProject = ref(null)
 
 async function load() {
@@ -66,11 +50,8 @@ async function toggleStatus(row) {
   }
 }
 
-// Same confirm text ProjectsMenu.vue's own selectDelete used before this
-// moved here — App.vue's own handleModelDelete does the actual work
-// (deleteProject + clearChatUi + refreshStateAndProjects, which also
-// refreshes this table's own rows, see App.vue) and has no confirm of
-// its own, so this is the one place that still needs to ask.
+// App.vue's delete handler has no confirm of its own, so this is the
+// one place that asks before deleting.
 function selectDelete(name) {
   if (!window.confirm(`Delete project "${name}"? This cannot be undone.`)) return
   emit('delete', name)

@@ -41,9 +41,8 @@ def test_get_metrics_with_message_id_restricts_to_that_points_history(client, he
     first_turn = client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "first"}).json()
     first_message_id = first_turn["assistant_message_id"]
 
-    # A second turn happens afterward — engagement should have grown since,
-    # but a lookup pinned to the first message's own timestamp must not
-    # reflect it.
+    # engagement should have grown since, but a lookup pinned to the
+    # first message's timestamp must not reflect it.
     client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "second"})
 
     at_first = {m["name"]: m["value"] for m in client.get(f"/api/projects/hello/metrics?message_id={first_message_id}").json()}
@@ -62,9 +61,8 @@ def test_get_metrics_response_shape_is_unchanged_by_message_id(client, hello_pro
 
     assert response.status_code == 200
     body = response.json()
-    # Always a one_session context — retention/activity_consistency's own
-    # scope excludes that (see AnalyticsCalculator's own default-metric
-    # filtering), so neither is ever included here.
+    # Always a one_session context — retention/activity_consistency are
+    # excluded from that scope.
     assert {m["name"] for m in body} == {"engagement", "state_stability", "signal_stability"}
     for metric in body:
         assert set(metric) == {"name", "ui_label", "ui_description", "value"}
@@ -79,9 +77,8 @@ def test_get_metrics_with_an_unknown_message_id_is_404(client, hello_project):
 
 @pytest.mark.contract
 def test_get_messages_response_shape_has_no_annotation_fields(client, hello_project):
-    """Annotation-related fields (and the evaluation-point link) live on
-    Tracking now (see get_session_signals) — a message row itself is just
-    its own content/metadata."""
+    """Annotation-related fields and the evaluation-point link live on
+    Tracking (see get_session_signals), not on the message row."""
     session = client.get("/api/chat/session").json()
     client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})
 
@@ -134,10 +131,8 @@ def test_get_benchmark_metrics_response_shape(client, hello_project, app_db):
 
     assert response.status_code == 200
     body = response.json()
-    # Always a one_session context (session_id given or not — see
-    # ChatService.get_benchmark_metrics/BenchmarkCalculator's own
-    # default-metric filtering) — benchmark_stability/benchmark_consistency's
-    # own scope is {all_sessions}, so neither is ever included here.
+    # Always a one_session context — benchmark_stability/benchmark_consistency
+    # are scoped to {all_sessions}, so neither is included here.
     assert {m["name"] for m in body} == {
         "state_accuracy", "state_accuracy_stable", "state_accuracy_transition",
         "signal_accuracy", "transition_responsiveness", "benchmark_accuracy",
@@ -149,9 +144,7 @@ def test_get_benchmark_metrics_response_shape(client, hello_project, app_db):
 @pytest.mark.regression
 def test_get_benchmark_metrics_reflects_annotations(client, hello_project, app_db):
     """"Hello world" declares no triggers, so there's no real chat-turn
-    path to a linked Tracking row here — written directly via app_db,
-    exactly the way AutoTracker.run() would (see db.save_signal_snapshot's
-    own message_id param)."""
+    path to a linked Tracking row — written directly via app_db."""
     session = client.get("/api/chat/session").json()
     turn = client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}).json()
     message_id = turn["assistant_message_id"]
@@ -208,11 +201,9 @@ def test_delete_session_annotations_is_404_for_someone_elses_or_unknown_session(
 
 @pytest.mark.regression
 def test_annotating_a_later_sessions_own_start_materializes_a_signals_row(client, hello_project):
-    """Only the literal first session ever opened for a project gets a
-    real "" -> start_state Tracking row (see the previous test) — every
-    later session has nothing real to annotate against at its own start
-    until an expert actually tries (see ChatService.
-    _materialize_session_start_row)."""
+    """Only the first session ever opened for a project gets a real
+    "" -> start_state Tracking row — a later session has nothing real to
+    annotate against until an expert actually tries."""
     first = client.get("/api/chat/session").json()
     client.get(f"/api/chat/sessions/{first['id']}/messages")
 
@@ -253,15 +244,9 @@ def test_clearing_the_only_annotation_on_a_materialized_start_row_deletes_it(cli
 
 @pytest.mark.regression
 def test_annotating_the_first_sessions_own_start_materializes_a_signals_row(client, hello_project):
-    """Regression test: the automaton's very first ("" -> start_state)
-    transition, created by ChatService.open_if_needed, fires before any
-    message of its own bootstrap exists — there's no real "causing"
-    message to link it to eagerly, so it starts out unlinked (see
-    open_if_needed's own docstring). A domain expert can still annotate
-    it: this exercises the exact same lazy-link path every later
-    session's own start already relies on (see TrackingService.
-    _materialize_session_start_row) — a real (not later-materialized)
-    row this time, but the linking is identical either way."""
+    """The automaton's first ("" -> start_state) transition fires before
+    any message exists, so it starts unlinked — a domain expert can
+    still annotate it via the same lazy-link path a later session uses."""
     session = client.get("/api/chat/session").json()
     messages = client.get(f"/api/chat/sessions/{session['id']}/messages").json()  # triggers open_if_needed
     assert messages

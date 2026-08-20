@@ -1,14 +1,7 @@
 <script setup>
-// Chronological, clickable message+transition list — shared by
-// LabelProjectView.vue (reviewing a fixed past session) and
-// EditProjectView.vue (reviewing the live session as it happens). Both
-// feed it the same shapes (see benchmarkTimeline.js's buildTimeline: each
-// entry is { kind: 'message', message } or { kind: 'transition',
-// transition, annotationStatus }), so this component has no notion of
-// "benchmark" vs "live" mode of its own — annotationStatus/signalsAnnotated
-// simply read as null/false wherever the caller's own signalsLog has
-// nothing annotated (a live session's log never does, unless it was
-// annotated from Label sessions too).
+// Chronological, clickable message+transition list. Each timeline entry
+// is { kind: 'message', message } or { kind: 'transition', transition,
+// annotationStatus } — this component has no notion of mode of its own.
 import { nextTick, ref, watch } from 'vue'
 import MessageBubble from './MessageBubble.vue'
 import { messageHasAnnotatedSignals } from '../../benchmarkTimeline.js'
@@ -17,51 +10,25 @@ const props = defineProps({
   timeline: { type: Array, required: true },
   signalsLog: { type: Array, default: () => [] },
   selected: { type: Object, default: null },
-  // See MessageBubble.vue's own prop — this component has no opinion of
-  // its own on whether spoken text should show, just forwards whatever
-  // the caller (EditProjectView.vue's chat, via chatStore.js's shared
-  // toggle) decides. Defaults to false so LabelProjectView.vue,
-  // which never passes this at all, is unaffected.
+  // Forwarded to MessageBubble.vue; this component has no opinion of its
+  // own on whether spoken text should show.
   spokenTextEnabled: { type: Boolean, default: false },
-  // Whether the session this timeline is showing was imported (see
-  // ChatSession.source) rather than played live — there's no real
-  // avance-computed state to compare an annotation against there (see
-  // benchmarkTimeline.js's own buildTimeline `imported` option, which the
-  // caller must pass this same value into so entry.annotationStatus is
-  // already 'labelled' rather than 'correct'/'incorrect'), so both the
-  // transition badge and MessageBubble's own signal marker read as a
-  // neutral "labelled" tick instead of a correct/incorrect verdict.
+  // Whether the session was imported rather than played live — there's
+  // no avance-computed state to compare an annotation against, so both
+  // the transition badge and the signal marker read as a neutral
+  // "labelled" tick instead of a correct/incorrect verdict.
   imported: { type: Boolean, default: false },
-  // (stateKey) => displayLabel — every transition's own old_state/
-  // new_state (see benchmarkTimeline.js) is always the automaton's own
-  // internal state *key*, never its human-facing ui-label (the two just
-  // happen to read the same until someone actually renames one without
-  // renaming the other). Optional: LabelProjectView.vue's own review
-  // timeline doesn't pass this at all and keeps showing the raw key
-  // exactly as before — only EditProjectView.vue's live "Test" timeline
-  // passes one (resolved off its own always-current-draft state list),
-  // since that's the one place a stale key/label mismatch is actually
-  // confusing (testing exactly what's being edited right now).
+  // (stateKey) => displayLabel. A transition's old_state/new_state is
+  // always the automaton's internal state key, never its human-facing
+  // label — optional, since the two usually read the same.
   resolveStateLabel: { type: Function, default: null },
-  // (stateKey, actionName) => displayLabel — same optional, test-chat-
-  // only convention as resolveStateLabel just above: null everywhere
-  // except EditProjectView.vue's own live "Test" timeline. Unlike
-  // resolveStateLabel (which always renders *something*, raw key or
-  // not), this gates whether the self-loop action badge (see the
-  // template below) renders at all — LabelProjectView.vue's own review
-  // timeline never passes this, so it stays exactly as it was before
-  // this badge existed.
+  // (stateKey, actionName) => displayLabel. Gates whether the self-loop
+  // action badge renders at all (unlike resolveStateLabel, which always
+  // renders something).
   resolveActionLabel: { type: Function, default: null },
-  // Whether a `timeline` prop change should snap the view to the bottom
-  // (see scrollToBottom below) — on by default, matching EditProjectView.
-  // vue's own live "Test" timeline, where a fresh message really does
-  // belong at the bottom the moment it arrives. LabelProjectView.vue's own
-  // review timeline turns this off: there, a `timeline` change just as
-  // often means an expert marked/commented on something mid-review (see
-  // buildTimeline — it always returns a fresh array, even when only one
-  // entry's own annotationStatus actually changed), and forcibly
-  // scrolling someone away from the row they were just working on is the
-  // bug this prop exists to fix, not a feature.
+  // Whether a `timeline` prop change should snap the view to the bottom.
+  // Turn off when a change can mean an annotation/comment mid-review
+  // rather than a new message, so users aren't scrolled away mid-edit.
   autoScroll: { type: Boolean, default: true }
 })
 
@@ -69,11 +36,8 @@ function stateLabel(stateKey) {
   return props.resolveStateLabel ? props.resolveStateLabel(stateKey) : stateKey
 }
 
-// The fired action's own ui-label, next to the ↻ icon (see the template
-// below) — only meaningful for a self-loop: the state badge alone still
-// reads as "state" (unchanged), giving no hint at all of *what* just
-// happened, unlike a real transition where the destination state badge
-// already answers that on its own.
+// Only meaningful for a self-loop: the state badge alone doesn't change,
+// so this is the only hint of what action actually fired.
 function actionLabel(transition) {
   return props.resolveActionLabel ? props.resolveActionLabel(transition.old_state, transition.action) : null
 }
@@ -82,15 +46,9 @@ const emit = defineEmits(['select-message', 'select-transition'])
 
 const rootEl = ref(null)
 
-// This root is the actual scroll region (see .chat-timeline's own
-// overflow-y below) — not whatever wraps it. A parent that also happens
-// to be scrollable itself (see ChatWindow.vue's own .messages, when this
-// is slotted into it) never actually overflows once this absorbs its own
-// content instead, so a parent-driven auto-scroll silently no-ops there;
-// this has to own the behavior itself. buildTimeline() (see
-// benchmarkTimeline.js) always returns a fresh array, never mutates one
-// in place, so a shallow watch on the prop reference is enough to catch
-// every change.
+// This root is the actual scroll region, not whatever wraps it — a
+// parent-driven auto-scroll would silently no-op if the parent overflows
+// instead. timeline is always a fresh array, so a shallow watch suffices.
 function scrollToBottom() {
   nextTick(() => {
     if (rootEl.value) rootEl.value.scrollTop = rootEl.value.scrollHeight
@@ -111,12 +69,8 @@ function isTransitionSelected(transition) {
   return props.selected?.kind === 'transition' && props.selected.transition.id === transition.id
 }
 
-// A fired action that left the state unchanged (see benchmarkTimeline.js's
-// buildTimeline own includeSelfLoops — only EditProjectView.vue's live
-// chat ever includes one of these unannotated) still happened and is
-// worth showing, just visually de-emphasized (see .timeline-transition-
-// row-self-loop below) since nothing about the conversation's own state
-// actually moved.
+// A fired action that left the state unchanged still happened and is
+// worth showing, just visually de-emphasized since nothing moved.
 function isSelfLoop(transition) {
   return transition.old_state === transition.new_state
 }
@@ -203,9 +157,8 @@ function isSelfLoop(transition) {
   cursor: pointer;
 }
 
-/* display:contents so an empty slot (every use besides EditProjectView's
-   restart-from-here button) contributes no box/spacing of its own —
-   whatever the slot does render is responsible for its own margin. */
+/* display:contents so an empty slot contributes no box/spacing of its
+   own — whatever the slot renders is responsible for its own margin. */
 .timeline-message-actions {
   display: contents;
 }
@@ -245,16 +198,13 @@ function isSelfLoop(transition) {
   background: #f0dcb0;
 }
 
-/* A fired self-loop (see isSelfLoop) — de-emphasized rather than hidden,
-   since the conversation's own state genuinely didn't move here. */
+/* De-emphasized rather than hidden — the state genuinely didn't move. */
 .timeline-transition-row-self-loop {
   opacity: 0.5;
 }
 
-/* Whether the transition's own expert-annotated expected_state agrees
-   with what actually happened (see transitionAnnotationStatus) — lets a
-   reviewer spot a mismatch across the whole timeline at a glance, not
-   just by opening the Inspector on each one. */
+/* Whether the expert-annotated expected_state agrees with what actually
+   happened — lets a reviewer spot a mismatch at a glance. */
 .timeline-transition-row-correct {
   background: #e8f5e9;
 }
@@ -279,10 +229,9 @@ function isSelfLoop(transition) {
   background: #f5c6c2;
 }
 
-/* An imported session (see the imported prop's own docstring) has
-   nothing genuine to compare an annotation against — same green as
-   -correct above, but under its own class name so the semantics
-   ("labelled", not "verified correct") stay clear in the markup. */
+/* An imported session has nothing genuine to compare an annotation
+   against — same green as -correct, but its own class keeps "labelled"
+   distinct from "verified correct" in the markup. */
 .timeline-transition-row-labelled {
   background: #e8f5e9;
 }
@@ -310,10 +259,8 @@ function isSelfLoop(transition) {
   font-weight: 600;
 }
 
-/* Same brown as InspectorDetailCard.vue's own "Action" kind badge — a
-   self-loop's own fired-action label, shown only where the state badge
-   right after it can't say anything useful on its own (the state never
-   actually changed). */
+/* A self-loop's fired-action label, shown only where the state badge
+   right after it can't say anything useful on its own. */
 .timeline-transition-action-badge {
   display: inline-block;
   padding: 0.15rem 0.7rem;

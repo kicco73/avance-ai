@@ -1,11 +1,7 @@
 """Tests for tracking.env.Env/PersistedEnv — the per-(user, project)
-"environment" memory: free-form, model-reported values (`stored()`,
-persisted via db.Db.get_env/set_env — a dedicated env-only row on the
-Tracking event log, see its own docstring) and deterministic,
-action-set values (`action_set()`, persisted via db.Db.get_action_env/
-set_action_env). Nothing else — the "always computed fresh" facts this
-class used to also carry (today/time/session duration/...) now live
-entirely outside Env, see test_system_facts.py/test_session_facts.py.
+"environment" memory: free-form, model-reported values (`stored()`) and
+deterministic, action-set values (`action_set()`), each independently
+persisted and merged for prompt rendering.
 """
 from __future__ import annotations
 
@@ -22,9 +18,8 @@ def _env(db) -> PersistedEnv:
 
 
 def _session(db, username=USERNAME, project_name=PROJECT_NAME, start=None):
-    # set_env resolves onto the (user, project)'s latest chat session
-    # (see db.Db.set_env) — a no-op without one, so any test that stores
-    # a value (directly or via env.update) needs a session first.
+    # set_env resolves onto the latest chat session — a no-op without
+    # one, so any test that stores a value needs a session first.
     from datetime import datetime
     start = start or datetime(2026, 1, 1)
     db.ensure_project(project_name)
@@ -89,10 +84,7 @@ def test_update_with_empty_values_is_a_noop(db):
 @pytest.mark.contract
 def test_update_drops_a_key_that_is_currently_action_set(db):
     """A model echoing back a key an action's own `env:` field already
-    set (see automaton_builder.py's _build_action) must not duplicate
-    into stored() ("AI") on top of action_set() ("SET") — see
-    tracking_engine.py's own apply_action_env for the write path that
-    owns this key instead."""
+    set must not duplicate into stored() on top of action_set()."""
     _session(db)
     env = _env(db)
     env.update_action_set({"WRONG_ANSWERS_ON_CURRENT_STEP": 2})

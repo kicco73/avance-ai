@@ -1,8 +1,6 @@
 """Integration tests for POST/GET /api/projects/{project_name}/benchmark-runs
 — exercises the whole replay pipeline end to end (BenchmarkRunService,
-BenchmarkProcessor, TurnByTurnSignalSource/BatchSignalSource, the generic
-Job engine) against a real Db and FakeAiService, not just unit-level
-pieces in isolation.
+BenchmarkProcessor, the Job engine) against a real Db and FakeAiService.
 """
 from __future__ import annotations
 

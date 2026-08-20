@@ -4,9 +4,6 @@ import pytest
 
 from metrics.metrics_framework.normalization import Normalizer
 
-# Every test here pins the exact numeric output of a pure math utility
-# for specific inputs — punctual facts, not a structural/interface
-# guarantee — so uniformly regression.
 pytestmark = pytest.mark.regression
 
 

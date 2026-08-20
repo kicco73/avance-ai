@@ -8,10 +8,8 @@ from db import Db
 logger = logging.getLogger(__name__)
 
 # Default open window, in minutes, when the caller doesn't supply one —
-# matches config.yml's own chat-service.max_session_duration_in_minutes
-# default (see config.py's AppConfig), which is the single source of
-# truth in a real deployment (see main.py). Kept here too so tests/other
-# direct constructions don't need to know that default themselves.
+# matches config.yml's chat-service.max_session_duration_in_minutes
+# default, kept here too so tests/direct constructions don't need it.
 DEFAULT_OPEN_WINDOW_MINUTES = 60.0
 
 
@@ -25,12 +23,9 @@ class ChatSessionManager(object):
         return self._open_window
 
     def is_open(self, session: dict, now: datetime | None = None) -> bool:
-        # An imported session (see ChatSession.source) has no datetime_end
-        # at all — it never had a live conversation window to begin with
-        # (see tracking.session_import's own create_chat_session(...,
-        # datetime_end=None)), so "open" (and by extension "active", see
-        # get_active_session below) can never mean anything for it: always
-        # False, never a crash from comparing against None.
+        # An imported session has no datetime_end at all — never had a
+        # live conversation window, so "open" always means False here,
+        # never a crash from comparing against None.
         if session["datetime_end"] is None:
             return False
         now = now if now is not None else datetime.utcnow()
@@ -38,16 +33,8 @@ class ChatSessionManager(object):
 
     def get_active_session(self, username: str, project_name: str, source: str = 'native') -> dict | None:
         """The single session `username`+`project_name` may currently
-        write to — the most recently started one, but only if it's also
-        still open; None if there isn't one (nothing yet, or the latest
-        has expired too). Every other session for this project, even one
-        that's individually still open, is not this one. `source`: 'native'
-        (the default — every real, live-chat caller) or 'test' (see
-        get_or_create_current_draft_session/create_draft_session below) —
-        these are two entirely separate "active session" pools, never
-        interchangeable: a project's live conversation and its own
-        in-progress "Test" chat must never resolve to (or touch) the same
-        row."""
+        write to — the most recently started one, if still open. `source`:
+        'native'/'test' are separate "active session" pools, never interchangeable."""
         latest = self._db.get_latest_chat_session(username, project_name, source=source)
         if latest is not None and self.is_open(latest):
             return latest
@@ -57,16 +44,8 @@ class ChatSessionManager(object):
         self, username: str, project_name: str, session_id: int | None, current_state: str
     ) -> dict:
         """The one session `username`+`project_name` may write to right
-        now: the most recently started one, if it's still open (touched
-        to refresh its datetime_end/end_state), else a freshly created
-        one (which immediately becomes "the" active session by having
-        the latest datetime_start). `session_id` is the caller's belief
-        about which session is current — never trusted for the decision
-        (see module docstring), only logged when it's stale so a rotation
-        elsewhere is observable. Always a real, published-revision session
-        — see get_or_create_current_draft_session for EditProjectView.
-        vue's own embedded "Test" chat, the only caller allowed a draft
-        one instead."""
+        now: the most recently started one if still open, else a freshly
+        created one. `session_id` is only logged when stale, never trusted."""
         now = datetime.utcnow()
         active = self.get_active_session(username, project_name)
         if active is not None:
@@ -81,12 +60,9 @@ class ChatSessionManager(object):
     def get_or_create_current_draft_session(
         self, username: str, project_name: str, session_id: int | None, current_state: str
     ) -> dict:
-        """Like get_or_create_current_session, but a fresh session (see
-        create_draft_session) is stamped against the project's own current
-        *draft* revision instead of requiring a published one — the only
-        difference: an existing active session is reused/touched exactly
-        as-is either way, whichever revision it was originally stamped
-        with."""
+        """Like get_or_create_current_session, but a fresh session is
+        stamped against the project's current *draft* revision instead
+        of requiring a published one."""
         now = datetime.utcnow()
         active = self.get_active_session(username, project_name, source='test')
         if active is not None:
@@ -102,18 +78,8 @@ class ChatSessionManager(object):
         self, username: str, project_name: str, session_id: int | None, current_state: str
     ) -> dict:
         """The exact session a chat turn must write to — raises
-        ValueError (never falls back to creating or picking a different
-        one) if `session_id` is missing, doesn't exist, belongs to
-        another user/project, or isn't the currently active session for
-        that project (whether it's outright closed, or merely open but
-        already superseded by a newer one — both are rejected the same
-        way). On success, touches it (same refresh as
-        get_or_create_current_session) and returns it. The "active" pool
-        checked against is whichever one `session_id` itself belongs to
-        (see get_active_session's own source docstring) — a real chat
-        turn's own session_id is always 'native', a "Test" chat turn's
-        always 'test', so this needs no separate signal from the caller
-        to know which: the session row already says so."""
+        ValueError (never falls back to creating/picking another one) if
+        `session_id` is missing, unknown, or not the active session."""
         if session_id is None:
             raise ValueError("No session specified.")
         session = self._db.get_chat_session(session_id)

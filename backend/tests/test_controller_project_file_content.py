@@ -1,20 +1,8 @@
 """Integration tests for the index.css "skin" feature's backend surface:
-
-- .css is now a text-editable extension, with its own persisted
-  content_type (project.project_service.TEXT_EDITABLE_EXTENSIONS).
-- Image attachments (project.project_service.IMAGE_EXTENSIONS) can be
-  written through the same PUT .../files/{file_name} route, gated by a
-  Content-Type header that must match the extension, and capped at
-  MAX_IMAGE_UPLOAD_BYTES.
-- index.css's own url(...) references are validated against the
-  project's current archives at save time (missing_css_references).
-- The new raw GET .../files/{file_name}/content route serves bytes
-  directly (for ChatWindow.vue's own skin injection and the file
-  explorer's image preview), resolving its revision from `session_id`
-  exactly the way ProjectService.get_automaton_and_state_for_session
-  resolves the automaton for that same session — a live/native session
-  pinned to its own project_revision, a 'test' session always tracking
-  whatever the current draft is.
+text-editable CSS, image attachments (Content-Type-gated, capped at
+MAX_IMAGE_UPLOAD_BYTES), and the raw GET .../files/{file_name}/content
+route, which resolves its revision from `session_id` the same way the
+automaton itself does for that session.
 """
 from __future__ import annotations
 
@@ -53,12 +41,9 @@ def test_content_type_surfaces_on_get_project_file(client, hello_project):
 
 @pytest.mark.regression
 def test_get_project_file_reports_no_content_for_a_missing_index_css(client, hello_project):
-    """index.css is the one file every project is allowed not to have at
-    all (see controller.py's own get_project_file docstring) — missing,
-    this is 204 No Content, not a 404, so the "Edit project" view's
-    always-mounted index.css editor can start the user off with an empty
-    buffer instead of surfacing an error for a file that was never
-    required to exist."""
+    """index.css is the one file every project is allowed not to have —
+    missing, this is 204 No Content, not a 404, so an editor can start
+    with an empty buffer instead of surfacing an error."""
     response = client.get(f"/api/projects/{hello_project}/files/index.css")
     assert response.status_code == 204
     assert response.content == b""
@@ -179,11 +164,8 @@ class TestGetProjectFileContent:
         assert response.content == b"body { color: blue; }"
 
     def test_a_live_session_stays_pinned_to_its_own_published_revision(self, client):
-        # A two-state project with a real action (not hello_project's
-        # single-state one): _finalize_project_update wipes every session
-        # for the active project whenever its current_state can't be
-        # determined at all (see test_controller_project_edit_preserves_
-        # chat.py) — firing a real action is what establishes one reliably.
+        # A two-state project with a real action: firing it establishes a
+        # current_state reliably, unlike hello_project's single-state one.
         client.put("/api/projects/proj", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
         client.put("/api/projects/proj/files/index.css", content=b"body { color: red; }")
         client.post("/api/projects/proj/publish", json={})

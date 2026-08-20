@@ -1,13 +1,7 @@
 <script setup>
-// Per-message expert comment (see backend Tracking.comment /
-// TrackingService.set_message_comment) — a free-text note a domain
-// expert can leave on *any* chat line while reviewing a session (see
-// LabelProjectView.vue, the only current caller: rendered via
-// ChatTimeline.vue's own message-actions slot, the same extension point
-// RestartFromHereButton.vue already uses for EditProjectView.vue's live
-// chat). Unlike expected_state/expected_values, this has no
-// evaluation-point gating at all — every message gets the icon, and
-// it's never disabled.
+// Per-message expert comment: a free-text note that can be left on any
+// chat line. Unlike expected_state/expected_values, there is no
+// evaluation-point gating — every message gets the icon, always enabled.
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 const props = defineProps({
@@ -17,9 +11,7 @@ const props = defineProps({
 })
 
 // 'save' carries the trimmed text, or null to clear — the parent owns
-// the actual PUT + Signals-log reload (same split RestartFromHereButton
-// already uses for its own click/double-click events), so this
-// component has no idea an API even exists.
+// the actual API call, so this component has no idea one even exists.
 const emit = defineEmits(['save'])
 
 const open = ref(false)
@@ -29,11 +21,8 @@ const popoverRef = ref(null)
 const textareaRef = ref(null)
 const style = ref({})
 
-// Computed once, when the popover opens — same "fixed position, snapshot
-// the trigger's own rect on open" approach as useFloatingTooltip.js,
-// just click-triggered instead of hover-triggered and long-lived enough
-// to type into, so (unlike that one) this also needs its own
-// click-away/Escape dismissal below rather than just a mouseleave.
+// Snapshots the trigger button's rect once, on open, for fixed
+// positioning of the popover.
 function position() {
   const el = buttonRef.value
   if (!el) return
@@ -70,9 +59,8 @@ function onDocumentMousedown(event) {
   closePopover()
 }
 
-// Only listens while actually open — a stray mousedown anywhere else on
-// the page while this component merely exists (i.e. always, one per
-// visible message) would otherwise still incur a listener per bubble.
+// Only listens while the popover is open, to avoid a document-level
+// listener per message bubble.
 watch(open, (isOpen) => {
   if (isOpen) document.addEventListener('mousedown', onDocumentMousedown)
   else document.removeEventListener('mousedown', onDocumentMousedown)
@@ -151,9 +139,8 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentMoused
   color: #333;
 }
 
-/* Has a saved comment already — same "filled + accent color" convention
-   MessageBubble.vue's own annotation badge uses, just blue rather than
-   amber/green so it never reads as a state/signal verdict. */
+/* Has a saved comment already; blue rather than amber/green so it never
+   reads as a state/signal verdict. */
 .comment-btn-active {
   border-color: #4a6fa5;
   color: #4a6fa5;

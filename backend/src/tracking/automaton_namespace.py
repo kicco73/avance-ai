@@ -1,24 +1,14 @@
 """The `automaton` scope namespace (see tracking.evaluation_scope.
 EvaluationScopeBuilder) — automaton.<project>.state and automaton.
-<project>.env.<key>, resolving a DIFFERENT project's own live current
-state / declared-env action-set value, for the SAME user. `<project>` is
-a project_id (see automaton_builder.py's own _build_project_metadata,
-Prompt 8/9's project.id) — never the raw project_name, which isn't
-guaranteed to even be a valid Python identifier (it can contain spaces).
-Self-loop-only in a trigger is enforced at build time (see automaton_
-builder.py's own check against automaton.automaton.trigger_automaton_
-project_refs) — this class itself never enforces that, it only ever
-resolves whatever attribute chain it's asked to.
+<project>.env.<key> resolve a DIFFERENT project's live state / declared
+env value, for the SAME user. `<project>` is a project_id, never the raw
+project_name (which isn't guaranteed to be a valid Python identifier).
 
 Every failure mode resolves to None and records a SystemWarning instead
-of raising — a broken/misconfigured cross-project reference must never
-crash the *referencing* project's own turn:
-  - 'project_not_found': no project currently declares <project> as its
-    own project.id (never declared it at all, or it was renamed/removed).
-  - 'no_session': the current user has never talked to <project> at all
-    (see ProjectService.get_automaton_and_state_for_observer).
-  - 'env_key_not_declared': <key> isn't in <project>'s own declared
-    `env:` section (see automaton.automaton.EnvKey/Prompt 5).
+of raising, since a broken cross-project reference must never crash the
+referencing project's own turn: 'project_not_found' (no project declares
+this project_id), 'no_session' (user never talked to that project), or
+'env_key_not_declared' (key not in that project's own `env:` section).
 """
 from __future__ import annotations
 
@@ -31,12 +21,9 @@ GetUsername = Callable[[], str]
 
 
 class AutomatonNamespace:
-    """`get_username`: a callable, not a plain string — same "always
-    read fresh, never staled off a value captured at construction time"
-    convention tracking.session_facts.SessionFacts/tracking.env.
-    PersistedEnv already use for the exact same reason (this is
-    constructed once, long-lived, by ChatService/TrackingService.process
-    alongside those)."""
+    """`get_username` is a callable, not a plain string, so it's read
+    fresh each time rather than staled off the value at construction —
+    this object is constructed once and kept long-lived."""
 
     def __init__(self, db: Db, project_service: ProjectService, get_username: GetUsername) -> None:
         self._db = db
@@ -60,23 +47,10 @@ class _ProjectProxy:
         self._db.save_system_warning(self._username, project_name, kind, message)
 
     def _resolve(self) -> tuple[Any, Any, str] | None:
-        """(automaton, state, project_name) for this project, as seen by
-        self._username right now — None (after recording a SystemWarning)
-        for any of the three runtime-only failure modes this class is
-        responsible for; a build-time-impossible one (a malformed
-        project_id) would surface as some other exception entirely, never
-        caught here.
-
-        project_id -> project_name (see db.get_project_name_by_project_id,
-        the one translation boundary — Prompt 8/9) happens first: no
-        project currently declaring this project_id at all is the
-        'project_not_found' case, recorded straight against the
-        project_id itself (see save_system_warning's own project_name
-        column) since no real project_name is resolvable yet — same
-        convention this had pre-Prompt-8, when project_id and
-        project_name were the same string. Every warning *after* this
-        point already has a real, resolved project_name to record
-        against instead."""
+        """(automaton, state, project_name) for this project, or None if
+        resolution fails at any step — a SystemWarning is recorded in
+        that case instead of raising, since this must never crash the
+        caller."""
         project_name = self._db.get_project_name_by_project_id(self._project_id)
         if project_name is None:
             self._warn(

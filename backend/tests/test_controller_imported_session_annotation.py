@@ -1,15 +1,7 @@
-"""An imported session (see ChatSession.source, tracking/session_import.py)
-never has any real Tracking rows at all, so its messages used to be
-completely unannotatable — every PUT .../expected-state or .../expected-
-signals attempt 409'd, since TrackingService._require_annotatable_message
-only ever materializes a row for a *live* session's own literal first
-message. TrackingService._materialize_imported_session_row is the
-fallback under test here: it lets an expert annotate *any* message of an
-imported session — every line of a reviewed transcript is a legitimate
-mark point, regardless of role or which side automaton.
-autotracking_on_ai_message says a live turn would have evaluated on (an
-earlier, stricter version of this same method used to gate on exactly
-that — deliberately removed).
+"""An imported session never has any real Tracking rows, so
+TrackingService._materialize_imported_session_row lets an expert
+annotate any message of it — every line of a reviewed transcript is a
+legitimate mark point, regardless of role or autotracking_on_ai_message.
 """
 from __future__ import annotations
 
@@ -32,14 +24,10 @@ def _zip_of(files: dict[str, str]) -> bytes:
 
 
 def _index_yml(*, autotracking_on_ai_message: bool) -> str:
-    # A state with no actions is implicitly final (see automaton_builder.
-    # py's own `final=len(actions) == 0`) — which would make ChatService.
-    # _should_generate_opening_message gate imported-session reads on
-    # get_last_transition_timestamp instead of None, spuriously tripping
-    # over the NULL timestamps an import's own messages carry (see
-    # tracking.session_import's own save_message(..., timestamp=None)) —
-    # a real, separate bug, but not this test's own concern, so a no-op
-    # self-loop action keeps state "a" non-final to sidestep it here.
+    # A state with no actions is implicitly final, which would make
+    # imported-session reads gate on transition timestamps and trip over
+    # the NULL timestamps an import's messages carry — a no-op self-loop
+    # action keeps state "a" non-final to sidestep that here.
     return f"""
 init-action:
   target: a
@@ -65,14 +53,9 @@ def _setup_project(client, *, autotracking_on_ai_message: bool) -> int:
     assert response.status_code == 200, response.text
     assert client.put("/api/projects/proj/activate").status_code == 200
     assert client.post("/api/projects/proj/publish", json={}).status_code == 200
-    # A live session must exist *and already be opened* first (same order
-    # real usage follows — the main/embedded chat always bootstraps one
-    # well before a user gets to importing anything in the Benchmark
-    # view) — otherwise a later GET .../messages for some *other*
-    # (imported) session id tries to bootstrap the project's own live
-    # conversation (see ChatService.open_if_needed, keyed by project, not
-    # by the session_id passed in) from scratch on a call only meant to
-    # read that other session's own messages.
+    # A live session must exist and already be opened first — otherwise a
+    # later GET .../messages for an imported session id would bootstrap
+    # the project's live conversation (keyed by project, not session_id).
     session_resp = client.post("/api/chat/sessions")
     assert session_resp.status_code == 200, session_resp.text
     session_id = session_resp.json()["id"]
@@ -126,13 +109,9 @@ def test_expected_signals_can_also_be_annotated_on_an_imported_session(client):
 
 
 def test_a_native_sessions_message_is_unaffected_by_the_imported_fallback(client):
-    """The fallback only ever applies to source='imported' sessions (see
-    TrackingService._materialize_imported_session_row's own session.source
-    check) — a real turn's own user message on a native session, which
-    auto-tracking never fires anything against ("Hello world"-style
-    project, no signals/triggers at all), must still 409 exactly as
-    before: only the session's own literal first message gets the
-    existing _materialize_session_start_row treatment, never a later one."""
+    """The fallback only applies to source='imported' sessions — a real
+    turn's user message on a native session must still 409; only the
+    session's literal first message gets the existing treatment."""
     native_session_id = _setup_project(client, autotracking_on_ai_message=False)
     turn = client.post(f"/api/chat/sessions/{native_session_id}/messages", json={"message": "hi"})
     assert turn.status_code == 200, turn.text
@@ -146,16 +125,8 @@ def test_a_native_sessions_message_is_unaffected_by_the_imported_fallback(client
 
 @pytest.mark.regression
 def test_annotation_validates_against_the_messages_own_project_not_whatever_is_now_active(client):
-    """Prompt 13's own fix — TrackingService.set_message_expected_state/
-    set_message_expected_signals used to validate expected_state/
-    expected_values against self.automaton (whichever project is
-    currently *active*), not the message's own project. Opening
-    "Label sessions" for project A while project B happens to be active
-    (e.g. B was just uploaded — see ProjectService.put_project's own
-    auto-activate) used to validate every annotation on A's own messages
-    against B's states/signals instead — this locks down that the
-    message's own session's own project is what actually decides,
-    regardless of which one is globally active right now."""
+    """expected_state/expected_values must validate against the message's
+    own project, not whichever project is currently globally active."""
     _setup_project(client, autotracking_on_ai_message=True)
     _, by_role = _import_and_get_messages(client)
     message_id = by_role["user"]["id"]

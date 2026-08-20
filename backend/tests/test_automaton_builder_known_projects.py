@@ -1,12 +1,7 @@
-"""AutomatonBuilder.build's own `known_projects` parameter (Prompt 10) —
-a correction to Prompt 6/8's own static validation, which only ever
-checked that an automaton.* reference sat in a self-loop action's own
-trigger, never whether the project/env key it names actually exists.
-Deliberately just dicts/sets of plain strings in and out — this module
-tests AutomatonBuilder in complete isolation, no Project/Db/
-ProjectService involved at all (see ProjectService._known_projects_env_
-keys, the one real caller, covered separately in test_project_id_
-metadata.py).
+"""AutomatonBuilder.build's `known_projects` parameter validates that a
+referenced project/env key actually exists, beyond the placement check.
+Deliberately just dicts/sets of plain strings — AutomatonBuilder is
+tested in complete isolation, no Project/Db/ProjectService involved.
 """
 from __future__ import annotations
 
@@ -34,9 +29,8 @@ def _build(trigger: str, known_projects: dict | None = None):
 
 
 def test_known_projects_omitted_skips_the_check_entirely():
-    """Behavior unchanged for every caller that doesn't pass this —
-    referencing a nonexistent project.id, or an undeclared env key on
-    one, was never a build-time error before this parameter existed."""
+    """Referencing a nonexistent project.id, or an undeclared env key,
+    is not a build-time error when known_projects isn't passed."""
     automaton = _build("automaton.nowhere.state == 'x'")
     assert automaton is not None
 
@@ -70,11 +64,8 @@ def test_accepts_an_env_key_present_in_the_named_projects_declared_set():
 
 
 def test_an_unknown_env_key_on_an_unknown_project_reports_the_project_not_the_key():
-    """The project-existence check runs first — an env key check against
-    a project that isn't even in known_projects at all would be a
-    confusing, secondary error; the caller should fix the project
-    reference first, not chase a key name that was never going to
-    resolve either way."""
+    """The project-existence check runs first, so the caller fixes the
+    project reference before chasing an unresolvable key name."""
     with pytest.raises(ValueError, match="automaton.nowhere"):
         _build("automaton.nowhere.env.whatever == 1", known_projects={"real_project": frozenset()})
 
@@ -94,18 +85,16 @@ def test_multiple_references_in_one_trigger_are_all_checked():
 
 
 def test_a_bare_automaton_dot_project_reference_with_no_env_needs_no_env_key_at_all():
-    """automaton.<id>.state (or any non-.env chain) never touches the
-    env-key half of the check — only the project.id itself needs to
-    exist."""
+    """A non-.env chain never touches the env-key half of the check —
+    only the project.id itself needs to exist."""
     automaton = _build("automaton.dep.state == 'x'", known_projects={"dep": frozenset()})
     assert automaton is not None
 
 
 class TestReadDeclaredEnvKeys:
-    """AutomatonBuilder.read_declared_env_keys — the raw-YAML-only read
-    ProjectService._known_projects_env_keys uses to populate
-    known_projects for every *other* project, without paying for (or
-    risking) a full build of it."""
+    """AutomatonBuilder.read_declared_env_keys — a raw-YAML-only read used
+    to populate known_projects for every other project, without a full
+    build of it."""
 
     def test_reads_id_and_declared_env_key_names(self):
         yml = "project:\n  id: dep_id\nenv:\n  k1:\n    value: \"'a'\"\n  k2:\n    value: \"'b'\"\n" + MINIMAL_STATES
@@ -125,10 +114,8 @@ class TestReadDeclaredEnvKeys:
         assert env_keys == frozenset()
 
     def test_an_invalid_identifier_id_reports_no_id(self):
-        """Same grammar build() itself would reject (see _build_project_
-        metadata) — but this method never raises, it just reports nothing
-        to reference this project by, so one other project's own
-        malformed id never blocks validating a different one."""
+        """This method never raises on a malformed id, it just reports
+        no id, so it never blocks validating a different project."""
         yml = "project:\n  id: 'not a valid id'\n" + MINIMAL_STATES
         project_id, _ = AutomatonBuilder.read_declared_env_keys(yml)
         assert project_id is None

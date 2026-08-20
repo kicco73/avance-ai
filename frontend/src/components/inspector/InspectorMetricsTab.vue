@@ -24,9 +24,8 @@ async function loadMetrics() {
   }
 }
 
-// Heavier to compute than Signals/Env — only reloaded while this tab is
-// the one actually visible (matches Inspector.vue's old refreshMetrics(),
-// gated on inspectorTab.value === 'metrics').
+// Heavier to compute than Signals/Env, so this only reloads while the tab
+// is actually visible.
 async function refresh(active) {
   if (active) await loadMetrics()
 }

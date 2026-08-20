@@ -1,10 +1,6 @@
-"""Build-time validation of automaton.* references (Prompt 6) — see
-automaton_builder.py's own _actions_sanity_check: a trigger may
-reference automaton.<project>.state/automaton.<project>.env.<key> only
-from a self-loop action's own trigger (target == the state it's
-declared in). Runtime resolution of what automaton.* actually reads
-lives in tracking.automaton_namespace instead — this module only
-covers the placement rule, checked once, project-wide, at build time.
+"""Build-time validation of automaton.* references (automaton_builder.py's
+_actions_sanity_check): a trigger may reference
+automaton.<project>.state/env.<key> only from a self-loop action.
 """
 from __future__ import annotations
 

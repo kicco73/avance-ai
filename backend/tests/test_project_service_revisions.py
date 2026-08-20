@@ -1,10 +1,6 @@
-"""Regression coverage for the revision-security hardening: which
-Automaton a caller actually gets back must depend on *which method* it
-calls (published-only, a session's own pinned revision, or the
-in-progress draft — see ProjectService's own get_active_automaton_and_
-state/get_automaton_and_state_for_session/get_active_draft_automaton_and_
-state), never on an implicit "whatever's on disk right now" the way
-_load_project alone used to give every caller before this.
+"""Which Automaton a caller gets back depends on which method it calls:
+published-only, a session's own pinned revision, or the in-progress
+draft — never an implicit "whatever's on disk right now".
 """
 from __future__ import annotations
 

@@ -1,9 +1,6 @@
 """tracking.automaton_namespace.AutomatonNamespace — automaton.<project>.
-state/automaton.<project>.env.<key> runtime resolution (Prompt 6). Every
-failure mode resolves to None and records a SystemWarning instead of
-raising (see that module's own docstring for the three kinds); the
-happy path reads a different project's own live current state / declared
-env action-set value, for the same user.
+state/env.<key> runtime resolution. Every failure mode resolves to None
+and records a SystemWarning instead of raising.
 """
 from __future__ import annotations
 
@@ -18,13 +15,9 @@ USERNAME = "user"
 
 
 def _publish(db, project_name: str, index_yml: str) -> None:
-    """A lighter-weight publish than ProjectService._finalize_project_
-    update (this file tests AutomatonNamespace's own runtime resolution
-    in isolation, not the save pipeline) — but project_id -> project_name
-    resolution (Prompt 8/9) still needs *some* row to look up, so this
-    registers project_id == project_name directly (every project_name
-    used in this file already happens to be a valid Python identifier —
-    "observed" — so no separate id needs inventing)."""
+    """A lighter-weight publish that skips the save pipeline, registering
+    project_id == project_name directly since project_id -> project_name
+    resolution still needs some row to look up."""
     db.ensure_project(project_name)
     db.save_project_files(project_name, {"index.yml": index_yml.encode("utf-8")}, {"index.yml": "text/yaml"})
     db.publish_project(project_name)

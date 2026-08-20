@@ -1,37 +1,6 @@
-"""OLD: TurnStrategyV1/V2 each had their own dedicated `compute_explicitly`
-call — a "no reply to piggyback signals on" fallback used by tracking.
-auto_tracker.AutoTracker.run's own explicit-fallback branch, each
-recovering raw signal values in its own dialect (tags for v1, on_metadata
-for v2).
-
-CURRENT: neither `compute_explicitly` nor `AutoTracker` exist anywhere in
-the source anymore (tracking/auto_tracker.py was deleted this refactor —
-ground truth table row #5; `compute_explicitly` has no definition left
-in tracking/turn_protocol*.py either — only stale docstring mentions in
-tracking/definitions.py and tracking/evaluator.py). Signal extraction is
-no longer a separate, dedicated call at all: TrackingProcessorAfterUserMessage/
-AfterAiMessage (tracking/tracking_processor_user.py / _ai.py) always
-extract signals as a side effect of the one real reply-generating call,
-via TurnProtocol.generate_reply's own on_metadata callback (tracking/
-turn_protocol.py) — tested directly here instead, using fakes shaped
-like the CURRENT ai_service interface (generate_stream for v1/text-
-extraction, generate_stream_with_metadata for v2/schema), rather than
-compute_explicitly's old, now-nonexistent one.
-
-Note on a real bug this surfaces: TurnProcotolUsingTextExtraction (v1)
-drives its own on_metadata through tracking/text_filter.py's
-StreamingTagFilter, which always wraps a given on_tag callback in
-`asyncio.create_task(...)` — that requires a coroutine, but
-turn_protocol_using_text_extraction.py:51 wires up a plain sync lambda,
-so any v1 tag actually closing currently crashes with
-`TypeError: a coroutine was expected`. On top of that, the dict
-comprehension building those per-tag lambdas (turn_protocol_using_text_
-extraction.py:51) closes over the same loop variable for every tag
-(classic late-binding), so even without that crash every tag would be
-misreported under the last tag's own name. The v1 tests below are
-written against the INTENDED contract (each tag reported under its own
-name); left as-is per this refactor's own ground rules — not this file's
-job to fix backend/src/.
+"""Tests how signal (and other) metadata is extracted as a side effect of
+TurnProtocol.generate_reply's on_metadata callback: tag-scanning for v1
+(text extraction), a direct on_metadata callback for v2 (schema).
 """
 from __future__ import annotations
 
@@ -44,9 +13,6 @@ from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
 USERNAME = "user"
 PROJECT_NAME = "proj"
 
-# Every test here is about the interface/dialect each TurnProtocol
-# subclass reports raw signal (and other) metadata through — response
-# shape, not a one-off behavioral fact.
 pytestmark = pytest.mark.contract
 
 
@@ -55,10 +21,8 @@ def _env(db) -> PersistedEnv:
 
 
 class FakeAiServiceV1:
-    """Shaped like the current ai.ai_service.AiService.generate_stream:
-    a plain async generator of text chunks, no metadata callback of its
-    own — v1's own metadata comes entirely from tag-scanning the text
-    (see tracking/text_filter.py)."""
+    """A plain async generator of text chunks, no metadata callback of
+    its own — v1's metadata comes entirely from tag-scanning the text."""
 
     def __init__(self, reply: str | None = None, error: Exception | None = None) -> None:
         self._reply = reply
@@ -133,13 +97,8 @@ async def test_v2_generate_reply_reports_the_raw_signals_field(db):
 
 
 async def test_v2_generate_reply_also_reports_audio_and_env_under_their_own_keys(db):
-    # OLD contract: compute_explicitly deliberately filtered v2's own
-    # on_metadata callback down to just "signals", ignoring "audio"/"env".
-    # NEW contract: TurnProtocolUsingSchema._generate_reply (tracking/
-    # turn_protocol_using_schema.py:67-76) just delegates straight to
-    # AiService.generate_stream_with_metadata and forwards every
-    # non-"text" key it reports, unfiltered — that selective ignoring was
-    # compute_explicitly's own logic, which no longer exists anywhere.
+    # TurnProtocolUsingSchema forwards every non-"text" key on_metadata
+    # reports, unfiltered.
     protocol = TurnProtocolUsingSchema(
         FakeAiServiceV2(metadata={"audio": "hi", "env": "x: y", "signals": '{"mood": 1}'}),
         evaluate_signals_first=True,
@@ -156,28 +115,3 @@ async def test_v2_generate_reply_with_no_signals_field_reports_nothing(db):
     _, metadata = await _collect(protocol, db)
 
     assert "signals" not in metadata
-
-
-# Deleted (regression, invalid — OLD behavior no longer exists):
-#
-# - test_v1_compute_explicitly_degrades_to_empty_dict_on_ai_failure
-# - test_v2_compute_explicitly_degrades_to_empty_dict_on_ai_failure
-#   compute_explicitly used to catch an AI-provider failure and degrade
-#   to {}. Nothing in the current call chain does that anymore: neither
-#   tracking/turn_protocol.py's generate_reply nor tracking/turn_protocol_
-#   using_text_extraction.py:49-60/turn_protocol_using_schema.py:67-76
-#   wrap the underlying ai_service call in any try/except — an
-#   AIServiceError now propagates all the way up to the centralized
-#   FastAPI handler instead (backend/src/error_handlers.py:41,58's
-#   ai_service_error_handler). There's no "degrades to empty dict" fact
-#   left to verify at this layer.
-#
-# - test_v2_compute_explicitly_degrades_to_empty_dict_on_malformed_json
-#   The malformed-JSON tolerance this checked lives entirely inside
-#   ai.ai_service.AiService.generate_stream_with_metadata's own
-#   partial_json_parser handling (ai/ai_service.py:122-168) now — not in
-#   tracking/turn_protocol_using_schema.py at all, which just builds a
-#   schema dict and delegates verbatim. A fake exercising only the
-#   TurnProtocol layer (as this file does) can't reach that logic; it
-#   belongs in an ai/ai_service.py-focused test file instead, outside
-#   this batch's own tracking/chat-turn layer.

@@ -1,15 +1,8 @@
 <script setup>
-// "Auto" mode's own content — see EditProjectView.vue's `autoOpen`. Two
-// columns, same shape as LabelProjectView's own tree+content split:
-// TestsTree on the left (Sessioni/Stati), a node's own results on the
-// right. Owns every bit of actual data fetching/launching/polling —
-// TestsTree itself stays purely presentational. Folded in from the
-// standalone TestsPanel.vue this used to just wrap (both TestsTree and
-// TestNodeButton live alongside this file, in this same auto/ folder) — Design/
-// Test/Auto each get a genuinely separate structure now, instead of
-// three conditionally-shown branches nested inside one shared column
-// (see EditProjectView.vue's own docstring on the layout this replaced),
-// so there was nothing left for a separate wrapper component to add.
+// "Auto" mode's content, shown when EditProjectView.vue's `autoOpen` is set.
+// Two columns: TestsTree on the left (Sessioni/Stati), a node's results on
+// the right. Owns all data fetching/launching/polling — TestsTree itself
+// (alongside TestNodeButton, both in this same auto/ folder) stays purely presentational.
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import TestsTree from './TestsTree.vue'
 import {
@@ -24,8 +17,7 @@ const props = defineProps({
   }
 })
 
-// Applies to whichever node gets activated next — not a per-launch
-// choice (see this prompt's own "one control, not per node").
+// Applies to whichever node gets activated next — one shared control, not a per-node choice.
 const strategy = ref('turn_by_turn')
 
 const projectStates = ref([])

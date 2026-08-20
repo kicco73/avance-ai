@@ -1,29 +1,21 @@
 <script setup>
-// One node's own play/status control, shared by every level of the
-// "Auto" tab's tree (see TestsTree.vue) — the root and the two branch
-// nodes ("Sessioni"/"Stati") are always disabled (no aggregation exists
-// for them yet), a leaf (a session or a state) is the one place `activate`
-// actually launches something (see ProjectAutoPanel.vue). Purely presentational:
-// this component never calls an API itself, only emits.
+// Play/status control shared by every level of the "Auto" tab's tree. Root and branch
+// nodes are always disabled (no aggregation exists for them yet); a leaf is the only
+// place `activate` actually launches something. Purely presentational — only emits.
 const props = defineProps({
   status: {
     type: String,
     default: 'idle',
     validator: (value) => ['idle', 'running', 'ok', 'warning', 'fail'].includes(value)
   },
-  // Root/branch nodes: no aggregation exists for them, so they never emit
-  // activate regardless of status (see TestsTree.vue's own root/branch
-  // nodes, both always disabled).
   disabled: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['activate'])
 
 function onClick() {
-  // running: never clickable — an in-flight test can't be re-launched
-  // over itself. Any other status (including a past outcome — activate
-  // there means "re-run") is a legitimate click, unless this node is
-  // disabled outright.
+  // running: never clickable (can't re-launch an in-flight test). Any other status,
+  // including a past outcome, is a legitimate click — activate there means "re-run".
   if (props.disabled || props.status === 'running') return
   emit('activate')
 }

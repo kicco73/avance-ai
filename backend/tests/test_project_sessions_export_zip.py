@@ -1,10 +1,7 @@
-"""A project's own zip download/upload round-trip for its imported
-sessions (see ProjectService.export_project_zip/put_project,
-SESSIONS_EXPORT_FILENAME) — download embeds a sessions.json (session_
-export.py's own shape, imported-only) alongside the project's real files;
-upload detects that same file, never persists it as a project file, and
-consumes it to re-import every session automatically. The two are meant
-to be exact duals of each other.
+"""A project's zip download/upload round-trip for its imported sessions:
+download embeds a sessions.json (imported-only) alongside the project's
+real files; upload detects that file, never persists it as a project
+file, and consumes it to re-import every session automatically.
 """
 from __future__ import annotations
 

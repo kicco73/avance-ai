@@ -1,10 +1,7 @@
-"""Tests for database.force-drop-and-create-when-incompatible (see
-config.AppConfig/db.Db._drop_and_recreate_if_incompatible) — off by
-default: an on-disk schema that doesn't match what this code expects is
-left exactly as today's code already leaves it (surfacing as a query
-error the first time something touches the mismatched table), unless the
-flag is explicitly enabled, in which case every table is dropped and
-recreated from scratch at startup instead.
+"""Tests for the force-drop-and-create-when-incompatible flag, off by
+default: an incompatible on-disk schema is left alone (surfacing as a
+query error on first use) unless the flag is set, in which case every
+table is dropped and recreated at startup.
 """
 from __future__ import annotations
 
@@ -14,9 +11,6 @@ import pytest
 
 from db import Db
 
-# Every test in this file verifies a specific behavioral fact about the
-# force-drop-and-create flag (on/off, noop cases) rather than a response
-# shape — all regression.
 pytestmark = pytest.mark.regression
 
 
@@ -29,9 +23,7 @@ def _make_sqlite_file(path, ddl_statements):
 
 
 # An old-shaped 'archive' table (project_name/archive_name/version/content
-# — no 'revision' column, no 'history' table at all) — exactly what a
-# database created before this version's Archive/History redesign looks
-# like on disk.
+# — no 'revision' column, no 'history' table at all).
 OLD_ARCHIVE_DDL = [
     "CREATE TABLE archive (id INTEGER PRIMARY KEY, project_name TEXT, archive_name TEXT, "
     "version INTEGER, content TEXT)",
@@ -99,15 +91,9 @@ def test_flag_on_leaves_an_already_compatible_schema_and_its_data_alone(tmp_path
     assert db.get_archive("proj", "index.yml") == b"kept content"
 
 
-# 'project' is a real FOREIGN KEY parent of 'chatsession'/'archive' (see
-# db/models.py) — created first here, same as sqlite_master's own on-disk
-# order for a real install (peewee creates parents before children), so
-# it's also the first table _drop_and_recreate_if_incompatible's own
-# unordered loop tries to drop. Something (missing 'source') makes the
-# schema incompatible so the drop path actually runs; the schema is
-# otherwise a real regression case, not a synthetic one — this is
-# genuinely what an install from partway through the Project/FK
-# migration looks like on disk.
+# 'project' is a real FK parent of 'chatsession'/'archive', created first
+# here so it's also the first table the (unordered) drop loop tries to
+# drop. The missing 'source' column makes the schema incompatible.
 FK_PARENT_FIRST_DDL = [
     "CREATE TABLE project (name TEXT PRIMARY KEY, revision INTEGER, published_revision INTEGER)",
     "CREATE TABLE chatsession (id INTEGER PRIMARY KEY, username TEXT, "
@@ -121,13 +107,9 @@ FK_PARENT_FIRST_DDL = [
 
 
 def test_flag_on_drops_a_parent_table_referenced_by_a_still_existing_child(tmp_path):
-    """Regression test: DROP TABLE on a FK parent while a child table's
-    own constraint still references it raises IntegrityError under
-    SQLite's own FK enforcement (verified directly against sqlite3) —
-    _drop_and_recreate_if_incompatible's own drop loop isn't ordered by
-    dependency, so this used to crash the whole app at startup (with the
-    fallback error app taking over) any time an on-disk schema mid-
-    migration happened to list a FK parent before its own children."""
+    """DROP TABLE on a FK parent while a child still references it raises
+    IntegrityError under SQLite's FK enforcement — the drop loop must
+    handle this without crashing the app at startup."""
     db_path = tmp_path / "test.db"
     _make_sqlite_file(db_path, FK_PARENT_FIRST_DDL)
     conn = sqlite3.connect(db_path)

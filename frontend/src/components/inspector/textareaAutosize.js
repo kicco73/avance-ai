@@ -1,11 +1,6 @@
-// A <textarea v-autosize> grows to fit its own content exactly, up to a
-// 10-line cap (an internal scrollbar takes over past that) — unlike a
-// static `rows` count based on the text's own '\n' characters (the
-// previous approach here), which undercounts a long unwrapped paragraph
-// that only *visually* wraps into several lines, leaving it cramped.
-// Never auto-shrinks below its current height, so it doesn't fight a
-// manual drag-resize (the textarea keeps `resize: vertical`) or an
-// in-progress edit that temporarily gets shorter.
+// A <textarea v-autosize> grows to fit its content, capped at 10 lines (a
+// scrollbar takes over past that). Never auto-shrinks below its current height,
+// so it doesn't fight a manual drag-resize or a mid-edit paragraph getting shorter.
 const MAX_LINES = 10
 
 function maxHeightFor(el, style) {

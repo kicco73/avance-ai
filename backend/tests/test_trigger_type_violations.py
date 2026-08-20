@@ -1,11 +1,7 @@
 """trigger_type_violations — static (build-time) type-checking of a
-trigger expression's own ordering comparisons (`<`/`<=`/`>`/`>=`). Not a
-value/range check (a signal's own runtime value is never range-enforced
-by the software — see automaton._FIXED_IDENTIFIER_KIND's own docstring)
-but a genuine type check: e.g. `system.today() >= 5` compares a date
-string against a number, which raises TypeError the instant it's
-actually evaluated — exactly the kind of bug this can catch statically,
-without ever needing to run the trigger for real.
+trigger expression's ordering comparisons (`<`/`<=`/`>`/`>=`). E.g.
+`system.today() >= 5` compares a date string against a number, which
+raises TypeError the instant it's actually evaluated.
 """
 from __future__ import annotations
 

@@ -1,9 +1,6 @@
-"""GET/PUT /api/projects/{project_name}/project — the "Edit project" view's
-Inspect panel Info tab (see InspectorProjectCard.vue), reading/writing the
-optional top-level `project:` section (id/ui-label/ui-description) of
-index.yml through the same field-by-field edit path as a state/action/
-signal/env key (see ProjectService.get_project_metadata/set_project_field,
-AutomatonYamlEditor._project_payload/set_project_field).
+"""GET/PUT /api/projects/{project_name}/project — reads/writes the optional
+top-level `project:` section (id/ui-label/ui-description) of index.yml
+(ProjectService.get_project_metadata/set_project_field).
 """
 from __future__ import annotations
 

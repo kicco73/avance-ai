@@ -1,10 +1,6 @@
 <script setup>
-// The topbar's own "⚙" menu — split out of ProjectsMenu.vue (which stays
-// scoped to per-project actions: edit/label/switch/download). Same
-// dropdown mechanics (toggle, click-outside-to-close) as that component,
-// just without its own project-loading concern. Lives in its own
-// settings/ folder alongside ManageProjectsView.vue — the one item here
-// that isn't a plain action but opens a whole view of its own.
+// Topbar "⚙" menu: dropdown with toggle / click-outside-to-close,
+// offering Manage projects and backup download/restore actions.
 import { onBeforeUnmount, ref } from 'vue'
 
 const emit = defineEmits(['manage-projects', 'download-backup', 'restore-backup'])
@@ -90,11 +86,9 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
-/* Same vertical padding as ProjectsMenu.vue's own .projects-btn (0.4rem
-   top/bottom, no explicit height on either) so both buttons — icon-only
-   here, text there — compute to the exact same height from that shared
-   padding plus their own inherited line-height, without hardcoding a
-   pixel/rem value that could drift out of sync with it. */
+/* Padding matches ProjectsMenu.vue's .projects-btn (0.4rem top/bottom)
+   so both buttons compute to the same height via inherited line-height,
+   without hardcoding a pixel value. */
 .settings-btn {
   display: flex;
   align-items: center;

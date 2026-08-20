@@ -1,10 +1,7 @@
 """TrackingEngine.notify_transition/apply_action_env's own event
-publishing (Prompt 6) — StateChanged for a real (non-self-loop)
-transition, EnvChanged for each action-set key an action's own `env:`
-field actually wrote. Both are no-ops (never published) when
-username/project_name aren't given at all — see apply_transition's own
-docstring on why (a benchmark replay's own TrackingEngine never passes
-either).
+publishing: StateChanged for a real (non-self-loop) transition,
+EnvChanged for each action-set key an action's `env:` field wrote. Both
+are no-ops when username/project_name aren't given at all.
 """
 from __future__ import annotations
 

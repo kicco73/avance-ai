@@ -1,24 +1,14 @@
 <script setup>
-// EditProjectView.vue's own chat only (see TestChat.vue's restartAndPrefill/
-// restartAndResend) — a reload-style icon that reads two distinct
-// gestures apart, rather than needing a mode prop/branch anywhere else:
-// - a single click: emit('click') — retry, resending the message as-is.
-// - a quick double click: emit('double-click') — prefill for editing
-//   instead, never auto-sent.
-// The browser fires click, click, dblclick (in that order) for a real
-// double-click, so a naive @click handler would fire the single-click
-// action twice before dblclick ever lands. Standard disambiguation
-// instead: each click starts a short timer before actually emitting
-// 'click'; dblclick cancels that pending timer and emits 'double-click'
-// in its place, so a real double-click only ever produces the one event.
+// Single click: emit('click') — retry, resending as-is.
+// Double click: emit('double-click') — prefill for editing instead.
+// The browser fires click, click, dblclick, so each click is delayed
+// briefly and cancelled by a following dblclick, to avoid double-firing.
 const CLICK_DELAY_MS = 250
 
 defineProps({
-  // True once the state this bubble's own conversation was in has since
-  // been renamed/removed from the project's own definition (see
-  // EditProjectView.vue's validStateKeys/isStateGone) — restarting from
-  // here would have nowhere valid to land, so the gesture is disabled
-  // outright rather than left to fail against the backend.
+  // True once the state this bubble's conversation was in has since been
+  // renamed/removed from the project — restarting here would have
+  // nowhere valid to land, so the gesture is disabled outright.
   disabled: { type: Boolean, default: false }
 })
 

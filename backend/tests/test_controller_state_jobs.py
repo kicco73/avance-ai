@@ -1,8 +1,7 @@
-"""Integration tests for the "Stati" branch's own aggregation job —
-POST/GET /api/projects/{project_name}/states/{state_key}/test|state-jobs —
-exercises BenchmarkRunService.start_job end to end: launching/reusing
-session-scoped sub-runs, waiting on them via the persisted queue while
-running itself on the ephemeral one, and aggregating Signal Accuracy.
+"""Integration tests for POST/GET
+/api/projects/{project_name}/states/{state_key}/test|state-jobs, exercising
+BenchmarkRunService.start_job end to end: launching/reusing session-scoped
+sub-runs and aggregating Signal Accuracy.
 """
 from __future__ import annotations
 
@@ -51,9 +50,7 @@ def test_state_test_aggregates_signal_accuracy_across_sessions(client, hello_pro
 
 
 def test_state_test_with_no_touching_sessions_still_completes(client, hello_project):
-    # No session anywhere has expected_state == "Hello" yet in this test's
-    # own fresh app_db — an empty aggregation must still complete cleanly,
-    # not hang or fail.
+    # An empty aggregation must still complete cleanly, not hang or fail.
     response = client.post(
         f"/api/projects/{hello_project}/states/Hello/test", json={"strategy": "turn_by_turn"},
     )

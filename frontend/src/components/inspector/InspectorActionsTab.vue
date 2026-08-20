@@ -1,13 +1,7 @@
 <script setup>
-// The Inspector's own "Actions" tab (shown alongside "State" while
-// EditProjectView.vue's editorOpen is on — see its own inspectorTabs) —
-// every action of the currently-selected state, each as the same
-// read-only detail card "States" already shows for one, one per row,
-// reorderable via native HTML5 drag-and-drop. Owns none of the actual
-// persistence itself: a drop only ever emits 'reorder' with the plain
-// {actionName, position} intent — EditProjectView.vue is the one that
-// knows the containing state's own key, calls the actual endpoint, and
-// coordinates refreshing the graph/code buffer afterward.
+// Shows every action of the currently-selected state as a read-only detail
+// card, reorderable via drag-and-drop. Never persists itself — a drop only
+// emits 'reorder' with {actionName, position}; the caller does the rest.
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import InspectorDetailCard from './InspectorDetailCard.vue'
 
@@ -18,18 +12,14 @@ const props = defineProps({
   nextActionEdge: { type: Object, default: null },
   firedActionEdge: { type: Object, default: null },
   highlightedStateKey: { type: String, default: null },
-  // Every real state's own {key, uiLabel} — forwarded straight through to
-  // each row's own InspectorDetailCard for its target <select>.
+  // {key, uiLabel} for each real state; forwarded to each row's target <select>.
   availableStates: { type: Array, default: () => [] },
-  // False while this list is showing the init-action (no real state
-  // selected — see EditProjectView.vue's own actionsTabList/
-  // selectedStateKey) — the init-action is a singleton the automaton
-  // itself always owns, not one more action a real state's own "+ Add
-  // action" could add another of.
+  // False while showing the init-action, which is a singleton the automaton
+  // always owns — unlike a real state's actions, it can't have another one
+  // added via "+ Add action".
   allowAdd: { type: Boolean, default: true },
-  // See EditProjectView.vue's own docstring on this — 'action:<stateKey>/
-  // <actionName>' while one of `actions` is the row a "+ Add action"
-  // click just created, null otherwise.
+  // 'action:<stateKey>/<actionName>' for the row a "+ Add action" click
+  // just created; null otherwise.
   recentlyAddedKey: { type: String, default: null }
 })
 
@@ -37,19 +27,12 @@ const emit = defineEmits(['select', 'select-attachment', 'reorder', 'set-field',
 
 const draggedIndex = ref(null)
 const dragOverIndex = ref(null)
-// The row itself is what HTML5 drag-and-drop needs to be draggable (so
-// the whole card follows the cursor, not just the handle span) — but a
-// row-wide `draggable="true"` swallows every ordinary click anywhere in
-// its subtree into a native drag-start gesture, which starves
-// InspectorDetailCard.vue's own @click from ever firing (the accordion
-// never opens). Instead, `draggable` is only ever true while the mouse
-// is actually down on the ⠿ handle — everywhere else in the row a click
-// behaves like a plain click.
+// The row needs draggable="true" for HTML5 drag-and-drop, but that also
+// swallows clicks anywhere in it into a drag gesture (breaking the card's
+// @click) — so it's only true while the mouse is down on the ⠿ handle.
 const dragArmed = ref(false)
-// A mouseup that lands outside the handle (cursor drifted off it between
-// mousedown and release, without a drag ever actually starting) would
-// otherwise never reach the handle's own @mouseup — this window-level
-// fallback guarantees dragArmed always gets cleared.
+// Catches a mouseup that lands outside the handle (drag never armed via
+// the handle's own @mouseup), so dragArmed always gets cleared.
 function disarm() {
   dragArmed.value = false
 }
@@ -60,12 +43,9 @@ function isSelected(action) {
   return props.selectedElement?.kind === 'action' && props.selectedElement.data.actionName === action.data.actionName
 }
 
-// An accordion — at most one row's own form open at a time (see
-// InspectorDetailCard.vue's own `open` prop, now parent-owned for
-// exactly this reason). Cleared whenever the action it points at is no
-// longer in the list at all (a delete, or a reorder never changes names
-// so that's not a concern here) — no stale reference to a row that's
-// gone.
+// Accordion: at most one row's form open at a time. Cleared when the
+// action it points at is removed from the list, so it never references a
+// row that no longer exists.
 const expandedActionName = ref(null)
 function toggleOpen(action, isOpen) {
   expandedActionName.value = isOpen ? action.data.actionName : null
@@ -79,30 +59,18 @@ watch(
   }
 )
 
-// EditProjectView.vue's own edit-mode selection (a Graph tap, a jump from
-// elsewhere) never scrolls the page to find this tab's own row on its
-// own — the Inspector may already be showing "State" instead of
-// "Actions", or the row itself may simply be off-screen further down
-// this tab's own scrollable list (see .inspector-actions-tab's own
-// overflow-y). Scrolling it into view here is this tab's own
-// responsibility once it (and the row) actually exist to scroll to.
+// A selection made elsewhere (e.g. a Graph tap) doesn't scroll this tab's
+// row into view on its own — that's done in the selectedElement watch
+// below once the row exists to scroll to.
 const rowRefs = {}
 function setRowRef(name, el) {
   if (el) rowRefs[name] = el
   else delete rowRefs[name]
 }
 
-// A Graph click on an action edge (see EditProjectView.vue's own
-// selectedGraphElement watch, which already flips the Inspector over to
-// this tab for exactly this case) should land the user straight in that
-// action's own edit form, not just scrolled to a closed, read-only row —
-// same "selecting it opens it" convention InspectorStateTab.vue's own
-// single card already gets for free from always being editable/open
-// together. Only ever opens on a genuine selection *change*, so it never
-// fights the row's own click-to-close toggle (see toggleOpen) — closing
-// an already-selected, already-open row never re-emits 'select' in the
-// first place (isSelected makes it non-selectable at that point), so
-// `selectedElement` itself never changes just from that click.
+// A selection change opens that action's row instead of leaving it closed.
+// Only fires on an actual `selectedElement` change, so it doesn't fight the
+// row's own click-to-close toggle (see toggleOpen).
 watch(
   () => props.selectedElement,
   async (element) => {

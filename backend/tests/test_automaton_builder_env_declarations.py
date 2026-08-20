@@ -1,12 +1,6 @@
-"""The project-level `env:` section (parallel to `signals:`, see
-automaton.automaton.EnvKey/AutomatonBuilder._build_env_key) — the single
-declaration of every `env.<name>` key a trigger/env: expression may
-reference (see test_automaton_builder_env_triggers.py) and every one an
-action's own `env:` field may write to (see
-test_automaton_builder_action_env.py). This module covers the section
-itself: parsing name/ui-description/value, and validating each key's own
-`value` (its default, a namespaced expression exactly like an action's
-own env: one).
+"""The project-level `env:` section (AutomatonBuilder._build_env_key) —
+parsing each key's name/ui-description/value, and validating that
+`value` is a valid, resolvable expression.
 """
 from __future__ import annotations
 

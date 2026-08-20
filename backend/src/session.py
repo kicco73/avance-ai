@@ -1,23 +1,19 @@
-"""Process-local session state — today just the current user. Not
-persisted (see db.py's own Settings table for durable per-user data);
-this is where session-scoped attributes live as the app grows past a
-single implicit user (e.g. once there's real login, whatever sets the
-per-request user would update Session().user here).
+"""Process-local session state — today just the current user, not
+persisted (see db.py's Settings table for durable per-user data).
+Session-scoped attributes belong here as the app grows past one implicit user.
 """
 from __future__ import annotations
 
-# Same placeholder value as db.py's own DEFAULT_USER for now — kept as
-# an independent constant here since session.py is meant to be a
-# standalone module other layers (including db.py, eventually) can
-# depend on, not the reverse.
+# Same placeholder value as db.py's own DEFAULT_USER — kept as an
+# independent constant since session.py is meant to be a standalone
+# module other layers (including db.py) can depend on, not the reverse.
 DEFAULT_USER = "user"
 
 
 class Session(object):
-    """Singleton: exactly one process-wide session for now (no real
-    multi-user support yet — see DEFAULT_USER). `Session()` always
-    returns the same instance; its attributes are the actual session
-    state, read/written directly by callers (e.g. `Session().user`)."""
+    """Singleton: exactly one process-wide session (no real multi-user
+    support yet). `Session()` always returns the same instance; its
+    attributes are read/written directly by callers (e.g. `Session().user`)."""
 
     _instance: "Session | None" = None
     user : str

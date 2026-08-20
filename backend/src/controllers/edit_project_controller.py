@@ -1,10 +1,7 @@
 """EditProjectView.vue's own backend surface ("Edit project") — the
 embedded "Test" chat, every read/edit endpoint behind the Inspector
 (States/Actions/Signals/Env/Info) and the file explorer, and the
-publish/revert lifecycle of one project's own draft. Split out of what
-used to be one single AvanceController class in controller.py — see that
-module's own docstring, and BaseController's for the shared registration
-mechanism/ordering-constraint notes every *_controller.py shares.
+publish/revert lifecycle of one project's own draft.
 """
 from __future__ import annotations
 
@@ -20,28 +17,17 @@ from schemas import PublishProjectRequest, ReorderActionRequest, SetProjectField
 
 from .base_controller import BaseController, delete, get, post, put
 
-# Explicit per-type whitelists for the field-by-field state/action/signal
-# edit endpoints (see put_state_field/put_action_field/put_signal_field
-# below) — name/key is deliberately never in any of these three: it's
-# generated once at creation (see AutomatonYamlEditor.add_state/
-# add_action) and immutable from then on, so there's no edit endpoint
-# for it at all, for a state or an action. Only a signal's own `name` can
-# ever change, and only as a side effect of editing its own `ui-label`
-# (see AutomatonYamlEditor.set_signal_field), never through a field edit
-# of its own.
+# Explicit per-type whitelists for the field-by-field edit endpoints
+# below — name/key is deliberately never in any of these three: it's
+# generated once at creation and immutable from then on.
 STATE_EDITABLE_FIELDS = {"ui-label", "ui-description", "history-cutoff", "contextual-prompt", "chat"}
 ACTION_EDITABLE_FIELDS = {"ui-label", "ui-description", "action-prompt", "target", "trigger", "on-enter"}
 SIGNAL_EDITABLE_FIELDS = {"ui-label", "ui-description", "definition"}
-# Unlike a state/action/signal's own name/ui-label, an env key has no
-# separate ui-label to derive its name from — 'name' is itself directly
-# editable here, sanitized through the same to_snake_case rename path
-# (see AutomatonYamlEditor.set_env_key_field/rename_env_key).
+# Unlike a state/action/signal, an env key has no separate ui-label to
+# derive its name from — 'name' is itself directly editable here.
 ENV_KEY_EDITABLE_FIELDS = {"name", "ui-description", "value"}
-# The optional top-level `project:` section (see AutomatonBuilder.
-# _build_project_metadata) — 'id' is what other projects reach this one
-# as through automaton.<id> (see AutomatonYamlEditor.set_project_field
-# for the "falsy value removes it" convention that keeps an emptied id
-# from ever round-tripping as the invalid identifier "").
+# The optional top-level `project:` section — 'id' is what other
+# projects reach this one as through automaton.<id>.
 PROJECT_EDITABLE_FIELDS = {"id", "ui-label", "ui-description"}
 
 
@@ -53,33 +39,21 @@ class EditProjectController(BaseController):
 
     @post("/api/projects/{project_name}/test-sessions")
     def post_create_test_session(self, project_name: str):
-        """EditProjectView.vue's own embedded "Test" chat, its own
-        explicit "start a new session" action — the one place a session
-        may exist against a revision nobody's published yet (see
-        db.create_draft_chat_session's own docstring). `project_name`
-        isn't itself passed through to ChatService (see ChatService.
-        create_draft_session, which — same as every other ChatService
-        method — always operates on whichever project the active user's
-        session already has activated, see PUT /api/projects/
-        {project_name}/activate): it's here so this endpoint reads, in the
-        URL alone, as unambiguously project-scoped and draft-only, the
-        same convention as every other /api/projects/{project_name}/...
-        route."""
+        """The embedded "Test" chat's explicit "start a new session"
+        action — the one place a session may exist against an unpublished
+        revision. `project_name` is unused beyond the URL."""
         return self.chat_service.create_draft_session()
 
     @get("/api/projects/{project_name}/test-sessions/current")
     def get_current_test_session(self, project_name: str, session_id: int | None = None):
-        """EditProjectView.vue's own embedded "Test" chat, its own bootstrap
-        endpoint — the draft-session equivalent of GET /api/chat/session
-        above (see that one's own docstring, and post_create_test_session's
-        own on why `project_name` is here but unused beyond the URL)."""
+        """The embedded "Test" chat's bootstrap endpoint — the
+        draft-session equivalent of GET /api/chat/session."""
         return self.chat_service.get_or_create_current_draft_session(session_id)
 
     @get("/api/projects/{project_name}/test-sessions")
     def get_test_sessions(self, project_name: str):
-        """EditProjectView.vue's own embedded "Test" chat, its own
-        "Sessions" panel listing — the draft-session equivalent of GET
-        /api/projects/{project_name}/sessions. The two pools never mix."""
+        """The embedded "Test" chat's own "Sessions" panel listing — the
+        draft-session equivalent of GET .../sessions. The two pools never mix."""
         return self.chat_service.list_test_sessions()
 
     @get("/api/projects/{project_name}/states")
@@ -94,13 +68,9 @@ class EditProjectController(BaseController):
 
     @get("/api/projects/{project_name}/graph")
     def get_project_graph(self, project_name: str, session_id: int | None = None):
-        """The project's state machine (states as nodes, actions as edges)
-        of `project_name`'s index.yml, for the "Edit project"/"Label
-        sessions" views' own Inspect panel graph — not restricted to the
-        active project. `session_id` omitted resolves the current draft
-        (the editor's own case); given, resolves the exact revision that
-        session's own automaton ran against (LabelProjectView.vue's own
-        case — see ProjectService._resolve_inspector_revision)."""
+        """The project's state machine (states as nodes, actions as
+        edges), for the Inspect panel graph. `session_id` omitted
+        resolves the current draft; given, resolves that session's revision."""
         try:
             return self.project_service.get_project_graph(project_name, session_id)
         except FileNotFoundError as exc:
@@ -110,13 +80,9 @@ class EditProjectController(BaseController):
 
     @get("/api/projects/{project_name}/signals")
     def get_project_signals(self, project_name: str, state_key: str | None = None, session_id: int | None = None):
-        """Signal definitions (name/ui_label/description) of `project_name`'s
-        index.yml, for the "Edit project"/"Label sessions" views' own
-        Inspect panel — not restricted to the active project. `state_key`,
-        when given, scopes each signal's own `relevant` field to that
-        state's outgoing actions (see ProjectService.get_project_signals) —
-        the Inspector's own currently selected/highlighted state.
-        `session_id`: see get_project_graph above."""
+        """Signal definitions for the Inspect panel. `state_key`, when
+        given, scopes each signal's `relevant` field to that state's
+        outgoing actions. `session_id`: see get_project_graph above."""
         try:
             return {"signals": self.project_service.get_project_signals(project_name, state_key, session_id)}
         except FileNotFoundError as exc:
@@ -126,11 +92,8 @@ class EditProjectController(BaseController):
 
     @get("/api/projects/{project_name}/env-keys")
     def get_project_env_keys(self, project_name: str, session_id: int | None = None):
-        """Declared env-key definitions (name/ui_description/value) of
-        `project_name`'s index.yml, for the "Edit project" view's Inspect
-        panel Env tab — not restricted to the active project (see
-        ProjectService.get_project_env_keys). `session_id`: see
-        get_project_graph above."""
+        """Declared env-key definitions for the "Edit project" view's
+        Inspect panel Env tab. `session_id`: see get_project_graph above."""
         try:
             return {"env_keys": self.project_service.get_project_env_keys(project_name, session_id)}
         except FileNotFoundError as exc:
@@ -140,10 +103,8 @@ class EditProjectController(BaseController):
 
     @get("/api/projects/{project_name}/project")
     def get_project_metadata(self, project_name: str):
-        """The optional top-level `project:` section (id/ui_label/
-        ui_description) of `project_name`'s last saved index.yml, for the
-        "Edit project" view's Inspect panel Info tab — not restricted to
-        the active project (see ProjectService.get_project_metadata)."""
+        """The optional top-level `project:` section of `project_name`'s
+        last saved index.yml, for the Inspect panel Info tab."""
         try:
             return {"project": self.project_service.get_project_metadata(project_name)}
         except FileNotFoundError as exc:
@@ -164,16 +125,8 @@ class EditProjectController(BaseController):
     @get("/api/projects/{project_name}/files/{file_name}")
     def get_project_file(self, project_name: str, file_name: str):
         """{content, can_undo, can_redo} of `file_name`'s current
-        content, for the "Edit project" view (see
-        ProjectService.get_project_file) — can_undo/can_redo are what its
-        Undo/Redo buttons use to know whether they're enabled. index.css
-        is the one file every project is allowed not to have at all (see
-        ChatWindow.vue's own skin-loading fetch, which already treats a
-        missing one as "no stylesheet", not an error) — missing, this
-        reports 204 No Content instead of 404, so ProjectDesignPanel.vue's
-        always-mounted IndexCssEditorPanel.vue can start the user off with
-        an empty buffer instead of surfacing an error for a file that was
-        never required to exist."""
+        content — can_undo/can_redo drive the Undo/Redo buttons. Missing
+        index.css reports 204 instead of 404, since it's optional."""
         try:
             return self.project_service.get_project_file(project_name, file_name)
         except FileNotFoundError as exc:
@@ -185,17 +138,9 @@ class EditProjectController(BaseController):
 
     @get("/api/projects/{project_name}/files/{file_name}/content")
     def get_project_file_content(self, project_name: str, file_name: str, request: Request, session_id: int | None = None):
-        """Raw bytes of `file_name`'s own content, for the two callers that
-        can't use the JSON GET .../files/{file_name} above: ChatWindow.vue's
-        own index.css skin-loading fetch (styles injected directly, no JSON
-        envelope wanted) and the "Edit project" file explorer's own image
-        preview (`<img>` src — the browser fetches this itself). `session_id`
-        omitted resolves against the current draft (the editor's own case,
-        same default as the JSON route); given, resolves the same revision
-        that session's own automaton runs against (see ProjectService.
-        get_project_file_content's own docstring for the live/'test'
-        distinction). ETag'd off the content itself, so an unchanged file
-        304s on a matching If-None-Match without ever touching the body."""
+        """Raw bytes of `file_name`'s content, for callers that can't use
+        the JSON GET above. ETag'd off the content itself, so an
+        unchanged file 304s on a matching If-None-Match."""
         try:
             content, content_type = self.project_service.get_project_file_content(project_name, file_name, session_id)
         except FileNotFoundError as exc:
@@ -211,12 +156,9 @@ class EditProjectController(BaseController):
 
     @post("/api/projects/{project_name}/files/{file_name}/undo")
     async def undo_project_file(self, project_name: str, file_name: str, request: Request):
-        """Loads a step back into the current user's own undo history for
-        `file_name` (see ProjectService.undo_project_file) — a pure
-        editor preview: nothing is persisted, and the active project/
-        conversation is never reloaded or reconciled; only Save does
-        that. The request body is whatever the editor currently shows,
-        needed so a later redo can bring it back."""
+        """Loads a step back into the current user's undo history for
+        `file_name` — a pure editor preview: nothing is persisted, and
+        the active project is never reloaded; only Save does that."""
         content = await request.body()
         try:
             return await self.project_service.undo_project_file(project_name, file_name, content)
@@ -239,11 +181,9 @@ class EditProjectController(BaseController):
 
     @delete("/api/projects/{project_name}/history")
     def clear_project_history(self, project_name: str):
-        """Deletes the current user's own undo/redo history for every
-        file in `project_name` (see ProjectService.clear_project_history)
-        — the "Edit project" view calls this itself when opening, so a
-        fresh editing session never inherits a previous one's undo/redo
-        trail."""
+        """Deletes the current user's undo/redo history for every file
+        in `project_name` — called when the view opens, so a fresh
+        editing session never inherits a previous one's trail."""
         try:
             self.project_service.clear_project_history(project_name)
         except FileNotFoundError as exc:
@@ -252,10 +192,9 @@ class EditProjectController(BaseController):
 
     @put("/api/projects/{project_name}/files/{file_name}")
     async def put_project_file(self, project_name: str, file_name: str, request: Request):
-        """Creates or edits one of `project_name`'s files in place — stage a
-        copy of the whole project dir, validate, and only on success replace
-        the real one. Unlike PUT /api/projects/{project_name}, this never
-        creates a new project."""
+        """Creates or edits one of `project_name`'s files in place —
+        stages a copy of the whole project dir, validates, and only on
+        success replaces the real one."""
         content = await request.body()
         content_type_header = request.headers.get("content-type")
         try:
@@ -283,14 +222,7 @@ class EditProjectController(BaseController):
         return {"success": True}
 
     # ------------------------------------------------------------------
-    # index.yml structural editing — add/edit/delete/reorder states,
-    # actions, and signals without hand-writing YAML (see
-    # AutomatonYamlEditor). Every one of these reuses put_project_file's
-    # own validation/history/commit path (see ProjectService.
-    # _edit_index_yml) — never a parallel write path of its own — and
-    # returns only the affected object's own payload, never the whole
-    # YAML text (see AutomatonBuilder.get_state_payload's equivalents,
-    # StatePayload/ActionPayload/SignalPayload).
+    # index.yml structural editing, reusing put_project_file's own path.
     # ------------------------------------------------------------------
 
     @post("/api/projects/{project_name}/states")
@@ -397,13 +329,9 @@ class EditProjectController(BaseController):
 
     @put("/api/projects/{project_name}/init-action/{field}")
     async def put_init_action_field(self, project_name: str, field: str, req: SetProjectFieldRequest):
-        """Every editable field of the init-action itself — see
-        AutomatonYamlEditor.set_init_action_field. 'target' (moving the
-        automaton's own start state) is the one case with its own
-        validation (an unknown state name converts to 400, same as
-        before this was generalized from its own dedicated .../target
-        endpoint); every other field (e.g. 'ui-label') just writes
-        through."""
+        """Every editable field of the init-action itself. 'target'
+        (moving the automaton's start state) is the one case with its
+        own validation — an unknown state name converts to 400."""
         try:
             return await self.project_service.set_init_action_field(
                 project_name, field, req.value, self._activate_project
@@ -429,14 +357,9 @@ class EditProjectController(BaseController):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    # Named to sort alphabetically before put_action_field: this
-    # controller's own register_routes (see BaseController) registers
-    # routes in inspect.getmembers's own alphabetical method-name order,
-    # and FastAPI matches routes in registration order — put_action_
-    # field's own {field} wildcard would otherwise swallow this path's
-    # literal "order" segment as if it were a field name, since
-    # "put_action_field" < "put_action_order" lexicographically registers
-    # the wildcard route first.
+    # Named to sort alphabetically before put_action_field: routes
+    # register in alphabetical method-name order, and put_action_field's
+    # {field} wildcard would otherwise swallow this literal "order" segment.
     @put("/api/projects/{project_name}/states/{state_name}/actions/{action_name}/order")
     async def move_action(
         self, project_name: str, state_name: str, action_name: str, req: ReorderActionRequest
@@ -503,10 +426,9 @@ class EditProjectController(BaseController):
 
     @get("/api/projects/{project_name}/publish/preview")
     def get_publish_preview(self, project_name: str):
-        """Whether a Publish right now needs an explicit state remap first
-        — see ProjectService.preview_publish. The Publish button's own
-        confirm flow calls this before POSTing, to know whether to prompt
-        for a remap target."""
+        """Whether a Publish right now needs an explicit state remap
+        first. The Publish button's confirm flow calls this before
+        POSTing, to know whether to prompt for a remap target."""
         try:
             return self.project_service.preview_publish(project_name)
         except FileNotFoundError as exc:

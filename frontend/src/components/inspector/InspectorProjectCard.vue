@@ -1,17 +1,7 @@
 <script setup>
-// A reusable detail card for the project's own top-level `project:`
-// section (id/ui-label/ui-description — see AutomatonYamlEditor.
-// set_project_field) — same visual language and open/closed read-only
-// vs. edit-form convention as InspectorDetailCard.vue's own state/action
-// cards (badge + title, click to open an editable form, blur-to-commit
-// text fields), just as its own standalone component rather than a third
-// `kind` grafted onto that one: a project has no attachments, no delete,
-// no Graph-selection identity, and always exactly one instance — none of
-// which InspectorDetailCard's own selection/accordion/attachment plumbing
-// is shaped for. `editable` mirrors that component's own prop of the same
-// name: off, this never opens an edit form at all — a future read-only
-// usage (e.g. LabelProjectView.vue, if it ever wants to show this too)
-// needs no change here, just a different value for that one prop.
+// A reusable detail card for the project's top-level `project:` section, using
+// the same badge/title/edit-form convention as InspectorDetailCard.vue's state/action
+// cards but as its own component: a project has no attachments, delete, or Graph-selection identity.
 import { computed, ref, watch } from 'vue'
 import { vAutosize } from './textareaAutosize.js'
 import { handleEnterNext } from './enterToNextField.js'
@@ -58,10 +48,9 @@ function commitUiDescription() {
   commitTextField('ui-description', editUiDescription.value, props.project?.ui_description ?? '')
 }
 
-// A falsy id round-trips as "no id declared" rather than the literal
-// empty string (see AutomatonYamlEditor.set_project_field) — "" is never
-// a valid identifier, so writing it through as-is would just bounce back
-// as a 400 the moment this project needs rebuilding.
+// A falsy id round-trips as "no id declared" rather than the literal empty
+// string (see AutomatonYamlEditor.set_project_field) — "" is never a valid
+// identifier, so writing it through as-is would bounce back as a 400.
 function commitId() {
   commitTextField('id', editId.value, props.project?.id ?? '')
 }

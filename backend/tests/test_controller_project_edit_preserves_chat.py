@@ -1,6 +1,6 @@
-"""ProjectService._finalize_project_update's own reconciliation: editing a
-project file no longer wipes the live conversation unconditionally — only
-when the state it was actually in doesn't survive the edit.
+"""ProjectService._finalize_project_update: editing a project file wipes
+the live conversation only when the state it was in doesn't survive
+the edit.
 """
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ def test_editing_a_file_without_touching_the_current_state_keeps_the_conversatio
 def test_editing_a_file_that_removes_the_current_state_resets_the_conversation(client):
     _upload_and_reach_b(client)
 
-    # "b" (the state the conversation is currently in) no longer exists.
+    # The edit removes "b", the state the conversation is currently in.
     yml_v2 = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
     resp = client.put("/api/projects/proj/files/index.yml", content=yml_v2.encode())
     assert resp.status_code == 200, resp.text
@@ -97,9 +97,8 @@ def test_editing_an_unrelated_project_does_not_touch_the_active_ones_conversatio
     other_yml = "init-action:\n  target: x\nstates:\n  x:\n    contextual-prompt: hi\n"
     resp = client.put("/api/projects/other", content=other_yml.encode(), headers={"Content-Type": "application/x-yaml"})
     assert resp.status_code == 200, resp.text
-    # Uploading "other" activates it — reactivate "proj" to restore the
-    # scenario this test is actually about (some *other* project's file
-    # being edited while "proj" stays the active one).
+    # Uploading "other" activates it — reactivate "proj" so the edit
+    # below targets a non-active project.
     client.put("/api/projects/proj/activate")
 
     resp = client.put("/api/projects/other/files/index.yml", content=b"init-action:\n  target: y\nstates:\n  y:\n    contextual-prompt: hi\n")

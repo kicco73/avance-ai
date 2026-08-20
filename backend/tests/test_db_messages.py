@@ -4,9 +4,6 @@ from datetime import datetime
 
 import pytest
 
-# Every test in this file checks the shape of what Db returns (dict keys,
-# types, None for unknown ids) rather than a specific behavioral fact —
-# all contract.
 pytestmark = pytest.mark.contract
 
 

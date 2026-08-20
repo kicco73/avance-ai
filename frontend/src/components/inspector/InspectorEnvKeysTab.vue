@@ -1,17 +1,7 @@
 <script setup>
-// The "Edit project" Inspector's own schema-editing tab for the
-// project-level `env:` section (parallel to InspectorSignalsTab.vue's own
-// role for `signals:`) — create/rename/delete a declared env key, edit
-// its ui-description and its own default `value` expression. Distinct
-// from InspectorEnvTab.vue (this same Inspector shell's *other* "Env"
-// tab, shown only in 'test' mode — a live session's own stored/
-// action-set memory, read-only facts, never a schema declaration).
-//
-// `value` is a Python-expression source string, same mechanics/scope as
-// a trigger or an action's own env: expression (see backend Action.env's
-// docstring) — edited with the exact same CodeMirror-backed
-// TriggerEditor.vue a trigger field uses, autocomplete/coloring
-// included, rather than a second, parallel expression-editing widget.
+// Schema-editing tab for the project-level `env:` section: create, rename,
+// or delete a declared env key, editing its ui-description and default
+// `value` — a Python expression, edited via TriggerEditor.vue like a trigger.
 import { computed, nextTick, ref, watch, onMounted } from 'vue'
 import { getProjectEnvKeys } from '../../api.js'
 import { vAutosize } from './textareaAutosize.js'
@@ -21,10 +11,8 @@ import { handleEnterNext } from './enterToNextField.js'
 
 const props = defineProps({
   projectName: { type: String, required: true },
-  // See EditProjectView.vue's own docstring on this — 'env-key:<name>'
-  // while one of `envKeys` is the entry a "+ Add env key" click just
-  // created, null otherwise (see InspectorSignalsTab.vue's own
-  // recentlyAddedKey for the 'signal:<name>' equivalent).
+  // 'env-key:<name>' for the entry a "+ Add env key" click just created;
+  // null otherwise.
   recentlyAddedKey: { type: String, default: null }
 })
 
@@ -37,11 +25,9 @@ function handleDeleteEnvKey(name) {
 const envKeysLoading = ref(true)
 const envKeys = ref([])
 
-// Which env key's own block is expanded into an editable form — at most
-// one at a time, same convention as InspectorSignalsTab.vue's own
-// expandedSignalName. Reset whenever the key it points at disappears
-// from a fresh load (a delete, or a rename that already updated
-// `envKeys` under a new name).
+// Expanded env-key block, at most one at a time. Reset when the key it
+// points at disappears from a fresh load (deleted, or renamed under a new
+// name).
 const expandedName = ref(null)
 const editName = ref('')
 const editUiDescription = ref('')
@@ -53,10 +39,9 @@ function resetEditBuffers(entry) {
   editValue.value = entry?.env_key.value ?? ''
 }
 
-// A plain (non-ref-array) element ref — see InspectorSignalsTab.vue's own
-// setLabelInputRef for why: a v-for's own `ref=` would collect one entry
-// per row regardless of how many actually render an editable name input
-// at a time (only the expanded one does).
+// Function-ref instead of ref=: a v-for's ref string would collect one
+// entry per row even though only the expanded row renders an editable
+// name input.
 let nameInputEl = null
 function setNameInputRef(el) {
   nameInputEl = el
@@ -205,9 +190,7 @@ onMounted(loadEnvKeys)
 .inspector-signal-label-input { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; border: 1px solid transparent; border-radius: 4px; padding: 0.1rem 0.3rem; background: transparent; font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; }
 .inspector-signal-label-input:hover, .inspector-signal-label-input:focus { border-color: #ccc; background: white; }
 .inspector-signal-form-label { display: flex; align-items: center; gap: 0.35rem; margin: 20px 0 0.15rem; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #777; }
-/* Marks a field evaluated server-side as a Python expression (simpleeval —
-   see automaton.py) — same "language badge" convention as InspectorDetail
-   Card.vue's own Trigger label. */
+/* Marks a field evaluated server-side as a Python expression (simpleeval). */
 .inspector-py-field-icon { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 1.1rem; height: 0.85rem; border-radius: 3px; background: #4b8bbe; color: white; font-size: 0.55rem; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: -0.02em; }
 .inspector-signal-textarea { display: block; width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 0.78rem; line-height: 1.54; padding: 0.35rem 0.5rem; border-radius: 6px; border: 1px solid #ccc; }
 .inspector-signal-ui_description { font-size: 0.78rem; color: #666; line-height: 1.4; }

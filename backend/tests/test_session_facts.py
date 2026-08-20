@@ -1,9 +1,6 @@
 """Tests for tracking.session_facts.SessionFacts — the `session`
-namespace a trigger/`env:` expression resolves against (see tracking.
-evaluation_scope.EvaluationScopeBuilder). Derived fresh from the current
-user+project's own session/transition history, via db/get_username/
-get_active_project_name — moved verbatim out of tracking.env.Env, which
-used to compute all of this itself (see ENV_COMPUTED_KEYS, now gone).
+namespace a trigger/`env:` expression resolves against. Derived fresh
+from the current user+project's session/transition history.
 """
 from __future__ import annotations
 

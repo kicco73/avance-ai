@@ -1,11 +1,8 @@
 """The Settings menu's own backend surface — whole-database backup/
 restore, Manage projects' own table (runtime status, manual pause/
-resume), and a project's own lifecycle as a whole object (list, create,
+resume), and a project's lifecycle as a whole object (list, create,
 switch, download/upload, delete) rather than any one field inside it
-(see edit_project_controller.py for that half). Split out of what used
-to be one single AvanceController class in controller.py — see that
-module's own docstring, and BaseController's for the shared registration
-mechanism/ordering-constraint notes every *_controller.py shares.
+(see edit_project_controller.py for that half).
 """
 from __future__ import annotations
 
@@ -46,9 +43,8 @@ class SettingsController(BaseController):
     @post("/api/settings/backup")
     async def post_backup(self, request: Request):
         """Restores the working SQLite database from an uploaded backup
-        file — replaces it in place, at the exact path this server is
-        configured to use (see config.database_url). Wipes whatever the
-        server currently has (all projects, sessions, messages)."""
+        file, replacing it in place. Wipes whatever the server currently
+        has (all projects, sessions, messages)."""
         content = await request.body()
         async with self.chat_service.lock:
             try:
@@ -72,10 +68,7 @@ class SettingsController(BaseController):
     @put("/api/projects/{project_name}/pause")
     def put_project_pause(self, project_name: str):
         """An operator's own explicit override — only ever allowed while
-        `project_name` is actually running (see ProjectService.
-        set_manually_paused, which enforces this itself, same reason the
-        Runtime status view's own status button disables itself for
-        every other status)."""
+        `project_name` is actually running."""
         try:
             return self.project_service.set_manually_paused(project_name)
         except FileNotFoundError as exc:

@@ -1,13 +1,8 @@
-"""Cross-project availability (Prompt 7) — a project is available when
-its own build succeeds and every project it references via automaton.*
-(the same reverse index Prompt 6 built) is itself available. See
-project.project_service.ProjectService.recompute_availability/
-register_availability_cascade's own docstrings for the exact mechanism:
-a project's own is_paused/paused_reason only ever changes when the
-recomputed value actually differs from what's saved — the guard that
-lets a cascade (see events.events.AvailabilityChanged) converge in one
-pass, safely, even across a mutual dependency, with no cycle detection
-of its own.
+"""Cross-project availability: a project is available when its own build
+succeeds and every project it references via automaton.* is itself
+available. is_paused/paused_reason only change when the recomputed value
+actually differs, letting a cascade converge safely even across a mutual
+dependency, with no cycle detection of its own.
 """
 from __future__ import annotations
 
@@ -49,21 +44,10 @@ states:
 
 
 def _publish_project(db, project_service: ProjectService, project_name: str, index_yml: str) -> None:
-    """Same helper test_wakeup_service.py uses — a real save, through
-    _finalize_project_update, so the reverse index *and* the initial
-    availability recompute (see that method's own new call to
-    recompute_availability) both actually run, same as a real save.
-
-    Auto-declares `project: {id: <project_name>}` (Prompt 8/9's
-    project.id — every automaton.* reference in this file resolves
-    against it now, never the raw project_name) whenever project_name is
-    itself a valid identifier — every _yml_observing("x") call expects
-    exactly `automaton.x` to work, so the referenced project's own
-    project_id has to equal its project_name for these fixtures to keep
-    reading naturally. A hyphenated name (e.g. "running-proj", used by
-    tests that never reference automaton.* at all) simply gets no
-    project.id — isn't a valid one anyway, and nothing here needs it to
-    have one."""
+    """A real save, through _finalize_project_update, so the reverse
+    index and the initial availability recompute both actually run.
+    Auto-declares `project: {id: <project_name>}` when project_name is a
+    valid identifier, so automaton.* references in this file resolve."""
     if project_name.isidentifier() and "project:" not in index_yml:
         index_yml = f"project:\n  id: {project_name}\n{index_yml}"
     db.ensure_project(project_name)
@@ -90,14 +74,9 @@ def test_a_valid_project_with_no_dependencies_is_available(db, project_service):
 
 
 def test_a_project_whose_own_saved_content_fails_to_build_is_paused(db, project_service):
-    # Bypasses ProjectService's own save-time validation on purpose —
-    # every real save path already rejects a broken build outright (see
-    # _prepare_project_update's own docstring: "never writes anything"),
-    # so the only way this project ever ends up saved-but-broken is a
-    # write that skips that gate entirely, same as e.g. a future
-    # validation-rule change finding old, previously-valid content
-    # invalid now. recompute_availability must still degrade gracefully
-    # rather than raising.
+    # Bypasses ProjectService's own save-time validation on purpose, since
+    # every real save path already rejects a broken build outright —
+    # recompute_availability must still degrade gracefully rather than raising.
     db.ensure_project("broken")
     db.save_project_files("broken", {"index.yml": b"not: [valid, yaml: at all"}, {"index.yml": "text/yaml"})
     db.publish_project("broken")
@@ -196,18 +175,9 @@ def test_a_mutual_dependency_between_two_projects_converges_without_looping_fore
 
     assert db.get_project_availability("a")[0] is True
     assert db.get_project_availability("b")[0] is True
-    # "a"'s own event is this test's own direct publish() call; "b"'s is
-    # the cascade reacting to it (nested inside that same publish() —
-    # see dispatcher.publish's own docstring on handlers running
-    # synchronously — which is why "b" is actually recorded *before*
-    # "a" below: this test's own listener was subscribed after
-    # ProjectService's cascade handler, so it only sees the outer "a"
-    # event once every nested effect it caused, "b" included, already
-    # ran). Convergence is the interesting part, not this ordering
-    # detail: "b"'s own event cascades back to "a" (its own observer),
-    # whose recompute finds it's *already* paused — the guard's
-    # "unchanged, don't republish" — so exactly these two events fire,
-    # total, never a third ("a" again) or a loop.
+    # "b"'s event cascades back to "a", whose recompute finds it's
+    # already paused (the "unchanged, don't republish" guard) — so
+    # exactly these two events fire, total, never a third or a loop.
     assert set(received) == {
         AvailabilityChanged(project_name="a", available=False),
         AvailabilityChanged(project_name="b", available=False),
@@ -215,16 +185,15 @@ def test_a_mutual_dependency_between_two_projects_converges_without_looping_fore
 
 
 def test_depending_on_a_project_that_does_not_exist_at_all_is_not_itself_blocking(db, project_service):
-    """A dangling automaton.* reference is a *runtime* concern (see
-    tracking.automaton_namespace's own 'project_not_found' SystemWarning)
-    — not, on its own, a reason to pause the *referencing* project at
-    build time: the referenced project might simply not exist *yet*."""
+    """A dangling automaton.* reference is a runtime concern, not a
+    reason to pause the referencing project at build time — the
+    referenced project might simply not exist yet."""
     _publish_project(db, project_service, "dependent", _yml_observing("nonexistent"))
 
     assert db.get_project_availability("dependent") == (False, None)
 
 
-# --- Manual pause/resume (Prompt: "in pausa manuale") -----------------
+# --- Manual pause/resume -----------------------------------------------
 
 
 def test_set_manually_paused_only_allowed_from_running(db, project_service):

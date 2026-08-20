@@ -1,15 +1,7 @@
 """TrackingService.set_auto_tracking_enabled/is_auto_tracking_enabled —
-EditProjectView.vue's own "Dev mode: freeze automatic state transitions"
-toggle, per 'test' session (see db.create_chat_session's own `source`
-param) — a native session can never be frozen (see TrackingService.
-process's own is_test_session check). Signal evaluation itself is never
-gated by this (the AI still computes/reports signal values on every
-turn, same prompt either way) — only whether a triggered action actually
-gets *selected* and applied (see TrackingEngine.evaluate_triggered_
-action). Frozen or not, the signal values a turn actually saw are always
-persisted (see TrackingEngine.apply_transition's own action-is-None
-branch) so the Signals tab still has something to show even while
-nothing is moving.
+the "Dev mode: freeze automatic state transitions" toggle, per 'test'
+session; a native session can never be frozen. Signal evaluation is
+never gated by this — only whether a triggered action gets applied.
 """
 from __future__ import annotations
 
@@ -136,11 +128,9 @@ async def test_signals_are_still_computed_and_logged_while_frozen(db):
 
 
 async def test_freezing_a_native_session_has_no_effect(db):
-    """The whole point of this refactor: auto-tracking freeze only ever
-    applies to 'test' sessions (EditProjectView.vue's own embedded "Test"
-    chat) — a native session's own trigger still fires normally even if
-    something did call set_auto_tracking_enabled(session_id, False) for
-    it (see TrackingService.process's own is_test_session check)."""
+    """Auto-tracking freeze only ever applies to 'test' sessions — a
+    native session's trigger still fires normally even if
+    set_auto_tracking_enabled(session_id, False) was called for it."""
     automaton = _automaton("signal.mySignal >= 1")
     session_id = _session_id(db, source="native")
     service = _tracking_service(db, automaton, '{"mySignal": 1}')
@@ -154,11 +144,9 @@ async def test_freezing_a_native_session_has_no_effect(db):
 
 async def test_freezing_one_test_session_never_affects_another(db):
     """Not global: freezing session A must never freeze session B, even
-    though both are 'test' sessions of the same project. Both created
-    against the same publish (see Db.publish_project's own docstring —
-    a second publish would delete the first session's own draft test
-    session outright, an unrelated mechanism this test must avoid
-    tripping)."""
+    though both are 'test' sessions of the same project. Both are
+    created against the same publish, to avoid a second publish deleting
+    the first session's draft test session."""
     automaton = _automaton("signal.mySignal >= 1")
     db.ensure_project(PROJECT_NAME)
     db.publish_project(PROJECT_NAME)

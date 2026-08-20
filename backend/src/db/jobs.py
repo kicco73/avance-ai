@@ -35,10 +35,8 @@ class JobMixin:
         return self._job_to_dict(row)
 
     def get_job_by_reference(self, kind: str, reference_id: int) -> dict | None:
-        """The Job tracking one domain row's own lifecycle (see
-        BenchmarkRunService's own dict-merge, the pattern this engine was
-        built for — see jobs/job_queue.py's own module docstring) — most
-        recent first in the (should be rare) case of more than one."""
+        """The Job tracking one domain row's lifecycle — most recent
+        first in the (should be rare) case of more than one."""
         row = (
             Job.select()
             .where((Job.kind == kind) & (Job.reference_id == reference_id))

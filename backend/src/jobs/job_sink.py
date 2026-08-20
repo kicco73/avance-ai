@@ -9,13 +9,8 @@ from db import Db, _utc_iso
 
 class JobSink(Protocol):
     """Whatever JobQueue needs to create/track a job's lifecycle —
-    orchestration only, no domain data (see this package's own module
-    docstring). PersistedJobSink writes to the real Db, so a Job row
-    survives past the worker thread — and the process — that ran it;
-    InMemoryJobSink is a deliberately ephemeral, in-process store for a
-    job kind that has no domain row of its own to persist against.
-    Both must be thread-safe: every method here is called from a
-    JobQueue worker thread, never from the main asyncio loop."""
+    orchestration only, no domain data. Both implementations must be
+    thread-safe: every method here is called from a worker thread."""
 
     def create(self, kind: str, reference_id: int | None, total: int) -> int:
         ...
@@ -71,11 +66,8 @@ class PersistedJobSink:
 
 class InMemoryJobSink:
     """JobSink for a deliberately ephemeral job kind — nothing survives a
-    process restart, and no domain table exists to persist it against.
-    A plain dict guarded by a threading.Lock, not an asyncio.Lock: this
-    sink is read/written from JobQueue worker threads, each with its own
-    event loop, never only from the main asyncio loop — an asyncio.Lock
-    only serializes coroutines sharing one loop, not threads."""
+    process restart. A threading.Lock, not asyncio.Lock: this is
+    read/written from worker threads, each with its own event loop."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()

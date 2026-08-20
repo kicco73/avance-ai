@@ -33,11 +33,9 @@ class HistoryMixin:
 
     def save_project_file(self, user_id: str, project_name: str, archive_name: str, content: bytes, content_type: str) -> None:
         self.ensure_project(project_name)
-        # Resolve the fork (if this save is the first edit after a
-        # publish) before touching History at all — _ensure_draft_revision
-        # wipes every user's own History rows for the project on a fork
-        # (see ProjectMixin's own docstring on why), which would otherwise
-        # erase the very undo entry pushed just below it.
+        # Resolve the fork before touching History at all —
+        # _ensure_draft_revision wipes every user's History rows on a
+        # fork, which would otherwise erase the undo entry pushed below.
         self._ensure_draft_revision(project_name)
         previous = self.get_archive(project_name, archive_name)
         if previous is not None:

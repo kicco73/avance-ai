@@ -1,16 +1,8 @@
 """A minimal, in-process event registry — no framework, no persistence,
 no ordering guarantee beyond "handlers run in the order they
-subscribed": `publish(event)` just calls every handler subscribed to
-`type(event)`, synchronously, one after another. A handler that raises
-propagates straight out of publish() — callers that publish from inside
-a turn's own critical path (see tracking.tracking_engine.TrackingEngine)
-already run inside their own try/except-shaped error handling, so this
-never adds a defensive layer of its own on top.
-
-Module-level state (not a class needing DI): every publisher/subscriber
-in the app shares the exact same one registry, the same way jobs/
-job_queue.py's own ephemeral_job_queue is shared as a single instance
-rather than each caller building its own.
+subscribed". `publish(event)` calls every handler subscribed to
+`type(event)`, synchronously; a handler that raises propagates straight
+out of publish() rather than being caught defensively here.
 """
 from __future__ import annotations
 

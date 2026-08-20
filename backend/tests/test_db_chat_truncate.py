@@ -1,9 +1,7 @@
 """Db.truncate_session/latest_message_or_signal_timestamp — the
-persistence half of "Restart from here" (see chat/chat_service.py's
-ChatService.truncate_session, RestartFromHereButton.vue). Every timestamp
-here is set explicitly (bypassing save_message/save_transition's own
-default=datetime.utcnow) so the >= cutoff boundary can be tested exactly,
-rather than racing real wall-clock time.
+persistence half of "Restart from here". Every timestamp here is set
+explicitly so the >= cutoff boundary can be tested exactly, rather than
+racing real wall-clock time.
 """
 from __future__ import annotations
 
@@ -13,9 +11,6 @@ import pytest
 
 from db.models import Message, Tracking
 
-# Every test in this file verifies a specific cutoff/rollback behavioral
-# fact (boundary semantics, cascade-free rollback) rather than a response
-# shape — all regression.
 pytestmark = pytest.mark.regression
 
 
@@ -76,11 +71,9 @@ def test_truncate_deletes_signals_at_or_after_cutoff(db):
 
 
 def test_truncate_never_deletes_the_projects_own_init_transition_row(db):
-    """The one-time "" -> start_state bookkeeping row (see ChatService.
-    open_if_needed) is scoped to the whole project, not this session — a
-    cutoff at or before its own timestamp must never remove it, or the
-    project's own get_current_state would fall back to "never
-    initialized" instead of just this session rolling back."""
+    """The one-time "" -> start_state bookkeeping row is scoped to the
+    whole project, not this session — a cutoff before its timestamp must
+    never remove it, or get_current_state falls back to "never initialized"."""
     session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
     init_row = _signal_at(db, session_id, datetime(2026, 1, 1, 10, 0, 0), old_state="", new_state="start")
 
@@ -91,10 +84,9 @@ def test_truncate_never_deletes_the_projects_own_init_transition_row(db):
 
 
 def test_truncate_rolls_the_current_state_back_for_free(db):
-    """No separate "rollback the state" step exists — get_current_state
-    always resolves to the newest *surviving* transition, so deleting the
-    trailing Tracking rows is the entire rollback (see db.truncate_session's
-    own docstring)."""
+    """get_current_state always resolves to the newest surviving
+    transition, so deleting the trailing Tracking rows is the entire
+    rollback."""
     session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0), start_state="start")
     _signal_at(db, session_id, datetime(2026, 1, 1, 10, 0, 0), old_state="start", new_state="middle")
     _signal_at(db, session_id, datetime(2026, 1, 1, 10, 10, 0), old_state="middle", new_state="end")

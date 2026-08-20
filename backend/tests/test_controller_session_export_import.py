@@ -30,10 +30,8 @@ def test_export_sessions_is_empty_for_a_project_with_no_sessions(client, hello_p
 
 @pytest.mark.regression
 def test_export_sessions_includes_native_sessions_alongside_imported_ones(client, hello_project):
-    """"Download all" must download every session of the project — native
-    (live chat) and imported alike, not just the imported ones (see
-    SessionExportManager.export_sessions's own source=('native',
-    'imported') filter)."""
+    """Export must include every session of the project — native (live
+    chat) and imported alike, not just the imported ones."""
     native_session = client.get("/api/chat/session").json()
     _import_transcript(client)
 
