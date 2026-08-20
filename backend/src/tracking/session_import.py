@@ -92,12 +92,22 @@ class SessionImportManager:
             end_state=session_data.get('end_state'),
             source='imported', title=session_data.get('name'),
         )
-        if session_data.get('labeled'):
-            self._db.set_session_labeled(session_id, True)
-        if session_data.get('comment'):
-            self._db.set_session_comment(session_id, session_data['comment'])
-        for message in messages:
-            self._import_message(session_id, message)
+        try:
+            if session_data.get('labeled'):
+                self._db.set_session_labeled(session_id, True)
+            if session_data.get('comment'):
+                self._db.set_session_comment(session_id, session_data['comment'])
+            for message in messages:
+                self._import_message(session_id, message)
+        except (KeyError, TypeError):
+            # No cross-call transaction of its own (Db exposes no atomic()
+            # here) — cleaned up by hand instead, so a malformed session
+            # never leaves a real, message-less ChatSession row behind
+            # for a caller retrying/skipping it (see ProjectService.
+            # put_project's own best-effort sessions.json loop) to
+            # mistake for a genuine one.
+            self._db.delete_chat_session(session_id)
+            raise
         return session_id
 
     # Every one of these is optional on a message entry (see session_

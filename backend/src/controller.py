@@ -70,6 +70,12 @@ SIGNAL_EDITABLE_FIELDS = {"ui-label", "ui-description", "definition"}
 # editable here, sanitized through the same to_snake_case rename path
 # (see AutomatonYamlEditor.set_env_key_field/rename_env_key).
 ENV_KEY_EDITABLE_FIELDS = {"name", "ui-description", "value"}
+# The optional top-level `project:` section (see AutomatonBuilder.
+# _build_project_metadata) — 'id' is what other projects reach this one
+# as through automaton.<id> (see AutomatonYamlEditor.set_project_field
+# for the "falsy value removes it" convention that keeps an emptied id
+# from ever round-tripping as the invalid identifier "").
+PROJECT_EDITABLE_FIELDS = {"id", "ui-label", "ui-description"}
 
 
 def route(method: str, path: str, **kwargs):
@@ -846,6 +852,19 @@ class AvanceController(object):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
+    @get("/api/projects/{project_name}/project")
+    def get_project_metadata(self, project_name: str):
+        """The optional top-level `project:` section (id/ui_label/
+        ui_description) of `project_name`'s last saved index.yml, for the
+        "Edit project" view's Inspect panel Info tab — not restricted to
+        the active project (see ProjectService.get_project_metadata)."""
+        try:
+            return {"project": self.project_service.get_project_metadata(project_name)}
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
     @get("/api/projects/{project_name}/files")
     def get_project_files(self, project_name: str):
         """Text-editable files inside `project_name`'s directory (index.yml
@@ -1101,6 +1120,22 @@ class AvanceController(object):
         through."""
         try:
             return await self.project_service.set_init_action_field(
+                project_name, field, req.value, self._activate_project
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @put("/api/projects/{project_name}/project/{field}")
+    async def put_project_field(self, project_name: str, field: str, req: SetProjectFieldRequest):
+        if field not in PROJECT_EDITABLE_FIELDS:
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail=f"'{field}' is not an editable project field — expected one of {sorted(PROJECT_EDITABLE_FIELDS)}.",
+            )
+        try:
+            return await self.project_service.set_project_field(
                 project_name, field, req.value, self._activate_project
             )
         except FileNotFoundError as exc:

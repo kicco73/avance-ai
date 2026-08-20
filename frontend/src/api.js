@@ -502,6 +502,20 @@ export function getProjectEnvKeys(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/env-keys`)
 }
 
+// The optional top-level `project:` section (id/ui_label/ui_description) —
+// see InspectorProjectCard.vue's own Info-tab usage, EditProjectView.vue's
+// "Edit project" schema view.
+export function getProjectMetadata(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/project`)
+}
+
+export function putProjectField(projectName, field, value) {
+  return apiFetch(
+    `${API_URL}/projects/${encodeURIComponent(projectName)}/project/${encodeURIComponent(field)}`,
+    { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value }) }
+  )
+}
+
 export function getProjectFiles(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/files`)
 }

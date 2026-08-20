@@ -1,9 +1,14 @@
-# A state-machine implementation of the Transtheoretical Model of Change, 
-# augmented with Motivational Interviewing and Relapse Prevention principles.
-# (Prochaska, DiClemente)
-
+project:
+  id: ttm_prototype
+  ui-label: TTM prototype
+  ui-description: |
+    A state-machine implementation of the Transtheoretical Model of Change, 
+    augmented with Motivational Interviewing and Relapse Prevention principles.
+    (Prochaska, DiClemente)
+  
 init-action:
-  ui-label: new session
+  ui-label: new user
+  on-enter: celebrate()
   target: Precontemplation
 
 # Fixed instructions appended to every state's contextual_prompt (except

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import logging
 import re
 import zipfile
@@ -15,7 +16,7 @@ from pathlib import Path
 from typing import Awaitable, Callable
 
 from automaton.automaton import (
-    Action, ActionPayload, Automaton, EnvKeyPayload, SignalPayload, State, StatePayload,
+    Action, ActionPayload, Automaton, EnvKeyPayload, ProjectPayload, SignalPayload, State, StatePayload,
     trigger_automaton_project_refs,
 )
 from automaton.automaton_builder import AutomatonBuilder, EXTENSION_TO_MEDIA_TYPE
@@ -25,8 +26,20 @@ from events import AvailabilityChanged, publish, subscribe
 from session import Session
 from db import Db
 from tracking.tracking_engine import TrackingEngine
+from tracking.session_export import SessionExportManager
+from tracking.session_import import SessionImportManager
 
 logger = logging.getLogger(__name__)
+
+# The project zip's own optional "bring your own sessions" file (see
+# export_project_zip/put_project below) — never a project file itself
+# (excluded from `files` before AutomatonBuilder ever sees it, and never
+# persisted as an Archive), just a session_export.py-shaped JSON array,
+# imported-only, consumed on upload the same way the "Label sessions"
+# view's own JSON upload already is (see SessionImportManager.
+# import_session_json) so a project and the reference transcripts it was
+# benchmarked against travel together in one file.
+SESSIONS_EXPORT_FILENAME = "sessions.json"
 
 # What the file explorer/editor endpoints will read, write, list, or delete —
 # index.yml plus the text/plain attachment extensions from
@@ -134,6 +147,14 @@ NEW_PROJECT_NAME = "Hello world"
 class ProjectService(object):
     def __init__(self, db: Db) -> None:
         self._db = db
+        # Only ever used by export_project_zip/put_project's own
+        # sessions.json handling — see SESSIONS_EXPORT_FILENAME's own
+        # docstring. Both managers depend on nothing but `db` themselves
+        # (see their own modules), so constructing them here carries no
+        # circular-import risk the reverse direction (TrackingService
+        # already depends on ProjectService) would.
+        self._session_export_manager = SessionExportManager(db)
+        self._session_import_manager = SessionImportManager(db)
         # (project_name, revision) -> Automaton. Revision-keyed (not just
         # project_name) so a caller pinned to one specific revision (see
         # _load_project_at_revision, get_automaton_and_state_for_session)
@@ -846,6 +867,23 @@ class ProjectService(object):
         automaton = self._load_project(project_name)
         return [{"env_key": Automaton.get_env_key_payload(env_key)} for env_key in automaton.env_keys]
 
+    def get_project_metadata(self, project_name: str) -> ProjectPayload:
+        """The optional top-level `project:` section (id/ui_label/
+        ui_description) of `project_name`'s last successfully saved
+        index.yml — the source for the "Edit project" view's own Inspect
+        panel Info tab, same cache/staleness contract as
+        get_project_signals/get_project_env_keys above. Read straight off
+        the already-built Automaton (see AutomatonBuilder._build_project_
+        metadata) rather than re-parsing the YAML text — this is exactly
+        the same project_id/project_ui_label/project_ui_description the
+        automaton.* namespace itself resolves against."""
+        automaton = self._load_project(project_name)
+        return {
+            "id": automaton.project_id,
+            "ui_label": automaton.project_ui_label,
+            "ui_description": automaton.project_ui_description,
+        }
+
     def get_active_identifier_registry(self) -> dict[str, dict[str, str]]:
         """Every identifier the active project's own trigger/`env:`
         expressions can reference, one dict per namespace (see automaton.
@@ -1103,6 +1141,14 @@ class ProjectService(object):
                     }
             else:
                 files = {"index.yml": content.decode("utf-8")}
+            # SESSIONS_EXPORT_FILENAME (see its own docstring) is never a
+            # project file — pulled out before AutomatonBuilder ever sees
+            # `files`, parsed eagerly (a malformed one fails the whole
+            # upload here, same as a malformed index.yml would, rather
+            # than partially succeeding), imported for real only once the
+            # project itself is fully committed below.
+            raw_sessions = files.pop(SESSIONS_EXPORT_FILENAME, None)
+            sessions_to_import = self._parse_sessions_export(raw_sessions)
             new_automaton, to_persist = self._prepare_project_update(project_name, files)
         except (zipfile.BadZipFile, ValueError) as exc:
             raise ValueError(str(exc)) from exc
@@ -1126,8 +1172,57 @@ class ProjectService(object):
             }
             self._db.save_project_files(project_name, to_persist_bytes, content_types)
         await self._finalize_project_update(project_name, new_automaton, commit)
+        self._import_sessions_export(project_name, sessions_to_import)
 
         return {"success": True, "project_name": project_name}
+
+    @staticmethod
+    def _parse_sessions_export(raw_sessions: str | None) -> list[dict]:
+        """None (SESSIONS_EXPORT_FILENAME wasn't in the upload at all) ->
+        []. Otherwise must be a JSON array of session objects (session_
+        export.py's own shape) — anything else raises ValueError, caught
+        by put_project's own broad except right alongside every other
+        upload-validation failure."""
+        if raw_sessions is None:
+            return []
+        try:
+            parsed = json.loads(raw_sessions)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"'{SESSIONS_EXPORT_FILENAME}' is not valid JSON: {exc}") from exc
+        if not isinstance(parsed, list):
+            raise ValueError(f"'{SESSIONS_EXPORT_FILENAME}' must be a JSON array of sessions.")
+        return parsed
+
+    def _import_sessions_export(self, project_name: str, sessions: list[dict]) -> None:
+        """Best-effort, one session at a time: a single malformed entry
+        (see SessionImportManager.import_session_json's own docstring on
+        what that looks like) is skipped, logged, and never blocks the
+        rest — the project itself is already fully committed by the time
+        this runs, so there's nothing left to roll back to, and rejecting
+        every *other*, perfectly good session over one bad one would only
+        make this feature less trustworthy to rely on.
+
+        A no-op for an empty list (no sessions.json in the upload at all
+        — the overwhelmingly common case) — but when there *is* at least
+        one session to import, this publishes `project_name` first: every
+        ChatSession, imported or not, is always stamped against a real
+        published revision (see db.create_chat_session), so without this
+        a brand-new upload's own sessions.json would fail outright until
+        someone separately hit Publish. Requiring that extra manual step
+        just to make sessions.json "just work" on upload would defeat
+        the point of it being automatic at all."""
+        if not sessions:
+            return
+        self._db.publish_project(project_name)
+        username = Session().user
+        for session_data in sessions:
+            try:
+                self._session_import_manager.import_session_json(username, project_name, session_data)
+            except (ValueError, KeyError, TypeError):
+                logger.exception(
+                    "Skipped a malformed session while importing '%s' from '%s'.",
+                    project_name, SESSIONS_EXPORT_FILENAME,
+                )
 
     def _unique_project_name(self, base: str) -> str:
         """`base` itself if free, else the first "`base` N" (N starting at
@@ -1154,6 +1249,14 @@ class ProjectService(object):
         return await self.put_project(project_name, content, "application/zip", commit)
 
     def export_project_zip(self, project_name: str) -> bytes:
+        """`project_name`'s own files, round-trippable back through
+        put_project unchanged — plus, when there's at least one, a
+        SESSIONS_EXPORT_FILENAME holding every *imported* session (see
+        that constant's own docstring on why imported-only: a native
+        session only ever means something against the exact database it
+        was actually played against). Never added when there are none —
+        keeps a zip with nothing to carry along exactly as it always
+        looked before this existed."""
         archives = self._db.get_archives(project_name)
         if archives is None:
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
@@ -1162,6 +1265,11 @@ class ProjectService(object):
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
             for archive_name, archive_content in archives.items():
                 zf.writestr(archive_name, archive_content)
+            imported_sessions = self._session_export_manager.export_sessions(
+                Session().user, project_name, source='imported',
+            )
+            if imported_sessions:
+                zf.writestr(SESSIONS_EXPORT_FILENAME, json.dumps(imported_sessions, indent=2))
 
         return buffer.getvalue()
 
@@ -1351,6 +1459,11 @@ class ProjectService(object):
     async def set_init_action_field(self, project_name: str, field: str, value, commit: CommitCallback):
         return await self._edit_index_yml(
             project_name, commit, lambda editor: editor.set_init_action_field(field, value)
+        )
+
+    async def set_project_field(self, project_name: str, field: str, value, commit: CommitCallback) -> ProjectPayload:
+        return await self._edit_index_yml(
+            project_name, commit, lambda editor: editor.set_project_field(field, value)
         )
 
     async def delete_state(self, project_name: str, state_name: str, commit: CommitCallback) -> None:

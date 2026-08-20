@@ -4,27 +4,28 @@ import { getProjects } from '../api.js'
 
 const emit = defineEmits([
   'select',
-  'edit',
-  'benchmark',
-  'new-project',
-  'upload',
-  'download',
-  'delete'
+  'download'
 ])
 
 const open = ref(false)
 const loading = ref(false)
-// {name, is_paused}[] (see ProjectService.list_projects, Prompt 7) — the
-// status dot next to each project's own name (see the template below)
-// reads is_paused directly off this, never recomputed client-side.
+// {name, is_paused, ui_label}[] (see ProjectService.list_projects,
+// Prompt 7/9) — the status dot next to each project's own name (see the
+// template below) reads is_paused directly off this, never recomputed
+// client-side; ui_label (Prompt 9's own `project.ui-label`) is shown in
+// place of the raw name wherever declared, same "declared label, falls
+// back to the raw name/key" convention already used for a state/signal/
+// action's own ui-label.
 const projects = ref([])
 const activeProjectName = ref(null)
 const rootEl = ref(null)
 
-const noProjectsAvailable = computed(() => projects.value.length === 0)
-const editDisabled = computed(() => noProjectsAvailable.value)
-const benchmarkDisabled = computed(() => noProjectsAvailable.value)
-const deleteDisabled = computed(() => noProjectsAvailable.value)
+// The active project's own row (for its declared ui_label) — falls back
+// to the raw name both before the initial loadProjects() call resolves
+// and for a project that never declared a ui_label at all.
+const activeProjectLabel = computed(() => {
+  return projects.value.find((p) => p.name === activeProjectName.value)?.ui_label ?? activeProjectName.value
+})
 
 async function loadProjects() {
   loading.value = true
@@ -57,38 +58,6 @@ function selectProject(name) {
   emit('select', name)
 }
 
-function selectEdit() {
-  if (editDisabled.value || !activeProjectName.value) return
-  open.value = false
-  emit('edit', activeProjectName.value)
-}
-
-function selectBenchmark() {
-  if (benchmarkDisabled.value || !activeProjectName.value) return
-  open.value = false
-  emit('benchmark', activeProjectName.value)
-}
-
-function selectNewProject() {
-  open.value = false
-  emit('new-project')
-}
-
-function selectUpload() {
-  open.value = false
-  emit('upload')
-}
-
-function selectDelete() {
-  if (deleteDisabled.value || !activeProjectName.value) return
-
-  const name = activeProjectName.value
-  if (!window.confirm(`Delete project "${name}"? This cannot be undone.`)) return
-
-  open.value = false
-  emit('delete', name)
-}
-
 function handleClickOutside(event) {
   if (open.value && rootEl.value && !rootEl.value.contains(event.target)) {
     open.value = false
@@ -106,66 +75,16 @@ onBeforeUnmount(() => {
   <div class="projects-menu" ref="rootEl">
     <button
       class="projects-btn"
-      :title="activeProjectName ?? 'Projects'"
+      :title="activeProjectLabel ?? 'Projects'"
       @click="toggle"
     >
-      {{ activeProjectName ?? 'Projects' }}
+      {{ activeProjectLabel ?? 'Projects' }}
     </button>
 
     <div v-if="open" class="projects-panel">
       <p v-if="loading" class="projects-status">Loading…</p>
 
       <ul v-else class="projects-list">
-        <!-- Fixed actions first -->
-        <li>
-          <button
-            class="projects-item projects-edit-item"
-            :disabled="editDisabled"
-            @click="selectEdit"
-          >
-            Edit project
-          </button>
-        </li>
-
-        <li>
-          <button
-            class="projects-item projects-edit-item"
-            :disabled="benchmarkDisabled"
-            @click="selectBenchmark"
-          >
-            Label sessions
-          </button>
-        </li>
-
-        <li>
-          <button
-            class="projects-item projects-upload-item"
-            @click="selectNewProject"
-          >
-            New project
-          </button>
-        </li>
-
-        <li>
-          <button
-            class="projects-item projects-upload-item"
-            @click="selectUpload"
-          >
-            Upload project...
-          </button>
-        </li>
-
-        <li>
-          <button
-            class="projects-item projects-delete-item"
-            :disabled="deleteDisabled"
-            @click="selectDelete"
-          >
-            Delete project
-          </button>
-        </li>
-
-        <!-- Dynamic projects at the bottom -->
         <li
           v-for="project in projects"
           :key="project.name"
@@ -183,7 +102,7 @@ onBeforeUnmount(() => {
               :class="project.is_paused ? 'projects-item-status-paused' : 'projects-item-status-running'"
               :title="project.is_paused ? 'Paused' : 'Running'"
             ></span>
-            {{ project.name }}
+            {{ project.ui_label ?? project.name }}
           </button>
         </li>
       </ul>
@@ -261,35 +180,6 @@ onBeforeUnmount(() => {
   width: 1.1rem;
   color: #2e7d32;
   font-weight: 600;
-}
-
-/* Fixed options */
-.projects-edit-item {
-  color: #4a6fa5;
-}
-
-.projects-edit-item:disabled {
-  color: #ccc;
-  cursor: not-allowed;
-}
-
-.projects-upload-item {
-  color: #4a6fa5;
-}
-
-.projects-delete-item {
-  color: #c62828;
-}
-
-.projects-delete-item:disabled {
-  color: #ccc;
-  cursor: not-allowed;
-}
-
-/* Separator before the dynamic project list */
-.project-entry:first-of-type {
-  border-top: 1px solid #ccc;
-  margin-top: 0.25rem;
 }
 
 .project-entry + .project-entry {

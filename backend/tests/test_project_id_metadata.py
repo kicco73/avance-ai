@@ -67,6 +67,36 @@ def test_changing_a_project_id_frees_up_the_old_one(client):
     assert resp.status_code == 200, resp.text
 
 
+def test_availability_resolves_automaton_star_against_project_id_not_project_name(client, app_db: Db):
+    """The reverse index operates on project_id, never the raw
+    project_name (Prompt 8/9) — this project's own on-disk name ("Weird
+    Name With Spaces") isn't even a valid identifier, so the only way
+    "watcher" can ever resolve its own automaton.dep_id reference is
+    through the declared project.id. Checked directly against the
+    reverse index itself (db.get_observers), not through an HTTP-
+    triggered cascade — the test app fixture doesn't wire ProjectService.
+    register_availability_cascade the way main.py does for the real app,
+    so there's nothing here to actually propagate an AvailabilityChanged
+    event; that cascade mechanism itself is already covered end-to-end,
+    project_name-only, in test_project_availability.py."""
+    resp = _put(
+        client, "Weird Name With Spaces",
+        "project:\n  id: dep_id\n" + MINIMAL,
+    )
+    assert resp.status_code == 200, resp.text
+
+    watcher_yml = (
+        "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
+        "    actions:\n      - name: notice\n        target: a\n"
+        "        trigger: \"automaton.dep_id.state == 'never'\"\n"
+    )
+    resp = _put(client, "watcher", watcher_yml)
+    assert resp.status_code == 200, resp.text
+
+    assert app_db.get_observers("Weird Name With Spaces") == ["watcher"]
+    assert app_db.get_observed_projects("watcher") == ["Weird Name With Spaces"]
+
+
 def test_a_project_with_no_declared_id_is_never_exposed_to_automaton_star(client):
     resp = _put(client, "watcher", 'project:\n  id: watcher_id\n' + MINIMAL.replace(
         "a:\n    contextual-prompt: hi",

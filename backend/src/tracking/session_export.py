@@ -31,8 +31,22 @@ class SessionExportManager:
     def __init__(self, db: Db) -> None:
         self._db = db
 
-    def export_sessions(self, username: str, project_name: str) -> list[dict]:
-        sessions = self._db.list_chat_sessions(username, project_name, source=('native', 'imported'))
+    def export_sessions(
+        self, username: str, project_name: str, source: str | tuple[str, ...] = ('native', 'imported'),
+    ) -> list[dict]:
+        """`source` defaults to every real session (native and imported
+        alike) — the "Label sessions" view's own "Download all" button.
+        ProjectService.export_project_zip's own sessions.json (see its
+        own docstring) is the one caller that narrows this to
+        source='imported' only: a project's own zip is meant to be a
+        portable, re-uploadable definition, and a *native* session only
+        ever means something against the exact database it was actually
+        played against — re-importing one into a fresh install would
+        silently misrepresent it as a real past conversation nobody had.
+        An imported session carries no such claim to begin with (see
+        ChatSession.source) — it's already just reference material, safe
+        to carry along."""
+        sessions = self._db.list_chat_sessions(username, project_name, source=source)
         return [self._export_session(session) for session in sessions]
 
     def _export_session(self, session: dict) -> dict:

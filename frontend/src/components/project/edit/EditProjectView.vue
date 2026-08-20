@@ -42,6 +42,7 @@ import {
   putStateField,
   putActionField,
   putInitActionField,
+  putProjectField,
   putSignalField,
   putEnvKeyField,
   putActionOrder,
@@ -345,18 +346,20 @@ const actionsTabList = computed(() => {
 
 // The tab set this view's own Inspector shows — see Inspector.vue's own
 // slot-based contract (LabelProjectView.vue passes a different set,
-// including Performance and excluding Env — see its own tabs). "State"/
+// including Performance and excluding Env — see its own tabs). "Info"/
 // "Actions"/"Signals"/"Env" (id 'env-keys' — distinct from 'test' mode's
 // own live 'env' tab below, see InspectorEnvKeysTab.vue's own docstring)
-// are index.yml's own — index.yml's graph is what State/Actions are
-// resolved against (see stateTabElement/actionsTabList) and what
-// "Signals" reads state-key context off of, none of which means anything
-// about an attachment file's own content. So while some *other* file is
-// the one open, this collapses to a single "Info" tab (see this view's
-// own #tab-info slot — just that file's own media type, off CodeEditor.
-// vue's own mediaType) rather than leaving State/Actions/Signals/Env up
-// showing index.yml's own selection while an unrelated file fills the
-// editor pane next to them. 'test' mode's own Metrics/Env are both
+// are index.yml's own — index.yml's graph is what "Info"'s own state
+// card/Actions are resolved against (see stateTabElement/actionsTabList)
+// and what "Signals" reads state-key context off of. Unlike before, this
+// set no longer collapses to anything narrower while some *other* file is
+// open: "Info"'s own project card (see InspectorStateTab.vue/
+// InspectorProjectCard.vue) isn't tied to index.yml's own graph selection
+// at all — id/ui-label/ui-description apply project-wide regardless of
+// which file the editor pane happens to be showing, so it stays exactly
+// as useful there as while index.yml itself is open (just with nothing
+// below it, since selectedGraphElement has no state to resolve outside
+// index.yml's own context). 'test' mode's own Metrics/Env are both
 // live-conversation concepts (a metric run, the persisted env for *this*
 // session) that don't apply while editing (see mode/highlightedStateKey's
 // own "no current state in edit mode") — shown only there.
@@ -369,11 +372,8 @@ const inspectorTabs = computed(() => {
       { id: 'env', label: 'Env' }
     ]
   }
-  if (currentFileName.value !== 'index.yml') {
-    return [{ id: 'info', label: 'Info' }]
-  }
   return [
-    { id: 'state', label: 'State' },
+    { id: 'state', label: 'Info' },
     { id: 'actions', label: 'Actions' },
     { id: 'signals', label: 'Signals' },
     { id: 'env-keys', label: 'Env' }
@@ -498,11 +498,28 @@ function stateLabelFor(key) {
   return availableStates.value.find((s) => s.key === key)?.uiLabel ?? key
 }
 
+// Action name -> ui-label, keyed by `${stateKey}::${actionName}` — an
+// action's own name is only unique *within* the state that declares it
+// (see automaton_yaml_editor.py's own add_action/_next_numbered_name,
+// scoped per-state), so resolving one by name alone could pick up the
+// wrong state's own same-named action. ChatTimeline.vue's own self-loop
+// badge (see its own resolveActionLabel prop) is the one caller — a
+// self-loop's own old_state/new_state are always identical, so that
+// state key alone is enough to disambiguate.
+const actionLabelsByState = ref(new Map())
+
+function actionLabelFor(stateKey, actionName) {
+  return actionLabelsByState.value.get(`${stateKey}::${actionName}`) ?? actionName
+}
+
 async function refreshValidStateKeys() {
   try {
-    const { nodes } = await getProjectGraph(props.projectName)
+    const { nodes, edges } = await getProjectGraph(props.projectName)
     validStateKeys.value = new Set(nodes.map((n) => n.state.key))
     availableStates.value = nodes.map((n) => ({ key: n.state.key, uiLabel: n.state.ui_label }))
+    actionLabelsByState.value = new Map(
+      edges.map((e) => [`${e.source}::${e.action.name}`, e.action.ui_label])
+    )
   } catch {
     // already surfaced via apiFetch
   }
@@ -1028,6 +1045,17 @@ function handleSetStateField(stateName, field, value) {
       await putStateField(props.projectName, stateName, field, value)
       await refreshAfterProjectEdit()
       selectedGraphElement.value = indexYmlEditorRef.value?.stateElementFor(stateName) ?? null
+    } catch {
+      // already surfaced via apiFetch
+    }
+  })
+}
+
+function handleSetProjectField(field, value) {
+  guardedAction(`edit "${field}"`, async () => {
+    try {
+      await putProjectField(props.projectName, field, value)
+      await refreshAfterProjectEdit()
     } catch {
       // already surfaced via apiFetch
     }
@@ -1587,6 +1615,7 @@ onBeforeUnmount(() => {
             :signals-log="signalsLog"
             :selected="selected"
             :resolve-state-label="stateLabelFor"
+            :resolve-action-label="actionLabelFor"
             :is-state-gone="isStateGone"
             @select-message="selectMessage"
             @select-transition="selectTransition"
@@ -1625,6 +1654,7 @@ onBeforeUnmount(() => {
             <template #tab-state="{ registerTab }">
               <InspectorStateTab
                 :ref="registerTab('state')"
+                :project-name="projectName"
                 :selected-element="stateTabElement"
                 :editable-files="files"
                 :highlighted-state-key="highlightedStateKey"
@@ -1633,6 +1663,7 @@ onBeforeUnmount(() => {
                 @select-attachment="selectFile"
                 @jump-to-attachment="handleJumpToAttachment"
                 @set-field="(field, value) => handleSetStateField(stateTabElement?.data.id, field, value)"
+                @set-project-field="handleSetProjectField"
                 @delete="handleDeleteState"
                 @add-state="handleAddState"
               />
@@ -1656,9 +1687,6 @@ onBeforeUnmount(() => {
                 @delete="handleDeleteAction"
                 @add-action="handleAddAction"
               />
-            </template>
-            <template #tab-info>
-              <p v-if="codeEditorRef?.mediaType" class="inspector-info-tab-mediatype">type: {{ codeEditorRef.mediaType }}</p>
             </template>
             <template #tab-signals="{ registerTab }">
               <InspectorSignalsTab
@@ -1953,12 +1981,6 @@ onBeforeUnmount(() => {
   background: #dbe4f0;
 }
 
-.inspector-info-tab-mediatype {
-  margin: 0;
-  font-size: 0.8rem;
-  color: #444;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
 
 /* Narrow screens: the inspector takes over the whole editor overlay, same
    as SignalsView's own narrow-screen behavior — there isn't room to dock

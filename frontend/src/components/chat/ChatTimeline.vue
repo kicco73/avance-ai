@@ -42,11 +42,40 @@ const props = defineProps({
   // passes one (resolved off its own always-current-draft state list),
   // since that's the one place a stale key/label mismatch is actually
   // confusing (testing exactly what's being edited right now).
-  resolveStateLabel: { type: Function, default: null }
+  resolveStateLabel: { type: Function, default: null },
+  // (stateKey, actionName) => displayLabel — same optional, test-chat-
+  // only convention as resolveStateLabel just above: null everywhere
+  // except EditProjectView.vue's own live "Test" timeline. Unlike
+  // resolveStateLabel (which always renders *something*, raw key or
+  // not), this gates whether the self-loop action badge (see the
+  // template below) renders at all — LabelProjectView.vue's own review
+  // timeline never passes this, so it stays exactly as it was before
+  // this badge existed.
+  resolveActionLabel: { type: Function, default: null },
+  // Whether a `timeline` prop change should snap the view to the bottom
+  // (see scrollToBottom below) — on by default, matching EditProjectView.
+  // vue's own live "Test" timeline, where a fresh message really does
+  // belong at the bottom the moment it arrives. LabelProjectView.vue's own
+  // review timeline turns this off: there, a `timeline` change just as
+  // often means an expert marked/commented on something mid-review (see
+  // buildTimeline — it always returns a fresh array, even when only one
+  // entry's own annotationStatus actually changed), and forcibly
+  // scrolling someone away from the row they were just working on is the
+  // bug this prop exists to fix, not a feature.
+  autoScroll: { type: Boolean, default: true }
 })
 
 function stateLabel(stateKey) {
   return props.resolveStateLabel ? props.resolveStateLabel(stateKey) : stateKey
+}
+
+// The fired action's own ui-label, next to the ↻ icon (see the template
+// below) — only meaningful for a self-loop: the state badge alone still
+// reads as "state" (unchanged), giving no hint at all of *what* just
+// happened, unlike a real transition where the destination state badge
+// already answers that on its own.
+function actionLabel(transition) {
+  return props.resolveActionLabel ? props.resolveActionLabel(transition.old_state, transition.action) : null
 }
 
 const emit = defineEmits(['select-message', 'select-transition'])
@@ -68,7 +97,7 @@ function scrollToBottom() {
   })
 }
 
-watch(() => props.timeline, scrollToBottom)
+watch(() => props.timeline, () => { if (props.autoScroll) scrollToBottom() })
 
 function toBubbleMessage(m) {
   return { role: m.role, content: m.content, audioText: m.audio_text, timestamp: m.timestamp }
@@ -133,6 +162,10 @@ function isSelfLoop(transition) {
           class="timeline-transition-arrow"
           :title="isSelfLoop(entry.transition) ? 'No actual state change here' : ''"
         >{{ isSelfLoop(entry.transition) ? '↻' : '→' }}</span>
+        <span
+          v-if="isSelfLoop(entry.transition) && actionLabel(entry.transition)"
+          class="timeline-transition-action-badge"
+        >{{ actionLabel(entry.transition) }}</span>
         <span class="timeline-transition-badge">{{ stateLabel(entry.transition.new_state) }}</span>
         <span
           v-if="entry.annotationStatus === 'correct'"
@@ -272,6 +305,20 @@ function isSelfLoop(transition) {
   padding: 0.15rem 0.7rem;
   border-radius: 999px;
   background: #4a6fa5;
+  color: white;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+/* Same brown as InspectorDetailCard.vue's own "Action" kind badge — a
+   self-loop's own fired-action label, shown only where the state badge
+   right after it can't say anything useful on its own (the state never
+   actually changed). */
+.timeline-transition-action-badge {
+  display: inline-block;
+  padding: 0.15rem 0.7rem;
+  border-radius: 999px;
+  background: #8a6d3b;
   color: white;
   font-size: 0.78rem;
   font-weight: 600;

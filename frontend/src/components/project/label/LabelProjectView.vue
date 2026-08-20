@@ -47,13 +47,6 @@ const rawMessages = ref([])
 // further backend round trips.
 const signalsLog = ref([])
 const sessionStartState = ref(null)
-// Project-wide, fetched once (see onMounted below) — whether a live turn
-// evaluates on the assistant's own reply (true) or the user's own
-// message (false). An imported session (see ChatSession.source) has no
-// real Tracking rows to consult at all, so annotatableSignalsRow below
-// falls back to this same convention instead, to decide which side of
-// an imported session's own messages is a legitimate mark point.
-const autotrackingOnAiMessage = ref(false)
 
 const inspectorRef = ref(null)
 const inspectorWidth = ref(360)
@@ -406,16 +399,6 @@ const currentSessionHasTimestamps = computed(() =>
   currentSession.value?.datetime_start != null || currentSession.value?.datetime_end != null
 )
 
-// A message is a legitimate mark point for an imported session (which
-// has no real Tracking row to prove it) only on whichever side a live
-// turn would actually have evaluated on — assistant if
-// autotrackingOnAiMessage, user otherwise (see TrackingService.
-// _materialize_imported_session_row, the backend's own mirror of this
-// same rule).
-function isImportedAnnotationPoint(message) {
-  return message.role === (autotrackingOnAiMessage.value ? 'assistant' : 'user')
-}
-
 // The Signals row backing the current selection's own evaluation, if
 // any — the row itself for a clicked transition auto-tracking produced
 // (see its own message_id), or (found by message_id) the row a clicked
@@ -428,7 +411,8 @@ function isImportedAnnotationPoint(message) {
 // message (see currentSessionIsImported) — a virtual one (no id yet,
 // materialized backend-side the first time an annotation is actually
 // written, see TrackingService._materialize_imported_session_row) steps
-// in for whichever message is a legitimate mark point on its own session.
+// in instead, for *any* message of an imported session — every line of
+// the timeline is a legitimate mark point, native or imported alike.
 const annotatableSignalsRow = computed(() => {
   if (!selected.value) return null
   if (selected.value.kind === 'transition') {
@@ -437,7 +421,7 @@ const annotatableSignalsRow = computed(() => {
   const message = selected.value.message
   const row = signalsLog.value.find((s) => s.message_id === message.id)
   if (row) return row
-  if (currentSessionIsImported.value && isImportedAnnotationPoint(message)) {
+  if (currentSessionIsImported.value) {
     return { id: null, message_id: message.id, old_state: null, new_state: null, expected_state: null, expected_values: null, values: null }
   }
   return null
@@ -684,11 +668,6 @@ onMounted(() => {
   // toggleBenchmarkSessionsPanel only loads on a closed-to-open flip, so
   // the initial open needs its own load.
   loadSessions(true)
-  getProjectGraph(props.projectName).then((graph) => {
-    autotrackingOnAiMessage.value = graph.autotracking_on_ai_message
-  }).catch(() => {
-    // already surfaced via apiFetch
-  })
   window.addEventListener('mousemove', onDrag)
   window.addEventListener('mouseup', stopDrag)
   window.addEventListener('resize', handleWindowResize)
@@ -771,6 +750,7 @@ onBeforeUnmount(() => {
             :signals-log="signalsLog"
             :selected="selected"
             :imported="currentSessionIsImported"
+            :auto-scroll="false"
             @select-message="selectMessage"
             @select-transition="selectTransition"
           >

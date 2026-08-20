@@ -92,10 +92,22 @@ function setRowRef(name, el) {
   else delete rowRefs[name]
 }
 
+// A Graph click on an action edge (see EditProjectView.vue's own
+// selectedGraphElement watch, which already flips the Inspector over to
+// this tab for exactly this case) should land the user straight in that
+// action's own edit form, not just scrolled to a closed, read-only row —
+// same "selecting it opens it" convention InspectorStateTab.vue's own
+// single card already gets for free from always being editable/open
+// together. Only ever opens on a genuine selection *change*, so it never
+// fights the row's own click-to-close toggle (see toggleOpen) — closing
+// an already-selected, already-open row never re-emits 'select' in the
+// first place (isSelected makes it non-selectable at that point), so
+// `selectedElement` itself never changes just from that click.
 watch(
   () => props.selectedElement,
   async (element) => {
     if (element?.kind !== 'action') return
+    expandedActionName.value = element.data.actionName
     await nextTick()
     rowRefs[element.data.actionName]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }

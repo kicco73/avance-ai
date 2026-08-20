@@ -149,6 +149,11 @@ class EnvKeyPayload(TypedDict):
     ui_description: str | None
     value: str
 
+class ProjectPayload(TypedDict):
+    id: str | None
+    ui_label: str | None
+    ui_description: str | None
+
 # The reserved namespaces a trigger/env expression resolves against (see
 # tracking.evaluation_scope.EvaluationScopeBuilder) — every top-level
 # `<namespace>.<attr>` access in an expression's own AST is one of these.

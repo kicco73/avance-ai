@@ -1,13 +1,13 @@
 <script setup>
 // The topbar's own "⚙" menu — split out of ProjectsMenu.vue (which stays
-// scoped to per-project actions: edit/label/new/upload/delete/switch).
-// Same dropdown mechanics (toggle, click-outside-to-close) as that
-// component, just without its own project-loading concern. Lives in its
-// own settings/ folder alongside RuntimeStatusView.vue — the one item
-// here that isn't a plain action but opens a whole view of its own.
+// scoped to per-project actions: edit/label/switch/download). Same
+// dropdown mechanics (toggle, click-outside-to-close) as that component,
+// just without its own project-loading concern. Lives in its own
+// settings/ folder alongside ManageProjectsView.vue — the one item here
+// that isn't a plain action but opens a whole view of its own.
 import { onBeforeUnmount, ref } from 'vue'
 
-const emit = defineEmits(['runtime-status', 'download-backup', 'restore-backup'])
+const emit = defineEmits(['manage-projects', 'download-backup', 'restore-backup'])
 
 const open = ref(false)
 const rootEl = ref(null)
@@ -17,9 +17,9 @@ function toggle() {
   open.value = !open.value
 }
 
-function selectRuntimeStatus() {
+function selectManageProjects() {
   open.value = false
-  emit('runtime-status')
+  emit('manage-projects')
 }
 
 function selectDownloadBackup() {
@@ -63,7 +63,7 @@ onBeforeUnmount(() => {
     <div v-if="open" class="settings-panel">
       <ul class="settings-list">
         <li>
-          <button class="settings-item" @click="selectRuntimeStatus">Runtime status</button>
+          <button class="settings-item" @click="selectManageProjects">Manage projects</button>
         </li>
         <li class="settings-separator" role="separator"></li>
         <li>

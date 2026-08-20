@@ -30,7 +30,7 @@ import re
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
-from automaton.automaton import ActionPayload, EnvKeyPayload, SignalPayload, StatePayload, _namespace_attrs
+from automaton.automaton import ActionPayload, EnvKeyPayload, ProjectPayload, SignalPayload, StatePayload, _namespace_attrs
 
 
 class InitActionTargetError(Exception):
@@ -217,6 +217,14 @@ class AutomatonYamlEditor:
             "error": None,
         }
 
+    def _project_payload(self) -> ProjectPayload:
+        raw_project = self._raw.get("project") or {}
+        return {
+            "id": raw_project.get("id"),
+            "ui_label": raw_project.get("ui-label"),
+            "ui_description": raw_project.get("ui-description"),
+        }
+
     def _env_key_payload(self, name: str) -> EnvKeyPayload:
         raw_env_key = self._env_key(name)
         ui_description = raw_env_key.get("ui-description")
@@ -332,6 +340,22 @@ class AutomatonYamlEditor:
             return self._env_key_payload(name)
         self._env_key(name)[field] = value
         return self._env_key_payload(name)
+
+    def set_project_field(self, field: str, value) -> ProjectPayload:
+        """The optional top-level `project:` mapping (see AutomatonBuilder.
+        _build_project_metadata) — id/ui-label/ui-description, same
+        "lives outside states/signals/env entirely" shape as init-action.
+        `id` is what *other* projects reach this one as through
+        automaton.<id> — a falsy value removes the key rather than writing
+        an empty string through (which AutomatonBuilder would reject
+        outright: "" is never a valid identifier), same convention
+        set_action_field already applies to an emptied-out `trigger`."""
+        project = self._raw.setdefault("project", CommentedMap())
+        if field == "id" and not value:
+            project.pop("id", None)
+        else:
+            project[field] = value
+        return self._project_payload()
 
     def set_init_action_field(self, field: str, value) -> StatePayload | ActionPayload:
         """Every editable field of the init-action itself. 'target' (see

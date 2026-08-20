@@ -28,6 +28,9 @@ defineProps({
   // same function-as-prop pattern ChatTimeline.vue's own resolve-state-
   // label prop already used before this extraction.
   resolveStateLabel: { type: Function, required: true },
+  // EditProjectView.vue's own actionLabelFor(stateKey, actionName) — see
+  // ChatTimeline.vue's own resolve-action-label prop.
+  resolveActionLabel: { type: Function, required: true },
   isStateGone: { type: Function, required: true }
 })
 
@@ -63,6 +66,7 @@ const emit = defineEmits(['select-message', 'select-transition', 'restart-prefil
             :selected="selected"
             :spoken-text-enabled="spokenTextEnabled"
             :resolve-state-label="resolveStateLabel"
+            :resolve-action-label="resolveActionLabel"
             @select-message="emit('select-message', $event)"
             @select-transition="emit('select-transition', $event)"
           >

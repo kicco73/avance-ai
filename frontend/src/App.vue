@@ -6,7 +6,7 @@ import EditProjectView from './components/project/edit/EditProjectView.vue'
 import LabelProjectView from './components/project/label/LabelProjectView.vue'
 import ProjectsMenu from './components/ProjectsMenu.vue'
 import SettingsMenu from './components/settings/SettingsMenu.vue'
-import RuntimeStatusView from './components/settings/RuntimeStatusView.vue'
+import ManageProjectsView from './components/settings/ManageProjectsView.vue'
 import SplashScreen from './components/SplashScreen.vue'
 import ErrorBanner from './components/ErrorBanner.vue'
 import ToastContainer from './components/ToastContainer.vue'
@@ -39,9 +39,10 @@ const showEditProject = ref(false)
 const editProjectName = ref(null)
 const showBenchmarkProject = ref(false)
 const benchmarkProjectName = ref(null)
-const showRuntimeStatus = ref(false)
+const showManageProjects = ref(false)
 const modelUploadInput = ref(null)
 const projectsMenu = ref(null)
+const manageProjectsView = ref(null)
 
 // Initial-boot backend readiness gate — entirely separate from the shared
 // error store (which is for runtime errors on an already-running app). 'checking': the
@@ -143,6 +144,7 @@ function triggerModelUpload() {
 async function refreshStateAndProjects() {
   const newState = await getState()
   projectsMenu.value?.refresh()
+  manageProjectsView.value?.refresh()
   handleStateChange(newState)
   await loadMessages()
 }
@@ -188,6 +190,29 @@ async function handleModelUploadChange(event) {
 function handleModelEdit(projectName) {
   editProjectName.value = projectName
   showEditProject.value = true
+}
+
+function handleManageProjectsEdit(projectName) {
+  showManageProjects.value = false
+  handleModelEdit(projectName)
+}
+
+function handleManageProjectsBenchmark(projectName) {
+  showManageProjects.value = false
+  handleModelBenchmark(projectName)
+}
+
+// Edit/Label are only ever opened from Manage projects now (ProjectsMenu.vue
+// no longer has its own entry points into either) — so "Back" out of them
+// returns there rather than to the main chat view.
+function closeEditProject() {
+  showEditProject.value = false
+  showManageProjects.value = true
+}
+
+function closeBenchmarkProject() {
+  showBenchmarkProject.value = false
+  showManageProjects.value = true
 }
 
 function handleModelBenchmark(projectName) {
@@ -315,15 +340,10 @@ onBeforeUnmount(() => {
         <ProjectsMenu
           ref="projectsMenu"
           @select="handleProjectSwitch"
-          @edit="handleModelEdit"
-          @benchmark="handleModelBenchmark"
-          @new-project="handleNewProject"
-          @upload="triggerModelUpload"
           @download="handleModelDownload"
-          @delete="handleModelDelete"
         />
         <SettingsMenu
-          @runtime-status="showRuntimeStatus = true"
+          @manage-projects="showManageProjects = true"
           @download-backup="handleDownloadBackup"
           @restore-backup="handleRestoreBackup"
         />
@@ -348,7 +368,7 @@ onBeforeUnmount(() => {
     <EditProjectView
       v-if="showEditProject"
       :project-name="editProjectName"
-      @close="showEditProject = false"
+      @close="closeEditProject"
       @saved="handleModelEditSaved"
       @download="handleModelDownload"
     />
@@ -356,12 +376,18 @@ onBeforeUnmount(() => {
     <LabelProjectView
       v-if="showBenchmarkProject"
       :project-name="benchmarkProjectName"
-      @close="showBenchmarkProject = false"
+      @close="closeBenchmarkProject"
     />
 
-    <RuntimeStatusView
-      v-if="showRuntimeStatus"
-      @close="showRuntimeStatus = false"
+    <ManageProjectsView
+      v-if="showManageProjects"
+      ref="manageProjectsView"
+      @close="showManageProjects = false"
+      @new-project="handleNewProject"
+      @upload="triggerModelUpload"
+      @delete="handleModelDelete"
+      @edit="handleManageProjectsEdit"
+      @benchmark="handleManageProjectsBenchmark"
     />
   </div>
 </template>
