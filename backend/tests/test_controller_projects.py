@@ -41,7 +41,7 @@ def test_deleting_the_active_project_falls_back_to_a_remaining_one(client):
     assert response.status_code == 200
 
     projects = client.get("/api/projects").json()
-    assert projects["projects"] == ["cat"]
+    assert projects["projects"] == [{"name": "cat", "is_paused": False}]
     assert projects["active"] == "cat"
 
     # The fallback must have actually activated it, not just recorded the
@@ -130,7 +130,7 @@ def test_new_project_creates_and_activates_hello_world(client):
     assert body["project_name"] == "Hello world"
 
     projects = client.get("/api/projects").json()
-    assert projects["projects"] == ["Hello world"]
+    assert projects["projects"] == [{"name": "Hello world", "is_paused": False}]
     assert projects["active"] == "Hello world"
 
     # The template's own content really is what got persisted.
@@ -154,5 +154,7 @@ def test_new_project_de_duplicates_the_name_on_repeat_calls(client):
     assert second["project_name"] == "Hello world 2"
     assert third["project_name"] == "Hello world 3"
     assert client.get("/api/projects").json()["projects"] == [
-        "Hello world", "Hello world 2", "Hello world 3",
+        {"name": "Hello world", "is_paused": False},
+        {"name": "Hello world 2", "is_paused": False},
+        {"name": "Hello world 3", "is_paused": False},
     ]

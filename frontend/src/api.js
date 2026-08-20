@@ -119,6 +119,18 @@ export function putMessageExpectedSignals(messageId, expectedValues) {
   })
 }
 
+// Sets or clears messageId's expert-left free-text comment — the
+// "Label sessions" view's per-message comment bubble. Unlike
+// putMessageExpectedState/putMessageExpectedSignals, every message is a
+// legitimate target (no 409 for "not an evaluation point").
+export function putMessageComment(messageId, comment) {
+  return apiFetch(`${API_URL}/chat/messages/${encodeURIComponent(messageId)}/comment`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ comment })
+  })
+}
+
 // Sets (or clears) a session's own persisted "reviewed by a domain
 // expert" flag — the "Label sessions" view's own "Mark done" button
 // (see backend ChatSession.labeled/ChatService.mark_session_labeled),
@@ -130,6 +142,28 @@ export function putSessionLabeled(sessionId, labeled) {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ labeled })
+  })
+}
+
+// Renames a session — the "Label sessions" view's own Info tab. null (or
+// blank) clears it back to unset. Returns the same session payload
+// putSessionLabeled does, so the frontend can refresh its own Sessions
+// panel row from the response directly.
+export function putSessionTitle(sessionId, title) {
+  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/title`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title })
+  })
+}
+
+// Sets or clears a session-wide free-text note — the "Label sessions"
+// view's own Info tab, distinct from putMessageComment's per-message one.
+export function putSessionComment(sessionId, comment) {
+  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/comment`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ comment })
   })
 }
 
@@ -231,6 +265,28 @@ export function postImportSession(file) {
   })
 }
 
+// One session object out of a "Download all" .json export (see backend
+// tracking/session_export.py's own module docstring for the shape) —
+// LabelProjectView.vue's own handleImportSession calls this once per
+// session found inside an uploaded .json file, same per-item try/catch
+// loop it already runs per .txt file.
+export function postImportSessionJson(sessionData) {
+  return apiFetch(`${API_URL}/chat/sessions/import-json`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(sessionData)
+  })
+}
+
+// The "Label sessions" view's own "Download all" button — every session
+// (native and imported alike) of the active project, as one JSON array
+// (see backend tracking/session_export.py). A blob so the caller can
+// trigger a real file download the same way downloadProject already does
+// for a project's own zip.
+export function getExportSessions() {
+  return apiFetch(`${API_URL}/chat/sessions/export`, {}, { parse: 'blob' })
+}
+
 export function getSignals() {
   return apiFetch(`${API_URL}/chat/signals`)
 }
@@ -300,16 +356,6 @@ export function clearActionEnv() {
 export function getMetrics(messageId) {
   const query = messageId != null ? `?message_id=${encodeURIComponent(messageId)}` : ''
   return apiFetch(`${API_URL}/chat/metrics${query}`)
-}
-
-// Expert-annotation-vs-actual benchmark metrics (see backend's
-// metrics_framework/benchmark_metrics) for the active user+project —
-// every annotated session, or (sessionId given) just that one. Same
-// {name, ui_label, ui_description, value} shape as getMetrics, plus
-// sample_count — the "Label sessions" view's Performance tab.
-export function getBenchmarkMetrics(sessionId) {
-  const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
-  return apiFetch(`${API_URL}/chat/benchmark-metrics${query}`)
 }
 
 export function postAction(actionName, sessionId) {
@@ -429,6 +475,13 @@ export function getProjectSignals(projectName, stateKey) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/signals${query}`)
 }
 
+// Declared env-key definitions (name/ui_description/value) of the
+// project's own top-level `env:` section — see InspectorEnvKeysTab.vue's
+// own Inspector tab, EditProjectView.vue's "Edit project" schema view.
+export function getProjectEnvKeys(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/env-keys`)
+}
+
 export function getProjectFiles(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/files`)
 }
@@ -436,8 +489,7 @@ export function getProjectFiles(projectName) {
 // Raw markdown content of one of backend/src/docs' fixed reference docs
 // (see controller.py's own DOC_FILES) — backs each "(?)" documentation
 // button (EditProjectView.vue's own, next to Save; the Inspector's
-// Metrics/Performance tabs). `name` is one of 'project-specs' /
-// 'metrics' / 'benchmark'.
+// Metrics tab). `name` is one of 'project-specs' / 'metrics' / 'benchmark'.
 export function getDoc(name) {
   return apiFetch(`${API_URL}/docs/${encodeURIComponent(name)}`)
 }
@@ -542,6 +594,10 @@ export function postAddSignal(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/signals`, { method: 'POST' })
 }
 
+export function postAddEnvKey(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/env-keys`, { method: 'POST' })
+}
+
 export function postAddAction(projectName, stateName) {
   return apiFetch(
     `${API_URL}/projects/${encodeURIComponent(projectName)}/states/${encodeURIComponent(stateName)}/actions`,
@@ -582,6 +638,13 @@ export function putSignalField(projectName, signalName, field, value) {
   )
 }
 
+export function putEnvKeyField(projectName, envKeyName, field, value) {
+  return apiFetch(
+    `${API_URL}/projects/${encodeURIComponent(projectName)}/env-keys/${encodeURIComponent(envKeyName)}/${encodeURIComponent(field)}`,
+    { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value }) }
+  )
+}
+
 // 0-based index the action should end up at, within its own state's
 // actions list.
 export function putActionOrder(projectName, stateName, actionName, position) {
@@ -610,6 +673,12 @@ export function deleteProjectSignal(projectName, signalName) {
   })
 }
 
+export function deleteProjectEnvKey(projectName, envKeyName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/env-keys/${encodeURIComponent(envKeyName)}`, {
+    method: 'DELETE'
+  })
+}
+
 export function downloadProject(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}`, {}, { parse: 'blob' })
 }
@@ -632,7 +701,7 @@ export function postRevertProject(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/revert`, { method: 'POST' })
 }
 
-// The "Auto" tab's own replay launch (see TestsPanel.vue) — sessionId
+// The "Auto" tab's own replay launch (see ProjectAutoPanel.vue) — sessionId
 // null means the whole-project-scope run (every labeled session at once),
 // same convention as everywhere else this system uses session_id.
 export function postBenchmarkRun(projectName, sessionId, strategy) {

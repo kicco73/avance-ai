@@ -219,7 +219,7 @@ function jumpToLine(lineIndex) {
 // Re-fetches this file's own content from the backend and replaces the
 // editor's live buffer with it — for a caller that just changed this
 // exact file through some *other* path than this component's own save()
-// (see IndexYmlEditorView.vue's own add/edit/delete/reorder handlers,
+// (see IndexYmlEditorPanel.vue's own add/edit/delete/reorder handlers,
 // all of which write index.yml directly through AutomatonYamlEditor).
 // Only safe to call with no local unsaved changes of its own — the
 // caller's own job to have checked isDirty first (see EditProjectView.

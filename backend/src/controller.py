@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import inspect
+import json
 from http import HTTPStatus
 from pathlib import Path
 from urllib.parse import quote
@@ -24,14 +25,17 @@ from schemas import (
     AiModelSelectionRequest,
     AutoTrackingRequest,
     ChatMessageRequest,
+    CommentRequest,
     CreateBenchmarkRunRequest,
     ExpectedSignalsRequest,
     ExpectedStateRequest,
     PublishProjectRequest,
     ReorderActionRequest,
+    SessionImportJsonRequest,
     SetEnvValueRequest,
     SetProjectFieldRequest,
     SetSessionLabeledRequest,
+    SetSessionTitleRequest,
     StateTestRequest,
     TriggersPreviewRequest,
     TruncateSessionRequest,
@@ -61,6 +65,11 @@ DOCS_DIR = Path(__file__).resolve().parent / "docs"
 STATE_EDITABLE_FIELDS = {"ui-label", "ui-description", "history-cutoff", "contextual-prompt", "chat"}
 ACTION_EDITABLE_FIELDS = {"ui-label", "ui-description", "action-prompt", "target", "trigger"}
 SIGNAL_EDITABLE_FIELDS = {"ui-label", "ui-description", "definition"}
+# Unlike a state/action/signal's own name/ui-label, an env key has no
+# separate ui-label to derive its name from — 'name' is itself directly
+# editable here, sanitized through the same to_snake_case rename path
+# (see AutomatonYamlEditor.set_env_key_field/rename_env_key).
+ENV_KEY_EDITABLE_FIELDS = {"name", "ui-description", "value"}
 
 
 def route(method: str, path: str, **kwargs):
@@ -342,6 +351,43 @@ class AvanceController(object):
         )
         return {"success": True, "session_id": session_id}
 
+    @post("/api/chat/sessions/import-json")
+    def post_import_session_json(self, req: SessionImportJsonRequest):
+        """Imports one session from the "Download all" JSON shape (see
+        TrackingService.import_session_json/tracking.session_export) —
+        the frontend's own batch-upload loop calls this once per session
+        object found inside an uploaded .json file, same per-item
+        try/except-and-continue convention it already uses per .txt file
+        (see LabelProjectView.vue's own handleImportSession). No
+        try/except here either: a malformed session raises
+        TrackingServiceError (400), same global-handler convention as
+        post_import_session above."""
+        session_id = self.tracking_service.import_session_json(
+            Session().user, self.project_service.get_active_project_name(), req.model_dump()
+        )
+        return {"success": True, "session_id": session_id}
+
+    @get("/api/chat/sessions/export")
+    def get_export_sessions(self):
+        """The "Label sessions" view's own "Download all" button — every
+        session (native and imported alike) of the active project, as one
+        JSON array (see TrackingService.export_sessions/tracking.session_
+        export's own module docstring on the exact shape). Same Response-
+        with-Content-Disposition convention as get_project's own zip
+        download — built server-side as bytes, not streamed, since a
+        project's own session history is never large enough to need it."""
+        project_name = self.project_service.get_active_project_name()
+        payload = self.tracking_service.export_sessions(Session().user, project_name)
+        content = json.dumps(payload, indent=2).encode("utf-8")
+        encoded_project_name = quote(project_name)
+        return Response(
+            content=content,
+            media_type="application/json",
+            headers={
+                "Content-Disposition": f"attachment; filename=\"sessions.json\"; filename*=UTF-8''{encoded_project_name}-sessions.json"
+            },
+        )
+
     @delete("/api/chat/sessions/{session_id}")
     def delete_session(self, session_id: int):
         """Deletes a session and all its messages/signals — see
@@ -358,6 +404,20 @@ class AvanceController(object):
         for an unknown/not-yours session_id, same convention as
         delete_session above."""
         return self.chat_service.mark_session_labeled(session_id, req.labeled)
+
+    @put("/api/chat/sessions/{session_id}/title")
+    def put_session_title(self, session_id: int, req: SetSessionTitleRequest):
+        """The "Label sessions" view's own Info tab — see ChatService.
+        set_session_title. Same 404 convention as put_session_labeled."""
+        return self.chat_service.set_session_title(session_id, req.title)
+
+    @put("/api/chat/sessions/{session_id}/comment")
+    def put_session_comment(self, session_id: int, req: CommentRequest):
+        """The "Label sessions" view's own Info tab — see ChatService.
+        set_session_comment (a whole-session note, distinct from
+        put_message_comment's own per-message one below). Same 404
+        convention as put_session_labeled."""
+        return self.chat_service.set_session_comment(session_id, req.comment)
 
     @get("/api/chat/sessions/{session_id}/summary")
     def get_session_summary(self, session_id: int):
@@ -409,6 +469,16 @@ class AvanceController(object):
         handling as put_message_expected_state, plus 422 for an unknown
         signal name or an out-of-range value."""
         return self.chat_service.set_message_expected_signals(message_id, req.expected_values)
+
+    @put("/api/chat/messages/{message_id}/comment")
+    def put_message_comment(self, message_id: int, req: CommentRequest):
+        """Sets or (comment: null/empty) clears message_id's expert-left
+        free-text comment — the "Label sessions" view's per-message
+        comment bubble. Unlike put_message_expected_state/
+        put_message_expected_signals, every message is a legitimate
+        target: no 409 here, only the usual 404 for an unowned/unknown
+        message (handled globally, see error_handlers.py)."""
+        return self.chat_service.set_message_comment(message_id, req.comment)
 
     @delete("/api/chat/sessions/{session_id}/annotations")
     def delete_session_annotations(self, session_id: int):
@@ -718,6 +788,17 @@ class AvanceController(object):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
+    @get("/api/projects/{project_name}/env-keys")
+    def get_project_env_keys(self, project_name: str):
+        """Declared env-key definitions (name/ui_description/value) of
+        `project_name`'s last saved index.yml, for the "Edit project"
+        view's Inspect panel Env tab — not restricted to the active
+        project (see ProjectService.get_project_env_keys)."""
+        try:
+            return {"env_keys": self.project_service.get_project_env_keys(project_name)}
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
     @get("/api/projects/{project_name}/files")
     def get_project_files(self, project_name: str):
         """Text-editable files inside `project_name`'s directory (index.yml
@@ -869,6 +950,15 @@ class AvanceController(object):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
+    @post("/api/projects/{project_name}/env-keys")
+    async def add_env_key(self, project_name: str):
+        try:
+            return await self.project_service.add_env_key(project_name, self._activate_project)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
     @post("/api/projects/{project_name}/states/{state_name}/actions")
     async def add_action(self, project_name: str, state_name: str):
         try:
@@ -922,6 +1012,22 @@ class AvanceController(object):
         try:
             return await self.project_service.set_signal_field(
                 project_name, signal_name, field, req.value, self._activate_project
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @put("/api/projects/{project_name}/env-keys/{env_key_name}/{field}")
+    async def put_env_key_field(self, project_name: str, env_key_name: str, field: str, req: SetProjectFieldRequest):
+        if field not in ENV_KEY_EDITABLE_FIELDS:
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail=f"'{field}' is not an editable env key field — expected one of {sorted(ENV_KEY_EDITABLE_FIELDS)}.",
+            )
+        try:
+            return await self.project_service.set_env_key_field(
+                project_name, env_key_name, field, req.value, self._activate_project
             )
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
@@ -992,6 +1098,16 @@ class AvanceController(object):
     async def delete_signal(self, project_name: str, signal_name: str):
         try:
             await self.project_service.delete_signal(project_name, signal_name, self._activate_project)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return Response(status_code=HTTPStatus.NO_CONTENT)
+
+    @delete("/api/projects/{project_name}/env-keys/{env_key_name}")
+    async def delete_env_key(self, project_name: str, env_key_name: str):
+        try:
+            await self.project_service.delete_env_key(project_name, env_key_name, self._activate_project)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except ValueError as exc:

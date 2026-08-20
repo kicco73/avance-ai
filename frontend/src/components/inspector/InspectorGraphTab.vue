@@ -44,8 +44,14 @@ function loadGraph() { return graphRef.value?.loadGraph() }
 function resize() { graphRef.value?.resize() }
 function fit() { graphRef.value?.fit() }
 function refresh(active) { return graphRef.value?.refresh(active) }
+// Straight pass-through to InspectorGraph.vue's own lookup — for a
+// caller that wants a specific state's own read-only card data without
+// it ever being the Graph's actual selection (see LabelProjectView.vue's
+// own Info tab: a session's start_state/end_state, shown in their own
+// dedicated cards alongside whatever's actually selected here).
+function stateElementFor(stateKey) { return graphRef.value?.stateElementFor(stateKey) ?? null }
 
-defineExpose({ loadGraph, resize, fit, refresh })
+defineExpose({ loadGraph, resize, fit, refresh, stateElementFor })
 </script>
 
 <template>

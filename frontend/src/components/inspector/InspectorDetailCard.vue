@@ -38,7 +38,7 @@ const props = defineProps({
   // — only the Inspector's own "State"/"Actions" tabs (always inside an
   // active "Edit project" session) pass this; the original "States" tab
   // (InspectorGraphTab.vue, shown even outside any editing context, e.g.
-  // the main chat window/BenchmarkProjectView) leaves it at its default,
+  // the main chat window/LabelProjectView) leaves it at its default,
   // staying read-only exactly as before.
   editable: { type: Boolean, default: false },
   // Every real state's own {key, uiLabel} — the action form's own
@@ -55,7 +55,15 @@ const props = defineProps({
   // See EditProjectView.vue's own docstring on this — matched against
   // elementIdentity below to play a one-shot yellow-fade highlight when
   // this card is the state/action a "+ Add" click just created.
-  recentlyAddedKey: { type: String, default: null }
+  recentlyAddedKey: { type: String, default: null },
+  // A plain label ("START"/"END", ...) shown as its own badge, same slot
+  // "Current" already occupies — for a caller that already knows *which*
+  // state a card stands for by construction (see LabelProjectView.vue's
+  // own Info tab: one card fixed to a session's start_state, another to
+  // its end_state), rather than InspectorDetailCard re-deriving that from
+  // a shared highlightedStateKey comparison the way isSelectedStateCurrent
+  // does. State kind only; ignored for an action card.
+  roleBadge: { type: String, default: null }
 })
 
 const emit = defineEmits(['select-attachment', 'jump-to-attachment', 'close', 'select', 'set-field', 'delete', 'update:open'])
@@ -212,7 +220,7 @@ const hasSelectedElementBadges = computed(() => {
     // clickable badges to change anything from here.
     if (showEditForm.value) return true
     const d = props.selectedElement.data
-    return isSelectedStateCurrent.value || d.isStart || d.final || !d.chat || d.historyCutoff
+    return !!props.roleBadge || isSelectedStateCurrent.value || d.isStart || d.final || !d.chat || d.historyCutoff
   }
   // An open action's own badges are suppressed entirely (see the
   // template below) — only the "Action" kind-badge in the header stays,
@@ -273,8 +281,9 @@ function selectAttachment(fileName) {
       <div v-if="hasSelectedElementBadges" class="inspector-detail-badges">
         <template v-if="selectedElement.kind === 'state'">
           <template v-if="!showEditForm">
+            <span v-if="roleBadge" class="inspector-detail-badge inspector-detail-badge-current">{{ roleBadge }}</span>
             <span v-if="isSelectedStateCurrent" class="inspector-detail-badge inspector-detail-badge-current">Current</span>
-            <span v-if="selectedElement.data.isStart" class="inspector-detail-badge inspector-detail-badge-start">Start</span>
+            <span v-if="selectedElement.data.isStart" class="inspector-detail-badge inspector-detail-badge-start">Init</span>
             <span v-if="selectedElement.data.final" class="inspector-detail-badge inspector-detail-badge-final">Final</span>
           </template>
           <template v-if="showEditForm">
@@ -378,7 +387,7 @@ function selectAttachment(fileName) {
            read-only display, whether that's this card collapsed inside
            EditProjectView.vue's own editable State/Actions tabs, or the
            always-non-editable "States" tab (InspectorGraphTab.vue, shown
-           during normal chat and throughout BenchmarkProjectView.vue,
+           during normal chat and throughout LabelProjectView.vue,
            `editable` false there). Only while the edit form itself is
            actually open (showEditForm: editable AND open) does the
            attachment list — and its own jump-to-definition/select
@@ -434,7 +443,7 @@ function selectAttachment(fileName) {
 .inspector-detail-title { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .inspector-detail-title-input { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; border: 1px solid transparent; border-radius: 4px; padding: 0.1rem 0.3rem; background: transparent; }
 .inspector-detail-title-input:hover, .inspector-detail-title-input:focus { border-color: #ccc; background: white; }
-.inspector-detail-form-label { display: block; margin: 12px 0 0.2rem; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #777; }
+.inspector-detail-form-label { display: block; margin: 20px 0 0.2rem; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #777; }
 /* Marks a field the AI itself reads (as opposed to a purely
    human-facing one like Description) — same purple used for its
    InspectorSignalsTab.vue counterpart on Definition. */

@@ -14,12 +14,17 @@ import tempfile
 from pathlib import Path
 from typing import Awaitable, Callable
 
-from automaton.automaton import Action, ActionPayload, Automaton, SignalPayload, State, StatePayload
+from automaton.automaton import (
+    Action, ActionPayload, Automaton, EnvKeyPayload, SignalPayload, State, StatePayload,
+    trigger_automaton_project_refs,
+)
 from automaton.automaton_builder import AutomatonBuilder, EXTENSION_TO_MEDIA_TYPE
 from automaton.automaton_yaml_editor import AutomatonYamlEditor, InitActionTargetError
 from automaton.identifier_registry import build_registry
+from events import AvailabilityChanged, publish, subscribe
 from session import Session
 from db import Db
+from tracking.tracking_engine import TrackingEngine
 
 logger = logging.getLogger(__name__)
 
@@ -270,6 +275,20 @@ class ProjectService(object):
 
         revision = self._db.get_project_revision(project_name)
         self._automaton_cache[(project_name, revision)] = automaton
+        # Reverse index (Prompt 6) — every project this one's own
+        # self-loop actions reference via automaton.* (see automaton.
+        # automaton.trigger_automaton_project_refs), recomputed from
+        # scratch on every successful build regardless of whether
+        # `project_name` is the active project below (an observer's own
+        # reference is meaningful independent of which project the user
+        # happens to have open right now).
+        self._db.set_project_observers(project_name, self._automaton_project_refs(automaton))
+        # Availability (Prompt 7) — a successful build here already
+        # settles this project's own "does it build" half; the other
+        # half (every project it depends on is itself available) is
+        # exactly what recompute_availability re-checks, off the
+        # already-known dependency set set_project_observers just wrote.
+        self.recompute_availability(project_name)
         if project_name == self.get_active_project_name():
             current_state_key = self._db.get_current_state(project_name)
             if current_state_key is None or current_state_key not in automaton.states:
@@ -277,6 +296,96 @@ class ProjectService(object):
             await commit(automaton)
             return True
         return False
+
+    @staticmethod
+    def _automaton_project_refs(automaton: Automaton) -> set[str]:
+        """Every project `automaton`'s own self-loop actions reference
+        via automaton.* — the raw material for the reverse index (see
+        _finalize_project_update). Scoped to self-loop actions only
+        (target == the action's own containing state) even though
+        automaton_builder.py's own build-time check already guarantees
+        no *other* kind of action can reference automaton.* at all — the
+        filter here is what actually decides the index's own content,
+        not a redundant re-validation of something build already
+        enforced."""
+        refs: set[str] = set()
+        for state in automaton.states.values():
+            for action in state.actions:
+                if action.trigger and action.target == state.key:
+                    refs |= trigger_automaton_project_refs(action.trigger)
+        return refs
+
+    def recompute_availability(self, project_name: str) -> None:
+        """Prompt 7 — a project is available exactly when (a) its own
+        build succeeds and (b) every project it depends on via
+        automaton.* (see _automaton_project_refs/db.get_observed_
+        projects) is itself available. (b) is always a cheap read of
+        that dependency's own already-computed Project.is_paused flag —
+        never a rebuild of its automaton, and never recursive on its
+        own: a dependency's own dependencies were already folded into
+        *its* own is_paused the last time *it* was recomputed (see the
+        AvailabilityChanged cascade below), so this never needs to walk
+        the whole chain itself.
+
+        Writes (and publishes AvailabilityChanged) only when the
+        recomputed value actually differs from what's already saved —
+        the one guard that makes this safe to call from a cascade
+        without any cycle detection of its own: a mutual dependency
+        between two projects just means each one's own recompute, in
+        turn, finds nothing changed on its second visit and stops
+        propagating right there (see _on_availability_changed below)."""
+        try:
+            self._load_project(project_name)
+            available, reason = True, None
+        except Exception as exc:  # noqa: BLE001 — any failure to build at all means "not available"
+            available, reason = False, f"Build failed: {exc}"
+
+        if available:
+            blocking = next(
+                (
+                    dep for dep in self._db.get_observed_projects(project_name)
+                    if (self._db.get_project_availability(dep) or (False, None))[0]
+                ),
+                None,
+            )
+            if blocking is not None:
+                available, reason = False, f"Depends on unavailable project '{blocking}'."
+
+        current = self._db.get_project_availability(project_name)
+        if current is None:
+            return  # project no longer exists — nothing left to update
+        was_paused, _ = current
+        if was_paused == (not available):
+            return  # unchanged — see this method's own docstring on why this is the whole guard
+        self._db.set_project_availability(project_name, is_paused=not available, paused_reason=reason)
+        publish(AvailabilityChanged(project_name=project_name, available=available))
+
+    def register_availability_cascade(self) -> None:
+        """Subscribes once, for the whole process's lifetime (see
+        main.py's own wiring) — the other half of recompute_availability
+        above: whenever *some* project's own availability actually
+        changes, every project that depends on it gets a chance to
+        change too. Recursive by construction, not by explicit
+        recursion: recompute_availability's own guard means a project
+        whose recomputed value didn't change never re-publishes, so the
+        cascade started here naturally stops propagating outward the
+        instant nothing new happens — no queue, no visited-set, no
+        explicit BFS of this method's own. It also, for free, wakes
+        dependents in the right order when a project comes back: the
+        most directly affected one recomputes (and republishes) first,
+        which is what lets *its own* dependents react next, and so on
+        outward — never the other way around."""
+        subscribe(AvailabilityChanged, self._on_availability_changed)
+
+    def _on_availability_changed(self, event: AvailabilityChanged) -> None:
+        try:
+            for observer in self._db.get_observers(event.project_name):
+                self.recompute_availability(observer)
+        except Exception:
+            logger.exception(
+                "Availability cascade failed while reacting to '%s' (available=%s).",
+                event.project_name, event.available,
+            )
 
     @staticmethod
     def _looks_like_zip(content_type: str | None, content: bytes) -> bool:
@@ -341,7 +450,15 @@ class ProjectService(object):
         if name is None:
             raise FileNotFoundError("No project is currently active.")
         return name
-    
+
+    def get_project_availability(self, project_name: str) -> tuple[bool, str | None]:
+        """(is_paused, paused_reason) — see recompute_availability's own
+        docstring for how these are decided. (False, None) for a project
+        that doesn't exist at all (never raises): every caller of this
+        already has its own, more specific way to report "no such
+        project" if that distinction actually matters to it."""
+        return self._db.get_project_availability(project_name) or (False, None)
+
     def _resolve_state(self, project_name: str, automaton: Automaton) -> State:
         """The State half of get_active_automaton_and_state/
         get_automaton_and_state_for_session, factored out since both need
@@ -440,6 +557,37 @@ class ProjectService(object):
             automaton = self._load_project_at_revision(project_name, session["project_revision"])
         return automaton, self._resolve_state(project_name, automaton)
 
+    def get_automaton_and_state_for_observer(
+        self, project_name: str, username: str
+    ) -> tuple[Automaton, State] | None:
+        """`project_name`'s own published Automaton, paired with its
+        current State, as seen by `username` right now — for
+        tracking.automaton_namespace's own automaton.<project>.state/
+        env.<key> resolution (a self-loop-only trigger in some *other*
+        project, referencing this one). None (never raised) when
+        `username` has no session in `project_name` at all — that's a
+        legitimate, routine outcome here (see automaton_namespace's own
+        'no_session' SystemWarning), not an error condition the way it
+        would be for get_automaton_and_state_for_session (which always
+        already has a concrete, real session_id to work from). Still
+        raises FileNotFoundError, same as _load_project_at_revision
+        itself, when `project_name` doesn't exist at all — the caller's
+        own 'project_not_found' case. Checked explicitly, before the
+        session lookup below (rather than just letting
+        _load_project_at_revision raise it naturally once reached): a
+        project that doesn't exist at all also has no ChatSession rows
+        for anyone, so the session check alone would otherwise report
+        'no_session' for it too, indistinguishable from a real,
+        never-talked-to *existing* project — exactly the two distinct
+        SystemWarning kinds this method exists to tell apart."""
+        if not self._db.project_exists(project_name):
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+        session = self._db.get_latest_chat_session(username, project_name)
+        if session is None:
+            return None
+        automaton = self._load_project_at_revision(project_name, session["project_revision"])
+        return automaton, self._resolve_state(project_name, automaton)
+
     def get_active_draft_automaton_and_state(self) -> tuple[Automaton, State]:
         """Like get_active_automaton_and_state, but the in-progress draft
         (whatever _load_project resolves to right now) rather than
@@ -474,6 +622,15 @@ class ProjectService(object):
             session_id,
             transition_log_level=new_state.transition_log_level,
         )
+        # Events (Prompt 6) — the other of TrackingEngine.
+        # notify_transition's own two call sites (see that method's own
+        # docstring): this path never goes through TrackingEngine.
+        # apply_transition itself (it writes save_transition directly,
+        # above), so it has to publish explicitly. The session's own
+        # stored username (not Session().user) is the correct "whose
+        # transition this is" — see get_chat_session's own row shape.
+        session = self._db.get_chat_session(session_id)
+        TrackingEngine.notify_transition(session["username"], session["project_name"], state.key, new_state.key)
         return automaton.get_state_payload(new_state), action, state.key
 
     def get_active_state_payload(self) -> StatePayload:
@@ -527,6 +684,14 @@ class ProjectService(object):
             for signal in automaton.signals
         ]
 
+    def get_project_env_keys(self, project_name: str) -> list[dict]:
+        """Env-key declarations (name/ui_description/value) of
+        `project_name`'s last successfully saved index.yml — the source
+        for the "Edit project" view's own Inspect panel Env tab, same
+        cache/staleness contract as get_project_signals above."""
+        automaton = self._load_project(project_name)
+        return [{"env_key": Automaton.get_env_key_payload(env_key)} for env_key in automaton.env_keys]
+
     def get_active_identifier_registry(self) -> dict[str, dict[str, str]]:
         """Every identifier the active project's own trigger/`env:`
         expressions can reference, one dict per namespace (see automaton.
@@ -534,7 +699,7 @@ class ProjectService(object):
         identifiers, the "Edit project" view's own reference for what's
         actually usable in a trigger/env: field."""
         automaton, _ = self.get_active_automaton_and_state()
-        return build_registry(automaton.signals, automaton.states)
+        return build_registry(automaton.signals, automaton.env_keys)
 
     def get_project_states(self, project_name: str) -> list[str]:
         """Every real state key of `project_name`'s current draft
@@ -606,22 +771,30 @@ class ProjectService(object):
         return {"nodes": nodes, "edges": edges, "autotracking_on_ai_message": automaton.autotracking_on_ai_message}
 
     def list_projects(self) -> dict:
-        names = self._db.list_projects()
+        projects = self._db.list_projects_with_availability()
         try:
             active = self.get_active_project_name()
         except FileNotFoundError:
             active = None
-        return {"projects": names, "active": active}
+        return {"projects": projects, "active": active}
 
     def get_project_revision_info(self, project_name: str) -> dict:
-        """{revision, published_revision} — the "Edit project" toolbar's
-        own revision display, refreshed after every save (a save can fork,
-        bumping `revision`) and after every publish."""
+        """{revision, published_revision, is_paused, paused_reason} — the
+        "Edit project" toolbar's own revision display, refreshed after
+        every save (a save can fork, bumping `revision`) and after every
+        publish. is_paused/paused_reason (Prompt 7) ride along on this
+        same, already-refreshed-on-every-relevant-event payload rather
+        than a second endpoint of their own — EditProjectView.vue's own
+        "this project is paused" warning banner reads them straight off
+        it."""
         if project_name not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+        is_paused, paused_reason = self._db.get_project_availability(project_name) or (False, None)
         return {
             "revision": self._db.get_project_revision(project_name),
             "published_revision": self._db.get_project_published_revision(project_name),
+            "is_paused": is_paused,
+            "paused_reason": paused_reason,
         }
 
     def preview_publish(self, project_name: str) -> dict:
@@ -993,6 +1166,19 @@ class ProjectService(object):
 
     async def delete_signal(self, project_name: str, signal_name: str, commit: CommitCallback) -> None:
         await self._edit_index_yml(project_name, commit, lambda editor: editor.delete_signal(signal_name))
+
+    async def add_env_key(self, project_name: str, commit: CommitCallback) -> EnvKeyPayload:
+        return await self._edit_index_yml(project_name, commit, lambda editor: editor.add_env_key())
+
+    async def set_env_key_field(
+        self, project_name: str, env_key_name: str, field: str, value, commit: CommitCallback
+    ) -> EnvKeyPayload:
+        return await self._edit_index_yml(
+            project_name, commit, lambda editor: editor.set_env_key_field(env_key_name, field, value)
+        )
+
+    async def delete_env_key(self, project_name: str, env_key_name: str, commit: CommitCallback) -> None:
+        await self._edit_index_yml(project_name, commit, lambda editor: editor.delete_env_key(env_key_name))
 
     async def reorder_actions(
         self, project_name: str, state_name: str, action_name: str, position: int, commit: CommitCallback

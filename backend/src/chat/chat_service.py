@@ -11,6 +11,7 @@ from db import Db, _utc_iso
 from ai.ai_service import AiService
 from session import Session
 
+from tracking.automaton_namespace import AutomatonNamespace
 from tracking.env import PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.session_facts import SessionFacts
@@ -53,8 +54,9 @@ class ChatService(object):
 		self.env = PersistedEnv(db, get_username=get_username, get_active_project_name=get_active_project_name)
 		self._system_facts = SystemFacts()
 		self._session_facts = SessionFacts(db, get_username=get_username, get_active_project_name=get_active_project_name)
+		self._automaton_namespace = AutomatonNamespace(db, project_service, get_username)
 		self.evaluation_scope_builder = EvaluationScopeBuilder(
-			self.env, metric_service, self._system_facts, self._session_facts
+			self.env, metric_service, self._system_facts, self._session_facts, self._automaton_namespace
 		)
 		self._metadata_handler = MetadataHandler()
 		self._tracking_engine = TrackingEngine(DbTrackingSink(db), self.env, self.evaluation_scope_builder)
@@ -130,6 +132,10 @@ class ChatService(object):
 			# not recomputed per call the way the old any-Tracking-row-
 			# has-an-annotation heuristic needed to be.
 			"has_annotations": session["labeled"],
+			# A domain expert's own free-text note on the session as a
+			# whole (see ChatSession.comment/ChatService.set_session_
+			# comment) — the "Label sessions" view's own Info tab.
+			"comment": session["comment"],
 		}
 
 	def _require_active_session(self, session_id: int | None, project_name: str, current_state: str) -> dict:
@@ -156,8 +162,17 @@ class ChatService(object):
 		allowed a draft one instead (see db.create_draft_chat_session's own
 		docstring). ValueError (see db.create_chat_session — a project with
 		no published revision yet can't have a real chat session) becomes a
-		409, same convention as _require_active_session's own."""
+		409, same convention as _require_active_session's own.
+
+		Prompt 7: a paused project (see ProjectService.get_project_
+		availability) never even attempts to bootstrap a session — the
+		frontend's own "Progetto in manutenzione" screen (App.vue) reads
+		paused/paused_reason straight off this same response instead of a
+		separate round trip, and shows that in place of the chat UI."""
 		project_name = self._active_project_name
+		is_paused, paused_reason = self._project_service.get_project_availability(project_name)
+		if is_paused:
+			return {"paused": True, "paused_reason": paused_reason}
 		try:
 			# No active session means a new one is about to be created —
 			# exactly the moment the previously active one (if any) has
@@ -291,32 +306,63 @@ class ChatService(object):
 		self._require_own_session(session_id)
 		self._db.delete_chat_session(session_id)
 
-	def mark_session_labeled(self, session_id: int, labeled: bool) -> dict:
-		"""The "Label sessions" view's own "Mark done" button (see
-		ChatSession.labeled's own docstring) — a domain expert's explicit
-		confirmation that this session's been reviewed. A toggle, not a
-		one-way action: `labeled=False` un-marks it again, same button,
-		same endpoint. Returns the updated session payload so the
-		frontend can refresh its own Sessions panel marker from the
-		response directly, without a second round trip."""
-		self._require_own_session(session_id)
-		self._db.set_session_labeled(session_id, labeled)
+	def _reloaded_session_payload(self, session_id: int) -> dict:
+		"""Common tail for every "write one field of session_id, then hand
+		the frontend back a fresh payload so it can update its own
+		Sessions panel without a second round trip" mutation below (title/
+		comment/labeled) — re-reads the row post-write and resolves
+		`active` the same way for all of them.
+
+		An imported session (see ChatSession.source) is never "active" —
+		same convention _list_sessions_by_source's own active_source
+		always follows ('native', never 'imported'): "active" means "the
+		one session a user may currently write to", which an imported
+		transcript never was and never can be. Resolving it as if it
+		could be would also crash — an imported session's own
+		datetime_end is always None (see ChatSessionManager.is_open),
+		not a real window to compare "still open" against at all."""
 		session = self._db.get_chat_session(session_id)
 		assert session is not None
-		# An imported session (see ChatSession.source) is never "active" —
-		# same convention _list_sessions_by_source's own active_source
-		# always follows ('native', never 'imported'): "active" means "the
-		# one session a user may currently write to", which an imported
-		# transcript never was and never can be. Resolving it as if it
-		# could be would also crash — an imported session's own
-		# datetime_end is always None (see ChatSessionManager.is_open),
-		# not a real window to compare "still open" against at all.
 		if session["source"] == "imported":
 			active = False
 		else:
 			resolved = self._session_manager.get_active_session(self._username, session["project_name"], source=session["source"])
 			active = resolved is not None and resolved["id"] == session_id
 		return self._session_payload(session, active=active)
+
+	def set_session_title(self, session_id: int, title: str | None) -> dict:
+		"""The "Label sessions" view's own Info tab — a domain expert's
+		rename for a session, editable for any session regardless of
+		source (see ChatSession.title's own docstring: an imported session
+		already starts out with one, seeded from its own uploaded
+		filename, but native sessions get one this way for the first
+		time). Blank/whitespace-only collapses to None, same convention
+		set_message_comment already uses for its own optional text field."""
+		self._require_own_session(session_id)
+		stripped = title.strip() if title is not None else None
+		self._db.set_session_title(session_id, stripped or None)
+		return self._reloaded_session_payload(session_id)
+
+	def set_session_comment(self, session_id: int, comment: str | None) -> dict:
+		"""The "Label sessions" view's own Info tab — a domain expert's
+		free-text note on the session as a whole (see ChatSession.comment's
+		own docstring), distinct from a per-message comment (Tracking.
+		comment/set_message_comment). Same blank-collapses-to-None
+		convention as set_session_title."""
+		self._require_own_session(session_id)
+		stripped = comment.strip() if comment is not None else None
+		self._db.set_session_comment(session_id, stripped or None)
+		return self._reloaded_session_payload(session_id)
+
+	def mark_session_labeled(self, session_id: int, labeled: bool) -> dict:
+		"""The "Label sessions" view's own "Mark done" button (see
+		ChatSession.labeled's own docstring) — a domain expert's explicit
+		confirmation that this session's been reviewed. A toggle, not a
+		one-way action: `labeled=False` un-marks it again, same button,
+		same endpoint."""
+		self._require_own_session(session_id)
+		self._db.set_session_labeled(session_id, labeled)
+		return self._reloaded_session_payload(session_id)
 
 	def truncate_session(self, session_id: int, timestamp: str) -> None:
 		""""Restart from here" (EditProjectView.vue's own chat only — see
@@ -487,6 +533,17 @@ class ChatService(object):
 		self._require_own_message(message_id)
 		return self.tracking_service.set_message_expected_signals(message_id, expected_values)
 
+	def set_message_comment(self, message_id: int, comment: str | None) -> dict | None:
+		"""Sets or clears message_id's own expert-left free-text comment
+		(see TrackingService.set_message_comment) — same ownership-then-
+		delegate split as set_message_expected_state above. Unlike that
+		one, every message is a legitimate target (no evaluation-point
+		gate — see TrackingService._require_commentable_message), so
+		there's no ChatServiceError 409 to worry about here, only the
+		usual 404 for an unowned/unknown message_id."""
+		self._require_own_message(message_id)
+		return self.tracking_service.set_message_comment(message_id, comment)
+
 	def clear_session_annotations(self, session_id: int) -> None:
 		"""Clears every expert annotation (expected_state and
 		expected_values alike) across session_id's own Tracking rows in
@@ -620,7 +677,9 @@ class ChatService(object):
 				action_name, session["id"]
 			)
 			automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
-			self._tracking_engine.apply_action_env(automaton, action, {}, source_state_key)
+			self._tracking_engine.apply_action_env(
+				automaton, action, {}, source_state_key, username=Session().user, project_name=project_name,
+			)
 			reply = await self._messages_for_transition(
 				action, project_name, session["id"], state, is_self_loop=(action.target == source_state_key)
 			)

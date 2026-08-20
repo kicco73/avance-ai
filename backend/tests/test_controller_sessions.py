@@ -69,6 +69,66 @@ def test_mark_session_labeled_works_for_an_imported_session(client, hello_projec
 
 
 @pytest.mark.regression
+def test_put_session_title_renames_and_reflects_in_the_list(client, hello_project):
+    session = client.get("/api/chat/session").json()
+
+    response = client.put(f"/api/chat/sessions/{session['id']}/title", json={"title": "My session"})
+    assert response.status_code == 200
+    assert response.json()["title"] == "My session"
+
+    listed = {s["id"]: s for s in client.get("/api/chat/sessions").json()}
+    assert listed[session["id"]]["title"] == "My session"
+
+
+@pytest.mark.regression
+def test_put_session_title_blank_clears_it_back_to_none(client, hello_project):
+    session = client.get("/api/chat/session").json()
+    client.put(f"/api/chat/sessions/{session['id']}/title", json={"title": "Named"})
+
+    response = client.put(f"/api/chat/sessions/{session['id']}/title", json={"title": "   "})
+
+    assert response.json()["title"] is None
+
+
+@pytest.mark.regression
+def test_put_session_comment_round_trips_and_clears(client, hello_project):
+    session = client.get("/api/chat/session").json()
+    assert client.get("/api/chat/session").json()["comment"] is None
+
+    response = client.put(f"/api/chat/sessions/{session['id']}/comment", json={"comment": "Worth a second look."})
+    assert response.status_code == 200
+    assert response.json()["comment"] == "Worth a second look."
+
+    response = client.put(f"/api/chat/sessions/{session['id']}/comment", json={"comment": None})
+    assert response.json()["comment"] is None
+
+
+@pytest.mark.regression
+def test_put_session_title_and_comment_work_for_an_imported_session(client, hello_project):
+    """Same crash shape as test_mark_session_labeled_works_for_an_imported_
+    session above — an imported session's own datetime_end=None must not
+    blow up the shared _reloaded_session_payload active-resolution path."""
+    imported = client.post(
+        "/api/chat/sessions/import", files={"file": ("transcript.txt", "user: hi\nassistant: hello\n", "text/plain")}
+    ).json()
+    session_id = imported["session_id"]
+
+    title_resp = client.put(f"/api/chat/sessions/{session_id}/title", json={"title": "Renamed import"})
+    assert title_resp.status_code == 200
+    assert title_resp.json()["active"] is False
+
+    comment_resp = client.put(f"/api/chat/sessions/{session_id}/comment", json={"comment": "note"})
+    assert comment_resp.status_code == 200
+    assert comment_resp.json()["comment"] == "note"
+
+
+@pytest.mark.contract
+def test_put_session_title_rejects_an_unknown_session(client, hello_project):
+    response = client.put("/api/chat/sessions/999999/title", json={"title": "x"})
+    assert response.status_code == 404
+
+
+@pytest.mark.regression
 def test_manual_new_session_supersedes_the_bootstrap_one(client, hello_project):
     older = client.get("/api/chat/session").json()
 

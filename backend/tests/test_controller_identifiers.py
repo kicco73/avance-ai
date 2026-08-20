@@ -16,6 +16,10 @@ signals:
     ui-description: "whatever this measures"
     definition: "whatever"
 
+env:
+  visits:
+    ui-description: "How many times this action has fired."
+
 states:
   a:
     contextual-prompt: "hi"
@@ -62,7 +66,10 @@ def test_returns_one_dict_per_namespace_for_the_active_project(client):
     body = response.json()
     assert set(body) == {"signal", "env", "system", "session", "session.metric", "metric"}
     assert body["signal"] == {"myOwnSignal": "whatever this measures"}
-    assert body["env"] == {"visits": ""}
+    # Sourced from the project's own declared env: section (parallel to
+    # signals:), not left empty (see automaton.identifier_registry.
+    # build_registry).
+    assert body["env"] == {"visits": "How many times this action has fired."}
     assert set(body["system"]) == {"today", "time"}
     assert set(body["session"]) == {
         "current_session_duration_in_minutes", "last_user_session_datetime",

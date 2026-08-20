@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import logging
 
 from automaton.automaton import Action, Automaton, State
+from session import Session
 from tracking.tracking_processor import OutVariables, TrackingProcessor
 
 
@@ -81,6 +82,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			self.out.tracking_id = self._tracking_engine.apply_transition(
 				self.user.automaton, self.user.state, self.out.action, self.metadata.signals, self.user.session_id,
 				message_id=self.user.message_id if has_real_user_message else None,
+				username=Session().user, project_name=self.user.project_name,
 			)
 			self.out.tracking_linked_to_message = has_real_user_message
 

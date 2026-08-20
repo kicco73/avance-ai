@@ -1,6 +1,6 @@
 from automaton.automaton import (
-    Action, MemoryArchive, Automaton, Signal, SourceDict, State,
-    trigger_bare_names, trigger_namespace_refs, trigger_type_violations,
+    Action, EnvKey, MemoryArchive, Automaton, Signal, SourceDict, State,
+    trigger_automaton_project_refs, trigger_bare_names, trigger_namespace_refs, trigger_type_violations,
 )
 from automaton.identifier_registry import build_registry
 from typing import Any
@@ -70,6 +70,21 @@ class AutomatonBuilder(object):
             attachments=self._extract_required_archives(
                 raw_signal.get("attachments", []), all_archives, f"signal '{name}'"
             )
+        )
+
+    @staticmethod
+    def _build_env_key(name: str, raw_env_key: dict) -> EnvKey:
+        """One `env:` declaration (see EnvKey's own docstring) — `value`
+        is normalized to expression *source* exactly like an action's own
+        `env:` field (see _build_action_env), since it shares the same
+        simpleeval-based evaluator (Automaton.eval_action_env)."""
+        raw_value = (raw_env_key or {}).get("value", "")
+        value = raw_value if isinstance(raw_value, str) else str(raw_value)
+        raw_description = (raw_env_key or {}).get("ui-description")
+        return EnvKey(
+            name=name,
+            value=value.strip(),
+            ui_description=raw_description.strip() if raw_description else None,
         )
 
 
@@ -164,10 +179,11 @@ class AutomatonBuilder(object):
         description, for the error message. `registry` (see automaton.
         identifier_registry.build_registry) is the single source of every
         valid identifier per namespace — including `env.*`, whose valid
-        names are only known project-wide at build time: every action's
-        own declared `env:` key, collected across the whole project
-        before this ever runs (see build()), so there's no longer a
-        runtime-only name it can't see. Any bare (unnamespaced) identifier
+        names are exactly the project's own declared `env:` section (see
+        build()'s own env_keys, parallel to `signals:`): an action's own
+        `env:` field may only ever *write* to one of these, never
+        introduce a new one on the fly (see _actions_sanity_check's own
+        declared-key check). Any bare (unnamespaced) identifier
         left over must be a core metric (see metrics_framework.
         metric_names) — anything else, namespaced or not, is undefined."""
         try:
@@ -219,8 +235,19 @@ class AutomatonBuilder(object):
                 self._validate_trigger_types(
                     action.trigger, f"State {key}, action '{action.name}': trigger",
                 )
+                if trigger_automaton_project_refs(action.trigger) and action.target != state.key:
+                    raise ValueError(
+                        f"State {key}, action '{action.name}': trigger references automaton.* but this "
+                        f"action isn't a self-loop (target '{action.target}' != state '{state.key}') — "
+                        "automaton.* is only ever allowed in a self-loop action's own trigger."
+                    )
             if action.env:
                 for env_key, expression in action.env.items():
+                    if env_key not in registry.get("env", {}):
+                        raise ValueError(
+                            f"State {key}, action '{action.name}': env key '{env_key}' is not declared in "
+                            "the project's own 'env' section — declare it there first."
+                        )
                     self._validate_namespaced_expression(
                         expression, f"State {key}, action '{action.name}': env expression for '{env_key}'", registry,
                     )
@@ -272,6 +299,13 @@ class AutomatonBuilder(object):
                 f"reused as signal names: {', '.join(sorted(reserved_names))}"
             )
 
+        raw_env_keys = raw.get("env", {})
+        if not isinstance(raw_env_keys, dict):
+            raise ValueError(f"'env' must be a mapping of env key -> fields, got {type(raw_env_keys).__name__}.")
+        env_keys: dict[str, EnvKey] = {
+            name: self._build_env_key(name, raw_env_key) for name, raw_env_key in raw_env_keys.items()
+        }
+
         raw_states = raw["states"]
         if not isinstance(raw_states, dict):
             raise ValueError(f"'states' must be a mapping of state name -> fields, got {type(raw_states).__name__}.")
@@ -281,11 +315,12 @@ class AutomatonBuilder(object):
                 "and cannot be declared in 'states'."
             )
 
-        # Pass 1: build every state/action, no expression validation yet
-        # — every action's own declared `env:` keys (see valid_env_attrs
-        # below) can only be known project-wide, once every one of them
-        # has actually been built, so validation itself has to wait for
-        # a second pass (see _actions_sanity_check's own calls below).
+        # Pass 1: build every state/action, no expression validation yet —
+        # an action's own `target`/`trigger`/`env:` can reference a state
+        # or signal/env key declared anywhere else in the file (forward
+        # references are fine), so every state has to actually exist
+        # before any of that can be checked (see _actions_sanity_check's
+        # own calls below, once every state is built).
         init_action = self._build_init_action(raw)
         states: dict[str, State] = {}
         states[""] = State(key="", ui_label="", final=False, ui_description="", actions=[init_action])
@@ -310,16 +345,27 @@ class AutomatonBuilder(object):
                 )
             state_keys_by_ui_label[states[key].ui_label] = key
 
-        # Pass 2: every action's own env: keys, across every state
-        # (including the synthetic "" state's own init_action), plus
-        # every declared signal — the project's own identifier registry
-        # (see automaton.identifier_registry.build_registry), the single
-        # source _actions_sanity_check validates every trigger/env:
-        # expression's own namespace references against below.
-        registry = build_registry(list(signals.values()), states)
+        # Pass 2: every declared signal plus every declared env key — the
+        # project's own identifier registry (see automaton.identifier_
+        # registry.build_registry), the single source _actions_sanity_
+        # check validates every trigger/env: expression's own namespace
+        # references against below (including, now, an action's own env:
+        # write-side keys — see that method's own env-key-declared check).
+        registry = build_registry(list(signals.values()), list(env_keys.values()))
         for key, state in states.items():
             context_key = init_action.name if key == "" else key
             self._actions_sanity_check(context_key, state, set(raw_states.keys()), registry)
+
+        # A declared env key's own `value` (its default) is a namespaced
+        # expression exactly like an action's own env: one — see EnvKey's
+        # own docstring — so it gets the same validation, self-reference
+        # to its own key included (already declared here, project-wide,
+        # same as any other).
+        for env_key in env_keys.values():
+            if env_key.value:
+                self._validate_namespaced_expression(
+                    env_key.value, f"Env key '{env_key.name}': value", registry,
+                )
 
         general_attachments = self._extract_required_archives(raw.get('attachments', []), all_archives, for_field="global")
         autotracking_on_ai_message = raw.get("signal-tracking-on-ai-message", False)
@@ -329,6 +375,7 @@ class AutomatonBuilder(object):
             states=states,
             general_prompt=raw.get("general-prompt", ""),
             signals=list(signals.values()),
+            env_keys=list(env_keys.values()),
             general_attachments=general_attachments,
             attachments=all_archives,
             autotracking_on_ai_message=autotracking_on_ai_message,

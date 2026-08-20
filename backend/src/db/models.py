@@ -16,17 +16,27 @@ class Project(BaseModel):
     name = CharField(primary_key=True)
     revision = IntegerField(null=False, default=0)
     published_revision = IntegerField(null=True)
+    # See project.project_service.ProjectService's own availability
+    # recomputation (Prompt 7) — a project is paused when its own build
+    # fails, or when any project it references via automaton.* (always
+    # self-loop-only, see automaton_builder.py's own build-time check) is
+    # itself unavailable. paused_reason is a human-readable explanation
+    # (EditProjectView.vue's own warning banner), null exactly when
+    # is_paused is False.
+    is_paused = BooleanField(default=False)
+    paused_reason = TextField(null=True)
 
 class ChatSession(BaseModel):
     id = AutoField()
     username = CharField()
     project_name = ForeignKeyField(Project, field='name', column_name='project_name', backref='chat_sessions')
     source = CharField(default='native')
-    # Optional, freeform — never shown for a native session unless the
-    # user someday gets a way to set one (none exists yet); an imported
-    # one always gets the uploaded transcript's own filename (see
-    # SessionImportManager.import_transcript). Shown in the Sessions
-    # panel's own badge in place of end_state, when set.
+    # Optional, freeform — an imported session always gets the uploaded
+    # transcript's own filename to start with (see SessionImportManager.
+    # import_transcript), a native one has none until renamed; either way
+    # a domain expert can (re)set it from the "Label sessions" view's own
+    # Info tab (see Db.set_session_title). Shown in the Sessions panel's
+    # own badge in place of end_state, when set.
     title = CharField(null=True)
     # The project's own published_revision at the moment this session was
     # created — never touched again after (see Db.save_project_files's own
@@ -45,6 +55,10 @@ class ChatSession(BaseModel):
     # annotation) that used to derive this implicitly. A toggle, not a
     # one-way flag: pressing "Mark done" again clears it back to False.
     labeled = BooleanField(default=False)
+    # A domain expert's own free-text note on the session as a whole (see
+    # "Label sessions" view's own Info tab, Db.set_session_comment) —
+    # distinct from Tracking.comment, which is per-message.
+    comment = TextField(null=True)
 
     class Meta:
         indexes = ((('username', 'project_name', 'datetime_start', 'datetime_end'), False), (('username', 'project_name', 'start_state', 'end_state'), False))
@@ -70,6 +84,11 @@ class Tracking(BaseModel):
     action_env = TextField(null=True)
     expected_state = CharField(null=True)
     expected_values = TextField(null=True)
+    # A domain expert's own free-text note on this row's linked message
+    # (see TrackingService.set_message_comment) — unlike expected_state/
+    # expected_values, never validated against the automaton at all: just
+    # a place to leave context for whoever reviews this session next.
+    comment = TextField(null=True)
     old_state = CharField(null=True, index=True)
     action = CharField(null=True)
     new_state = CharField(null=True, index=True)
@@ -163,6 +182,38 @@ class BenchmarkRunObservation(BaseModel):
 
     class Meta:
         indexes = ((('run', 'session'), False),)
+
+class SystemWarning(BaseModel):
+    """A cross-project reference (automaton.<project>.state/env.<key> —
+    see automaton.automaton.trigger_automaton_project_refs) that
+    resolved to None at runtime instead of raising — see tracking.
+    automaton_namespace's own three failure kinds ('project_not_found',
+    'no_session', 'env_key_not_declared')."""
+    id = AutoField()
+    username = CharField()
+    project_name = CharField(index=True)
+    kind = CharField()
+    message = TextField()
+    timestamp = DateTimeField(index=True, default=datetime.utcnow)
+
+class ProjectObserverIndex(BaseModel):
+    """Reverse index of automaton.* cross-project references — one row
+    per (observed project, observer project) pair, rebuilt from scratch
+    for `observer_project_name` every time that project's own index.yml
+    is built (see project.project_service.ProjectService's own
+    _finalize_project_update). `project_name` is the project *being*
+    referenced (automaton.<project_name>...); `observer_project_name` is
+    the one whose own self-loop trigger contains that reference —
+    queried in that direction ("who observes me") by the wake-up
+    handler (see tracking.wakeup_service.WakeupService) and, in the
+    other direction ("who do I depend on"), by Prompt 7's own
+    availability recomputation."""
+    id = AutoField()
+    project_name = CharField(index=True)
+    observer_project_name = CharField(index=True)
+
+    class Meta:
+        indexes = ((('project_name', 'observer_project_name'), True),)
 
 class History(BaseModel):
     id = AutoField()

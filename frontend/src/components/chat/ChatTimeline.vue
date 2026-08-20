@@ -1,6 +1,6 @@
 <script setup>
 // Chronological, clickable message+transition list — shared by
-// BenchmarkProjectView.vue (reviewing a fixed past session) and
+// LabelProjectView.vue (reviewing a fixed past session) and
 // EditProjectView.vue (reviewing the live session as it happens). Both
 // feed it the same shapes (see benchmarkTimeline.js's buildTimeline: each
 // entry is { kind: 'message', message } or { kind: 'transition',
@@ -20,7 +20,7 @@ const props = defineProps({
   // See MessageBubble.vue's own prop — this component has no opinion of
   // its own on whether spoken text should show, just forwards whatever
   // the caller (EditProjectView.vue's chat, via chatStore.js's shared
-  // toggle) decides. Defaults to false so BenchmarkProjectView.vue,
+  // toggle) decides. Defaults to false so LabelProjectView.vue,
   // which never passes this at all, is unaffected.
   spokenTextEnabled: { type: Boolean, default: false },
   // Whether the session this timeline is showing was imported (see
@@ -36,7 +36,7 @@ const props = defineProps({
   // new_state (see benchmarkTimeline.js) is always the automaton's own
   // internal state *key*, never its human-facing ui-label (the two just
   // happen to read the same until someone actually renames one without
-  // renaming the other). Optional: BenchmarkProjectView.vue's own review
+  // renaming the other). Optional: LabelProjectView.vue's own review
   // timeline doesn't pass this at all and keeps showing the raw key
   // exactly as before — only EditProjectView.vue's live "Test" timeline
   // passes one (resolved off its own always-current-draft state list),

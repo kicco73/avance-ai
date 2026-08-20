@@ -47,6 +47,15 @@ export const currentSessionId = ref(null)
 // render path instead of showing manual-action buttons with nothing to
 // fire them against.
 export const selectedSessionActive = ref(false)
+// Prompt 7 — GET /api/chat/session responds {paused: true, paused_reason}
+// instead of a real session payload while the active project is paused
+// (see ProjectService.recompute_availability); App.vue's own "Progetto
+// in manutenzione" screen reads these instead of rendering chat. Reset
+// to false at the top of every ensureSession() call, so switching to a
+// project that's *not* paused clears it again without needing its own
+// explicit reset anywhere else.
+export const projectPaused = ref(false)
+export const projectPausedReason = ref('')
 export const sessions = ref([])
 export const sessionsLoading = ref(false)
 export const sessionsPanelOpen = ref(false)
@@ -136,9 +145,15 @@ function toStoreMessage(m) {
 // below), never a flag on the shared ones (see api.js's own docstring on
 // why). null: every other caller.
 async function ensureSession() {
+  projectPaused.value = false
   const session = testModeProjectName.value != null
     ? await getCurrentTestSession(currentSessionId.value, testModeProjectName.value)
     : await getCurrentSession(currentSessionId.value)
+  if (session.paused) {
+    projectPaused.value = true
+    projectPausedReason.value = session.paused_reason || ''
+    return null
+  }
   currentSessionId.value = session.id
   selectedSessionActive.value = session.active
   currentProjectName.value = session.project_name
@@ -148,6 +163,7 @@ async function ensureSession() {
 export async function loadMessages() {
   try {
     const sessionId = await ensureSession()
+    if (sessionId == null) return  // paused — see ensureSession's own docstring
     const history = await getMessages(sessionId)
     messages.value = history.map(toStoreMessage)
     // Whichever project just became active, the sessions panel (if open)
@@ -167,7 +183,7 @@ export async function loadMessages() {
 // own embedded "Test" chat's own sessions — includeImported is ignored
 // there, since a "Test" session and an imported one are never the same
 // list. testModeProjectName null: every other caller, unchanged
-// (includeImported only ever true from BenchmarkProjectView.vue).
+// (includeImported only ever true from LabelProjectView.vue).
 export async function loadSessions(includeImported = false) {
   sessionsLoading.value = true
   try {
@@ -184,7 +200,7 @@ export async function loadSessions(includeImported = false) {
 // Same fetch as loadSessions, but never touches sessionsLoading — for a
 // caller that just wants `sessions` (e.g. its own has_annotations flags)
 // brought current in the background, without flashing the shared Sessions
-// panel (main page, EditProjectView, BenchmarkProjectView all read the
+// panel (main page, EditProjectView, LabelProjectView all read the
 // same sessionsLoading) to its "Loading…" placeholder over something the
 // user never asked to reload.
 export async function refreshSessionsQuietly(includeImported = false) {

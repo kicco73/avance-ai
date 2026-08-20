@@ -333,7 +333,7 @@ onMounted(loadSignals)
    to read as one consistent editing affordance across the Inspector. */
 .inspector-signal-label-input { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; border: 1px solid transparent; border-radius: 4px; padding: 0.1rem 0.3rem; background: transparent; }
 .inspector-signal-label-input:hover, .inspector-signal-label-input:focus { border-color: #ccc; background: white; }
-.inspector-signal-form-label { display: block; margin: 12px 0 0.15rem; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #777; }
+.inspector-signal-form-label { display: block; margin: 20px 0 0.15rem; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #777; }
 /* Marks a field the AI itself reads (as opposed to a purely
    human-facing one like Description) — same purple used for its
    InspectorDetailCard.vue counterpart on Contextual prompt. */

@@ -8,6 +8,23 @@ class ProjectMixin:
     def ensure_project(self, project_name: str) -> None:
         Project.get_or_create(name=project_name, defaults={'revision': 0, 'published_revision': None})
 
+    def project_exists(self, project_name: str) -> bool:
+        return Project.get_or_none(Project.name == project_name) is not None
+
+    def get_project_availability(self, project_name: str) -> tuple[bool, str | None] | None:
+        """(is_paused, paused_reason) — None if `project_name` doesn't
+        exist at all (see ProjectService.recompute_availability, which
+        treats that as nothing left to update). A cheap single-row read,
+        never a full automaton build — see Project.is_paused's own
+        docstring on why a dependent project's own availability is
+        always just this, not a re-check of that dependency's own
+        content."""
+        project = Project.get_or_none(Project.name == project_name)
+        return (project.is_paused, project.paused_reason) if project is not None else None
+
+    def set_project_availability(self, project_name: str, is_paused: bool, paused_reason: str | None) -> None:
+        Project.update(is_paused=is_paused, paused_reason=paused_reason).where(Project.name == project_name).execute()
+
     def reset_project(self, project_name: str) -> None:
         session_ids = ChatSession.select(ChatSession.id).where(ChatSession.project_name == project_name)
         Tracking.delete().where(Tracking.session.in_(session_ids)).execute()
@@ -111,6 +128,13 @@ class ProjectMixin:
     def list_projects(self) -> list[str]:
         return [p.name for p in Project.select(Project.name)]
 
+    def list_projects_with_availability(self) -> list[dict]:
+        """{name, is_paused} per project — ProjectsMenu.vue's own status
+        icon (see ProjectService.list_projects, the one caller). Plain
+        list_projects above stays name-only: every *other* caller just
+        needs an existence/membership check, never this extra column."""
+        return [{"name": p.name, "is_paused": p.is_paused} for p in Project.select(Project.name, Project.is_paused)]
+
     def list_archives(self, project_name: str, revision: int | None = None) -> list[str]:
         if revision is None:
             revision = self._current_revision(project_name)
@@ -147,11 +171,21 @@ class ProjectMixin:
         the explicit is_null() branch: published_revision IS NULL right up
         until a project's first publish, and SQL's NULL != revision is
         NULL (neither true nor false) under three-valued logic, not a
-        match — a plain != would silently skip that very first publish."""
-        Project.update(published_revision=Project.revision).where(
-            (Project.name == project_name)
-            & (Project.published_revision.is_null() | (Project.published_revision != Project.revision))
-        ).execute()
+        match — a plain != would silently skip that very first publish.
+        History is cleared right alongside a real publish (guarded on
+        `changed` so a no-op double-click never disrupts anyone's
+        in-progress undo stack for nothing) — Archive rows for this
+        revision don't fork until the *next* edit (see _ensure_draft_
+        revision's own docstring), so undo/redo would otherwise still work
+        past a publish, letting it silently rewrite content that's now
+        live."""
+        with database.atomic():
+            changed = Project.update(published_revision=Project.revision).where(
+                (Project.name == project_name)
+                & (Project.published_revision.is_null() | (Project.published_revision != Project.revision))
+            ).execute()
+            if changed:
+                History.delete().where(History.project_name == project_name).execute()
 
     def revert_to_published(self, project_name: str) -> None:
         """Discards the entire in-progress draft at once — the current

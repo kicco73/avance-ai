@@ -4,10 +4,10 @@
 `signal.<name>` and a core metric name already do — but not an
 arbitrary free-form [env] key (see tracking.env.Env's own stored()),
 since those are only ever known at runtime; only a project's own
-*declared* `env:` keys (set by some action's own YAML `env:` field,
-anywhere in the project) are valid `env.<name>` references (see
-automaton_builder.py's own _actions_sanity_check/_validate_namespaced_
-expression docstrings).
+*declared* `env:` keys (the project-level `env:` section, parallel to
+`signals:` — see automaton.automaton.EnvKey/AutomatonBuilder.build's own
+env_keys) are valid `env.<name>` references (see automaton_builder.py's
+own _actions_sanity_check/_validate_namespaced_expression docstrings).
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from automaton.identifier_registry import SESSION, SYSTEM
 pytestmark = pytest.mark.contract
 
 
-def _project(trigger: str, extra_action: str = "") -> str:
+def _project(trigger: str) -> str:
     return f"""
 init-action:
   target: a
@@ -30,7 +30,6 @@ states:
       - name: go
         target: b
         trigger: "{trigger}"
-      {extra_action}
   b:
     contextual-prompt: there
 """
@@ -56,13 +55,22 @@ def test_a_trigger_referencing_an_undeclared_env_key_is_rejected():
         AutomatonBuilder().build({"index.yml": content})
 
 
-def test_a_trigger_may_reference_an_env_key_declared_by_some_other_action():
-    extra_action = """- name: also
+def test_a_trigger_may_reference_a_declared_env_key():
+    content = f"""
+env:
+  visits: {{}}
+init-action:
+  target: a
+states:
+  a:
+    contextual-prompt: hi
+    actions:
+      - name: go
         target: b
-        env:
-          visits: "1"
-    """
-    content = _project("env.visits >= 1", extra_action=extra_action)
+        trigger: "env.visits >= 1"
+  b:
+    contextual-prompt: there
+"""
     automaton = AutomatonBuilder().build({"index.yml": content})
     assert automaton.states["a"].actions[0].trigger == "env.visits >= 1"
 

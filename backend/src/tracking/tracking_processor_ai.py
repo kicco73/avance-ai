@@ -1,5 +1,7 @@
 import logging
 
+from session import Session
+
 from .tracking_processor import OutVariables, TrackingProcessor
 
 logger = logging.getLogger(__name__)
@@ -41,7 +43,8 @@ class TrackingProcessorAfterAiMessage(TrackingProcessor):
 			# trigger anything still leaves a real, queryable row instead
 			# of vanishing outright.
 			self.out.tracking_id = self._tracking_engine.apply_transition(
-				self.user.automaton, self.user.state, self.out.action, self.metadata.signals, self.user.session_id
+				self.user.automaton, self.user.state, self.out.action, self.metadata.signals, self.user.session_id,
+				username=Session().user, project_name=self.user.project_name,
 			)
 			if self.out.action:
 				self.out.state = self.user.automaton.get_state(self.out.action.target)

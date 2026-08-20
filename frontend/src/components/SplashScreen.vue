@@ -8,11 +8,21 @@ import ErrorBanner from './ErrorBanner.vue'
 // this fills the content area below it instead (see the `embedded` prop),
 // for whenever there's no active project to display (none ever
 // uploaded, or the last/only one was just deleted — "default" is no
-// longer protected from that, see ProjectsMenu.vue).
+// longer protected from that, see ProjectsMenu.vue). 'paused' (Prompt 7):
+// the active project itself exists but is currently unavailable (see
+// chatStore.js's own projectPaused/projectPausedReason, set from GET
+// /api/chat/session's own {paused, paused_reason} response) — shown in
+// place of the chat window, same embedded slot as 'no-project'.
 defineProps({
   variant: {
     type: String,
-    default: 'connecting' // 'connecting' | 'failed' | 'no-project'
+    default: 'connecting' // 'connecting' | 'failed' | 'no-project' | 'paused'
+  },
+  // 'paused' only — ProjectService.recompute_availability's own
+  // human-readable reason, shown under the headline message when set.
+  reason: {
+    type: String,
+    default: ''
   },
   // Fills its parent flex container instead of covering the viewport —
   // set whenever the topbar must stay visible/interactive alongside it.
@@ -44,6 +54,11 @@ const emit = defineEmits(['retry'])
         <ErrorBanner v-if="errorMessage" />
         <p v-else class="splash-error">Unable to reach the backend — check that it's running.</p>
         <button class="splash-retry" @click="emit('retry')">Retry</button>
+      </template>
+
+      <template v-else-if="variant === 'paused'">
+        <p class="splash-message">Progetto in manutenzione, riprova più tardi.</p>
+        <p v-if="reason" class="splash-paused-reason">{{ reason }}</p>
       </template>
 
       <template v-else>
@@ -128,6 +143,13 @@ const emit = defineEmits(['retry'])
   max-width: 320px;
   font-size: 0.9rem;
   color: #c62828;
+}
+
+.splash-paused-reason {
+  margin: 0;
+  max-width: 320px;
+  font-size: 0.82rem;
+  color: #b06a00;
 }
 
 .splash-retry {

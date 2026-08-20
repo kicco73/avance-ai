@@ -1,18 +1,18 @@
 <script setup>
 // index.css's own dedicated editor pane — a "Preview"/"Code" segmented
-// toggle, same pattern as IndexYmlEditorView.vue's own "Graph"/"Code"
+// toggle, same pattern as IndexYmlEditorPanel.vue's own "Graph"/"Code"
 // segments: CodeEditor (the same one every other project file uses, here
 // pinned to index.css) for the code segment, ChatPreview.vue (static
 // mock messages, never real chat data) for the preview one. Both segments
-// stay mounted at once (v-show, not v-if) — same reason IndexYmlEditorView
+// stay mounted at once (v-show, not v-if) — same reason IndexYmlEditorPanel
 // keeps its own two mounted: ChatPreview's own state pulldown needs
 // CodeEditor's own jumpToLine to work even while "preview" is the one
 // actually showing, and switching back to "code" must never lose
 // whatever's been typed.
 import { computed, onMounted, ref } from 'vue'
-import CodeEditor from './CodeEditor.vue'
+import CodeEditor from '../../CodeEditor.vue'
 import ChatPreview from './ChatPreview.vue'
-import { getProjectGraph } from '../api.js'
+import { getProjectGraph } from '../../../api.js'
 
 const props = defineProps({
   projectName: { type: String, required: true }
@@ -56,6 +56,11 @@ function save() { return codeEditorRef.value?.save() }
 function discard() { return codeEditorRef.value?.discard() }
 function undo() { return codeEditorRef.value?.undo() }
 function redo() { return codeEditorRef.value?.redo() }
+// Re-fetches index.css's own text and can_undo/can_redo — for after a
+// publish/revert just invalidated its undo/redo history server-side (see
+// EditProjectView.vue's own refreshActiveEditorHistory), the same reason
+// IndexYmlEditorPanel.vue's own reloadCode exists.
+function reload() { return codeEditorRef.value?.reload() }
 
 // Best-effort line lookup for the first textual occurrence of a CSS
 // selector — deliberately not editor_design's own findStateLine/
@@ -89,7 +94,7 @@ function onSelectState() {
   codeEditorRef.value?.jumpToLine(lineIndex)
 }
 
-defineExpose({ content, isDirty, saving, save, discard, undo, redo })
+defineExpose({ content, isDirty, saving, save, discard, undo, redo, reload })
 </script>
 
 <template>
@@ -118,13 +123,13 @@ defineExpose({ content, isDirty, saving, save, discard, undo, redo })
             title="Undo"
             :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.canUndo"
             @click="codeEditorRef?.undo()"
-          >↶</button>
+          >↺</button>
           <button
             class="undo-redo-btn"
             title="Redo"
             :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.canRedo"
             @click="codeEditorRef?.redo()"
-          >↷</button>
+          >↻</button>
           <button
             class="save-btn"
             :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.isDirty"

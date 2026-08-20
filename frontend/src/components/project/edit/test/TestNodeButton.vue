@@ -3,7 +3,7 @@
 // "Auto" tab's tree (see TestsTree.vue) — the root and the two branch
 // nodes ("Sessioni"/"Stati") are always disabled (no aggregation exists
 // for them yet), a leaf (a session or a state) is the one place `activate`
-// actually launches something (see TestsPanel.vue). Purely presentational:
+// actually launches something (see ProjectAutoPanel.vue). Purely presentational:
 // this component never calls an API itself, only emits.
 const props = defineProps({
   status: {

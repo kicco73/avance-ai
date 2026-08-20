@@ -19,9 +19,9 @@
 // reach EditProjectView.vue directly — this view isn't involved in any
 // of them).
 import { computed, ref } from 'vue'
-import InspectorGraph from './inspector/InspectorGraph.vue'
-import CodeEditor from './CodeEditor.vue'
-import DocInfoButton from './DocInfoButton.vue'
+import InspectorGraph from '../../inspector/InspectorGraph.vue'
+import CodeEditor from '../../CodeEditor.vue'
+import DocInfoButton from '../../DocInfoButton.vue'
 
 const props = defineProps({
   projectName: { type: String, required: true },
@@ -57,6 +57,12 @@ async function refresh(active) {
 async function reloadCode() {
   await codeEditorRef.value?.reload()
 }
+// Same as reloadCode, under the name EditProjectView.vue's own
+// activeEditor()-based refresh (see its own refreshActiveEditorHistory)
+// calls uniformly across every editor kind — index.yml has no undo/redo
+// state of its own beyond the code buffer's, so there's nothing else here
+// for a plain "re-pull my own can_undo/can_redo" reload to touch.
+const reload = reloadCode
 
 function stateElementFor(stateKey) { return graphRef.value?.stateElementFor(stateKey) ?? null }
 function actionsForState(stateKey) { return graphRef.value?.actionsForState(stateKey) ?? [] }
@@ -95,7 +101,7 @@ function undo() { return codeEditorRef.value?.undo() }
 function redo() { return codeEditorRef.value?.redo() }
 
 defineExpose({
-  loadGraph, resize, fit, refresh, reloadCode, jumpToLine, stateElementFor, actionsForState,
+  loadGraph, resize, fit, refresh, reloadCode, reload, jumpToLine, stateElementFor, actionsForState,
   content, isDirty, saving, save, discard, undo, redo
 })
 </script>
@@ -121,13 +127,13 @@ defineExpose({
           title="Undo"
           :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.canUndo"
           @click="codeEditorRef?.undo()"
-        >↶</button>
+        >↺</button>
         <button
           class="undo-redo-btn"
           title="Redo"
           :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.canRedo"
           @click="codeEditorRef?.redo()"
-        >↷</button>
+        >↻</button>
         <button v-if="segment === 'graph'" class="fit-graph-btn" title="Fit graph to view" @click="resize(); fit()">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
             <path d="M9 3H5a2 2 0 0 0-2 2v4h2V5h4V3zm10 0h-4v2h4v4h2V5a2 2 0 0 0-2-2zM5 15H3v4a2 2 0 0 0 2 2h4v-2H5v-4zm14 4h-4v2h4a2 2 0 0 0 2-2v-4h-2v4z" />

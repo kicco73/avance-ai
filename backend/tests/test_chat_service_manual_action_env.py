@@ -59,6 +59,9 @@ class FakeProjectService:
     def get_active_project_name(self) -> str:
         return PROJECT_NAME
 
+    def get_project_availability(self, project_name: str):
+        return (False, None)
+
     def apply_manual_action(self, action_name: str, session_id: int):
         automaton, state = self.get_active_automaton_and_state()
         action = automaton.move(state.key, action_name)

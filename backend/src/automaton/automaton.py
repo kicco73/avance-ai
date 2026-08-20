@@ -96,6 +96,23 @@ class Signal:
     ui_description: str | None = None
 
 
+@dataclass
+class EnvKey:
+    """One project-level `env:` declaration (parallel to `signals:`) —
+    the single source of every `env.<name>` key an action's own `env:`
+    field is allowed to write to (see automaton_builder.py's
+    _actions_sanity_check) and every one a trigger/env expression is
+    allowed to *read* (see automaton.identifier_registry.build_registry).
+    `value`: a Python-expression source string, same mechanics/scope as
+    an action's own env: expression (see Action.env's own docstring) —
+    this key's own default, evaluated once whenever nothing has set it
+    yet. Always normalized to a string at build time, exactly like
+    Action.env's own values (see automaton_builder.py's _build_env_key)."""
+    name: str
+    value: str = ""
+    ui_description: str | None = None
+
+
 # Functional syntax (not the class form the other Payload types use):
 # "on-enter" isn't a valid Python identifier, so a class body couldn't
 # declare it — see Automaton.get_state_payload, the one place this key is
@@ -127,12 +144,32 @@ class SignalPayload(TypedDict):
     attachments: dict[str, MemoryArchive]
     error: bool | None
 
+class EnvKeyPayload(TypedDict):
+    name: str
+    ui_description: str | None
+    value: str
+
 # The reserved namespaces a trigger/env expression resolves against (see
 # tracking.evaluation_scope.EvaluationScopeBuilder) — every top-level
 # `<namespace>.<attr>` access in an expression's own AST is one of these.
 # A core metric name (see metrics_framework.metric_names) stays a bare,
-# unnamespaced identifier — untouched by this set.
-RESERVED_NAMESPACES = ("signal", "env", "system", "session", "metric")
+# unnamespaced identifier — untouched by this set. `automaton` (see
+# trigger_automaton_project_refs below) is listed here too, purely so
+# trigger_bare_names excludes its own root identifier from "undefined
+# bare name" candidates — it's deliberately never given an entry in
+# _NAMESPACE_PATHS/NESTED_NAMESPACES below, since automaton.<project>.
+# state/env.<key> is a dynamic, per-project chain (the project name is
+# never a fixed literal the way "metric" is for session.metric) that
+# _namespace_path_of's own static-tuple matching can't express. That's
+# also why _validate_namespaced_expression (automaton_builder.py) never
+# flags an automaton.* reference as an unknown identifier either way:
+# trigger_namespace_refs finds no entry for it (see _namespace_path_of
+# returning None for anything whose namespace path isn't literally in
+# _NAMESPACE_PATHS), so there's simply nothing to validate against a
+# registry — only automaton_builder.py's own dedicated self-loop-only
+# check (see trigger_automaton_project_refs) ever inspects an automaton.*
+# reference at all.
+RESERVED_NAMESPACES = ("signal", "env", "system", "session", "metric", "automaton")
 
 # Dotted sub-namespaces nested one level under a reserved namespace above
 # — today just `session.metric` (see tracking.session_facts.SessionFacts.
@@ -211,6 +248,27 @@ def trigger_bare_names(expression: str) -> set[str]:
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id in RESERVED_NAMESPACES
     }
     return {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)} - namespace_bases
+
+
+def trigger_automaton_project_refs(expression: str) -> set[str]:
+    """Every project name referenced as `automaton.<project>...` in
+    `expression` — e.g. "automaton.otherProject.state == 'x'" ->
+    {"otherProject"}, "automaton.a.env.k1 and automaton.b.state" ->
+    {"a", "b"}. Unlike trigger_signal_names/trigger_namespace_refs (see
+    RESERVED_NAMESPACES' own docstring on why `automaton` never gets a
+    _NAMESPACE_PATHS entry), this walks *every* Attribute node, not just
+    maximal ones — an automaton.<project> reference is meaningful
+    wherever it appears in a chain (automaton.<project>.state as much as
+    automaton.<project>.env.<key>), so nothing here needs "longest chain
+    wins" disambiguation the way a fixed-depth namespace does. Used by
+    automaton_builder.py's own build-time self-loop-only check, and by
+    project_service.py's own reverse-index build (which project(s) does
+    this project's own self-loop actions observe)."""
+    tree = ast.parse(expression, mode="eval").body
+    return {
+        node.attr for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "automaton"
+    }
 
 
 def trigger_namespace_refs(expression: str) -> dict[str, set[str]]:
@@ -353,6 +411,13 @@ class Automaton(object):
         attachments: dict[str, MemoryArchive],
         general_attachments: dict[str, MemoryArchive],
         autotracking_on_ai_message: bool,
+        # Defaults to [] rather than being required: every direct
+        # (non-AutomatonBuilder) construction site across the test suite
+        # predates this field and has no declared env: keys of its own to
+        # report — only AutomatonBuilder.build (the one place a project's
+        # own declared env: section is ever actually parsed) passes a
+        # real list.
+        env_keys: list[EnvKey] | None = None,
     ):
         # Replaces the old bare `initial_state: str` field: same
         # information (its .target), but as a real action so it can carry
@@ -362,6 +427,7 @@ class Automaton(object):
         self.states = states
         self.general_prompt = general_prompt
         self.signals = signals
+        self.env_keys = env_keys or []
         self.general_attachments = general_attachments
         self.attachments = attachments
         # The two auto-tracking modes (before/after the AI reply) are
@@ -416,6 +482,17 @@ class Automaton(object):
             "definition": signal.definition,
             "attachments": {},
             "error": None,
+        }
+
+    @staticmethod
+    def get_env_key_payload(env_key: EnvKey) -> EnvKeyPayload:
+        """Serializes `env_key` into the plain-dict shape every
+        env-key-reporting endpoint sends to the frontend — mirrors
+        get_signal_payload's own role for Signal."""
+        return {
+            "name": env_key.name,
+            "ui_description": env_key.ui_description,
+            "value": env_key.value,
         }
 
     @staticmethod

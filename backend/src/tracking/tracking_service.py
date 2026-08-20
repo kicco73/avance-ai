@@ -11,6 +11,7 @@ from session import Session
 from db import Db
 from metrics.metric_service import MetricService
 
+from .automaton_namespace import AutomatonNamespace
 from .errors import TrackingServiceError
 from .turn_callbacks import OnMetadata
 from .env import PersistedEnv
@@ -19,6 +20,7 @@ from .session_facts import SessionFacts
 from .system_facts import SystemFacts
 from .definitions import Signals
 from .session_import import SessionImportManager
+from .session_export import SessionExportManager
 from .tracking_processor import UserVariables
 from .tracking_processor_ai import TrackingProcessorAfterAiMessage
 from .tracking_processor_user import TrackingProcessorAfterUserMessage
@@ -41,6 +43,7 @@ class TrackingService(object):
 		self._project_service = project_service
 		self._metrics = metrics_service
 		self._session_import_manager = SessionImportManager(db)
+		self._session_export_manager = SessionExportManager(db)
 		self.auto_tracking_enabled = True
 
 	def import_session(self, username: str, project_name: str, text: str, title: str | None = None) -> int:
@@ -48,6 +51,24 @@ class TrackingService(object):
 			return self._session_import_manager.import_transcript(username, project_name, text, title=title)
 		except ValueError as exc:
 			raise TrackingServiceError(str(exc), status_code=HTTPStatus.BAD_REQUEST) from exc
+
+	def import_session_json(self, username: str, project_name: str, session_data: dict) -> int:
+		"""The "Label sessions" view's own JSON upload (see SessionImport
+		Manager.import_session_json/session_export.py's own export shape)
+		— same "malformed input is a 400, never a 500" convention as
+		import_session above, just a wider exception set: a hand-edited or
+		corrupted JSON file can fail in more ways than a plain-text
+		transcript can (a missing 'role'/'text' key, `messages` not even a
+		list, ...)."""
+		try:
+			return self._session_import_manager.import_session_json(username, project_name, session_data)
+		except (ValueError, KeyError, TypeError) as exc:
+			raise TrackingServiceError(f"Invalid session data: {exc}", status_code=HTTPStatus.BAD_REQUEST) from exc
+
+	def export_sessions(self, username: str, project_name: str) -> list[dict]:
+		"""The "Label sessions" view's own "Download all" button — see
+		SessionExportManager.export_sessions."""
+		return self._session_export_manager.export_sessions(username, project_name)
 
 	@property
 	def automaton(self) -> Automaton:
@@ -218,6 +239,48 @@ class TrackingService(object):
 		self._db.set_signal_expected_values(row["id"], expected_values)
 		return self._finalize_annotation_write(row["id"], message_id)
 
+	def _require_commentable_message(self, message_id: int) -> dict:
+		"""Resolves message_id to its own Tracking row — unlike
+		_require_annotatable_message above, never raises: a comment is a
+		free-text note a domain expert can leave on *any* chat line, not
+		just this session's own evaluation points, so a message with
+		nothing else to annotate still gets a bare row here (old_state/
+		action/new_state all None — same shape
+		_materialize_imported_session_row already writes for the same
+		reason) purely to hold the comment. Same "materialize lazily"
+		idea as _require_annotatable_message, just without that one's
+		evaluation-point gate."""
+		row = self._db.get_signal_row_by_message(message_id)
+		if row is not None:
+			return row
+		message = self._db.get_message(message_id)
+		assert message is not None  # ownership/existence already checked by ChatService._require_own_message
+		self._db.save_transition(
+			None, None, None, message["session_id"], transition_log_level="INFO", message_id=message_id
+		)
+		row = self._db.get_signal_row_by_message(message_id)
+		assert row is not None  # just written above, under the same message
+		return row
+
+	def set_message_comment(self, message_id: int, comment: str | None) -> dict | None:
+		"""Sets (comment given) or clears (None/empty) the expert-left
+		free-text comment for message_id — see Tracking.comment's own
+		docstring. Unlike set_message_expected_state/
+		set_message_expected_signals, this never deletes the row again on
+		clearing: a bare row _require_commentable_message materialized
+		just for this comment is left in place afterward rather than
+		cleaned up (same as an imported session's own materialized row —
+		see _finalize_annotation_write, which only ever cleans up the
+		session-start bootstrap row specifically), since there's no safe
+		way here to tell "nothing else was ever written to this row"
+		apart from "no comment" without risking deleting a row another
+		write (e.g. set_env) is quietly relying on. Returns the updated
+		row."""
+		comment = comment.strip() if comment else None
+		row = self._require_commentable_message(message_id)
+		self._db.set_signal_comment(row["id"], comment or None)
+		return self._db.get_signal_row_by_message(message_id)
+
 	def clear_session_annotations(self, session_id: int) -> None:
 		"""Clears every expert annotation (expected_state and
 		expected_values alike) across session_id's own Tracking rows in
@@ -253,7 +316,8 @@ class TrackingService(object):
 		env = PersistedEnv(self._db, get_username=get_username, get_active_project_name=get_active_project_name)
 		system_facts = SystemFacts()
 		session_facts = SessionFacts(self._db, get_username=get_username, get_active_project_name=get_active_project_name)
-		scope_builder = EvaluationScopeBuilder(env, self._metrics, system_facts, session_facts)
+		automaton_namespace = AutomatonNamespace(self._db, self._project_service, get_username)
+		scope_builder = EvaluationScopeBuilder(env, self._metrics, system_facts, session_facts, automaton_namespace)
 
 		def on_metadata_sync_to_async(key: str, value: Any):
 			if on_metadata:

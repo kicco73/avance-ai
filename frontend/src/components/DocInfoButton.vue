@@ -2,11 +2,10 @@
 // A "(?)" button that opens a dialog rendering one of backend/src/docs'
 // fixed reference docs (see api.js's getDoc/controller.py's DOC_FILES) —
 // reused wherever a view wants to link to its own piece of documentation
-// (EditProjectView.vue's own, next to Save; the Inspector's Metrics/
-// Performance tabs) instead of duplicating the content into the
-// frontend bundle. Fetched lazily, once, the first time it's opened —
-// never on mount, since most of these dialogs are never opened at all
-// in a given session.
+// (EditProjectView.vue's own, next to Save; the Inspector's Metrics tab)
+// instead of duplicating the content into the frontend bundle. Fetched
+// lazily, once, the first time it's opened — never on mount, since most
+// of these dialogs are never opened at all in a given session.
 import { ref } from 'vue'
 import { getDoc } from '../api.js'
 import { renderMarkdown } from '../markdown.js'

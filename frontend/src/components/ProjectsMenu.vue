@@ -9,17 +9,17 @@ const emit = defineEmits([
   'new-project',
   'upload',
   'download',
-  'delete',
-  'download-backup',
-  'restore-backup'
+  'delete'
 ])
 
 const open = ref(false)
 const loading = ref(false)
+// {name, is_paused}[] (see ProjectService.list_projects, Prompt 7) — the
+// status dot next to each project's own name (see the template below)
+// reads is_paused directly off this, never recomputed client-side.
 const projects = ref([])
 const activeProjectName = ref(null)
 const rootEl = ref(null)
-const restoreInput = ref(null)
 
 const noProjectsAvailable = computed(() => projects.value.length === 0)
 const editDisabled = computed(() => noProjectsAvailable.value)
@@ -77,23 +77,6 @@ function selectNewProject() {
 function selectUpload() {
   open.value = false
   emit('upload')
-}
-
-function selectDownloadBackup() {
-  open.value = false
-  emit('download-backup')
-}
-
-function selectRestoreBackup() {
-  open.value = false
-  restoreInput.value?.click()
-}
-
-function handleRestoreFileChange(event) {
-  const file = event.target.files?.[0]
-  event.target.value = ''
-  if (!file) return
-  emit('restore-backup', file)
 }
 
 function selectDelete() {
@@ -174,24 +157,6 @@ onBeforeUnmount(() => {
 
         <li>
           <button
-            class="projects-item projects-backup-item"
-            @click="selectDownloadBackup"
-          >
-            Download backup
-          </button>
-        </li>
-
-        <li>
-          <button
-            class="projects-item projects-restore-item"
-            @click="selectRestoreBackup"
-          >
-            Restore backup...
-          </button>
-        </li>
-
-        <li>
-          <button
             class="projects-item projects-delete-item"
             :disabled="deleteDisabled"
             @click="selectDelete"
@@ -202,30 +167,27 @@ onBeforeUnmount(() => {
 
         <!-- Dynamic projects at the bottom -->
         <li
-          v-for="name in projects"
-          :key="name"
+          v-for="project in projects"
+          :key="project.name"
           class="project-entry"
         >
           <button
             class="projects-item"
-            @click="selectProject(name)"
+            @click="selectProject(project.name)"
           >
             <span class="projects-item-check">
-              {{ name === activeProjectName ? '✓' : '' }}
+              {{ project.name === activeProjectName ? '✓' : '' }}
             </span>
-            {{ name }}
+            <span
+              class="projects-item-status"
+              :class="project.is_paused ? 'projects-item-status-paused' : 'projects-item-status-running'"
+              :title="project.is_paused ? 'Paused' : 'Running'"
+            ></span>
+            {{ project.name }}
           </button>
         </li>
       </ul>
     </div>
-
-    <input
-      ref="restoreInput"
-      type="file"
-      accept=".sqlite"
-      class="restore-backup-input"
-      @change="handleRestoreFileChange"
-    />
   </div>
 </template>
 
@@ -315,15 +277,6 @@ onBeforeUnmount(() => {
   color: #4a6fa5;
 }
 
-.projects-backup-item {
-  border-top: 1px solid #eee;
-  color: #4a6fa5;
-}
-
-.projects-restore-item {
-  color: #4a6fa5;
-}
-
 .projects-delete-item {
   color: #c62828;
 }
@@ -343,7 +296,21 @@ onBeforeUnmount(() => {
   border-top: 1px solid #eee;
 }
 
-.restore-backup-input {
-  display: none;
+/* Prompt 7 — running/paused status dot, next to each project's own name. */
+.projects-item-status {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: 0.4rem;
+  border-radius: 50%;
+}
+
+.projects-item-status-running {
+  background: #2e7d32;
+}
+
+.projects-item-status-paused {
+  background: #b06a00;
 }
 </style>

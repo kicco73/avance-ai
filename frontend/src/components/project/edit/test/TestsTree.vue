@@ -1,7 +1,7 @@
 <script setup>
 // Two-level tree under one root: "Sessioni" (a leaf per annotated
 // session) and "Stati" (a leaf per real state key of the project's
-// automaton) — see TestsPanel.vue, which owns all the actual data
+// automaton) — see ProjectAutoPanel.vue, which owns all the actual data
 // fetching/launching/polling. This component only renders and emits;
 // it never calls an API itself.
 //

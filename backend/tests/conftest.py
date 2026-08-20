@@ -11,6 +11,7 @@ from chat.session_manager import ChatSessionManager
 from controller import AvanceController
 from db import Db
 from error_handlers import register_error_handlers
+from events.dispatcher import _reset_for_tests as _reset_dispatcher_for_tests
 from jobs import InMemoryJobSink, JobQueue, PersistedJobSink
 from metrics.benchmark_run_service import BenchmarkRunService
 from metrics.metric_service import MetricService
@@ -19,6 +20,18 @@ from session import Session
 from tracking.tracking_service import TrackingService
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
+
+
+@pytest.fixture(autouse=True)
+def _reset_dispatcher():
+    """events.dispatcher's own _subscribers dict is a true process-global
+    (see its own module docstring) — cleared before *and* after every
+    test so a subscription one test registers (e.g. to assert an event
+    got published) never leaks into an unrelated one, regardless of test
+    order."""
+    _reset_dispatcher_for_tests()
+    yield
+    _reset_dispatcher_for_tests()
 
 
 @pytest.fixture

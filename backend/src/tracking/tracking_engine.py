@@ -7,6 +7,7 @@ from typing import Any, Protocol
 from automaton.automaton import Action, Automaton, State
 from db.db import Db
 from db.models import BenchmarkRunObservation
+from events import EnvChanged, StateChanged, publish
 from tracking.env import Env
 from tracking.evaluation_scope import EvaluationScopeBuilder
 
@@ -153,7 +154,18 @@ class TrackingEngine:
         signal_values: dict,
         session_id: int,
         message_id: int | None = None,
+        *,
+        username: str | None = None,
+        project_name: str | None = None,
     ) -> int:
+        """`username`/`project_name`: whose transition this is, for
+        notify_transition/apply_action_env's own event publishing below
+        — optional (defaulting to None, meaning "don't publish") since
+        the one caller with no real user/project of its own (a benchmark
+        replay, see metrics/benchmark_processor.py) must never publish a
+        StateChanged/EnvChanged a wake-up handler could act on: a replay
+        is not a real turn, and must never affect real cross-project
+        state."""
         if action is None:
             # No transition fired — just the evaluation itself is worth
             # keeping (see db.get_latest_signal_snapshot, Tracking.values).
@@ -165,8 +177,8 @@ class TrackingEngine:
         # The full evaluated values ride along on this same row (see
         # db.py's Tracking) instead of a separate snapshot row to link to.
 
-        self.apply_action_env(automaton, action, signal_values, state.key)
-        return self._sink.save_transition(
+        self.apply_action_env(automaton, action, signal_values, state.key, username=username, project_name=project_name)
+        tracking_id = self._sink.save_transition(
             state.key,
             action.name,
             action.target,
@@ -175,8 +187,39 @@ class TrackingEngine:
             signal_values=signal_values,
             message_id=message_id,
         )
+        self.notify_transition(username, project_name, state.key, action.target)
+        return tracking_id
 
-    def apply_action_env(self, automaton: Automaton, action: Action, signal_values: dict, state_key: str) -> None:
+    @staticmethod
+    def notify_transition(
+        username: str | None, project_name: str | None, old_state: str, new_state: str
+    ) -> None:
+        """Publishes StateChanged for a *real* transition only — same
+        self-loop-excluded criterion db.tracking._latest_transition's own
+        real_only already uses for history_cutoff (old_state !=
+        new_state). Called right after save_transition, from both
+        apply_transition above (the auto-tracking path) and
+        ProjectService.apply_manual_action (which saves its own
+        transition directly, bypassing apply_transition entirely — see
+        that method's own docstring) — the two places a transition is
+        ever actually persisted. A no-op when either identity is missing
+        (see apply_transition's own docstring on why)."""
+        if username is None or project_name is None:
+            return
+        if old_state == new_state:
+            return
+        publish(StateChanged(username=username, project_name=project_name, from_state=old_state, to_state=new_state))
+
+    def apply_action_env(
+        self,
+        automaton: Automaton,
+        action: Action,
+        signal_values: dict,
+        state_key: str,
+        *,
+        username: str | None = None,
+        project_name: str | None = None,
+    ) -> None:
         """Applies `action`'s own `env:` updates to the current scope —
         shared by both the auto-tracking path (apply_transition, above)
         and ChatService.apply_manual_action's manual-action path (see
@@ -185,10 +228,15 @@ class TrackingEngine:
         and the *origin* state's own key (the one the action fired from
         — matches evaluate_triggered_action's own scoping, and is what
         merge_if_referenced's "any triggerable action leaving here"
-        check needs)."""
+        check needs). `username`/`project_name`: see apply_transition's
+        own docstring — publishes one EnvChanged per key actually
+        written, right after update_action_set."""
         if not action.env:
             return
         scope = self._scope_builder.build(automaton, state_key, signal_values)
         updates = automaton.eval_action_env(action, scope)
         if updates:
             self._env.update_action_set(updates)
+            if username is not None and project_name is not None:
+                for key, value in updates.items():
+                    publish(EnvChanged(username=username, project_name=project_name, key=key, value=value))

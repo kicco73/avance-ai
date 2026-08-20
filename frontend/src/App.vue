@@ -2,9 +2,10 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import ChatWindow from './components/chat/ChatWindow.vue'
 import StateBar from './components/StateBar.vue'
-import EditProjectView from './components/EditProjectView.vue'
-import BenchmarkProjectView from './components/BenchmarkProjectView.vue'
+import EditProjectView from './components/project/edit/EditProjectView.vue'
+import LabelProjectView from './components/project/label/LabelProjectView.vue'
 import ProjectsMenu from './components/ProjectsMenu.vue'
+import SettingsMenu from './components/SettingsMenu.vue'
 import SplashScreen from './components/SplashScreen.vue'
 import ErrorBanner from './components/ErrorBanner.vue'
 import {
@@ -27,7 +28,9 @@ import {
   loadMessages,
   loadAutoTracking,
   loadAiModels,
-  clearChatUi
+  clearChatUi,
+  projectPaused,
+  projectPausedReason
 } from './chatStore.js'
 
 const showEditProject = ref(false)
@@ -309,6 +312,8 @@ onBeforeUnmount(() => {
           @upload="triggerModelUpload"
           @download="handleModelDownload"
           @delete="handleModelDelete"
+        />
+        <SettingsMenu
           @download-backup="handleDownloadBackup"
           @restore-backup="handleRestoreBackup"
         />
@@ -325,7 +330,8 @@ onBeforeUnmount(() => {
     <ErrorBanner />
 
     <div class="app-body">
-      <SplashScreen v-if="!state?.key" variant="no-project" embedded />
+      <SplashScreen v-if="projectPaused" variant="paused" :reason="projectPausedReason" embedded />
+      <SplashScreen v-else-if="!state?.key" variant="no-project" embedded />
       <ChatWindow v-else />
     </div>
 
@@ -337,7 +343,7 @@ onBeforeUnmount(() => {
       @download="handleModelDownload"
     />
 
-    <BenchmarkProjectView
+    <LabelProjectView
       v-if="showBenchmarkProject"
       :project-name="benchmarkProjectName"
       @close="showBenchmarkProject = false"

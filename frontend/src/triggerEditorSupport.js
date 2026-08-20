@@ -123,7 +123,7 @@ export function completeIdentifiers(context, registry) {
       }
     })
     if (namespace === 'session') {
-      options.push({ label: 'metric', type: 'namespace', apply: 'metric.' })
+      options.push({ label: 'metric', type: 'namespace', apply: 'metric' })
     }
     if (!options.length) return null
     return { from, options }
@@ -144,7 +144,7 @@ export function completeIdentifiers(context, registry) {
   // would also be *stricter* than CodeMirror's own fuzzy matching,
   // silently hiding a namespace a fuzzy match would still have offered.
   const namespaces = Object.keys(registry).filter((ns) => !ns.includes('.'))
-  const options = namespaces.map((ns) => ({ label: ns, type: 'namespace', apply: `${ns}.` }))
+  const options = namespaces.map((ns) => ({ label: ns, type: 'namespace', apply: ns }))
   if (!options.length) return null
   return { from: word.from, options }
 }

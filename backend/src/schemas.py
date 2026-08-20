@@ -46,11 +46,55 @@ class ExpectedSignalsRequest(BaseModel):
     expected_values: dict[str, int | float] | None = None
 
 
+class CommentRequest(BaseModel):
+    # None (or empty/whitespace-only) clears the comment — see
+    # ChatService.set_message_comment.
+    comment: str | None = None
+
+
 class SetSessionLabeledRequest(BaseModel):
     # See ChatService.mark_session_labeled — the "Label sessions" view's
     # own "Mark done" button, a domain expert's explicit, toggleable
     # verdict on whether a session's been reviewed.
     labeled: bool
+
+
+class SetSessionTitleRequest(BaseModel):
+    # None (or empty/whitespace-only) clears it back to unset — see
+    # ChatService.set_session_title.
+    title: str | None = None
+
+
+class SessionImportMessageJson(BaseModel):
+    # See tracking.session_export.SessionExportManager's own
+    # _export_message — the exact shape "Download all" produces, and
+    # what TrackingService.import_session_json restores from. Every
+    # field past role/text is optional: only present at all on export
+    # when the message actually had a linked Tracking row.
+    role: str
+    text: str
+    timestamp: str | None = None
+    audio_text: str | None = None
+    old_state: str | None = None
+    action: str | None = None
+    new_state: str | None = None
+    values: dict[str, int | float | None] | None = None
+    expected_state: str | None = None
+    expected_values: dict[str, int | float | None] | None = None
+    comment: str | None = None
+
+
+class SessionImportJsonRequest(BaseModel):
+    # See tracking.session_export.SessionExportManager's own
+    # _export_session — one entry of the array "Download all" produces.
+    name: str | None = None
+    timestamp: str | None = None
+    datetime_end: str | None = None
+    start_state: str | None = None
+    end_state: str | None = None
+    labeled: bool = False
+    comment: str | None = None
+    messages: list[SessionImportMessageJson] = []
 
 
 class TruncateSessionRequest(BaseModel):

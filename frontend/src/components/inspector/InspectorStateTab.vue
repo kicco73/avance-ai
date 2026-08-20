@@ -4,7 +4,7 @@
 // the same read-only detail card "States" already shows, just for
 // whichever state the *shared* Graph selection resolves to (itself, or
 // the one containing a selected action — see EditProjectView.vue's own
-// stateTabElement, resolved via IndexYmlEditorView's stateElementFor).
+// stateTabElement, resolved via IndexYmlEditorPanel's stateElementFor).
 // This component owns none of that resolution itself, purely a thin
 // wrapper so the card is clickable here (see selectable below) without
 // making it clickable in "States" too.

@@ -79,7 +79,7 @@ class SessionMixin:
 
     @staticmethod
     def _chat_session_to_dict(session: ChatSession) -> dict:
-        return {'id': session.id, 'username': session.username, 'project_name': session.project_name_id, 'source': session.source, 'title': session.title, 'datetime_start': session.datetime_start, 'datetime_end': session.datetime_end, 'start_state': session.start_state, 'end_state': session.end_state, 'project_revision': session.project_revision, 'labeled': session.labeled}
+        return {'id': session.id, 'username': session.username, 'project_name': session.project_name_id, 'source': session.source, 'title': session.title, 'datetime_start': session.datetime_start, 'datetime_end': session.datetime_end, 'start_state': session.start_state, 'end_state': session.end_state, 'project_revision': session.project_revision, 'labeled': session.labeled, 'comment': session.comment}
 
     def get_chat_session(self, session_id: int) -> dict | None:
         session = ChatSession.get_or_none(ChatSession.id == session_id)
@@ -140,6 +140,20 @@ class SessionMixin:
             & (ChatSession.datetime_end.is_null(False))
             & (ChatSession.datetime_end >= cutoff)
         ).exists()
+
+    def set_session_title(self, session_id: int, title: str | None) -> None:
+        """A domain expert's own rename for a session (see the "Label
+        sessions" view's own Info tab) — the same field an imported
+        session already gets seeded from its own uploaded filename (see
+        SessionImportManager.import_transcript), just editable after the
+        fact for any session, native or imported alike."""
+        ChatSession.update(title=title).where(ChatSession.id == session_id).execute()
+
+    def set_session_comment(self, session_id: int, comment: str | None) -> None:
+        """A domain expert's own free-text note on the session as a whole
+        (see the "Label sessions" view's own Info tab) — distinct from
+        Db.set_signal_comment (Tracking.comment), which is per-message."""
+        ChatSession.update(comment=comment).where(ChatSession.id == session_id).execute()
 
     def set_session_labeled(self, session_id: int, labeled: bool) -> None:
         """The "Label sessions" view's own "Mark done" button (see

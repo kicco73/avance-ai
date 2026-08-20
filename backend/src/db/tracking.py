@@ -26,7 +26,28 @@ class TrackingMixin:
 
     def get_signals(self, session_id: int) -> list[dict]:
         rows = Tracking.select().where((Tracking.session == session_id) & Tracking.env.is_null(True) & Tracking.action_env.is_null(True)).order_by(Tracking.timestamp.asc(), Tracking.id.asc())
-        return [{'id': row.id, 'timestamp': _utc_iso(row.timestamp), 'values': row.values, 'expected_values': row.expected_values, 'expected_state': row.expected_state, 'old_state': row.old_state, 'action': row.action, 'new_state': row.new_state, 'message_id': row.message_id} for row in rows]
+        return [{'id': row.id, 'timestamp': _utc_iso(row.timestamp), 'values': row.values, 'expected_values': row.expected_values, 'expected_state': row.expected_state, 'comment': row.comment, 'old_state': row.old_state, 'action': row.action, 'new_state': row.new_state, 'message_id': row.message_id} for row in rows]
+
+    def import_tracking_row(
+        self, session_id: int, *, old_state: str | None, action: str | None, new_state: str | None,
+        values: dict | None, expected_state: str | None, expected_values: dict | None, comment: str | None,
+        message_id: int | None, timestamp: datetime | None,
+    ) -> int:
+        """Restores one exported Tracking row exactly (see tracking.
+        session_export.SessionExportManager/session_import.SessionImport
+        Manager.import_session_json) — unlike save_transition (a live
+        turn's own logging-focused write, always "now"), this is a plain
+        restore: every field, including the original timestamp, set
+        explicitly rather than derived."""
+        row = Tracking.create(
+            session=session_id, old_state=old_state, action=action, new_state=new_state,
+            values=json.dumps(values) if values is not None else None,
+            expected_state=expected_state,
+            expected_values=json.dumps(expected_values) if expected_values else None,
+            comment=comment, message=message_id,
+            **({'timestamp': timestamp} if timestamp is not None else {}),
+        )
+        return row.id
 
     def save_transition(self, old_state: str | None, action: str | None, new_state: str | None, session_id: int, transition_log_level: str, signal_values: dict | None=None, message_id: int | None=None) -> int:
         row = Tracking.create(session=session_id, old_state=old_state, action=action, new_state=new_state, values=json.dumps(signal_values) if signal_values is not None else None, message=message_id)
@@ -45,7 +66,7 @@ class TrackingMixin:
         row = Tracking.get_or_none(Tracking.message == message_id)
         if row is None:
             return None
-        return {'id': row.id, 'timestamp': _utc_iso(row.timestamp), 'values': row.values, 'expected_values': row.expected_values, 'expected_state': row.expected_state, 'old_state': row.old_state, 'action': row.action, 'new_state': row.new_state, 'message_id': row.message_id}
+        return {'id': row.id, 'timestamp': _utc_iso(row.timestamp), 'values': row.values, 'expected_values': row.expected_values, 'expected_state': row.expected_state, 'comment': row.comment, 'old_state': row.old_state, 'action': row.action, 'new_state': row.new_state, 'message_id': row.message_id}
 
     def get_session_ids_with_expected_state(self, username: str, project_name: str, state_key: str) -> set[int]:
         """Every session (of this user+project) with at least one real
@@ -81,7 +102,7 @@ class TrackingMixin:
         )
         if row is None:
             return None
-        return {'id': row.id, 'timestamp': _utc_iso(row.timestamp), 'values': row.values, 'expected_values': row.expected_values, 'expected_state': row.expected_state, 'old_state': row.old_state, 'action': row.action, 'new_state': row.new_state, 'message_id': row.message_id}
+        return {'id': row.id, 'timestamp': _utc_iso(row.timestamp), 'values': row.values, 'expected_values': row.expected_values, 'expected_state': row.expected_state, 'comment': row.comment, 'old_state': row.old_state, 'action': row.action, 'new_state': row.new_state, 'message_id': row.message_id}
 
     def set_signal_expected_state(self, signal_row_id: int, expected_state: str | None) -> None:
         Tracking.update(expected_state=expected_state).where(Tracking.id == signal_row_id).execute()
@@ -89,6 +110,9 @@ class TrackingMixin:
     def set_signal_expected_values(self, signal_row_id: int, expected_values: dict | None) -> None:
         serialized = json.dumps(expected_values) if expected_values else None
         Tracking.update(expected_values=serialized).where(Tracking.id == signal_row_id).execute()
+
+    def set_signal_comment(self, signal_row_id: int, comment: str | None) -> None:
+        Tracking.update(comment=comment).where(Tracking.id == signal_row_id).execute()
 
     def delete_signal_row(self, signal_row_id: int) -> None:
         Tracking.delete().where(Tracking.id == signal_row_id).execute()

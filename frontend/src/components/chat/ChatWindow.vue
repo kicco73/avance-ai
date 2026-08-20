@@ -44,7 +44,7 @@ import {
 // ChatSession.source) that never shows up in either one's own sessions
 // list (list_sessions/list_test_sessions both filter it out), so
 // importing from here would silently succeed server-side and then just
-// vanish from view. Only BenchmarkProjectView.vue's own dedicated
+// vanish from view. Only LabelProjectView.vue's own dedicated
 // review panel — which actually lists imported sessions — offers import
 // (it renders SessionsPanel.vue directly, with its own allow-import,
 // rather than going through this component at all).

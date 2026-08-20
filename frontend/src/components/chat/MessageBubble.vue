@@ -18,7 +18,7 @@ function renderMarkdown(text) {
 const props = defineProps({
   message: { type: Object, required: true },
   spokenTextEnabled: { type: Boolean, default: false },
-  // "Label sessions" view only (see BenchmarkProjectView.vue) — the
+  // "Label sessions" view only (see LabelProjectView.vue) — the
   // live chat never shows this.
   showTimestamp: { type: Boolean, default: false },
   // "Label sessions" view only — whether the Signals row this

@@ -21,7 +21,7 @@ const props = defineProps({
   // The Inspector's own "State"/"Actions" tab selection ({kind, data} |
   // null, see InspectorGraph.vue's own 'select' emit shape) — fed back in
   // by a caller whose selection can also change from *outside* this
-  // graph (e.g. IndexYmlEditorView.vue's own Actions-tab row click),
+  // graph (e.g. IndexYmlEditorPanel.vue's own Actions-tab row click),
   // so a selection made there still shows up highlighted here even
   // though no tap on this graph itself produced it. A tap on this graph
   // still applies the highlight immediately, synchronously, via
@@ -219,7 +219,6 @@ function renderGraph(nodes, edges) {
       // node at once (the live current state, freshly tapped) without
       // one masking the other.
       { selector: 'node.selected-element', style: { 'border-color': '#2c4d7a', 'border-width': 4, 'background-color': '#dce6f5' } },
-      { selector: 'edge.selected-element', style: { 'line-color': '#2c4d7a', 'target-arrow-color': '#2c4d7a', width: 3 } },
       // The init_action pseudo-node itself is never seen — only the edge
       // leading out of it (styled below) is, reading as an arrow with no
       // visible source.
@@ -229,6 +228,13 @@ function renderGraph(nodes, edges) {
       { selector: 'edge[?isInitEdge]', style: { 'line-color': '#2e7d32', 'target-arrow-color': '#2e7d32' } },
       { selector: 'edge.next-action', style: { 'line-color': '#2e7d32', 'target-arrow-color': '#2e7d32', width: 2.5 } },
       { selector: 'edge.fired-action', style: { 'line-color': '#ad1457', 'target-arrow-color': '#ad1457', width: 3 } },
+      // Cytoscape applies style rules in array order — last matching rule
+      // wins per property, regardless of selector complexity (unlike CSS,
+      // there's no specificity system). This has to come after the base
+      // 'edge'/'edge.next-action'/'edge.fired-action' rules above (which
+      // all set line-color/width too) or their own colors would silently
+      // win over the selection highlight on every tap.
+      { selector: 'edge.selected-element', style: { 'line-color': '#2c4d7a', 'target-arrow-color': '#2c4d7a', width: 3 } },
       { selector: 'edge[source = target]', style: { 'curve-style': 'loop', 'loop-direction': '-45deg', 'loop-sweep': '45deg' } }
     ],
     layout: { name: 'breadthfirst', directed: true, roots: layoutRoot != null ? [layoutRoot] : undefined, padding: 16, spacingFactor: 1.1 }
@@ -291,7 +297,7 @@ function applyFiredActionHighlight() {
 
 // A selected transition should open the *action* that fired it, not the
 // state it landed on — firedActionEdge (set only while a transition is
-// selected, see EditProjectView.vue/BenchmarkProjectView.vue's own
+// selected, see EditProjectView.vue/LabelProjectView.vue's own
 // firedActionEdge computed) takes priority over highlightedStateKey here.
 // Reads the edge straight off cyGraph (already carrying the same
 // PSEUDO_START_ID/isInitEdge-normalized shape handleEdgeTap hands to a
@@ -425,7 +431,7 @@ onBeforeUnmount(destroyGraph)
 .inspector-annotation-select { flex: 1; min-width: 0; padding: 0.3rem 0.5rem; border-radius: 6px; border: 1px solid #ccc; background: white; font-size: 0.82rem; color: #999; }
 /* An explicit choice matching the actual/current state — same green used
    for a "correct" transition marker in the chat timeline (see
-   BenchmarkProjectView.vue's own .benchmark-transition-row-correct). */
+   LabelProjectView.vue's own .benchmark-transition-row-correct). */
 .inspector-annotation-select-correct { border-color: #2e7d32; background: #e8f5e9; color: #333; }
 /* An explicit choice that differs from it — same red as the timeline's
    own .benchmark-transition-row-incorrect. */

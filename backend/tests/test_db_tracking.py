@@ -160,6 +160,43 @@ def test_get_signals_includes_expected_state_field(db):
     assert rows[0]["expected_state"] is None
 
 
+@pytest.mark.contract
+def test_get_signals_includes_comment_field(db):
+    """Nothing writes comment yet in this test (see Tracking.comment's
+    own docstring) — it's just always present, currently always None."""
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    db.save_signal_snapshot({"foo": 1}, session_id)
+
+    rows = db.get_signals(session_id)
+
+    assert rows[0]["comment"] is None
+
+
+@pytest.mark.regression
+def test_set_signal_comment_sets_and_clears(db):
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    signal_row_id = db.save_signal_snapshot({"foo": 1}, session_id)
+
+    db.set_signal_comment(signal_row_id, "Looks right to me.")
+    assert db.get_signals(session_id)[0]["comment"] == "Looks right to me."
+
+    db.set_signal_comment(signal_row_id, None)
+    assert db.get_signals(session_id)[0]["comment"] is None
+
+
+@pytest.mark.regression
+def test_set_signal_comment_is_visible_via_get_signal_row_by_message(db):
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+    message_id = db.save_message("user", "hi", session_id)
+    signal_row_id = db.save_signal_snapshot({"foo": 1}, session_id, message_id=message_id)
+
+    db.set_signal_comment(signal_row_id, "Flagged for review.")
+
+    row = db.get_signal_row_by_message(message_id)
+    assert row is not None
+    assert row["comment"] == "Flagged for review."
+
+
 @pytest.mark.regression
 def test_set_signal_expected_values_sets_and_clears(db):
     session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))

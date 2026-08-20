@@ -78,6 +78,9 @@ class FakeProjectService:
     def get_active_project_name(self) -> str:
         return PROJECT_NAME
 
+    def get_project_availability(self, project_name: str):
+        return (False, None)
+
 
 class FakeSchemaAiService:
     """A v2 (schema)-shaped fake — reports `signals` straight through

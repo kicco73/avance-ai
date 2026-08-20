@@ -1,15 +1,21 @@
 <script setup>
-// The "Auto" tab's own content — see EditProjectView.vue's `autoOpen`.
-// Two columns, same shape as BenchmarkProjectView's own tree+content
-// split: TestsTree on the left (Sessioni/Stati), a node's own results on
-// the right. Owns every bit of actual data fetching/launching/polling —
-// TestsTree itself stays purely presentational.
+// "Auto" mode's own content — see EditProjectView.vue's `autoOpen`. Two
+// columns, same shape as LabelProjectView's own tree+content split:
+// TestsTree on the left (Sessioni/Stati), a node's own results on the
+// right. Owns every bit of actual data fetching/launching/polling —
+// TestsTree itself stays purely presentational. Folded in from the
+// standalone TestsPanel.vue this used to just wrap (see project/test/'s
+// own docstring on where TestsTree/TestNodeButton live now) — Design/
+// Test/Auto each get a genuinely separate structure now, instead of
+// three conditionally-shown branches nested inside one shared column
+// (see EditProjectView.vue's own docstring on the layout this replaced),
+// so there was nothing left for a separate wrapper component to add.
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import TestsTree from './TestsTree.vue'
+import TestsTree from './test/TestsTree.vue'
 import {
   getBenchmarkRun, getBenchmarkRuns, getProjectStates, getStateJob, postBenchmarkRun, postStateTest
-} from '../api.js'
-import { loadSessions, sessions, sessionsLoading } from '../chatStore.js'
+} from '../../../api.js'
+import { loadSessions, sessions, sessionsLoading } from '../../../chatStore.js'
 
 const props = defineProps({
   projectName: {
@@ -176,7 +182,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="tests-panel">
+  <div class="project-auto-panel">
     <div class="tests-panel-tree">
       <div class="tests-panel-strategy">
         <label class="tests-panel-strategy-label">
@@ -262,7 +268,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.tests-panel {
+.project-auto-panel {
   flex: 1;
   display: flex;
   flex-direction: row;

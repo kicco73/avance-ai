@@ -19,12 +19,18 @@ metrics.metric_namespace.SessionMetricNamespace/UserMetricNamespace),
 same reason automaton/ has never imported tracking/ (see SYSTEM_ATTRS'
 old equivalent, automaton_builder.py's previous own copy of this same
 list, now replaced by this module). `signal`/`env` are read straight off
-a built project's own Signal/Action declarations — no new declaration, no
-second source of truth for either.
+a project's own Signal/EnvKey declarations (`signals:`/`env:`, see
+automaton_builder.py's build()) — no second source of truth for either.
+`env` used to be collected dynamically off every action's own `env:`
+field instead (whichever key *any* action happened to write to,
+project-wide) — replaced by a real declared `env:` section (parallel to
+`signals:`) so an action's own env: write can itself be validated against
+something (see automaton_builder.py's _actions_sanity_check), not just
+its reads.
 """
 from __future__ import annotations
 
-from automaton.automaton import Signal, State
+from automaton.automaton import EnvKey, Signal
 from metrics.metrics_framework import AnalyticsCalculator
 
 SYSTEM: dict[str, str] = {
@@ -63,26 +69,16 @@ SESSION_METRIC: dict[str, str] = _metric_descriptions(has_scope="one_session")
 METRIC: dict[str, str] = _metric_descriptions(has_scope="all_sessions_per_user", excludes_scope="one_session")
 
 
-def _env_keys(states: dict[str, State]) -> set[str]:
-    return {
-        env_key
-        for state in states.values()
-        for action in state.actions
-        if action.env
-        for env_key in action.env
-    }
-
-
-def build_registry(signals: list[Signal], states: dict[str, State]) -> dict[str, dict[str, str]]:
-    """`signals`/`states`: a project's own declared signals and every
-    state built so far (see automaton_builder.py's build(), which calls
-    this once both are fully assembled but before validating any
-    trigger/env: expression against it — and project_service.py's
-    get_active_identifier_registry, which calls this the same way off an
-    already-built Automaton's own .signals/.states)."""
+def build_registry(signals: list[Signal], env_keys: list[EnvKey]) -> dict[str, dict[str, str]]:
+    """`signals`/`env_keys`: a project's own declared signals and env keys
+    (see automaton_builder.py's build(), which calls this once both are
+    fully assembled but before validating any trigger/env: expression
+    against it — and project_service.py's get_active_identifier_registry,
+    which calls this the same way off an already-built Automaton's own
+    .signals/.env_keys)."""
     return {
         "signal": {signal.name: signal.ui_description for signal in signals},
-        "env": {key: "" for key in _env_keys(states)},
+        "env": {env_key.name: env_key.ui_description or "" for env_key in env_keys},
         "system": dict(SYSTEM),
         "session": dict(SESSION),
         "session.metric": dict(SESSION_METRIC),

@@ -12,7 +12,7 @@ instead of ones freshly computed this turn).
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from automaton.automaton import Automaton
 from metrics.metric_service import MetricService
@@ -21,13 +21,42 @@ from tracking.evaluator import SignalEvaluator
 from tracking.session_facts import SessionFacts
 from tracking.system_facts import SystemFacts
 
+if TYPE_CHECKING:
+    # Import guarded: tracking.automaton_namespace itself depends on
+    # project.project_service.ProjectService (to resolve a *different*
+    # project's own live state/env — see that module's own docstring),
+    # and project_service.py in turn depends on tracking.tracking_engine
+    # (for TrackingEngine.notify_transition — see ProjectService.
+    # apply_manual_action) which depends on this module. A real
+    # (non-TYPE_CHECKING) import here would close that cycle; the type
+    # itself is only ever needed for the annotation below, never at
+    # runtime (see __init__'s own `automaton_namespace is not None` —
+    # this module never constructs or introspects one).
+    from tracking.automaton_namespace import AutomatonNamespace
+
 
 class EvaluationScopeBuilder(object):
-    def __init__(self, env: Env, metrics: MetricService, system: SystemFacts, session: SessionFacts) -> None:
+    def __init__(
+        self,
+        env: Env,
+        metrics: MetricService,
+        system: SystemFacts,
+        session: SessionFacts,
+        automaton_namespace: "AutomatonNamespace | None" = None,
+    ) -> None:
         self._env = env
         self._metrics = metrics
         self._system = system
         self._session = session
+        # Optional (see __init__'s own TYPE_CHECKING-guarded import
+        # above) — every existing construction site (benchmark_run_
+        # service.py, every test) omits it, meaning a benchmark replay's
+        # own scope simply has no "automaton" namespace at all: an
+        # automaton.* reference there fails to resolve (caught by
+        # Automaton._eval_trigger/eval_action_env's own generic
+        # try/except) rather than doing real cross-project work during a
+        # replay, which must never happen.
+        self._automaton_namespace = automaton_namespace
 
     def build(self, automaton: Automaton, state_key: str, raw_signal_values: dict[str, Any] | None) -> dict[str, Any]:
         """`raw_signal_values`: whatever's actually known this turn (an
@@ -61,4 +90,6 @@ class EvaluationScopeBuilder(object):
             "session": self._session,
             "metric": self._metrics.for_turn(),
         }
+        if self._automaton_namespace is not None:
+            scope["automaton"] = self._automaton_namespace
         return self._metrics.merge_if_referenced(automaton, state_key, scope)

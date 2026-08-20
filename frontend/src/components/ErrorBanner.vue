@@ -1,6 +1,6 @@
 <script setup>
 // The shared error strip — one instance per screen (App.vue for the main
-// page, EditProjectView.vue/BenchmarkProjectView.vue for their own
+// page, EditProjectView.vue/LabelProjectView.vue for their own
 // full-screen overlays, SplashScreen.vue for the boot-failed state),
 // each mounted immediately below that screen's own toolbar. Every
 // apiFetch failure (see api.js) lands in the same errorStore.js regardless
@@ -8,7 +8,7 @@
 // to render it — no props, no per-screen copy of this markup to keep in
 // sync.
 import { onUnmounted, ref, watch } from 'vue'
-import { clearApiError, errorDetail, errorMessage } from '../errorStore.js'
+import { clearApiError, errorDetail, errorMessage, errorSeverity } from '../errorStore.js'
 
 const showDetail = ref(false)
 
@@ -16,12 +16,29 @@ const showDetail = ref(false)
 // detail from a previous, unrelated failure would otherwise linger open.
 // It also restarts the auto-dismiss timer below — each error gets its
 // own full 10s, not whatever was left over from the one it replaced.
+// A 'warning' (see errorStore.js's own setApiWarning — a project-
+// availability condition, not a transient request failure) never
+// auto-dismisses at all: it stays until the user closes it or the
+// condition that caused it resolves on its own (see EditProjectView.vue/
+// App.vue, both of which clear it themselves once whatever they warned
+// about is no longer true).
 const AUTO_DISMISS_MS = 10000
 let dismissTimer = null
-watch(errorMessage, (message) => {
+watch([errorMessage, errorSeverity], ([message, severity]) => {
   showDetail.value = false
   if (dismissTimer) clearTimeout(dismissTimer)
-  dismissTimer = message ? setTimeout(clearApiError, AUTO_DISMISS_MS) : null
+  dismissTimer = message && severity !== 'warning' ? setTimeout(clearApiError, AUTO_DISMISS_MS) : null
+})
+
+// Opening the detail means the user is actively reading it — auto-
+// dismissing out from under them would be jarring, so this permanently
+// cancels the timer for this error (the watch above still re-arms a
+// fresh one for whatever error replaces it next).
+watch(showDetail, (open) => {
+  if (open && dismissTimer) {
+    clearTimeout(dismissTimer)
+    dismissTimer = null
+  }
 })
 onUnmounted(() => {
   if (dismissTimer) clearTimeout(dismissTimer)
@@ -30,7 +47,7 @@ onUnmounted(() => {
 
 <template>
   <Transition name="error-banner-collapse">
-    <div v-if="errorMessage" class="error-banner-wrap">
+    <div v-if="errorMessage" class="error-banner-wrap" :class="{ 'error-banner-wrap-warning': errorSeverity === 'warning' }">
       <div class="error-banner-row">
         <p class="error-banner-message">{{ errorMessage }}</p>
         <button
@@ -119,5 +136,36 @@ onUnmounted(() => {
   white-space: pre-wrap;
   max-height: 200px;
   overflow-y: auto;
+}
+
+/* severity: 'warning' (see errorStore.js) — amber instead of red, same
+   #b06a00 TestChat.vue's own "Dev mode" toggle already uses for "this
+   isn't a failure, it's a state you should know about" styling. */
+.error-banner-wrap-warning .error-banner-row {
+  background: #fff4e0;
+  border-bottom-color: #f0d9a8;
+}
+
+.error-banner-wrap-warning .error-banner-message {
+  color: #b06a00;
+}
+
+.error-banner-wrap-warning .error-banner-details-btn {
+  border-color: #b06a00;
+  color: #b06a00;
+}
+
+.error-banner-wrap-warning .error-banner-close-btn {
+  color: #b06a00;
+}
+
+.error-banner-wrap-warning .error-banner-close-btn:hover {
+  background: rgba(176, 106, 0, 0.12);
+}
+
+.error-banner-wrap-warning .error-banner-detail {
+  background: #fff4e0;
+  border-bottom-color: #f0d9a8;
+  color: #7a4f00;
 }
 </style>

@@ -26,7 +26,9 @@ describe('completeIdentifiers', () => {
     )
     const signalOption = result.options.find((o) => o.label === 'signal')
     expect(signalOption.type).toBe('namespace')
-    expect(signalOption.apply).toBe('signal.')
+    // No trailing "." — completing a namespace name shouldn't force the
+    // user into typing on that field before they can look elsewhere.
+    expect(signalOption.apply).toBe('signal')
   })
 
   it('suggests every top-level namespace on an explicit empty request', () => {
@@ -93,7 +95,7 @@ describe('completeIdentifiers', () => {
     expect(labels).toContain('metric')
     const metricOption = result.options.find((o) => o.label === 'metric')
     expect(metricOption.type).toBe('namespace')
-    expect(metricOption.apply).toBe('metric.')
+    expect(metricOption.apply).toBe('metric')
   })
 
   it('returns null when the dotted namespace is not a real one in the registry', () => {

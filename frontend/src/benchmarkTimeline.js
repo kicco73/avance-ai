@@ -1,4 +1,4 @@
-// Pure, framework-agnostic timeline/signal logic for BenchmarkProjectView.vue
+// Pure, framework-agnostic timeline/signal logic for LabelProjectView.vue
 // — extracted so the bugs each function exists to prevent (see their own
 // docstrings; found and fixed by hand this session) have a real,
 // repo-resident regression test instead of only ever having been
@@ -210,7 +210,7 @@ export function syntheticSessionStartEntry(signalsLog, rawMessages, sessionStart
 // different case: `includeSelfLoops` (EditProjectView.vue's own live
 // chat, where the reviewer wants to see every action actually fire, not
 // just the ones that moved somewhere) includes it unconditionally, same
-// as an annotated one already was for BenchmarkProjectView.vue's
+// as an annotated one already was for LabelProjectView.vue's
 // "Label sessions" review (unannotated ones stay excluded there, by
 // omitting this flag — self-loops the model already didn't get flagged
 // on aren't worth the clutter for that view's own purpose).
@@ -315,6 +315,17 @@ export function messageHasAnnotatedSignals(message, signalsLog) {
   } catch {
     return false
   }
+}
+
+// A message's own expert-left free-text comment (see Signals.comment),
+// or null if none — drives MessageBubble.vue's comment icon (filled vs
+// outline) and pre-fills its popover. Independent of
+// messageHasAnnotatedSignals above (a different Tracking field
+// entirely) and, unlike it, never gated on the row actually being an
+// "evaluation point" — see TrackingService.set_message_comment.
+export function commentForMessage(message, signalsLog) {
+  const row = signalsLog.find((s) => s.message_id === message.id)
+  return row?.comment || null
 }
 
 // The state key the Inspector (every tab alike — the Graph tab's own

@@ -1,6 +1,6 @@
 <script setup>
 // Generic shell — header, tab bar, body — for whatever tabs the caller
-// hands it: BenchmarkProjectView.vue and EditProjectView.vue each decide
+// hands it: LabelProjectView.vue and EditProjectView.vue each decide
 // their own set/order/count of tabs (which used to live here as
 // showEnvTab/showPerformanceTab boolean props, one hardcoded component
 // per tab) and mount them as named slots (`#tab-<id>`) instead. Every
