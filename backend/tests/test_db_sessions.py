@@ -62,7 +62,7 @@ def test_create_draft_chat_session_stamps_the_current_draft_revision_not_publish
     # session, which would be stamped with published_revision (0).
     db.ensure_project("ahead-of-published")
     db.publish_project("ahead-of-published")
-    db.save_project_file("user", "ahead-of-published", "index.yml", "states: {}\n")
+    db.save_project_file("user", "ahead-of-published", "index.yml", b"states: {}\n", "text/yaml")
 
     draft_session_id = db.create_draft_chat_session(
         username="user", project_name="ahead-of-published", start_state="start"

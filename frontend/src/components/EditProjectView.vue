@@ -13,11 +13,14 @@ import InspectorStateTab from './inspector/InspectorStateTab.vue'
 import InspectorActionsTab from './inspector/InspectorActionsTab.vue'
 import CodeEditor from './CodeEditor.vue'
 import IndexYmlEditorView from './IndexYmlEditorView.vue'
+import IndexCssEditorView from './IndexCssEditorView.vue'
 import TestsPanel from './TestsPanel.vue'
 import { useLeaveConfirmation } from '../composables/useLeaveConfirmation.js'
 import {
   getProjectFiles,
   putProjectFile,
+  putProjectFileBinary,
+  projectFileContentUrl,
   deleteProjectFile,
   clearProjectHistory,
   getSignals,
@@ -75,7 +78,18 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'saved', 'download'])
 
-const UPLOADABLE_PATTERN = /\.(txt|ya?ml)$/i
+// "New file" (handleNewFile below) only ever makes sense for a blank text
+// file — an image has to come from an actual upload.
+const TEXT_CREATABLE_PATTERN = /\.(txt|ya?ml|css)$/i
+// Upload (handleUploadFile below, and the file explorer's own hidden
+// <input accept>) additionally allows every image extension the backend
+// whitelists (see project_service.py's IMAGE_EXTENSIONS).
+const IMAGE_PATTERN = /\.(png|jpe?g|gif|webp|svg)$/i
+const UPLOADABLE_PATTERN = /\.(txt|ya?ml|css|png|jpe?g|gif|webp|svg)$/i
+// Mirrors project_service.py's own MAX_IMAGE_UPLOAD_BYTES — checked here
+// purely for immediate feedback; the backend enforces this authoritatively
+// regardless.
+const MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024
 
 function lineIndent(line) {
   const m = line.match(/^[ \t]*/)
@@ -224,9 +238,17 @@ const uploadInput = ref(null)
 // the closest thing this view has to the old shared isDirty ref).
 const codeEditorRef = ref(null)
 const indexYmlEditorRef = ref(null)
-const activeEditorIsDirty = computed(() =>
-  currentFileName.value === 'index.yml' ? (indexYmlEditorRef.value?.isDirty ?? false) : (codeEditorRef.value?.isDirty ?? false)
-)
+const indexCssEditorRef = ref(null)
+// An image has no editor at all (see the file explorer's own <img>
+// preview branch below) — never dirty, nothing for activeEditor() to
+// save/discard.
+const currentFileIsImage = computed(() => IMAGE_PATTERN.test(currentFileName.value ?? ''))
+const activeEditorIsDirty = computed(() => {
+  if (currentFileName.value === 'index.yml') return indexYmlEditorRef.value?.isDirty ?? false
+  if (currentFileName.value === 'index.css') return indexCssEditorRef.value?.isDirty ?? false
+  if (currentFileIsImage.value) return false
+  return codeEditorRef.value?.isDirty ?? false
+})
 
 // Inspect panel: the shared Inspector component (see Inspector.vue) shows
 // the last-saved project's state graph, its signal definitions, and the
@@ -591,12 +613,21 @@ const autoOpen = computed(() => mode.value === 'auto')
 // chatStore.js's loadMessages/handleReset, both of which read
 // testModeProjectName internally now), leaving currentSessionId null;
 // this is what lets this view's own embedded chat still work then,
-// without the main app's live chat ever gaining the same ability. A
-// no-op once a session already exists (e.g. a published project's own
-// already-successful main-app bootstrap) — ensureSession itself already
-// just touches/returns whichever one that is.
+// without the main app's live chat ever gaining the same ability.
+//
+// Always calls loadMessages(), never guarded on "a session already
+// exists" — that used to short-circuit here, but currentSessionId being
+// non-null doesn't mean it's *this* mode's own session: a published
+// project's main-app bootstrap already leaves a real native session in
+// place, and skipping the call then left Test mode silently reusing that
+// native session's id instead of ever resolving its own draft one (its
+// pinned revision, wrong pool entirely — e.g. the embedded chat's own
+// index.css skin then resolves against the native session's own frozen
+// revision, not the live draft). loadMessages()/ensureSession() already
+// read testModeProjectName (set right before this call, see setMode)
+// to fetch the correct pool either way, and are cheap/idempotent — no
+// harm re-touching an already-correct test session.
 async function ensureDraftChatSession() {
-  if (currentSessionId.value != null) return
   await loadMessages()
 }
 
@@ -634,7 +665,10 @@ const explorerWidth = ref(220)
 let dragTarget = null
 
 function activeEditor() {
-  return currentFileName.value === 'index.yml' ? indexYmlEditorRef.value : codeEditorRef.value
+  if (currentFileName.value === 'index.yml') return indexYmlEditorRef.value
+  if (currentFileName.value === 'index.css') return indexCssEditorRef.value
+  if (currentFileIsImage.value) return null
+  return codeEditorRef.value
 }
 
 async function loadFiles() {
@@ -1103,14 +1137,22 @@ async function handleUploadFile(event) {
   event.target.value = '' // reset so re-selecting the same file re-fires change
   if (!file) return
   if (!UPLOADABLE_PATTERN.test(file.name)) {
-    setApiError('Only .txt or .yml/.yaml files can be uploaded.')
+    setApiError('Only .txt, .yml/.yaml, .css, or image (.png/.jpg/.gif/.webp/.svg) files can be uploaded.')
     return
   }
   uploading.value = true
   clearApiError()
   try {
-    const text = await file.text()
-    await putProjectFile(props.projectName, file.name, text)
+    if (IMAGE_PATTERN.test(file.name)) {
+      if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+        setApiError(`"${file.name}" is larger than the 5 MB upload limit.`)
+        return
+      }
+      await putProjectFileBinary(props.projectName, file.name, file)
+    } else {
+      const text = await file.text()
+      await putProjectFile(props.projectName, file.name, text)
+    }
     await loadFiles()
     await selectFile(file.name)
   } catch {
@@ -1121,17 +1163,18 @@ async function handleUploadFile(event) {
 }
 
 async function handleNewFile() {
-  // .yml/.yaml is technically accepted (see UPLOADABLE_PATTERN) but never
-  // a sensible choice here — index.yml is the only YAML file the
+  // .yml/.yaml is technically accepted (see TEXT_CREATABLE_PATTERN) but
+  // never a sensible choice here — index.yml is the only YAML file the
   // automaton itself ever reads, so a second one could only ever be an
   // inert attachment — the example below steers toward what an
-  // attachment is actually for instead.
+  // attachment is actually for instead. Images aren't creatable this way
+  // at all (see handleUploadFile) — a blank image makes no sense.
   const rawName = window.prompt('New file name (e.g. notes.txt):')
   if (rawName === null) return // cancelled
   const name = rawName.trim()
   if (!name) return
-  if (!UPLOADABLE_PATTERN.test(name)) {
-    setApiError('Only .txt or .yml/.yaml files can be created.')
+  if (!TEXT_CREATABLE_PATTERN.test(name)) {
+    setApiError('Only .txt, .yml/.yaml, or .css files can be created.')
     return
   }
   if (files.value.includes(name)) {
@@ -1440,7 +1483,7 @@ onBeforeUnmount(() => {
               <input
                 ref="uploadInput"
                 type="file"
-                accept=".txt,.yml,.yaml"
+                accept=".txt,.yml,.yaml,.css,.png,.jpg,.jpeg,.gif,.webp,.svg"
                 class="file-explorer-upload-input"
                 @change="handleUploadFile"
               />
@@ -1496,7 +1539,21 @@ onBeforeUnmount(() => {
                 @select="selectedGraphElement = $event"
                 @saved="handleFileSaved"
               />
-              <div v-if="currentFileName !== 'index.yml'" class="edit-project-editor-attachment">
+              <IndexCssEditorView
+                v-show="currentFileName === 'index.css'"
+                ref="indexCssEditorRef"
+                :project-name="projectName"
+                @saved="handleFileSaved"
+              />
+              <div v-if="currentFileIsImage" class="edit-project-editor-attachment">
+                <div class="edit-project-editor-toolbar">
+                  <span class="edit-project-editor-filename">{{ currentFileName }}</span>
+                </div>
+                <div class="edit-project-editor-content edit-project-editor-image">
+                  <img :key="currentFileName" :src="projectFileContentUrl(projectName, currentFileName)" :alt="currentFileName" />
+                </div>
+              </div>
+              <div v-else-if="currentFileName !== 'index.yml' && currentFileName !== 'index.css'" class="edit-project-editor-attachment">
                 <div class="edit-project-editor-toolbar">
                   <span class="edit-project-editor-filename">{{ currentFileName }}</span>
                   <div class="edit-project-editor-toolbar-actions">
@@ -2243,6 +2300,19 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   display: flex;
+}
+
+.edit-project-editor-image {
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  background: repeating-conic-gradient(#f0f0f0 0% 25%, #fafafa 0% 50%) 50% / 20px 20px;
+}
+
+.edit-project-editor-image img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
 }
 
 .inspector-info-tab-mediatype {

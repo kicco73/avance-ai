@@ -55,7 +55,7 @@ class ProjectMixin:
             ):
                 Archive.create(
                     project_name=project_name, archive_name=archive.archive_name,
-                    revision=new_revision, content=archive.content,
+                    revision=new_revision, content=archive.content, content_type=archive.content_type,
                 )
             Project.update(revision=new_revision).where(Project.name == project_name).execute()
             # Every user's own Undo/Redo stack for this project just went
@@ -66,13 +66,21 @@ class ProjectMixin:
             History.delete().where(History.project_name == project_name).execute()
             return new_revision
 
-    def get_archive(self, project_name: str, archive_name: str, revision: int | None = None) -> str | None:
+    def get_archive(self, project_name: str, archive_name: str, revision: int | None = None) -> bytes | None:
         if revision is None:
             revision = self._current_revision(project_name)
         row = Archive.get_or_none(
             (Archive.project_name == project_name) & (Archive.archive_name == archive_name) & (Archive.revision == revision)
         )
         return row.content if row is not None else None
+
+    def get_archive_content_type(self, project_name: str, archive_name: str, revision: int | None = None) -> str | None:
+        if revision is None:
+            revision = self._current_revision(project_name)
+        row = Archive.get_or_none(
+            (Archive.project_name == project_name) & (Archive.archive_name == archive_name) & (Archive.revision == revision)
+        )
+        return row.content_type if row is not None else None
 
     def get_archives(self, project_name: str, revision: int | None = None) -> dict:
         if revision is None:
@@ -84,17 +92,21 @@ class ProjectMixin:
             )
         }
 
-    def save_project_files(self, project_name: str, files: dict[str, str]) -> None:
+    def save_project_files(self, project_name: str, files: dict[str, bytes], content_types: dict[str, str]) -> None:
         self.ensure_project(project_name)
         revision = self._ensure_draft_revision(project_name)
         for archive_name, content in files.items():
+            content_type = content_types[archive_name]
             existing = Archive.get_or_none(
                 (Archive.project_name == project_name) & (Archive.archive_name == archive_name) & (Archive.revision == revision)
             )
             if existing is None:
-                Archive.create(project_name=project_name, archive_name=archive_name, revision=revision, content=content)
+                Archive.create(
+                    project_name=project_name, archive_name=archive_name, revision=revision,
+                    content=content, content_type=content_type,
+                )
             else:
-                Archive.update(content=content).where(Archive.id == existing.id).execute()
+                Archive.update(content=content, content_type=content_type).where(Archive.id == existing.id).execute()
 
     def list_projects(self) -> list[str]:
         return [p.name for p in Project.select(Project.name)]

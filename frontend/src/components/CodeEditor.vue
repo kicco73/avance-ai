@@ -16,6 +16,7 @@ import { Compartment } from '@codemirror/state'
 import { EditorView, basicSetup } from 'codemirror'
 import { keymap } from '@codemirror/view'
 import { yaml } from '@codemirror/lang-yaml'
+import { css } from '@codemirror/lang-css'
 import { getProjectFile, putProjectFile, undoProjectFile, redoProjectFile } from '../api.js'
 
 const props = defineProps({
@@ -24,8 +25,6 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['saved'])
-
-const YAML_PATTERN = /\.ya?ml$/i
 
 const loading = ref(true)
 const saving = ref(false)
@@ -51,6 +50,11 @@ const canRedo = ref(false)
 // component, never changes without a remount), so unlike can_undo/
 // can_redo this only ever needs setting once, on load.
 const mediaType = ref(null)
+
+// The persisted Archive.content_type (see ProjectService._file_undo_redo_
+// info) — what decides CodeMirror's language mode below. Same "set once
+// on load, never again without a remount" lifetime as mediaType.
+const contentType = ref(null)
 
 let view = null
 const editableCompartment = new Compartment()
@@ -83,7 +87,8 @@ function createEditor(doc) {
       }
     ])
   ]
-  if (YAML_PATTERN.test(props.fileName)) extensions.splice(1, 0, yaml())
+  if (contentType.value === 'text/yaml') extensions.splice(1, 0, yaml())
+  else if (contentType.value === 'text/css') extensions.splice(1, 0, css())
   view = new EditorView({ doc, extensions, parent: editorHost.value })
 }
 
@@ -112,6 +117,7 @@ async function load() {
     canUndo.value = file.can_undo
     canRedo.value = file.can_redo
     mediaType.value = file.media_type
+    contentType.value = file.content_type
   } catch {
     if (token === requestToken) loading.value = false
     return
@@ -221,7 +227,7 @@ async function reload() {
   await load()
 }
 
-defineExpose({ content, isDirty, canUndo, canRedo, mediaType, loading, saving, save, discard, undo, redo, jumpToLine, reload })
+defineExpose({ content, isDirty, canUndo, canRedo, mediaType, contentType, loading, saving, save, discard, undo, redo, jumpToLine, reload })
 
 // Read-only for the duration of an in-flight save — typing over content
 // that's already mid-flight to the backend would just be silently lost

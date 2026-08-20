@@ -1,0 +1,17 @@
+
+/* Avance — index.css di esempio, progetto TTM prototype
+   Cambia solo il colore di sfondo di .chat-body in base allo stato corrente
+   (classe .state-<key> su .chat-window-shell). Nessun'altra proprietà
+   toccata: header/footer restano quelli di base. */
+ 
+.chat-body {
+  transition: background-color 0.4s ease;
+}
+ 
+.state-Precontemplation .chat-body { background-color: #f4f4f5; }
+.state-Contemplation    .chat-body { background-color: #eff6ff; }
+.state-Preparation      .chat-body { background-color: #fffbeb; }
+.state-action           .chat-body { background-color: #ecfdf5; }
+.state-Maintenance      .chat-body { background-color: #f0fdfa; }
+.state-Relapse          .chat-body { background-color: #faf5ff; }
+.state-Crisis           .chat-body { background-color: #fef2f2; }

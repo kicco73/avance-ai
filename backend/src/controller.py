@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import inspect
 from http import HTTPStatus
 from pathlib import Path
@@ -740,6 +741,32 @@ class AvanceController(object):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
+    @get("/api/projects/{project_name}/files/{file_name}/content")
+    def get_project_file_content(self, project_name: str, file_name: str, request: Request, session_id: int | None = None):
+        """Raw bytes of `file_name`'s own content, for the two callers that
+        can't use the JSON GET .../files/{file_name} above: ChatWindow.vue's
+        own index.css skin-loading fetch (styles injected directly, no JSON
+        envelope wanted) and the "Edit project" file explorer's own image
+        preview (`<img>` src — the browser fetches this itself). `session_id`
+        omitted resolves against the current draft (the editor's own case,
+        same default as the JSON route); given, resolves the same revision
+        that session's own automaton runs against (see ProjectService.
+        get_project_file_content's own docstring for the live/'test'
+        distinction). ETag'd off the content itself, so an unchanged file
+        304s on a matching If-None-Match without ever touching the body."""
+        try:
+            content, content_type = self.project_service.get_project_file_content(project_name, file_name, session_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        etag = f'"{hashlib.sha256(content).hexdigest()}"'
+        if request.headers.get("if-none-match") == etag:
+            return Response(status_code=HTTPStatus.NOT_MODIFIED, headers={"ETag": etag, "Cache-Control": "no-cache"})
+        return Response(
+            content=content, media_type=content_type, headers={"ETag": etag, "Cache-Control": "no-cache"}
+        )
+
     @post("/api/projects/{project_name}/files/{file_name}/undo")
     async def undo_project_file(self, project_name: str, file_name: str, request: Request):
         """Loads a step back into the current user's own undo history for
@@ -788,8 +815,11 @@ class AvanceController(object):
         the real one. Unlike PUT /api/projects/{project_name}, this never
         creates a new project."""
         content = await request.body()
+        content_type_header = request.headers.get("content-type")
         try:
-            result = await self.project_service.put_project_file(project_name, file_name, content, self._activate_project)
+            result = await self.project_service.put_project_file(
+                project_name, file_name, content, content_type_header, self._activate_project
+            )
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except ValueError as exc:

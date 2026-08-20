@@ -24,6 +24,7 @@ from metrics.metrics_framework.benchmark_metrics.calculator import BenchmarkCalc
 from metrics.metrics_framework.benchmark_metrics.dto import BenchmarkConfiguration, BenchmarkMetricResult
 from metrics.metrics_framework.benchmark_metrics.metrics import SignalAccuracyMetric
 from metrics.metrics_framework.benchmark_metrics.observations import BenchmarkObservationBuilder
+from project.project_service import decode_text_archives
 from tracking.env import Env, PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.session_facts import SessionFacts
@@ -96,7 +97,7 @@ class BenchmarkRunService:
         archives = self._db.get_archives(project_name)
         if not archives or 'index.yml' not in archives:
             raise ValueError(f"Project '{project_name}' does not exist or has no index.yml.")
-        return AutomatonBuilder().build(archives)
+        return AutomatonBuilder().build(decode_text_archives(archives))
 
     def _resolve_scope(self, username: str, project_name: str, session_id: int | None) -> list[int]:
         if session_id is not None:

@@ -5,8 +5,10 @@ themselves for that.
 """
 from __future__ import annotations
 
+import hashlib
 import io
 import logging
+import re
 import zipfile
 import tempfile
 from pathlib import Path
@@ -25,7 +27,88 @@ logger = logging.getLogger(__name__)
 # index.yml plus the text/plain attachment extensions from
 # AutomatonBuilder.EXTENSION_TO_MEDIA_TYPE (binary attachments like .pdf stay
 # out of scope for now).
-TEXT_EDITABLE_EXTENSIONS = {".yml", ".yaml", ".txt", ".md", ".csv"}
+TEXT_EDITABLE_EXTENSIONS = {".yml", ".yaml", ".txt", ".md", ".csv", ".css"}
+
+# Persisted Archive.content_type for each text extension — inferred from the
+# extension alone (never from the request), since a text save's own
+# Content-Type header is always the generic 'text/plain; charset=utf-8' api.js
+# sends regardless of which file it is (see putProjectFile). Unrecognized
+# text extensions (only reachable via put_project's zip-upload path, which
+# has no per-file extension whitelist of its own) fall back to 'text/plain'.
+TEXT_CONTENT_TYPE_BY_EXTENSION = {
+    ".yml": "text/yaml",
+    ".yaml": "text/yaml",
+    ".txt": "text/plain",
+    ".md": "text/markdown",
+    ".csv": "text/csv",
+    ".css": "text/css",
+}
+
+# Image attachments an index.css url(...) can reference — the opposite of
+# TEXT_EDITABLE_EXTENSIONS: never decoded, always the request's own
+# Content-Type (validated against this exact mapping, see put_project_file).
+IMAGE_CONTENT_TYPE_BY_EXTENSION = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".svg": "image/svg+xml",
+}
+IMAGE_EXTENSIONS = set(IMAGE_CONTENT_TYPE_BY_EXTENSION)
+IMAGE_CONTENT_TYPES = set(IMAGE_CONTENT_TYPE_BY_EXTENSION.values())
+
+# Everything _check_editable_file_name will let through — text (read,
+# decoded, validated as part of the project) or image (opaque bytes, only
+# ever referenced from index.css's own url(...), see _missing_css_references).
+EDITABLE_EXTENSIONS = TEXT_EDITABLE_EXTENSIONS | IMAGE_EXTENSIONS
+
+# No request-size limit exists anywhere else in this stack (nginx.conf has no
+# client_max_body_size, and no application-level limit existed before this).
+MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024
+
+
+def decode_text_archives(archives: dict[str, bytes]) -> dict[str, str | bytes]:
+    """`db.get_archives`/`db.get_archive` are bytes-native (see their own
+    docstrings) — this is the one place that turns a raw-bytes archive dict
+    back into what AutomatonBuilder.build actually expects: `str` for every
+    text file (TEXT_EDITABLE_EXTENSIONS), untouched `bytes` for an image
+    (AutomatonBuilder._convert_contents_to_archives already base64-encodes a
+    raw-bytes archive correctly on its own, see its own media_type branch —
+    only a *text* archive left undecoded would be silently wrapped wrong).
+    Shared by every caller that feeds a whole archive dict into
+    AutomatonBuilder: _load_project_at_revision, _prepare_project_update,
+    and metrics.benchmark_run_service.BenchmarkRunService._load_automaton."""
+    decoded: dict[str, str | bytes] = {}
+    for name, content in archives.items():
+        if Path(name).suffix.lower() in TEXT_EDITABLE_EXTENSIONS and isinstance(content, (bytes, bytearray)):
+            decoded[name] = content.decode("utf-8")
+        else:
+            decoded[name] = content
+    return decoded
+
+
+_CSS_URL_PATTERN = re.compile(r"url\(\s*(['\"]?)([^'\")]+)\1\s*\)", re.IGNORECASE)
+_ABSOLUTE_URL_PATTERN = re.compile(r"^(https?:)?//|^data:", re.IGNORECASE)
+
+
+def missing_css_references(css_text: str, known_archive_names: set[str]) -> list[str]:
+    """Every `url(...)` target in `css_text` that isn't one of
+    `known_archive_names` — absolute ones (http(s)://, protocol-relative
+    //, data:) are never checked, they're not this project's own archives.
+    A project's archive namespace is flat (see _is_safe_project_name/
+    _check_editable_file_name rejecting any path separator everywhere
+    else), so a relative reference like './bg.png' or a bare 'bg.png'
+    both resolve the same way: by filename alone."""
+    missing = []
+    for _, target in _CSS_URL_PATTERN.findall(css_text):
+        target = target.strip()
+        if not target or _ABSOLUTE_URL_PATTERN.match(target):
+            continue
+        name = Path(target).name
+        if name not in known_archive_names and name not in missing:
+            missing.append(name)
+    return missing
 
 # Called with the newly-active Automaton once activate_project()/put_project()
 # have committed it.
@@ -90,7 +173,7 @@ class ProjectService(object):
         if 'index.yml' not in archives:
             raise  FileNotFoundError(f"Project '{project_name}' does not contain 'index.yml'.")
 
-        automaton = AutomatonBuilder().build(archives)
+        automaton = AutomatonBuilder().build(decode_text_archives(archives))
         self._automaton_cache[cache_key] = automaton
         return automaton
 
@@ -105,7 +188,7 @@ class ProjectService(object):
         revision = self._db.get_project_revision(project_name)
         return self._load_project_at_revision(project_name, revision)
 
-    def _project_update_changed(self, existing: dict[str, str], files: dict[str, str]) -> bool:
+    def _project_update_changed(self, existing: dict[str, str | bytes], files: dict[str, str | bytes]) -> bool:
         """Whether `files` (new content for some subset of a project's
         own files — see _prepare_project_update) is a genuine change
         against `existing`. A file `existing` doesn't have at all yet is
@@ -117,7 +200,9 @@ class ProjectService(object):
         and the very next read of it 404'd."""
         return any(name not in existing or existing[name] != content for name, content in files.items())
 
-    def _prepare_project_update(self, project_name: str, files: dict[str, str]) -> tuple[Automaton, dict[str, str] | None]:
+    def _prepare_project_update(
+        self, project_name: str, files: dict[str, str | bytes]
+    ) -> tuple[Automaton, dict[str, str | bytes] | None]:
         """Builds+validates the Automaton for `files` (new content for
         some subset of `project_name`'s own files — all of them for a
         zip upload, just one for a single-file edit) merged onto its
@@ -130,7 +215,7 @@ class ProjectService(object):
         _project_update_changed) — the caller's signal to skip
         persistence (and, likely, resetting the active conversation)
         entirely."""
-        existing = self._db.get_archives(project_name)
+        existing = decode_text_archives(self._db.get_archives(project_name))
         merged = {**existing, **files}
 
         automaton = AutomatonBuilder().build(merged)
@@ -143,6 +228,7 @@ class ProjectService(object):
         content = self._db.get_archive(project_name, file_name)
         if content is None:
             raise FileNotFoundError(f"File '{file_name}' does not exist in project '{project_name}'.")
+        content_type = self._db.get_archive_content_type(project_name, file_name)
         user = Session().user
         # Same extension-based rule AutomatonBuilder._convert_contents_to_
         # archives uses to build each MemoryArchive's own SourceDict —
@@ -151,10 +237,16 @@ class ProjectService(object):
         # different than what the automaton itself would resolve.
         extension = Path(file_name).suffix.lower()
         media_type = EXTENSION_TO_MEDIA_TYPE.get(extension, "application/octet-stream")
+        # None for an image (or any other binary content_type) — raw bytes
+        # aren't JSON-serializable, and nothing reads `content` for a binary
+        # file client-side (the file explorer renders it via the raw
+        # GET .../content route instead, see get_project_file_content).
+        is_text = extension in TEXT_EDITABLE_EXTENSIONS
         return {
-            "content": content,
+            "content": content.decode("utf-8") if is_text else None,
             "can_undo": self._db.has_undo(user, project_name, file_name),
             "can_redo": self._db.has_redo(user, project_name, file_name),
+            "content_type": content_type,
             "media_type": media_type,
         }
 
@@ -653,7 +745,18 @@ class ProjectService(object):
         self._db.set_active_project_name(project_name, Session().user)
         self._db.ensure_project(project_name)
         if to_persist is not None:
-            self._db.save_project_files(project_name, to_persist)
+            # This upload path is text-only (zip entries are always read via
+            # read_text() above, never as bytes) — content_type is inferred
+            # from each entry's own extension, same as put_project_file.
+            to_persist_bytes = {
+                name: value.encode("utf-8") if isinstance(value, str) else value
+                for name, value in to_persist.items()
+            }
+            content_types = {
+                name: TEXT_CONTENT_TYPE_BY_EXTENSION.get(Path(name).suffix.lower(), "text/plain")
+                for name in to_persist
+            }
+            self._db.save_project_files(project_name, to_persist_bytes, content_types)
         await self._finalize_project_update(project_name, new_automaton, commit)
 
         return {"success": True, "project_name": project_name}
@@ -696,20 +799,20 @@ class ProjectService(object):
 
     @staticmethod
     def _check_editable_file_name(file_name: str) -> None:
-        """Everything the file explorer/editor endpoints (list_project_files/
-        get_project_file/put_project_file/delete_project_file) will read,
-        write, or delete: a flat, non-hidden file name (no path traversal)
-        with one of TEXT_EDITABLE_EXTENSIONS — index.yml plus its text
-        attachments. Binary attachments and anything else in a project's
-        directory stay out of scope."""
+        """Everything the file explorer/editor endpoints (put_project_file/
+        undo_project_file/redo_project_file — the only three callers) will
+        write: a flat, non-hidden file name (no path traversal) with one of
+        EDITABLE_EXTENSIONS — index.yml, its text attachments, or an image
+        attachment. Anything else in a project's directory stays out of
+        scope."""
         if not file_name or file_name in (".", "..") or Path(file_name).name != file_name:
             raise ValueError(f"Invalid file name: '{file_name}'.")
         if file_name.startswith("."):
             raise ValueError(f"Invalid file name: '{file_name}'.")
         extension = Path(file_name).suffix.lower()
-        if extension not in TEXT_EDITABLE_EXTENSIONS:
+        if extension not in EDITABLE_EXTENSIONS:
             raise ValueError(
-                f"Unsupported file '{file_name}': only {sorted(TEXT_EDITABLE_EXTENSIONS)} "
+                f"Unsupported file '{file_name}': only {sorted(EDITABLE_EXTENSIONS)} "
                 "files can be read/edited via this endpoint."
             )
 
@@ -731,23 +834,102 @@ class ProjectService(object):
         the current user (see db.Db.has_undo/has_redo)."""
         return self._file_undo_redo_info(project_name, file_name)
 
-    async def put_project_file(
-        self, project_name: str, file_name: str, content: bytes, commit: CommitCallback
-    ) -> dict:
+    def get_project_file_content(
+        self, project_name: str, file_name: str, session_id: int | None
+    ) -> tuple[bytes, str]:
+        """Raw (content, content_type) for `file_name` — the ChatWindow.vue
+        skin-loading fetch (index.css, injected as a stylesheet) and the
+        EditProjectView.vue file explorer's own image preview both read
+        through this, never the JSON get_project_file above (bytes aren't
+        JSON-serializable, and neither caller wants the JSON envelope).
 
+        `session_id` absent: the current draft (same default GET
+        .../files/{file_name} already uses) — the editor's own case.
+
+        `session_id` given: resolves the *exact same* revision
+        get_automaton_and_state_for_session would build the automaton
+        against for that session — deliberately mirrored, not just "use
+        session['project_revision']" uniformly: a 'test' session there
+        always re-resolves against whatever the draft currently is (see
+        that method's own docstring on why — it's meant to reflect
+        in-progress edits, not a frozen snapshot from whenever the session
+        was created), while every other session is pinned to the exact
+        revision stamped on it at creation time. Getting this wrong would
+        only misbehave in a rare edge case (a publish + new edit elsewhere
+        while a Test session is still open), but it's the one place this
+        route could silently serve a stale skin, so it's worth doing right
+        rather than literally."""
+        if session_id is None:
+            revision = self._db.get_project_revision(project_name)
+        else:
+            session = self._db.get_chat_session(session_id)
+            if session is None:
+                raise FileNotFoundError(f"Session {session_id} does not exist.")
+            if session["source"] == "test":
+                revision = self._db.get_project_revision(project_name)
+            else:
+                revision = session["project_revision"]
+
+        content = self._db.get_archive(project_name, file_name, revision=revision)
+        if content is None:
+            raise FileNotFoundError(f"File '{file_name}' does not exist in project '{project_name}'.")
+        content_type = self._db.get_archive_content_type(project_name, file_name, revision=revision)
+        return content, content_type
+
+    async def put_project_file(
+        self, project_name: str, file_name: str, content: bytes, content_type_header: str | None, commit: CommitCallback
+    ) -> dict:
+        """Creates or edits one of `project_name`'s files in place. A text
+        extension (TEXT_EDITABLE_EXTENSIONS) is always decoded as UTF-8 and
+        its content_type inferred from the extension alone, regardless of
+        `content_type_header` (api.js's own putProjectFile always sends the
+        generic 'text/plain; charset=utf-8' for every text file — the
+        extension is the only thing that actually distinguishes them). An
+        image extension (IMAGE_EXTENSIONS) instead requires
+        `content_type_header` to be one of IMAGE_CONTENT_TYPES *and* match
+        the extension, stays raw bytes end to end, and is capped at
+        MAX_IMAGE_UPLOAD_BYTES — no other size limit exists anywhere in this
+        stack (see nginx.conf). `index.css` specifically also runs CSS
+        url(...) reference validation before anything is persisted (see
+        missing_css_references) — every other extension skips that step."""
         if project_name not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
 
-        text_content = content.decode("utf-8") if isinstance(content, bytes) else content
         self._check_editable_file_name(file_name)
+        extension = Path(file_name).suffix.lower()
+
+        if extension in TEXT_EDITABLE_EXTENSIONS:
+            text_content = content.decode("utf-8") if isinstance(content, bytes) else content
+            content_type = TEXT_CONTENT_TYPE_BY_EXTENSION.get(extension, "text/plain")
+            if file_name == "index.css":
+                known_names = set(self._db.list_archives(project_name)) | {file_name}
+                missing = missing_css_references(text_content, known_names)
+                if missing:
+                    raise ValueError(
+                        f"index.css references missing file(s): {', '.join(sorted(missing))}."
+                    )
+            update_value: str | bytes = text_content
+            to_save: bytes = text_content.encode("utf-8")
+        else:
+            expected_content_type = IMAGE_CONTENT_TYPE_BY_EXTENSION[extension]
+            if content_type_header != expected_content_type:
+                raise ValueError(
+                    f"Unsupported or mismatched Content-Type for '{file_name}': expected "
+                    f"'{expected_content_type}', got '{content_type_header}'."
+                )
+            if len(content) > MAX_IMAGE_UPLOAD_BYTES:
+                raise ValueError(f"'{file_name}' exceeds the {MAX_IMAGE_UPLOAD_BYTES}-byte upload limit.")
+            content_type = expected_content_type
+            update_value = content
+            to_save = content
 
         try:
-            new_automaton, to_persist = self._prepare_project_update(project_name, {file_name: text_content})
+            new_automaton, to_persist = self._prepare_project_update(project_name, {file_name: update_value})
         except Exception as exc:
             raise ValueError(f"Invalid project update: {exc}") from exc
 
         if to_persist is not None:
-            self._db.save_project_file(Session().user, project_name, file_name, text_content)
+            self._db.save_project_file(Session().user, project_name, file_name, to_save, content_type)
         await self._finalize_project_update(project_name, new_automaton, commit)
 
         return {"success": True, "project_name": project_name, **self._file_undo_redo_info(project_name, file_name)}
@@ -765,7 +947,7 @@ class ProjectService(object):
         current = self._file_undo_redo_info(project_name, "index.yml")["content"]
         editor = AutomatonYamlEditor(current)
         result = operation(editor)
-        await self.put_project_file(project_name, "index.yml", editor.serialize(), commit)
+        await self.put_project_file(project_name, "index.yml", editor.serialize(), None, commit)
         return result
 
     async def add_state(self, project_name: str, commit: CommitCallback) -> StatePayload:
@@ -831,17 +1013,18 @@ class ProjectService(object):
         if project_name not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
         self._check_editable_file_name(file_name)
-        text_content = content.decode("utf-8") if isinstance(content, bytes) else content
+        is_text = Path(file_name).suffix.lower() in TEXT_EDITABLE_EXTENSIONS
+        raw_content = content.encode("utf-8") if is_text and isinstance(content, str) else content
 
         user = Session().user
-        previous = self._db.undo_project_file(user, project_name, file_name, text_content)
+        previous = self._db.undo_project_file(user, project_name, file_name, raw_content)
         if previous is None:
             raise ValueError(f"Nothing to undo for file '{file_name}'.")
 
         return {
             "success": True,
             "project_name": project_name,
-            "content": previous,
+            "content": previous.decode("utf-8") if is_text else None,
             "can_undo": self._db.has_undo(user, project_name, file_name),
             "can_redo": self._db.has_redo(user, project_name, file_name),
         }
@@ -852,17 +1035,18 @@ class ProjectService(object):
         if project_name not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
         self._check_editable_file_name(file_name)
-        text_content = content.decode("utf-8") if isinstance(content, bytes) else content
+        is_text = Path(file_name).suffix.lower() in TEXT_EDITABLE_EXTENSIONS
+        raw_content = content.encode("utf-8") if is_text and isinstance(content, str) else content
 
         user = Session().user
-        next_content = self._db.redo_project_file(user, project_name, file_name, text_content)
+        next_content = self._db.redo_project_file(user, project_name, file_name, raw_content)
         if next_content is None:
             raise ValueError(f"Nothing to redo for file '{file_name}'.")
 
         return {
             "success": True,
             "project_name": project_name,
-            "content": next_content,
+            "content": next_content.decode("utf-8") if is_text else None,
             "can_undo": self._db.has_undo(user, project_name, file_name),
             "can_redo": self._db.has_redo(user, project_name, file_name),
         }

@@ -457,6 +457,35 @@ export function putProjectFile(projectName, fileName, content) {
   })
 }
 
+// Image attachments (see project_service.py's IMAGE_EXTENSIONS) — same
+// PUT .../files/{file_name} route as putProjectFile above, but the raw
+// File itself as the body with its own browser-reported type as
+// Content-Type (mirrors putProject's own zip/yaml upload, api.js:407-414
+// above), since the backend validates an image save against the request's
+// actual Content-Type header rather than inferring it (only a text save's
+// content_type is inferred from the extension — see put_project_file's
+// own docstring).
+export function putProjectFileBinary(projectName, fileName, file) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': file.type },
+    body: file
+  })
+}
+
+// Raw bytes of fileName's own content — for a plain <img src> (the file
+// explorer's own image preview, EditProjectView.vue) or a manual fetch
+// (ChatWindow.vue's own index.css skin loading, which needs the text body
+// rather than a JSON envelope). `sessionId` omitted resolves against the
+// current draft; given, resolves the same revision that session's own
+// automaton runs against (see controller.py's own get_project_file_content
+// docstring for the live/'test' distinction) — never encoded here, just
+// passed through as a query param exactly as given.
+export function projectFileContentUrl(projectName, fileName, sessionId) {
+  const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
+  return `${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}/content${query}`
+}
+
 // A pure editor preview, not a save: nothing is persisted, the active
 // project/conversation is never reloaded. `content` is whatever the
 // editor currently shows, needed so a later redo/undo can bring it back

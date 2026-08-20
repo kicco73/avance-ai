@@ -58,7 +58,7 @@ def test_flag_off_leaves_an_incompatible_schema_untouched(tmp_path):
     # something actually touches the incompatible table — not at
     # construction time.
     with pytest.raises(Exception):
-        db.save_project_files("proj", {"index.yml": "new content"})
+        db.save_project_files("proj", {"index.yml": b"new content"}, {"index.yml": "text/yaml"})
 
 
 def test_flag_on_drops_and_recreates_an_incompatible_schema(tmp_path):
@@ -71,8 +71,8 @@ def test_flag_on_drops_and_recreates_an_incompatible_schema(tmp_path):
     assert db.get_archives("proj") == {}
 
     # And the new schema works normally from here on.
-    db.save_project_file("user", "proj", "index.yml", "fresh content")
-    assert db.get_archive("proj", "index.yml") == "fresh content"
+    db.save_project_file("user", "proj", "index.yml", b"fresh content", "text/yaml")
+    assert db.get_archive("proj", "index.yml") == b"fresh content"
 
 
 def test_flag_on_is_a_noop_for_a_brand_new_database(tmp_path):
@@ -83,20 +83,20 @@ def test_flag_on_is_a_noop_for_a_brand_new_database(tmp_path):
 
     db = Db(f"sqlite:///{db_path}", force_drop_and_create_when_incompatible=True)
 
-    db.save_project_file("user", "proj", "index.yml", "hello")
-    assert db.get_archive("proj", "index.yml") == "hello"
+    db.save_project_file("user", "proj", "index.yml", b"hello", "text/yaml")
+    assert db.get_archive("proj", "index.yml") == b"hello"
 
 
 def test_flag_on_leaves_an_already_compatible_schema_and_its_data_alone(tmp_path):
     db_path = tmp_path / "test.db"
     # First boot: a normal, already-up-to-date database with real data in it.
-    Db(f"sqlite:///{db_path}").save_project_file("user", "proj", "index.yml", "kept content")
+    Db(f"sqlite:///{db_path}").save_project_file("user", "proj", "index.yml", b"kept content", "text/yaml")
 
     # Reopening with the flag on must not touch anything, since the
     # on-disk schema already matches exactly.
     db = Db(f"sqlite:///{db_path}", force_drop_and_create_when_incompatible=True)
 
-    assert db.get_archive("proj", "index.yml") == "kept content"
+    assert db.get_archive("proj", "index.yml") == b"kept content"
 
 
 # 'project' is a real FOREIGN KEY parent of 'chatsession'/'archive' (see
@@ -142,5 +142,5 @@ def test_flag_on_drops_a_parent_table_referenced_by_a_still_existing_child(tmp_p
     # The old (incompatible) data is gone — dropped, not migrated — and
     # the new schema works normally from here on.
     assert db.get_chat_session(1) is None
-    db.save_project_file("user", "proj", "index.yml", "fresh content")
-    assert db.get_archive("proj", "index.yml") == "fresh content"
+    db.save_project_file("user", "proj", "index.yml", b"fresh content", "text/yaml")
+    assert db.get_archive("proj", "index.yml") == b"fresh content"

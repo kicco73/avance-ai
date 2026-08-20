@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from peewee import AutoField, BooleanField, CharField, CompositeKey, DateTimeField, ForeignKeyField, IntegerField, Model, Proxy, TextField
+from peewee import AutoField, BlobField, BooleanField, CharField, CompositeKey, DateTimeField, ForeignKeyField, IntegerField, Model, Proxy, TextField
 
 database = Proxy()
 
@@ -80,7 +80,8 @@ class Archive(BaseModel):
     project_name = ForeignKeyField(Project, field='name', column_name='project_name', backref='archives')
     archive_name = CharField(index=True, null=False)
     revision = IntegerField(null=False, default=0)
-    content = TextField(null=False)
+    content = BlobField(null=False)
+    content_type = CharField(null=False)
 
     class Meta:
         # One row per revision — a published revision's own rows are never
@@ -170,7 +171,7 @@ class History(BaseModel):
     archive_name = CharField(index=True, null=False)
     kind = CharField(null=False)
     seq = IntegerField(null=False)
-    content = TextField(null=False)
+    content = BlobField(null=False)
 
     class Meta:
         indexes = ((('user_id', 'project_name', 'archive_name', 'kind', 'seq'), True),)

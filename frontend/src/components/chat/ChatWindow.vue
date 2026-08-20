@@ -6,6 +6,7 @@ import MessageBubble from './MessageBubble.vue'
 import SessionsPanel from './SessionsPanel.vue'
 import { setApiError } from '../../errorStore.js'
 import { startRecording, stopRecording } from '../../mic.js'
+import { projectFileContentUrl } from '../../api.js'
 import {
   state,
   messages,
@@ -19,6 +20,7 @@ import {
   spokenTextEnabled,
   draft,
   currentSessionId,
+  currentProjectName,
   selectedSessionActive,
   sessions,
   sessionsLoading,
@@ -186,10 +188,72 @@ async function onAction(actionName) {
   await nextTick()
   focusInput()
 }
+
+// Tracks the state key just left, for the data-prev-state attribute below
+// — set once on the first real transition and never cleared back out
+// afterward (a caller styling a "leaving state X" transition still wants
+// to know X even once the transition itself is long over).
+const prevStateKey = ref(null)
+watch(
+  () => state.value?.key,
+  (newKey, oldKey) => {
+    if (oldKey != null) prevStateKey.value = oldKey
+  }
+)
+
+// index.css, injected as a plain <style> element appended to <head> (so it
+// lands after every component's own scoped styles, and can override them)
+// — the custom "skin" a project's own draft/published index.css defines
+// for its chat UI. Resolved against currentSessionId's own revision (see
+// api.js's projectFileContentUrl/controller.py's get_project_file_content):
+// a live session sees whatever was published when it started, a Test
+// session (EditProjectView.vue's embedded chat) always sees the current
+// draft — same distinction the automaton itself already makes for that
+// session, no special-casing needed here. A project with no index.css at
+// all 404s silently: no stylesheet, not an error.
+let skinStyleEl = null
+
+function clearSkin() {
+  skinStyleEl?.remove()
+  skinStyleEl = null
+}
+
+async function loadSkin() {
+  const projectName = currentProjectName.value
+  const sessionId = currentSessionId.value
+  if (!projectName || sessionId == null) {
+    clearSkin()
+    return
+  }
+  let css
+  try {
+    const response = await fetch(projectFileContentUrl(projectName, 'index.css', sessionId))
+    if (!response.ok) {
+      clearSkin()
+      return
+    }
+    css = await response.text()
+  } catch {
+    return
+  }
+  if (!skinStyleEl) {
+    skinStyleEl = document.createElement('style')
+    document.head.appendChild(skinStyleEl)
+  }
+  skinStyleEl.textContent = css
+}
+
+watch([currentProjectName, currentSessionId], loadSkin, { immediate: true })
+onBeforeUnmount(clearSkin)
 </script>
 
 <template>
-  <div class="chat-window-shell">
+  <div
+    class="chat-window-shell"
+    :class="state?.key ? `state-${state.key}` : null"
+    :data-state="state?.key ?? null"
+    :data-prev-state="prevStateKey"
+  >
     <div class="sessions-panel-wrap">
       <div class="sessions-panel" :class="{ 'sessions-panel-collapsed': !sessionsPanelOpen }" :style="sessionsPanelOpen ? { width: sessionsWidth + 'px' } : null">
         <SessionsPanel
@@ -210,7 +274,9 @@ async function onAction(actionName) {
     </div>
 
     <div class="chat-window">
-    <div class="messages" ref="scrollEl">
+    <div class="chat-header"></div>
+
+    <div class="messages chat-body" ref="scrollEl">
       <slot name="timeline">
         <MessageBubble
           v-for="(msg, i) in messages"
@@ -230,29 +296,31 @@ async function onAction(actionName) {
       {{ chatDisabledReason }}
     </p>
 
-    <ActionButtons
-      v-if="selectedSessionActive"
-      :actions="state?.actions ?? []"
-      :disabled="actionLoading"
-      :auto-tracking-enabled="autoTrackingEnabled"
-      @action="onAction"
-    />
+    <div class="chat-footer">
+      <ActionButtons
+        v-if="selectedSessionActive"
+        :actions="state?.actions ?? []"
+        :disabled="actionLoading"
+        :auto-tracking-enabled="autoTrackingEnabled"
+        @action="onAction"
+      />
 
-    <ChatInput
-      ref="chatInputRef"
-      v-model="draft"
-      :disabled="chatLoading || chatDisabled"
-      :recording="recording"
-      :mic-available="micAvailable"
-      :talk-available="talkAvailable"
-      :audio-enabled="audioEnabled"
-      :spoken-text-enabled="spokenTextEnabled"
-      @submit="submit"
-      @mic-start="startPtt"
-      @mic-stop="stopPtt"
-      @toggle-audio="toggleAudio"
-      @toggle-spoken-text="toggleSpokenText"
-    />
+      <ChatInput
+        ref="chatInputRef"
+        v-model="draft"
+        :disabled="chatLoading || chatDisabled"
+        :recording="recording"
+        :mic-available="micAvailable"
+        :talk-available="talkAvailable"
+        :audio-enabled="audioEnabled"
+        :spoken-text-enabled="spokenTextEnabled"
+        @submit="submit"
+        @mic-start="startPtt"
+        @mic-stop="stopPtt"
+        @toggle-audio="toggleAudio"
+        @toggle-spoken-text="toggleSpokenText"
+      />
+    </div>
     </div>
   </div>
 </template>
@@ -325,5 +393,18 @@ async function onAction(actionName) {
   margin: 0;
   padding: 0.5rem 1rem;
   font-size: 0.85rem;
+}
+
+/* Empty of functional content on its own — a pure style hook (see this
+   component's own docstring) so a project's own index.css can target
+   .chat-header/.chat-body/.chat-footer without reaching into internals. */
+.chat-header {
+  flex-shrink: 0;
+}
+
+.chat-footer {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
 }
 </style>

@@ -63,6 +63,15 @@ export const sessionsPanelOpen = ref(false)
 // mode-agnostic turn-processing code (handleSend/handleAction/...), where
 // explicit threading would mean touching nearly every call in this file.
 export const testModeProjectName = ref(null)
+// The project the current session actually belongs to — set from the
+// session payload's own project_name (see db.sessions._chat_session_to_
+// dict) inside ensureSession() below, for both a live and a Test session
+// alike. ChatWindow.vue's own index.css skin-loading fetch is the one
+// caller: it's mounted for both App.vue's live chat and EditProjectView.
+// vue's embedded Test chat, and unlike testModeProjectName (only ever set
+// by the latter) this is the one place either can learn which project's
+// files/index.css/content to actually fetch.
+export const currentProjectName = ref(null)
 export const messages = ref([])
 export const historyLoaded = ref(false)
 export const chatLoading = ref(false)
@@ -132,6 +141,7 @@ async function ensureSession() {
     : await getCurrentSession(currentSessionId.value)
   currentSessionId.value = session.id
   selectedSessionActive.value = session.active
+  currentProjectName.value = session.project_name
   return session.id
 }
 
@@ -547,6 +557,7 @@ export function clearChatUi() {
   // stale id here would just be ignored server-side, but a project
   // switch is exactly when "the current session" should be re-resolved.
   currentSessionId.value = null
+  currentProjectName.value = null
   selectedSessionActive.value = true
   sessions.value = []
 }
