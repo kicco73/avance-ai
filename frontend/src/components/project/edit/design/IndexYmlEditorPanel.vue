@@ -19,9 +19,9 @@
 // reach EditProjectView.vue directly — this view isn't involved in any
 // of them).
 import { computed, ref } from 'vue'
-import InspectorGraph from '../../inspector/InspectorGraph.vue'
-import CodeEditor from '../../CodeEditor.vue'
-import DocInfoButton from '../../DocInfoButton.vue'
+import InspectorGraph from '../../../inspector/InspectorGraph.vue'
+import CodeEditor from '../../../CodeEditor.vue'
+import DocInfoButton from '../../../DocInfoButton.vue'
 
 const props = defineProps({
   projectName: { type: String, required: true },

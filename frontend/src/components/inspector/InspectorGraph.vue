@@ -399,12 +399,6 @@ onBeforeUnmount(destroyGraph)
 
 <template>
   <div class="inspector-graph-section">
-    <div class="inspector-graph-host-wrap">
-      <p v-if="graphLoading" class="signals-status inspector-graph-status">Loading…</p>
-      <div ref="graphHost" class="inspector-graph-host"></div>
-      <span v-if="graphRevision != null" class="inspector-graph-revision-badge">Rev. {{ graphRevision }}</span>
-    </div>
-
     <div v-if="annotatable" class="inspector-annotation-bar">
       <label class="inspector-annotation-label">Expected state</label>
       <span
@@ -437,12 +431,18 @@ onBeforeUnmount(destroyGraph)
         <option v-for="node in graphNodes" :key="node.state.key" :value="node.state.key">{{ node.state.ui_label }}</option>
       </select>
     </div>
+
+    <div class="inspector-graph-host-wrap">
+      <p v-if="graphLoading" class="signals-status inspector-graph-status">Loading…</p>
+      <div ref="graphHost" class="inspector-graph-host"></div>
+      <span v-if="graphRevision != null" class="inspector-graph-revision-badge">Rev. {{ graphRevision }}</span>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .inspector-graph-section { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.inspector-annotation-bar { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.6rem; flex-shrink: 0; }
+.inspector-annotation-bar { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.6rem; flex-shrink: 0; }
 .inspector-annotation-label { font-size: 0.78rem; color: #666; }
 .inspector-annotation-select { flex: 1; min-width: 0; padding: 0.3rem 0.5rem; border-radius: 6px; border: 1px solid #ccc; background: white; font-size: 0.82rem; color: #999; }
 /* An explicit choice matching the actual/current state — same green used

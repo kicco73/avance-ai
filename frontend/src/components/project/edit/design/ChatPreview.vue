@@ -16,9 +16,9 @@
 // animates normally, exactly as it would in the real chat. Cleaned up on
 // unmount so it never outlives this component.
 import { onBeforeUnmount, ref, watch } from 'vue'
-import MessageBubble from '../../chat/MessageBubble.vue'
-import ActionButtons from '../../chat/ActionButtons.vue'
-import ChatInput from '../../chat/ChatInput.vue'
+import MessageBubble from '../../../chat/MessageBubble.vue'
+import ActionButtons from '../../../chat/ActionButtons.vue'
+import ChatInput from '../../../chat/ChatInput.vue'
 
 const props = defineProps({
   css: { type: String, default: '' },

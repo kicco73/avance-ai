@@ -23,10 +23,10 @@
 // removed (see EditProjectView.vue's own computed proxies over these).
 import { ref } from 'vue'
 import FileExplorer from './FileExplorer.vue'
-import CodeEditor from '../../CodeEditor.vue'
+import CodeEditor from '../../../CodeEditor.vue'
 import IndexYmlEditorPanel from './IndexYmlEditorPanel.vue'
 import IndexCssEditorPanel from './IndexCssEditorPanel.vue'
-import { projectFileContentUrl } from '../../../api.js'
+import { projectFileContentUrl } from '../../../../api.js'
 
 defineProps({
   projectName: { type: String, required: true },

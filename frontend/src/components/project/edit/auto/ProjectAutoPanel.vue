@@ -4,18 +4,18 @@
 // TestsTree on the left (Sessioni/Stati), a node's own results on the
 // right. Owns every bit of actual data fetching/launching/polling —
 // TestsTree itself stays purely presentational. Folded in from the
-// standalone TestsPanel.vue this used to just wrap (see project/test/'s
-// own docstring on where TestsTree/TestNodeButton live now) — Design/
+// standalone TestsPanel.vue this used to just wrap (both TestsTree and
+// TestNodeButton live alongside this file, in this same auto/ folder) — Design/
 // Test/Auto each get a genuinely separate structure now, instead of
 // three conditionally-shown branches nested inside one shared column
 // (see EditProjectView.vue's own docstring on the layout this replaced),
 // so there was nothing left for a separate wrapper component to add.
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import TestsTree from './test/TestsTree.vue'
+import TestsTree from './TestsTree.vue'
 import {
   getBenchmarkRun, getBenchmarkRuns, getProjectStates, getStateJob, postBenchmarkRun, postStateTest
-} from '../../../api.js'
-import { loadSessions, sessions, sessionsLoading } from '../../../chatStore.js'
+} from '../../../../api.js'
+import { loadSessions, sessions, sessionsLoading } from '../../../../chatStore.js'
 
 const props = defineProps({
   projectName: {

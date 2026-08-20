@@ -10,9 +10,9 @@
 // actually showing, and switching back to "code" must never lose
 // whatever's been typed.
 import { computed, onMounted, ref } from 'vue'
-import CodeEditor from '../../CodeEditor.vue'
+import CodeEditor from '../../../CodeEditor.vue'
 import ChatPreview from './ChatPreview.vue'
-import { getProjectGraph } from '../../../api.js'
+import { getProjectGraph } from '../../../../api.js'
 
 const props = defineProps({
   projectName: { type: String, required: true }

@@ -275,11 +275,6 @@ async function handleModelDownload(projectName) {
     link.click()
     link.remove()
     URL.revokeObjectURL(url)
-    // After the download actually happened, never before (see
-    // handleDownloadBackup's own same-order notice) — shared by both the
-    // Projects menu's own "Download" item and EditProjectView.vue's own
-    // toolbar button, both wired to this same handler.
-    alert(`Project "${projectName}" downloaded to your local folder.`)
   } catch {
     // already surfaced via apiFetch
   }
@@ -313,7 +308,6 @@ async function handleDownloadBackup() {
     link.click()
     link.remove()
     URL.revokeObjectURL(url)
-    alert('Backup downloaded to your local folder.')
   } catch {
     // already surfaced via apiFetch
   }

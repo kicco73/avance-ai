@@ -13,11 +13,11 @@
 // spokenTextEnabled are read straight from chatStore.js instead of being
 // prop-drilled — they're a plain module-level store, not view-specific
 // state, so there's nothing EditProjectView.vue needs to mediate here.
-import ChatWindow from '../../chat/ChatWindow.vue'
-import ChatTimeline from '../../chat/ChatTimeline.vue'
-import RestartFromHereButton from '../../chat/RestartFromHereButton.vue'
-import ModelMenu from '../../ModelMenu.vue'
-import { autoTrackingEnabled, autoTrackingLoading, toggleAutoTracking, handleReset, spokenTextEnabled } from '../../../chatStore.js'
+import ChatWindow from '../../../chat/ChatWindow.vue'
+import ChatTimeline from '../../../chat/ChatTimeline.vue'
+import RestartFromHereButton from '../../../chat/RestartFromHereButton.vue'
+import ModelMenu from '../../../ModelMenu.vue'
+import { autoTrackingEnabled, autoTrackingLoading, toggleAutoTracking, handleReset, spokenTextEnabled } from '../../../../chatStore.js'
 
 defineProps({
   timeline: { type: Array, required: true },

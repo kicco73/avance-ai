@@ -154,10 +154,21 @@ async def test_freezing_a_native_session_has_no_effect(db):
 
 async def test_freezing_one_test_session_never_affects_another(db):
     """Not global: freezing session A must never freeze session B, even
-    though both are 'test' sessions of the same project."""
+    though both are 'test' sessions of the same project. Both created
+    against the same publish (see Db.publish_project's own docstring —
+    a second publish would delete the first session's own draft test
+    session outright, an unrelated mechanism this test must avoid
+    tripping)."""
     automaton = _automaton("signal.mySignal >= 1")
-    frozen_session_id = _session_id(db)
-    other_session_id = _session_id(db)
+    db.ensure_project(PROJECT_NAME)
+    db.publish_project(PROJECT_NAME)
+    session_kwargs = dict(
+        username=USERNAME, project_name=PROJECT_NAME,
+        datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
+        start_state="a", end_state="a", source="test",
+    )
+    frozen_session_id = db.create_chat_session(**session_kwargs)
+    other_session_id = db.create_chat_session(**session_kwargs)
     service = _tracking_service(db, automaton, '{"mySignal": 1}')
     service.set_auto_tracking_enabled(frozen_session_id, False)
 

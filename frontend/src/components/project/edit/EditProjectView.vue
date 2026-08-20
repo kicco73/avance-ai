@@ -12,9 +12,9 @@
 // publish-remap dialogs, and the Inspector (shown, with a different tab
 // set, across all three modes).
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import ProjectDesignPanel from './ProjectDesignPanel.vue'
-import TestChat from './TestChat.vue'
-import ProjectAutoPanel from './ProjectAutoPanel.vue'
+import ProjectDesignPanel from './design/ProjectDesignPanel.vue'
+import TestChat from './test/TestChat.vue'
+import ProjectAutoPanel from './auto/ProjectAutoPanel.vue'
 import Inspector from '../../inspector/Inspector.vue'
 import InspectorGraphTab from '../../inspector/InspectorGraphTab.vue'
 import InspectorSignalsTab from '../../inspector/InspectorSignalsTab.vue'
