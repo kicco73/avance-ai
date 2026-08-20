@@ -699,32 +699,43 @@ class ProjectService(object):
             state_key = remapped
         return automaton.get_state(state_key)
 
-    def get_active_automaton_and_state(self) -> tuple[Automaton, State]:
-        """The active project's *published* Automaton paired with its
-        current State — never the in-progress draft, whatever it happens
-        to look like right now (see _resolve_state's own docstring for
-        the State half). Every caller of this that's about a specific,
-        already-existing session instead (see the "6 places" in
-        get_automaton_and_state_for_session's own docstring) uses that one
-        instead, pinned to that session's own project_revision — this one
-        is for every other caller, which never has a session of its own
-        to pin to and must never see draft content it didn't explicitly
-        ask for (see EditProjectView.vue's own dedicated draft entry
-        points, the one place that's still allowed to). Raises
-        FileNotFoundError (same exception _load_project itself raises for
-        an unknown project name) when there's no active project at all —
-        see get_active_project_name's own docstring for when that
-        happens — and ValueError, same as db.create_chat_session's own
-        "never published" case, when the active project has no published
-        revision yet."""
-        project_name = self.get_active_project_name()
-        if project_name is None:
-            raise FileNotFoundError("No project is currently active.")
+    def get_automaton_and_state(self, project_name: str) -> tuple[Automaton, State]:
+        """`project_name`'s own *published* Automaton paired with its
+        current State — never the in-progress draft (see _resolve_state's
+        own docstring for the State half). Explicit-project_name sibling
+        of get_active_automaton_and_state below (which is now just a thin
+        wrapper over this, pinned to get_active_project_name()) — for
+        callers that already know exactly which project they mean (e.g.
+        LabelProjectView.vue's own Metrics tab, GET /api/chat/identifiers)
+        and must never silently drift onto whatever else happens to be
+        globally active instead. Raises ValueError, same as db.
+        create_chat_session's own "never published" case, when
+        `project_name` has no published revision yet."""
         published_revision = self._db.get_project_published_revision(project_name)
         if published_revision is None:
             raise ValueError(f"Project '{project_name}' has never been published.")
         automaton = self._load_project_at_revision(project_name, published_revision)
         return automaton, self._resolve_state(project_name, automaton)
+
+    def get_active_automaton_and_state(self) -> tuple[Automaton, State]:
+        """The active project's own get_automaton_and_state (see that
+        method's own docstring) — never the in-progress draft, whatever
+        it happens to look like right now. Every caller of this that's
+        about a specific, already-existing session instead (see the "6
+        places" in get_automaton_and_state_for_session's own docstring)
+        uses that one instead, pinned to that session's own
+        project_revision — this one is for every other caller, which
+        never has a session of its own to pin to and must never see draft
+        content it didn't explicitly ask for (see EditProjectView.vue's
+        own dedicated draft entry points, the one place that's still
+        allowed to). Raises FileNotFoundError (same exception
+        _load_project itself raises for an unknown project name) when
+        there's no active project at all — see get_active_project_name's
+        own docstring for when that happens."""
+        project_name = self.get_active_project_name()
+        if project_name is None:
+            raise FileNotFoundError("No project is currently active.")
+        return self.get_automaton_and_state(project_name)
 
     def get_automaton_and_state_for_session(self, session_id: int) -> tuple[Automaton, State]:
         """The Automaton `session_id`'s own turns must run against, paired
@@ -946,12 +957,17 @@ class ProjectService(object):
             "ui_description": automaton.project_ui_description,
         }
 
-    def get_active_identifier_registry(self) -> dict[str, dict[str, str]]:
-        """Every identifier the active project's own trigger/`env:`
+    def get_active_identifier_registry(self, project_name: str | None = None) -> dict[str, dict[str, str]]:
+        """Every identifier `project_name`'s own trigger/`env:`
         expressions can reference, one dict per namespace (see automaton.
         identifier_registry.build_registry) — for GET /api/chat/
         identifiers, the "Edit project" view's own reference for what's
-        actually usable in a trigger/env: field.
+        actually usable in a trigger/env: field. `project_name` omitted
+        falls back to the active project (same as before this parameter
+        existed) — EditProjectView.vue's own caller always passes its own
+        props.projectName explicitly instead, so a trigger editor open on
+        project A never silently reflects whatever project B happens to
+        be globally active right now.
 
         build_registry itself stays single-project (see its own
         docstring) — the "automaton" namespace is cross-project by
@@ -976,12 +992,12 @@ class ProjectService(object):
         entry (offered, not guaranteed usable — same as any automaton.*
         reference already resolves gracefully to None at runtime, see
         AutomatonNamespace), just no env keys to show for it."""
-        automaton, _ = self.get_active_automaton_and_state()
+        resolved_project_name = project_name or self.get_active_project_name()
+        automaton, _ = self.get_automaton_and_state(resolved_project_name)
         registry = build_registry(automaton.signals, automaton.env_keys)
-        active_project_name = self.get_active_project_name()
         registry["automaton"] = {}
         for name in self._db.list_projects():
-            if name == active_project_name:
+            if name == resolved_project_name:
                 continue
             project_id = self._db.get_project_id(name)
             if project_id is None:

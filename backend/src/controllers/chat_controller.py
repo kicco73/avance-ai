@@ -138,29 +138,31 @@ class ChatController(BaseController):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
     @get("/api/chat/identifiers")
-    def get_identifiers(self):
-        """The active project's own identifier registry (see automaton.
-        identifier_registry.build_registry/ProjectService.
-        get_active_identifier_registry) — every identifier a trigger/
-        `env:` expression can reference, one {identifier: description}
-        dict per namespace (signal, env, system, session, session.metric,
-        metric)."""
+    def get_identifiers(self, project_name: str | None = None):
+        """`project_name`'s own identifier registry (omitted: the active
+        project — see automaton.identifier_registry.build_registry/
+        ProjectService.get_active_identifier_registry) — every identifier
+        a trigger/`env:` expression can reference, one {identifier:
+        description} dict per namespace (signal, env, system, session,
+        session.metric, metric)."""
         try:
-            return self.project_service.get_active_identifier_registry()
+            return self.project_service.get_active_identifier_registry(project_name)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
 
     @get("/api/chat/metrics")
-    def get_metrics(self, message_id: int | None = None):
-        """Computes the metrics_framework's core metrics for the active
-        user+project on demand — no caching, see metrics_framework/
-        README.md. For the "Edit project" view's Inspector Metrics tab
-        (no `message_id`, always the live/current history) and the
+    def get_metrics(self, message_id: int | None = None, project_name: str | None = None):
+        """Computes the metrics_framework's core metrics for
+        `project_name` (omitted: the active project) on demand — no
+        caching, see metrics_framework/README.md. For the "Edit project"
+        view's Inspector Metrics tab (no `message_id`/`project_name`,
+        always the active project's live/current history) and the
         "Label sessions" view's point-in-time Inspector (`message_id`
         restricts the history to what existed at or before that exact
-        message). ChatServiceError (404 for an unknown/not-yours
-        `message_id`) is handled globally, see error_handlers.py."""
-        return self.chat_service.get_metrics(message_id)
+        message, `project_name` its own props.projectName explicitly).
+        ChatServiceError (404 for an unknown/not-yours `message_id`) is
+        handled globally, see error_handlers.py."""
+        return self.chat_service.get_metrics(message_id, project_name=project_name)
 
     @get("/api/state")
     def get_state(self):
@@ -223,10 +225,11 @@ class ChatController(BaseController):
         return self.chat_service.create_session()
 
     @get("/api/chat/sessions")
-    def get_sessions(self, include_imported: bool = False):
-        """Every session for the active project, for the chat's
-        "Sessions" side panel — see ChatService.list_sessions."""
-        return self.chat_service.list_sessions(include_imported=include_imported)
+    def get_sessions(self, include_imported: bool = False, project_name: str | None = None):
+        """Every session for `project_name` (omitted: the active
+        project), for the chat's "Sessions" side panel — see
+        ChatService.list_sessions."""
+        return self.chat_service.list_sessions(include_imported=include_imported, project_name=project_name)
 
     @get("/api/chat/messages")
     async def get_messages(self, session_id: int):

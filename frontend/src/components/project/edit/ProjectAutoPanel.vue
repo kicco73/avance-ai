@@ -165,7 +165,7 @@ function formatNumber(value) {
 }
 
 onMounted(() => {
-  loadSessions(true)
+  loadSessions(true, props.projectName)
   statesLoading.value = true
   getProjectStates(props.projectName).then((states) => {
     projectStates.value = states

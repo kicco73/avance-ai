@@ -271,3 +271,41 @@ def test_switching_projects_does_not_delete_the_previous_projects_sessions(clien
     # layer, independent of whatever the (now inactive) project's own
     # /api/chat/sessions listing shows.
     assert app_db.get_chat_session(session["id"]) is not None
+
+
+@pytest.mark.regression
+def test_sessions_list_with_explicit_project_name_ignores_the_active_project(client):
+    """Prompt 13's own fix: LabelProjectView.vue opens on whichever
+    project its own props.projectName names, which is not necessarily
+    the currently active one (e.g. a second project was just uploaded,
+    auto-activating itself — see ProjectService.put_project). Passing
+    project_name explicitly must return that project's own sessions
+    regardless of which one the global "active project" pointer
+    currently names — the exact bug this locks down: without it, this
+    call used to silently return the *active* project's sessions
+    instead, making the inactive one's own sessions appear to have
+    vanished."""
+    samples_dir = Path(__file__).resolve().parent.parent / "samples" / "projects"
+    for name, sample in (("hello", "Hello world.zip"), ("cat", "Aprendr català.zip")):
+        content = (samples_dir / sample).read_bytes()
+        resp = client.put(f"/api/projects/{name}", content=content, headers={"Content-Type": "application/zip"})
+        assert resp.status_code == 200, resp.text
+        resp = client.post(f"/api/projects/{name}/publish", json={})
+        assert resp.status_code == 200, resp.text
+
+    client.put("/api/projects/hello/activate")
+    hello_session = client.get("/api/chat/session").json()
+
+    client.put("/api/projects/cat/activate")
+
+    # Without project_name: follows the (now cat) active project, same as
+    # before this fix — the main chat's own Sessions panel relies on
+    # exactly this to keep following whichever project is active.
+    active_default = client.get("/api/chat/sessions").json()
+    assert all(s["project_name"] == "cat" for s in active_default)
+
+    # With project_name=hello: still hello's own session, unaffected by
+    # cat now being active.
+    explicit_hello = client.get("/api/chat/sessions", params={"project_name": "hello"}).json()
+    assert [s["id"] for s in explicit_hello] == [hello_session["id"]]
+    assert all(s["project_name"] == "hello" for s in explicit_hello)

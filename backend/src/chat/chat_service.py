@@ -263,22 +263,28 @@ class ChatService(object):
 		active_id = active["id"] if active is not None else None
 		return [self._session_payload(s, active=(s["id"] == active_id)) for s in sessions]
 
-	def list_sessions(self, include_imported: bool = False) -> list[dict]:
-		"""Every real (native, and optionally imported) session for the
-		active project, most recently started first — for the "Sessions"
+	def list_sessions(self, include_imported: bool = False, project_name: str | None = None) -> list[dict]:
+		"""Every real (native, and optionally imported) session for
+		`project_name`, most recently started first — for the "Sessions"
 		panel (see ChatWindow.vue). `active` on each one (see
 		_session_payload) is what the frontend must trust to decide
 		whether that particular session still accepts chat turns/manual
 		actions — never computed client-side (see ChatSessionManager's
 		module docstring). `include_imported` widens this to native and
-		imported alike — used by BenchmarkProjectView's own sessions
+		imported alike — used by LabelProjectView.vue's own sessions
 		panel, the one place that annotates/tests imported transcripts
 		alongside live ones; every other caller keeps seeing native
 		sessions only. Never a 'test' session either way (see
 		list_test_sessions instead, EditProjectView.vue's own embedded
 		"Test" chat) — those are a completely separate pool, not just a
-		third source this could also opt into."""
-		project_name = self._active_project_name
+		third source this could also opt into. `project_name` omitted
+		falls back to the active project (ChatWindow.vue's own main
+		Sessions panel, which is meant to follow whichever project is
+		currently active) — LabelProjectView.vue's own caller always
+		passes its own props.projectName explicitly instead, so reviewing
+		project A's sessions never silently follows project B becoming
+		active in the meantime (e.g. via uploading it)."""
+		project_name = project_name or self._active_project_name
 		source = ('native', 'imported') if include_imported else 'native'
 		return self._list_sessions_by_source(project_name, source, active_source='native')
 
@@ -442,17 +448,18 @@ class ChatService(object):
 		# against one, or Python raises on naive-vs-aware comparison.
 		return datetime.fromisoformat(message["timestamp"]).replace(tzinfo=None)
 
-	def get_metrics(self, message_id: int | None = None) -> list[dict]:
-		"""metrics.metrics_framework's core metrics for the active
-		user+project — the full current history, or (when `message_id`
-		is given) restricted to whatever existed at or before that exact
-		message's own timestamp (see MetricService.calculate_all/
-		AnalyticsCalculator's `until`) — for the "Label sessions" view's
-		point-in-time Inspector."""
+	def get_metrics(self, message_id: int | None = None, project_name: str | None = None) -> list[dict]:
+		"""metrics.metrics_framework's core metrics for `project_name`
+		(omitted: the active project) — the full current history, or
+		(when `message_id` is given) restricted to whatever existed at or
+		before that exact message's own timestamp (see MetricService.
+		calculate_all/AnalyticsCalculator's `until`) — for the "Edit
+		project" view's Inspector Metrics tab (no project_name, always
+		the active project) and the "Label sessions" view's point-in-time
+		Inspector (its own props.projectName passed explicitly, same
+		reasoning as list_sessions above)."""
 		until = self._until_from_message(message_id)
-		if until is None:
-			return self.metric_service.calculate_all()
-		return self.metric_service.calculate_all(until=until)
+		return self.metric_service.calculate_all(until=until, project_name=project_name)
 
 	def get_env(self, message_id: int | None = None) -> dict:
 		"""{"stored": ..., "action_set": ...} — see tracking.env.
@@ -509,16 +516,16 @@ class ChatService(object):
 		self.env.clear_action_set()
 		return self.get_env()
 
-	def get_benchmark_metrics(self, session_id: int | None = None) -> list[dict]:
+	def get_benchmark_metrics(self, session_id: int | None = None, project_name: str | None = None) -> list[dict]:
 		"""Expert-annotation-vs-actual benchmark metrics (see
-		MetricService.get_benchmark_metrics) for the active user+project —
-		every annotated session, or (session_id given) just that one —
-		the "Label sessions" view's Performance tab. Ownership of
-		`session_id`, when given, is checked here; everything else is
-		MetricService's own job."""
+		MetricService.get_benchmark_metrics) for `project_name` (omitted:
+		the active project) — every annotated session, or (session_id
+		given) just that one — the "Label sessions" view's Performance
+		tab. Ownership of `session_id`, when given, is checked here;
+		everything else is MetricService's own job."""
 		if session_id is not None:
 			self._require_own_session(session_id)
-		return self.metric_service.get_benchmark_metrics(session_id)
+		return self.metric_service.get_benchmark_metrics(session_id, project_name=project_name)
 
 	def set_message_expected_state(self, message_id: int, expected_state: str | None) -> dict | None:
 		"""Sets (expected_state given) or clears (None) the expert-

@@ -95,23 +95,33 @@ class MetricService(object):
         self._get_active_project_name = get_active_project_name
         self._get_max_session_duration_in_minutes = get_max_session_duration_in_minutes
 
-    def _calculate(self, until: datetime | None = None) -> list[tuple[MetricCalculator, MetricResult]]:
+    def _calculate(
+        self, until: datetime | None = None, project_name: str | None = None
+    ) -> list[tuple[MetricCalculator, MetricResult]]:
         """One AnalyticsCalculator per call: loads the analytical dataset
         once, then evaluates every core metric against it — the one place
         that construction happens, shared by calculate_all/calculate_values
         so neither duplicates it. `until` restricts the dataset to what
-        existed at or before that point (see AnalyticsCalculator)."""
+        existed at or before that point (see AnalyticsCalculator).
+        `project_name` omitted falls back to the bound get_active_project_
+        name callable (see __init__) — calculate_values/for_turn/
+        merge_if_referenced (the live turn-evaluation callers) always omit
+        it; calculate_all's own explicit-project_name callers (see its own
+        docstring) don't."""
         calculator = AnalyticsCalculator(
-            self._db, self._get_username(), self._get_active_project_name(), until=until
+            self._db, self._get_username(), project_name or self._get_active_project_name(), until=until
         )
         return list(zip(calculator.metrics, calculator.calculate_all()))
 
-    def calculate_all(self, until: datetime | None = None) -> list[dict]:
+    def calculate_all(self, until: datetime | None = None, project_name: str | None = None) -> list[dict]:
         """ui_label/ui_description/value per metric, for the "Edit
-        project" view's Inspector Metrics tab (live, `until` omitted) and
-        the "Label sessions" view's point-in-time Inspector (`until`
-        set to a specific past message's timestamp — see
-        ChatService.get_metrics)."""
+        project" view's Inspector Metrics tab (live, `until` and
+        `project_name` both omitted — always the active project) and the
+        "Label sessions" view's point-in-time Inspector (`until` set to a
+        specific past message's timestamp, `project_name` its own
+        props.projectName explicitly — see ChatService.get_metrics — so
+        reviewing project A's session never silently reports whatever
+        project B happens to be globally active right now)."""
         return [
             {
                 "name": metric.name,
@@ -119,7 +129,7 @@ class MetricService(object):
                 "ui_description": metric.ui_description,
                 "value": result.value,
             }
-            for metric, result in self._calculate(until=until)
+            for metric, result in self._calculate(until=until, project_name=project_name)
         ]
 
     def calculate_values(self) -> dict[str, float]:
@@ -163,21 +173,22 @@ class MetricService(object):
             return names
         return {**names, **self.calculate_values()}
 
-    def get_benchmark_metrics(self, session_id: int | None = None) -> list[dict]:
+    def get_benchmark_metrics(self, session_id: int | None = None, project_name: str | None = None) -> list[dict]:
         """Expert-annotation-vs-actual benchmark metrics (see metrics.
-        metrics_framework.benchmark_metrics) for the active user+project —
-        every annotated session, or (session_id given) just that one. Same
-        {name, ui_label, ui_description, value} shape as calculate_all,
-        plus `sample_count` (how many annotated points fed each metric —
-        see the framework's own README on why that must never be
-        discarded alongside the score) — the "Label sessions" view's
-        Performance tab. Ownership of `session_id`, when given, is the
-        caller's own responsibility (see ChatService.get_benchmark_metrics)."""
+        metrics_framework.benchmark_metrics) for `project_name` (omitted:
+        the active project) — every annotated session, or (session_id
+        given) just that one. Same {name, ui_label, ui_description, value}
+        shape as calculate_all, plus `sample_count` (how many annotated
+        points fed each metric — see the framework's own README on why
+        that must never be discarded alongside the score) — the "Label
+        sessions" view's Performance tab. Ownership of `session_id`, when
+        given, is the caller's own responsibility (see ChatService.
+        get_benchmark_metrics)."""
         configuration = BenchmarkConfiguration(
             max_session_duration_in_minutes=self._get_max_session_duration_in_minutes()
         )
         calculator = BenchmarkCalculator(
-            self._db, self._get_username(), self._get_active_project_name(),
+            self._db, self._get_username(), project_name or self._get_active_project_name(),
             configuration=configuration, session_id=session_id,
         )
         results = calculator.calculate_all()

@@ -69,9 +69,19 @@ export function postCreateTestSession(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/test-sessions`, { method: 'POST' })
 }
 
-export function getSessions(includeImported = false) {
-  const query = includeImported ? '?include_imported=true' : ''
-  return apiFetch(`${API_URL}/chat/sessions${query}`)
+// `projectName`, when given, overrides the backend's own default of
+// "whichever project is currently active" — LabelProjectView.vue's own
+// caller always passes its own props.projectName explicitly, so
+// reviewing project A's sessions never silently follows project B
+// becoming active in the meantime (e.g. via uploading it). The main
+// chat's own Sessions panel omits it on purpose: it's meant to follow
+// the active project.
+export function getSessions(includeImported = false, projectName = null) {
+  const params = new URLSearchParams()
+  if (includeImported) params.set('include_imported', 'true')
+  if (projectName) params.set('project_name', projectName)
+  const query = params.toString()
+  return apiFetch(`${API_URL}/chat/sessions${query ? `?${query}` : ''}`)
 }
 
 // EditProjectView.vue's own embedded "Test" chat's own Sessions panel —
@@ -256,10 +266,15 @@ export function postListenTranscribe(audioBlob) {
   })
 }
 
-export function postImportSession(file) {
+// `projectName`, when given, overrides the backend's own default of
+// "whichever project is currently active" — see getSessions' own
+// docstring for why LabelProjectView.vue always passes its own
+// props.projectName explicitly here.
+export function postImportSession(file, projectName = null) {
   const formData = new FormData()
   formData.append('file', file)
-  return apiFetch(`${API_URL}/chat/sessions/import`, {
+  const query = projectName ? `?project_name=${encodeURIComponent(projectName)}` : ''
+  return apiFetch(`${API_URL}/chat/sessions/import${query}`, {
     method: 'POST',
     body: formData
   })
@@ -269,9 +284,12 @@ export function postImportSession(file) {
 // tracking/session_export.py's own module docstring for the shape) —
 // LabelProjectView.vue's own handleImportSession calls this once per
 // session found inside an uploaded .json file, same per-item try/catch
-// loop it already runs per .txt file.
-export function postImportSessionJson(sessionData) {
-  return apiFetch(`${API_URL}/chat/sessions/import-json`, {
+// loop it already runs per .txt file. `projectName` is a query param, not
+// part of `sessionData` itself — see backend's post_import_session_json's
+// own docstring on why.
+export function postImportSessionJson(sessionData, projectName = null) {
+  const query = projectName ? `?project_name=${encodeURIComponent(projectName)}` : ''
+  return apiFetch(`${API_URL}/chat/sessions/import-json${query}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(sessionData)
@@ -279,12 +297,13 @@ export function postImportSessionJson(sessionData) {
 }
 
 // The "Label sessions" view's own "Download all" button — every session
-// (native and imported alike) of the active project, as one JSON array
-// (see backend tracking/session_export.py). A blob so the caller can
-// trigger a real file download the same way downloadProject already does
-// for a project's own zip.
-export function getExportSessions() {
-  return apiFetch(`${API_URL}/chat/sessions/export`, {}, { parse: 'blob' })
+// (native and imported alike) of `projectName` (omitted: the active
+// project), as one JSON array (see backend tracking/session_export.py).
+// A blob so the caller can trigger a real file download the same way
+// downloadProject already does for a project's own zip.
+export function getExportSessions(projectName = null) {
+  const query = projectName ? `?project_name=${encodeURIComponent(projectName)}` : ''
+  return apiFetch(`${API_URL}/chat/sessions/export${query}`, {}, { parse: 'blob' })
 }
 
 export function getSignals() {
@@ -297,8 +316,14 @@ export function getSignals() {
 // trigger/env: expression can reference. InspectorDetailCard.vue's own
 // trigger editor (see TriggerEditor.vue) is the one consumer, for its own
 // autocomplete/syntax coloring.
-export function getIdentifiers() {
-  return apiFetch(`${API_URL}/chat/identifiers`)
+// `projectName`, when given, overrides the backend's own default of
+// "whichever project is currently active" — EditProjectView.vue's own
+// caller always passes its own props.projectName explicitly, so a
+// trigger editor open on project A never silently reflects whatever
+// project B happens to be globally active right now.
+export function getIdentifiers(projectName = null) {
+  const query = projectName ? `?project_name=${encodeURIComponent(projectName)}` : ''
+  return apiFetch(`${API_URL}/chat/identifiers${query}`)
 }
 
 // The active user+project's current "environment" memory (see backend's
@@ -352,10 +377,16 @@ export function clearActionEnv() {
 
 // `messageId`, when given, computes metrics as of that exact message's
 // own timestamp instead of the live/current history — see the
-// "Label sessions" view's point-in-time Inspector.
-export function getMetrics(messageId) {
-  const query = messageId != null ? `?message_id=${encodeURIComponent(messageId)}` : ''
-  return apiFetch(`${API_URL}/chat/metrics${query}`)
+// "Label sessions" view's point-in-time Inspector. `projectName`, when
+// given, overrides the backend's own default of "whichever project is
+// currently active" — LabelProjectView.vue's own caller always passes
+// its own props.projectName explicitly, same reasoning as getSessions.
+export function getMetrics(messageId, projectName = null) {
+  const params = new URLSearchParams()
+  if (messageId != null) params.set('message_id', messageId)
+  if (projectName) params.set('project_name', projectName)
+  const query = params.toString()
+  return apiFetch(`${API_URL}/chat/metrics${query ? `?${query}` : ''}`)
 }
 
 export function postAction(actionName, sessionId) {

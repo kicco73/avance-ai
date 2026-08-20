@@ -462,7 +462,7 @@ async function refreshSessionStartState() {
     return
   }
   try {
-    const allSessions = await getSessions()
+    const allSessions = await getSessions(false, props.projectName)
     sessionStartState.value = allSessions.find((s) => s.id === currentSessionId.value)?.start_state ?? null
   } catch {
     // already surfaced via apiFetch
@@ -529,7 +529,7 @@ async function refreshValidStateKeys() {
   // mount below — so refreshing the shared trigger-autocomplete registry
   // here (see identifierRegistry.js) covers every way a signal/action
   // can come into existence without a second call site of its own.
-  refreshIdentifierRegistry()
+  refreshIdentifierRegistry(props.projectName)
 }
 
 // The state a given message's own turn left the conversation in — see

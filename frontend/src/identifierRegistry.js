@@ -15,9 +15,14 @@ import { getIdentifiers } from './api.js'
 
 export const identifierRegistry = ref({})
 
-export async function refreshIdentifierRegistry() {
+// `projectName`, when given, overrides the backend's own default of
+// "whichever project is currently active" — EditProjectView.vue's own
+// caller always passes its own props.projectName explicitly, so a
+// trigger editor open on project A never silently reflects whatever
+// project B happens to be globally active right now.
+export async function refreshIdentifierRegistry(projectName = null) {
   try {
-    identifierRegistry.value = await getIdentifiers()
+    identifierRegistry.value = await getIdentifiers(projectName)
   } catch {
     // already surfaced via apiFetch
   }

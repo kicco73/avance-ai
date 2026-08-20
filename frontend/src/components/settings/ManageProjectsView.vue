@@ -14,6 +14,7 @@
 // dependency), not a button on this table.
 import { onMounted, ref } from 'vue'
 import { getProjectsRuntimeStatus, putProjectPause, putProjectResume } from '../../api.js'
+import ErrorBanner from '../ErrorBanner.vue'
 
 // "New project"/"Upload project..."/"delete" all live here now, not
 // ProjectsMenu.vue — App.vue still owns the actual actions
@@ -110,6 +111,8 @@ defineExpose({ refresh: load })
         <button class="close-btn" @click="emit('close')">Back</button>
       </div>
     </div>
+
+    <ErrorBanner />
 
     <div class="manage-projects-body">
       <p v-if="loading" class="manage-projects-status">Loading…</p>

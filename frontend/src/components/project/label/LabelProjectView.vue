@@ -107,7 +107,7 @@ function stopDrag() {
 // this view's own panel did.
 function toggleBenchmarkSessionsPanel() {
   benchmarkSessionsPanelOpen.value = !benchmarkSessionsPanelOpen.value
-  if (benchmarkSessionsPanelOpen.value) loadSessions(true)
+  if (benchmarkSessionsPanelOpen.value) loadSessions(true, props.projectName)
 }
 
 // This view's own Sessions panel is the one place that reviews imported
@@ -121,7 +121,7 @@ function toggleBenchmarkSessionsPanel() {
 // below) and returns the new session_id, or null on failure.
 async function importTranscriptFile(file, results) {
   try {
-    const { session_id } = await postImportSession(file)
+    const { session_id } = await postImportSession(file, props.projectName)
     results.push({ file, ok: true })
     return session_id
   } catch (err) {
@@ -157,7 +157,7 @@ async function importJsonFile(file, results) {
   for (const [index, sessionData] of sessionsData.entries()) {
     const label = { name: sessionData?.name || `${file.name} #${index + 1}` }
     try {
-      const { session_id } = await postImportSessionJson(sessionData)
+      const { session_id } = await postImportSessionJson(sessionData, props.projectName)
       results.push({ file: label, ok: true })
       lastId = session_id
     } catch (err) {
@@ -188,7 +188,7 @@ async function handleImportSession(files) {
     // looked up in it — refresh first, select second, not the other way
     // around. Only the most recently imported session is selected, same
     // as the single-file flow this replaces.
-    await refreshSessionsQuietly(true)
+    await refreshSessionsQuietly(true, props.projectName)
     const imported = sessions.value.find((s) => s.id === lastImportedId)
     if (imported) selectSession(imported)
   }
@@ -220,7 +220,7 @@ async function handleDeleteSession(session) {
   try {
     await deleteSession(session.id)
     if (session.id === currentSessionId.value) currentSessionId.value = null
-    await refreshSessionsQuietly(true)
+    await refreshSessionsQuietly(true, props.projectName)
   } catch {
     // already surfaced via apiFetch
   } finally {
@@ -247,7 +247,7 @@ async function loadTimeline() {
     const [messageRows, signalRows, allSessions] = await Promise.all([
       getMessages(sessionId),
       getSessionSignals(sessionId),
-      getSessions(true)
+      getSessions(true, props.projectName)
     ])
     rawMessages.value = messageRows
     signalsLog.value = signalRows
@@ -476,7 +476,7 @@ async function reloadSignalsLog() {
   // the panel is toggled closed and reopened. Quiet: a full loadSessions()
   // would flash the panel to "Loading…" for something the user never
   // asked to reload.
-  await refreshSessionsQuietly(true)
+  await refreshSessionsQuietly(true, props.projectName)
 }
 
 async function onUpdateExpectedState(value) {
@@ -565,7 +565,7 @@ const downloadingSessions = ref(false)
 async function handleDownloadSessions() {
   downloadingSessions.value = true
   try {
-    const blob = await getExportSessions()
+    const blob = await getExportSessions(props.projectName)
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
@@ -588,7 +588,7 @@ async function onToggleMarkDone() {
   markingDone.value = true
   try {
     await putSessionLabeled(currentSessionId.value, !currentSessionLabeled.value)
-    await refreshSessionsQuietly(true)
+    await refreshSessionsQuietly(true, props.projectName)
   } catch {
     // already surfaced via apiFetch
   } finally {
@@ -636,7 +636,7 @@ async function onUpdateSessionTitle() {
   if (!sessionId || editSessionTitle.value === (currentSession.value?.title ?? '')) return
   try {
     await putSessionTitle(sessionId, editSessionTitle.value)
-    await refreshSessionsQuietly(true)
+    await refreshSessionsQuietly(true, props.projectName)
   } catch {
     // already surfaced via apiFetch
   }
@@ -647,7 +647,7 @@ async function onUpdateSessionComment() {
   if (!sessionId || editSessionComment.value === (currentSession.value?.comment ?? '')) return
   try {
     await putSessionComment(sessionId, editSessionComment.value)
-    await refreshSessionsQuietly(true)
+    await refreshSessionsQuietly(true, props.projectName)
   } catch {
     // already surfaced via apiFetch
   }
@@ -667,7 +667,7 @@ onMounted(() => {
   // The Sessions panel starts open (see benchmarkSessionsPanelOpen) —
   // toggleBenchmarkSessionsPanel only loads on a closed-to-open flip, so
   // the initial open needs its own load.
-  loadSessions(true)
+  loadSessions(true, props.projectName)
   window.addEventListener('mousemove', onDrag)
   window.addEventListener('mouseup', stopDrag)
   window.addEventListener('resize', handleWindowResize)
@@ -804,7 +804,7 @@ onBeforeUnmount(() => {
             />
           </template>
           <template #tab-metrics="{ registerTab }">
-            <InspectorMetricsTab :ref="registerTab('metrics')" :until-message-id="untilMessageId" />
+            <InspectorMetricsTab :ref="registerTab('metrics')" :until-message-id="untilMessageId" :project-name="projectName" />
           </template>
           <template #tab-info>
             <div v-if="currentSession" class="benchmark-session-info">

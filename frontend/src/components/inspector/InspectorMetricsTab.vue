@@ -5,7 +5,15 @@ import DocInfoButton from '../DocInfoButton.vue'
 import { useSignalChangeFlash } from './signalDisplay.js'
 
 const props = defineProps({
-  untilMessageId: { type: [Number, String], default: null }
+  untilMessageId: { type: [Number, String], default: null },
+  // Omitted (EditProjectView.vue's own usage): the backend follows
+  // whichever project is currently active, which is correct there — this
+  // tab always reflects the project actually being edited. Given
+  // (LabelProjectView.vue's own props.projectName): pins the read to
+  // that exact project instead, so reviewing project A's session never
+  // silently reports project B's metrics just because B happens to be
+  // globally active right now (see backend ChatService.get_metrics).
+  projectName: { type: String, default: null }
 })
 
 const metricsLoading = ref(false)
@@ -15,7 +23,7 @@ const { recentlyChanged: recentlyChangedMetrics, markChanged: markMetricsChanged
 async function loadMetrics() {
   metricsLoading.value = true
   try {
-    const nextMetrics = await getMetrics(props.untilMessageId ?? undefined)
+    const nextMetrics = await getMetrics(props.untilMessageId ?? undefined, props.projectName)
     markMetricsChanged(metrics.value, nextMetrics)
     metrics.value = nextMetrics
   } catch {} finally {

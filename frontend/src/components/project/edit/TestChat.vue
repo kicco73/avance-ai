@@ -58,7 +58,7 @@ const emit = defineEmits(['select-message', 'select-transition', 'restart-prefil
           <ModelMenu />
         </div>
       </div>
-      <ChatWindow>
+      <ChatWindow hide-sessions-panel>
         <template #timeline>
           <ChatTimeline
             :timeline="timeline"

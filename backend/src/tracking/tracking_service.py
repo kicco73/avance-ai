@@ -187,18 +187,32 @@ class TrackingService(object):
 			return None
 		return updated
 
+	def _automaton_for_message(self, message_id: int) -> Automaton:
+		"""message_id's own session's own project's Automaton — never
+		self.automaton (the active project's), which would silently
+		validate against the wrong project's states/signals whenever
+		message_id belongs to a project that isn't the one currently
+		active (e.g. LabelProjectView.vue open on project A while project
+		B is active). Mirrors ProjectService.get_automaton_and_state_for_
+		session's own reasoning, just resolved off a message instead of a
+		session_id directly."""
+		message = self._db.get_message(message_id)
+		assert message is not None  # _require_annotatable_message already confirmed this above
+		automaton, _ = self._project_service.get_automaton_and_state_for_session(message["session_id"])
+		return automaton
+
 	def set_message_expected_state(self, message_id: int, expected_state: str | None) -> dict | None:
 		"""Sets (expected_state given) or clears (None) the expert-
 		annotated expected state for message_id's own evaluation — see
 		Tracking.expected_state's own docstring. Returns the updated
 		Tracking row, or None if clearing it deleted the row entirely (see
 		_finalize_annotation_write). `expected_state` must name a real
-		state in the active project's own automaton — the "Benchmark
+		state in message_id's own project's automaton — the "Benchmark
 		project" view's States dropdown is populated from exactly that
 		list, but this is the one place that actually enforces it."""
 		row = self._require_annotatable_message(message_id)
 		if expected_state is not None:
-			if expected_state == "" or expected_state not in self.automaton.states:
+			if expected_state == "" or expected_state not in self._automaton_for_message(message_id).states:
 				raise TrackingServiceError(
 					f"Unknown state '{expected_state}'.", status_code=HTTPStatus.UNPROCESSABLE_ENTITY
 				)
@@ -212,13 +226,13 @@ class TrackingService(object):
 		signal name missing from it is annotation-cleared for that signal
 		alone (the "Label sessions" view's own sliders send the whole
 		dict on every change, never a single-key patch). Every key must
-		name a real signal in the active project, every value a plain
-		number in [0, 100] (see Inspector.vue's own slider range). Returns
-		the updated Tracking row, or None if clearing it deleted the row
-		entirely (see _finalize_annotation_write)."""
+		name a real signal in message_id's own project, every value a
+		plain number in [0, 100] (see Inspector.vue's own slider range).
+		Returns the updated Tracking row, or None if clearing it deleted
+		the row entirely (see _finalize_annotation_write)."""
 		row = self._require_annotatable_message(message_id)
 		if expected_values:
-			valid_names = {s.name for s in self.automaton.signals}
+			valid_names = {s.name for s in self._automaton_for_message(message_id).signals}
 			for name, value in expected_values.items():
 				if name not in valid_names:
 					raise TrackingServiceError(

@@ -1,5 +1,14 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+
+// EditProjectView.vue's own embedded "Test" chat (see TestChat.vue) hides
+// this panel entirely — a Test/draft session is a single, ephemeral
+// conversation to try out whatever's currently being edited, not
+// something with a history of past sessions worth browsing/switching
+// between the way the main app's live chat's own Sessions panel is for.
+const props = defineProps({
+  hideSessionsPanel: { type: Boolean, default: false }
+})
 import ActionButtons from './ActionButtons.vue'
 import ChatInput from './ChatInput.vue'
 import MessageBubble from './MessageBubble.vue'
@@ -254,7 +263,7 @@ onBeforeUnmount(clearSkin)
     :data-state="state?.key ?? null"
     :data-prev-state="prevStateKey"
   >
-    <div class="sessions-panel-wrap">
+    <div v-if="!hideSessionsPanel" class="sessions-panel-wrap">
       <div class="sessions-panel" :class="{ 'sessions-panel-collapsed': !sessionsPanelOpen }" :style="sessionsPanelOpen ? { width: sessionsWidth + 'px' } : null">
         <SessionsPanel
           :sessions="sessions"
