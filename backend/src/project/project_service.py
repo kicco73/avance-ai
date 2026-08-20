@@ -13,7 +13,7 @@ import re
 import zipfile
 import tempfile
 from pathlib import Path
-from typing import Awaitable, Callable
+from typing import Awaitable, Callable, Mapping
 
 from automaton.automaton import (
     Action, ActionPayload, Automaton, EnvKeyPayload, ProjectPayload, SignalPayload, State, StatePayload,
@@ -238,7 +238,7 @@ class ProjectService(object):
         revision = self._db.get_project_revision(project_name)
         return self._load_project_at_revision(project_name, revision)
 
-    def _project_update_changed(self, existing: dict[str, str | bytes], files: dict[str, str | bytes]) -> bool:
+    def _project_update_changed(self, existing: Mapping[str, str | bytes], files: Mapping[str, str | bytes]) -> bool:
         """Whether `files` (new content for some subset of a project's
         own files — see _prepare_project_update) is a genuine change
         against `existing`. A file `existing` doesn't have at all yet is
@@ -251,12 +251,17 @@ class ProjectService(object):
         return any(name not in existing or existing[name] != content for name, content in files.items())
 
     def _prepare_project_update(
-        self, project_name: str, files: dict[str, str | bytes]
+        self, project_name: str, files: Mapping[str, str | bytes]
     ) -> tuple[Automaton, dict[str, str | bytes] | None]:
         """Builds+validates the Automaton for `files` (new content for
         some subset of `project_name`'s own files — all of them for a
         zip upload, just one for a single-file edit) merged onto its
-        current ones. Read-only — never writes anything. Returns
+        current ones. `files` is `Mapping`, not `dict` — this never
+        writes into it (see the read-only note below), and a plain
+        `dict[str, str | bytes]` parameter would otherwise reject a
+        caller's own `dict[str, str]` (put_project's own zip/bare-YAML
+        branches, never bytes) outright: dict is invariant in its value
+        type, Mapping is covariant. Read-only — never writes anything. Returns
         (automaton, to_persist): the second element is the full merged
         file set (put_project hands it straight to db.save_project_files;
         put_project_file only uses its presence as a changed/unchanged
@@ -547,7 +552,7 @@ class ProjectService(object):
         if not self._db.project_exists(project_name):
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
         is_paused, _ = self._db.get_project_availability(project_name) or (False, None)
-        manually_paused = self._db.get_manually_paused(project_name)
+        manually_paused = self._db.get_manually_paused(project_name) or False
         status = self._project_status(is_paused, manually_paused)
         if status != "running":
             raise ValueError(f"Project '{project_name}' isn't running (status: '{status}') — can't be manually paused.")
@@ -564,7 +569,7 @@ class ProjectService(object):
         if not self._db.project_exists(project_name):
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
         is_paused, _ = self._db.get_project_availability(project_name) or (False, None)
-        manually_paused = self._db.get_manually_paused(project_name)
+        manually_paused = self._db.get_manually_paused(project_name) or False
         status = self._project_status(is_paused, manually_paused)
         if status != "manually_paused":
             raise ValueError(f"Project '{project_name}' isn't manually paused (status: '{status}') — can't be resumed.")
@@ -829,6 +834,7 @@ class ProjectService(object):
         # stored username (not Session().user) is the correct "whose
         # transition this is" — see get_chat_session's own row shape.
         session = self._db.get_chat_session(session_id)
+        assert session is not None  # get_automaton_and_state_for_session above already resolved this same session_id
         TrackingEngine.notify_transition(session["username"], session["project_name"], state.key, new_state.key)
         return automaton.get_state_payload(new_state), action, state.key
 
@@ -1411,10 +1417,12 @@ class ProjectService(object):
         if content is None:
             raise FileNotFoundError(f"File '{file_name}' does not exist in project '{project_name}'.")
         content_type = self._db.get_archive_content_type(project_name, file_name, revision=revision)
+        assert content_type is not None  # same Archive row get_archive above already found content for
         return content, content_type
 
     async def put_project_file(
-        self, project_name: str, file_name: str, content: bytes, content_type_header: str | None, commit: CommitCallback
+        self, project_name: str, file_name: str, content: bytes | str, content_type_header: str | None,
+        commit: CommitCallback,
     ) -> dict:
         """Creates or edits one of `project_name`'s files in place. A text
         extension (TEXT_EDITABLE_EXTENSIONS) is always decoded as UTF-8 and
@@ -1428,7 +1436,12 @@ class ProjectService(object):
         MAX_IMAGE_UPLOAD_BYTES — no other size limit exists anywhere in this
         stack (see nginx.conf). `index.css` specifically also runs CSS
         url(...) reference validation before anything is persisted (see
-        missing_css_references) — every other extension skips that step."""
+        missing_css_references) — every other extension skips that step.
+        `content` accepts `str` directly (not just `bytes`) for a text
+        extension specifically — _edit_index_yml's own callers already
+        have AutomatonYamlEditor.serialize()'s own `str` in hand and would
+        otherwise have to encode it just to be decoded right back a few
+        lines down (see the isinstance check immediately below)."""
         if project_name not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
 
@@ -1448,6 +1461,11 @@ class ProjectService(object):
             update_value: str | bytes = text_content
             to_save: bytes = text_content.encode("utf-8")
         else:
+            # Only a text extension (see the `str` branch above) ever
+            # legitimately hands this a `str` — an image upload is always
+            # real bytes off the request body, never AutomatonYamlEditor.
+            # serialize()'s own text.
+            assert isinstance(content, bytes)
             expected_content_type = IMAGE_CONTENT_TYPE_BY_EXTENSION[extension]
             if content_type_header != expected_content_type:
                 raise ValueError(
