@@ -276,6 +276,30 @@ def trigger_automaton_project_refs(expression: str) -> set[str]:
     }
 
 
+def trigger_automaton_env_refs(expression: str) -> dict[str, set[str]]:
+    """Every `automaton.<project>.env.<key>` reference in `expression`,
+    grouped by project — e.g. "automaton.a.env.k1 and automaton.b.env.k2"
+    -> {"a": {"k1"}, "b": {"k2"}}. A narrower walk than trigger_automaton_
+    project_refs above (which matches automaton.<project> at any depth,
+    automaton.<project>.state included): this only matches the specific
+    4-level automaton.<project>.env.<key> chain, since only that shape
+    names an actual env key to check the existence of (see automaton_
+    builder.py's own build-time known_projects validation — Prompt 10)."""
+    tree = ast.parse(expression, mode="eval").body
+    refs: dict[str, set[str]] = {}
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Attribute)):
+            continue
+        env_node = node.value
+        if env_node.attr != "env" or not isinstance(env_node.value, ast.Attribute):
+            continue
+        project_node = env_node.value
+        if not isinstance(project_node.value, ast.Name) or project_node.value.id != "automaton":
+            continue
+        refs.setdefault(project_node.attr, set()).add(node.attr)
+    return refs
+
+
 def trigger_namespace_refs(expression: str) -> dict[str, set[str]]:
     """{'signal': {...}, 'env': {...}, 'system': {...}, 'session': {...},
     'session.metric': {...}, 'metric': {...}} — every namespace attribute

@@ -172,6 +172,28 @@ class ProjectService(object):
             return False
         return Path(project_name).name == project_name
 
+    def _known_projects_env_keys(self, project_name: str) -> dict[str, frozenset[str]]:
+        """`known_projects` for AutomatonBuilder.build's own Prompt 10
+        existence check — every *other* project's own declared project.id
+        mapped to its own declared env key names, read via AutomatonBuilder.
+        read_declared_env_keys (raw YAML only, at that other project's own
+        current revision — never a full build of it, see that method's
+        own docstring on why). Skips `project_name` itself (an
+        automaton.* reference is only ever meaningful about a *different*
+        project) and any other project with no index.yml, or no declared
+        project.id at all — nothing to reference it by."""
+        known: dict[str, frozenset[str]] = {}
+        for other_name in self._db.list_projects():
+            if other_name == project_name:
+                continue
+            archive = self._db.get_archive(other_name, "index.yml")
+            if archive is None:
+                continue
+            project_id, env_keys = AutomatonBuilder.read_declared_env_keys(archive.decode("utf-8"))
+            if project_id is not None:
+                known[project_id] = env_keys
+        return known
+
     def _invalidate_automaton_cache(self, project_name: str) -> None:
         """Drops every cached revision of `project_name` at once — a write
         path (revert_to_published/delete_project) that needs this has no
@@ -199,7 +221,9 @@ class ProjectService(object):
         if 'index.yml' not in archives:
             raise  FileNotFoundError(f"Project '{project_name}' does not contain 'index.yml'.")
 
-        automaton = AutomatonBuilder().build(decode_text_archives(archives))
+        automaton = AutomatonBuilder().build(
+            decode_text_archives(archives), self._known_projects_env_keys(project_name)
+        )
         self._automaton_cache[cache_key] = automaton
         return automaton
 
@@ -244,7 +268,7 @@ class ProjectService(object):
         existing = decode_text_archives(self._db.get_archives(project_name))
         merged = {**existing, **files}
 
-        automaton = AutomatonBuilder().build(merged)
+        automaton = AutomatonBuilder().build(merged, self._known_projects_env_keys(project_name))
         self._validate_project_id_globally_unique(project_name, automaton.project_id)
 
         if not self._project_update_changed(existing, files):
@@ -1602,7 +1626,7 @@ class ProjectService(object):
         try:
             archives = self._db.get_archives(project_name=project_name)
             del archives[file_name]
-            new_automaton = AutomatonBuilder().build(archives)
+            new_automaton = AutomatonBuilder().build(archives, self._known_projects_env_keys(project_name))
         except Exception as exc:
             raise ValueError(f"Invalid project definition: {exc}") from exc
 

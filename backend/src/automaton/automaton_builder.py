@@ -1,6 +1,7 @@
 from automaton.automaton import (
     Action, EnvKey, MemoryArchive, Automaton, Signal, SourceDict, State,
-    trigger_automaton_project_refs, trigger_bare_names, trigger_namespace_refs, trigger_type_violations,
+    trigger_automaton_env_refs, trigger_automaton_project_refs, trigger_bare_names, trigger_namespace_refs,
+    trigger_type_violations,
 )
 from automaton.identifier_registry import build_registry
 from automaton.on_enter_script import OnEnterScriptError, OnEnterScriptSignatureParser
@@ -236,14 +237,54 @@ class AutomatonBuilder(object):
         if violations:
             raise ValueError(f"{context} ('{expression}'): {'; '.join(violations)}")
 
+    @staticmethod
+    def _validate_automaton_refs_exist(
+        expression: str, referenced_projects: set[str], known_projects: dict[str, frozenset[str]], context: str
+    ) -> None:
+        """Prompt 10 — the one thing the pre-existing self-loop-only check
+        (see _actions_sanity_check's own caller) never covered: whether
+        the project/env key an automaton.* reference actually names
+        exists at all. `known_projects` (see build's own docstring) maps
+        every *other* project's own declared project.id to its own
+        declared env key names — this project's own identifiers never
+        belong in it (an automaton.* reference is only ever meaningful
+        about a *different* project, see AutomatonYamlEditor's own
+        set_project_field docstring on `id` itself). A reference to a
+        project this one's own automaton.* namespace simply doesn't know
+        about yet — not present in known_projects at all — is exactly as
+        invalid as one naming a real project's own undeclared env key:
+        both are silently-wrong at runtime (see tracking.
+        automaton_namespace's own graceful-None + SystemWarning) unless
+        caught here."""
+        unknown_projects = referenced_projects - known_projects.keys()
+        if unknown_projects:
+            raise ValueError(
+                f"{context} references automaton.{', automaton.'.join(sorted(unknown_projects))} — "
+                "not a known project.id."
+            )
+        for project_id, env_keys in trigger_automaton_env_refs(expression).items():
+            declared = known_projects.get(project_id)
+            if declared is None:
+                continue  # already reported above as an unknown project
+            unknown_keys = env_keys - declared
+            if unknown_keys:
+                raise ValueError(
+                    f"{context} references automaton.{project_id}.env.{', '.join(sorted(unknown_keys))} — "
+                    f"not declared in project '{project_id}''s own 'env' section."
+                )
+
     def _actions_sanity_check(
-        self, key: str, state: State, declared_states: set[str], registry: dict[str, dict[str, str]]
+        self, key: str, state: State, declared_states: set[str], registry: dict[str, dict[str, str]],
+        known_projects: dict[str, frozenset[str]] | None = None,
     ):
         """`registry` (see automaton.identifier_registry.build_registry):
         every valid identifier for this project, one set per namespace —
         `signal.*`/`env.*` project-specific, `system.*`/`session.*`/
         `session.metric.*`/`metric.*` the same fixed sets for every
-        project (see that module's own docstring)."""
+        project (see that module's own docstring). `known_projects`: see
+        build's own docstring (Prompt 10) — None skips the automaton.*
+        existence check entirely, same as every caller before this
+        parameter existed."""
         for action in state.actions:
             if action.target not in declared_states:
                 raise ValueError(
@@ -257,11 +298,17 @@ class AutomatonBuilder(object):
                 self._validate_trigger_types(
                     action.trigger, f"State {key}, action '{action.name}': trigger",
                 )
-                if trigger_automaton_project_refs(action.trigger) and action.target != state.key:
+                referenced_projects = trigger_automaton_project_refs(action.trigger)
+                if referenced_projects and action.target != state.key:
                     raise ValueError(
                         f"State {key}, action '{action.name}': trigger references automaton.* but this "
                         f"action isn't a self-loop (target '{action.target}' != state '{state.key}') — "
                         "automaton.* is only ever allowed in a self-loop action's own trigger."
+                    )
+                if known_projects is not None and referenced_projects:
+                    self._validate_automaton_refs_exist(
+                        action.trigger, referenced_projects, known_projects,
+                        f"State {key}, action '{action.name}': trigger",
                     )
             if action.env:
                 for env_key, expression in action.env.items():
@@ -325,7 +372,46 @@ class AutomatonBuilder(object):
             )
         return project_id, raw_project.get("ui-label"), raw_project.get("ui-description")
 
-    def build(self, contents: dict) -> Automaton:
+    @staticmethod
+    def read_declared_env_keys(index_yml_text: str) -> tuple[str | None, frozenset[str]]:
+        """Reads only `project.id` and the top-level `env:` section's own
+        key names straight off `index_yml_text` — never a full build (no
+        state/signal/action parsing, no validation at all) — for
+        ProjectService's own known_projects (Prompt 10, see build's own
+        docstring), which needs every *other* project's own declared env
+        key names to validate an automaton.<id>.env.<key> reference
+        without paying for (or risking a circular/currently-invalid) full
+        build of every other project just to check one thing exists.
+        `id`/`env` malformed in whatever way build() itself would reject
+        (not a mapping, not a valid identifier, ...) simply reports
+        nothing here rather than raising — an unrelated other project's
+        own bad YAML must never block validating *this* one; build()
+        already rejects that other project's own definition on its own
+        turn to be built."""
+        raw = _yaml.load(index_yml_text)
+        raw_project = raw.get("project")
+        project_id = raw_project.get("id") if isinstance(raw_project, dict) else None
+        if not isinstance(project_id, str) or not project_id.isidentifier():
+            project_id = None
+        raw_env = raw.get("env")
+        env_keys = frozenset(raw_env.keys()) if isinstance(raw_env, dict) else frozenset()
+        return project_id, env_keys
+
+    def build(self, contents: dict, known_projects: dict[str, frozenset[str]] | None = None) -> Automaton:
+        """`known_projects` (Prompt 10) — every *other* project's own
+        project.id mapped to the set of its own declared env key names
+        (Prompt 5), for validating that an automaton.<id>/automaton.
+        <id>.env.<key> reference actually names something that exists
+        (see _validate_automaton_refs_exist) — the one thing the pre-
+        existing self-loop-only check never covered. Deliberately just
+        dicts/sets of plain strings, never Project/Db/ProjectService
+        objects: this class stays pure YAML-to-Automaton, with zero
+        awareness of where those already-resolved values came from (see
+        ProjectService, the one caller that actually populates this — it
+        reads every other project's own declared `env:` section, nothing
+        else, to build it). None (the default) skips the check
+        entirely — every existing caller that doesn't pass this keeps
+        behaving exactly as before this parameter existed."""
         all_archives = self._convert_contents_to_archives(contents=contents)
 
         raw = _yaml.load(contents['index.yml'])
@@ -411,7 +497,7 @@ class AutomatonBuilder(object):
         registry = build_registry(list(signals.values()), list(env_keys.values()))
         for key, state in states.items():
             context_key = init_action.name if key == "" else key
-            self._actions_sanity_check(context_key, state, set(raw_states.keys()), registry)
+            self._actions_sanity_check(context_key, state, set(raw_states.keys()), registry, known_projects)
 
         # A declared env key's own `value` (its default) is a namespaced
         # expression exactly like an action's own env: one — see EnvKey's

@@ -1,13 +1,13 @@
 """GET /api/docs/{name} — raw markdown content of one of src/docs' fixed
-reference docs (see controller.py's own DOC_FILES), backing each "(?)"
-documentation button (EditProjectView.vue's own, next to Save; the
-Inspector's Metrics/Performance tabs).
+reference docs (see controllers/chat_controller.py's own DOC_FILES),
+backing each "(?)" documentation button (EditProjectView.vue's own, next
+to Save; the Inspector's Metrics/Performance tabs).
 """
 from __future__ import annotations
 
 import pytest
 
-from controller import DOC_FILES
+from controllers.chat_controller import DOC_FILES
 
 pytestmark = pytest.mark.contract
 

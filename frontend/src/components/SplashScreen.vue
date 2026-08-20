@@ -57,7 +57,7 @@ const emit = defineEmits(['retry'])
       </template>
 
       <template v-else-if="variant === 'paused'">
-        <p class="splash-message">Progetto in manutenzione, riprova più tardi.</p>
+        <p class="splash-message">Project under maintainance, please try again later.</p>
         <p v-if="reason" class="splash-paused-reason">{{ reason }}</p>
       </template>
 

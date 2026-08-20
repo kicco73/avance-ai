@@ -97,19 +97,44 @@ def test_availability_resolves_automaton_star_against_project_id_not_project_nam
     assert app_db.get_observed_projects("watcher") == ["Weird Name With Spaces"]
 
 
-def test_a_project_with_no_declared_id_is_never_exposed_to_automaton_star(client):
+def test_referencing_a_project_with_no_declared_id_anywhere_is_rejected(client):
+    """Prompt 10 — a build-time existence check on top of Prompt 6's own
+    self-loop-only one: referencing automaton.<id> where no project
+    anywhere has ever declared that id is now a real validation error,
+    not a silently-accepted dangling reference (the old behavior this
+    test used to assert)."""
+    resp = _put(client, "silent", MINIMAL)
+    assert resp.status_code == 200, resp.text
+
     resp = _put(client, "watcher", 'project:\n  id: watcher_id\n' + MINIMAL.replace(
         "a:\n    contextual-prompt: hi",
         "a:\n    contextual-prompt: hi\n    actions:\n      - name: notice\n        target: a\n"
         "        trigger: \"automaton.silent.state == 'x'\""
     ))
-    assert resp.status_code == 200, resp.text
-    # "silent" never declares a project.id at all — the reference is
-    # simply dangling (never a build-time error, see automaton_builder.py
-    # 's own self-loop-only check, which only cares about syntax).
-    resp = _put(client, "silent", MINIMAL)
+    assert resp.status_code == 400
+    assert "automaton.silent" in resp.json()["error"]["message"]
+
+
+def test_referencing_an_env_key_not_declared_on_the_named_project_is_rejected(client):
+    resp = _put(client, "dep", "project:\n  id: dep_id\nenv:\n  known_key:\n    value: \"'x'\"\n" + MINIMAL)
     assert resp.status_code == 200, resp.text
 
-    response = client.get("/api/projects/runtime-status")
-    watcher_row = next(r for r in response.json()["projects"] if r["name"] == "watcher")
-    assert watcher_row["status"] == "running"  # "silent" isn't paused, so nothing blocks "watcher" either
+    resp = _put(client, "watcher", 'project:\n  id: watcher_id\n' + MINIMAL.replace(
+        "a:\n    contextual-prompt: hi",
+        "a:\n    contextual-prompt: hi\n    actions:\n      - name: notice\n        target: a\n"
+        "        trigger: \"automaton.dep_id.env.missing_key == 1\""
+    ))
+    assert resp.status_code == 400
+    assert "automaton.dep_id.env.missing_key" in resp.json()["error"]["message"]
+
+
+def test_referencing_an_env_key_declared_on_the_named_project_is_accepted(client):
+    resp = _put(client, "dep", "project:\n  id: dep_id\nenv:\n  known_key:\n    value: \"'x'\"\n" + MINIMAL)
+    assert resp.status_code == 200, resp.text
+
+    resp = _put(client, "watcher", 'project:\n  id: watcher_id\n' + MINIMAL.replace(
+        "a:\n    contextual-prompt: hi",
+        "a:\n    contextual-prompt: hi\n    actions:\n      - name: notice\n        target: a\n"
+        "        trigger: \"automaton.dep_id.env.known_key == 'x'\""
+    ))
+    assert resp.status_code == 200, resp.text

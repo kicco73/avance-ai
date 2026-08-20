@@ -15,6 +15,17 @@ def _upload(client, name, sample):
     assert response.status_code == 200, response.text
 
 
+def test_put_project_returns_a_success_payload(client):
+    """Regression test: PUT /api/projects/{project_name} used to return
+    nothing at all (a missing `return result`, see SettingsController.
+    put_project) — the request succeeded and the project was actually
+    created, but the response body was always `null`."""
+    content = (SAMPLES_DIR / "Hello world.zip").read_bytes()
+    response = client.put("/api/projects/proj", content=content, headers={"Content-Type": "application/zip"})
+    assert response.status_code == 200, response.text
+    assert response.json() == {"success": True, "project_name": "proj"}
+
+
 def test_fresh_install_has_no_active_project(client):
     """Regression test: no project name is reserved/defaulted-to anymore
     (see ProjectService.get_active_project_name) — a user with no

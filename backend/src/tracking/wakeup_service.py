@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import logging
 
+from automaton.automaton import Automaton
+from chat.ws_adapter import WsAdapter
 from db.db import Db
 from events import EnvChanged, StateChanged, subscribe
 from jobs import JobQueue, OnProgress
@@ -34,10 +36,20 @@ logger = logging.getLogger(__name__)
 
 
 class WakeupService:
-    def __init__(self, db: Db, project_service: ProjectService, ephemeral_jobs: JobQueue) -> None:
+    def __init__(
+        self, db: Db, project_service: ProjectService, ephemeral_jobs: JobQueue, ws_adapter: WsAdapter | None = None,
+    ) -> None:
         self._db = db
         self._project_service = project_service
         self._ephemeral_jobs = ephemeral_jobs
+        # None whenever config.chat_transport isn't 'websocket' at all
+        # (see main.py's own chat_ws_adapter) — push (see _reevaluate_and_
+        # apply below) is simply skipped in that case, same as it always
+        # implicitly was before this parameter existed: a re-evaluated
+        # self-loop still gets applied and persisted either way, only the
+        # live delivery to an already-open connection is what depends on
+        # this.
+        self._ws_adapter = ws_adapter
 
     def register(self) -> None:
         subscribe(StateChanged, self._on_event)
@@ -101,6 +113,22 @@ class WakeupService:
                 automaton, state, action, {}, session["id"],
                 username=username, project_name=observer_project_name,
             )
+            # Delivers the transition to a client that's actually
+            # connected right now but not mid-turn on *this* project (see
+            # WsAdapter.push's own docstring) — same shape a normal turn's
+            # own "done" frame already carries (state/on-enter), so
+            # nothing downstream needs a new format to recognize this.
+            # None whenever there's no websocket transport configured at
+            # all (see __init__), or (push's own return) nobody's
+            # actually connected to observer_project_name right now —
+            # either way, the transition above is already persisted
+            # regardless; this is purely a best-effort live nudge.
+            if self._ws_adapter is not None:
+                await self._ws_adapter.push(username, observer_project_name, {
+                    "type": "done",
+                    "state": Automaton.get_state_payload(state),
+                    "on-enter": action.on_enter,
+                })
 
     def _wake(self, username: str, observer_project_name: str) -> None:
         async def work(on_progress: OnProgress) -> tuple[str | None, str | None]:

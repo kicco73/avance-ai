@@ -2,12 +2,17 @@
 name referenced as `automaton.<project>...` in a trigger/env expression.
 Used by automaton_builder.py's own self-loop-only build-time check and
 by project_service.py's own reverse-index build.
+
+Also trigger_automaton_env_refs — the narrower automaton.<project>.env.
+<key> walk Prompt 10's own existence check (AutomatonBuilder.build's
+known_projects parameter) uses to validate the env-key half of a
+reference.
 """
 from __future__ import annotations
 
 import pytest
 
-from automaton.automaton import trigger_automaton_project_refs
+from automaton.automaton import trigger_automaton_env_refs, trigger_automaton_project_refs
 
 pytestmark = pytest.mark.contract
 
@@ -37,3 +42,26 @@ def test_the_same_project_referenced_twice_counts_once():
 def test_a_reference_mixed_with_other_namespaces_only_reports_automaton():
     expr = "signal.mood >= 50 and automaton.otherProject.state == 'x'"
     assert trigger_automaton_project_refs(expr) == {"otherProject"}
+
+
+class TestTriggerAutomatonEnvRefs:
+    def test_no_reference_returns_an_empty_dict(self):
+        assert trigger_automaton_env_refs("signal.mood >= 50") == {}
+
+    def test_a_state_reference_is_not_an_env_reference(self):
+        assert trigger_automaton_env_refs("automaton.otherProject.state == 'x'") == {}
+
+    def test_a_single_env_reference_is_found(self):
+        assert trigger_automaton_env_refs("automaton.dep.env.k1 >= 1") == {"dep": {"k1"}}
+
+    def test_multiple_keys_on_the_same_project_are_grouped(self):
+        expr = "automaton.dep.env.k1 >= 1 and automaton.dep.env.k2 == 'x'"
+        assert trigger_automaton_env_refs(expr) == {"dep": {"k1", "k2"}}
+
+    def test_keys_on_different_projects_are_kept_separate(self):
+        expr = "automaton.a.env.k1 >= 1 and automaton.b.env.k2 == 'x'"
+        assert trigger_automaton_env_refs(expr) == {"a": {"k1"}, "b": {"k2"}}
+
+    def test_mixed_state_and_env_references_only_report_the_env_one(self):
+        expr = "automaton.dep.state == 'y' and automaton.dep.env.k1 >= 1"
+        assert trigger_automaton_env_refs(expr) == {"dep": {"k1"}}

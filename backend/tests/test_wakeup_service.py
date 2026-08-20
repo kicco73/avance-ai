@@ -14,6 +14,7 @@ import asyncio
 import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
+from chat.ws_adapter import WsAdapter
 from events import StateChanged, publish
 from jobs import InMemoryJobSink, JobQueue
 from project.project_service import ProjectService
@@ -127,6 +128,97 @@ def test_reevaluate_and_apply_fires_the_self_loop_when_the_observed_state_now_ma
     assert len(after) == before + 1
     assert after[-1]["old_state"] == "x"
     assert after[-1]["new_state"] == "x"  # self-loop — the state itself never changes
+
+
+class _FakeWebSocket:
+    """Just enough to stand in for a real connection in WsAdapter's own
+    _connections registry (see test_ws_adapter_registry.py's own
+    identically-shaped fake) — push only ever calls send_json on it."""
+
+    def __init__(self):
+        self.sent: list[dict] = []
+
+    async def send_json(self, payload: dict):
+        self.sent.append(payload)
+
+
+class TestWsAdapterPush:
+    """Prompt 12 — a fired self-loop wake-up pushes the same shape a
+    normal turn's own "done" frame already carries (state/on-enter) to
+    whichever connection is registered for (username, observer_project_
+    name), if any."""
+
+    def test_pushes_state_and_on_enter_when_the_self_loop_fires_and_a_connection_exists(self, db, project_service):
+        _publish_project(db, project_service, "observed", OBSERVED_YML)
+        _publish_project(db, project_service, "watcher", WATCHER_YML)
+        db.create_chat_session(username=USERNAME, project_name="watcher")
+        db.create_chat_session(username=USERNAME, project_name="observed")
+        observed_session = db.get_latest_chat_session(USERNAME, "observed")
+        db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
+
+        ws_adapter = WsAdapter(chat_service=None, db=db)
+        websocket = _FakeWebSocket()
+        ws_adapter._connections[(USERNAME, "watcher")] = websocket
+
+        ephemeral_jobs = JobQueue(InMemoryJobSink(), max_concurrent=1)
+        service = WakeupService(db, project_service, ephemeral_jobs, ws_adapter)
+        asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
+
+        assert len(websocket.sent) == 1
+        assert websocket.sent[0]["type"] == "done"
+        assert websocket.sent[0]["state"]["key"] == "x"  # self-loop — the state itself never changes
+        assert "on-enter" in websocket.sent[0]
+
+    def test_no_connection_registered_is_a_silent_no_op_not_an_error(self, db, project_service):
+        _publish_project(db, project_service, "observed", OBSERVED_YML)
+        _publish_project(db, project_service, "watcher", WATCHER_YML)
+        db.create_chat_session(username=USERNAME, project_name="watcher")
+        db.create_chat_session(username=USERNAME, project_name="observed")
+        observed_session = db.get_latest_chat_session(USERNAME, "observed")
+        db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
+        watcher_session = db.get_latest_chat_session(USERNAME, "watcher")
+
+        ws_adapter = WsAdapter(chat_service=None, db=db)  # nobody registered for (USERNAME, "watcher")
+
+        ephemeral_jobs = JobQueue(InMemoryJobSink(), max_concurrent=1)
+        service = WakeupService(db, project_service, ephemeral_jobs, ws_adapter)
+        asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
+
+        # The transition itself is still applied and persisted regardless
+        # of whether anyone was there to push it to live.
+        assert db.get_signals(watcher_session["id"])[-1]["new_state"] == "x"
+
+    def test_no_ws_adapter_at_all_is_unaffected_same_as_before_this_parameter_existed(self, db, project_service):
+        _publish_project(db, project_service, "observed", OBSERVED_YML)
+        _publish_project(db, project_service, "watcher", WATCHER_YML)
+        db.create_chat_session(username=USERNAME, project_name="watcher")
+        db.create_chat_session(username=USERNAME, project_name="observed")
+        observed_session = db.get_latest_chat_session(USERNAME, "observed")
+        db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
+        watcher_session = db.get_latest_chat_session(USERNAME, "watcher")
+
+        ephemeral_jobs = JobQueue(InMemoryJobSink(), max_concurrent=1)
+        service = WakeupService(db, project_service, ephemeral_jobs)  # ws_adapter omitted entirely
+        asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
+
+        assert db.get_signals(watcher_session["id"])[-1]["new_state"] == "x"
+
+    def test_push_is_never_called_when_the_self_loop_does_not_fire(self, db, project_service):
+        _publish_project(db, project_service, "observed", OBSERVED_YML)
+        _publish_project(db, project_service, "watcher", WATCHER_YML)
+        db.create_chat_session(username=USERNAME, project_name="watcher")
+        db.create_chat_session(username=USERNAME, project_name="observed")
+        # No transition to state 'b' at all — the watcher's own trigger never matches.
+
+        ws_adapter = WsAdapter(chat_service=None, db=db)
+        websocket = _FakeWebSocket()
+        ws_adapter._connections[(USERNAME, "watcher")] = websocket
+
+        ephemeral_jobs = JobQueue(InMemoryJobSink(), max_concurrent=1)
+        service = WakeupService(db, project_service, ephemeral_jobs, ws_adapter)
+        asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
+
+        assert websocket.sent == []
 
 
 def test_reevaluate_and_apply_does_nothing_when_the_observed_state_does_not_match(db, project_service):

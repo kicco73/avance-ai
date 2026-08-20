@@ -115,19 +115,24 @@ def create_app() -> FastAPI:
             db, ai_service, tracking_service, persisted_job_queue, ephemeral_job_queue,
         )
 
+        # Availability cascade (Prompt 7, see ProjectService.
+        # recompute_availability/register_availability_cascade's own
+        # docstrings) — same "subscribe once, react forever" shape as
+        # WakeupService below.
+        project_service.register_availability_cascade()
+
+        chat_ws_adapter = WsAdapter(chat_service, db) if config.chat_transport == "websocket" else None
+
         # Cross-project wake-up (see tracking/wakeup_service.py's own
         # module docstring) — subscribes at startup, for the whole
         # process's lifetime; nothing else ever calls into this directly,
         # it only ever reacts to events TrackingEngine publishes.
-        WakeupService(db, project_service, ephemeral_job_queue).register()
-
-        # Availability cascade (Prompt 7, see ProjectService.
-        # recompute_availability/register_availability_cascade's own
-        # docstrings) — same "subscribe once, react forever" shape as
-        # WakeupService above.
-        project_service.register_availability_cascade()
-
-        chat_ws_adapter = WsAdapter(chat_service) if config.chat_transport == "websocket" else None
+        # Constructed after chat_ws_adapter (Prompt 12, unlike before this
+        # parameter existed): a self-loop wake-up needs it to push the
+        # transition to an already-open connection (see WakeupService.
+        # _reevaluate_and_apply) — None whenever config.chat_transport
+        # isn't 'websocket' at all, in which case push is simply skipped.
+        WakeupService(db, project_service, ephemeral_job_queue, chat_ws_adapter).register()
 
         controller = AvanceController(
             chat_service, project_service, talk_service, listen_service, db, tracking_service, benchmark_run_service,
