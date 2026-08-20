@@ -150,7 +150,7 @@ states:
         ui-button: "Mark: plan defined"
         target: Action
         trigger: "signal.planConcreteness >= 75"
-        on-enter: celebrate
+        on-enter: celebrate()
 
   Action:
     ui-label: "Action"

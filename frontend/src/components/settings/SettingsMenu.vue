@@ -1,12 +1,13 @@
 <script setup>
-// The topbar's own "⚙" menu — whole-database concerns (backup/restore)
-// that aren't about any one project, split out of ProjectsMenu.vue (which
-// stays scoped to per-project actions: edit/label/new/upload/delete/
-// switch). Same dropdown mechanics (toggle, click-outside-to-close) as
-// that component, just without its own project-loading concern.
+// The topbar's own "⚙" menu — split out of ProjectsMenu.vue (which stays
+// scoped to per-project actions: edit/label/new/upload/delete/switch).
+// Same dropdown mechanics (toggle, click-outside-to-close) as that
+// component, just without its own project-loading concern. Lives in its
+// own settings/ folder alongside RuntimeStatusView.vue — the one item
+// here that isn't a plain action but opens a whole view of its own.
 import { onBeforeUnmount, ref } from 'vue'
 
-const emit = defineEmits(['download-backup', 'restore-backup'])
+const emit = defineEmits(['runtime-status', 'download-backup', 'restore-backup'])
 
 const open = ref(false)
 const rootEl = ref(null)
@@ -14,6 +15,11 @@ const restoreInput = ref(null)
 
 function toggle() {
   open.value = !open.value
+}
+
+function selectRuntimeStatus() {
+  open.value = false
+  emit('runtime-status')
 }
 
 function selectDownloadBackup() {
@@ -57,6 +63,10 @@ onBeforeUnmount(() => {
     <div v-if="open" class="settings-panel">
       <ul class="settings-list">
         <li>
+          <button class="settings-item" @click="selectRuntimeStatus">Runtime status</button>
+        </li>
+        <li class="settings-separator" role="separator"></li>
+        <li>
           <button class="settings-item" @click="selectDownloadBackup">Download backup</button>
         </li>
         <li>
@@ -80,13 +90,16 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
+/* Same vertical padding as ProjectsMenu.vue's own .projects-btn (0.4rem
+   top/bottom, no explicit height on either) so both buttons — icon-only
+   here, text there — compute to the exact same height from that shared
+   padding plus their own inherited line-height, without hardcoding a
+   pixel/rem value that could drift out of sync with it. */
 .settings-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 2.1rem;
-  height: 2.1rem;
-  padding: 0;
+  padding: 0.4rem;
   border-radius: 6px;
   border: 1px solid #4a6fa5;
   background: white;
@@ -132,6 +145,12 @@ onBeforeUnmount(() => {
 
 .settings-item:hover {
   background: #f0f4fa;
+}
+
+.settings-separator {
+  height: 1px;
+  margin: 0.3rem 0;
+  background: #eee;
 }
 
 .restore-backup-input {

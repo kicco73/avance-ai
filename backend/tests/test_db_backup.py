@@ -67,7 +67,8 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
     would miss."""
     ddl = [
         "CREATE TABLE project (name TEXT PRIMARY KEY, revision INTEGER, published_revision INTEGER, "
-        "is_paused INTEGER, paused_reason TEXT)",
+        "is_paused INTEGER, paused_reason TEXT, manually_paused INTEGER, project_id TEXT, "
+        "ui_label TEXT, ui_description TEXT)",
         "CREATE TABLE chatsession (id INTEGER PRIMARY KEY, username TEXT, project_name TEXT, source TEXT, "
         "title TEXT, project_revision INTEGER, datetime_start TEXT, datetime_end TEXT, start_state TEXT, "
         "end_state TEXT, labeled INTEGER, comment TEXT)",

@@ -21,7 +21,7 @@ YML = (
     "        target: b\n"
     "      - name: go-loud\n"
     "        target: b\n"
-    "        on-enter: celebrate\n"
+    "        on-enter: celebrate()\n"
     "  b:\n"
     "    contextual-prompt: there\n"
 )
@@ -43,7 +43,7 @@ def test_manual_action_reports_the_fired_actions_own_on_enter(client):
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["state"]["key"] == "b"
-    assert body["on-enter"] == "celebrate"
+    assert body["on-enter"] == "celebrate()"
 
 
 def test_manual_action_without_on_enter_reports_none_even_for_the_same_target_state(client):

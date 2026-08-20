@@ -5,9 +5,11 @@ import StateBar from './components/StateBar.vue'
 import EditProjectView from './components/project/edit/EditProjectView.vue'
 import LabelProjectView from './components/project/label/LabelProjectView.vue'
 import ProjectsMenu from './components/ProjectsMenu.vue'
-import SettingsMenu from './components/SettingsMenu.vue'
+import SettingsMenu from './components/settings/SettingsMenu.vue'
+import RuntimeStatusView from './components/settings/RuntimeStatusView.vue'
 import SplashScreen from './components/SplashScreen.vue'
 import ErrorBanner from './components/ErrorBanner.vue'
+import ToastContainer from './components/ToastContainer.vue'
 import {
   getState,
   putProject,
@@ -37,6 +39,7 @@ const showEditProject = ref(false)
 const editProjectName = ref(null)
 const showBenchmarkProject = ref(false)
 const benchmarkProjectName = ref(null)
+const showRuntimeStatus = ref(false)
 const modelUploadInput = ref(null)
 const projectsMenu = ref(null)
 
@@ -146,11 +149,15 @@ async function refreshStateAndProjects() {
 
 // "New project": same server-side effect as picking samples/Hello
 // world.zip in the upload dialog (see postNewProject), so it reloads
-// state the same way a real upload does.
+// state the same way a real upload does — including auto-publishing (see
+// handleModelUploadChange's own identical reasoning below): a freshly
+// created project has never been published either, so without this it'd
+// look usable right away but couldn't actually chat yet.
 async function handleNewProject() {
   clearChatUi()
   try {
-    await postNewProject()
+    const result = await postNewProject()
+    await postPublishProject(result.project_name)
     await refreshStateAndProjects()
   } catch {
     // already surfaced via apiFetch
@@ -296,6 +303,8 @@ onBeforeUnmount(() => {
   <!-- 'checking' (the invisible first ping) renders neither branch, on
        purpose: nothing should flash before we know whether the backend was
        already up. -->
+  <ToastContainer />
+
   <SplashScreen v-if="bootStatus === 'waiting'" variant="connecting" />
   <SplashScreen v-else-if="bootStatus === 'failed'" variant="failed" @retry="startBootSequence" />
 
@@ -314,6 +323,7 @@ onBeforeUnmount(() => {
           @delete="handleModelDelete"
         />
         <SettingsMenu
+          @runtime-status="showRuntimeStatus = true"
           @download-backup="handleDownloadBackup"
           @restore-backup="handleRestoreBackup"
         />
@@ -347,6 +357,11 @@ onBeforeUnmount(() => {
       v-if="showBenchmarkProject"
       :project-name="benchmarkProjectName"
       @close="showBenchmarkProject = false"
+    />
+
+    <RuntimeStatusView
+      v-if="showRuntimeStatus"
+      @close="showRuntimeStatus = false"
     />
   </div>
 </template>

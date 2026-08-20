@@ -3,6 +3,7 @@ from automaton.automaton import (
     trigger_automaton_project_refs, trigger_bare_names, trigger_namespace_refs, trigger_type_violations,
 )
 from automaton.identifier_registry import build_registry
+from automaton.on_enter_script import OnEnterScriptError, OnEnterScriptSignatureParser
 from typing import Any
 from metrics.metrics_framework import metric_names
 
@@ -11,6 +12,11 @@ import base64
 from pathlib import Path
 
 _yaml = YAML(typ='rt')
+
+# Stateless — one shared instance is enough (see OnEnterScriptSignature
+# Parser's own docstring); every call site below is a plain
+# AutomatonBuilder method, never itself an instance concern.
+_on_enter_parser = OnEnterScriptSignatureParser()
 
 EXTENSION_TO_MEDIA_TYPE = {
     ".yml": "text/plain",
@@ -107,7 +113,23 @@ class AutomatonBuilder(object):
             )
         return {key: value if isinstance(value, str) else str(value) for key, value in raw_env.items()}
 
+    @staticmethod
+    def _validate_on_enter(on_enter: str | None, location: str) -> None:
+        """`location` (e.g. "state 'a', action 'go'") is prepended to
+        whatever OnEnterScriptSignatureParser.validate raises — same
+        "where exactly" convention every other build-time validator in
+        this file already follows (see e.g. _build_action_env's own
+        'env' errors) — re-raised as the same OnEnterScriptError type,
+        never downgraded to a bare ValueError, so a caller that wants to
+        distinguish this failure specifically still can."""
+        try:
+            _on_enter_parser.validate(on_enter)
+        except OnEnterScriptError as exc:
+            raise OnEnterScriptError(f"{location}: invalid on-enter script — {exc}") from exc
+
     def _build_action(self, key: str, raw_action: dict, all_archives: dict[str, MemoryArchive]) -> Action:
+        on_enter = raw_action.get("on-enter")
+        self._validate_on_enter(on_enter, f"state '{key}', action '{raw_action['name']}'")
         return Action(
             name=raw_action["name"],
             ui_description=raw_action.get("ui-description"),
@@ -119,7 +141,7 @@ class AutomatonBuilder(object):
             trigger=raw_action.get("trigger"),
             action_prompt=raw_action["action-prompt"].strip() if raw_action.get("action-prompt") else None,
             attachments=self._extract_required_archives(raw_action.get("attachments", []), all_archives, f"action {raw_action['name']}"),
-            on_enter=raw_action.get("on-enter"),
+            on_enter=on_enter,
             env=self._build_action_env(raw_action.get("env"), raw_action["name"]),
         )
 
@@ -259,21 +281,56 @@ class AutomatonBuilder(object):
                 "'init-action' is required and must be a mapping with at least a 'target' "
                 "field — the project's real starting state."
             )
+        init_on_enter = raw_init_action.get("on-enter")
+        self._validate_on_enter(init_on_enter, "init-action")
         init_action = Action(
             name="init-action",
             ui_label=raw_init_action.get("ui-label", "init-action"),
             ui_button="",
             target=raw_init_action["target"],
             action_prompt=raw_init_action["action-prompt"].strip() if raw_init_action.get("action-prompt") else None,
-            on_enter=raw_init_action.get("on-enter"),
+            on_enter=init_on_enter,
         )
         return init_action
 
+
+    @staticmethod
+    def _build_project_metadata(raw: dict) -> tuple[str | None, str | None, str | None]:
+        """The optional top-level `project:` section — id/ui-label/
+        ui-description, same convention as init-action/states/signals/env
+        each being their own top-level mapping. `id` is what *other*
+        projects reach this one as through automaton.* (see automaton.
+        trigger_automaton_project_refs) — global uniqueness across every
+        project is ProjectService's own concern (see its
+        _validate_project_id_globally_unique), since that needs the
+        database this pure YAML-to-Automaton builder never touches; this
+        only enforces the one thing checkable from the YAML alone: `id`,
+        if declared, must be a valid Python identifier (letters, digits,
+        underscore, never starting with a digit) — the same grammar
+        automaton.<id> itself requires to even parse as an attribute
+        reference."""
+        raw_project = raw.get("project")
+        if raw_project is None:
+            return None, None, None
+        if not isinstance(raw_project, dict):
+            raise ValueError(
+                f"'project' must be a mapping of fields (id, ui-label, ui-description), "
+                f"got {type(raw_project).__name__}."
+            )
+        project_id = raw_project.get("id")
+        if project_id is not None and (not isinstance(project_id, str) or not project_id.isidentifier()):
+            raise ValueError(
+                f"project.id {project_id!r} is not a valid identifier — letters, digits, and "
+                "underscores only, and it can't start with a digit."
+            )
+        return project_id, raw_project.get("ui-label"), raw_project.get("ui-description")
 
     def build(self, contents: dict) -> Automaton:
         all_archives = self._convert_contents_to_archives(contents=contents)
 
         raw = _yaml.load(contents['index.yml'])
+
+        project_id, project_ui_label, project_ui_description = self._build_project_metadata(raw)
 
         raw_signals = raw.get("signals", {})
         if not isinstance(raw_signals, dict):
@@ -379,4 +436,7 @@ class AutomatonBuilder(object):
             general_attachments=general_attachments,
             attachments=all_archives,
             autotracking_on_ai_message=autotracking_on_ai_message,
+            project_id=project_id,
+            project_ui_label=project_ui_label,
+            project_ui_description=project_ui_description,
         )

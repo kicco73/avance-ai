@@ -52,6 +52,25 @@ def test_content_type_surfaces_on_get_project_file(client, hello_project):
 
 
 @pytest.mark.regression
+def test_get_project_file_reports_no_content_for_a_missing_index_css(client, hello_project):
+    """index.css is the one file every project is allowed not to have at
+    all (see controller.py's own get_project_file docstring) — missing,
+    this is 204 No Content, not a 404, so the "Edit project" view's
+    always-mounted index.css editor can start the user off with an empty
+    buffer instead of surfacing an error for a file that was never
+    required to exist."""
+    response = client.get(f"/api/projects/{hello_project}/files/index.css")
+    assert response.status_code == 204
+    assert response.content == b""
+
+
+@pytest.mark.regression
+def test_get_project_file_still_404s_for_a_missing_non_css_file(client, hello_project):
+    response = client.get(f"/api/projects/{hello_project}/files/does-not-exist.txt")
+    assert response.status_code == 404
+
+
+@pytest.mark.regression
 def test_image_upload_succeeds_with_matching_content_type(client, hello_project):
     response = client.put(
         f"/api/projects/{hello_project}/files/logo.png", content=PNG_MAGIC, headers={"Content-Type": "image/png"}

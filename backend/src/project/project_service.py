@@ -224,10 +224,27 @@ class ProjectService(object):
         merged = {**existing, **files}
 
         automaton = AutomatonBuilder().build(merged)
+        self._validate_project_id_globally_unique(project_name, automaton.project_id)
 
         if not self._project_update_changed(existing, files):
             return automaton, None
         return automaton, merged
+
+    def _validate_project_id_globally_unique(self, project_name: str, project_id: str | None) -> None:
+        """The one project.id check AutomatonBuilder itself can't do (see
+        its own _build_project_metadata docstring): whether some *other*
+        project has already claimed it. Raises before anything gets
+        persisted — same "read-only, never writes" contract _prepare_
+        project_update's own docstring already promises, so a failed
+        save here leaves nothing partially written."""
+        if project_id is None:
+            return
+        owner = self._db.get_project_name_by_project_id(project_id)
+        if owner is not None and owner != project_name:
+            raise ValueError(
+                f"project.id '{project_id}' is already used by project '{owner}' — "
+                "project.id must be globally unique."
+            )
 
     def _file_undo_redo_info(self, project_name: str, file_name: str) -> dict:
         content = self._db.get_archive(project_name, file_name)
@@ -273,6 +290,18 @@ class ProjectService(object):
         exactly where it was, rather than restarting on every single save
         regardless of whether anything relevant to it actually changed."""
 
+        # Project metadata (project.id/ui-label/ui-description — see
+        # automaton_builder.py's own _build_project_metadata) — synced
+        # first: the reverse index below translates *other* projects' own
+        # already-synced project_id into their project_name, so this
+        # project's own row needs to be current before anything else
+        # (itself or another project referencing it) can resolve against
+        # it correctly. Global uniqueness was already checked in
+        # _prepare_project_update, before any of this ran.
+        self._db.set_project_metadata(
+            project_name, automaton.project_id, automaton.project_ui_label, automaton.project_ui_description,
+        )
+
         revision = self._db.get_project_revision(project_name)
         self._automaton_cache[(project_name, revision)] = automaton
         # Reverse index (Prompt 6) — every project this one's own
@@ -281,8 +310,14 @@ class ProjectService(object):
         # scratch on every successful build regardless of whether
         # `project_name` is the active project below (an observer's own
         # reference is meaningful independent of which project the user
-        # happens to have open right now).
-        self._db.set_project_observers(project_name, self._automaton_project_refs(automaton))
+        # happens to have open right now). automaton.* names project_id
+        # values, never project_name (see _resolve_automaton_project_refs
+        # — Prompt 8) — the reverse index itself still stores plain
+        # project_name throughout, same as every other project-
+        # identifying column in this schema; project_id only ever exists
+        # as this one translation.
+        observed_project_names = self._resolve_automaton_project_refs(self._automaton_project_refs(automaton))
+        self._db.set_project_observers(project_name, observed_project_names)
         # Availability (Prompt 7) — a successful build here already
         # settles this project's own "does it build" half; the other
         # half (every project it depends on is itself available) is
@@ -299,21 +334,40 @@ class ProjectService(object):
 
     @staticmethod
     def _automaton_project_refs(automaton: Automaton) -> set[str]:
-        """Every project `automaton`'s own self-loop actions reference
-        via automaton.* — the raw material for the reverse index (see
-        _finalize_project_update). Scoped to self-loop actions only
-        (target == the action's own containing state) even though
-        automaton_builder.py's own build-time check already guarantees
-        no *other* kind of action can reference automaton.* at all — the
-        filter here is what actually decides the index's own content,
-        not a redundant re-validation of something build already
-        enforced."""
+        """Every project_id `automaton`'s own self-loop actions reference
+        via automaton.* — raw tokens, not yet resolved to a project_name
+        (see _resolve_automaton_project_refs, the one caller that does
+        that). Scoped to self-loop actions only (target == the action's
+        own containing state) even though automaton_builder.py's own
+        build-time check already guarantees no *other* kind of action can
+        reference automaton.* at all — the filter here is what actually
+        decides the index's own content, not a redundant re-validation of
+        something build already enforced."""
         refs: set[str] = set()
         for state in automaton.states.values():
             for action in state.actions:
                 if action.trigger and action.target == state.key:
                     refs |= trigger_automaton_project_refs(action.trigger)
         return refs
+
+    def _resolve_automaton_project_refs(self, project_ids: set[str]) -> set[str]:
+        """Translates automaton.* reference tokens (project_id values)
+        into the project_name each one's own declaring project is
+        actually stored under (see db.get_project_name_by_project_id) —
+        the reverse index (db.ProjectObserverIndex) stays project_name-
+        keyed throughout, same as every other project-identifying column
+        in this schema; project_id only ever exists at this one
+        translation boundary (Prompt 8). A token matching no known
+        project_id yet is silently dropped, not an error — same "a
+        dangling reference is a runtime concern, not a build-time
+        blocker" reasoning recompute_availability's own docstring already
+        documents for a project that doesn't exist at all."""
+        names: set[str] = set()
+        for project_id in project_ids:
+            name = self._db.get_project_name_by_project_id(project_id)
+            if name is not None:
+                names.add(name)
+        return names
 
     def recompute_availability(self, project_name: str) -> None:
         """Prompt 7 — a project is available exactly when (a) its own
@@ -333,23 +387,39 @@ class ProjectService(object):
         without any cycle detection of its own: a mutual dependency
         between two projects just means each one's own recompute, in
         turn, finds nothing changed on its second visit and stops
-        propagating right there (see _on_availability_changed below)."""
-        try:
-            self._load_project(project_name)
-            available, reason = True, None
-        except Exception as exc:  # noqa: BLE001 — any failure to build at all means "not available"
-            available, reason = False, f"Build failed: {exc}"
+        propagating right there (see _on_availability_changed below).
 
-        if available:
-            blocking = next(
-                (
-                    dep for dep in self._db.get_observed_projects(project_name)
-                    if (self._db.get_project_availability(dep) or (False, None))[0]
-                ),
-                None,
-            )
-            if blocking is not None:
-                available, reason = False, f"Depends on unavailable project '{blocking}'."
+        A manual pause (see Project.manually_paused/set_manually_paused)
+        short-circuits every other check below to "not available" — the
+        one thing that makes a manual pause survive an unrelated
+        recompute (a dependency changing, a rebuild after an unrelated
+        edit, ...) without this method needing any special-casing beyond
+        this one check: is_paused/paused_reason still go through the
+        exact same write-only-on-change path as the automatic case, so
+        every existing dependent of this project still sees it as
+        unavailable and cascades exactly as it already would for a real
+        build/dependency failure. Only set_manually_running (clearing the
+        flag) ever lets the real build/dependency state show through
+        again."""
+        if self._db.get_manually_paused(project_name):
+            available, reason = False, "Manually paused."
+        else:
+            try:
+                self._load_project(project_name)
+                available, reason = True, None
+            except Exception as exc:  # noqa: BLE001 — any failure to build at all means "not available"
+                available, reason = False, f"Build failed: {exc}"
+
+            if available:
+                blocking = next(
+                    (
+                        dep for dep in self._db.get_observed_projects(project_name)
+                        if (self._db.get_project_availability(dep) or (False, None))[0]
+                    ),
+                    None,
+                )
+                if blocking is not None:
+                    available, reason = False, f"Depends on unavailable project '{blocking}'."
 
         current = self._db.get_project_availability(project_name)
         if current is None:
@@ -386,6 +456,90 @@ class ProjectService(object):
                 "Availability cascade failed while reacting to '%s' (available=%s).",
                 event.project_name, event.available,
             )
+
+    @staticmethod
+    def _project_status(is_paused: bool, manually_paused: bool) -> str:
+        """'running' | 'paused' | 'manually_paused' — the three-state
+        view of a project's own availability (see Project.is_paused/
+        manually_paused's own docstrings). manually_paused always implies
+        is_paused (recompute_availability's own short-circuit guarantees
+        this — see its own docstring), so checking it first is enough to
+        tell the two paused cases apart; 'paused' is only ever the
+        automatic one."""
+        if manually_paused:
+            return "manually_paused"
+        if is_paused:
+            return "paused"
+        return "running"
+
+    def get_runtime_status(self) -> list[dict]:
+        """One row per project — name, status ('running'/'paused'/
+        'manually_paused'), paused_reason, revision, published_revision —
+        for the Settings > Runtime status view (see db.list_projects_
+        runtime_status, the raw data this shapes)."""
+        return [
+            {
+                "name": row["name"],
+                "status": self._project_status(row["is_paused"], row["manually_paused"]),
+                "paused_reason": row["paused_reason"],
+                "revision": row["revision"],
+                "published_revision": row["published_revision"],
+            }
+            for row in self._db.list_projects_runtime_status()
+        ]
+
+    def set_manually_paused(self, project_name: str) -> dict:
+        """Only ever allowed from 'running' (see controller.py's own PUT
+        .../pause) — reinforced here, not just left to the UI only
+        disabling the button for every other status, since this is the
+        one place that actually matters. Persists the flag, then
+        immediately recomputes (forcing is_paused True with reason
+        "Manually paused." — see recompute_availability's own short-
+        circuit) so the existing AvailabilityChanged cascade picks this
+        up and propagates to every dependent exactly as it already would
+        for a real build/dependency failure, with no separate cascade
+        logic of its own."""
+        if not self._db.project_exists(project_name):
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+        is_paused, _ = self._db.get_project_availability(project_name) or (False, None)
+        manually_paused = self._db.get_manually_paused(project_name)
+        status = self._project_status(is_paused, manually_paused)
+        if status != "running":
+            raise ValueError(f"Project '{project_name}' isn't running (status: '{status}') — can't be manually paused.")
+        self._db.set_manually_paused(project_name, True)
+        self.recompute_availability(project_name)
+        return self.get_project_runtime_status(project_name)
+
+    def set_manually_running(self, project_name: str) -> dict:
+        """The other half of set_manually_paused — only ever allowed from
+        'manually_paused', clearing the flag and letting
+        recompute_availability report the real, current build/dependency
+        state again (which may or may not actually be 'running' — a
+        dependency could have gone down in the meantime)."""
+        if not self._db.project_exists(project_name):
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+        is_paused, _ = self._db.get_project_availability(project_name) or (False, None)
+        manually_paused = self._db.get_manually_paused(project_name)
+        status = self._project_status(is_paused, manually_paused)
+        if status != "manually_paused":
+            raise ValueError(f"Project '{project_name}' isn't manually paused (status: '{status}') — can't be resumed.")
+        self._db.set_manually_paused(project_name, False)
+        self.recompute_availability(project_name)
+        return self.get_project_runtime_status(project_name)
+
+    def get_project_runtime_status(self, project_name: str) -> dict:
+        """One row, same shape as get_runtime_status's own — the
+        pause/resume endpoints' own return value, so the caller can
+        refresh just that row without re-fetching the whole table."""
+        is_paused, paused_reason = self._db.get_project_availability(project_name) or (False, None)
+        manually_paused = self._db.get_manually_paused(project_name) or False
+        return {
+            "name": project_name,
+            "status": self._project_status(is_paused, manually_paused),
+            "paused_reason": paused_reason,
+            "revision": self._db.get_project_revision(project_name),
+            "published_revision": self._db.get_project_published_revision(project_name),
+        }
 
     @staticmethod
     def _looks_like_zip(content_type: str | None, content: bytes) -> bool:
@@ -697,9 +851,50 @@ class ProjectService(object):
         expressions can reference, one dict per namespace (see automaton.
         identifier_registry.build_registry) — for GET /api/chat/
         identifiers, the "Edit project" view's own reference for what's
-        actually usable in a trigger/env: field."""
+        actually usable in a trigger/env: field.
+
+        build_registry itself stays single-project (see its own
+        docstring) — the "automaton" namespace is cross-project by
+        nature (see automaton.trigger_automaton_project_refs, Prompt 6),
+        so it's folded in here instead, straight off every *other*
+        project's own declared project.id (Prompt 8/9 — automaton.*
+        resolves against project_id, never the raw project_name, and a
+        project with no declared project_id is never exposed to another
+        project's own automaton.* at all): "automaton" itself (always
+        present, even empty, so it's offered as a top-level namespace —
+        see triggerEditorSupport.js's own completeIdentifiers, which
+        derives "automaton.<id>"/"automaton.<id>.env" as further sub-
+        namespaces to descend into purely from which registry keys
+        exist, the same generic mechanism session.metric already relied
+        on), then one "automaton.<id>" entry per other project that
+        declares one (just `state`) and one "automaton.<id>.env" entry
+        (that project's own declared env keys, see automaton_yaml_
+        editor.py's env: section) — never the active project itself,
+        since referencing your own current state through automaton.*
+        rather than plain state.key would be pointless indirection. A
+        project that currently fails to build still gets its own "state"
+        entry (offered, not guaranteed usable — same as any automaton.*
+        reference already resolves gracefully to None at runtime, see
+        AutomatonNamespace), just no env keys to show for it."""
         automaton, _ = self.get_active_automaton_and_state()
-        return build_registry(automaton.signals, automaton.env_keys)
+        registry = build_registry(automaton.signals, automaton.env_keys)
+        active_project_name = self.get_active_project_name()
+        registry["automaton"] = {}
+        for name in self._db.list_projects():
+            if name == active_project_name:
+                continue
+            project_id = self._db.get_project_id(name)
+            if project_id is None:
+                continue
+            registry[f"automaton.{project_id}"] = {"state": f"The '{name}' project's own current state."}
+            try:
+                other_automaton = self._load_project(name)
+            except Exception:  # noqa: BLE001 — still offerable via .state, just without its own env keys
+                env_keys = {}
+            else:
+                env_keys = {env_key.name: env_key.ui_description or "" for env_key in other_automaton.env_keys}
+            registry[f"automaton.{project_id}.env"] = env_keys
+        return registry
 
     def get_project_states(self, project_name: str) -> list[str]:
         """Every real state key of `project_name`'s current draft

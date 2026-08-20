@@ -7,7 +7,7 @@
 // keep using the real ones exactly as before.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('../src/confetti.js', () => ({ celebrate: vi.fn() }))
+vi.mock('../src/onEnterActions.js', () => ({ runOnEnterScript: vi.fn() }))
 vi.mock('../src/api.js', () => ({
   getCurrentSession: vi.fn(),
   postCreateSession: vi.fn(),
@@ -103,5 +103,27 @@ describe('testModeProjectName routes session bootstrap/list to the right pool', 
 
     expect(api.postCreateTestSession).toHaveBeenCalledWith('my-project')
     expect(api.postCreateSession).not.toHaveBeenCalled()
+  })
+
+  it('handleNewSession runs a brand new session\'s own on-enter (init-action fired it)', async () => {
+    api.postCreateSession.mockResolvedValue({ id: 5, active: true, 'on-enter': 'celebrate()' })
+    api.getCurrentSession.mockResolvedValue({ id: 5, active: true })
+
+    const onEnterActions = await import('../src/onEnterActions.js')
+    await chatStore.handleNewSession()
+
+    expect(onEnterActions.runOnEnterScript).toHaveBeenCalledWith('celebrate()')
+  })
+
+  it('handleReset runs the reset response\'s own on-enter (also entering through init-action)', async () => {
+    api.postReset.mockResolvedValue({ key: 'a', ui_label: 'A', actions: [], 'on-enter': 'celebrate()' })
+    api.getCurrentSession.mockResolvedValue({ id: 6, active: true })
+
+    const onEnterActions = await import('../src/onEnterActions.js')
+    await chatStore.handleReset()
+
+    expect(onEnterActions.runOnEnterScript).toHaveBeenCalledWith('celebrate()')
+    // The "on-enter" wire key must never leak into the displayed state object.
+    expect(chatStore.state.value).toEqual({ key: 'a', ui_label: 'A', actions: [] })
   })
 })

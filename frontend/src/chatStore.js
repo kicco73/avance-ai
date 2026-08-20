@@ -20,7 +20,7 @@ import {
 } from './api.js'
 import { sendMessage as sendChatMessage } from './chatClient.js'
 import { playMessageChime, playMessageAudio } from './audio.js'
-import { celebrate } from './confetti.js'
+import { runOnEnterScript } from './onEnterActions.js'
 import { clearApiError } from './errorStore.js'
 
 export const state = ref(null)
@@ -118,13 +118,22 @@ export function setCapabilities({ talkAvailable: talk, micAvailable: mic }) {
 // chat_service.py's apply_manual_action/_process_turn_locked) — not part
 // of `newState` itself, since on-enter now describes how a state was
 // entered, not the state itself. Callers with no actual transition to
-// report (session load, boot ping, reset, restart-from-here) simply omit
-// it — undefined never celebrates.
+// report (session load, boot ping) simply omit it — undefined never runs
+// anything; every other caller (a real fired action, a brand new session
+// entering through init-action, a reset) always passes its own, however
+// it got it. Deliberately *not* gated on the state's own key having
+// actually changed — a self-loop action (target === source, the shape
+// every automaton.* trigger itself requires — see Prompt 6) still really
+// fired and still deserves its own on-enter running, same as any other
+// action; only whether the backend actually reported one at all decides
+// this, never whether newState looks different from before. A free-form
+// client-side script (see onEnterActions.js), not a fixed "celebrate"
+// keyword: any expression calling into onEnterLocals, e.g. "celebrate()"
+// or "notify('Nice!', 'You reached **state B**.')".
 export function handleStateChange(newState, onEnter) {
-  const changed = state.value?.key !== newState?.key
   state.value = newState
-  if (changed && onEnter === 'celebrate') {
-    celebrate()
+  if (onEnter) {
+    runOnEnterScript(onEnter)
   }
 }
 
@@ -585,9 +594,14 @@ export async function handleReset() {
   if (!window.confirm('Reset the conversation, signals, and transitions? This cannot be undone.')) return
   clearChatUi()
   try {
-    const newState = await postReset()
+    // A reset re-enters the automaton through init-action the same way a
+    // session's very first transition ever does (see controller.py's own
+    // post_reset docstring) — its own on-enter rides along on this same
+    // response, under the same "on-enter" wire key as every other real
+    // transition.
+    const { 'on-enter': onEnter, ...newState } = await postReset()
     state.value = null
-    handleStateChange(newState)
+    handleStateChange(newState, onEnter)
     await loadMessages()
     bumpTurn()
   } catch {
@@ -611,6 +625,11 @@ export async function handleNewSession() {
     selectedSessionActive.value = session.active
     clearApiError()
     messages.value = []
+    // A brand new session always starts by entering init_action.target
+    // *through* init_action itself (see ChatService.create_session's own
+    // docstring) — same "on-enter" wire key every other real transition
+    // reports.
+    if (session['on-enter']) runOnEnterScript(session['on-enter'])
     await loadMessages()
     // Opened unconditionally (not just refreshed when already open) so the
     // new session is actually visible right away, wherever this was

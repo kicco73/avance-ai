@@ -64,7 +64,13 @@ def test_returns_one_dict_per_namespace_for_the_active_project(client):
 
     assert response.status_code == 200
     body = response.json()
-    assert set(body) == {"signal", "env", "system", "session", "session.metric", "metric"}
+    # "automaton" itself is always present (even empty — see Project
+    # Service.get_active_identifier_registry) so it's offered as a
+    # top-level namespace, but there's no other project here for it to
+    # hold any "automaton.<project>" entries yet (see the cross-project
+    # test below).
+    assert set(body) == {"signal", "env", "system", "session", "session.metric", "metric", "automaton"}
+    assert body["automaton"] == {}
     assert body["signal"] == {"myOwnSignal": "whatever this measures"}
     # Sourced from the project's own declared env: section (parallel to
     # signals:), not left empty (see automaton.identifier_registry.
@@ -83,3 +89,34 @@ def test_404_when_no_project_is_active(client):
     response = client.get("/api/chat/identifiers")
 
     assert response.status_code == 404
+
+
+OTHER_PROJECT = """
+project:
+  id: other_proj
+
+init-action:
+  target: x
+
+env:
+  budget:
+    ui-description: "Remaining shared budget."
+
+states:
+  x:
+    contextual-prompt: "hi"
+"""
+
+
+def test_automaton_namespace_lists_every_other_project_never_the_active_one(client):
+    _upload_and_activate(client, "other-proj", OTHER_PROJECT)
+    _upload_and_activate(client, "identifiers-proj", PROJECT)  # re-activates identifiers-proj
+
+    response = client.get("/api/chat/identifiers")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["automaton"] == {}
+    assert "automaton.identifiers-proj" not in body  # never declared a project.id at all
+    assert body["automaton.other_proj"] == {"state": "The 'other-proj' project's own current state."}
+    assert body["automaton.other_proj.env"] == {"budget": "Remaining shared budget."}

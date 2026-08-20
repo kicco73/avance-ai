@@ -114,12 +114,17 @@ async function load() {
   try {
     const file = await getProjectFile(props.projectName, props.fileName)
     if (token !== requestToken) return
-    content.value = file.content
-    originalContent.value = file.content
-    canUndo.value = file.can_undo
-    canRedo.value = file.can_redo
-    mediaType.value = file.media_type
-    contentType.value = file.content_type
+    // index.css is the one file every project is allowed not to have at
+    // all (see controller.py's own get_project_file docstring) — a 204
+    // (apiFetch's own null, see api.js) means exactly that, not an error:
+    // start the user off with an empty, freshly-creatable buffer instead.
+    const fileContent = file?.content ?? ''
+    content.value = fileContent
+    originalContent.value = fileContent
+    canUndo.value = file?.can_undo ?? false
+    canRedo.value = file?.can_redo ?? false
+    mediaType.value = file?.media_type ?? 'text/css'
+    contentType.value = file?.content_type ?? 'text/css'
   } catch {
     if (token === requestToken) loading.value = false
     return

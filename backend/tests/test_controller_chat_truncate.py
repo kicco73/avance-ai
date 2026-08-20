@@ -43,10 +43,15 @@ def test_truncate_rejects_a_malformed_timestamp(client, hello_project):
 
 
 @pytest.mark.contract
-def test_truncate_response_shape_matches_reset(client, hello_project):
-    """Same expression as post_reset's own return (project_service.
-    get_active_state_payload()) — a StatePayload, not GET /api/state's
-    superset (which also carries the talk/listen capability flags)."""
+def test_truncate_response_shape_is_a_bare_state_payload(client, hello_project):
+    """Same expression as post_reset's own return used to build on
+    (project_service.get_active_state_payload()) — a StatePayload, not
+    GET /api/state's superset (which also carries the talk/listen
+    capability flags). Unlike reset, truncate never fires init-action
+    (it rolls the live state *back* to wherever it already was, never
+    forward through init-action — see ChatService.truncate_session), so
+    it carries no "on-enter" key at all, one real difference from
+    reset's own shape now (see post_reset's own docstring)."""
     session = client.get("/api/chat/session").json()
 
     response = client.post(
@@ -55,7 +60,8 @@ def test_truncate_response_shape_matches_reset(client, hello_project):
     reset_response = client.post("/api/chat/reset")
 
     assert response.status_code == 200
-    assert set(response.json().keys()) == set(reset_response.json().keys())
+    assert "on-enter" not in response.json()
+    assert set(response.json().keys()) == set(reset_response.json().keys()) - {"on-enter"}
 
 
 @pytest.mark.regression

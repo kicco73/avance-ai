@@ -17,28 +17,34 @@ export const NAMESPACE_COLORS = {
   system: '#8a6d3b',
   session: '#6a1b9a',
   'session.metric': '#ad1457',
-  metric: '#2e7d32'
+  metric: '#2e7d32',
+  automaton: '#455a64'
 }
 
-// signal/env are plain variables; every other namespace is a zero-arg
-// proxy, always called with () (see automaton.identifier_registry's own
-// docstring: "signal ed env variabili, gli altri proxy") — this is what
-// decides a completion's own `type`/`apply` (append "()" or not), never
-// a label.
+// signal/env are plain variables; every other fixed namespace is a
+// zero-arg proxy, always called with () (see automaton.identifier_
+// registry's own docstring: "signal ed env variabili, gli altri proxy")
+// — this is what decides a completion's own `type`/`apply` (append "()"
+// or not), never a label. automaton.<project>/.env are their own thing
+// again (see Prompt 6's AutomatonNamespace/_ProjectProxy/
+// _ProjectEnvProxy): real attribute access on a Python object
+// server-side, never called — `.state`/an env key name are plain
+// identifiers, same as signal/env.
 export function isProxyNamespace(namespace) {
-  return namespace !== 'signal' && namespace !== 'env'
+  return namespace !== 'signal' && namespace !== 'env' && namespace !== 'automaton' && !namespace.startsWith('automaton.')
 }
 
 // Matches a complete namespace reference (e.g. "signal.mood",
-// "session.metric.engagement") anywhere in the text — group 1 is the
-// namespace path, used to look up its own fixed color (see
-// NAMESPACE_COLORS). Doesn't match the trailing "()" a proxy reference
-// is always called with — left in the editor's own default color, since
-// that's already what visually marks a proxy namespace apart from a
-// plain variable one, no extra coloring needed on top. Always construct
-// a *fresh* RegExp from this (see its own /g flag — a shared instance
-// would carry state across unrelated calls via lastIndex).
-export const REFERENCE_PATTERN_SOURCE = '\\b(signal|env|system|session(?:\\.metric)?|metric)\\.[A-Za-z_]\\w*'
+// "session.metric.engagement", "automaton.other_project") anywhere in
+// the text — group 1 is the namespace path, used to look up its own
+// fixed color (see NAMESPACE_COLORS). Doesn't match the trailing "()" a
+// proxy reference is always called with, nor automaton.<project>'s own
+// trailing ".state"/".env.<key>" — both left in the editor's own default
+// color, since that's already what visually marks the namespace prefix
+// apart from what follows it, no extra coloring needed on top. Always
+// construct a *fresh* RegExp from this (see its own /g flag — a shared
+// instance would carry state across unrelated calls via lastIndex).
+export const REFERENCE_PATTERN_SOURCE = '\\b(signal|env|system|session(?:\\.metric)?|metric|automaton)\\.[A-Za-z_]\\w*'
 
 export function namespaceOf(referenceText) {
   const match = new RegExp(`^${REFERENCE_PATTERN_SOURCE}`).exec(referenceText)
@@ -93,16 +99,33 @@ export function completionInfo(name, description, type) {
   return root
 }
 
+// Every direct child sub-namespace of `namespace` — derived purely from
+// which dotted registry keys exist, never a hardcoded list: "session"
+// has "session.metric" in the registry, so "metric" is one of its
+// children; "automaton" has "automaton.<project>" per other project, so
+// each project name is one of its children; "automaton.<project>" has
+// "automaton.<project>.env", so "env" is one of *its* children. A plain
+// namespace with no such registry keys (e.g. "signal") simply has none.
+function directChildNamespaces(registry, namespace) {
+  const prefix = `${namespace}.`
+  const children = new Set()
+  for (const key of Object.keys(registry)) {
+    if (!key.startsWith(prefix)) continue
+    children.add(key.slice(prefix.length).split('.')[0])
+  }
+  return [...children]
+}
+
 // The one completion source TriggerEditor.vue's own autocompletion()
 // registers. Two cases: right after a namespace's own dot (e.g.
 // "signal." or "session.metric.") — every identifier `registry` lists
-// under that exact namespace, each annotated with its own description;
-// otherwise, a bare word being typed (e.g. "sig") — every top-level
-// namespace name (a registry key with no "." of its own) starting with
-// it. "session" additionally always offers "metric" itself, a nested
-// sub-namespace rather than one of its own direct identifiers (see
-// registry's own "session.metric" key), so it's still discoverable by
-// typing "session." alone.
+// under that exact namespace, each annotated with its own description,
+// plus every direct child sub-namespace (see directChildNamespaces
+// above) as its own "namespace"-typed, unparenthesized option — that's
+// how "session." also offers "metric" itself, and "automaton." offers
+// every other project by name; otherwise, a bare word being typed (e.g.
+// "sig") — every top-level namespace name (a registry key with no "."
+// of its own) starting with it.
 export function completeIdentifiers(context, registry) {
   const dotted = context.matchBefore(/[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*\.\w*$/)
   if (dotted) {
@@ -122,8 +145,8 @@ export function completeIdentifiers(context, registry) {
         apply: isProxyNamespace(namespace) ? `${name}()` : name
       }
     })
-    if (namespace === 'session') {
-      options.push({ label: 'metric', type: 'namespace', apply: 'metric' })
+    for (const child of directChildNamespaces(registry, namespace)) {
+      options.push({ label: child, type: 'namespace', apply: child })
     }
     if (!options.length) return null
     return { from, options }

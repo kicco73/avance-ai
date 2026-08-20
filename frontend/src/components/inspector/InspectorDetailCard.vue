@@ -11,6 +11,7 @@ import { computed, ref, watch } from 'vue'
 import { vAutosize } from './textareaAutosize.js'
 import CardMenu from './CardMenu.vue'
 import TriggerEditor from './TriggerEditor.vue'
+import OnEnterEditor from './OnEnterEditor.vue'
 import { handleEnterNext } from './enterToNextField.js'
 
 const props = defineProps({
@@ -97,6 +98,7 @@ const editUiDescription = ref('')
 const editContextualPrompt = ref('')
 const editTrigger = ref('')
 const editTarget = ref('')
+const editOnEnter = ref('')
 
 const elementIdentity = computed(() => {
   if (!props.selectedElement) return null
@@ -114,6 +116,7 @@ function resetEditBuffers() {
   editContextualPrompt.value = d.contextualPrompt ?? ''
   editTrigger.value = d.trigger ?? ''
   editTarget.value = d.target ?? ''
+  editOnEnter.value = d.onEnter ?? ''
 }
 
 watch(elementIdentity, resetEditBuffers, { immediate: true })
@@ -147,6 +150,15 @@ function commitTrigger() {
 
 function commitTarget() {
   commitTextField('target', editTarget.value, props.selectedElement?.data.target ?? '')
+}
+
+// Wire key is "on-enter" (kebab, not "onEnter") — matching the backend's
+// own AutomatonYamlEditor.set_action_field/set_init_action_field, which
+// write it straight into the YAML under that literal key (see
+// automaton_builder.py's _build_action) — every other field here follows
+// the same convention (see 'ui-label', 'history-cutoff', ...).
+function commitOnEnter() {
+  commitTextField('on-enter', editOnEnter.value, props.selectedElement?.data.onEnter ?? '')
 }
 
 // history-cutoff/chat: a plain instant toggle, not a typed field — no
@@ -327,10 +339,10 @@ function selectAttachment(fileName) {
               @blur="commitUiDescription"
             ></textarea>
             <label class="inspector-detail-form-label">
-              Contextual prompt
               <span class="inspector-ai-field-icon" title="Read by the AI">
                 <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zM11.5 9.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>
               </span>
+              Contextual prompt
             </label>
             <textarea
               v-model="editContextualPrompt"
@@ -359,9 +371,17 @@ function selectAttachment(fileName) {
               @blur="commitUiDescription"
             ></textarea>
             <template v-if="!selectedElement.data.isInitEdge">
-              <label class="inspector-detail-form-label">Trigger</label>
+              <label class="inspector-detail-form-label" title="A Python expression, evaluated server-side">
+                <span class="inspector-py-field-icon" title="Python expression">PY</span>
+                Trigger
+              </label>
               <TriggerEditor v-model="editTrigger" @click.stop @blur="commitTrigger" />
             </template>
+            <label class="inspector-detail-form-label" title="Executed client-side (see onEnterActions.js) after this action actually changes state">
+              <span class="inspector-js-field-icon" title="JavaScript, executed client-side">JS</span>
+              On enter
+            </label>
+            <OnEnterEditor v-model="editOnEnter" @click.stop @blur="commitOnEnter" />
             <p class="inspector-detail-field">
               <template v-if="!selectedElement.data.isInitEdge"><strong>{{ stateLabelFor(selectedElement.data.source) }}</strong> → </template>
               <select
@@ -443,11 +463,19 @@ function selectAttachment(fileName) {
 .inspector-detail-title { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .inspector-detail-title-input { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; border: 1px solid transparent; border-radius: 4px; padding: 0.1rem 0.3rem; background: transparent; }
 .inspector-detail-title-input:hover, .inspector-detail-title-input:focus { border-color: #ccc; background: white; }
-.inspector-detail-form-label { display: block; margin: 20px 0 0.2rem; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #777; }
+.inspector-detail-form-label { display: flex; align-items: center; gap: 0.35rem; margin: 20px 0 0.2rem; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #777; }
 /* Marks a field the AI itself reads (as opposed to a purely
    human-facing one like Description) — same purple used for its
    InspectorSignalsTab.vue counterpart on Definition. */
-.inspector-ai-field-icon { display: inline-flex; vertical-align: middle; margin-left: 0.3rem; color: #8b5cf6; }
+.inspector-ai-field-icon { display: inline-flex; flex-shrink: 0; color: #8b5cf6; }
+/* Marks a field that runs as client-side JavaScript (see onEnterActions.js)
+   — same "JS" badge shorthand recognizable from the language's own logo,
+   just monochrome to match this panel's other small badges. */
+.inspector-js-field-icon { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 1.1rem; height: 0.85rem; border-radius: 3px; background: #f0db4f; color: #222; font-size: 0.55rem; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: -0.02em; }
+/* Marks a field evaluated server-side as a Python expression (simpleeval —
+   see automaton.py) — same "language badge" convention as its JS
+   counterpart above, just Python's own blue. */
+.inspector-py-field-icon { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 1.1rem; height: 0.85rem; border-radius: 3px; background: #4b8bbe; color: white; font-size: 0.55rem; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: -0.02em; }
 .inspector-detail-textarea { display: block; width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 0.8rem; line-height: 1.54; padding: 0.4rem 0.5rem; border-radius: 6px; border: 1px solid #ccc; }
 .inspector-detail-target-select { display: inline-block; width: auto; max-width: 100%; font: inherit; font-weight: 700; font-size: inherit; color: #333; padding: 0.05rem 0.2rem; border-radius: 4px; border: 1px solid transparent; background: transparent; cursor: pointer; }
 .inspector-detail-target-select:hover, .inspector-detail-target-select:focus { border-color: #ccc; background: white; }

@@ -1,14 +1,15 @@
 // Verifies the "on-enter" wire key (see backend's chat_service.py
 // apply_manual_action/_process_turn_locked, sent as "on-enter" — kebab,
 // matching the YAML field's own spelling, unlike every other snake_case
-// response key) actually reaches confetti.js's celebrate() through
+// response key) reaches onEnterActions.js's runOnEnterScript through
 // chatStore.js's handleAction (a manual test action) and submitMessage
 // (an auto-tracking-triggered transition), and only when the state
-// genuinely changed.
+// genuinely changed. onEnterActions.js itself (script → onEnterLocals
+// binding) has its own dedicated tests — see onEnterActions.test.js.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildTimeline } from '../src/benchmarkTimeline.js'
 
-vi.mock('../src/confetti.js', () => ({ celebrate: vi.fn() }))
+vi.mock('../src/onEnterActions.js', () => ({ runOnEnterScript: vi.fn() }))
 vi.mock('../src/api.js', () => ({
   postAction: vi.fn(),
   getSessions: vi.fn(),
@@ -16,15 +17,15 @@ vi.mock('../src/api.js', () => ({
 }))
 vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn() }))
 
-describe('handleAction (manual test action) triggers celebrate via on-enter', () => {
+describe('handleAction (manual test action) runs the on-enter script', () => {
   let chatStore
-  let confetti
+  let onEnterActions
   let api
 
   beforeEach(async () => {
     vi.resetModules()
     chatStore = await import('../src/chatStore.js')
-    confetti = await import('../src/confetti.js')
+    onEnterActions = await import('../src/onEnterActions.js')
     api = await import('../src/api.js')
   })
 
@@ -32,21 +33,22 @@ describe('handleAction (manual test action) triggers celebrate via on-enter', ()
     vi.clearAllMocks()
   })
 
-  it('celebrates when the fired test action carries on-enter: celebrate and the state actually changed', async () => {
+  it('runs the script when the fired test action carries on-enter and the state actually changed', async () => {
     api.postAction.mockResolvedValue({
       reply: [],
       state: { key: 'b', ui_label: 'B', actions: [] },
-      'on-enter': 'celebrate',
+      'on-enter': 'celebrate()',
       session_id: 1
     })
 
     await chatStore.handleAction('go-loud')
 
-    expect(confetti.celebrate).toHaveBeenCalledTimes(1)
+    expect(onEnterActions.runOnEnterScript).toHaveBeenCalledTimes(1)
+    expect(onEnterActions.runOnEnterScript).toHaveBeenCalledWith('celebrate()')
     expect(chatStore.state.value.key).toBe('b')
   })
 
-  it('does not celebrate when the fired action has no on-enter', async () => {
+  it('does not run anything when the fired action has no on-enter', async () => {
     api.postAction.mockResolvedValue({
       reply: [],
       state: { key: 'b', ui_label: 'B', actions: [] },
@@ -56,10 +58,10 @@ describe('handleAction (manual test action) triggers celebrate via on-enter', ()
 
     await chatStore.handleAction('go-quiet')
 
-    expect(confetti.celebrate).not.toHaveBeenCalled()
+    expect(onEnterActions.runOnEnterScript).not.toHaveBeenCalled()
   })
 
-  it('does not celebrate on a self-loop even if on-enter is set, since the state key did not change', async () => {
+  it('still runs the script on a self-loop that carries on-enter, even though the state key did not change — a self-loop action still really fired', async () => {
     // First call establishes the current state as 'b'.
     api.postAction.mockResolvedValue({
       reply: [],
@@ -68,31 +70,32 @@ describe('handleAction (manual test action) triggers celebrate via on-enter', ()
       session_id: 1
     })
     await chatStore.handleAction('go-quiet')
-    expect(confetti.celebrate).not.toHaveBeenCalled()
+    expect(onEnterActions.runOnEnterScript).not.toHaveBeenCalled()
 
     // Second call: a self-loop back onto 'b' that *does* carry on-enter —
-    // must still not celebrate, since state.value.key === newState.key.
+    // every automaton.* trigger is itself self-loop-only (see Prompt 6),
+    // so this is exactly the case that must keep working.
     api.postAction.mockResolvedValue({
       reply: [],
       state: { key: 'b', ui_label: 'B', actions: [] },
-      'on-enter': 'celebrate',
+      'on-enter': 'celebrate()',
       session_id: 1
     })
     await chatStore.handleAction('self-loop-with-on-enter')
 
-    expect(confetti.celebrate).not.toHaveBeenCalled()
+    expect(onEnterActions.runOnEnterScript).toHaveBeenCalledWith('celebrate()')
   })
 })
 
 describe('submitMessage (auto-tracking-triggered transition) also threads on-enter through', () => {
   let chatStore
-  let confetti
+  let onEnterActions
   let chatClient
 
   beforeEach(async () => {
     vi.resetModules()
     chatStore = await import('../src/chatStore.js')
-    confetti = await import('../src/confetti.js')
+    onEnterActions = await import('../src/onEnterActions.js')
     chatClient = await import('../src/chatClient.js')
   })
 
@@ -100,19 +103,19 @@ describe('submitMessage (auto-tracking-triggered transition) also threads on-ent
     vi.clearAllMocks()
   })
 
-  it('celebrates when a chat turn auto-fires an action with on-enter: celebrate', async () => {
+  it('runs the script when a chat turn auto-fires an action with an on-enter script', async () => {
     chatClient.sendMessage.mockResolvedValue({
       reply: [],
       user_message_id: 100,
       assistant_message_id: 1,
       state: { key: 'b', ui_label: 'B', actions: [] },
-      'on-enter': 'celebrate',
+      'on-enter': "notify('Nice!', 'You reached **state B**.')",
       session_id: 1
     })
 
     await chatStore.handleSend('trigger the transition')
 
-    expect(confetti.celebrate).toHaveBeenCalledTimes(1)
+    expect(onEnterActions.runOnEnterScript).toHaveBeenCalledWith("notify('Nice!', 'You reached **state B**.')")
   })
 })
 

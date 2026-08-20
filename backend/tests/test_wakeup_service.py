@@ -57,6 +57,14 @@ def _publish_project(db, project_service: ProjectService, project_name: str, ind
     a raw db write, so a test exercising it has to go through this
     exact call, same as a real save (put_project/put_project_file)
     already does."""
+    # Auto-declares `project: {id: <project_name>}` (Prompt 8/9's
+    # project.id) whenever project_name is a valid identifier — every
+    # automaton.observed reference in this file's own fixtures expects
+    # "observed" itself to resolve, so its own project.id has to equal
+    # its project_name (see test_project_availability.py's own identical
+    # helper for the full reasoning).
+    if project_name.isidentifier() and "project:" not in index_yml:
+        index_yml = f"project:\n  id: {project_name}\n{index_yml}"
     db.ensure_project(project_name)
     db.save_project_files(project_name, {"index.yml": index_yml.encode("utf-8")}, {"index.yml": "text/yaml"})
     db.publish_project(project_name)

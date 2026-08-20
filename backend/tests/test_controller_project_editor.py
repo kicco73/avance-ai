@@ -139,11 +139,21 @@ class TestPutActionField:
         assert response.json()["has_trigger"] is False
         assert "trigger" not in _index_yml(client, hello_project)
 
-    def test_rejects_a_field_not_on_the_whitelist(self, client, hello_project):
+    def test_edits_on_enter(self, client, hello_project):
         action = client.post(f"/api/projects/{hello_project}/states/Hello/actions").json()
         response = client.put(
             f"/api/projects/{hello_project}/states/Hello/actions/{action['name']}/on-enter",
-            json={"value": "celebrate"},
+            json={"value": "notify('Nice!', 'You reached **state B**.')"},
+        )
+        assert response.status_code == 200
+        assert response.json()["on-enter"] == "notify('Nice!', 'You reached **state B**.')"
+        assert "on-enter:" in _index_yml(client, hello_project)
+
+    def test_rejects_a_field_not_on_the_whitelist(self, client, hello_project):
+        action = client.post(f"/api/projects/{hello_project}/states/Hello/actions").json()
+        response = client.put(
+            f"/api/projects/{hello_project}/states/Hello/actions/{action['name']}/not-a-real-field",
+            json={"value": "anything"},
         )
         assert response.status_code == 400
 

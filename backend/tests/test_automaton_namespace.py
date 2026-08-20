@@ -18,9 +18,17 @@ USERNAME = "user"
 
 
 def _publish(db, project_name: str, index_yml: str) -> None:
+    """A lighter-weight publish than ProjectService._finalize_project_
+    update (this file tests AutomatonNamespace's own runtime resolution
+    in isolation, not the save pipeline) — but project_id -> project_name
+    resolution (Prompt 8/9) still needs *some* row to look up, so this
+    registers project_id == project_name directly (every project_name
+    used in this file already happens to be a valid Python identifier —
+    "observed" — so no separate id needs inventing)."""
     db.ensure_project(project_name)
     db.save_project_files(project_name, {"index.yml": index_yml.encode("utf-8")}, {"index.yml": "text/yaml"})
     db.publish_project(project_name)
+    db.set_project_metadata(project_name, project_id=project_name, ui_label=None, ui_description=None)
 
 
 BASIC_YML = """

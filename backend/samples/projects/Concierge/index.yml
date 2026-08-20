@@ -1,0 +1,16 @@
+init-action:
+  target: Hello
+
+  on-enter: celebrate()
+states:
+  Hello:
+    contextual-prompt: |-
+      Introduce yourself as Zio Pino, the concierge hosting in the hall.
+    actions:
+      - name: action-0
+        ui-label: Send notification
+        ui-description: Detects when TTM prototype enters the Action state and sends a user greeting.
+        on-enter: celebrate()
+        trigger: 'True'
+    ui-label: Hall
+env: {}

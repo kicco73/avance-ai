@@ -235,8 +235,12 @@ class ChatService(object):
 			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 		# A brand new session has never been marked reviewed — correct by
 		# construction (see ChatSession.labeled's own default), no query
-		# needed.
-		return self._session_payload(session, active=True)
+		# needed. "on-enter": a brand new session always starts by
+		# entering init_action.target *through* init_action itself (see
+		# this method's own docstring) — same "on-enter" wire key every
+		# other real transition reports (see apply_manual_action/
+		# process_turn), just for this one instead of a regular Action.
+		return {**self._session_payload(session, active=True), "on-enter": automaton.init_action.on_enter}
 
 	def create_draft_session(self) -> dict:
 		"""Like create_session, but always against the active project's own
@@ -251,7 +255,7 @@ class ChatService(object):
 			)
 		except ValueError as exc:
 			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
-		return self._session_payload(session, active=True)
+		return {**self._session_payload(session, active=True), "on-enter": automaton.init_action.on_enter}
 
 	def _list_sessions_by_source(self, project_name: str, source: str | tuple[str, ...], active_source: str) -> list[dict]:
 		sessions = self._db.list_chat_sessions(self._username, project_name, source=source)

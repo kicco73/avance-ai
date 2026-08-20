@@ -52,7 +52,20 @@ def _publish_project(db, project_service: ProjectService, project_name: str, ind
     """Same helper test_wakeup_service.py uses — a real save, through
     _finalize_project_update, so the reverse index *and* the initial
     availability recompute (see that method's own new call to
-    recompute_availability) both actually run, same as a real save."""
+    recompute_availability) both actually run, same as a real save.
+
+    Auto-declares `project: {id: <project_name>}` (Prompt 8/9's
+    project.id — every automaton.* reference in this file resolves
+    against it now, never the raw project_name) whenever project_name is
+    itself a valid identifier — every _yml_observing("x") call expects
+    exactly `automaton.x` to work, so the referenced project's own
+    project_id has to equal its project_name for these fixtures to keep
+    reading naturally. A hyphenated name (e.g. "running-proj", used by
+    tests that never reference automaton.* at all) simply gets no
+    project.id — isn't a valid one anyway, and nothing here needs it to
+    have one."""
+    if project_name.isidentifier() and "project:" not in index_yml:
+        index_yml = f"project:\n  id: {project_name}\n{index_yml}"
     db.ensure_project(project_name)
     db.save_project_files(project_name, {"index.yml": index_yml.encode("utf-8")}, {"index.yml": "text/yaml"})
     db.publish_project(project_name)
@@ -209,3 +222,115 @@ def test_depending_on_a_project_that_does_not_exist_at_all_is_not_itself_blockin
     _publish_project(db, project_service, "dependent", _yml_observing("nonexistent"))
 
     assert db.get_project_availability("dependent") == (False, None)
+
+
+# --- Manual pause/resume (Prompt: "in pausa manuale") -----------------
+
+
+def test_set_manually_paused_only_allowed_from_running(db, project_service):
+    _publish_project(db, project_service, "solo", VALID_YML)
+
+    row = project_service.set_manually_paused("solo")
+
+    assert row == {
+        "name": "solo", "status": "manually_paused", "paused_reason": "Manually paused.",
+        "revision": 0, "published_revision": 0,
+    }
+    assert db.get_project_availability("solo") == (True, "Manually paused.")
+    assert db.get_manually_paused("solo") is True
+
+
+def test_set_manually_paused_rejects_a_project_that_is_already_paused(db, project_service):
+    _publish_project(db, project_service, "solo", VALID_YML)
+    db.set_project_availability("solo", is_paused=True, paused_reason="Build failed: whatever")
+
+    with pytest.raises(ValueError):
+        project_service.set_manually_paused("solo")
+
+
+def test_set_manually_paused_rejects_a_project_already_manually_paused(db, project_service):
+    _publish_project(db, project_service, "solo", VALID_YML)
+    project_service.set_manually_paused("solo")
+
+    with pytest.raises(ValueError):
+        project_service.set_manually_paused("solo")
+
+
+def test_set_manually_paused_rejects_an_unknown_project(db, project_service):
+    with pytest.raises(FileNotFoundError):
+        project_service.set_manually_paused("does-not-exist")
+
+
+def test_set_manually_running_only_allowed_from_manually_paused(db, project_service):
+    _publish_project(db, project_service, "solo", VALID_YML)
+
+    with pytest.raises(ValueError):
+        project_service.set_manually_running("solo")  # currently running, nothing to resume
+
+
+def test_manual_pause_then_resume_round_trips_back_to_running(db, project_service):
+    _publish_project(db, project_service, "solo", VALID_YML)
+    project_service.set_manually_paused("solo")
+
+    row = project_service.set_manually_running("solo")
+
+    assert row["status"] == "running"
+    assert db.get_project_availability("solo") == (False, None)
+    assert db.get_manually_paused("solo") is False
+
+
+def test_manual_pause_survives_an_unrelated_recompute(db, project_service):
+    """The whole point of manually_paused (see Project.manually_paused's
+    own docstring): once set, nothing but the matching resume clears it
+    — not a rebuild, not a dependency flipping back and forth."""
+    _publish_project(db, project_service, "solo", VALID_YML)
+    project_service.set_manually_paused("solo")
+
+    project_service.recompute_availability("solo")  # e.g. triggered by an unrelated cascade
+    project_service.recompute_availability("solo")
+
+    assert db.get_project_availability("solo") == (True, "Manually paused.")
+    assert db.get_manually_paused("solo") is True
+
+
+def test_manually_pausing_a_dependency_cascades_to_its_observer(db, project_service):
+    _publish_project(db, project_service, "dependency", VALID_YML)
+    _publish_project(db, project_service, "dependent", _yml_observing("dependency"))
+    project_service.register_availability_cascade()
+
+    project_service.set_manually_paused("dependency")
+
+    is_paused, reason = db.get_project_availability("dependent")
+    assert is_paused is True
+    assert "dependency" in reason
+    # The dependent was never itself manually paused — resuming it isn't
+    # even a valid transition (it's 'paused', not 'manually_paused'), so
+    # only resuming "dependency" itself can bring it back.
+    assert db.get_manually_paused("dependent") is False
+
+
+def test_resuming_a_manually_paused_dependency_cascades_availability_back(db, project_service):
+    _publish_project(db, project_service, "dependency", VALID_YML)
+    _publish_project(db, project_service, "dependent", _yml_observing("dependency"))
+    project_service.register_availability_cascade()
+    project_service.set_manually_paused("dependency")
+    assert db.get_project_availability("dependent")[0] is True
+
+    project_service.set_manually_running("dependency")
+
+    assert db.get_project_availability("dependency") == (False, None)
+    assert db.get_project_availability("dependent") == (False, None)
+
+
+def test_get_runtime_status_reports_all_three_states(db, project_service):
+    _publish_project(db, project_service, "running-proj", VALID_YML)
+    _publish_project(db, project_service, "auto-paused-proj", VALID_YML)
+    db.set_project_availability("auto-paused-proj", is_paused=True, paused_reason="Build failed: x")
+    _publish_project(db, project_service, "manually-paused-proj", VALID_YML)
+    project_service.set_manually_paused("manually-paused-proj")
+
+    rows = {row["name"]: row for row in project_service.get_runtime_status()}
+
+    assert rows["running-proj"]["status"] == "running"
+    assert rows["auto-paused-proj"]["status"] == "paused"
+    assert rows["manually-paused-proj"]["status"] == "manually_paused"

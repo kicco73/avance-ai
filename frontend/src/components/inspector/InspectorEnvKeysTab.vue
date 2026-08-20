@@ -159,7 +159,10 @@ onMounted(loadEnvKeys)
               @click.stop
               @blur="commitField('ui-description', editUiDescription, entry.env_key.ui_description ?? '')"
             ></textarea>
-            <label class="inspector-signal-form-label">Value</label>
+            <label class="inspector-signal-form-label" title="A Python expression, evaluated server-side">
+              <span class="inspector-py-field-icon" title="Python expression">PY</span>
+              Value
+            </label>
             <TriggerEditor
               v-model="editValue"
               @click.stop
@@ -201,7 +204,11 @@ onMounted(loadEnvKeys)
 .inspector-signal-name { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; }
 .inspector-signal-label-input { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; border: 1px solid transparent; border-radius: 4px; padding: 0.1rem 0.3rem; background: transparent; font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; }
 .inspector-signal-label-input:hover, .inspector-signal-label-input:focus { border-color: #ccc; background: white; }
-.inspector-signal-form-label { display: block; margin: 20px 0 0.15rem; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #777; }
+.inspector-signal-form-label { display: flex; align-items: center; gap: 0.35rem; margin: 20px 0 0.15rem; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #777; }
+/* Marks a field evaluated server-side as a Python expression (simpleeval —
+   see automaton.py) — same "language badge" convention as InspectorDetail
+   Card.vue's own Trigger label. */
+.inspector-py-field-icon { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 1.1rem; height: 0.85rem; border-radius: 3px; background: #4b8bbe; color: white; font-size: 0.55rem; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: -0.02em; }
 .inspector-signal-textarea { display: block; width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 0.78rem; line-height: 1.54; padding: 0.35rem 0.5rem; border-radius: 6px; border: 1px solid #ccc; }
 .inspector-signal-ui_description { font-size: 0.78rem; color: #666; line-height: 1.4; }
 .inspector-detail-code { display: block; margin-top: 0.3rem; font-size: 0.78rem; font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; color: #444; word-break: break-word; white-space: pre-wrap; }

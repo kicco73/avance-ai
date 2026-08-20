@@ -418,6 +418,20 @@ class Automaton(object):
         # own declared env: section is ever actually parsed) passes a
         # real list.
         env_keys: list[EnvKey] | None = None,
+        # The optional top-level `project:` section (id/ui-label/
+        # ui-description — see automaton_builder.py's own
+        # _build_project_metadata) — `project_id` is the identifier this
+        # project is reachable as from *other* projects' own automaton.*
+        # references (see trigger_automaton_project_refs), globally
+        # unique across every project (checked by ProjectService, which
+        # has the database this class never touches — see its own
+        # _validate_project_id_globally_unique). All three default to
+        # None for the same reason env_keys defaults to [] above: every
+        # direct-construction call site across the test suite predates
+        # this field.
+        project_id: str | None = None,
+        project_ui_label: str | None = None,
+        project_ui_description: str | None = None,
     ):
         # Replaces the old bare `initial_state: str` field: same
         # information (its .target), but as a real action so it can carry
@@ -428,6 +442,9 @@ class Automaton(object):
         self.general_prompt = general_prompt
         self.signals = signals
         self.env_keys = env_keys or []
+        self.project_id = project_id
+        self.project_ui_label = project_ui_label
+        self.project_ui_description = project_ui_description
         self.general_attachments = general_attachments
         self.attachments = attachments
         # The two auto-tracking modes (before/after the AI reply) are

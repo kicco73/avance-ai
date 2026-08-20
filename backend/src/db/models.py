@@ -25,6 +25,37 @@ class Project(BaseModel):
     # is_paused is False.
     is_paused = BooleanField(default=False)
     paused_reason = TextField(null=True)
+    # Independent of is_paused/paused_reason above (the *automatic*
+    # mechanism, driven by recompute_availability) — an operator's own
+    # explicit override, set/cleared only through ProjectService.
+    # set_manually_paused/set_manually_running (see their own
+    # docstrings), never touched by recompute_availability itself beyond
+    # reading it: whenever this is True, recompute_availability forces
+    # is_paused True too (reason "Manually paused.") regardless of what
+    # the real build/dependency check would otherwise find, which is
+    # exactly what makes a manual pause survive every other event that
+    # would normally flip is_paused back — nothing un-pauses it but the
+    # matching manual resume.
+    manually_paused = BooleanField(default=False)
+    # The project's own declared `project:` section (see automaton_
+    # builder.py's own _build_project_metadata) — kept in sync on every
+    # successful save (see ProjectService._sync_project_metadata), never
+    # parsed from index.yml on demand: ProjectsMenu.vue shows every
+    # project at once and can't afford to load+build each one's own
+    # automaton just to list them. project_id is what *other* projects
+    # reach this one as through automaton.* (see automaton.trigger_
+    # automaton_project_refs) — null (not declared) means this project is
+    # never exposed to any other project's own automaton.* reference at
+    # all; unique so the same id can't ever ambiguously resolve to two
+    # projects (SQLite treats multiple NULLs as distinct even under a
+    # UNIQUE constraint, so any number of projects may leave this
+    # undeclared at once). ui_label/ui_description are purely cosmetic
+    # (ProjectsMenu.vue shows ui_label in place of the raw project name
+    # when set, same "declared label, falls back to the raw name/key"
+    # convention already used for a state/signal/action's own ui-label).
+    project_id = CharField(null=True, unique=True)
+    ui_label = TextField(null=True)
+    ui_description = TextField(null=True)
 
 class ChatSession(BaseModel):
     id = AutoField()

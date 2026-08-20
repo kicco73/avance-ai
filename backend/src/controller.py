@@ -63,7 +63,7 @@ DOCS_DIR = Path(__file__).resolve().parent / "docs"
 # (see AutomatonYamlEditor.set_signal_field), never through a field edit
 # of its own.
 STATE_EDITABLE_FIELDS = {"ui-label", "ui-description", "history-cutoff", "contextual-prompt", "chat"}
-ACTION_EDITABLE_FIELDS = {"ui-label", "ui-description", "action-prompt", "target", "trigger"}
+ACTION_EDITABLE_FIELDS = {"ui-label", "ui-description", "action-prompt", "target", "trigger", "on-enter"}
 SIGNAL_EDITABLE_FIELDS = {"ui-label", "ui-description", "definition"}
 # Unlike a state/action/signal's own name/ui-label, an env key has no
 # separate ui-label to derive its name from — 'name' is itself directly
@@ -574,10 +574,19 @@ class AvanceController(object):
 
     @post("/api/chat/reset")
     async def post_reset(self):
+        """Wipes this user's own sessions for the active project (see
+        ProjectService.reset_active_project) — the next state resolution
+        falls all the way back to init_action.target (see _resolve_state's
+        own docstring on that fallback), same as a session's very first
+        transition ever, so on-enter rides along here the same way it
+        does on every other real transition (see ChatService.
+        apply_manual_action/process_turn's own "on-enter") — this is
+        exactly one, just not modeled as firing an Action per se."""
         async with self.chat_service.lock:
             self.project_service.reset_active_project()
             self.chat_service.tracking_service.auto_tracking_enabled = True
-        return self.project_service.get_active_state_payload()
+        automaton, state = self.project_service.get_active_automaton_and_state()
+        return {**Automaton.get_state_payload(state), "on-enter": automaton.init_action.on_enter}
 
     @get("/api/backup")
     async def get_backup(self):
@@ -611,6 +620,44 @@ class AvanceController(object):
     @get("/api/projects")
     def get_projects(self):
         return self.project_service.list_projects()
+
+    # Named to sort alphabetically before get_project (its own literal
+    # "runtime-status" path segment would otherwise be swallowed by
+    # get_project's own {project_name} wildcard, registered first — see
+    # put_action_order's own identical comment below for the general
+    # mechanism this relies on).
+    @get("/api/projects/runtime-status")
+    def get_all_projects_runtime_status(self):
+        """One row per project — name/status/paused_reason/revision/
+        published_revision (see ProjectService.get_runtime_status) — the
+        Settings > Runtime status view's own table."""
+        return {"projects": self.project_service.get_runtime_status()}
+
+    @put("/api/projects/{project_name}/pause")
+    def put_project_pause(self, project_name: str):
+        """An operator's own explicit override — only ever allowed while
+        `project_name` is actually running (see ProjectService.
+        set_manually_paused, which enforces this itself, same reason the
+        Runtime status view's own status button disables itself for
+        every other status)."""
+        try:
+            return self.project_service.set_manually_paused(project_name)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @put("/api/projects/{project_name}/resume")
+    def put_project_resume(self, project_name: str):
+        """The other half of pause above — only ever allowed while
+        `project_name` is manually paused (see ProjectService.
+        set_manually_running)."""
+        try:
+            return self.project_service.set_manually_running(project_name)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
     @post("/api/projects/new")
     async def post_new_project(self):
@@ -814,10 +861,19 @@ class AvanceController(object):
         """{content, can_undo, can_redo} of `file_name`'s current
         content, for the "Edit project" view (see
         ProjectService.get_project_file) — can_undo/can_redo are what its
-        Undo/Redo buttons use to know whether they're enabled."""
+        Undo/Redo buttons use to know whether they're enabled. index.css
+        is the one file every project is allowed not to have at all (see
+        ChatWindow.vue's own skin-loading fetch, which already treats a
+        missing one as "no stylesheet", not an error) — missing, this
+        reports 204 No Content instead of 404, so ProjectDesignPanel.vue's
+        always-mounted IndexCssEditorPanel.vue can start the user off with
+        an empty buffer instead of surfacing an error for a file that was
+        never required to exist."""
         try:
             return self.project_service.get_project_file(project_name, file_name)
         except FileNotFoundError as exc:
+            if file_name == "index.css":
+                return Response(status_code=HTTPStatus.NO_CONTENT)
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc

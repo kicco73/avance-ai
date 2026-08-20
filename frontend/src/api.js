@@ -425,6 +425,26 @@ export function getProjects() {
   return apiFetch(`${API_URL}/projects`)
 }
 
+// Settings > Runtime status view's own table (see ProjectService.
+// get_runtime_status) — every project's own {name, status, paused_reason,
+// revision, published_revision}, status one of 'running'/'paused'/
+// 'manually_paused'.
+export function getProjectsRuntimeStatus() {
+  return apiFetch(`${API_URL}/projects/runtime-status`)
+}
+
+// Manual pause/resume (see ProjectService.set_manually_paused/
+// set_manually_running) — only ever valid from 'running'/'manually_paused'
+// respectively, enforced backend-side; a 400 here means the status shown
+// was already stale (someone/something else changed it first).
+export function putProjectPause(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/pause`, { method: 'PUT' })
+}
+
+export function putProjectResume(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/resume`, { method: 'PUT' })
+}
+
 // "New project" — same effect server-side as uploading samples/Hello
 // world.zip by hand (see putProject), minus picking a name first (the
 // backend derives/de-duplicates one on its own).

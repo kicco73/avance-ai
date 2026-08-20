@@ -12,6 +12,18 @@ const REGISTRY = {
   metric: { retention: 'Retention score.', activity_consistency: 'Activity consistency score.' }
 }
 
+// Prompt 6's cross-project namespace (see ProjectService.get_active_
+// identifier_registry) — a real registry never carries "automaton"
+// unless there's at least one other project, so this is its own fixture
+// rather than folded into REGISTRY above (every test that doesn't care
+// about it keeps seeing the exact same suggestions it always did).
+const REGISTRY_WITH_AUTOMATON = {
+  ...REGISTRY,
+  automaton: {},
+  'automaton.other_project': { state: "The 'other_project' project's own current state." },
+  'automaton.other_project.env': { budget: 'Remaining budget, shared cross-project.' }
+}
+
 function contextAt(text, explicit = false) {
   const state = EditorState.create({ doc: text })
   return new CompletionContext(state, text.length, explicit)
@@ -118,6 +130,44 @@ describe('completeIdentifiers', () => {
     // typed), not the whole preceding expression.
     expect(result.from).toBe(text.length - 'sess'.length)
   })
+
+  it('offers "automaton" as a top-level namespace when the registry has one', () => {
+    const result = completeIdentifiers(contextAt('auto'), REGISTRY_WITH_AUTOMATON)
+    expect(result.options.map((o) => o.label)).toContain('automaton')
+  })
+
+  it('offers every other project as a child namespace right after "automaton."', () => {
+    const result = completeIdentifiers(contextAt('automaton.'), REGISTRY_WITH_AUTOMATON)
+
+    expect(result.options).toHaveLength(1)
+    const [option] = result.options
+    expect(option.label).toBe('other_project')
+    expect(option.type).toBe('namespace')
+    // No trailing "()" — automaton.<project> is a namespace to descend
+    // into, never itself called.
+    expect(option.apply).toBe('other_project')
+  })
+
+  it('offers "state" as a plain (unparenthesized) identifier and "env" as a child namespace under automaton.<project>', () => {
+    const result = completeIdentifiers(contextAt('automaton.other_project.'), REGISTRY_WITH_AUTOMATON)
+
+    const stateOption = result.options.find((o) => o.label === 'state')
+    expect(stateOption.type).toBe('variable')
+    expect(stateOption.apply).toBe('state')
+    const envOption = result.options.find((o) => o.label === 'env')
+    expect(envOption.type).toBe('namespace')
+    expect(envOption.apply).toBe('env')
+  })
+
+  it('offers that project\'s own declared env keys as plain identifiers under automaton.<project>.env', () => {
+    const result = completeIdentifiers(contextAt('automaton.other_project.env.'), REGISTRY_WITH_AUTOMATON)
+
+    expect(result.options).toHaveLength(1)
+    const [option] = result.options
+    expect(option.label).toBe('budget')
+    expect(option.type).toBe('variable')
+    expect(option.apply).toBe('budget')
+  })
 })
 
 describe('completionInfo', () => {
@@ -162,6 +212,12 @@ describe('isProxyNamespace', () => {
     expect(isProxyNamespace('session.metric')).toBe(true)
     expect(isProxyNamespace('metric')).toBe(true)
   })
+
+  it('is false for automaton and every automaton.<project> sub-namespace — real attribute access, never called', () => {
+    expect(isProxyNamespace('automaton')).toBe(false)
+    expect(isProxyNamespace('automaton.other_project')).toBe(false)
+    expect(isProxyNamespace('automaton.other_project.env')).toBe(false)
+  })
 })
 
 describe('namespaceOf (the coloring regex\'s own namespace extraction)', () => {
@@ -179,8 +235,13 @@ describe('namespaceOf (the coloring regex\'s own namespace extraction)', () => {
   })
 
   it('every namespace it can extract has a fixed color', () => {
-    for (const namespace of ['signal', 'env', 'system', 'session', 'session.metric', 'metric']) {
+    for (const namespace of ['signal', 'env', 'system', 'session', 'session.metric', 'metric', 'automaton']) {
       expect(NAMESPACE_COLORS[namespace]).toMatch(/^#[0-9a-f]{6}$/)
     }
+  })
+
+  it('extracts automaton.<project> as its own namespace, leaving .state/.env.<key> uncolored past it', () => {
+    expect(namespaceOf('automaton.other_project.state')).toBe('automaton')
+    expect(namespaceOf('automaton.other_project.env.budget')).toBe('automaton')
   })
 })

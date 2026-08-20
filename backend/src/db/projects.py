@@ -25,6 +25,48 @@ class ProjectMixin:
     def set_project_availability(self, project_name: str, is_paused: bool, paused_reason: str | None) -> None:
         Project.update(is_paused=is_paused, paused_reason=paused_reason).where(Project.name == project_name).execute()
 
+    def get_manually_paused(self, project_name: str) -> bool | None:
+        """None if `project_name` doesn't exist at all — same convention
+        as get_project_availability."""
+        project = Project.get_or_none(Project.name == project_name)
+        return project.manually_paused if project is not None else None
+
+    def set_manually_paused(self, project_name: str, value: bool) -> None:
+        Project.update(manually_paused=value).where(Project.name == project_name).execute()
+
+    def get_project_id(self, project_name: str) -> str | None:
+        """The other direction of get_project_name_by_project_id below —
+        None both for a project that never declared one and for a
+        project that doesn't exist at all (see ProjectService.
+        get_active_identifier_registry, the one caller: a project with no
+        declared project_id is simply never offered as an automaton.*
+        completion target, see Prompt 8's own "never exposed" rule)."""
+        project = Project.get_or_none(Project.name == project_name)
+        return project.project_id if project is not None else None
+
+    def get_project_name_by_project_id(self, project_id: str) -> str | None:
+        """The one translation boundary between project_id (what an
+        automaton.* reference names — see automaton.trigger_automaton_
+        project_refs) and project_name (what every other table/lookup in
+        this schema actually keys on) — see ProjectService's own
+        _resolve_automaton_project_refs (build-time, populating the
+        reverse index) and tracking.automaton_namespace's own
+        AutomatonNamespace (runtime resolution), its only two callers.
+        None both when no project declares this id at all, and when
+        `project_id` itself is falsy — a dangling/absent reference is
+        never an error here, only ever a "nothing to resolve to"."""
+        if not project_id:
+            return None
+        project = Project.get_or_none(Project.project_id == project_id)
+        return project.name if project is not None else None
+
+    def set_project_metadata(
+        self, project_name: str, project_id: str | None, ui_label: str | None, ui_description: str | None,
+    ) -> None:
+        Project.update(
+            project_id=project_id, ui_label=ui_label, ui_description=ui_description,
+        ).where(Project.name == project_name).execute()
+
     def reset_project(self, project_name: str) -> None:
         session_ids = ChatSession.select(ChatSession.id).where(ChatSession.project_name == project_name)
         Tracking.delete().where(Tracking.session.in_(session_ids)).execute()
@@ -129,11 +171,41 @@ class ProjectMixin:
         return [p.name for p in Project.select(Project.name)]
 
     def list_projects_with_availability(self) -> list[dict]:
-        """{name, is_paused} per project — ProjectsMenu.vue's own status
-        icon (see ProjectService.list_projects, the one caller). Plain
-        list_projects above stays name-only: every *other* caller just
-        needs an existence/membership check, never this extra column."""
-        return [{"name": p.name, "is_paused": p.is_paused} for p in Project.select(Project.name, Project.is_paused)]
+        """{name, is_paused, ui_label} per project — ProjectsMenu.vue's
+        own status icon and display label (see ProjectService.
+        list_projects, the one caller — ui_label is None whenever the
+        project's own `project:` section never declared one, and the
+        frontend falls back to the raw name in that case, same
+        convention as every other declared-ui-label field in this app).
+        Plain list_projects above stays name-only: every *other* caller
+        just needs an existence/membership check, never these extra
+        columns."""
+        return [
+            {"name": p.name, "is_paused": p.is_paused, "ui_label": p.ui_label}
+            for p in Project.select(Project.name, Project.is_paused, Project.ui_label)
+        ]
+
+    def list_projects_runtime_status(self) -> list[dict]:
+        """One row per project — revision, published_revision, is_paused,
+        paused_reason, manually_paused — for the Settings > Runtime
+        status view (see ProjectService.get_runtime_status, the one
+        caller). Every column this needs already lives on Project itself,
+        so this is a plain single-table select, no automaton build
+        involved."""
+        return [
+            {
+                "name": p.name,
+                "revision": p.revision,
+                "published_revision": p.published_revision,
+                "is_paused": p.is_paused,
+                "paused_reason": p.paused_reason,
+                "manually_paused": p.manually_paused,
+            }
+            for p in Project.select(
+                Project.name, Project.revision, Project.published_revision,
+                Project.is_paused, Project.paused_reason, Project.manually_paused,
+            ).order_by(Project.name)
+        ]
 
     def list_archives(self, project_name: str, revision: int | None = None) -> list[str]:
         if revision is None:
