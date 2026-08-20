@@ -36,7 +36,13 @@ const props = defineProps({
   // transitionAnnotationStatus/resolveTransitionRow, and ChatTimeline.
   // vue's own analogous imported prop), so the select reads as a neutral
   // "labelled" state instead of a correct/incorrect verdict.
-  imported: { type: Boolean, default: false }
+  imported: { type: Boolean, default: false },
+  // See api.js's own getProjectGraph docstring — null (every
+  // EditProjectView.vue caller) reads the current draft exactly as
+  // before; LabelProjectView.vue's own "States" tab passes the session
+  // currently under review, pinning this to the exact revision it ran
+  // against.
+  sessionId: { type: [Number, String], default: null }
 })
 
 const emit = defineEmits(['jump-to-definition', 'update-expected-state', 'select'])
@@ -268,7 +274,7 @@ function renderGraph(nodes, edges) {
 async function loadGraph() {
   graphLoading.value = true
   try {
-    const { nodes, edges } = await getProjectGraph(props.projectName)
+    const { nodes, edges } = await getProjectGraph(props.projectName, props.sessionId)
     graphNodes.value = nodes
     graphEdges.value = edges
     renderGraph(nodes, edges)

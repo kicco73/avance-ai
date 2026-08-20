@@ -786,6 +786,7 @@ onBeforeUnmount(() => {
               :annotatable="annotatableSignalsRow != null"
               :expected-state="expectedState"
               :imported="currentSessionIsImported"
+              :session-id="currentSessionId"
               @update-expected-state="onUpdateExpectedState"
             />
           </template>
@@ -798,6 +799,7 @@ onBeforeUnmount(() => {
               :expected-values="expectedValues"
               :state-key="highlightedStateKey"
               :imported="currentSessionIsImported"
+              :session-id="currentSessionId"
               @update-expected-signals="onUpdateExpectedSignals"
             />
           </template>

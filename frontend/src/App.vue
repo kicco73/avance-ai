@@ -187,7 +187,26 @@ async function handleModelUploadChange(event) {
   }
 }
 
-function handleModelEdit(projectName) {
+// EditProjectView.vue's own embedded "Test" chat creates its draft
+// session against whichever project is currently *active* server-side
+// (see ChatService.create_draft_session — it never actually looks at the
+// URL's own project_name), an invariant every previous way into "Edit
+// project" upheld for free: before Manage projects made a project's own
+// row directly clickable, the only path in was ProjectsMenu.vue's own
+// "Edit project" item, which only ever edited whichever project was
+// already active. That's no longer guaranteed — Manage projects lets you
+// open Edit for a project that isn't active at all — so this activates
+// `projectName` first, same as a real project switch, before ever
+// opening the view: without this, Test silently runs against whatever
+// project was active before, not the one actually being edited.
+async function handleModelEdit(projectName) {
+  clearChatUi()
+  try {
+    await activateProject(projectName)
+    await refreshStateAndProjects()
+  } catch {
+    // already surfaced via apiFetch
+  }
   editProjectName.value = projectName
   showEditProject.value = true
 }

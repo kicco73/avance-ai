@@ -28,7 +28,12 @@ const props = defineProps({
   // why: the "expected value set" overlay reads as a neutral "labelled"
   // green there instead of its usual magenta, matching ChatTimeline.vue/
   // InspectorGraph.vue's own imported-session styling.
-  imported: { type: Boolean, default: false }
+  imported: { type: Boolean, default: false },
+  // See api.js's own getProjectSignals/InspectorGraph.vue's own sessionId
+  // prop docstring — LabelProjectView.vue's own "Signals" tab passes the
+  // session currently under review, pinning signal definitions to the
+  // exact revision it ran against.
+  sessionId: { type: [Number, String], default: null }
 })
 
 const emit = defineEmits(['jump-to-definition', 'select-attachment', 'update-expected-signals', 'set-field', 'add-signal', 'delete'])
@@ -181,7 +186,7 @@ function onClearExpectedSignal(signalName) {
 async function loadSignals() {
   signalsLoading.value = true
   try {
-    signals.value = (await getProjectSignals(props.projectName, props.stateKey)).signals
+    signals.value = (await getProjectSignals(props.projectName, props.stateKey, props.sessionId)).signals
   } catch {} finally { signalsLoading.value = false }
   // A rename (or a delete) moves/removes the signal expandedSignalName
   // was pointing at — collapse rather than keep showing a stale form for

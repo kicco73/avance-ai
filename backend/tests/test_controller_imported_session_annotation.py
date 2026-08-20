@@ -3,12 +3,13 @@ never has any real Tracking rows at all, so its messages used to be
 completely unannotatable — every PUT .../expected-state or .../expected-
 signals attempt 409'd, since TrackingService._require_annotatable_message
 only ever materializes a row for a *live* session's own literal first
-message. TrackingService._materialize_imported_session_row is the new
-fallback under test here: it lets an expert annotate any message of an
-imported session that sits on whichever side (user/assistant)
-automaton.autotracking_on_ai_message says a live turn would actually have
-evaluated on — same convention a live session already follows, just
-without a real row to prove it.
+message. TrackingService._materialize_imported_session_row is the
+fallback under test here: it lets an expert annotate *any* message of an
+imported session — every line of a reviewed transcript is a legitimate
+mark point, regardless of role or which side automaton.
+autotracking_on_ai_message says a live turn would have evaluated on (an
+earlier, stricter version of this same method used to gate on exactly
+that — deliberately removed).
 """
 from __future__ import annotations
 
@@ -91,8 +92,8 @@ def _import_and_get_messages(client) -> tuple[int, dict]:
     return session_id, by_role
 
 
-def test_user_side_project_allows_annotating_the_user_message(client):
-    _setup_project(client, autotracking_on_ai_message=False)
+def test_allows_annotating_the_user_message_regardless_of_autotracking_side(client):
+    _setup_project(client, autotracking_on_ai_message=True)
     _, by_role = _import_and_get_messages(client)
 
     resp = client.put(
@@ -102,18 +103,8 @@ def test_user_side_project_allows_annotating_the_user_message(client):
     assert resp.json()["expected_state"] == "a"
 
 
-def test_user_side_project_rejects_annotating_the_assistant_message(client):
+def test_allows_annotating_the_assistant_message_regardless_of_autotracking_side(client):
     _setup_project(client, autotracking_on_ai_message=False)
-    _, by_role = _import_and_get_messages(client)
-
-    resp = client.put(
-        f"/api/chat/messages/{by_role['assistant']['id']}/expected-state", json={"expected_state": "a"}
-    )
-    assert resp.status_code == 409, resp.text
-
-
-def test_ai_side_project_allows_annotating_the_assistant_message(client):
-    _setup_project(client, autotracking_on_ai_message=True)
     _, by_role = _import_and_get_messages(client)
 
     resp = client.put(
@@ -121,16 +112,6 @@ def test_ai_side_project_allows_annotating_the_assistant_message(client):
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["expected_state"] == "a"
-
-
-def test_ai_side_project_rejects_annotating_the_user_message(client):
-    _setup_project(client, autotracking_on_ai_message=True)
-    _, by_role = _import_and_get_messages(client)
-
-    resp = client.put(
-        f"/api/chat/messages/{by_role['user']['id']}/expected-state", json={"expected_state": "a"}
-    )
-    assert resp.status_code == 409, resp.text
 
 
 def test_expected_signals_can_also_be_annotated_on_an_imported_session(client):

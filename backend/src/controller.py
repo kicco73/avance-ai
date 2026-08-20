@@ -819,36 +819,48 @@ class AvanceController(object):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
     @get("/api/projects/{project_name}/graph")
-    def get_project_graph(self, project_name: str):
+    def get_project_graph(self, project_name: str, session_id: int | None = None):
         """The project's state machine (states as nodes, actions as edges)
-        of `project_name`'s last saved index.yml, for the "Edit project"
-        view's Inspect panel graph — not restricted to the active project."""
+        of `project_name`'s index.yml, for the "Edit project"/"Label
+        sessions" views' own Inspect panel graph — not restricted to the
+        active project. `session_id` omitted resolves the current draft
+        (the editor's own case); given, resolves the exact revision that
+        session's own automaton ran against (LabelProjectView.vue's own
+        case — see ProjectService._resolve_inspector_revision)."""
         try:
-            return self.project_service.get_project_graph(project_name)
+            return self.project_service.get_project_graph(project_name, session_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
     @get("/api/projects/{project_name}/signals")
-    def get_project_signals(self, project_name: str, state_key: str | None = None):
+    def get_project_signals(self, project_name: str, state_key: str | None = None, session_id: int | None = None):
         """Signal definitions (name/ui_label/description) of `project_name`'s
-        last saved index.yml, for the "Edit project" view's Inspect panel —
-        not restricted to the active project. `state_key`, when given,
-        scopes each signal's own `relevant` field to that state's outgoing
-        actions (see ProjectService.get_project_signals) — the Inspector's
-        own currently selected/highlighted state."""
+        index.yml, for the "Edit project"/"Label sessions" views' own
+        Inspect panel — not restricted to the active project. `state_key`,
+        when given, scopes each signal's own `relevant` field to that
+        state's outgoing actions (see ProjectService.get_project_signals) —
+        the Inspector's own currently selected/highlighted state.
+        `session_id`: see get_project_graph above."""
         try:
-            return {"signals": self.project_service.get_project_signals(project_name, state_key)}
+            return {"signals": self.project_service.get_project_signals(project_name, state_key, session_id)}
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
     @get("/api/projects/{project_name}/env-keys")
-    def get_project_env_keys(self, project_name: str):
+    def get_project_env_keys(self, project_name: str, session_id: int | None = None):
         """Declared env-key definitions (name/ui_description/value) of
-        `project_name`'s last saved index.yml, for the "Edit project"
-        view's Inspect panel Env tab — not restricted to the active
-        project (see ProjectService.get_project_env_keys)."""
+        `project_name`'s index.yml, for the "Edit project" view's Inspect
+        panel Env tab — not restricted to the active project (see
+        ProjectService.get_project_env_keys). `session_id`: see
+        get_project_graph above."""
         try:
-            return {"env_keys": self.project_service.get_project_env_keys(project_name)}
+            return {"env_keys": self.project_service.get_project_env_keys(project_name, session_id)}
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 

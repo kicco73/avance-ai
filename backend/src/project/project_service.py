@@ -818,29 +818,59 @@ class ProjectService(object):
         # — not every user's, unlike delete_project's full reset_project.
         self._db.reset_project_for_user(Session().user, self.get_active_project_name())
 
-    def get_project_signals(self, project_name: str, state_key: str | None = None) -> list[dict]:
+    def _resolve_inspector_revision(self, project_name: str, session_id: int | None) -> int:
+        """The revision an Inspect-panel read (get_project_graph/
+        get_project_signals/get_project_env_keys/get_project_file_content)
+        should read `project_name` at. `session_id` omitted resolves
+        against the current draft — every "Edit project" caller's own
+        case, same as _load_project already does. Given, resolves the
+        exact same revision get_automaton_and_state_for_session would
+        build that session's own automaton against: whatever was stamped
+        on it at creation for a real session, or (a 'test' session, which
+        always tracks the live draft — see that method's own docstring on
+        why) the current draft too, never just session['project_revision']
+        uniformly. LabelProjectView.vue's own case — reviewing an older
+        session must never show today's structure once it's since
+        diverged (a renamed/deleted/added state or signal)."""
+        if session_id is None:
+            return self._db.get_project_revision(project_name)
+        session = self._db.get_chat_session(session_id)
+        if session is None:
+            raise FileNotFoundError(f"Session {session_id} does not exist.")
+        if session["source"] == "test":
+            return self._db.get_project_revision(project_name)
+        return session["project_revision"]
+
+    def get_project_signals(
+        self, project_name: str, state_key: str | None = None, session_id: int | None = None
+    ) -> list[dict]:
         """Signal definitions (name/ui_label/ui_description/attachments) of
-        `project_name`'s last successfully saved index.yml — the source for
-        the "Edit project" view's Inspect panel. Reads through
-        _load_project's cache, which every mutating path (put_project/
+        `project_name`'s index.yml, for the "Edit project"/"Label sessions"
+        views' own Inspect panel — see _resolve_inspector_revision for
+        which revision that actually means. Reads through _load_project_at_
+        revision's own cache, which every mutating path (put_project/
         put_project_file/delete_project_file, via _finalize_project_update)
-        keeps fresh as of its own last successful save, regardless of which
-        project is currently active — so this never reflects an
-        in-progress unsaved edit. `relevant` is the authoritative, server-
-        computed answer to "is this signal referenced by some action's own
-        trigger (or env: field)" — the Inspector Signals tab's own "show
-        only relevant signals" filter reads this directly rather than
-        re-deriving it client-side. Scoped to `state_key`'s own outgoing
-        actions (see Automaton.triggerable_signal_names) when given — the
-        Inspector's own currently selected/highlighted state, or (an
-        action selected instead) the state it fires *from* — since that's
-        the only scope actually meaningful for "would this matter for
-        deciding what happens next here." Falls back to every state's
-        triggers combined (see Automaton.all_triggerable_signal_names)
-        when `state_key` is omitted or no longer a real state (e.g. a
-        stale selection from before a rename) — there's always something
-        sensible to report, never a hard error over this."""
-        automaton = self._load_project(project_name)
+        keeps fresh as of its own last successful save for the current
+        draft specifically — an older, already-superseded revision's own
+        cache entry is immutable once built (that revision's own archives
+        can never change again), so never needs invalidating at all.
+        `relevant` is the authoritative, server-computed answer to "is this
+        signal referenced by some action's own trigger (or env: field)" —
+        the Inspector Signals tab's own "show only relevant signals" filter
+        reads this directly rather than re-deriving it client-side. Scoped
+        to `state_key`'s own outgoing actions (see Automaton.
+        triggerable_signal_names) when given — the Inspector's own
+        currently selected/highlighted state, or (an action selected
+        instead) the state it fires *from* — since that's the only scope
+        actually meaningful for "would this matter for deciding what
+        happens next here." Falls back to every state's triggers combined
+        (see Automaton.all_triggerable_signal_names) when `state_key` is
+        omitted or no longer a real state (e.g. a stale selection from
+        before a rename) — there's always something sensible to report,
+        never a hard error over this."""
+        automaton = self._load_project_at_revision(
+            project_name, self._resolve_inspector_revision(project_name, session_id)
+        )
         if state_key is not None and state_key in automaton.states:
             relevant_names = automaton.triggerable_signal_names(state_key)
         else:
@@ -859,12 +889,14 @@ class ProjectService(object):
             for signal in automaton.signals
         ]
 
-    def get_project_env_keys(self, project_name: str) -> list[dict]:
+    def get_project_env_keys(self, project_name: str, session_id: int | None = None) -> list[dict]:
         """Env-key declarations (name/ui_description/value) of
-        `project_name`'s last successfully saved index.yml — the source
-        for the "Edit project" view's own Inspect panel Env tab, same
-        cache/staleness contract as get_project_signals above."""
-        automaton = self._load_project(project_name)
+        `project_name`'s index.yml — the source for the "Edit project"
+        view's own Inspect panel Env tab, same revision/cache/staleness
+        contract as get_project_signals above."""
+        automaton = self._load_project_at_revision(
+            project_name, self._resolve_inspector_revision(project_name, session_id)
+        )
         return [{"env_key": Automaton.get_env_key_payload(env_key)} for env_key in automaton.env_keys]
 
     def get_project_metadata(self, project_name: str) -> ProjectPayload:
@@ -944,14 +976,18 @@ class ProjectService(object):
         automaton = self._load_project(project_name)
         return [state.key for state in automaton.states.values() if state.key != ""]
 
-    def get_project_graph(self, project_name: str) -> dict:
+    def get_project_graph(self, project_name: str, session_id: int | None = None) -> dict:
         """The project's state machine as nodes (states) and edges
-        (actions) — the source for the "Edit project" view's Inspect panel
-        graph (rendered client-side with Cytoscape). Reads through the same
-        _load_project cache as get_project_signals, so it reflects the last
-        successfully saved index.yml, not any in-progress unsaved edit. The
-        reserved implicit state ("", see AutomatonBuilder.build) is never a
-        real state and is excluded from `nodes` — each real node's own
+        (actions) — the source for the "Edit project"/"Label sessions"
+        views' own Inspect panel graph (rendered client-side with
+        Cytoscape). Reads through the same _load_project_at_revision
+        cache as get_project_signals — see _resolve_inspector_revision for
+        which revision that actually means; a LabelProjectView.vue review
+        session pins this to the exact revision it ran against, so an
+        older session never shows a state/action that's since been
+        renamed or deleted (or is missing one added since). The reserved
+        implicit state ("", see AutomatonBuilder.build) is never a real
+        state and is excluded from `nodes` — each real node's own
         `is_start` flag (state.key == automaton.init_action.target) is
         what marks the actual starting state instead. `edges`, unlike
         `nodes`, is built over *every* state including "" — its own single
@@ -962,7 +998,9 @@ class ProjectService(object):
         transparent pseudo-node, same convention "" already has everywhere
         else (Tracking.old_state, benchmarkTimeline.js's own synthetic
         session-start entry) for "there was no real prior state"."""
-        automaton = self._load_project(project_name)
+        automaton = self._load_project_at_revision(
+            project_name, self._resolve_inspector_revision(project_name, session_id)
+        )
         real_states = [state for state in automaton.states.values() if state.key != ""]
         nodes = [
             {
@@ -1323,29 +1361,20 @@ class ProjectService(object):
         .../files/{file_name} already uses) — the editor's own case.
 
         `session_id` given: resolves the *exact same* revision
-        get_automaton_and_state_for_session would build the automaton
-        against for that session — deliberately mirrored, not just "use
-        session['project_revision']" uniformly: a 'test' session there
-        always re-resolves against whatever the draft currently is (see
-        that method's own docstring on why — it's meant to reflect
-        in-progress edits, not a frozen snapshot from whenever the session
-        was created), while every other session is pinned to the exact
-        revision stamped on it at creation time. Getting this wrong would
-        only misbehave in a rare edge case (a publish + new edit elsewhere
-        while a Test session is still open), but it's the one place this
-        route could silently serve a stale skin, so it's worth doing right
-        rather than literally."""
-        if session_id is None:
-            revision = self._db.get_project_revision(project_name)
-        else:
-            session = self._db.get_chat_session(session_id)
-            if session is None:
-                raise FileNotFoundError(f"Session {session_id} does not exist.")
-            if session["source"] == "test":
-                revision = self._db.get_project_revision(project_name)
-            else:
-                revision = session["project_revision"]
-
+        _resolve_inspector_revision (shared with get_project_graph/
+        get_project_signals/get_project_env_keys) would — deliberately
+        mirrored, not just "use session['project_revision']" uniformly: a
+        'test' session there always re-resolves against whatever the
+        draft currently is (see get_automaton_and_state_for_session's own
+        docstring on why — it's meant to reflect in-progress edits, not a
+        frozen snapshot from whenever the session was created), while
+        every other session is pinned to the exact revision stamped on it
+        at creation time. Getting this wrong would only misbehave in a
+        rare edge case (a publish + new edit elsewhere while a Test
+        session is still open), but it's the one place this route could
+        silently serve a stale skin, so it's worth doing right rather
+        than literally."""
+        revision = self._resolve_inspector_revision(project_name, session_id)
         content = self._db.get_archive(project_name, file_name, revision=revision)
         if content is None:
             raise FileNotFoundError(f"File '{file_name}' does not exist in project '{project_name}'.")

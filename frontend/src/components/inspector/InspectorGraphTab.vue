@@ -18,7 +18,9 @@ const props = defineProps({
   annotatable: { type: Boolean, default: false },
   expectedState: { type: String, default: null },
   // See InspectorGraph.vue's own imported prop docstring.
-  imported: { type: Boolean, default: false }
+  imported: { type: Boolean, default: false },
+  // See InspectorGraph.vue's own sessionId prop docstring.
+  sessionId: { type: [Number, String], default: null }
 })
 
 const emit = defineEmits(['jump-to-definition', 'select-attachment', 'update-expected-state'])
@@ -66,6 +68,7 @@ defineExpose({ loadGraph, resize, fit, refresh, stateElementFor })
       :annotatable="annotatable"
       :expected-state="expectedState"
       :imported="imported"
+      :session-id="sessionId"
       @jump-to-definition="emit('jump-to-definition', $event)"
       @update-expected-state="emit('update-expected-state', $event)"
       @select="handleSelect"

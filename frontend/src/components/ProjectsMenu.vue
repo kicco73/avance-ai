@@ -126,6 +126,15 @@ onBeforeUnmount(() => {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+  /* SettingsMenu.vue's own .settings-btn centers an 18px-tall SVG icon
+     inside the exact same 0.4rem top/bottom padding this has — but a
+     plain button's own text content doesn't reliably compute to that same
+     18px line box on its own (font metrics/UA default line-height are
+     never guaranteed to land there), which is what let the two buttons'
+     total heights drift apart despite matching padding. Pinning this to
+     the identical 18px closes that gap for good, not just by coincidence
+     of whatever font happens to be active. */
+  line-height: 18px;
 }
 
 .projects-btn:hover {

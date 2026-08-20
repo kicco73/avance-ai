@@ -479,8 +479,14 @@ export function putProject(projectName, file) {
   })
 }
 
-export function getProjectGraph(projectName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/graph`)
+// `sessionId`, when given, pins the graph to the exact revision that
+// session's own automaton ran against instead of the current draft — see
+// backend ProjectService._resolve_inspector_revision. LabelProjectView.vue's
+// own "States" tab passes the session currently being reviewed; every
+// other caller (EditProjectView.vue) omits it and keeps reading the draft.
+export function getProjectGraph(projectName, sessionId) {
+  const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/graph${query}`)
 }
 
 // `stateKey`, when given, scopes each signal's own `relevant` field (see
@@ -489,17 +495,21 @@ export function getProjectGraph(projectName) {
 // triggerable_signal_names) — the Inspector's own currently selected/
 // highlighted state, or the state a selected action fires *from*.
 // Omitted, every state's triggers combine instead (Automaton.
-// all_triggerable_signal_names).
-export function getProjectSignals(projectName, stateKey) {
-  const query = stateKey != null ? `?state_key=${encodeURIComponent(stateKey)}` : ''
+// all_triggerable_signal_names). `sessionId`: see getProjectGraph above.
+export function getProjectSignals(projectName, stateKey, sessionId) {
+  const params = new URLSearchParams()
+  if (stateKey != null) params.set('state_key', stateKey)
+  if (sessionId != null) params.set('session_id', sessionId)
+  const query = params.size ? `?${params}` : ''
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/signals${query}`)
 }
 
 // Declared env-key definitions (name/ui_description/value) of the
 // project's own top-level `env:` section — see InspectorEnvKeysTab.vue's
 // own Inspector tab, EditProjectView.vue's "Edit project" schema view.
-export function getProjectEnvKeys(projectName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/env-keys`)
+export function getProjectEnvKeys(projectName, sessionId) {
+  const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/env-keys${query}`)
 }
 
 // The optional top-level `project:` section (id/ui_label/ui_description) —

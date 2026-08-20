@@ -106,22 +106,15 @@ class TrackingService(object):
 		unlike a live session's own first-message bootstrap (see
 		_materialize_session_start_row), there's no old_state/new_state to
 		resolve for it — every row this creates carries None for both.
-		Only a message on whichever side automaton.autotracking_on_ai_message
-		says a live turn would actually have evaluated on (the assistant's
-		own reply if True, the user's own message if False — same
-		convention a live session already follows, see TrackingService.
-		process's own dispatch between TrackingProcessorAfterAiMessage/
-		TrackingProcessorAfterUserMessage) is eligible to annotate at all —
-		every other message of an imported session still has nothing to
-		annotate against, same as before this existed."""
+		Every message of an imported session is a legitimate mark point —
+		an expert reviewing a transcript may want to annotate either side
+		of a turn, not just whichever one a live run would have evaluated
+		on."""
 		message = self._db.get_message(message_id)
 		if message is None:
 			return None
 		session = self._db.get_chat_session(message["session_id"])
 		if session is None or session["source"] != "imported":
-			return None
-		expected_role = "assistant" if self.automaton.autotracking_on_ai_message else "user"
-		if message["role"] != expected_role:
 			return None
 		self._db.save_transition(
 			None, None, None, message["session_id"], transition_log_level="INFO", message_id=message_id
