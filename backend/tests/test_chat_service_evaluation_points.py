@@ -1,15 +1,7 @@
-"""Integration tests for how a real chat turn links a Tracking row to a
-message, and for the expected_state/expected_values annotation writes
-that only a message with such a link allows.
-
-Contract: a Tracking row is only created when a trigger actually fires a
-transition. It links to whichever message caused the evaluation that
-fired it — the user's message in "before" mode
-(autotracking_on_ai_message=False), the assistant's reply in "after"
-mode. At most one transition fires per process() call, and
-process_turn's return dict carries assistant_message_id/user_message_id,
-never message objects.
-"""
+"""Tests linking a Tracking row to a message on a real chat turn, and the
+expected_state/expected_values annotation writes that link allows. A
+Tracking row is only created when a trigger fires a transition, linked to
+whichever message caused the firing evaluation ("before" vs "after" mode)."""
 from __future__ import annotations
 
 import pytest

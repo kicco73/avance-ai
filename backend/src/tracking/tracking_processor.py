@@ -64,6 +64,12 @@ class OutVariables:
 	# whichever message actually caused it — process() must not then
 	# overwrite that link with the assistant's own message id.
 	tracking_linked_to_message: bool = False
+	# True once this turn's signals are settled and won't change the state
+	# again — either they were actually evaluated (whether or not that
+	# triggered a transition), or a caller determined upfront that no
+	# transition was ever possible. Gates whether buffered reply text is
+	# safe to stream.
+	signals_resolved: bool = False
 
 class TrackingProcessor(object):
 	metadata_processor = MetadataHandler()
@@ -172,6 +178,7 @@ class TrackingProcessor(object):
 			logger.warning("Translating fixed_message for state '%s'.", state.key)
 			return FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message), None, []
 
+		# which action fires from here.
 		signals = Signals(lambda: automaton, self.db)
 		signal_names = automaton.triggerable_signal_names(state.key)
 		signal_definition = signals.get_definition(signal_names)

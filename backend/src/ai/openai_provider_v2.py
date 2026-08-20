@@ -67,7 +67,15 @@ class OpenAICompatibleProvider(LLMProviderWithSchema):
             text_content: str = content_to_text(
                 message.get("content"), "OpenAICompatible"
             )
-            messages.append({"role": role, "content": text_content})
+            # OpenAI-compatible chat templates (llama.cpp, LM Studio) assume
+            # strict user/assistant alternation; consecutive same-role turns
+            # (e.g. an AI-initiated opening message followed by attachment
+            # priming) desync the template's role assignment instead of
+            # erroring, so merge them rather than send them as separate turns.
+            if messages[-1]["role"] == role:
+                messages[-1]["content"] = f"{messages[-1]['content']}\n\n{text_content}"
+            else:
+                messages.append({"role": role, "content": text_content})
 
         extra_kwargs: Dict[str, Any] = {}
         if schema:

@@ -1,13 +1,7 @@
-"""Cross-project wake-up — when a project's state/env changes for some
-user, every OTHER project that references it via automaton.* and that
-same user has ever talked to (even a dormant session) gets a chance to
-re-evaluate its own triggers, in case one of its self-loop actions now
-fires.
-
-One handler, registered for both event types — neither carries
-anything the other doesn't already have, so there's nothing to
-special-case between them.
-"""
+"""Cross-project wake-up: when a project's state/env changes for a user,
+every OTHER project referencing it via automaton.* that the same user has
+ever talked to gets a chance to re-evaluate its triggers. One handler
+serves both event types — neither carries anything the other doesn't."""
 from __future__ import annotations
 
 import logging

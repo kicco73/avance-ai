@@ -1,11 +1,7 @@
-"""Exports a project's sessions (native and imported) as one JSON array,
-for the "Label sessions" view's "Download all" button — the inverse of
-session_import.py's import_session_json. Each message carries its linked
-Tracking row inlined directly on it rather than as a separate parallel
-list. A standalone Tracking row with no message_id (env/action_env
-bookkeeping) never round-trips through here — nothing is lost, since the
-frontend already synthesizes a session's opening transition from
-start_state alone."""
+"""Exports a project's sessions as one JSON array (inverse of
+session_import.py's import_session_json). Each message carries its
+linked Tracking row inlined; standalone Tracking rows with no
+message_id are dropped — the frontend synthesizes the opening transition."""
 from __future__ import annotations
 
 import json

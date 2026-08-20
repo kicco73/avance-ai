@@ -1,13 +1,7 @@
-"""The `session` namespace a trigger/`env:` expression resolves against —
-facts about the current user+project's session/transition history:
-session duration, previous session timestamp, session count, and time
-in the current state. Every method is a zero-argument proxy so a value
-is only computed if an expression actually references it.
-
-`session.metric.<name>()` is the Analytics Core Metrics scoped to just
-the current session's window, as opposed to the `metric` namespace,
-which spans the user's whole cross-session history.
-"""
+"""The `session` namespace: facts about the current user+project's
+session/transition history, each a zero-argument proxy so a value is
+only computed if an expression references it. `session.metric.<name>()`
+scopes Core Metrics to just this session, unlike the cross-session `metric`."""
 from __future__ import annotations
 
 from datetime import datetime

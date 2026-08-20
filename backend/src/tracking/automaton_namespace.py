@@ -1,15 +1,7 @@
-"""The `automaton` scope namespace (see tracking.evaluation_scope.
-EvaluationScopeBuilder) — automaton.<project>.state and automaton.
-<project>.env.<key> resolve a DIFFERENT project's live state / declared
-env value, for the SAME user. `<project>` is a project_id, never the raw
-project_name (which isn't guaranteed to be a valid Python identifier).
-
-Every failure mode resolves to None and records a SystemWarning instead
-of raising, since a broken cross-project reference must never crash the
-referencing project's own turn: 'project_not_found' (no project declares
-this project_id), 'no_session' (user never talked to that project), or
-'env_key_not_declared' (key not in that project's own `env:` section).
-"""
+"""The `automaton` scope namespace: automaton.<project>.state/env.<key>
+resolve a DIFFERENT project's live state/env for the SAME user, using
+project_id (not project_name). Failures resolve to None + SystemWarning
+rather than raising, so a broken reference never crashes the caller's turn."""
 from __future__ import annotations
 
 from typing import Any, Callable

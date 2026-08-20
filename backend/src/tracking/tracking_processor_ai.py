@@ -15,6 +15,7 @@ class TrackingProcessorAfterAiMessage(TrackingProcessor):
 			self.out.action = self._tracking_engine.evaluate_triggered_action(
 				self.user.automaton, self.user.state, self.metadata.signals
 			)
+			self.out.signals_resolved = True
 
 		elif key == 'env':
 			rv = self.metadata.env = self.metadata_processor.parse_raw_env(value)
@@ -25,7 +26,6 @@ class TrackingProcessorAfterAiMessage(TrackingProcessor):
 	async def _get_ai_reply(self) -> OutVariables:
 
 		self.out = OutVariables(reply="", messages=[], tracking_id=None, state=self.user.state, action=None)
-		("", [], None, self.user.state, None)
 
 		async for chunk in self.generate_reply(self.user.state, self.on_receiving_metadata_when_ai_message):
 			self.out.reply += chunk

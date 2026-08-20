@@ -1,16 +1,8 @@
-"""Per-(user, project) "environment" memory — free-form key:value facts
-the model can extend at will via [env]...[/env], persisted per project
-per user just like an automaton instance's own live state.
-
-Two stores only — `stored()` (free-form, model-reported) and
-`action_set()` (deterministic, set by an action's own YAML `env:` field)
-— kept separate so the Inspector Env tab can badge the two apart ("AI"
-vs "ACTION") and know which are actually editable/deletable (only the
-stored ones).
-
-`Env` itself is a plain in-memory store; `PersistedEnv` is production's
-own subclass, reading/writing through `db` instead.
-"""
+"""Per-(user, project) "environment" memory. Two stores kept separate —
+`stored()` (free-form, model-reported via [env]...[/env]) and
+`action_set()` (deterministic, from an action's YAML `env:` field) — so
+the Inspector Env tab can badge them apart and know which are editable.
+`Env` is a plain in-memory store; `PersistedEnv` reads/writes through `db`."""
 from __future__ import annotations
 
 from datetime import datetime
