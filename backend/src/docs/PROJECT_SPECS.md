@@ -207,11 +207,11 @@ Each entry:
 
 | Field | Required | Type | Default | Meaning |
 | --- | --- | --- | --- | --- |
-| `name` | **yes** | string | — | Identifier for this action — what `POST /api/action` (`action_name`) and `POST /api/triggers/preview`'s response reference. |
+| `name` | **yes** | string | — | Identifier for this action — what `POST /api/chat/sessions/{session_id}/action` (`action_name`) and `POST /api/triggers/preview`'s response reference. |
 | `target` | no | string | this action's **own state's key** | The destination state. Omitting it (or setting it explicitly to the current state) is a **self-loop**: the conversation stays in the same state, only the action's own effects (transition logged, `action-prompt` reply if any) happen. Must name a real key under `states:` (or the current state itself). |
-| `trigger` | no | string (expression) | `None` | A boolean expression over signal/metric names — see §6.2. Absent means **manual-only**: reachable only via `POST /api/action`, never fired by auto-tracking. |
+| `trigger` | no | string (expression) | `None` | A boolean expression over signal/metric names — see §6.2. Absent means **manual-only**: reachable only via `POST /api/chat/sessions/{session_id}/action`, never fired by auto-tracking. |
 | `action-prompt` | no | string | `None` | An instruction sent to the model **as if it were the user's own message**, to produce an immediate reaction to this action firing — see §6.3. |
-| `on-enter` | no | string | `None` | Passed through to the frontend as-is when this action fires. Today the **only** value with any actual behavior is `"celebrate"` (a confetti animation) — any other string is inert, forwarded but unused; do not rely on other values doing anything unless the frontend is extended to recognize them. A property of the action firing, not of its destination state: two different actions landing on the same state can each carry their own value (or none) — a state reached one way might celebrate, reached another way might not. |
+| `on-enter` | no | string | `None` | Passed through to the frontend as-is when this action fires, and run there as a small JS script (see frontend/src/onEnterActions.js's own `runOnEnterScript`) against two callable locals: `celebrate()` (a confetti animation) and `notify(title, body)` (a toast; `body` is markdown) — e.g. `on-enter: celebrate` or `on-enter: "notify('Nice!', 'You reached **state B**.')"`. Any other/malformed script fails loudly in the browser console, never silently. A property of the action firing, not of its destination state: two different actions landing on the same state can each carry their own value (or none) — a state reached one way might celebrate, reached another way might not. |
 | `env` | no | mapping of key -> expression | `None` | Updates the project's own environment memory when this action fires (manually or via a trigger) — see §6.4. |
 | `ui-label` | no | string | `name` (also used if `ui-label` is present but empty) | Shown in the frontend. |
 | `ui-button` | no | string | `ui-label`, and transitively `name`, if absent or empty | Button text in the frontend's manual-action bar. |
@@ -221,7 +221,7 @@ Each entry:
 ### 6.1 Manual vs. triggered firing
 
 Any action — with or without a `trigger` — can be fired **manually** via
-`POST /api/action {action_name, session_id}`: this only checks that the
+`POST /api/chat/sessions/{session_id}/action {action_name}`: this only checks that the
 name exists among the current state's actions, the trigger expression
 (if any) is never evaluated for a manual call.
 
@@ -327,9 +327,8 @@ because `env.<name>`'s own valid-name set is collected **project-wide**,
 across every action's own declared `env:` keys, before any expression is
 checked (§6.2) — so a key declared anywhere (including by the very
 action referencing it) is always a legitimate `env.<name>` reference.
-Unlike before this refactor, `env:` now gets the **exact same**
-build-time validation `trigger` does — both syntax *and* unknown-name
-checks — there's no longer a special case here.
+`env:` gets the **exact same** build-time validation `trigger` does —
+both syntax *and* unknown-name checks.
 
 At evaluation time, a failure (an `env.<name>` reference that's a
 recognized name but has no value yet, or a runtime error like division

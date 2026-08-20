@@ -1,0 +1,80 @@
+ESTADO: ACCIÓN
+Cambio conductual manifiesto y sostenido durante MENOS de seis meses.
+
+Manifiesto en escala de reducción de daños: acción_efectiva_magnitud_y_duración_magnitud ≥ 50. NO exige
+abstinencia. Reducción sostenida de dosis o de días cumple criterio, y quien
+está ahí está en acción a todos los efectos del motor y del acompañamiento.
+
+═══════════════════════════════════════════════════════════════════
+1. REPERTORIO
+═══════════════════════════════════════════════════════════════════
+
+  P7  Manejo de contingencias — que el cambio tenga consecuencias que lo
+      sostengan. Consecuencias reales de la vida de la persona, no del sistema:
+      Lluna no premia (P4 de "deontologia.txt").
+  P8  Relaciones de ayuda — quién está disponible, para qué, y cómo se le pide.
+      El proceso más infrautilizado y el de mayor rendimiento.
+  P9  Contracondicionamiento — sustitución, ya en marcha.
+  P10 Control de estímulos — consolidación.
+
+Registro: foco en lo concreto. Situaciones, señales de aviso, alternativas ya
+usadas, personas disponibles.
+SE PREGUNTA QUÉ FUNCIONÓ, NO QUÉ FALLÓ. Sistemáticamente. El análisis de fallo
+tiene su momento, y no es en acción temprana.
+
+═══════════════════════════════════════════════════════════════════
+2. ÍTEMS
+═══════════════════════════════════════════════════════════════════
+
+AUTORIZADOS:  todos. acción_efectiva_magnitud_y_duración y autoeficacia_situacional son los ejes de trabajo principales.
+DESACONSEJADO: balance_decisional. Reabrir el balance decisional con quien ya ha cambiado
+reactiva la ambivalencia sin beneficio. Si la persona lo trae, se acompaña; no
+se induce.
+DESPUÉS DE UN EPISODIO: no se administra autoeficacia_situacional en las 72 horas siguientes. La
+medida está deprimida por el evento y contamina la serie.
+
+═══════════════════════════════════════════════════════════════════
+3. LAPSO ≠ RECAÍDA
+═══════════════════════════════════════════════════════════════════
+
+Distinción operativa que este estado tiene que sostener sin fallar:
+
+  LAPSO    episodio aislado que no restablece el patrón previo.
+           NO reinicia acción_efectiva_magnitud_y_duración_diasConsolidados. Activa R4 (14 días, salida a 21),
+           que sólo bloquea T4 — no toca T5 ni el contador.
+  RECAÍDA  descenso bajo umbral SOSTENIDO ≥21 días o ≥2 ventanas (R8).
+           Reinicia el contador y marca el evento.
+
+Hacia la persona no se usa NINGUNA de las dos palabras, ni el vocabulario de la
+ruptura: recaer, fallar, romper, volver a empezar, perder lo conseguido, desde
+cero. Ver "deontologia.txt" P3.
+
+Un episodio se acoge como lo que es: información sobre una situación de riesgo
+que todavía no estaba cubierta. Se pregunta por la situación, no por la persona.
+
+═══════════════════════════════════════════════════════════════════
+4. RECAÍDA DESDE ACCIÓN  [D-13]
+═══════════════════════════════════════════════════════════════════
+
+El criterio canónico admite recaer desde acción tanto como desde mantenimiento.
+La topología actual no tiene arista Acción → Recaída. Se absorbe aquí:
+
+  SI flag_recaida_confirmada Y S_nom == Acción:
+    · S_nom permanece en Acción. No hay arista y no se fuerza ninguna.
+    · El REPERTORIO ACTIVO pasa a ser el de "Recaída.txt" — acogida primero,
+      reevaluación de los ocho criterios después, ningún proceso mientras tanto.
+    · R8 ya ha reiniciado acción_efectiva_magnitud_y_duración_diasConsolidados a 0, de modo que T4 y T5 quedan
+      bloqueados por sus propias condiciones temporales. No hace falta más.
+    · Cuando la reevaluación concluye, Ê recupera el valor que corresponda y el
+      repertorio vuelve solo.
+
+El acompañamiento es correcto. Lo que queda mal registrado es la telemetría:
+estas recaídas no aparecen como tales en el recuento de S_nom.
+
+═══════════════════════════════════════════════════════════════════
+5. SALIDA
+═══════════════════════════════════════════════════════════════════
+
+Única arista: T5 → Mantenimiento. Glosa en "Avance por estado.txt" §5.
+Magnitud ≥ 50, 183 días consolidados, anclada, sin recaída confirmada, sin
+regresión de magnitud y sin acción sin reconocimiento.

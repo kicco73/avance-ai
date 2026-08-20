@@ -1,13 +1,6 @@
-"""A trigger may reference any of SystemFacts'/SessionFacts' own methods
-(see automaton.identifier_registry.SYSTEM/SESSION) as `system.<name>()`/
-`session.<name>()`, without failing build-time validation, the same way
-`signal.<name>` and a core metric name already do — but not an
-arbitrary free-form [env] key (see tracking.env.Env's own stored()),
-since those are only ever known at runtime; only a project's own
-*declared* `env:` keys (set by some action's own YAML `env:` field,
-anywhere in the project) are valid `env.<name>` references (see
-automaton_builder.py's own _actions_sanity_check/_validate_namespaced_
-expression docstrings).
+"""A trigger may reference `system.<name>()`/`session.<name>()` and
+`signal.<name>` freely, but `env.<name>` references must match a key
+already declared in the project's top-level `env:` section.
 """
 from __future__ import annotations
 
@@ -19,7 +12,7 @@ from automaton.identifier_registry import SESSION, SYSTEM
 pytestmark = pytest.mark.contract
 
 
-def _project(trigger: str, extra_action: str = "") -> str:
+def _project(trigger: str) -> str:
     return f"""
 init-action:
   target: a
@@ -30,7 +23,6 @@ states:
       - name: go
         target: b
         trigger: "{trigger}"
-      {extra_action}
   b:
     contextual-prompt: there
 """
@@ -56,21 +48,29 @@ def test_a_trigger_referencing_an_undeclared_env_key_is_rejected():
         AutomatonBuilder().build({"index.yml": content})
 
 
-def test_a_trigger_may_reference_an_env_key_declared_by_some_other_action():
-    extra_action = """- name: also
+def test_a_trigger_may_reference_a_declared_env_key():
+    content = f"""
+env:
+  visits: {{}}
+init-action:
+  target: a
+states:
+  a:
+    contextual-prompt: hi
+    actions:
+      - name: go
         target: b
-        env:
-          visits: "1"
-    """
-    content = _project("env.visits >= 1", extra_action=extra_action)
+        trigger: "env.visits >= 1"
+  b:
+    contextual-prompt: there
+"""
     automaton = AutomatonBuilder().build({"index.yml": content})
     assert automaton.states["a"].actions[0].trigger == "env.visits >= 1"
 
 
 def test_a_trigger_referencing_a_leftover_bare_signal_name_is_rejected():
-    """The pre-migration bare-name syntax (`mood >= 50` instead of
-    `signal.mood >= 50`) must fail loudly, not silently resolve to
-    nothing — see the "Migrazione" note in this refactor's own spec."""
+    """A bare name (`mood >= 50` instead of `signal.mood >= 50`) must
+    fail loudly, not silently resolve to nothing."""
     content = f"""
 init-action:
   target: a
@@ -111,11 +111,8 @@ states:
 
 
 def test_a_trigger_comparing_a_string_typed_identifier_against_a_number_is_rejected():
-    """See automaton.trigger_type_violations' own docstring — system.
-    today() is a date string (see identifier_registry.SYSTEM), never a
-    number, so comparing it with `>=` would raise a genuine TypeError the
-    moment this trigger is ever evaluated; build-time validation can
-    catch that statically, unlike a signal's actual runtime value."""
+    """system.today() is a date string, never a number, so comparing it
+    with `>=` is caught statically at build time."""
     content = _project_with_mood_signal("system.today() >= 5")
     with pytest.raises(ValueError, match="system.today\\(\\).*>=.*5"):
         AutomatonBuilder().build({"index.yml": content})

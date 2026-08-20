@@ -1,41 +1,38 @@
 <script setup>
-// EditProjectView.vue's own chat only (see its restartAndPrefill/
-// restartAndResend) — a reload-style icon that reads two distinct
-// gestures apart, rather than needing a mode prop/branch anywhere else:
-// - long press: emit('long-press') once, then stays silent even if the
-//   press continues (fires exactly once per press).
-// - a quick double click: the browser's own native dblclick, untouched.
-// Each pointerdown starts its own timer and each pointerup/leave/cancel
-// clears it, so a real double-click (two short presses) never
-// accidentally fires the long-press action in between.
-const LONG_PRESS_MS = 600
+// Single click: emit('click') — retry, resending as-is.
+// Double click: emit('double-click') — prefill for editing instead.
+// The browser fires click, click, dblclick, so each click is delayed
+// briefly and cancelled by a following dblclick, to avoid double-firing.
+const CLICK_DELAY_MS = 250
 
 defineProps({
-  // True once the state this bubble's own conversation was in has since
-  // been renamed/removed from the project's own definition (see
-  // EditProjectView.vue's validStateKeys/isStateGone) — restarting from
-  // here would have nowhere valid to land, so the gesture is disabled
-  // outright rather than left to fail against the backend.
+  // True once the state this bubble's conversation was in has since been
+  // renamed/removed from the project — restarting here would have
+  // nowhere valid to land, so the gesture is disabled outright.
   disabled: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['long-press', 'double-click'])
+const emit = defineEmits(['click', 'double-click'])
 
-let timer = null
+let pendingClickTimer = null
 
-function startPress(event) {
-  if (event.pointerType === 'mouse' && event.button !== 0) return
-  clearTimer()
-  timer = setTimeout(() => {
-    timer = null
-    emit('long-press')
-  }, LONG_PRESS_MS)
+function handleClick() {
+  clearPendingClick()
+  pendingClickTimer = setTimeout(() => {
+    pendingClickTimer = null
+    emit('click')
+  }, CLICK_DELAY_MS)
 }
 
-function clearTimer() {
-  if (timer == null) return
-  clearTimeout(timer)
-  timer = null
+function clearPendingClick() {
+  if (pendingClickTimer == null) return
+  clearTimeout(pendingClickTimer)
+  pendingClickTimer = null
+}
+
+function handleDoubleClick() {
+  clearPendingClick()
+  emit('double-click')
 }
 </script>
 
@@ -44,13 +41,9 @@ function clearTimer() {
     type="button"
     class="restart-from-here-btn"
     :disabled="disabled"
-    :title="disabled ? 'This bubble\'s own state no longer exists in the project' : 'Restart from here: long press to clear, double click to resend'"
-    @pointerdown.stop="startPress"
-    @pointerup.stop="clearTimer"
-    @pointerleave.stop="clearTimer"
-    @pointercancel.stop="clearTimer"
-    @click.stop
-    @dblclick.stop="emit('double-click')"
+    :title="disabled ? 'This bubble\'s own state no longer exists in the project' : 'Restart from here: click to retry, double click to edit and resend'"
+    @click.stop="handleClick"
+    @dblclick.stop="handleDoubleClick"
     @contextmenu.prevent
   >
     <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">

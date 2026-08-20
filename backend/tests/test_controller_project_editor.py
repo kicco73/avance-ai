@@ -1,11 +1,7 @@
 """index.yml structural editing endpoints — add/edit/delete/reorder
-states, actions, and signals without hand-writing YAML (see
-ProjectService._edit_index_yml/AutomatonYamlEditor). Every one of these
-reuses PUT /api/projects/{project_name}/files/index.yml's own
-validation/history/commit path — checked here by reading the persisted
-YAML back via GET .../files/index.yml after each write, not by asserting
-on the raw text directly (that's AutomatonYamlEditor's own test file's
-job).
+states, actions, and signals without hand-writing YAML. Checked here by
+reading the persisted YAML back after each write, not by asserting on
+the raw text directly.
 """
 from __future__ import annotations
 
@@ -139,11 +135,21 @@ class TestPutActionField:
         assert response.json()["has_trigger"] is False
         assert "trigger" not in _index_yml(client, hello_project)
 
-    def test_rejects_a_field_not_on_the_whitelist(self, client, hello_project):
+    def test_edits_on_enter(self, client, hello_project):
         action = client.post(f"/api/projects/{hello_project}/states/Hello/actions").json()
         response = client.put(
             f"/api/projects/{hello_project}/states/Hello/actions/{action['name']}/on-enter",
-            json={"value": "celebrate"},
+            json={"value": "notify('Nice!', 'You reached **state B**.')"},
+        )
+        assert response.status_code == 200
+        assert response.json()["on-enter"] == "notify('Nice!', 'You reached **state B**.')"
+        assert "on-enter:" in _index_yml(client, hello_project)
+
+    def test_rejects_a_field_not_on_the_whitelist(self, client, hello_project):
+        action = client.post(f"/api/projects/{hello_project}/states/Hello/actions").json()
+        response = client.put(
+            f"/api/projects/{hello_project}/states/Hello/actions/{action['name']}/not-a-real-field",
+            json={"value": "anything"},
         )
         assert response.status_code == 400
 
@@ -199,7 +205,7 @@ class TestPutInitActionTarget:
         assert payload["key"] == "state-0"
 
         # Now that state-0 is the start state, Hello can be deleted and
-        # state-0 can't — the exact same guard as before, just flipped.
+        # state-0 can't.
         assert client.delete(f"/api/projects/{hello_project}/states/Hello").status_code == 204
         assert client.delete(f"/api/projects/{hello_project}/states/state-0").status_code == 400
 

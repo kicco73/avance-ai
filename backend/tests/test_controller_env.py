@@ -1,17 +1,7 @@
-"""GET/PUT/DELETE /api/chat/env — see ChatService.get_env/set_env_value/
-delete_env_key/clear_env (tracking.env.Env) — {"stored": ...,
-"action_set": ...} split so the "Edit project" view's Inspector Env tab
-knows which section each value belongs in ("AI"/"ACTION") and which are
-actually editable/deletable. `action_set` (values an action's own YAML
-`env:` field set — see automaton_builder.py's _build_action) has no
-dedicated PUT/DELETE endpoint of its own — it's never a human's direct
-edit, only ever a side effect of an action firing (see
-test_chat_service_manual_action_env.py/test_auto_tracker_action_env.py
-for that path). `message_id`, when given, restricts to values as they
-stood at or before that exact message — same point-in-time convention
-as GET /api/chat/metrics. No "computed" key anymore — system/session
-facts are evaluation-scope-only now (see tracking.evaluation_scope.
-EvaluationScopeBuilder), never rendered through this endpoint.
+"""GET/PUT/DELETE /api/chat/env — returns {"stored": ..., "action_set": ...}.
+`action_set` (values an action's `env:` field set) has no PUT/DELETE
+endpoint, only ever changing as a side effect of an action firing.
+`message_id`, when given, restricts to values as of that message.
 """
 from __future__ import annotations
 
@@ -68,7 +58,7 @@ def test_delete_env_value_for_an_unknown_key_is_a_noop(client, hello_project):
 
 def test_env_with_a_message_id_restricts_to_a_point_in_time(client, hello_project):
     session = client.get("/api/chat/session").json()
-    resp = client.post("/api/chat/messages", json={"message": "hello", "session_id": session["id"]})
+    resp = client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hello"})
     message_id = resp.json()["assistant_message_id"]
 
     # A value set *after* that message must not show up in its own

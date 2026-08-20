@@ -1,17 +1,7 @@
 """Pins the streaming order of the four metadata channels
-(signals/audio/text/env) TurnProtocol.__init__'s `evaluate_signals_first`
-selects between (tracking/turn_protocol.py's `self.include_tags`):
-"before" mode (`True`) -> signals, audio, text, env;
-"after" mode (`False`) -> audio, text, signals, env.
-
-"text" is never itself an on_metadata(key, ...) event in either
-implementation (v1: no [text] tag is ever emitted, the model just emits
-plain reply text; v2: ai_service.generate_stream_with_metadata explicitly
-excludes "text" from on_metadata calls, see ai/ai_service.py:148) — its
-position in the sequence is instead the moment the first visible reply
-chunk is yielded. Each test builds a combined, ordered event log (real
-metadata events plus that one synthetic "text" event) and asserts the
-first-occurrence order of the four channels matches the mode's contract.
+(signals/audio/text/env): "before" mode -> signals, audio, text, env;
+"after" mode -> audio, text, signals, env. "text" is never itself an
+on_metadata event — its position is the moment the first reply chunk is yielded.
 """
 from __future__ import annotations
 
@@ -49,13 +39,9 @@ class FakeAiServiceV1:
 
 
 class FakeAiServiceV2:
-    """Shaped like the current ai.ai_service.AiService.
-    generate_stream_with_metadata (see test_turn_strategy_compute_
-    explicitly.py's own FakeAiServiceV2): replays a caller-supplied,
-    ordered sequence of ("signals"/"audio"/"env", value) on_metadata
-    calls and ("text", chunk) yields, in exactly the order given —
-    lets a test dictate the full four-channel interleaving directly,
-    without re-deriving it from raw JSON fragments."""
+    """Replays a caller-supplied, ordered sequence of ("signals"/"audio"/
+    "env", value) on_metadata calls and ("text", chunk) yields, letting a
+    test dictate the full four-channel interleaving directly."""
 
     def __init__(self, events: list[tuple[str, str]]) -> None:
         self._events = events

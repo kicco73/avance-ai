@@ -12,13 +12,9 @@ from .base import BaseMetric
 
 
 class SignalStabilityMetric(BaseMetric):
-    """Aggregated temporal stability of all numeric signals.
-
-    For every signal with at least two observations, the mean absolute
-    successive change is computed. A configurable change reference represents
-    a 100-point instability scale. Stability is the inverse of that normalized
-    change. Signals with fewer than two observations are ignored.
-    """
+    """Aggregated temporal stability of all numeric signals: mean absolute
+    successive change per signal, normalized against a configurable
+    reference and inverted. Signals with fewer than two observations are ignored."""
 
     def __init__(self, change_reference: float = 25.0) -> None:
         self._change_reference = change_reference

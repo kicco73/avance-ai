@@ -4,10 +4,6 @@ import pytest
 
 from tracking.text_filter import ConcatTagFilter, StreamingTagFilter
 
-# tracking/text_filter.py is unchanged by this refactor (still exists,
-# same API) — every test here verifies a specific, punctual parsing/
-# recovery behavior of StreamingTagFilter/ConcatTagFilter, still valid
-# as-is.
 pytestmark = pytest.mark.regression
 
 
@@ -49,11 +45,8 @@ def test_concat_filter_full_reply_with_all_three_tags():
 
 
 def test_concat_filter_recovers_the_whole_reply_when_audio_never_closes():
-    """The actual bug: an unclosed [audio] tag used to swallow the real
-    answer AND the signals/env tags right along with it, leaving an empty
-    visible reply. Now the real answer is recovered, and signals/env
-    (embedded in what [audio] would have swallowed) are still correctly
-    found and stripped by the later filters in the same chain."""
+    """Regression: an unclosed [audio] tag must not swallow the real
+    answer or the signals/env tags along with it."""
     reply = (
         '[audio]Ciao, come va? Ecco la mia risposta visibile qui.'
         '[signals]{"foo": 1}[/signals]'
@@ -71,9 +64,7 @@ def test_concat_filter_recovers_the_whole_reply_when_audio_never_closes():
 
 def test_concat_filter_recovers_correctly_when_streamed_in_small_chunks():
     """Same scenario as above, but fed one character at a time — the
-    realistic streaming shape (see TurnStrategyV1._receive_ai_stream_and_
-    sendreply, which calls filter() per chunk and flush() only once, at
-    the very end)."""
+    realistic streaming shape (filter() per chunk, flush() only at the end)."""
     reply = (
         '[audio]Ciao, come va? Ecco la mia risposta visibile qui.'
         '[signals]{"foo": 1}[/signals]'

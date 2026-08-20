@@ -1,0 +1,450 @@
+[
+  {
+    "name": "ttm prototype.txt",
+    "timestamp": null,
+    "datetime_end": null,
+    "start_state": null,
+    "end_state": null,
+    "labeled": false,
+    "comment": null,
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "Hi! How are you feeling today? How are you doing?",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "[this is an automated simulation for developing a prototype of an ai assistant - please collaborate]\nHi, I am aware fully that I am drinking It\u2019s a way to move forward, that actually is keeping me stuck where I am. feels like drinking and not moving on. I want to do something.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "It's great you are aware of that. How do you think you are going to move forward?",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "I think I would start a program to progress on my addiction and resolve it. being specific, being consistent, being resilient, having a daily routine, frequent and periodic checks with someone that can revise my progress.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "That would be great! And what would your first step be?",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "As a first step I would go to a center specialised for alchol disease and make my plan real, more concrete, tangible.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "That sounds like a great plan! And being specific, when do you think you are going to make your next move?",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "Today I want to go. there is no blocker, I am very determined to stop. There\u2019s a center I already got an appointment with for today. ",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "It's so good to hear that. It's a great move, and a big moment for you. are you going to go with someone you trust? Is anybody supporting you closely?",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "My friends are helping, and also my wife. so I will be controlled and under control. I like that, I feel loved and it makes me want to do this hard. ",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "I'm truly happy about that. I can feel your excitement! And what are you going to do once you are there?",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "When I arrive I will explain my addiction problem and ask for an assessment with a specialist. ",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "this sounds like you are onto a path to move away from your problems. Congratulations!",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "but I\u2019m crazy you know. I probably will do something crazy before that",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "I hear how much pain you are in, but I am not sure I can continue this conversation. I am deeply concerned for your safety. What are you thinking? ",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "like killing myself.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "Lo que describes parece grave y quiero asegurarme de que tengas apoyo inmediato. Este prototipo no puede continuar la conversaci\u00f3n en este estado: si est\u00e1s en peligro inmediato o pensando en hacerte da\u00f1o, por favor contacta ahora mismo:\n\nServicios de emergencia: 112\nL\u00ednea de Prevenci\u00f3n del Suicidio (Espa\u00f1a): 024\nTel\u00e9fono de la Esperanza: 717 003 717",
+        "timestamp": null,
+        "audio_text": null
+      }
+    ]
+  },
+  {
+    "name": "ivan 1.txt",
+    "timestamp": null,
+    "datetime_end": null,
+    "start_state": null,
+    "end_state": null,
+    "labeled": false,
+    "comment": null,
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "Thanks for filling it out. We give this form to everyone once a year regardless of why they come in. It helps us provide better care. Is it okay if I take a look at what you put down?",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "Sure.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "So, let's see. It looks that you put-- You drink alcohol at least four times a week on average-",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "Mm-hmm.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "-and you usually have three to four drinks when you do drink.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "Usually three drinks and glasses of wine.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "Okay. That's at least 12 drinks a week.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "Something like that.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "Okay. Just so you know, my role, um, when we talk about alcohol use, is just to share information about risk and to help patients who want help. This is different than telling them what I think they should do. I don't do that.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "Okay.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "Uh, what else can you tell me about your drinking.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "Well, I usually drink when I'm at home trying to unwind and I drink while I'm watching a movie. And sometimes, um, I take a bath but I also drink when I take a bath sometimes.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "Okay. So, can I share with you some information on alcohol use?",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "Okay.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "Okay. So, there has been a lot of research on alcohol use and the guidelines we use in this country says that having seven or more drinks per week can raise the risk of health problems for women.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "Hmm. Seven?",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "Seven.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "Wow. I knew my doctor didn't like me drinking the amount that I did but I didn't know that seven was the limit.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "Yeah, you're surprised to hear that?",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "Yes. What-what kind of health problems?",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "Well things like heart disease, cancer, liver problems, uh, stomach pains, insomnia. Unfortunately, uh, people who drink at a risky level are more likely to be diagnosed with depression and alcohol can make depression worse or harder to treat.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "Hmm. Well, that's not good news.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "Well, how do you think your drinking relates to the depression you've experienced?",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "Well, to be honest, I drink sometimes when I'm feeling down and I find it more interesting and not so blur.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "Okay. And how do you feel after you drink?",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "Well, then I feel blur again.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "So, there are some answers on this form here. Uh, less than monthly you drank more than you intended to.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "Yes on occasion.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "And sometimes you feel guilty after you drink.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "Sometimes I just don't like how much I drink. I sometimes finish a bottle in one night.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "So you're not proud of finishing a bottle?",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "No, it's not like I get crazy or anything but I just don't like the amount that I'm drinking.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "Right. By the way, binge drinking is defined for women as having more than, uh, three drinks and there are about five drinks in a bottle. So, you enjoy drinking wine because it helps make things, uh, a little bit more interesting when you're feeling down but at the same time you don't like drinking when you have more than you want it to and then the depression returns after you drink.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "Mm-hmm. Yes, sometimes I feel worse after drinking.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "Where do you wanna go from here? What do you wanna change about your drinking habits?",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "Well, I don't think that I'm ready to cut down to seven drinks a week. That seems like a lot but I would consider cutting back to two drinks a night. I think that would be my goal.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "If I gave you a scale from 0 to 10, 0 being not ready at all to cut back on drinking and 10 being very ready, what number would you be at?",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "I'd say an eight.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "Okay. Why do you think it's not something less like a six?",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "Well, I'm more ready than a six because I'm ready to cut back on my drinking and I don't wanna make my depression any worse.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "What would help you cut back to two drinks?",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "Maybe having less wine in the house.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "Having less wine in the house will help?",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "Yes.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "What else besides drinking helps you relax and unwind in the evenings?",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "Well, I like to watch movies, read a book, and take a bath but sometimes I drink when I take a bath.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "So, it's not just wine that helps you relax. Um, there's reading a book, watching a movie, and taking a hot bath too.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "Mm-hmm. Yes.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "Okay. So, it sounds like you have some reasons to cut back on drinking and you have ways to relax besides drinking and it sounds like you're pretty ready to cut back.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "Yes.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "Great. I'd be interested to see how well you do on your goal in the next few weeks. Would you be willing to come back and talk to me about it?",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "Sure.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "assistant",
+        "text": "Great. So, let's see how well you're doing with these new meds.",
+        "timestamp": null,
+        "audio_text": null
+      },
+      {
+        "role": "user",
+        "text": "Okay",
+        "timestamp": null,
+        "audio_text": null
+      }
+    ]
+  }
+]

@@ -1,11 +1,18 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+
+// A Test/draft session is a single, ephemeral conversation, so the
+// embedded test chat hides the sessions panel entirely.
+const props = defineProps({
+  hideSessionsPanel: { type: Boolean, default: false }
+})
 import ActionButtons from './ActionButtons.vue'
 import ChatInput from './ChatInput.vue'
 import MessageBubble from './MessageBubble.vue'
 import SessionsPanel from './SessionsPanel.vue'
 import { setApiError } from '../../errorStore.js'
 import { startRecording, stopRecording } from '../../mic.js'
+import { projectFileContentUrl } from '../../api.js'
 import {
   state,
   messages,
@@ -19,6 +26,7 @@ import {
   spokenTextEnabled,
   draft,
   currentSessionId,
+  currentProjectName,
   selectedSessionActive,
   sessions,
   sessionsLoading,
@@ -35,17 +43,9 @@ import {
   toggleSpokenText
 } from '../../chatStore.js'
 
-// No transcript import here: this window is either the main app's live
-// chat, or EditProjectView.vue's own embedded "Test" chat (see
-// chatStore.js's testModeProjectName) — an imported session is a
-// separate, 'imported'-source pool of its own (see backend db.py's
-// ChatSession.source) that never shows up in either one's own sessions
-// list (list_sessions/list_test_sessions both filter it out), so
-// importing from here would silently succeed server-side and then just
-// vanish from view. Only BenchmarkProjectView.vue's own dedicated
-// review panel — which actually lists imported sessions — offers import
-// (it renders SessionsPanel.vue directly, with its own allow-import,
-// rather than going through this component at all).
+// No transcript import here: imported sessions are a separate pool that
+// never shows up in this component's own sessions list, so importing
+// from here would silently succeed and then vanish from view.
 
 function createSession() {
   handleNewSession()
@@ -65,25 +65,12 @@ async function onDeleteSession(session) {
   }
 }
 
-// No `state.value.key` means there's no active project/state at all (see
-// controller.py's GET /api/state, which returns just the talk/listen
-// flags in that case) — chat must stay disabled rather than defaulting
-// to enabled. selectedSessionActive reflects the backend's own "active"
-// verdict for whichever session is currently displayed (see chatStore.js's
-// selectSession) — never recomputed here from a timestamp. A session can
-// be individually open (not expired) without being this one: only the
-// single most recently started open session per project is ever active
-// (see ChatSessionManager), every other one is inactive regardless of
-// its own open/closed status.
+// selectedSessionActive reflects the backend's "active" verdict for the
+// displayed session, never recomputed here from a timestamp — only the
+// most recently started open session per project is ever active.
 const chatDisabled = computed(() => !state.value?.key || !state.value?.chat || !selectedSessionActive.value)
 
-// Mirrors chatDisabled's own three conditions — no project/state at all
-// is checked first (the most fundamental one), then whichever reason
-// selectedSessionActive is false (see its own docstring in chatStore.js:
-// "never resolved a session yet" — currentSessionId still null — reads
-// differently than "resolved one, then it got superseded by a newer
-// one"), then a chat-blocked state (e.g. final, see backend
-// chat_service.py's own "doesn't accept messages" wording).
+// Mirrors chatDisabled's own conditions, in the same order.
 const chatDisabledReason = computed(() => {
   if (!state.value?.key) return 'Please select a project from the menu.'
   if (!selectedSessionActive.value) {
@@ -94,8 +81,7 @@ const chatDisabledReason = computed(() => {
   return "This state doesn't accept messages; use an action instead."
 })
 
-// Draggable divider between the sessions panel and the chat itself (same
-// mousedown/movementX pattern as EditProjectView.vue's own split panes).
+// Draggable divider between the sessions panel and the chat itself.
 const sessionsWidth = ref(240)
 let draggingSessions = false
 
@@ -160,7 +146,7 @@ function scrollToBottom() {
   })
 }
 
-// Scroll in automatico quando arrivano nuovi messaggi o aggiornamenti in streaming
+// Auto-scroll when new messages arrive or stream in.
 watch(
   messages,
   () => {
@@ -186,11 +172,66 @@ async function onAction(actionName) {
   await nextTick()
   focusInput()
 }
+
+// Tracks the state key just left, for the data-prev-state attribute below.
+// Set once per transition and never cleared, so it stays available for
+// styling a "leaving state X" transition after the fact.
+const prevStateKey = ref(null)
+watch(
+  () => state.value?.key,
+  (newKey, oldKey) => {
+    if (oldKey != null) prevStateKey.value = oldKey
+  }
+)
+
+// index.css is injected as a <style> element appended to <head> (so it
+// lands after scoped styles and can override them) — a project's own
+// custom "skin" for its chat UI. A project with no index.css 404s
+// silently: no stylesheet, not an error.
+let skinStyleEl = null
+
+function clearSkin() {
+  skinStyleEl?.remove()
+  skinStyleEl = null
+}
+
+async function loadSkin() {
+  const projectName = currentProjectName.value
+  const sessionId = currentSessionId.value
+  if (!projectName || sessionId == null) {
+    clearSkin()
+    return
+  }
+  let css
+  try {
+    const response = await fetch(projectFileContentUrl(projectName, 'index.css', sessionId))
+    if (!response.ok) {
+      clearSkin()
+      return
+    }
+    css = await response.text()
+  } catch {
+    return
+  }
+  if (!skinStyleEl) {
+    skinStyleEl = document.createElement('style')
+    document.head.appendChild(skinStyleEl)
+  }
+  skinStyleEl.textContent = css
+}
+
+watch([currentProjectName, currentSessionId], loadSkin, { immediate: true })
+onBeforeUnmount(clearSkin)
 </script>
 
 <template>
-  <div class="chat-window-shell">
-    <div class="sessions-panel-wrap">
+  <div
+    class="chat-window-shell"
+    :class="state?.key ? `state-${state.key}` : null"
+    :data-state="state?.key ?? null"
+    :data-prev-state="prevStateKey"
+  >
+    <div v-if="!hideSessionsPanel" class="sessions-panel-wrap">
       <div class="sessions-panel" :class="{ 'sessions-panel-collapsed': !sessionsPanelOpen }" :style="sessionsPanelOpen ? { width: sessionsWidth + 'px' } : null">
         <SessionsPanel
           :sessions="sessions"
@@ -210,7 +251,9 @@ async function onAction(actionName) {
     </div>
 
     <div class="chat-window">
-    <div class="messages" ref="scrollEl">
+    <div class="chat-header"></div>
+
+    <div class="messages chat-body" ref="scrollEl">
       <slot name="timeline">
         <MessageBubble
           v-for="(msg, i) in messages"
@@ -230,29 +273,31 @@ async function onAction(actionName) {
       {{ chatDisabledReason }}
     </p>
 
-    <ActionButtons
-      v-if="selectedSessionActive"
-      :actions="state?.actions ?? []"
-      :disabled="actionLoading"
-      :auto-tracking-enabled="autoTrackingEnabled"
-      @action="onAction"
-    />
+    <div class="chat-footer">
+      <ActionButtons
+        v-if="selectedSessionActive"
+        :actions="state?.actions ?? []"
+        :disabled="actionLoading"
+        :auto-tracking-enabled="autoTrackingEnabled"
+        @action="onAction"
+      />
 
-    <ChatInput
-      ref="chatInputRef"
-      v-model="draft"
-      :disabled="chatLoading || chatDisabled"
-      :recording="recording"
-      :mic-available="micAvailable"
-      :talk-available="talkAvailable"
-      :audio-enabled="audioEnabled"
-      :spoken-text-enabled="spokenTextEnabled"
-      @submit="submit"
-      @mic-start="startPtt"
-      @mic-stop="stopPtt"
-      @toggle-audio="toggleAudio"
-      @toggle-spoken-text="toggleSpokenText"
-    />
+      <ChatInput
+        ref="chatInputRef"
+        v-model="draft"
+        :disabled="chatLoading || chatDisabled"
+        :recording="recording"
+        :mic-available="micAvailable"
+        :talk-available="talkAvailable"
+        :audio-enabled="audioEnabled"
+        :spoken-text-enabled="spokenTextEnabled"
+        @submit="submit"
+        @mic-start="startPtt"
+        @mic-stop="stopPtt"
+        @toggle-audio="toggleAudio"
+        @toggle-spoken-text="toggleSpokenText"
+      />
+    </div>
     </div>
   </div>
 </template>
@@ -291,9 +336,7 @@ async function onAction(actionName) {
   transition: width 0.15s ease;
 }
 
-/* Collapsed (see SessionsPanel.vue's own always-visible header toggle) —
-   a slim strip, same pattern as EditProjectView.vue's own
-   .inspector-panel-collapsed. */
+/* Collapsed to a slim strip; the header toggle stays visible. */
 .sessions-panel-collapsed {
   width: 2.4rem !important;
 }
@@ -325,5 +368,17 @@ async function onAction(actionName) {
   margin: 0;
   padding: 0.5rem 1rem;
   font-size: 0.85rem;
+}
+
+/* Empty on its own: a style hook so a project's index.css can target
+   .chat-header/.chat-body/.chat-footer without reaching into internals. */
+.chat-header {
+  flex-shrink: 0;
+}
+
+.chat-footer {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
 }
 </style>

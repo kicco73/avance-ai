@@ -24,6 +24,15 @@ chat-service:
   # truth for this duration; nothing else hardcodes it.
   max_session_duration_in_minutes: 60
 
+jobs:
+  # Optional section — can be omitted entirely, and each field within it
+  # is independently optional too. Sizes the two fixed worker-thread pools
+  # backing JobQueue (see jobs/job_queue.py): one queue per JobSink
+  # implementation, never shared, so each pool is sized independently.
+  # A job beyond a pool's size just waits its turn — never rejected.
+  max_concurrent_persisted: 2
+  max_concurrent_ephemeral: 4
+
 ai-service:
   providers:
     # Always a list, even with a single entry. Cascades in order (see

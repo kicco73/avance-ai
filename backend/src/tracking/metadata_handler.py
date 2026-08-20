@@ -21,12 +21,9 @@ class MetadataHandler(object):
 
     @staticmethod
     def parse_raw_env(raw_env: str) -> dict[str, str]:
-        """Env`own content isn't JSON like [signals] — one
-        "key: value" pair per line, each optionally prefixed with "-" (a
-        bullet-list style the model sometimes prefers), blank lines and
-        anything without a ':' ignored rather than raising. Not a
-        strict-YAML parse: this format is deliberately more forgiving,
-        since it's model output, not hand-authored config."""
+        """One "key: value" pair per line, optionally prefixed with "-";
+        blank lines and anything without a ':' are ignored rather than
+        raising — deliberately forgiving, since this is model output."""
         env: dict[str, str] = {}
         for line in (raw_env or "").splitlines():
             line = line.strip()

@@ -1,8 +1,6 @@
-"""Integration tests for BenchmarkCalculator's own DB-integration layer
-(see metrics_framework/benchmark_metrics/calculator.py's _load_messages/
-_load_signals) — specifically that it correctly sources expected_state/
-expected_values from the Tracking row a message's evaluation produced (see
-db.py's Tracking.message), not from the message itself.
+"""Integration tests for BenchmarkCalculator's DB-integration layer:
+expected_state/expected_values are sourced from the Tracking row a
+message's evaluation produced, not from the message itself.
 """
 from __future__ import annotations
 
@@ -42,13 +40,9 @@ def test_calculator_reads_expected_state_from_the_linked_signals_row(db):
 
 @pytest.mark.regression
 def test_unannotated_messages_alongside_an_annotated_one_produce_no_spurious_points(db):
-    """Regression test: a `messages` DataFrame mixing a real annotated
-    expected_state with several missing ones (pandas represents the
-    missing ones as float NaN in that case, not None) used to make
-    _points()' own `if row.expected_state:` check treat NaN as truthy —
-    turning every *unannotated* message into its own spurious
-    "expected_state == 'nan'" observation. Only the one real annotation
-    must ever produce an observation here."""
+    """Regression: pandas represents missing expected_state values as
+    float NaN, which is truthy — only the one real annotation must
+    produce an observation, not every unannotated message."""
     session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
     db.save_message("user", "hi 1", session_id)
     message_id = db.save_message("user", "hi 2", session_id)

@@ -1,10 +1,6 @@
-"""Db-level tests for env-only Tracking rows (see db.Db.get_env/set_env,
-and Tracking's own docstring) — the persisted half of chat.env.Env's
-per-(user, project) "environment" memory. Every (user, project) pair
-keeps its own independent one, unlike Settings (one row per user only).
-Scoped through the same session -> ChatSession relationship as the rest
-of Tracking: env lives and dies with whatever session it was recorded
-under, exactly like any other Tracking row.
+"""Db-level tests for env-only Tracking rows (Db.get_env/set_env) — the
+per-(user, project) "environment" memory. Env lives and dies with
+whatever session it was recorded under, like any other Tracking row.
 """
 from __future__ import annotations
 
@@ -12,9 +8,6 @@ from datetime import datetime
 
 import pytest
 
-# Every test in this file verifies a specific persistence behavior/fact
-# (round-tripping, scoping, no-op semantics) rather than a response shape —
-# all regression.
 pytestmark = pytest.mark.regression
 
 
@@ -46,8 +39,8 @@ def test_set_env_then_get_env_round_trips(db):
 
 
 def test_set_env_never_updates_in_place_but_get_env_still_sees_the_latest(db):
-    """Each set_env is a new row (see Tracking's own docstring) — get_env
-    always resolves to whichever is most recent."""
+    """Each set_env is a new row — get_env always resolves to whichever
+    is most recent."""
     _session(db)
     db.set_env("proj", {"a": "1"}, "user")
 
@@ -66,9 +59,8 @@ def test_env_is_scoped_per_user(db):
 
 
 def test_env_is_scoped_per_project_too(db):
-    """The key correction: the same user's env for one project must not
-    leak into another project — every (user, project) pair is
-    independent, like a distinct automaton instance's own live state."""
+    """The same user's env for one project must not leak into another —
+    every (user, project) pair is independent."""
     _session(db, project_name="proj-a")
     db.set_env("proj-a", {"a": "1"}, "user")
 
@@ -100,11 +92,8 @@ def test_reset_project_wipes_env_for_every_user_of_that_project(db):
 
 
 def test_reset_project_for_user_also_wipes_their_env(db):
-    """A structural consequence of living in Tracking (FK'd to session,
-    cascade-deleted with it): env no longer survives a "Reset
-    conversation" the way a standalone table could have — deleting the
-    session it was recorded under takes it with it, same as any other
-    Tracking row for that session."""
+    """Env is FK'd to its session and cascade-deleted with it, so a
+    "Reset conversation" removes it too, like any other Tracking row."""
     _session(db, username="alice")
     db.set_env("proj", {"a": "1"}, "alice")
 

@@ -4,24 +4,30 @@ import logging
 
 from fastapi import WebSocket, WebSocketDisconnect
 
+from db import Db
 from service_error import ServiceError
+from session import Session
 from .chat_service import ChatService
 
 logger = logging.getLogger(__name__)
 
 
 class WsAdapter(object):
-    def __init__(self, chat_service: ChatService) -> None:
+    def __init__(self, chat_service: ChatService, db: Db) -> None:
         self._chat_service = chat_service
-        # Single-user prototype: at most one connection matters.
-        self._active_socket: WebSocket | None = None
+        self._db = db
+        # username -> the one open connection shared across every project:
+        # the frontend keeps at most one websocket per tab, reused across
+        # every project's own chat, so a per-project connection was never needed.
+        self._connections: dict[str, WebSocket] = {}
 
     async def chat_loop(self, websocket: WebSocket) -> None:
         """Accepts the /ws/chat connection and dispatches every non-empty
-        frame to ChatService.process_turn(), one at a time (the loop only
-        calls receive_json() again once the previous turn is fully done)."""
+        frame to ChatService.process_turn(), one at a time. Registers
+        this socket under Session().user immediately after accept()."""
+        username = Session().user
         await websocket.accept()
-        self._active_socket = websocket
+        self._connections[username] = websocket
         try:
             while True:
                 data = await websocket.receive_json()
@@ -82,5 +88,15 @@ class WsAdapter(object):
         except WebSocketDisconnect:
             pass
         finally:
-            if self._active_socket is websocket:
-                self._active_socket = None
+            if self._connections.get(username) is websocket:
+                del self._connections[username]
+
+    async def push(self, username: str, payload: dict) -> bool:
+        """Sends `payload` to `username`'s single shared connection, if
+        one exists. No exception for the no-connection case — a
+        dormant/disconnected user just gets False back."""
+        websocket = self._connections.get(username)
+        if websocket is None:
+            return False
+        await websocket.send_json(payload)
+        return True

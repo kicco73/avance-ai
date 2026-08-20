@@ -28,9 +28,7 @@ class ListenServiceNotAvailableError(Exception):
 class ListenService(ListenProvider):
     """Thin wrapper around whatever ListenProvider it's given — a single
     concrete provider or a CascadingListenProvider fronting several, the
-    service itself doesn't care which (see cascading_listen_provider.py).
-    `from_config` is the usual entry point (see main.py); the plain
-    constructor is what makes that substitution possible."""
+    service itself doesn't care which. `from_config` is the usual entry point."""
 
     _PROVIDER_CLASSES = {
         "faster-whisper": FasterWhisperProvider,
@@ -60,9 +58,8 @@ class ListenService(ListenProvider):
 
     async def transcribe(self, audio: bytes) -> str:
         """Transcribed text for `audio`. Raises ListenServiceError if the
-        underlying provider fails — per ListenProvider's own contract,
-        that's any cascade.ProviderError, not just the unavailable/rate-
-        limited subclasses that trigger a cascade's own retry/fallback."""
+        underlying provider fails — any cascade.ProviderError, not just
+        the unavailable/rate-limited subclasses that trigger retry/fallback."""
         try:
             return await self._provider.transcribe(audio)
         except ProviderError as exc:

@@ -66,10 +66,12 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
     the exact same-tables-wrong-columns case a naive "tables only" check
     would miss."""
     ddl = [
-        "CREATE TABLE project (name TEXT PRIMARY KEY, revision INTEGER, published_revision INTEGER)",
+        "CREATE TABLE project (name TEXT PRIMARY KEY, revision INTEGER, published_revision INTEGER, "
+        "is_paused INTEGER, paused_reason TEXT, manually_paused INTEGER, project_id TEXT, "
+        "ui_label TEXT, ui_description TEXT)",
         "CREATE TABLE chatsession (id INTEGER PRIMARY KEY, username TEXT, project_name TEXT, source TEXT, "
         "title TEXT, project_revision INTEGER, datetime_start TEXT, datetime_end TEXT, start_state TEXT, "
-        "end_state TEXT, labeled INTEGER)",
+        "end_state TEXT, labeled INTEGER, comment TEXT)",
         "CREATE TABLE message (id INTEGER PRIMARY KEY, role TEXT, content TEXT, timestamp TEXT, audio_text TEXT)",
         "CREATE TABLE settings (user TEXT PRIMARY KEY, project TEXT)",
         "CREATE TABLE tracking (id INTEGER PRIMARY KEY, session_id INTEGER, timestamp TEXT, "
@@ -78,6 +80,17 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
         "CREATE TABLE history (id INTEGER PRIMARY KEY, user_id TEXT, project_name TEXT, "
         "archive_name TEXT, kind TEXT, seq INTEGER, content TEXT)",
         "CREATE TABLE stateremap (project_name TEXT, old_key TEXT, new_key TEXT)",
+        "CREATE TABLE job (id INTEGER PRIMARY KEY, kind TEXT, reference_id INTEGER, status TEXT, "
+        "created_at TEXT, finished_at TEXT, error TEXT, result TEXT, progress_current INTEGER, "
+        "progress_total INTEGER)",
+        "CREATE TABLE benchmarkrun (id INTEGER PRIMARY KEY, username TEXT, project_name TEXT, session_id INTEGER, "
+        "strategy TEXT, project_revision INTEGER, batch_segments INTEGER, ai_model_snapshot TEXT, results TEXT)",
+        "CREATE TABLE benchmarkrunobservation (id INTEGER PRIMARY KEY, run_id INTEGER, session_id INTEGER, "
+        "message_id INTEGER, timestamp TEXT, \"values\" TEXT, old_state TEXT, action TEXT, new_state TEXT)",
+        "CREATE TABLE sessionsummary (id INTEGER PRIMARY KEY, session_id INTEGER, content TEXT)",
+        "CREATE TABLE systemwarning (id INTEGER PRIMARY KEY, username TEXT, project_name TEXT, kind TEXT, "
+        "message TEXT, timestamp TEXT)",
+        "CREATE TABLE projectobserverindex (id INTEGER PRIMARY KEY, project_name TEXT, observer_project_name TEXT)",
     ]
     wrong = _make_sqlite_bytes(tmp_path, "wrong_columns.db", ddl)
 
@@ -98,17 +111,9 @@ def test_restore_backup_accepts_a_schema_matching_backup(file_db):
 
 @pytest.mark.regression
 def test_restore_backup_rebuilds_the_proxy_target_not_just_reconnects(file_db):
-    """The actual fix, not just its effect: restore_backup() must hand
-    the shared `database` Proxy a brand new Database object rather than
-    closing/reopening the *same* one. Peewee's connection state is
-    per-thread — a plain close()+connect() only fixes up the calling
-    thread's own state, leaving any other thread that already holds a
-    connection (a previous request on a different worker thread, or a
-    separate process in a future multi-consumer setup) with a stale
-    connection to the file that just got replaced. Rebinding the Proxy to
-    a new object sidesteps that: every thread's *next* query lazily opens
-    its own fresh connection to it, regardless of how many threads or
-    processes are involved."""
+    """restore_backup() must rebind the shared `database` Proxy to a new
+    Database object rather than closing/reopening the same one, since
+    Peewee's connection state is per-thread."""
     target_before = database.obj
 
     file_db.restore_backup(file_db.export_backup())
@@ -118,11 +123,8 @@ def test_restore_backup_rebuilds_the_proxy_target_not_just_reconnects(file_db):
 
 @pytest.mark.regression
 def test_restore_backup_preserves_the_working_files_permissions(file_db):
-    """Regression test: a freshly written temp file gets whatever mode the
-    process umask allows, which isn't necessarily the working file's own
-    mode. Left unpreserved, a restore could silently leave the file less
-    permissive than before (e.g. missing the owner's write bit), and every
-    write after that fails with "attempt to write a readonly database"."""
+    """A restore must preserve the working file's permissions rather than
+    whatever mode the process umask gives a freshly written temp file."""
     path = file_db.backup_file_path()
     os.chmod(path, 0o600)  # deliberately not whatever the umask would produce
     backup = file_db.export_backup()

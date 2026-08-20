@@ -1,10 +1,7 @@
 <script setup>
-// The minimal top-right "⋮" contextual menu every editable detail box
-// (state/action in InspectorDetailCard.vue, signal in
-// InspectorSignalsTab.vue) now uses instead of its own inline "Delete"
-// button — see those components' own usage. Purely presentational: what
-// the menu actually does lives entirely in the slot content the caller
-// provides.
+// Top-right "⋮" contextual menu used by editable detail cards. Purely
+// presentational — what it does lives entirely in the slot content the
+// caller provides.
 import { onMounted, onUnmounted, ref } from 'vue'
 
 const open = ref(false)

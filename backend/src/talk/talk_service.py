@@ -1,11 +1,6 @@
-"""The audio (TTS) layer as a single, independent service — same shape
-as ai/ai_service.py's AiService, but TalkService also IS a
-TalkProvider: from a caller's point of view, calling generate() looks
-exactly like calling a single provider, retry/cascading, caching and
-live-generation dedup all hidden inside. Owns the on-disk cache (see
-talk_store.py/talk_format.py) — audio-subsystem internals, not
-chat_service's concern.
-"""
+"""The audio (TTS) layer as a single, independent service. TalkService
+also IS a TalkProvider: calling generate() looks like calling a single
+provider, with retry/cascading, caching, and live-generation dedup hidden inside."""
 from __future__ import annotations
 
 import hashlib
@@ -34,10 +29,8 @@ class TalkServiceNotAvailableError(Exception):
 
 class TalkService(TalkProvider):
     """Thin wrapper around whatever TalkProvider it's given — a single
-    concrete provider or a CascadingTalkProvider fronting several, the
-    service itself doesn't care which (see cascading_talk_provider.py).
-    `from_config` is the usual entry point (see main.py); the plain
-    constructor is what makes that substitution possible."""
+    concrete provider or a CascadingTalkProvider fronting several; the
+    service itself doesn't care which."""
 
     _PROVIDER_CLASSES = {
         "gemini": GeminiTalkProvider,
@@ -66,11 +59,9 @@ class TalkService(TalkProvider):
         return cls._PROVIDER_CLASSES[service.driver](api_key=service.key, model=service.model)
 
     async def generate(self, text: str) -> AsyncIterator[bytes]:
-        """WAV-framed bytes for `text`, streaming-compatible: content-
-        addressed by a hash of `text` itself (no external id needed), so
-        a repeat request joins an in-flight generation or hits the
-        on-disk cache instead of re-synthesizing. Never raises: a
-        failure just ends the stream, logged."""
+        """WAV-framed bytes for `text`, content-addressed by a hash of
+        `text` so a repeat request joins an in-flight generation or hits
+        the cache. Never raises: a failure just ends the stream, logged."""
         key = hashlib.sha256(text.encode("utf-8")).hexdigest()
 
         live = self._store.get_live_generation(key)

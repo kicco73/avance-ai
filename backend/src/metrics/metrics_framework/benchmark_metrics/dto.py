@@ -7,11 +7,8 @@ from typing import Any
 
 @dataclass(frozen=True)
 class BenchmarkConfiguration(object):
-    """Configuration shared by benchmark metrics.
-
-    max_session_duration_in_minutes is the single system-level duration
-    reference used when normalizing temporal transition latency.
-    """
+    """Configuration shared by benchmark metrics. max_session_duration_in_minutes
+    is the system-level duration reference used to normalize transition latency."""
 
     max_session_duration_in_minutes: float = 60.0
 

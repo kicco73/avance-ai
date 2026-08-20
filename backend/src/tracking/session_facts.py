@@ -1,21 +1,7 @@
-"""The `session` namespace a trigger/`env:` expression resolves against
-(see tracking.evaluation_scope.EvaluationScopeBuilder) — facts about the
-current user+project's own session/transition history: session
-duration, the previous session's own timestamp, how many sessions
-total, and how long the conversation has sat in its current state.
-Every method is a zero-argument proxy (called as `session.
-number_of_user_sessions()`, never read as a bare attribute) so a value
-is only ever computed — a real db query — if an expression actually
-references it. Moved verbatim out of tracking.env.Env, which used to
-compute these itself (see ENV_COMPUTED_KEYS, now gone) alongside its own
-unrelated stored/action_set responsibilities.
-
-`metric` (see the `metric` property below) is this class's one
-sub-namespace: `session.metric.<name>()` — the Analytics Core Metrics
-meaningful over just the current session's own window, as opposed to the
-`metric` namespace's own (see metrics.metric_service.MetricService.
-for_turn), which spans the user's whole cross-session history instead.
-"""
+"""The `session` namespace: facts about the current user+project's
+session/transition history, each a zero-argument proxy so a value is
+only computed if an expression references it. `session.metric.<name>()`
+scopes Core Metrics to just this session, unlike the cross-session `metric`."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -28,20 +14,16 @@ from metrics.metrics_framework import AnalyticsCalculator
 GetUsername = Callable[[], str]
 GetActiveProjectName = Callable[[], str]
 
-# Distinguishes "set_replay_instant/set_last_transition_instant was never
-# called at all" (production) from "called, and given None" (a replay
-# turn with no real elapsed time to report) — the latter is a real,
-# meaningful value, so None itself can't double as the sentinel.
+# Distinguishes "never called" (production) from "called, and given
+# None" (replay, no real elapsed time) — None is itself a meaningful
+# value here, so it can't double as the sentinel.
 _UNSET = object()
 
 
 class SessionFacts(object):
-    """Two implementations mirroring tracking.env.Env's own split: this
-    class itself is production's own live/unbounded shape (nothing ever
-    calls set_replay_instant/set_last_transition_instant) — a benchmark
-    replay (not introduced here) can call those once per turn as it
-    orchestrates its own loop, scoping every fact below to that turn's
-    own instant(s) instead."""
+    """Production's own live/unbounded shape — nothing here ever calls
+    set_replay_instant/set_last_transition_instant. A benchmark replay
+    can call those once per turn, scoping every fact to that turn's instant."""
 
     def __init__(self, db: Db, get_username: GetUsername, get_active_project_name: GetActiveProjectName) -> None:
         self._db = db
@@ -101,9 +83,8 @@ class SessionFacts(object):
         username = self._get_username()
         project_name = self._get_active_project_name()
         # index 0 is the current/most recent session (as of `now`) —
-        # "last" means the one immediately before it (see db.
-        # list_chat_sessions' own most-recent-first ordering), None for
-        # a user's very first session ever.
+        # "last" means the one immediately before it, most-recent-first
+        # ordering. None for a user's very first session ever.
         sessions = self._db.list_chat_sessions(username, project_name, until=self._replay_bound())
         previous = sessions[1] if len(sessions) > 1 else None
         return _utc_iso(previous["datetime_start"]) if previous is not None else None
@@ -118,12 +99,9 @@ class SessionFacts(object):
 
     @property
     def metric(self) -> SessionMetricNamespace:
-        """`session.metric` — see metrics.metric_namespace.
-        SessionMetricNamespace's own docstring for the laziness this
-        relies on: accessing this property itself does no DB work at
-        all, not even the current-session lookup below, which only runs
-        the first time an expression actually calls one of the returned
-        namespace's own methods."""
+        """Accessing this property does no DB work at all — not even the
+        current-session lookup below, which only runs the first time an
+        expression actually calls one of the returned namespace's methods."""
         if self._metric is None:
             self._metric = SessionMetricNamespace(self._build_session_metric_calculator)
         return self._metric

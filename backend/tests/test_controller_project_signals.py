@@ -1,12 +1,7 @@
 """GET /api/projects/{name}/signals — see ProjectService.get_project_signals.
-Each signal's own `relevant` field is what the Inspector Signals tab's "show
-only relevant signals" filter reads directly, rather than re-deriving it
-client-side from raw trigger text. Scoped to `state_key`'s own outgoing
-actions (see Automaton.triggerable_signal_names) when given — the Inspector's
-own currently selected/highlighted state (or the state a selected action
-fires *from*) — falling back to every state's triggers combined (Automaton.
-all_triggerable_signal_names) otherwise.
-"""
+Each signal's `relevant` field feeds the Inspector's "show only relevant
+signals" filter directly. Scoped to `state_key`'s outgoing actions when
+given, else falls back to every state's triggers combined."""
 from __future__ import annotations
 
 import io
@@ -102,6 +97,9 @@ def test_a_signal_referenced_only_via_env_field_is_also_relevant(client):
     project = PROJECT.replace(
         'trigger: "signal.progress == 100"',
         'trigger: "signal.progress == 100"\n        env:\n          last_score: signal.score',
+    ).replace(
+        "states:",
+        "env:\n  last_score: {}\n\nstates:",
     )
     _upload(client, "relevance-env-test", project)
 

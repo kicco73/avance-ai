@@ -1,4 +1,5 @@
 <script setup>
+import { computed } from 'vue'
 import { renderMarkdown as renderMarkdownBase } from '../../markdown.js'
 import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 
@@ -18,35 +19,31 @@ function renderMarkdown(text) {
 const props = defineProps({
   message: { type: Object, required: true },
   spokenTextEnabled: { type: Boolean, default: false },
-  // "Label sessions" view only (see BenchmarkProjectView.vue) — the
-  // live chat never shows this.
   showTimestamp: { type: Boolean, default: false },
-  // "Label sessions" view only — whether the Signals row this
-  // message's own evaluation produced has an expert-annotated
-  // expected_values (see Signals.expected_values). Shows a small "this
-  // bubble has a signal annotation" marker; the live chat never sets this.
+  // Whether this message's evaluation has an expert-annotated
+  // expected_values; shows a small signal-annotation marker.
   signalsAnnotated: { type: Boolean, default: false },
-  // Whether this belongs to an imported session (see ChatSession.source)
-  // — there's no real avance-computed value to compare an annotation
-  // against there (see benchmarkTimeline.js's own transitionAnnotationStatus),
-  // so the marker reads as a neutral "labelled" tick instead of the
-  // amber "pay attention" one a live session's own annotation gets.
+  // Whether this belongs to an imported session — there's no real
+  // avance-computed value to compare an annotation against, so the
+  // marker reads as a neutral "labelled" tick instead of amber "!".
   imported: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['resend'])
 
+// True while an assistant bubble's content is still empty (before the
+// first streamed chunk lands) — shows animated dots instead of the reply.
+const isAwaitingReply = computed(() => props.message.role === 'assistant' && !getMessageText(props.message))
+
 function getMessageText(msg) {
-  // Se l'utente vuole vedere lo spoken text ed è disponibile, usiamo audioText.
-  // In modalità normale (o se audioText è vuoto) usiamo il testo streaming normale in msg.content.
+  // Prefer spoken text (audioText) over the normal streamed content when enabled and available.
   if (props.spokenTextEnabled && msg.role === 'assistant' && msg.audioText) {
     return msg.audioText
   }
   return msg.content || ''
 }
 
-// Deliberately terse (HH:MM, no date/seconds) — see showTimestamp's own
-// docstring: "molto sintetico, piccolo e poco invasivo".
+// Deliberately terse: HH:MM only, no date or seconds.
 function formatTimestamp(iso) {
   if (!iso) return ''
   const date = new Date(iso)
@@ -54,9 +51,7 @@ function formatTimestamp(iso) {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-// The "Signal labelled" tooltip on the (!) badge — the browser's native
-// `title` attribute wasn't rendering reliably (see useFloatingTooltip's
-// own docstring, first built for Inspector.vue's (?) icon).
+// The "Signal labelled" tooltip on the (!) badge.
 const {
   triggerRef: annotationIconRef,
   visible: annotationTooltipVisible,
@@ -89,7 +84,12 @@ const {
           message.failed ? 'bubble-failed' : ''
         ]"
       >
-        <span v-html="renderMarkdown(getMessageText(message) || '...')" />
+        <span v-if="isAwaitingReply" class="typing-dots" aria-label="Waiting for reply">
+          <span class="typing-dot"></span>
+          <span class="typing-dot"></span>
+          <span class="typing-dot"></span>
+        </span>
+        <span v-else v-html="renderMarkdown(getMessageText(message))" />
         <span
           v-if="signalsAnnotated"
           ref="annotationIconRef"
@@ -163,9 +163,7 @@ const {
   overflow-wrap: anywhere;
 }
 
-/* "Label sessions" view only — see the signalsAnnotated prop's own
-   docstring. Same amber used elsewhere for "pay attention, this differs
-   from the live default" (see Inspector's own .inspector-detail-badge-current). */
+/* Amber = "pay attention, this differs from the live default". */
 .bubble-annotation-icon {
   position: absolute;
   top: -0.4rem;
@@ -184,9 +182,8 @@ const {
   cursor: help;
 }
 
-/* An imported session (see the imported prop's own docstring) has no
-   avance ground truth to be "wrong" against — a green circled tick
-   ("labelled", not "pay attention") instead of the amber "!" above. */
+/* An imported session has no avance ground truth to be "wrong" against —
+   a green tick ("labelled") instead of the amber "!" above. */
 .bubble-annotation-icon-labelled {
   background: #2e7d32;
   color: white;
@@ -223,6 +220,41 @@ const {
 
 .bubble-failed {
   background: #c62828;
+}
+
+.typing-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0;
+}
+
+.typing-dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.4;
+  animation: typing-dot-bounce 1.2s infinite ease-in-out;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing-dot-bounce {
+  0%, 60%, 100% {
+    opacity: 0.4;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-0.15rem);
+  }
 }
 
 .resend-icon {

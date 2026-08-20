@@ -1,13 +1,13 @@
-"""on-enter moved from being a state's own field to an action's own field
-(see automaton.Action.on_enter/automaton_builder.py's _build_action/
-_build_init_action) — a state reached by one action can celebrate while
-the same state reached by a different action doesn't.
+"""on-enter is an action's own field (Action.on_enter), not the state's —
+a state reached by one action can celebrate while the same state
+reached by a different action doesn't.
 """
 from __future__ import annotations
 
 import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
+from automaton.on_enter_script import OnEnterScriptError
 
 pytestmark = pytest.mark.contract
 
@@ -22,13 +22,13 @@ states:
     actions:
       - name: go
         target: b
-        on-enter: celebrate
+        on-enter: celebrate()
   b:
     contextual-prompt: there
 """
     automaton = AutomatonBuilder().build({"index.yml": content})
     action = automaton.states["a"].actions[0]
-    assert action.on_enter == "celebrate"
+    assert action.on_enter == "celebrate()"
 
 
 def test_on_enter_absent_on_an_action_is_none():
@@ -50,8 +50,8 @@ states:
 
 
 def test_two_different_actions_landing_on_the_same_state_can_disagree_on_on_enter():
-    """The whole point of moving it off State: two paths into the same
-    state don't have to agree on whether entering it celebrates."""
+    """Two paths into the same state don't have to agree on whether
+    entering it celebrates."""
     content = """
 init-action:
   target: a
@@ -63,21 +63,19 @@ states:
         target: c
       - name: go-loud
         target: c
-        on-enter: celebrate
+        on-enter: celebrate()
   c:
     contextual-prompt: there
 """
     automaton = AutomatonBuilder().build({"index.yml": content})
     quiet, loud = automaton.states["a"].actions
     assert quiet.on_enter is None
-    assert loud.on_enter == "celebrate"
+    assert loud.on_enter == "celebrate()"
 
 
 def test_a_stray_on_enter_under_a_state_is_silently_ignored():
-    """on-enter is no longer a recognized state field at all — a project
-    still declaring it there (e.g. not yet migrated) parses without error,
-    it's just inert dead data, exactly like any other unrecognized key
-    under a state."""
+    """on-enter is not a recognized state field — declaring it there
+    parses without error, as inert dead data like any unrecognized key."""
     content = """
 init-action:
   target: a
@@ -94,13 +92,13 @@ def test_init_action_on_enter():
     content = """
 init-action:
   target: a
-  on-enter: celebrate
+  on-enter: celebrate()
 states:
   a:
     contextual-prompt: hi
 """
     automaton = AutomatonBuilder().build({"index.yml": content})
-    assert automaton.init_action.on_enter == "celebrate"
+    assert automaton.init_action.on_enter == "celebrate()"
 
 
 def test_init_action_on_enter_absent_is_none():
@@ -125,11 +123,44 @@ states:
     actions:
       - name: go
         target: b
-        on-enter: celebrate
+        on-enter: celebrate()
   b:
     contextual-prompt: there
 """
     automaton = AutomatonBuilder().build({"index.yml": content})
     payload = automaton.get_state_payload(automaton.states["a"])
     assert "on-enter" not in payload
-    assert payload["actions"][0]["on-enter"] == "celebrate"
+    assert payload["actions"][0]["on-enter"] == "celebrate()"
+
+
+def test_build_rejects_an_action_with_an_invalid_on_enter_script():
+    """A bare identifier (no call at all) fails the build outright, with
+    the offending state/action named in the message."""
+    content = """
+init-action:
+  target: a
+states:
+  a:
+    contextual-prompt: hi
+    actions:
+      - name: go
+        target: b
+        on-enter: celebrate
+  b:
+    contextual-prompt: there
+"""
+    with pytest.raises(OnEnterScriptError, match="state 'a', action 'go'.*expected a single function call"):
+        AutomatonBuilder().build({"index.yml": content})
+
+
+def test_build_rejects_an_init_action_with_an_invalid_on_enter_script():
+    content = """
+init-action:
+  target: a
+  on-enter: doStuff()
+states:
+  a:
+    contextual-prompt: hi
+"""
+    with pytest.raises(OnEnterScriptError, match="init-action.*unknown function 'doStuff'"):
+        AutomatonBuilder().build({"index.yml": content})

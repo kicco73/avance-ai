@@ -11,6 +11,9 @@ from chat.session_manager import ChatSessionManager
 from controller import AvanceController
 from db import Db
 from error_handlers import register_error_handlers
+from events.dispatcher import _reset_for_tests as _reset_dispatcher_for_tests
+from jobs import InMemoryJobSink, JobQueue, PersistedJobSink
+from metrics.benchmark_run_service import BenchmarkRunService
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
 from session import Session
@@ -19,11 +22,21 @@ from tracking.tracking_service import TrackingService
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
 
 
+@pytest.fixture(autouse=True)
+def _reset_dispatcher():
+    """events.dispatcher's _subscribers dict is a process-global — cleared
+    before and after every test so subscriptions never leak between
+    tests, regardless of order."""
+    _reset_dispatcher_for_tests()
+    yield
+    _reset_dispatcher_for_tests()
+
+
 @pytest.fixture
 def db() -> Db:
     """A fresh in-memory SQLite database per test — db.py's `database`
-    Proxy is a module-level global, so each Db(...) call simply rebinds it
-    to a brand new connection (fine for the sequential tests here)."""
+    Proxy is a module-level global, so each Db(...) call rebinds it to
+    a brand new connection."""
     return Db("sqlite:///:memory:")
 
 
@@ -48,20 +61,16 @@ class FakeAiService:
 
     async def generate_stream(self, system_prompt: str, history: list[dict], on_retry=None):
         self.calls.append((system_prompt, history))
-        # Must actually be an async generator (an `async def` with no
-        # `yield` is just a coroutine, not iterable via `async for` —
-        # see tracking/turn_protocol_using_text_extraction.py's own
-        # `async for chunk in self._ai_service.generate_stream(...)`).
+        # Must be an actual async generator, not just a coroutine, since
+        # callers consume it with `async for`.
         yield "Fake AI reply."
 
     def supports_metadata(self) -> bool:
         return False
 
     def is_provider_with_schema(self) -> bool:
-        # Routes TrackingProcessor.build_turn_protocol() to
-        # TurnProcotolUsingTextExtraction (see tracking/tracking_processor.py),
-        # which only calls generate_stream() — the one this fake actually
-        # implements.
+        # Routes build_turn_protocol() to the path that calls
+        # generate_stream(), the one this fake actually implements.
         return False
 
 
@@ -72,23 +81,17 @@ def fake_ai_service() -> FakeAiService:
 
 @pytest.fixture
 def app_db(tmp_path) -> Db:
-    """File-backed, not :memory: — TestClient runs sync endpoints in a
-    real threadpool thread (see FastAPI's run_in_threadpool), and a
-    :memory: SQLite database is private to the single connection that
-    created it: a second thread opening its own connection to ":memory:"
-    gets a distinct, empty database instead of sharing state, which
-    surfaces as "no such table" the moment a request hits a sync route."""
+    """File-backed, not :memory: — TestClient runs sync endpoints in a real
+    threadpool thread, and a second thread's own connection to ":memory:"
+    would see a distinct, empty database instead of shared state."""
     return Db(f"sqlite:///{tmp_path / 'test.db'}")
 
 
 @pytest.fixture
 def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
-    """The real controller/routing wiring (see main.py), but against an
-    isolated file-backed Db and a FakeAiService instead of main.py's real
-    AppConfig-driven ones — so these tests never touch the developer's
-    actual avance.db file (a previous incident: repeatedly recreating
-    that shared file from test scripts corrupted a concurrently running
-    dev server's connection to it) nor make real, costly AI calls."""
+    """The real controller/routing wiring, but against an isolated
+    file-backed Db and a FakeAiService, so tests never touch the
+    developer's real avance.db or make costly AI calls."""
     project_service = ProjectService(app_db)
     session_manager = ChatSessionManager(app_db)
     metric_service = MetricService(
@@ -99,13 +102,20 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     tracking_service = TrackingService(
         app_db, fake_ai_service, project_service, metric_service,
     )
+    persisted_jobs = JobQueue(PersistedJobSink(app_db), max_concurrent=1)
+    ephemeral_jobs = JobQueue(InMemoryJobSink(), max_concurrent=1)
     chat_service = ChatService(
-        app_db, fake_ai_service, project_service, session_manager, tracking_service, metric_service
+        app_db, fake_ai_service, project_service, session_manager, tracking_service, metric_service, persisted_jobs,
+    )
+    benchmark_run_service = BenchmarkRunService(
+        app_db, fake_ai_service, tracking_service, persisted_jobs, ephemeral_jobs,
     )
 
     fastapi_app = FastAPI(title="Avance State Engine (test)")
     register_error_handlers(fastapi_app)
-    controller = AvanceController(chat_service, project_service, None, None, app_db, tracking_service)
+    controller = AvanceController(
+        chat_service, project_service, None, None, app_db, tracking_service, benchmark_run_service,
+    )
     fastapi_app.include_router(controller.router)
     return fastapi_app
 
@@ -118,9 +128,8 @@ def client(app: FastAPI) -> TestClient:
 @pytest.fixture
 def hello_project(client: TestClient) -> str:
     """Uploads, activates, and publishes the bundled "Hello world" sample
-    project — for tests that need a real active project/automaton, not
-    just an empty one. Published because a project with no published
-    revision yet can't have chat sessions (see Db.create_chat_session)."""
+    project — a project needs a published revision before it can have
+    chat sessions."""
     content = (SAMPLES_DIR / "Hello world.zip").read_bytes()
     response = client.put(
         "/api/projects/hello", content=content, headers={"Content-Type": "application/zip"}

@@ -21,12 +21,9 @@ class SessionMixin:
         start_state: str | None = None, end_state: str | None = None,
         source: str = 'native', title: str | None = None,
     ) -> int:
-        """A real session — always stamped with whatever's published right
-        now (see ChatSession.project_revision's own docstring), never a
-        revision nobody's published yet. Every entry point except
-        EditProjectView.vue's own embedded "Test" chat calls this one; that
-        one calls create_draft_chat_session instead — the only place a
-        session is allowed to exist against an unpublished revision."""
+        """A real session — always stamped with whatever's published
+        right now, never a revision nobody's published yet. The embedded
+        "Test" chat calls create_draft_chat_session instead."""
         project = Project.get_or_none(Project.name == project_name)
         if project is None:
             raise ValueError(f"Project '{project_name}' does not exist.")
@@ -44,17 +41,9 @@ class SessionMixin:
         start_state: str | None = None, end_state: str | None = None,
         source: str = 'test', title: str | None = None,
     ) -> int:
-        """Like create_chat_session, but always stamped with the project's
-        own current *draft* revision instead — published or not, since
-        testing (see ChatService.create_draft_session/get_or_create_
-        current_draft_session, EditProjectView.vue's own embedded "Test"
-        chat, the only caller) means testing exactly what's actually being
-        edited right now. `source='test'` (not 'native') by default: a
-        draft session must never be indistinguishable from a real one —
-        every query elsewhere that resolves/lists "the" active/native
-        session (get_latest_chat_session/list_chat_sessions' own source
-        default) would otherwise happily pick one of these up instead,
-        exactly the isolation break this field exists to prevent."""
+        """Like create_chat_session, but always stamped with the
+        project's current *draft* revision — published or not.
+        `source='test'` by default so it's never mistaken for a real session."""
         project = Project.get_or_none(Project.name == project_name)
         if project is None:
             raise ValueError(f"Project '{project_name}' does not exist.")
@@ -79,7 +68,7 @@ class SessionMixin:
 
     @staticmethod
     def _chat_session_to_dict(session: ChatSession) -> dict:
-        return {'id': session.id, 'username': session.username, 'project_name': session.project_name_id, 'source': session.source, 'title': session.title, 'datetime_start': session.datetime_start, 'datetime_end': session.datetime_end, 'start_state': session.start_state, 'end_state': session.end_state, 'project_revision': session.project_revision, 'labeled': session.labeled}
+        return {'id': session.id, 'username': session.username, 'project_name': session.project_name_id, 'source': session.source, 'title': session.title, 'datetime_start': session.datetime_start, 'datetime_end': session.datetime_end, 'start_state': session.start_state, 'end_state': session.end_state, 'project_revision': session.project_revision, 'labeled': session.labeled, 'comment': session.comment}
 
     def get_chat_session(self, session_id: int) -> dict | None:
         session = ChatSession.get_or_none(ChatSession.id == session_id)
@@ -88,11 +77,8 @@ class SessionMixin:
     @staticmethod
     def _filter_by_source(query, source: str | tuple[str, ...] | None):
         """`source`: a single value (the common case), a tuple (e.g.
-        ('native', 'imported') — every *real* session, excluding test
-        ones — see ChatService.list_sessions), or None for no filter at
-        all (every caller of this module still passes something real
-        though; None only exists for get_chat_session's own single-row
-        lookup, which has no source concept to filter by)."""
+        ('native', 'imported')), or None for no filter — None only
+        exists for get_chat_session's single-row lookup."""
         if source is None:
             return query
         if isinstance(source, tuple):
@@ -122,16 +108,9 @@ class SessionMixin:
         return [self._chat_session_to_dict(s) for s in sessions]
 
     def has_open_sessions_for_revision(self, project_name: str, revision: int) -> bool:
-        """Whether any *native* session is still open (same "touched
-        recently enough" window as ChatSessionManager.is_open, not this
-        one user's own single active session — a cross-user existence
-        check) at exactly `revision` — ProjectService.preview_publish's
-        own gate for whether publishing a new draft should warn the
-        caller first (see EditProjectView.vue's own handlePublish):
-        freezing the currently *published* revision matters only if some
-        live conversation is still actually running on it. Imported
-        sessions are excluded (see ChatSession.source) — they were never
-        a live conversation to begin with."""
+        """Whether any *native* session is still open (a cross-user
+        check, not this one user's active session) at exactly
+        `revision` — gates whether publishing should warn the caller first."""
         cutoff = datetime.utcnow() - timedelta(minutes=_DEFAULT_OPEN_WINDOW_MINUTES)
         return ChatSession.select().where(
             (ChatSession.project_name == project_name)
@@ -141,15 +120,22 @@ class SessionMixin:
             & (ChatSession.datetime_end >= cutoff)
         ).exists()
 
+    def set_session_title(self, session_id: int, title: str | None) -> None:
+        """A domain expert's rename for a session — the same field an
+        imported session gets seeded from its uploaded filename, just
+        editable after the fact for any session."""
+        ChatSession.update(title=title).where(ChatSession.id == session_id).execute()
+
+    def set_session_comment(self, session_id: int, comment: str | None) -> None:
+        """A domain expert's own free-text note on the session as a whole
+        (see the "Label sessions" view's own Info tab) — distinct from
+        Db.set_signal_comment (Tracking.comment), which is per-message."""
+        ChatSession.update(comment=comment).where(ChatSession.id == session_id).execute()
+
     def set_session_labeled(self, session_id: int, labeled: bool) -> None:
-        """The "Label sessions" view's own "Mark done" button (see
-        ChatService.mark_session_labeled) — a domain expert's explicit,
-        persisted verdict on whether this session's been reviewed,
-        replacing the old any-Tracking-row-has-an-annotation heuristic
-        this class used to compute it with on every read (see db.py's
-        own one-time _backfill_labeled_from_old_annotation_heuristic,
-        which seeded this column from that same heuristic the moment it
-        was introduced, never touched again after)."""
+        """The "Label sessions" view's "Mark done" button — a domain
+        expert's explicit, persisted verdict on whether this session's
+        been reviewed."""
         ChatSession.update(labeled=labeled).where(ChatSession.id == session_id).execute()
 
     def touch_chat_session(self, session_id: int, datetime_end: datetime, end_state: str) -> None:

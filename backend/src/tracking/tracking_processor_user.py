@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import logging
 
 from automaton.automaton import Action, Automaton, State
+from session import Session
 from tracking.tracking_processor import OutVariables, TrackingProcessor
 
 
@@ -23,7 +24,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			)
 			if self.out.action:
 				self.out.state = self.user.automaton.get_state(self.out.action.target)
-
+			self.out.signals_resolved = True
 		elif key == 'env':
 			rv = self.metadata.env = self.metadata_processor.parse_raw_env(value)
 		elif key == 'audio':
@@ -31,10 +32,9 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 		self.metadata.on_metadata(key, rv)
 
 	def on_receiving_metadata_when_repeating_the_call(self, key: str, value: str):
-		# 'signals' is never among tag_specs for this call anymore (see
-		# _get_ai_reply's regeneration call) — already known from the
-		# first call, re-requesting them would be wasted and must not
-		# trigger a second trigger evaluation.
+		# 'signals' is never among tag_specs for this call — already known
+		# from the first call, re-requesting them would be wasted and must
+		# not trigger a second trigger evaluation.
 		rv = value
 		if key == 'env':
 			rv = self.metadata.env = self.metadata_processor.parse_raw_env(value)
@@ -45,42 +45,43 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 	async def _get_ai_reply(self) -> OutVariables:
 
 		self.out = OutVariables("", [], None, self.user.state, None)
+		# By design, signals only ever arrive if the schema/tag set for this
+		# turn actually asks for them — a message that doesn't request
+		# 'signals' will never produce that metadata, so there's nothing to
+		# gate text on: stream normally from the first chunk.
+		self.out.signals_resolved = 'signals' not in self.build_turn_protocol().include_tags
 
 		# Optimistic guess: generate the real reply first, using the
-		# *current* state's own context (see this module's own
-		# docstring) — the common case (no transition) needed exactly
-		# this one call anyway.
+		# *current* state's own context — the common case (no transition)
+		# needed exactly this one call anyway.
 
+		buffered_text_before_signals_resolved = ""
 		async for chunk in self.generate_reply(self.user.state, self.on_receiving_metadata_that_may_trigger_status_change):
-			if self.user.state == self.out.state:
+			if not self.out.signals_resolved:
+				buffered_text_before_signals_resolved += chunk
+			elif self.user.state == self.out.state:
+				if not self.out.reply:
+					chunk = buffered_text_before_signals_resolved + chunk
 				self.out.reply += chunk
 				self.metadata.on_metadata('chunk', chunk)
 
+		if not self.out.signals_resolved and buffered_text_before_signals_resolved:
+			# Safety net: the model never produced a 'signals' tag/field at
+			# all (malformed output, schema not honored, ...) — without this
+			# the whole buffered reply would be silently lost, since nothing
+			# else ever flushes it into self.out.reply or on to the client.
+			self.out.reply = buffered_text_before_signals_resolved
+			self.metadata.on_metadata('chunk', buffered_text_before_signals_resolved)
+
 		if self.metadata.signals:
-			# This "before" mode's own trigger is decided from the user's
-			# message (already saved — see self.user.message_id), not from
-			# the assistant's reply that's about to be (maybe) regenerated
-			# below — so the row must be linked to the user's message right
-			# away, rather than left for process()'s own post-hoc link to
-			# the (causally unrelated) assistant message. Called whenever
-			# signals were evaluated at all, fired or not — apply_transition
-			# itself saves a plain snapshot when self.out.action is still
-			# None (see tracking_engine.py), so an evaluation that didn't
-			# trigger anything (e.g. the opening message's own) still
-			# leaves a real, queryable row instead of vanishing outright.
-			#
-			# An opening turn (has_ai_started_conversation) has no real
-			# user message of its own though — self.user.message_id only
-			# points at a placeholder ('...') that process() deletes right
-			# after this returns, which would silently orphan an early
-			# link to it (Tracking.message is ON DELETE SET NULL). Left
-			# unlinked here instead, same as "after" mode always is, so
-			# process()'s own post-hoc link attaches it to the one real
-			# message this turn actually produces (its own reply).
+			# The trigger is decided from the user's message, so this row
+			# links to it directly — except an opening turn, whose
+			# message_id only points at a placeholder that gets deleted, which would silently orphan an early link.
 			has_real_user_message = not self.user.has_ai_started_conversation
 			self.out.tracking_id = self._tracking_engine.apply_transition(
 				self.user.automaton, self.user.state, self.out.action, self.metadata.signals, self.user.session_id,
 				message_id=self.user.message_id if has_real_user_message else None,
+				username=Session().user, project_name=self.user.project_name,
 			)
 			self.out.tracking_linked_to_message = has_real_user_message
 
@@ -89,13 +90,10 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			# We need to regenerate the answer
 
 			self.out.reply = ""
-			self.metadata.on_metadata('text', "")
 
-			# Signals are already known from the first call — asking
-			# again here would be wasted (and must not trigger a second
-			# trigger evaluation, see on_receiving_metadata_when_
-			# repeating_the_call, which never handles 'signals'), so
-			# this regeneration only ever requests audio/text/env.
+			# Signals are already known from the first call — asking again
+			# would be wasted and must not trigger a second trigger
+			# evaluation, so this regeneration only ever requests audio/text/env.
 			base_prompt, chat_history = self._build_base_prompt_and_history(self.out.state)
 			async for chunk in self.build_turn_protocol().generate_reply_with_schema(
 				base_prompt,

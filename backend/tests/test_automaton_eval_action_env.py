@@ -1,8 +1,6 @@
-"""Automaton.eval_action_env — an action's own `env` field (see
-automaton_builder.py's _build_action), evaluated the same way a trigger
-is (see Automaton._eval_trigger) but returning a value of any type
-instead of forcing a boolean cast. Unlike a trigger, a failing key here
-is never silently swallowed — see test_*_is_logged_not_silent below.
+"""Automaton.eval_action_env — an action's own `env` field, evaluated like
+a trigger but returning a value of any type instead of a forced boolean
+cast. Unlike a trigger, a failing key here is logged, not swallowed.
 """
 from __future__ import annotations
 
@@ -52,11 +50,8 @@ def test_a_referenced_name_that_is_still_none_does_not_raise_but_is_skipped(capl
 
 
 def test_a_referenced_name_missing_entirely_is_logged_not_silent(caplog):
-    """The exact scenario that must be visible, not silently no-op'd:
-    `A: A + 1` where `A` doesn't exist in env yet (a typo, or a
-    free-form key never set) — see Automaton.eval_action_env's own
-    docstring for why this diverges from _eval_trigger's silent
-    treatment of an unresolved name."""
+    """A missing name (e.g. a typo) must be visible, not silently
+    no-op'd — unlike _eval_trigger's silent treatment of the same case."""
     action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="a", env={"A": "A + 1"})
 
     with caplog.at_level(logging.WARNING):

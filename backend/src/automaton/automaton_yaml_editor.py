@@ -1,26 +1,7 @@
-"""Structural (never textual) editing of a project's own index.yml — every
-add/edit/delete/reorder operation an "Edit project" view needs, all
-working directly against a ruamel.yaml round-trip tree (so comments and
-formatting survive edits untouched wherever the edit itself doesn't touch
-them) instead of AutomatonBuilder's own read-only parse. Every payload
-this hands back mirrors AutomatonBuilder's own field-resolution rules
-(ui-label fallbacks, ui-button's own fallback chain, has_trigger, final
-derived from actions, ...) exactly, so a caller sees the same object
-AutomatonBuilder would eventually build from the same YAML — but this
-class itself never validates the result as a whole (unknown trigger
-names, mutually exclusive fields, ...): that's AutomatonBuilder's own
-job, run by whatever calls serialize() and hands the text to
-ProjectService.put_project_file().
-
-Two narrow, purely cosmetic round-trip gaps in ruamel.yaml itself, never
-worth fixing with a custom representer given neither changes anything a
-build ever sees: a blank line's own trailing whitespace inside a literal
-block scalar (`|`) is dropped on re-dump, and a boolean's original
-spelling (`True`/`TRUE` vs `true`) isn't retained — re-dumped in
-whatever casing ruamel's own representer prefers. Both semantically
-inert (YAML treats every spelling identically either way) and only ever
-surface on a field an edit didn't itself touch.
-"""
+"""Structural (never textual) editing of a project's index.yml, working
+against a ruamel.yaml round-trip tree so comments/formatting survive
+edits untouched. Never validates the result — AutomatonBuilder does
+that once serialize() feeds the text back through it."""
 from __future__ import annotations
 
 import ast
@@ -30,41 +11,28 @@ import re
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
-from automaton.automaton import ActionPayload, SignalPayload, StatePayload, trigger_signal_names
+from automaton.automaton import ActionPayload, EnvKeyPayload, ProjectPayload, SignalPayload, StatePayload, _namespace_attrs
 
 
 class InitActionTargetError(Exception):
-    """Raised by delete_state when asked to delete the one state
-    init-action targets — the automaton's own required entry point, so
-    deleting it would leave nothing to ever start a session at. A plain
-    ValueError from re-validating the result (see AutomatonBuilder.build)
-    would eventually catch this too, but only as a generic "target 'x' is
-    not a valid state" — this dedicated type lets a caller (see
-    ChatService/the REST layer) render its own, more specific guidance
-    instead ("this state can't be deleted while init-action still points
-    at it")."""
+    """Raised by delete_state when asked to delete the state init-action
+    targets — the automaton's required entry point. Lets a caller render
+    more specific guidance than a generic "target is not a valid state"."""
 
 
 class AutomatonYamlEditor:
 
     def __init__(self, raw_text: str) -> None:
         self._yaml = YAML(typ='rt')
-        # Matches every real project's own hand-authored style (see
-        # samples/*/index.yml — a sequence's own "- " sits 2 spaces past
-        # its parent key, not flush with it), which ruamel's own default
-        # indent doesn't reproduce on dump — left at the default, a
-        # no-op edit would still reformat every action list in the file.
+        # Matches real projects' hand-authored style (a sequence's "- "
+        # sits 2 spaces past its parent key) — ruamel's default indent
+        # would otherwise reformat every action list on a no-op edit.
         self._yaml.indent(mapping=2, sequence=4, offset=2)
-        # Round-trip mode re-quotes every scalar in its own preferred
-        # style by default (dropping "Mood" down to Mood, say) unless
-        # told to keep whatever quoting the original author actually
-        # wrote — an untouched value should never gain or lose quotes
-        # just from loading and re-dumping it.
+        # Without this, round-trip mode re-quotes scalars in its own
+        # preferred style, so an untouched value could gain/lose quotes.
         self._yaml.preserve_quotes = True
-        # Ruamel's own default 80-column width silently line-wraps any
-        # long scalar it re-dumps, even one an edit never touched — a
-        # quoted ui-description that was one line in the original file
-        # would otherwise come back split across two.
+        # Ruamel's default 80-column width would silently line-wrap any
+        # long scalar it re-dumps, even one an edit never touched.
         self._yaml.width = 1_000_000
         self._raw = self._yaml.load(raw_text)
 
@@ -80,12 +48,7 @@ class AutomatonYamlEditor:
         return collapsed.strip('_')
 
     # ------------------------------------------------------------------
-    # Internal: raw-tree accessors, name/label generation, payload
-    # builders — every one of these mirrors AutomatonBuilder's own
-    # resolution rules (see that module's _build_state/_build_action/
-    # _build_signal/get_state_payload) so a payload this class returns is
-    # never a different shape from the one AutomatonBuilder would
-    # eventually produce from the same YAML.
+    # Internal: raw-tree accessors, name/label generation, payload builders.
     # ------------------------------------------------------------------
 
     def _states(self) -> CommentedMap:
@@ -93,6 +56,9 @@ class AutomatonYamlEditor:
 
     def _signals(self) -> CommentedMap:
         return self._raw.setdefault("signals", CommentedMap())
+
+    def _env(self) -> CommentedMap:
+        return self._raw.setdefault("env", CommentedMap())
 
     def _state(self, state_name: str) -> CommentedMap:
         try:
@@ -106,6 +72,19 @@ class AutomatonYamlEditor:
         except KeyError:
             raise ValueError(f"Signal '{signal_name}' not found.") from None
 
+    def _env_key(self, name: str) -> CommentedMap:
+        env = self._env()
+        try:
+            raw = env[name]
+        except KeyError:
+            raise ValueError(f"Env key '{name}' not found.") from None
+        # A bare `key:` declaration (no nested fields at all) parses as
+        # None, not {} — normalized in place the first time it's touched
+        # so every other accessor below can treat it as a plain mapping.
+        if raw is None:
+            raw = env[name] = CommentedMap()
+        return raw
+
     def _actions(self, state_name: str) -> CommentedSeq:
         return self._state(state_name).setdefault("actions", CommentedSeq())
 
@@ -117,10 +96,8 @@ class AutomatonYamlEditor:
 
     @staticmethod
     def _next_numbered_name(prefix: str, existing_names: set) -> str:
-        """The first `{prefix}-N` past whatever's already in use — always
-        one past the *highest* N already taken, never backfilling a gap
-        left by a deleted entry, so a name is never reused within the
-        same project."""
+        """The first `{prefix}-N` past whatever's in use — one past the
+        *highest* N taken, never backfilling a gap from a deleted entry."""
         pattern = re.compile(rf'^{re.escape(prefix)}-(\d+)$')
         highest = -1
         for name in existing_names:
@@ -193,12 +170,27 @@ class AutomatonYamlEditor:
             "ui_description": raw_signal["ui-description"].strip() if raw_signal.get("ui-description") else (definition or None),
             "definition": definition,
             # This class never resolves attachment filenames into real
-            # MemoryArchive objects (that needs the project's own file
-            # store — see AutomatonBuilder.build's own all_archives,
-            # built from the uploaded zip's contents, not available
-            # here) — always empty, same as add_signal's own payload.
+            # MemoryArchive objects — that needs the project's file
+            # store, not available here — so always empty.
             "attachments": {},
             "error": None,
+        }
+
+    def _project_payload(self) -> ProjectPayload:
+        raw_project = self._raw.get("project") or {}
+        return {
+            "id": raw_project.get("id"),
+            "ui_label": raw_project.get("ui-label"),
+            "ui_description": raw_project.get("ui-description"),
+        }
+
+    def _env_key_payload(self, name: str) -> EnvKeyPayload:
+        raw_env_key = self._env_key(name)
+        ui_description = raw_env_key.get("ui-description")
+        return {
+            "name": name,
+            "ui_description": ui_description.strip() if ui_description else None,
+            "value": raw_env_key.get("value") or "",
         }
 
     # ------------------------------------------------------------------
@@ -225,6 +217,15 @@ class AutomatonYamlEditor:
         })
         return self._signal_payload(name)
 
+    def add_env_key(self) -> EnvKeyPayload:
+        """Unlike a signal, an env key has no separate ui-label — the key
+        itself is the only name — so it's suffixed via _unique_signal_name
+        (valid identifier chars), never _next_numbered_name's "-N" suffix."""
+        env = self._env()
+        name = self._unique_signal_name("new_env_key", set(env.keys()))
+        env[name] = CommentedMap({"value": ""})
+        return self._env_key_payload(name)
+
     def add_action(self, state_name: str) -> ActionPayload:
         actions = self._actions(state_name)
         existing_names = {raw_action.get("name") for raw_action in actions}
@@ -246,12 +247,9 @@ class AutomatonYamlEditor:
 
     def set_action_field(self, state_name: str, action_name: str, field: str, value) -> ActionPayload:
         raw_action = self._find_action(state_name, action_name)
-        # Same convention _transform_triggers_referencing already applies
-        # when a rename/delete empties a trigger out from under it (see
-        # its own docstring): an empty trigger means manual-only, so the
-        # key itself is removed rather than left holding "" — has_trigger
-        # (raw_action.get("trigger") is not None) would otherwise report
-        # True for an action the user just cleared.
+        # An empty trigger means manual-only, so the key is removed
+        # rather than left holding "" — has_trigger would otherwise
+        # report True for an action the user just cleared.
         if field == "trigger" and not value:
             raw_action.pop("trigger", None)
         else:
@@ -279,18 +277,33 @@ class AutomatonYamlEditor:
         self._signal(signal_name)[field] = value
         return self._signal_payload(signal_name)
 
+    def set_env_key_field(self, name: str, field: str, value) -> EnvKeyPayload:
+        """Same "editing this field renames the entry" convention as
+        set_signal_field's 'ui-label' case, but 'name' itself is the
+        field that does it — an env key has no separate ui-label."""
+        if field == "name":
+            derived_name = self.to_snake_case(value)
+            if derived_name and derived_name != name:
+                return self.rename_env_key(name, derived_name)
+            return self._env_key_payload(name)
+        self._env_key(name)[field] = value
+        return self._env_key_payload(name)
+
+    def set_project_field(self, field: str, value) -> ProjectPayload:
+        """The optional top-level `project:` mapping — id/ui-label/
+        ui-description. A falsy `id` removes the key rather than writing
+        an empty string, which AutomatonBuilder would reject as an invalid identifier."""
+        project = self._raw.setdefault("project", CommentedMap())
+        if field == "id" and not value:
+            project.pop("id", None)
+        else:
+            project[field] = value
+        return self._project_payload()
+
     def set_init_action_field(self, field: str, value) -> StatePayload | ActionPayload:
-        """Every editable field of the init-action itself. 'target' (see
-        set_init_action_target below, kept as its own method — Started-
-        payload-shaped, with its own must-be-a-real-state validation) is
-        the one existing callers already relied on; every other field
-        ('ui-label' is the only one currently exposed by the Inspector —
-        see InspectorDetailCard.vue's own title input, shown for every
-        action card including the init-action's) used to 404: the
-        init-action lives outside `states:` entirely (just its own
-        top-level `init-action:` mapping), so the regular per-field action
-        endpoint's states[state_name]/_find_action lookup could never
-        reach it."""
+        """Every editable field of the init-action itself. 'target' is
+        handled by set_init_action_target below; the init-action lives
+        outside `states:` entirely, so the regular action lookup can't reach it."""
         if field == "target":
             return self.set_init_action_target(value)
         init_action = self._raw.setdefault("init-action", CommentedMap())
@@ -298,16 +311,28 @@ class AutomatonYamlEditor:
         return self._init_action_payload()
 
     def set_init_action_target(self, state_name: str) -> StatePayload:
-        """Moves the automaton's own start state — the Inspector's own
-        editable state card shows this as an always-on "Start" badge (see
-        InspectorDetailCard.vue), clickable to make *this* state the new
-        one; there's no way to unset it from here, only to move it to a
-        different state (see delete_state's own InitActionTargetError for
-        the corresponding "can't delete the current one" guard)."""
+        """Moves the automaton's start state. There's no way to unset it
+        from here, only to move it to a different state (see
+        delete_state's InitActionTargetError for the "can't delete the current one" guard)."""
         self._state(state_name)  # raises ValueError if unknown, same as every other set_*_field
         init_action = self._raw.setdefault("init-action", CommentedMap())
         init_action["target"] = state_name
         return self._state_payload(state_name)
+
+    @staticmethod
+    def _rename_key_preserving_comments(mapping: CommentedMap, old_key: str, new_key: str) -> None:
+        """A structural key swap, not a textual replace — rebuilds
+        `mapping` in place so every other entry's attached comment stays
+        put; the renamed entry's own comment is carried over explicitly."""
+        items = list(mapping.items())
+        original_comments = dict(mapping.ca.items)
+        mapping.clear()
+        mapping.ca.items.clear()
+        for key, value in items:
+            actual_key = new_key if key == old_key else key
+            mapping[actual_key] = value
+            if key in original_comments:
+                mapping.ca.items[actual_key] = original_comments[key]
 
     def rename_signal(self, old_name: str, new_name: str) -> SignalPayload:
         signals = self._signals()
@@ -316,26 +341,22 @@ class AutomatonYamlEditor:
         existing_names = set(signals.keys()) - {old_name}
         unique_new_name = self._unique_signal_name(new_name, existing_names)
 
-        # A structural key swap, not a textual replace — rebuilds the
-        # same CommentedMap in place (same object identity, same key
-        # order) so every *other* signal's own attached comment stays
-        # exactly where it was; the renamed entry's own comment (keyed by
-        # name in the parent's .ca, not on the value node itself — a
-        # bare pop/reinsert under a new key would otherwise silently
-        # drop it) is carried over to the new key explicitly.
-        items = list(signals.items())
-        original_comments = dict(signals.ca.items)
-        signals.clear()
-        signals.ca.items.clear()
-        for key, value in items:
-            actual_key = unique_new_name if key == old_name else key
-            signals[actual_key] = value
-            if key in original_comments:
-                signals.ca.items[actual_key] = original_comments[key]
-
-        self._rename_signal_in_triggers(old_name, unique_new_name)
+        self._rename_key_preserving_comments(signals, old_name, unique_new_name)
+        self._rename_namespaced_ref_in_triggers("signal", old_name, unique_new_name)
 
         return self._signal_payload(unique_new_name)
+
+    def rename_env_key(self, old_name: str, new_name: str) -> EnvKeyPayload:
+        env = self._env()
+        if old_name not in env:
+            raise ValueError(f"Env key '{old_name}' not found.")
+        existing_names = set(env.keys()) - {old_name}
+        unique_new_name = self._unique_signal_name(new_name, existing_names)
+
+        self._rename_key_preserving_comments(env, old_name, unique_new_name)
+        self._rename_namespaced_ref_in_triggers("env", old_name, unique_new_name)
+
+        return self._env_key_payload(unique_new_name)
 
     # ------------------------------------------------------------------
     # Delete
@@ -371,7 +392,18 @@ class AutomatonYamlEditor:
         if signal_name in signals:
             del signals[signal_name]
 
-        self._transform_triggers_referencing(signal_name, lambda tree: self._strip_signal_from_trigger(tree, signal_name))
+        self._transform_triggers_referencing(
+            "signal", signal_name, lambda tree: self._strip_namespaced_ref_from_trigger(tree, "signal", signal_name)
+        )
+
+    def delete_env_key(self, name: str) -> None:
+        env = self._env()
+        if name in env:
+            del env[name]
+
+        self._transform_triggers_referencing(
+            "env", name, lambda tree: self._strip_namespaced_ref_from_trigger(tree, "env", name)
+        )
 
     # ------------------------------------------------------------------
     # Reorder
@@ -396,59 +428,46 @@ class AutomatonYamlEditor:
         return [self._action_payload_from_raw(a, state_name) for a in actions]
 
     # ------------------------------------------------------------------
-    # Shared trigger-tree traversal for rename_signal/delete_signal — see
-    # each one's own docstring for the transform it passes in.
+    # Shared trigger-tree traversal for rename/delete of signals and env keys.
     # ------------------------------------------------------------------
 
-    def _transform_triggers_referencing(self, signal_name: str, transform) -> None:
-        """Walks every action of every state, ast-parses any `trigger`
-        that references `signal_name` (via trigger_signal_names — an
-        ast.walk over every `signal.<name>` attribute access at any
-        depth, so a signal name that's merely a substring of another
-        name or expression token is never mistaken for a real
-        reference) and rewrites it through
-        `transform(tree) -> ast.AST | None`. A trigger that doesn't
-        reference `signal_name` at all is left completely untouched, not
-        even re-unparsed, so an edit here never reformats an unrelated
-        trigger's own source. `transform` returning None means the
-        trigger is now empty — the field itself is removed (the action
-        survives, manual-only) rather than regenerated as unparseable
-        empty source."""
+    def _transform_triggers_referencing(self, namespace: str, name: str, transform) -> None:
+        """Walks every action of every state, rewriting any `trigger`
+        that references `<namespace>.<name>` via `transform`. An
+        unrelated trigger is untouched; returning None removes the trigger field."""
         for containing_key, raw_state in self._states().items():
             for raw_action in raw_state.get("actions") or []:
                 trigger = raw_action.get("trigger")
-                if not trigger or signal_name not in trigger_signal_names(trigger):
+                if not trigger:
                     continue
                 tree = ast.parse(trigger, mode="eval").body
+                if name not in _namespace_attrs(tree, namespace):
+                    continue
                 new_node = transform(tree)
                 if new_node is None:
                     del raw_action["trigger"]
                 else:
                     raw_action["trigger"] = ast.unparse(new_node)
 
-    def _rename_signal_in_triggers(self, old_name: str, new_name: str) -> None:
+    def _rename_namespaced_ref_in_triggers(self, namespace: str, old_name: str, new_name: str) -> None:
         def transform(tree: ast.AST) -> ast.AST:
             for node in ast.walk(tree):
                 if (
                     isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
-                    and node.value.id == "signal" and node.attr == old_name
+                    and node.value.id == namespace and node.attr == old_name
                 ):
                     node.attr = new_name
             return tree
-        self._transform_triggers_referencing(old_name, transform)
+        self._transform_triggers_referencing(namespace, old_name, transform)
 
-    def _strip_signal_from_trigger(self, node: ast.AST, signal_name: str) -> ast.AST | None:
-        """A BoolOp (and/or) drops just the operand(s) that reference
-        `signal_name`, collapsing to the sole survivor if exactly one is
-        left, or to nothing if none are. Any other node (a comparison, a
-        parenthesized sub-expression, ...) is all-or-nothing: emptied
-        outright if `signal_name` appears anywhere inside it at all,
-        otherwise left completely untouched — there's no finer-grained
-        clause to peel out of e.g. a single comparison."""
+    def _strip_namespaced_ref_from_trigger(self, node: ast.AST, namespace: str, name: str) -> ast.AST | None:
+        """A BoolOp (and/or) drops just the operand(s) referencing
+        `<namespace>.<name>`. Any other node is all-or-nothing: emptied
+        if the reference appears anywhere inside it, untouched otherwise."""
         if isinstance(node, ast.BoolOp):
             kept = [
                 child for child in (
-                    self._strip_signal_from_trigger(operand, signal_name) for operand in node.values
+                    self._strip_namespaced_ref_from_trigger(operand, namespace, name) for operand in node.values
                 )
                 if child is not None
             ]
@@ -458,9 +477,9 @@ class AutomatonYamlEditor:
                 return kept[0]
             node.values = kept
             return node
-        references_signal = any(
+        references_name = any(
             isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name)
-            and n.value.id == "signal" and n.attr == signal_name
+            and n.value.id == namespace and n.attr == name
             for n in ast.walk(node)
         )
-        return None if references_signal else node
+        return None if references_name else node

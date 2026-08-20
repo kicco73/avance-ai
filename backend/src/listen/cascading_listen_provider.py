@@ -1,10 +1,6 @@
 """Composite ListenProvider: presents an ordered list of ListenProvider
 implementations as a single one — same contract, same exceptions — with
-retry-in-place, backoff, ordered fallback and logging (see cascade.py's
-ProviderCascade) happening underneath. Anywhere a ListenProvider is
-expected, this is a legal, swappable value — see listen_service.py's
-ListenService.
-"""
+retry, backoff, and fallback (see cascade.py's ProviderCascade) underneath."""
 from __future__ import annotations
 
 from cascade import ProviderCascade, ProviderRateLimitedError, ProviderUnavailableError

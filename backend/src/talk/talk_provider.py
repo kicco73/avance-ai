@@ -1,8 +1,5 @@
-"""Abstract interface shared by all audio (TTS) providers, mirroring
-ai/llm_provider.py's LLMProvider — no cascade knowledge anywhere here:
-retry/cascading is CascadingTalkProvider's responsibility alone (see
-cascading_talk_provider.py).
-"""
+"""Abstract interface shared by all audio (TTS) providers. No cascade
+knowledge here: retry/cascading is CascadingTalkProvider's responsibility alone."""
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

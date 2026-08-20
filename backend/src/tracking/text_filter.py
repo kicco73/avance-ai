@@ -21,21 +21,17 @@ class StreamingTagFilter(Filter):
         self.close_tag = close_tag
         
         self.on_tag = on_tag
-        
-        # Current parser state
+
         self.state: str = "NORMAL"
 
-        # Temporary buffer used to detect partial tags
+        # Used to detect partial tags before committing them.
         self.pending: str = ""
 
-        # Buffer containing the hidden tag content
         self.tag_content: str = ""
 
     def filter(self, chunk: str) -> str:
-        """
-        Process an incoming text chunk and return only visible text.
-        Characters inside recognized tags are removed from output.
-        """
+        """Returns only the visible text — characters inside recognized
+        tags are stripped from output."""
         output: list[str] = []
 
         for char in chunk:
@@ -50,17 +46,10 @@ class StreamingTagFilter(Filter):
         return "".join(output)
 
     def _process_normal(self, char: str) -> str:
-        """
-        Process characters outside tags.
-
-        Detects the beginning of an opening tag.
-        """
         self.pending += char
 
-        # The current buffer can still be the beginning of the tag
         if self.open_tag.startswith(self.pending):
 
-            # Full opening tag detected
             if self.pending == self.open_tag:
                 self.pending = ""
                 self.tag_content = ""
@@ -68,55 +57,35 @@ class StreamingTagFilter(Filter):
 
             return ""
 
-        # The buffered characters are not a tag prefix
         result = self.pending
         self.pending = ""
 
         return result
 
     def _process_tag_content(self, char: str) -> None:
-        """
-        Process characters inside a tag.
-
-        Detects the closing tag incrementally.
-        """
         self.pending += char
 
-        # The current buffer can still be the beginning of the closing tag
         if self.close_tag.startswith(self.pending):
 
-            # Full closing tag detected
             if self.pending == self.close_tag:
                 self.pending = ""
                 if not self.on_tag:
                     self._default_on_tag(self.tag_content)
                 else:
                     self.on_tag(self.tag_content)
-                
+
                 self.state = "NORMAL"
 
             return
 
-        # The buffer is not part of a closing tag
         self.tag_content += self.pending
         self.pending = ""
 
     def flush(self) -> str:
-        """
-        Flush remaining buffered characters — called once the input
-        truly ends (see ConcatTagFilter.flush/_receive_ai_stream_and_
-        sendreply). If still mid-tag at that point, the model opened
-        this tag but never closed it (a real, observed failure mode,
-        e.g. a truncated/cut-off reply) — recovers whatever was
-        accumulated (both the confirmed tag_content and any trailing
-        false-start toward the close tag still sitting in `pending`) as
-        visible text instead of silently discarding it, so a malformed
-        reply degrades to leaking that text rather than losing the rest
-        of the message along with it. `on_tag`'s own callback never
-        fires in this case (the close tag was never actually seen), so
-        callers reading e.g. an audio-tag's `tag_content` directly after
-        this must expect it to be reset to "" here too.
-        """
+        """Flush remaining buffered characters, called once input truly
+        ends. If still mid-tag (the model opened a tag but never closed
+        it), the accumulated content is recovered as visible text rather
+        than discarded — `on_tag` never fires in this case."""
         if self.state == "NORMAL":
             remaining = self.pending
             self.pending = ""
@@ -129,9 +98,6 @@ class StreamingTagFilter(Filter):
         return recovered
 
     def _default_on_tag(self, content: str) -> None:
-        """
-        Default callback executed when a tag is found.
-        """
         pass
 
 class TagFilter(StreamingTagFilter):
@@ -152,22 +118,10 @@ class ConcatTagFilter(StreamingTagFilter):
         return text
 
     def flush(self) -> str:
-        """Call once the true end of the input has been reached (see
-        StreamingTagFilter.flush's own docstring) — recovers any content
-        stuck behind a tag the model opened but never closed, for every
-        tag this filter tracks. filter() alone (the streaming path, one
-        call per chunk) never calls this on its own: a filter still
-        mid-tag after one chunk is normal — more of the tag's own
-        content, or its close, may simply be in the next chunk.
-
-        Chained the same way filter_and_flush already is, not one
-        independent flush() per tag: an earlier tag's own recovered
-        content can itself contain a later tag (e.g. an unclosed
-        [audio] swallows the real [signals]/[env] tags right along with
-        the visible reply — see its own flush()) — piping each filter's
-        output into the next one's filter()+flush() lets a later filter
-        still recognize and strip its own tag out of what an earlier one
-        just recovered, exactly like a fresh, complete text would."""
+        """Recovers content stuck behind any tag the model opened but
+        never closed, for every tag tracked. Chained rather than run
+        independently per tag, since an earlier tag's recovered content
+        can itself contain a later tag (e.g. unclosed [audio] swallowing [signals]/[env])."""
         text = ""
         for filter in self.tags.values():
             text = filter.filter(text) + filter.flush()

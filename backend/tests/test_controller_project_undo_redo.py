@@ -1,15 +1,6 @@
-"""Integration tests (through the real HTTP surface, TestClient) for the
-Archive/History redesign: GET .../files/{file_name} exposes {content,
-can_undo, can_redo} for a file's current content, POST .../undo and
-.../redo walk the current user's own per-file undo/redo trail, and
-DELETE .../history clears it — see backend/src/db.py's Archive/History
-models and project/project_service.py's put_project_file/undo_project_file/
-redo_project_file/clear_project_history.
-
-POST .../undo and .../redo are a pure editor preview, not a save: the
-request body is whatever the editor currently shows (mirroring
-EditProjectView.vue's own applyHistoryNavigation), and neither endpoint
-ever touches Archive — only PUT .../files/{file_name} (a real Save) does.
+"""Integration tests for GET/POST/DELETE .../files/{file_name}, .../undo,
+.../redo, and .../history. POST .../undo and .../redo are a pure editor
+preview, not a save, and never touch Archive — only PUT .../files/{file_name} does.
 """
 from __future__ import annotations
 
@@ -68,8 +59,8 @@ def test_editing_a_file_enables_undo(client):
 
 @pytest.mark.regression
 def test_editing_one_file_does_not_touch_a_siblings_undo_state(client):
-    """No more project-wide version counter: editing index.yml alone must
-    not enable undo for notes.txt, which was never itself re-saved."""
+    """Editing index.yml alone must not enable undo for notes.txt, which
+    was never itself re-saved."""
     _upload(client, "proj")
 
     new_yml = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi again\n"
@@ -222,12 +213,8 @@ TWO_STATE_YML = (
 
 @pytest.mark.regression
 def test_undo_does_not_reset_or_reload_the_active_conversation(client):
-    """Regression test: undo (and, by the same code path, redo) must
-    never trigger the active-conversation reconciliation a real Save
-    does (see ProjectService._finalize_project_update) — previously
-    undo persisted straight to Archive and called it too, which could
-    reset the live conversation as a side effect of what's meant to be
-    a purely-preview action."""
+    """Undo (and, by the same code path, redo) must never trigger the
+    active-conversation reconciliation a real Save does."""
     resp = client.put(
         "/api/projects/proj2", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"}
     )
@@ -235,7 +222,7 @@ def test_undo_does_not_reset_or_reload_the_active_conversation(client):
     resp = client.post("/api/projects/proj2/publish", json={})
     assert resp.status_code == 200, resp.text
     session = client.get("/api/chat/session").json()
-    action_resp = client.post("/api/action", json={"action_name": "go", "session_id": session["id"]})
+    action_resp = client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "go"})
     assert action_resp.status_code == 200, action_resp.text
     assert action_resp.json()["state"]["key"] == "b"
 
@@ -251,6 +238,6 @@ def test_undo_does_not_reset_or_reload_the_active_conversation(client):
     assert undo_resp.status_code == 200, undo_resp.text
 
     # The conversation is completely untouched by the undo preview.
-    sessions = client.get("/api/chat/sessions").json()
+    sessions = client.get("/api/projects/proj2/sessions").json()
     assert [s["id"] for s in sessions] == [session["id"]]
     assert client.get("/api/state").json()["key"] == "b"

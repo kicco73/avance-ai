@@ -1,12 +1,7 @@
 <script setup>
-// The cytoscape graph itself — mount, tap-to-select, highlight classes,
-// flexible-size container — extracted out of InspectorGraphTab.vue so the
-// detail card for whatever gets selected (see InspectorDetailCard.vue) can
-// be a sibling component instead of markup baked into this one.
-// Deliberately has no opinion of its own on what a selection *means*
-// beyond emitting it — InspectorGraphTab.vue owns `selectedElement` and
-// feeds it to InspectorDetailCard.vue, so closing/resizing that card is
-// this component's parent's job, not this one's (see its own resize()).
+// The cytoscape graph — mount, tap-to-select, highlight classes. Has no
+// opinion of its own on what a selection means beyond emitting it — the
+// parent owns `selectedElement` and drives any detail card from it.
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import cytoscape from 'cytoscape'
 import { getProjectGraph } from '../../api.js'
@@ -18,42 +13,40 @@ const props = defineProps({
   autoJumpOnHighlightChange: { type: Boolean, default: false },
   nextActionEdge: { type: Object, default: null },
   firedActionEdge: { type: Object, default: null },
+  // The current selection ({kind, data} | null) — fed back in so a
+  // selection made outside this graph (e.g. a row click elsewhere) still
+  // shows up highlighted here, in sync with a direct tap on the graph.
+  selectedElement: { type: Object, default: null },
   annotatable: { type: Boolean, default: false },
   expectedState: { type: String, default: null },
-  // Whether the session being annotated was imported (see ChatSession.
-  // source) — there's no real avance-computed state to compare
-  // expectedState against there (see benchmarkTimeline.js's own
-  // transitionAnnotationStatus/resolveTransitionRow, and ChatTimeline.
-  // vue's own analogous imported prop), so the select reads as a neutral
-  // "labelled" state instead of a correct/incorrect verdict.
-  imported: { type: Boolean, default: false }
+  // Whether the session being annotated was imported — there's no
+  // computed state to compare expectedState against, so the select reads
+  // as a neutral "labelled" state instead of a correct/incorrect verdict.
+  imported: { type: Boolean, default: false },
+  // null reads the current draft; passing a sessionId pins the graph to
+  // the exact revision that session actually ran against.
+  sessionId: { type: [Number, String], default: null }
 })
 
 const emit = defineEmits(['jump-to-definition', 'update-expected-state', 'select'])
 
-// Cytoscape rejects an empty string as an element id outright ("Can not
-// create element with invalid string ID ``") — this is the pseudo-node's
-// *graph-wiring* id only (data.id, and the init edge's own data.source/
-// target). The "" chat/Signals.old_state convention (see matchStateKey
-// below) is kept as a separate field, purely for highlight-matching
-// against firedActionEdge/nextActionEdge, never handed to cytoscape
-// itself as an id.
+// Cytoscape rejects an empty string as an element id — this is only the
+// pseudo-node's graph-wiring id; the real "" state key is kept
+// separately in matchStateKey, never handed to cytoscape itself.
 const PSEUDO_START_ID = '__avance_init_pseudo_node__'
 
-// The dropdown's own "<not labelled>" option — an explicit, distinct
-// choice from every real state key, so leaving it selected never looks
-// like "the expert confirmed this state," only like "nobody has looked
-// yet." Selecting it clears the annotation, same as the × button.
+// The dropdown's "<not labelled>" option — a distinct choice from every
+// real state key, so leaving it selected reads as "nobody has looked
+// yet," not "confirmed."
 const UNLABELLED = ''
 
 function onExpectedStateChange(rawValue) {
   emit('update-expected-state', rawValue === UNLABELLED ? null : rawValue)
 }
 
-// The Inspector is always inside a narrow, `overflow: hidden` split-view
-// panel — see useFloatingTooltip's own docstring for why the (?) tooltip
-// needs this instead of a normal absolutely-positioned one (or the
-// browser's native `title`, which wasn't rendering reliably either).
+// The Inspector sits inside a narrow, `overflow: hidden` split-view
+// panel, so the (?) tooltip needs floating/fixed positioning instead of
+// a normal absolutely-positioned one or the browser's native `title`.
 const {
   triggerRef: helpIconRef,
   visible: helpTooltipVisible,
@@ -67,34 +60,23 @@ const graphHost = ref(null)
 let cyGraph = null
 const graphNodes = ref([])
 const graphEdges = ref([])
+// The exact revision this graph was built from — shown as a "Rev. X"
+// badge so it's never ambiguous whether the live draft or a past
+// revision (pinned via sessionId) is on screen.
+const graphRevision = ref(null)
 
 function destroyGraph() {
   cyGraph?.destroy()
   cyGraph = null
 }
 
-// `n`/`e` are the node/edge *wrappers* project_service.py's
-// get_project_graph now sends (see its own docstring) — a nested
-// StatePayload/ActionPayload (the exact shape chat's own live client
-// gets too, see Automaton.get_state_payload/get_action_payload) plus
-// whatever extra fields the graph itself needs and those shared payloads
-// deliberately don't carry (is_start/history_cutoff/transition_log_level/
-// attachments on a node; source/trigger/action_prompt/ui_description on
-// an edge — trigger especially never reaches a live chat client, only
-// this Inspect-panel-only wrapper).
+// `n`/`e` wrap the same state/action payload the live chat client gets,
+// plus extra fields only the graph needs (is_start/history_cutoff/
+// attachments on a node; source/trigger/action_prompt on an edge).
 function nodeToCyData(n) { return { id: n.state.key, uiLabel: n.state.ui_label, uiDescription: n.state.ui_description, final: n.state.final, isStart: n.is_start, chat: n.state.chat, historyCutoff: n.history_cutoff, transitionLogLevel: n.transition_log_level, attachments: n.attachments, contextualPrompt: n.contextual_prompt } }
-// The one edge with source === "" is the automaton's own init_action (see
-// project_service.py's get_project_graph). Its cytoscape-facing `source`
-// is PSEUDO_START_ID (a real node has to exist there — see
-// pseudoStartNodeElements), but `matchStateKey` keeps the exact same ""
-// the chat's own init-transition already uses everywhere else (Signals.
-// action, benchmarkTimeline.js's synthetic entry) — every next/fired-
-// action highlight match (see applyFiredActionHighlight/
-// isSelectedActionFired) reads *that* field, never cytoscape's own
-// source/target, so this one edge needs no special-casing there. Same
-// reasoning for actionName: overridden to "" (display-only — the backend
-// still reports the real "init_action" name) so {stateKey, actionName}
-// lines up with the chat's own transition shape.
+// The edge with source === "" is the init_action. Its cytoscape `source`
+// becomes PSEUDO_START_ID, but `matchStateKey` keeps the real "" so
+// highlight matching elsewhere needs no special-casing for this edge.
 function edgeToCyData(e, id) {
   const isInitEdge = e.source === ''
   return {
@@ -114,13 +96,9 @@ function edgeToCyData(e, id) {
   }
 }
 
-// A transparent node for the init edge's own source — cytoscape needs a
-// real node (with a non-empty id — an empty string is rejected outright)
-// at each edge endpoint, so the automaton's own "arrow from nowhere" into
-// its start state (see get_project_graph's own docstring) is drawn as an
-// edge from this invisible pseudo-node (styled zero-size, see
-// renderGraph's own style array) rather than a dangling reference. Not
-// selectable/grabbable: it's not a real state, just an anchor point.
+// A transparent node for the init edge's source — cytoscape needs a real
+// node with a non-empty id at each edge endpoint, so the "arrow from
+// nowhere" into the start state is drawn from this invisible anchor.
 function pseudoStartNodeElements(edges) {
   return edges.some((e) => e.source === '')
     ? [{ data: { id: PSEUDO_START_ID, isPseudoStart: true }, selectable: false, grabbable: false }]
@@ -135,15 +113,9 @@ function graphElements(nodes, edges) {
   ]
 }
 
-// The single choke point every selection path already funnels through —
-// a manual node/edge tap (handleNodeTap/handleEdgeTap), a background tap
-// to deselect, and syncSelectionToSelection's own programmatic follow
-// (test mode auto-tracking the live state/fired action) alike — so
-// applying the visual "selected" class here, rather than separately at
-// each call site, keeps every one of them consistent for free. Same
-// overlay mechanism as .current-state (see applyCurrentStateHighlight)
-// but its own class/color, so a node can show both at once without one
-// masking the other — e.g. the live current state, freshly tapped.
+// Single choke point every selection path funnels through, so the
+// "selected" class stays consistent everywhere it's applied. Own class
+// from .current-state, so both can show on one node at once.
 function applySelectionHighlight(kind, data) {
   if (!cyGraph) return
   cyGraph.nodes().removeClass('selected-element')
@@ -158,6 +130,15 @@ function applySelectionHighlight(kind, data) {
 function selectGraphElement(kind, data) {
   applySelectionHighlight(kind, data)
   emit('select', kind == null ? null : { kind, data })
+}
+
+// Mirrors selectedElement onto the graph's highlight, for a selection
+// this graph didn't itself produce. Doesn't emit 'select' back out — that
+// would just hand the same data back to whoever already holds it.
+function applySelectedElementHighlight() {
+  if (!cyGraph) return
+  const element = props.selectedElement
+  applySelectionHighlight(element?.kind ?? null, element?.data ?? null)
 }
 
 function handleNodeTap(evt) {
@@ -177,11 +158,9 @@ function renderGraph(nodes, edges) {
   destroyGraph()
   if (!graphHost.value) return
   const startKey = nodes.find(n => n.is_start)?.state.key
-  // Rooting the layout at the pseudo-start node itself (when the init
-  // edge exists — see pseudoStartNodeElements) rather than the real start
-  // state puts that state one level *into* the tree, so its own incoming
-  // arrow reads as entering the graph from outside rather than from a
-  // node that's simultaneously a root with nothing above it.
+  // Rooting the layout at the pseudo-start node (when it exists) rather
+  // than the real start state puts that state one level into the tree,
+  // so its incoming arrow reads as entering from outside the graph.
   const layoutRoot = edges.some((e) => e.source === '') ? PSEUDO_START_ID : startKey
   cyGraph = cytoscape({
     container: graphHost.value,
@@ -191,13 +170,10 @@ function renderGraph(nodes, edges) {
       { selector: 'node[?final]', style: { 'border-width': 4, 'border-color': '#c62828', 'background-color': '#fdecea' } },
       { selector: 'node[?isStart]', style: { 'border-color': '#2e7d32', 'background-color': '#eaf6ea' } },
       { selector: 'node.current-state', style: { 'overlay-color': '#f5a623', 'overlay-opacity': 0.35, 'overlay-padding': 6 } },
-      // Whatever's actually selected (see selectGraphElement/
-      // applySelectionHighlight) — its own border/background, distinct
-      // from current-state's overlay above, so both can show on the same
-      // node at once (the live current state, freshly tapped) without
-      // one masking the other.
+      // The selected element's own border/background, distinct from
+      // current-state's overlay above, so both can show on the same node
+      // at once without one masking the other.
       { selector: 'node.selected-element', style: { 'border-color': '#2c4d7a', 'border-width': 4, 'background-color': '#dce6f5' } },
-      { selector: 'edge.selected-element', style: { 'line-color': '#2c4d7a', 'target-arrow-color': '#2c4d7a', width: 3 } },
       // The init_action pseudo-node itself is never seen — only the edge
       // leading out of it (styled below) is, reading as an arrow with no
       // visible source.
@@ -207,16 +183,17 @@ function renderGraph(nodes, edges) {
       { selector: 'edge[?isInitEdge]', style: { 'line-color': '#2e7d32', 'target-arrow-color': '#2e7d32' } },
       { selector: 'edge.next-action', style: { 'line-color': '#2e7d32', 'target-arrow-color': '#2e7d32', width: 2.5 } },
       { selector: 'edge.fired-action', style: { 'line-color': '#ad1457', 'target-arrow-color': '#ad1457', width: 3 } },
+      // Cytoscape applies style rules in array order — last match wins
+      // per property, unlike CSS's specificity system. Must come after
+      // the base edge rules above or they'd silently win over this highlight.
+      { selector: 'edge.selected-element', style: { 'line-color': '#2c4d7a', 'target-arrow-color': '#2c4d7a', width: 3 } },
       { selector: 'edge[source = target]', style: { 'curve-style': 'loop', 'loop-direction': '-45deg', 'loop-sweep': '45deg' } }
     ],
     layout: { name: 'breadthfirst', directed: true, roots: layoutRoot != null ? [layoutRoot] : undefined, padding: 16, spacingFactor: 1.1 }
   })
-  // breadthfirst spaces the pseudo-start node the same one full "level"
-  // away from the real start state as any other parent/child pair — this
-  // halves that distance after the fact (a non-animated layout has
-  // already settled every position by the time the constructor above
-  // returns), so the init arrow itself reads shorter than a normal edge,
-  // not just differently colored/solid.
+  // breadthfirst spaces the pseudo-start node a full "level" away from
+  // the real start state, same as any parent/child pair — this halves
+  // that distance after the fact so the init arrow reads shorter.
   if (startKey != null && layoutRoot === PSEUDO_START_ID) {
     const pseudoNode = cyGraph.getElementById(PSEUDO_START_ID)
     const startNode = cyGraph.getElementById(startKey)
@@ -234,14 +211,16 @@ function renderGraph(nodes, edges) {
   applyNextActionHighlight()
   applyFiredActionHighlight()
   syncSelectionToSelection()
+  applySelectedElementHighlight()
 }
 
 async function loadGraph() {
   graphLoading.value = true
   try {
-    const { nodes, edges } = await getProjectGraph(props.projectName)
+    const { nodes, edges, revision } = await getProjectGraph(props.projectName, props.sessionId)
     graphNodes.value = nodes
     graphEdges.value = edges
+    graphRevision.value = revision
     renderGraph(nodes, edges)
   } catch {} finally {
     graphLoading.value = false
@@ -266,14 +245,9 @@ function applyFiredActionHighlight() {
   if (props.firedActionEdge) cyGraph.edges().filter(e => e.data('matchStateKey') === props.firedActionEdge.stateKey && e.data('actionName') === props.firedActionEdge.actionName).addClass('fired-action')
 }
 
-// A selected transition should open the *action* that fired it, not the
-// state it landed on — firedActionEdge (set only while a transition is
-// selected, see EditProjectView.vue/BenchmarkProjectView.vue's own
-// firedActionEdge computed) takes priority over highlightedStateKey here.
-// Reads the edge straight off cyGraph (already carrying the same
-// PSEUDO_START_ID/isInitEdge-normalized shape handleEdgeTap hands to a
-// real click) rather than re-deriving it from the raw edge list, so a
-// programmatic selection looks identical to a manual one.
+// A selected transition opens the action that fired it, not the state it
+// landed on — firedActionEdge takes priority over highlightedStateKey,
+// read off cyGraph so a programmatic selection matches a manual one.
 function syncSelectionToSelection({ emitJump = false } = {}) {
   if (props.firedActionEdge && cyGraph) {
     const edge = cyGraph.edges().filter(
@@ -286,15 +260,9 @@ function syncSelectionToSelection({ emitJump = false } = {}) {
     }
   }
   const key = props.highlightedStateKey
-  // No live state to auto-follow at all (edit mode has none, ever — see
-  // EditProjectView.vue's own highlightedStateKey) is not the same thing
-  // as "the previously highlighted one went away" (a real, still-worth-
-  // clearing case, just below) — this runs after *every* graph reload
-  // (see renderGraph), not just an actual highlightedStateKey change, so
-  // treating "nothing to follow" as "clear the selection" would silently
-  // wipe out whatever the user (or a field edit's own re-selection, see
-  // EditProjectView.vue's own handleSetStateField) had independently and
-  // deliberately selected, on every single reload.
+  // No key to follow (e.g. edit mode) is not the same as "clear the
+  // selection" — this runs after every graph reload, so treating them
+  // the same would wipe out a selection made independently, every reload.
   if (key == null) return
   const node = graphNodes.value.find((n) => n.state.key === key)
   if (!node) return selectGraphElement(null, null)
@@ -305,13 +273,9 @@ function syncSelectionToSelection({ emitJump = false } = {}) {
 function resize() { cyGraph?.resize() }
 function fit() { cyGraph?.fit() }
 
-// Reloads the graph's own data unconditionally (matches this tab's
-// pre-slot-refactor behavior — see Inspector.vue's old plain refresh(),
-// which always reloaded Graph regardless of which tab was open, since
-// other Inspector tabs' own highlighting depends on current graph data
-// too) — `active` only gates the resize+fit a becoming-visible tab needs
-// to lay out correctly (a v-show'd cytoscape container has no real
-// dimensions to measure until it's actually displayed).
+// Reloads graph data unconditionally, since other tabs' highlighting
+// depends on it too — `active` only gates the resize+fit a becoming-
+// visible tab needs (a v-show'd container has no real size until shown).
 async function refresh(active) {
   await loadGraph()
   if (active) {
@@ -324,14 +288,11 @@ async function refresh(active) {
 watch(() => props.highlightedStateKey, () => { applyCurrentStateHighlight(); syncSelectionToSelection({ emitJump: props.autoJumpOnHighlightChange }) })
 watch(() => props.nextActionEdge, applyNextActionHighlight, { deep: true })
 watch(() => props.firedActionEdge, () => { applyFiredActionHighlight(); syncSelectionToSelection({ emitJump: props.autoJumpOnHighlightChange }) }, { deep: true })
+watch(() => props.selectedElement, applySelectedElementHighlight, { deep: true })
 
-// Lookups for the Inspector's own "State"/"Actions" tabs (see
-// EditProjectView.vue's own inspectorTabs, shown instead of this
-// component while editorOpen is on) — resolving the *shared* selection
-// (this component's own emitted 'select', lifted up to EditProjectView.
-// vue) back into the same {kind, data} shape a direct graph click would
-// have produced, off the exact same already-loaded graphNodes/graphEdges
-// rather than a second, possibly-inconsistent fetch of their own.
+// Resolves the shared selection back into the same {kind, data} shape a
+// direct graph click would produce, off the already-loaded
+// graphNodes/graphEdges rather than a second, possibly-inconsistent fetch.
 function stateElementFor(stateKey) {
   const node = graphNodes.value.find((n) => n.state.key === stateKey)
   return node ? { kind: 'state', data: nodeToCyData(node) } : null
@@ -354,11 +315,6 @@ onBeforeUnmount(destroyGraph)
 
 <template>
   <div class="inspector-graph-section">
-    <div class="inspector-graph-host-wrap">
-      <p v-if="graphLoading" class="signals-status inspector-graph-status">Loading…</p>
-      <div ref="graphHost" class="inspector-graph-host"></div>
-    </div>
-
     <div v-if="annotatable" class="inspector-annotation-bar">
       <label class="inspector-annotation-label">Expected state</label>
       <span
@@ -391,32 +347,33 @@ onBeforeUnmount(destroyGraph)
         <option v-for="node in graphNodes" :key="node.state.key" :value="node.state.key">{{ node.state.ui_label }}</option>
       </select>
     </div>
+
+    <div class="inspector-graph-host-wrap">
+      <p v-if="graphLoading" class="signals-status inspector-graph-status">Loading…</p>
+      <div ref="graphHost" class="inspector-graph-host"></div>
+      <span v-if="graphRevision != null" class="inspector-graph-revision-badge">Rev. {{ graphRevision }}</span>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .inspector-graph-section { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.inspector-annotation-bar { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.6rem; flex-shrink: 0; }
+.inspector-annotation-bar { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.6rem; flex-shrink: 0; }
 .inspector-annotation-label { font-size: 0.78rem; color: #666; }
 .inspector-annotation-select { flex: 1; min-width: 0; padding: 0.3rem 0.5rem; border-radius: 6px; border: 1px solid #ccc; background: white; font-size: 0.82rem; color: #999; }
-/* An explicit choice matching the actual/current state — same green used
-   for a "correct" transition marker in the chat timeline (see
-   BenchmarkProjectView.vue's own .benchmark-transition-row-correct). */
+/* An explicit choice matching the actual/current state. */
 .inspector-annotation-select-correct { border-color: #2e7d32; background: #e8f5e9; color: #333; }
-/* An explicit choice that differs from it — same red as the timeline's
-   own .benchmark-transition-row-incorrect. */
+/* An explicit choice that differs from the actual/current state. */
 .inspector-annotation-select-incorrect { border-color: #c62828; background: #fdecea; color: #333; }
-/* An imported session (see the imported prop's own docstring) has no
-   avance-computed state to compare against — same green as -correct
-   above, under its own class name so "labelled" and "verified correct"
-   stay distinct in the markup even though they read the same visually. */
+/* An imported session has no computed state to compare against — same
+   green as -correct, under its own class name so "labelled" and
+   "verified correct" stay distinct even though they look the same. */
 .inspector-annotation-select-labelled { border-color: #2e7d32; background: #e8f5e9; color: #333; }
 .inspector-annotation-option-unlabelled { color: #999; font-style: italic; }
 .inspector-annotation-help { position: relative; flex-shrink: 0; width: 1.2rem; height: 1.2rem; border-radius: 50%; border: 1px solid #999; color: #666; font-size: 0.7rem; display: flex; align-items: center; justify-content: center; cursor: help; }
-/* Teleported to <body> and positioned in viewport coordinates (see
-   showHelpTooltip) — position: fixed here, not absolute, since it's no
-   longer nested inside the icon: the Inspector's own split-view panel
-   clips anything positioned relative to content inside it. */
+/* Teleported to <body>, positioned in viewport coordinates — fixed, not
+   absolute, since the Inspector's split-view panel clips anything
+   positioned relative to content inside it. */
 .inspector-annotation-help-tooltip-floating {
   position: fixed;
   width: max-content;
@@ -435,4 +392,17 @@ onBeforeUnmount(destroyGraph)
 .inspector-graph-host-wrap { position: relative; flex: 1; min-height: 0; border: 1px solid #ddd; border-radius: 8px; background: #fcfcfd; overflow: hidden; }
 .inspector-graph-host { width: 100%; height: 100%; }
 .inspector-graph-status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.inspector-graph-revision-badge {
+  position: absolute;
+  bottom: 0.5rem;
+  right: 0.6rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(74, 111, 165, 0.85);
+  color: white;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
 </style>

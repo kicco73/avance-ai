@@ -1,8 +1,6 @@
-"""POST /api/projects/{project_name}/revert — discards the entire
-in-progress draft revision, reverting to whatever was last published (see
-ProjectService.revert_to_published/Db.revert_to_published). Backs the
-"Rev. X" split button's own "Revert to rev. X-1" option (see
-EditProjectView.vue).
+"""POST /api/projects/{project_name}/revert — discards the in-progress
+draft revision, reverting to whatever was last published
+(ProjectService.revert_to_published).
 """
 from __future__ import annotations
 

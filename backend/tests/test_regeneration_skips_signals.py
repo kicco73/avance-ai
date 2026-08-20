@@ -1,11 +1,7 @@
-"""TrackingProcessorAfterUserMessage._get_ai_reply's regeneration call
-(fired when the optimistic first guess turns out to have transitioned
-the automaton) must not re-request `signals` — they're already known
-from the first call, and re-requesting them is wasted (and must not
-trigger a second trigger evaluation either, see tracking_service.py's
-own _would_trigger_action, only ever called from
-on_receiving_metadata_that_may_trigger_status_change, never from
-on_receiving_metadata_when_repeating_the_call).
+"""TrackingProcessorAfterUserMessage's regeneration call (fired when the
+optimistic first guess turns out to have transitioned the automaton)
+must not re-request `signals` — they're already known from the first
+call, and re-requesting them is wasted.
 """
 from __future__ import annotations
 
@@ -46,10 +42,9 @@ def _automaton() -> Automaton:
 
 
 class RecordingSchemaAiService:
-    """Schema-capable fake — records the schema dict (its keys are
-    exactly the tags requested) passed to generate_stream_with_metadata
-    on every call, and fires a transition-triggering signals value on
-    the first call only."""
+    """Schema-capable fake that records the schema dict passed to
+    generate_stream_with_metadata on every call, and fires a
+    transition-triggering signals value on the first call only."""
 
     def __init__(self) -> None:
         self.calls: list[dict[str, str]] = []

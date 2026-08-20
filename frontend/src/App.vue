@@ -2,11 +2,14 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import ChatWindow from './components/chat/ChatWindow.vue'
 import StateBar from './components/StateBar.vue'
-import EditProjectView from './components/EditProjectView.vue'
-import BenchmarkProjectView from './components/BenchmarkProjectView.vue'
+import EditProjectView from './components/project/edit/EditProjectView.vue'
+import LabelProjectView from './components/project/label/LabelProjectView.vue'
 import ProjectsMenu from './components/ProjectsMenu.vue'
+import SettingsMenu from './components/settings/SettingsMenu.vue'
+import ManageProjectsView from './components/settings/ManageProjectsView.vue'
 import SplashScreen from './components/SplashScreen.vue'
 import ErrorBanner from './components/ErrorBanner.vue'
+import ToastContainer from './components/ToastContainer.vue'
 import {
   getState,
   putProject,
@@ -25,17 +28,20 @@ import {
   setCapabilities,
   handleStateChange,
   loadMessages,
-  loadAutoTracking,
   loadAiModels,
-  clearChatUi
+  clearChatUi,
+  projectPaused,
+  projectPausedReason
 } from './chatStore.js'
 
 const showEditProject = ref(false)
 const editProjectName = ref(null)
 const showBenchmarkProject = ref(false)
 const benchmarkProjectName = ref(null)
+const showManageProjects = ref(false)
 const modelUploadInput = ref(null)
 const projectsMenu = ref(null)
+const manageProjectsView = ref(null)
 
 // Initial-boot backend readiness gate — entirely separate from the shared
 // error store (which is for runtime errors on an already-running app). 'checking': the
@@ -85,7 +91,6 @@ function bootSucceeded() {
   // still be sitting in the shared store the moment the chat UI mounts.
   clearApiError()
   loadMessages()
-  loadAutoTracking()
   loadAiModels()
   // No proactive chat-socket connect here: chatClient.js connects lazily
   // on the first sendMessage() call, and the opening message (if any) is
@@ -137,17 +142,22 @@ function triggerModelUpload() {
 async function refreshStateAndProjects() {
   const newState = await getState()
   projectsMenu.value?.refresh()
+  manageProjectsView.value?.refresh()
   handleStateChange(newState)
   await loadMessages()
 }
 
 // "New project": same server-side effect as picking samples/Hello
 // world.zip in the upload dialog (see postNewProject), so it reloads
-// state the same way a real upload does.
+// state the same way a real upload does — including auto-publishing (see
+// handleModelUploadChange's own identical reasoning below): a freshly
+// created project has never been published either, so without this it'd
+// look usable right away but couldn't actually chat yet.
 async function handleNewProject() {
   clearChatUi()
   try {
-    await postNewProject()
+    const result = await postNewProject()
+    await postPublishProject(result.project_name)
     await refreshStateAndProjects()
   } catch {
     // already surfaced via apiFetch
@@ -175,9 +185,51 @@ async function handleModelUploadChange(event) {
   }
 }
 
-function handleModelEdit(projectName) {
+// EditProjectView.vue's own embedded "Test" chat creates its draft
+// session against whichever project is currently *active* server-side
+// (see ChatService.create_draft_session — it never actually looks at the
+// URL's own project_name), an invariant every previous way into "Edit
+// project" upheld for free: before Manage projects made a project's own
+// row directly clickable, the only path in was ProjectsMenu.vue's own
+// "Edit project" item, which only ever edited whichever project was
+// already active. That's no longer guaranteed — Manage projects lets you
+// open Edit for a project that isn't active at all — so this activates
+// `projectName` first, same as a real project switch, before ever
+// opening the view: without this, Test silently runs against whatever
+// project was active before, not the one actually being edited.
+async function handleModelEdit(projectName) {
+  clearChatUi()
+  try {
+    await activateProject(projectName)
+    await refreshStateAndProjects()
+  } catch {
+    // already surfaced via apiFetch
+  }
   editProjectName.value = projectName
   showEditProject.value = true
+}
+
+function handleManageProjectsEdit(projectName) {
+  showManageProjects.value = false
+  handleModelEdit(projectName)
+}
+
+function handleManageProjectsBenchmark(projectName) {
+  showManageProjects.value = false
+  handleModelBenchmark(projectName)
+}
+
+// Edit/Label are only ever opened from Manage projects now (ProjectsMenu.vue
+// no longer has its own entry points into either) — so "Back" out of them
+// returns there rather than to the main chat view.
+function closeEditProject() {
+  showEditProject.value = false
+  showManageProjects.value = true
+}
+
+function closeBenchmarkProject() {
+  showBenchmarkProject.value = false
+  showManageProjects.value = true
 }
 
 function handleModelBenchmark(projectName) {
@@ -223,11 +275,6 @@ async function handleModelDownload(projectName) {
     link.click()
     link.remove()
     URL.revokeObjectURL(url)
-    // After the download actually happened, never before (see
-    // handleDownloadBackup's own same-order notice) — shared by both the
-    // Projects menu's own "Download" item and EditProjectView.vue's own
-    // toolbar button, both wired to this same handler.
-    alert(`Project "${projectName}" downloaded to your local folder.`)
   } catch {
     // already surfaced via apiFetch
   }
@@ -261,7 +308,6 @@ async function handleDownloadBackup() {
     link.click()
     link.remove()
     URL.revokeObjectURL(url)
-    alert('Backup downloaded to your local folder.')
   } catch {
     // already surfaced via apiFetch
   }
@@ -293,6 +339,8 @@ onBeforeUnmount(() => {
   <!-- 'checking' (the invisible first ping) renders neither branch, on
        purpose: nothing should flash before we know whether the backend was
        already up. -->
+  <ToastContainer />
+
   <SplashScreen v-if="bootStatus === 'waiting'" variant="connecting" />
   <SplashScreen v-else-if="bootStatus === 'failed'" variant="failed" @retry="startBootSequence" />
 
@@ -303,12 +351,10 @@ onBeforeUnmount(() => {
         <ProjectsMenu
           ref="projectsMenu"
           @select="handleProjectSwitch"
-          @edit="handleModelEdit"
-          @benchmark="handleModelBenchmark"
-          @new-project="handleNewProject"
-          @upload="triggerModelUpload"
           @download="handleModelDownload"
-          @delete="handleModelDelete"
+        />
+        <SettingsMenu
+          @manage-projects="showManageProjects = true"
           @download-backup="handleDownloadBackup"
           @restore-backup="handleRestoreBackup"
         />
@@ -325,22 +371,34 @@ onBeforeUnmount(() => {
     <ErrorBanner />
 
     <div class="app-body">
-      <SplashScreen v-if="!state?.key" variant="no-project" embedded />
+      <SplashScreen v-if="projectPaused" variant="paused" :reason="projectPausedReason" embedded />
+      <SplashScreen v-else-if="!state?.key" variant="no-project" embedded />
       <ChatWindow v-else />
     </div>
 
     <EditProjectView
       v-if="showEditProject"
       :project-name="editProjectName"
-      @close="showEditProject = false"
+      @close="closeEditProject"
       @saved="handleModelEditSaved"
-      @download="handleModelDownload"
     />
 
-    <BenchmarkProjectView
+    <LabelProjectView
       v-if="showBenchmarkProject"
       :project-name="benchmarkProjectName"
-      @close="showBenchmarkProject = false"
+      @close="closeBenchmarkProject"
+    />
+
+    <ManageProjectsView
+      v-if="showManageProjects"
+      ref="manageProjectsView"
+      @close="showManageProjects = false"
+      @new-project="handleNewProject"
+      @upload="triggerModelUpload"
+      @delete="handleModelDelete"
+      @edit="handleManageProjectsEdit"
+      @benchmark="handleManageProjectsBenchmark"
+      @download="handleModelDownload"
     />
   </div>
 </template>

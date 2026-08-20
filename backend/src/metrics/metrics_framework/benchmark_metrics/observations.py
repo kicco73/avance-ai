@@ -149,12 +149,9 @@ class BenchmarkObservationBuilder(object):
         """
         points: dict[tuple[int, int], dict[str, Any]] = {}
         for row in messages.itertuples(index=False):
-            # A column mixing real strings with missing values (any
-            # session with at least one annotated *and* one unannotated
-            # message) comes back from pandas as float NaN for the
-            # missing ones, not None/''/falsy — plain truthiness treats
-            # NaN as truthy and would otherwise turn every unannotated
-            # message into a spurious "expected_state='nan'" point.
+            # Missing values come back from pandas as float NaN, not None/''/
+            # falsy — plain truthiness treats NaN as truthy and would turn
+            # every unannotated message into a spurious expected_state point.
             if pd.notna(row.expected_state) and row.expected_state:
                 points[(int(row.session_id), int(row.id))] = {
                     "session_id": int(row.session_id),

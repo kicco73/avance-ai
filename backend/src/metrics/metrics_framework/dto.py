@@ -11,10 +11,8 @@ import pandas as pd
 class MetricResult(object):
     name: str
     # None when this metric has no meaningful value in the current
-    # context (see BaseMetric.unavailable) — e.g. no real elapsed time
-    # to normalize against. A missing name, exactly like a signal that
-    # was never estimated — see MetricService.calculate_values/
-    # merge_if_referenced.
+    # context, e.g. no real elapsed time to normalize against — treated
+    # like a signal that was never estimated.
     value: float | None
     components: dict[str, float] = field(default_factory=dict)
     calculated_at: datetime | None = None
@@ -29,11 +27,9 @@ class MetricWindow(object):
 
 @dataclass(frozen=True)
 class UserAnalyticsData(object):
-    """Immutable-ish analytical view of one user/project.
-
-    DataFrames are treated as read-only by metric calculators. They are built
-    once by UserAnalyticsDataBuilder and shared by all calculators.
-    """
+    """Immutable-ish analytical view of one user/project. DataFrames are
+    treated as read-only, built once by UserAnalyticsDataBuilder and
+    shared by all calculators."""
 
     username: str
     project_name: str

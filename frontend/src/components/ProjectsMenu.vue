@@ -4,27 +4,22 @@ import { getProjects } from '../api.js'
 
 const emit = defineEmits([
   'select',
-  'edit',
-  'benchmark',
-  'new-project',
-  'upload',
-  'download',
-  'delete',
-  'download-backup',
-  'restore-backup'
+  'download'
 ])
 
 const open = ref(false)
 const loading = ref(false)
+// {name, is_paused, ui_label}[] — the status dot reads is_paused directly
+// off this; ui_label is shown in place of the raw name wherever declared.
 const projects = ref([])
 const activeProjectName = ref(null)
 const rootEl = ref(null)
-const restoreInput = ref(null)
 
-const noProjectsAvailable = computed(() => projects.value.length === 0)
-const editDisabled = computed(() => noProjectsAvailable.value)
-const benchmarkDisabled = computed(() => noProjectsAvailable.value)
-const deleteDisabled = computed(() => noProjectsAvailable.value)
+// Falls back to the raw name before loadProjects() resolves, and for a
+// project that never declared a ui_label.
+const activeProjectLabel = computed(() => {
+  return projects.value.find((p) => p.name === activeProjectName.value)?.ui_label ?? activeProjectName.value
+})
 
 async function loadProjects() {
   loading.value = true
@@ -57,55 +52,6 @@ function selectProject(name) {
   emit('select', name)
 }
 
-function selectEdit() {
-  if (editDisabled.value || !activeProjectName.value) return
-  open.value = false
-  emit('edit', activeProjectName.value)
-}
-
-function selectBenchmark() {
-  if (benchmarkDisabled.value || !activeProjectName.value) return
-  open.value = false
-  emit('benchmark', activeProjectName.value)
-}
-
-function selectNewProject() {
-  open.value = false
-  emit('new-project')
-}
-
-function selectUpload() {
-  open.value = false
-  emit('upload')
-}
-
-function selectDownloadBackup() {
-  open.value = false
-  emit('download-backup')
-}
-
-function selectRestoreBackup() {
-  open.value = false
-  restoreInput.value?.click()
-}
-
-function handleRestoreFileChange(event) {
-  const file = event.target.files?.[0]
-  event.target.value = ''
-  if (!file) return
-  emit('restore-backup', file)
-}
-
-function selectDelete() {
-  if (deleteDisabled.value || !activeProjectName.value) return
-
-  const name = activeProjectName.value
-  if (!window.confirm(`Delete project "${name}"? This cannot be undone.`)) return
-
-  open.value = false
-  emit('delete', name)
-}
-
 function handleClickOutside(event) {
   if (open.value && rootEl.value && !rootEl.value.contains(event.target)) {
     open.value = false
@@ -123,109 +69,38 @@ onBeforeUnmount(() => {
   <div class="projects-menu" ref="rootEl">
     <button
       class="projects-btn"
-      :title="activeProjectName ?? 'Projects'"
+      :title="activeProjectLabel ?? 'Projects'"
       @click="toggle"
     >
-      {{ activeProjectName ?? 'Projects' }}
+      {{ activeProjectLabel ?? 'Projects' }}
     </button>
 
     <div v-if="open" class="projects-panel">
       <p v-if="loading" class="projects-status">Loading…</p>
 
       <ul v-else class="projects-list">
-        <!-- Fixed actions first -->
-        <li>
-          <button
-            class="projects-item projects-edit-item"
-            :disabled="editDisabled"
-            @click="selectEdit"
-          >
-            Edit project
-          </button>
-        </li>
-
-        <li>
-          <button
-            class="projects-item projects-edit-item"
-            :disabled="benchmarkDisabled"
-            @click="selectBenchmark"
-          >
-            Label sessions
-          </button>
-        </li>
-
-        <li>
-          <button
-            class="projects-item projects-upload-item"
-            @click="selectNewProject"
-          >
-            New project
-          </button>
-        </li>
-
-        <li>
-          <button
-            class="projects-item projects-upload-item"
-            @click="selectUpload"
-          >
-            Upload project...
-          </button>
-        </li>
-
-        <li>
-          <button
-            class="projects-item projects-backup-item"
-            @click="selectDownloadBackup"
-          >
-            Download backup
-          </button>
-        </li>
-
-        <li>
-          <button
-            class="projects-item projects-restore-item"
-            @click="selectRestoreBackup"
-          >
-            Restore backup...
-          </button>
-        </li>
-
-        <li>
-          <button
-            class="projects-item projects-delete-item"
-            :disabled="deleteDisabled"
-            @click="selectDelete"
-          >
-            Delete project
-          </button>
-        </li>
-
-        <!-- Dynamic projects at the bottom -->
         <li
-          v-for="name in projects"
-          :key="name"
+          v-for="project in projects"
+          :key="project.name"
           class="project-entry"
         >
           <button
             class="projects-item"
-            @click="selectProject(name)"
+            @click="selectProject(project.name)"
           >
             <span class="projects-item-check">
-              {{ name === activeProjectName ? '✓' : '' }}
+              {{ project.name === activeProjectName ? '✓' : '' }}
             </span>
-            {{ name }}
+            <span
+              class="projects-item-status"
+              :class="project.is_paused ? 'projects-item-status-paused' : 'projects-item-status-running'"
+              :title="project.is_paused ? 'Paused' : 'Running'"
+            ></span>
+            {{ project.ui_label ?? project.name }}
           </button>
         </li>
       </ul>
     </div>
-
-    <input
-      ref="restoreInput"
-      type="file"
-      accept=".sqlite"
-      class="restore-backup-input"
-      @change="handleRestoreFileChange"
-    />
   </div>
 </template>
 
@@ -245,6 +120,10 @@ onBeforeUnmount(() => {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+  /* Pinned to 18px to match .settings-btn's icon height exactly — a
+     button's text content doesn't reliably compute to the same line box
+     across fonts, so this keeps both buttons' total heights aligned. */
+  line-height: 18px;
 }
 
 .projects-btn:hover {
@@ -301,49 +180,25 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 
-/* Fixed options */
-.projects-edit-item {
-  color: #4a6fa5;
-}
-
-.projects-edit-item:disabled {
-  color: #ccc;
-  cursor: not-allowed;
-}
-
-.projects-upload-item {
-  color: #4a6fa5;
-}
-
-.projects-backup-item {
-  border-top: 1px solid #eee;
-  color: #4a6fa5;
-}
-
-.projects-restore-item {
-  color: #4a6fa5;
-}
-
-.projects-delete-item {
-  color: #c62828;
-}
-
-.projects-delete-item:disabled {
-  color: #ccc;
-  cursor: not-allowed;
-}
-
-/* Separator before the dynamic project list */
-.project-entry:first-of-type {
-  border-top: 1px solid #ccc;
-  margin-top: 0.25rem;
-}
-
 .project-entry + .project-entry {
   border-top: 1px solid #eee;
 }
 
-.restore-backup-input {
-  display: none;
+/* Running/paused status dot, next to each project's own name. */
+.projects-item-status {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: 0.4rem;
+  border-radius: 50%;
+}
+
+.projects-item-status-running {
+  background: #2e7d32;
+}
+
+.projects-item-status-paused {
+  background: #b06a00;
 }
 </style>

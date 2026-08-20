@@ -14,10 +14,6 @@ from metrics.metrics_framework.metrics import (
 
 from metrics_helpers import analytics_data, message_row, session_row, signal_row
 
-# Every test in this file exercises one metric's calculate() against a
-# fixed, hand-built dataset and asserts a specific numeric/component
-# outcome — punctual facts about behavior, not a shape/schema/ordering
-# guarantee — so uniformly regression.
 pytestmark = pytest.mark.regression
 
 
@@ -246,10 +242,8 @@ class TestSignalStabilityMetric:
         assert set(result.components) == {"x"}
 
     def test_values_stored_as_a_plain_dict_are_parsed_same_as_json_strings(self):
-        # The real DB always stores `values` as a JSON string (see
-        # Tracking.values), but the Timeline layer accepts either shape (see
-        # Timeline._parse_values) — exercised directly here since
-        # signal_row() always JSON-encodes.
+        # The real DB always stores `values` as a JSON string, but the
+        # Timeline layer accepts either shape.
         signals = [
             signal_row(1, datetime(2026, 1, 1)),
             signal_row(2, datetime(2026, 1, 2)),

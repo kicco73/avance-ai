@@ -5,7 +5,8 @@ import DocInfoButton from '../DocInfoButton.vue'
 import { useSignalChangeFlash } from './signalDisplay.js'
 
 const props = defineProps({
-  untilMessageId: { type: [Number, String], default: null }
+  untilMessageId: { type: [Number, String], default: null },
+  projectName: { type: String, required: true }
 })
 
 const metricsLoading = ref(false)
@@ -15,7 +16,7 @@ const { recentlyChanged: recentlyChangedMetrics, markChanged: markMetricsChanged
 async function loadMetrics() {
   metricsLoading.value = true
   try {
-    const nextMetrics = await getMetrics(props.untilMessageId ?? undefined)
+    const nextMetrics = await getMetrics(props.projectName, props.untilMessageId ?? undefined)
     markMetricsChanged(metrics.value, nextMetrics)
     metrics.value = nextMetrics
   } catch {} finally {
@@ -23,9 +24,8 @@ async function loadMetrics() {
   }
 }
 
-// Heavier to compute than Signals/Env — only reloaded while this tab is
-// the one actually visible (matches Inspector.vue's old refreshMetrics(),
-// gated on inspectorTab.value === 'metrics').
+// Heavier to compute than Signals/Env, so this only reloads while the tab
+// is actually visible.
 async function refresh(active) {
   if (active) await loadMetrics()
 }

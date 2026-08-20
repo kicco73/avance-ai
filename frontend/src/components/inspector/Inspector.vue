@@ -1,49 +1,28 @@
 <script setup>
-// Generic shell — header, tab bar, body — for whatever tabs the caller
-// hands it: BenchmarkProjectView.vue and EditProjectView.vue each decide
-// their own set/order/count of tabs (which used to live here as
-// showEnvTab/showPerformanceTab boolean props, one hardcoded component
-// per tab) and mount them as named slots (`#tab-<id>`) instead. Every
-// tab listed in `tabs` is always mounted (v-show, not v-if) so its own
-// registerTab-returned ref setter always has somewhere real to land,
-// regardless of which tab happens to be showing right now.
-//
-// A tab component may optionally implement `refresh(active: boolean)`
-// and `resize()` (see refresh/resize below, and registerTab) — this
-// shell never knows *what* a tab refreshes or why, it only knows whether
-// each one offers those two hooks and dispatches into whichever it does,
-// by id, never by name. jump-to-definition/select-attachment/update-
-// expected-state/update-expected-signals are no longer re-emitted through
-// here either: a caller listens for those straight on whatever component
-// it puts in its own slot.
+// Generic shell — header, tab bar, body — for tabs the caller provides via
+// named slots (`#tab-<id>`). Every tab stays mounted (v-show, not v-if) so
+// its registerTab ref always has somewhere to land. Tabs may optionally
+// implement `refresh(active)` and/or `resize()`, dispatched by id.
 import { reactive, ref, watch } from 'vue'
 
 const props = defineProps({
   tabs: { type: Array, required: true }, // [{ id, label }]
   activeTab: { type: String, default: null },
-  // Always mounted now (see EditProjectView.vue's own inspectorCollapsed —
-  // no more v-if teardown/remount of this whole panel, just this one
-  // shrinking to a thin strip) — collapsed hides the tab bar/body (v-show,
-  // so cytoscape/etc. inside a tab stays alive and doesn't need
-  // relayout-from-scratch the next time it's shown) but keeps the header
-  // itself, with its own expand toggle, always visible.
+  // Hides the tab bar/body via v-show (not v-if) so cytoscape and similar
+  // content inside a tab stays alive instead of needing to relayout from
+  // scratch each time it's shown; the header itself stays visible.
   collapsed: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['update:active-tab', 'update:collapsed'])
 
-// id -> mounted tab component instance. A plain object wrapped in
-// reactive() (not a Map — `v-for`/dynamic-slot iteration elsewhere in
-// this app already assumes plain-object reactivity) so a later
-// registerTab(id)(instance) call is itself trackable, not just its
-// eventual .refresh/.resize reads.
+// id -> mounted tab component instance, kept as a plain reactive() object
+// (not a Map) so registerTab(id)(instance) calls stay trackable.
 const registry = reactive({})
 
-// Returned to the caller's own named slot as a scoped prop — a ref
-// setter closed over `id`, so `:ref="registerTab('states')"` registers
-// (or, called with null on unmount, unregisters) that slot's own
-// component under a stable key this shell's own refresh()/resize()/
-// tab-switch dispatch can look up by id.
+// Returned to the caller's slot as a scoped prop — a ref setter closed
+// over `id`, so `:ref="registerTab('states')"` registers (or, called with
+// null on unmount, unregisters) that slot's component under a stable key.
 function registerTab(id) {
   return (instance) => {
     if (instance) registry[id] = instance
@@ -63,10 +42,9 @@ function setActiveTab(id) {
   registry[id]?.refresh?.(true)
 }
 
-// An externally-driven activeTab (v-model, see the caller side) — only
-// followed when it actually names one of the current tabs; ignored
-// otherwise rather than blanking the selection (the tabs watch below
-// handles falling back to the first tab on its own).
+// An externally-driven activeTab (v-model) is only followed when it names
+// one of the current tabs; otherwise ignored (the tabs watch below falls
+// back to the first tab on its own).
 watch(
   () => props.activeTab,
   (value) => {
@@ -77,10 +55,8 @@ watch(
 )
 
 // Falls back to the first available tab the instant the active one is no
-// longer among `tabs` — whether that's because the caller's own tab set
-// just changed shape, or an externally-set activeTab was never a valid
-// id to begin with (see the watch above, which only ever follows a
-// *valid* external value).
+// longer among `tabs`, whether because the tab set changed shape or an
+// externally-set activeTab was never a valid id to begin with.
 watch(
   () => props.tabs,
   (tabs) => {
@@ -91,10 +67,8 @@ watch(
   { deep: true, immediate: true }
 )
 
-// The caller's own single entry point, replacing the old refresh()/
-// refreshMetrics()/refreshEnv()/refreshPerformance() quartet — every
-// registered tab decides for itself, from the `active` flag it's handed,
-// whether that means "reload" (see each tab's own refresh() docstring).
+// Single entry point for the caller — every registered tab decides for
+// itself, from the `active` flag it's handed, whether that means "reload".
 async function refresh() {
   await Promise.all(
     Object.entries(registry).map(([id, instance]) => instance.refresh?.(id === internalActive.value))

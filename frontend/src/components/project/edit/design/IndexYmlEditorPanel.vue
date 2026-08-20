@@ -1,34 +1,27 @@
 <script setup>
-// index.yml's own dedicated editor pane — a "graph"/"code" segmented
-// toggle over the same two building blocks used elsewhere: InspectorGraph
-// (the same graph Inspector.vue's own "States" tab uses when editorOpen
-// is off — see EditProjectView.vue's own inspectorTabs) and CodeEditor
-// (the same one every other project file uses). Both segments stay
-// mounted at once (v-show, not v-if): Undo/Redo act on index.yml as a
-// whole regardless of which segment is currently showing, so CodeEditor's
-// own undo()/redo()/canUndo/canRedo need to stay live even while "graph"
-// is the one actually visible.
+// index.yml's dedicated editor pane — a "graph"/"code" segmented toggle over
+// InspectorGraph and CodeEditor. Both segments stay mounted at once (v-show,
+// not v-if): Undo/Redo act on index.yml as a whole regardless of which
+// segment is showing, so CodeEditor's undo/redo state must stay live throughout.
 //
-// Owns no persistence of its own for reorder — EditProjectView.vue is the
-// one holding the unsaved-changes guard, so it's the one that must decide
-// whether a click is even allowed to proceed, then call the actual
-// endpoint, then tell this view to refresh (see reload()/refresh()). Add
-// state/action/signal all live at the bottom of their own Inspector tab
-// instead now (see InspectorStateTab.vue/InspectorActionsTab.vue/
-// InspectorSignalsTab.vue's own add-state/add-action/add-signal, which
-// reach EditProjectView.vue directly — this view isn't involved in any
-// of them).
+// Owns no persistence of its own: EditProjectView.vue holds the unsaved-
+// changes guard and decides whether a reorder click may proceed, then calls
+// the endpoint and tells this view to refresh (see reload()/refresh()).
 import { computed, ref } from 'vue'
-import InspectorGraph from './inspector/InspectorGraph.vue'
-import CodeEditor from './CodeEditor.vue'
-import DocInfoButton from './DocInfoButton.vue'
+import InspectorGraph from '../../../inspector/InspectorGraph.vue'
+import CodeEditor from '../../../CodeEditor.vue'
+import DocInfoButton from '../../../DocInfoButton.vue'
 
 const props = defineProps({
   projectName: { type: String, required: true },
   highlightedStateKey: { type: String, default: null },
   autoJumpOnHighlightChange: { type: Boolean, default: false },
   nextActionEdge: { type: Object, default: null },
-  firedActionEdge: { type: Object, default: null }
+  firedActionEdge: { type: Object, default: null },
+  // Forwarded to InspectorGraph so a selection made elsewhere (e.g. clicking
+  // a row in the Inspector's Actions tab) shows up highlighted here too, not
+  // just a selection made by tapping the graph itself.
+  selectedElement: { type: Object, default: null }
 })
 
 const emit = defineEmits(['jump-to-definition', 'select', 'saved'])
@@ -44,52 +37,40 @@ async function refresh(active) {
   await graphRef.value?.refresh(active)
 }
 
-// Re-fetches index.yml's own text into the (possibly not currently
-// visible) code buffer — for after an Add…/reorder just changed it out
-// from under whatever the editor was showing (see this component's own
-// docstring: the actual write always happens one level up).
+// Re-fetches index.yml's text into the (possibly not currently visible)
+// code buffer, for after an Add…/reorder changed it out from under
+// whatever the editor was showing.
 async function reloadCode() {
   await codeEditorRef.value?.reload()
 }
+const reload = reloadCode
 
 function stateElementFor(stateKey) { return graphRef.value?.stateElementFor(stateKey) ?? null }
 function actionsForState(stateKey) { return graphRef.value?.actionsForState(stateKey) ?? [] }
 
-// The caller's own entry point for a Graph click / a Signals-tab-style
-// row click / an expanded detail's own definition jump elsewhere in the
-// app (see EditProjectView.vue's own jumpToDefinition) — moves the
-// cursor only while "code" is already the segment showing, and never
-// switches it there itself: the Graph/Code segment is the user's own
-// choice (see the segment ref below), never something a click elsewhere
-// should override on its behalf. A target the code buffer can't be
-// scrolled to yet (segment still "graph") simply has nothing to do here.
+// Only jumps if "code" is already the visible segment — never switches
+// segments itself, since Graph/Code is the user's own choice to make.
 function jumpToLine(lineIndex) {
   if (segment.value !== 'code') return
   codeEditorRef.value?.jumpToLine(lineIndex)
 }
 
-// The raw YAML text and its own dirty flag — for EditProjectView.vue's
-// own unsaved-changes guard (before a reorder) and jump-to-definition
-// line-finding (see findStateLine/findActionLine/findSignalLine there),
-// neither of which this view has any business knowing about itself.
+// The raw YAML text and its dirty flag, for EditProjectView.vue's unsaved-
+// changes guard and jump-to-definition line-finding.
 const content = computed(() => codeEditorRef.value?.content ?? '')
 const isDirty = computed(() => codeEditorRef.value?.isDirty ?? false)
 const saving = computed(() => codeEditorRef.value?.saving ?? false)
 
-// Delegated straight to the (always-mounted, see this component's own
-// docstring) CodeEditor instance — EditProjectView.vue's own unsaved-
-// changes dialog calls save()/discard() regardless of which kind of
-// editor is actually active (see its own activeEditor() helper), and
-// Undo/Redo already live in this view's own toolbar above, but a caller
-// may still want them directly (e.g. a future keyboard shortcut scoped
-// to this view).
+// Delegated to the always-mounted CodeEditor instance — EditProjectView.vue's
+// unsaved-changes dialog calls save()/discard() regardless of which editor
+// kind is actually active.
 function save() { return codeEditorRef.value?.save() }
 function discard() { return codeEditorRef.value?.discard() }
 function undo() { return codeEditorRef.value?.undo() }
 function redo() { return codeEditorRef.value?.redo() }
 
 defineExpose({
-  loadGraph, resize, fit, refresh, reloadCode, jumpToLine, stateElementFor, actionsForState,
+  loadGraph, resize, fit, refresh, reloadCode, reload, jumpToLine, stateElementFor, actionsForState,
   content, isDirty, saving, save, discard, undo, redo
 })
 </script>
@@ -115,13 +96,13 @@ defineExpose({
           title="Undo"
           :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.canUndo"
           @click="codeEditorRef?.undo()"
-        >↶</button>
+        >↺</button>
         <button
           class="undo-redo-btn"
           title="Redo"
           :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.canRedo"
           @click="codeEditorRef?.redo()"
-        >↷</button>
+        >↻</button>
         <button v-if="segment === 'graph'" class="fit-graph-btn" title="Fit graph to view" @click="resize(); fit()">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
             <path d="M9 3H5a2 2 0 0 0-2 2v4h2V5h4V3zm10 0h-4v2h4v4h2V5a2 2 0 0 0-2-2zM5 15H3v4a2 2 0 0 0 2 2h4v-2H5v-4zm14 4h-4v2h4a2 2 0 0 0 2-2v-4h-2v4z" />
@@ -146,6 +127,7 @@ defineExpose({
         :auto-jump-on-highlight-change="autoJumpOnHighlightChange"
         :next-action-edge="nextActionEdge"
         :fired-action-edge="firedActionEdge"
+        :selected-element="selectedElement"
         @jump-to-definition="emit('jump-to-definition', $event)"
         @select="emit('select', $event)"
       />

@@ -1,70 +1,274 @@
 
 init-action:
-  target: Contemplación
+  target: Vinculación
 
 general-prompt: |
-  Eres un asistente terapéutico. 
-  Tu DEBER es actuar correctamente aunque el usuario no lo aprecie ahora. 
-  Eres responsable de la integridad ética, no solo de la satisfacción inmediata.
+  Eres un acompañamiento conversacional asíncrono, en castellano, para personas adultas con consumo de sustancias, construido sobre el marco de REDUCCIÓN DE DAÑOS.
+  Eres un motor de inferencia que estima, a partir del lenguaje espontáneo y de ítems encubiertos, el estadio del cambio, la disposición a transitar y el riesgo, y que USA ESAS TRES SEÑALES PARA MODULAR TONO, RITMO Y CONTENIDO.
+  Eres un recurso disponible las veinticuatro horas, sin lista de espera, sin requisito de compromiso previo y sin exigencia de objetivo. 
+  Eres un PUENTE hacia recursos humanos y presenciales. La derivación es prueba de éxito clínico, no concesión comercial.
+  No eres un tratamiento. No sustituye a un programa terapéutico, a un CAS, a una comunidad terapéutica ni a la atención sanitaria.
+  NO es un diagnóstico. No emite ni sugiere categorías diagnósticas, ni directa ni indirectamente.
+  NO es un terapeuta. No hay capa clínica humana detrás del turno.
+  NO es un servicio de urgencias ni de crisis. No sustituye al 112, al 061 ni a los teléfonos de atención a la conducta suicida.
+  NO es un programa de abstinencia. La abstinencia es UNA meta posible entre varias, elegida por la persona, nunca la meta por defecto.
+  NO es un sistema de evaluación. La persona no está siendo puntuada, y nunca se le presenta un resultado, una etiqueta, un porcentaje ni un progreso medido.
+
+  Conductas prohibidas:
+  
+   Nombrar el estadio, o cualquier paráfrasis reconocible de él, o cualquier cifra derivada de la inferencia.
+   Presuponer la abstinencia como objetivo, o preguntar cuándo lo va a dejar.
+   Tratar un lapso como fracaso, o usar el vocabulario de la ruptura ("recaer", "fallar", "romper", "volver a empezar").
+   Gamificar el registro de consumo: rachas, contadores de días, insignias, niveles, recompensas por abstinencia.
+   Encadenar ítems del mismo eje fuera de las excepciones declaradas, o pedir una cifra sin contexto conversacional previo.
+   Cambiar de modalidad en silencio. Toda transición de registro se nombra.
+   Condicionar la información de reducción de daños a cualquier requisito; ni al estadio, ni a la alianza, ni al compromiso, ni al pago
+
+  Siempre disponible:
+
+   Información de reducción de daños, sin condiciones y sin contrapartida.
+   Recursos de emergencia y sus vías de acceso.
+   Directorio de recursos presenciales y de proximidad.
+   La posibilidad de que la persona no hable del consumo en absoluto.
 
 attachments:
   - deontologia.txt
   - actitud.txt
+  - Algoritmo ejes.txt
+  - Reglas duras.txt
+  - Avance por estado.txt
+  - Estadios y fases.txt
+  - Defectos detectados.txt
+  - Indice y convenciones.txt
+  - Ejes y formulas.txt
+  - Funcionamiento de items.txt
 
 # ----------------------------------------------------------------------------
 signals:
 # ----------------------------------------------------------------------------
 
-  malestar_emocional:
-    ui-label: Malestar emocional
+  reconocimiento_del_problema:
+    ui-label: Reconocimiento del problema
     ui-description: >
-      Forma parte de Autoeficacia Situacional.
+      Es un eje Clasificador
     definition: |
-      un entero de 0 a 100.
-      Intensidad del dolor/malestar emocional actual que experimenta (0=ninguno, 100=insoportable/crisis).
+      E1: Grado en que la persona atribuye consecuencias adversas a su propio consumo. No es aceptación de una etiqueta diagnóstica: es atribución causal. Una persona puede reconocer perfectamente el daño y rechazar la palabra adicción, y eso puntúa alto en E1.
     attachments:
-      - malestar_emocional.txt
+      - Reconocimiento del problema.txt
 
-  presion_social:
-    ui-label: Presión social
+  balance_decisional:
+    ui-label: Balance decisional
+    ui-description: >
+      Es un eje Modulador
     definition: |
-      un entero de 0 a 100.
-      Influencia/expectativa de otros que impulsa o facilita el consumo
-      (0=nula, 100=presión extrema/irresistible).
+      E2: Contraste entre los pros percibidos del cambio y sus contras. La agregación correcta es estandarizar cada polo por separado y restar.
+    attachments:
+      - Balance decisional.txt
 
-  abstinencia_parcial:
-    ui-label: "Abstinencia parcial"
+  autoeficacia_situacional:
+    ui-label: Autoeficacia situacional
+    ui-description: >
+      Es un eje Modulador
     definition: |
-      Grado de reducción en consumo vs. patrón habitual del usuario
-      (0=sin cambio, 100=abstinencia total).
+      E3: Confianza en poder gestionar situaciones concretas sin consumir, medida por dominios: afecto negativo, situación social positiva, malestar físico.
+    attachments:
+      - Autoeficacia situacional.txt
+
+  acción_efectiva_magnitud_y_duración:
+    ui-label: Acción efectiva. magnitud y duración
+    ui-description: >
+      Es un eje Clasificador
+    definition: |
+      E4: Dos componentes que no deben fundirse. La magnitud recoge cuánto ha cambiado la conducta manifiesta, en una escala compatible con reducción de daños: bajar dosis, reducir días, cambiar vía de administración o contexto cuentan como cambio, no sólo la abstinencia. La duración recoge cuántos meses lleva consolidado ese cambio.
+    attachments:
+      - Accion efectiva - magnitud y duracion.txt
+
+  craving_nivel_e_inestabilidad:
+    ui-label: Craving - nivel e inestabilidad
+    ui-description: >
+      Es un eje Modulador
+    definition: |
+      E5: Dos señales: la intensidad del deseo y su variabilidad entre observaciones, estimada como diferencia media al cuadrado sucesiva normalizada.
+    attachments:
+      - Craving - nivel e inestabilidad.txt
+
+  alianza_terapéutica:
+    ui-label: Alianza terapéutica
+    ui-description: >
+      Es un eje Regulador
+    definition: |
+      E6: Vínculo, acuerdo sobre objetivos y acuerdo sobre tareas, según la estructura del WAI-SR. No clasifica y no debe clasificar: una alianza fuerte no indica un estadio avanzado, sólo que la conversación puede sostener más carga.
+    attachments:
+      - Alianza terapeutica.txt
+
+  intención_comprometida:
+    ui-label: Intención comprometida
+    ui-description: >
+      Es un eje Clasificador
+    definition: |
+     E7: Horizonte:	Es el criterio canónico del algoritmo de estadiaje: precontemplación es no pretender cambiar en seis meses; contemplación, pretenderlo en seis meses; preparación, pretenderlo en treinta días y haber dado algún paso.
+     Fuerza: la fuerza del lenguaje de compromiso al evaluar un plan predijo la proporción de días de abstinencia, y mediaba el efecto del deseo, la capacidad, la necesidad y las razones. Orden: deseo < capacidad < activación < compromiso.
+     Locus:	Teoría de la autodeterminación: la motivación controlada por presión externa predice peor adherencia y más abandono que la autónoma.
+    attachments:
+      - Intencion comprometida.txt
+
+  perfil_de_procesos_de_cambio:
+    ui-label: Perfil de procesos de cambio
+    ui-description: >
+      Es un eje Modulador
+    definition: |
+     E8: Contraste entre el uso de procesos conductuales y el uso de procesos experienciales, sobre los diez procesos del modelo. Su valor real es prescriptivo, no clasificatorio. E8 responde a la pregunta operativa que sigue a la clasificación: sabido el estadio, qué proceso conviene promover. Y advierte de un error frecuente: inducir procesos conductuales a alguien que aún está en trabajo experiencial es la vía documentada del estancamiento en contemplación.
+    attachments:
+      - Perfil de procesos de cambio.txt
+  
 
 # ----------------------------------------------------------------------------
 states:
 # ----------------------------------------------------------------------------
 
-  Contemplación:
-    ui-label: Contemplación
+  Vinculación:
+    ui-label: Vinculación
     
     ui-description: >
-      El paciente es consciente de su adicción y se muestra ambivalente.
+      Estado previo a toda evaluación. La relación todavía no soporta ser medida. No es un estadio del Modelo Transteórico: es la  precondición para que el Modelo Transteórico pueda aplicarse.
 
     contextual-prompt: |
       Selecciona una pregunta a caso. Haz la pregunta seleccionada al usuario.
 
     attachments: 
-      - cuestionario.txt
+      - Vinculacion.txt
 
     actions:
-      - name: usuario niega el problema
-        ui-description: El usuare niega que el problema sea real.
-        target: Preparación
-        trigger: "signal.malestar_emocional > 49 and signal.malestar_emocional < 100 and signal.presion_social < 26 and signal.abstinencia_parcial > 20"
+      - name: Estado previo a toda evaluación.
+        ui-description: Escucha. Refleja. Devuelve lo dicho con precisión y sin añadir. Ofrece un encuadre breve y honesto; qué es esto, qué puede esperar, qué NO puede esperar, y que puede irse cuando quiera. Administra, y sólo si el flujo lo permite, ítems de E6 (6.1 a 6.5). Son los únicos autorizados y no cuentan contra la cuota de dosificación. Ofrece información de reducción de daños si la persona la pide o si el contenido lo hace pertinente.
+        target: Contemplación
+        trigger: >-
+          signal.alianza_terapéutica >= 45
+          and (signal.intención_comprometida >= 34 or signal.reconocimiento_del_problema >= 45)
 
-# ----------------------------------------------------------------------------
+  Precontemplación:
+    ui-label: Precontemplación
+    
+    ui-description: >
+      La persona no pretende cambiar en los próximos seis meses. No hay atribución causal de daño al propio consumo, o la que hay es marginal o externalizada.
+
+    contextual-prompt: |
+      Selecciona una pregunta a caso. Haz la pregunta seleccionada al usuario.
+
+    attachments: 
+      - Precontemplacion.txt
+
+    actions:
+      - name: La persona no pretende cambiar en los próximos seis meses.
+        ui-description: Aumento de la concienciación · relieve dramático · reevaluación ambiental.
+        target: Contemplación
+        trigger: >-
+          signal.alianza_terapéutica >= 45
+          and signal.reconocimiento_del_problema >= 45
+          and (signal.intención_comprometida >= 34 or signal.reconocimiento_del_problema >= 55)
+  
+  Contemplación:
+    ui-label: Contemplación
+    
+    ui-description: >
+      La persona pretende cambiar dentro de los próximos seis meses, pero no dentro de los próximos treinta días, y no ha dado pasos consolidados. Ambivalencia activa.
+
+    contextual-prompt: |
+      Selecciona una pregunta a caso. Haz la pregunta seleccionada al usuario.
+
+    attachments: 
+      - Contemplacion.txt
+
+    actions:
+      - name: La persona pretende cambiar dentro de los próximos seis meses, pero no dentro de los próximos treinta días, y no ha dado pasos consolidados. Ambivalencia activa.
+        ui-description: Auto-reevaluación, como puente hacia preparación.
+        target: Preparación
+        trigger: >-
+          signal.alianza_terapéutica >= 45
+          and signal.intención_comprometida >= 67
+          and signal.acción_efectiva_magnitud_y_duración >= 15
+          and signal.balance_decisional > 40
+          and signal.perfil_de_procesos_de_cambio > 25
 
   Preparación:
     ui-label: Preparación
+    
     ui-description: >
-      El paciente està preparado para algo jeje
+       La persona pretende cambiar dentro de los próximos treinta días Y HA DADO ALGÚN PASO. Los dos criterios son necesarios; ninguno es suficiente.
+
     contextual-prompt: |
-      ...
+      Selecciona una pregunta a caso. Haz la pregunta seleccionada al usuario.
+
+    attachments: 
+      - Preparacion.txt
+
+    actions:
+      - name: La persona pretende cambiar dentro de los próximos treinta días Y HA DADO ALGÚN PASO.
+        ui-description: Auto-liberación · inicio de control de estímulos y contracondicionamiento.
+        target: Acción
+        trigger: >-
+          signal.alianza_terapéutica >= 45
+          and signal.acción_efectiva_magnitud_y_duración >= 50
+          and signal.acción_efectiva_magnitud_y_duración < 80
+          and signal.reconocimiento_del_problema >= 30
+          and signal.craving_nivel_e_inestabilidad < 70
+
+  Acción:
+    ui-label: Acción
+    
+    ui-description: >
+       Cambio conductual manifiesto y sostenido durante MENOS de seis meses.
+
+    contextual-prompt: |
+      Selecciona una pregunta a caso. Haz la pregunta seleccionada al usuario.
+
+    attachments: 
+      - Accion.txt
+
+    actions:
+      - name: Cambio conductual manifiesto y sostenido durante MENOS de seis meses.
+        ui-description: Manejo de contingencias · relaciones de ayuda · contracondicionamiento · control de estímulos.
+        target: Mantenimiento
+        trigger: >-
+          signal.alianza_terapéutica >= 45
+          and signal.acción_efectiva_magnitud_y_duración >= 80
+          and signal.reconocimiento_del_problema >= 30
+
+  Mantenimiento:
+    ui-label: Mantenimiento
+    
+    ui-description: >
+       Cambio conductual sostenido durante SEIS MESES O MÁS.
+
+    contextual-prompt: |
+      Selecciona una pregunta a caso. Haz la pregunta seleccionada al usuario.
+
+    attachments: 
+      - Mantenimiento.txt
+
+    actions:
+      - name: Cambio conductual sostenido durante SEIS MESES O MÁS.
+        ui-description: Los conductuales ya consolidados · prevención de recaída.
+        target: Recaída
+        trigger: >-
+          0 <= signal.acción_efectiva_magnitud_y_duración < 50
+
+  Recaída:
+    ui-label: Recaída
+    
+    ui-description: >
+       EVENTO, no estadio. Interrupción del cambio consolidado con retorno al patrón previo. Sólo es posible desde acción o mantenimiento: no se puede recaer de lo que no se ha dejado.
+
+    contextual-prompt: |
+      Selecciona una pregunta a caso. Haz la pregunta seleccionada al usuario.
+
+    attachments: 
+      - Recaida.txt
+
+    actions:
+      - name: Cambio conductual sostenido durante SEIS MESES O MÁS.
+        ui-description: Ninguno hasta reevaluar los ocho criterios.
+        target: Contemplación
+        trigger: >-
+          signal.alianza_terapéutica >= 45
+          and signal.acción_efectiva_magnitud_y_duración >= 15

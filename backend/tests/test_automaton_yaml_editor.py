@@ -1,10 +1,6 @@
-"""AutomatonYamlEditor — every add/edit/delete/reorder operation an "Edit
-project" view needs against a project's own index.yml, working directly
-on a ruamel.yaml round-trip tree. This class never validates the result
-as a whole (that's AutomatonBuilder's own job) — these tests check the
-structural edit itself and the payload shape returned, not end-to-end
-project validity, except where a test explicitly re-parses the result
-through AutomatonBuilder to confirm a round trip stays buildable.
+"""AutomatonYamlEditor — every add/edit/delete/reorder operation against a
+project's index.yml, working directly on a ruamel.yaml round-trip tree.
+These tests check the structural edit itself, not end-to-end validity.
 """
 from __future__ import annotations
 
@@ -420,6 +416,140 @@ states:
         automaton = _builds(editor.serialize())
         go_b = next(a for a in automaton.states["a"].actions if a.name == "go-b")
         assert go_b.trigger is None
+
+
+ENV_BASE_YAML = """\
+init-action:
+  target: a
+env:
+  visits:
+    ui-description: Visit counter
+  score: {}
+states:
+  a:
+    ui-label: State A
+    contextual-prompt: hi
+    actions:
+      - name: go-b
+        ui-label: Go to B
+        target: b
+        trigger: env.visits >= 1
+      - name: go-c
+        ui-label: Go to C
+        target: c
+        trigger: env.visits >= 1 and env.score >= 50
+  b:
+    ui-label: State B
+    contextual-prompt: there
+  c:
+    ui-label: State C
+    contextual-prompt: elsewhere
+"""
+
+
+class TestAddEnvKey:
+    def test_generates_a_unique_valid_identifier_name(self):
+        editor = _editor()
+        payload = editor.add_env_key()
+
+        assert payload["name"] == "new_env_key"
+        assert payload["ui_description"] is None
+        assert payload["value"] == ""
+
+    def test_name_collisions_get_suffixed(self):
+        editor = _editor()
+        editor.add_env_key()  # new_env_key
+        second = editor.add_env_key()
+        assert second["name"] == "new_env_key_2"
+
+    def test_result_still_builds(self):
+        editor = _editor()
+        payload = editor.add_env_key()
+        automaton = _builds(editor.serialize())
+        assert any(e.name == payload["name"] for e in automaton.env_keys)
+
+
+class TestSetEnvKeyField:
+    def test_non_name_field_is_a_plain_edit(self):
+        editor = _editor(ENV_BASE_YAML)
+        payload = editor.set_env_key_field("visits", "ui-description", "Updated description")
+        assert payload["name"] == "visits"
+        assert payload["ui_description"] == "Updated description"
+
+    def test_value_field_is_a_plain_edit(self):
+        editor = _editor(ENV_BASE_YAML)
+        payload = editor.set_env_key_field("score", "value", "0")
+        assert payload["value"] == "0"
+
+    def test_name_edit_that_does_not_change_the_sanitized_name_stays_in_place(self):
+        editor = _editor(ENV_BASE_YAML)
+        payload = editor.set_env_key_field("visits", "name", "visits")  # to_snake_case("visits") == "visits"
+        assert payload["name"] == "visits"
+
+    def test_name_edit_that_changes_the_sanitized_name_renames_the_key(self):
+        editor = _editor(ENV_BASE_YAML)
+        payload = editor.set_env_key_field("visits", "name", "Visit Count")
+        assert payload["name"] == "visit_count"
+        automaton = _builds(editor.serialize())
+        assert "visit_count" in {e.name for e in automaton.env_keys}
+        assert "visits" not in {e.name for e in automaton.env_keys}
+
+
+class TestRenameEnvKey:
+    def test_renames_the_key_and_returns_the_updated_payload(self):
+        editor = _editor(ENV_BASE_YAML)
+        payload = editor.rename_env_key("visits", "visit_count")
+        assert payload["name"] == "visit_count"
+        automaton = _builds(editor.serialize())
+        assert {e.name for e in automaton.env_keys} == {"visit_count", "score"}
+
+    def test_collision_with_an_existing_env_key_name_gets_suffixed(self):
+        editor = _editor(ENV_BASE_YAML)
+        payload = editor.rename_env_key("visits", "score")
+        assert payload["name"] == "score_2"
+
+    def test_preserves_the_other_env_keys_own_order(self):
+        editor = _editor(ENV_BASE_YAML)
+        editor.rename_env_key("visits", "visit_count")
+        names = list(editor._raw["env"].keys())
+        assert names == ["visit_count", "score"]
+
+    def test_rewrites_every_trigger_referencing_the_old_name_via_ast_not_text(self):
+        editor = _editor(ENV_BASE_YAML)
+        editor.rename_env_key("visits", "visit_count")
+        automaton = _builds(editor.serialize())
+        go_b = next(a for a in automaton.states["a"].actions if a.name == "go-b")
+        go_c = next(a for a in automaton.states["a"].actions if a.name == "go-c")
+        assert go_b.trigger == "env.visit_count >= 1"
+        assert go_c.trigger == "env.visit_count >= 1 and env.score >= 50"
+
+    def test_a_trigger_not_referencing_the_env_key_is_left_untouched(self):
+        editor = _editor(ENV_BASE_YAML)
+        editor.rename_env_key("visits", "visit_count")
+        automaton = _builds(editor.serialize())
+        go_c = next(a for a in automaton.states["a"].actions if a.name == "go-c")
+        assert "env.score >= 50" in go_c.trigger
+
+
+class TestDeleteEnvKey:
+    def test_removes_the_env_key_itself(self):
+        editor = _editor(ENV_BASE_YAML)
+        editor.delete_env_key("score")
+        assert "score" not in editor._raw["env"]
+
+    def test_bool_op_drops_just_the_referencing_operand_when_others_survive(self):
+        editor = _editor(ENV_BASE_YAML)
+        editor.delete_env_key("score")
+        automaton = _builds(editor.serialize())
+        go_c = next(a for a in automaton.states["a"].actions if a.name == "go-c")
+        assert go_c.trigger == "env.visits >= 1"
+
+    def test_a_lone_non_bool_op_trigger_is_removed_entirely_when_it_references_the_env_key(self):
+        editor = _editor(ENV_BASE_YAML)
+        editor.delete_env_key("visits")
+        automaton = _builds(editor.serialize())
+        go_b = next(a for a in automaton.states["a"].actions if a.name == "go-b")
+        assert go_b.trigger is None  # action survives, now manual-only
 
 
 class TestReorderActions:

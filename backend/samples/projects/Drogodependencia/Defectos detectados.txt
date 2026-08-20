@@ -1,0 +1,171 @@
+DEFECTOS DETECTADOS — v2.1
+Indeterminaciones abiertas y decisiones tomadas por defecto que requieren
+ratificación explícita antes de producción.
+
+Toda entrada [D-nn] que aparece en cualquier fichero está listada aquí.
+Estado: ABIERTO · PROPUESTO (resuelto por defecto, pendiente de firma) · CERRADO.
+
+═══════════════════════════════════════════════════════════════════
+BLOQUEANTES
+═══════════════════════════════════════════════════════════════════
+
+[D-05] PROPUESTO — Definición operativa de mesesConsolidados.
+  Propuesta: el primitivo es acción_efectiva_magnitud_y_duración_diasConsolidados; el reloj cuenta desde el
+  retorno al patrón previo, no desde el último episodio; frontera 183 días;
+  un lapso no reinicia, sólo lo hace R8.
+  Razón de la propuesta: contar desde el último consumo haría inalcanzable el
+  mantenimiento para quien sostiene consumo reducido estable, que es el perfil
+  central del marco de reducción de daños.
+  Afecta a: T4, T5, T6, R8, "Estadios y fases.txt" §2.
+  FIRMA REQUERIDA.
+
+[D-09] PROPUESTO — Orden de precedencia entre reglas duras.
+  Propuesta: R0 → R1 → R9 → R8 → R4 → R6 → R2 → R3 → R5 → R7 → R10, en tres
+  estratos (seguridad · integridad de la medida · vetos clínicos).
+  Afecta a: "Reglas duras.txt" §1, fase 4 del pipeline.
+  FIRMA REQUERIDA.
+
+═══════════════════════════════════════════════════════════════════
+HALLAZGOS DE CODIFICACIÓN
+═══════════════════════════════════════════════════════════════════
+
+[D-01] PROPUESTO — Normalización de log-verosimilitudes omitida en el documento
+  fuente. Implementada como normalización por número de ejes con evidencia.
+  Sin ella, un vector con más observaciones domina artificialmente el posterior.
+
+[D-02] CERRADO — Conflicto C3 (R7 × R10) INALCANZABLE. R7 exige
+  acción_efectiva_magnitud_y_duración_magnitud < 15 y R10 exige acción_efectiva_magnitud_y_duración_magnitud ≥ 50. Son mutuamente excluyentes
+  por construcción. Documentado en "Reglas duras.txt" R7 para que no se
+  reimplemente. No requiere acción.
+
+[D-03] CERRADO — Riesgo de disparo de R10 ante lapso aislado. Corregido:
+  R10 exige descenso ≥25 respecto a la ventana anterior, y R8 (que es la que
+  reinicia el contador) exige sostenimiento ≥21 días o ≥2 ventanas.
+
+[D-04] CERRADO — Ausencia de histéresis en umbrales de modalidad. Corregido:
+  autómata de Schmitt en puerta_alianza (θ 45/35, N_on 2, N_off 1) y en
+  fase 6 (Δ_e = 0.08, asimétrico 2/1).
+
+═══════════════════════════════════════════════════════════════════
+DEFECTOS DE DISEÑO CORREGIDOS EN ESTA VERSIÓN
+═══════════════════════════════════════════════════════════════════
+
+[D-06] CERRADO — Falta de histéresis en R4 y R5. Corregido con asimetría
+  explícita: R4 entra a 14 días y sale a 21; R5 entra en (70, 60) y sale en
+  (60, 50) sostenido dos evaluaciones.
+
+[D-07] CERRADO — Alcance mal delimitado del flag de acción sin reconocimiento.
+  Corregido: R6 veta sólo T4 y T5. Antes bloqueaba globalmente, lo que excluía
+  a quien reduce consumo sin discurso de problema — perfil legítimo y frecuente.
+
+[D-08] CERRADO — Ausencia de comprobaciones de coherencia interna. Corregido:
+  regla R9 nueva, con cuatro patrones. Es el mecanismo por el que el motor duda
+  de su propio vector en lugar de promediarlo.
+
+═══════════════════════════════════════════════════════════════════
+DEFECTOS DE TOPOLOGÍA — NO CORREGIBLES DESDE [trigger] NI [attachments]
+═══════════════════════════════════════════════════════════════════
+
+Estos tres NO se pueden arreglar sin tocar el bloque [actions] del YAML, que
+está fuera del alcance autorizado. Están MITIGADOS, no resueltos.
+
+[D-12] ABIERTO — Precontemplación es inalcanzable como estado nominal.
+  No tiene arista de entrada: init va a Vinculación y la única salida de
+  Vinculación es Contemplación.
+  Mitigación actual: Vinculación absorbe el repertorio de precontemplación vía
+  Ê. Funciona clínicamente; contamina la telemetría, porque todo el volumen de
+  precontemplación queda registrado como Vinculación.
+  Parche mínimo: segunda action en Vinculación con target Precontemplación y
+  trigger = puerta_alianza and n_reconocimiento_del_problema >= 2 and intención_comprometida_horizonte_max2 <= 0
+  and E1_max2 < 45 and not flag_crisis_activa
+
+[D-13] ABIERTO — Acción no tiene arista a Recaída, pese a que el criterio
+  canónico admite recaer desde acción tanto como desde mantenimiento.
+  Mitigación actual: R8 activa modo Recaída in situ dentro de Acción, y bloquea
+  T5. El acompañamiento es correcto; el registro nominal, no.
+  Parche mínimo: segunda action en Acción con target Recaída y
+  trigger = flag_recaida_confirmada.
+  Riesgo residual asociado: si la alianza cae durante Recaída, S_nom queda
+  anclado ahí. Mitigado por degradación a repertorio Vinculación.
+
+[D-14] ABIERTO — El campo name de la action de Recaída dice "Cambio conductual
+  sostenido durante SEIS MESES O MÁS", copiado de Mantenimiento. Es un error de
+  etiqueta, sin efecto funcional. name está fuera del alcance autorizado.
+
+═══════════════════════════════════════════════════════════════════
+RESTRICCIÓN DEL EVALUADOR — DESCUBIERTA EN INTEGRACIÓN
+═══════════════════════════════════════════════════════════════════
+
+[D-16] PROPUESTO — Los [trigger] se evalúan como EXPRESIONES PYTHON.
+  Verificado por el error de carga: la plataforma valida con ast.parse y rechaza
+  la configuración entera si un solo trigger no compila. Consecuencias asumidas
+  en la v2.1, todas ellas decisiones de diseño y no meras conversiones:
+
+  (a) Lógica trivaluada FUERA del trigger. Kleene no es expresable en una
+      expresión booleana ordinaria, y una comparación contra None revienta en
+      ejecución. Se traslada a las fases 2–7 (que son código) y los triggers
+      sólo ven escalares y booleanos ya resueltos. Ver "Índice y convenciones" §3.
+
+  (b) NINGÚN veto como comparación. Todos pasan por flag_*. Motivo: un veto
+      escrito como comparación queda ABIERTO cuando el eje está en null, o sea
+      justo cuando más falta hace cerrado. La capa de reglas sí puede decidir
+      sobre el null. Es lo que motiva R11, y es una mejora real respecto a v2.0.
+
+  (c) estable(cond, k) ELIMINADO. No es implementable como llamada: Python
+      evalúa el argumento antes de llamar y pasa un booleano ya colapsado, de
+      modo que la función no puede consultar el historial de esa condición.
+      Sustituido por derivados precalculados reconocimiento_del_problema_min2, acción_efectiva_magnitud_y_duración_magnitud_min2 y
+      intención_comprometida_horizonte_min2.
+
+  (d) DESVIACIÓN SEMÁNTICA QUE ESTO INTRODUCE, y hay que ratificarla: en T1 y T2
+      la condición era estable(A or B, 2) y ahora es A_min2 or B_min2. La nueva
+      es MÁS ESTRICTA — exige que sea el mismo indicador el que se sostenga en
+      las dos evaluaciones, y no admite reconocimiento en t-1 y horizonte en t.
+      Cae del lado seguro, pero retrasa algo la entrada en contemplación.
+      Marcada [H0]: revisable en Fase 1 si el retraso resulta intolerable.
+      FIRMA REQUERIDA.
+
+  (e) Sin literales simbólicos ni llamadas a función. El horizonte se compara
+      contra 0, 1 y 2. Los triggers no usan ni una sola función, de modo que el
+      evaluador puede correr con builtins vacíos.
+
+[D-17] ABIERTO — Contrato del espacio de nombres no verificado contra la
+  plataforma. Los triggers COMPILAN, que era el error reportado. Queda por
+  confirmar que el evaluador liga en tiempo de ejecución los 23 identificadores
+  de "Índice y convenciones.txt" §8. Si sólo expusiera los ocho nombres
+  declarados en el bloque signals, el siguiente fallo será NameError, no
+  SyntaxError, y la solución es exponer los derivados desde el pipeline — no
+  reescribir los triggers, que ya son correctos.
+  Prueba de humo en CI descrita en §8. Debe correrse contra el evaluador real.
+
+═══════════════════════════════════════════════════════════════════
+PARÁMETROS PENDIENTES DE CALIBRACIÓN EMPÍRICA
+═══════════════════════════════════════════════════════════════════
+
+[D-10] ABIERTO — Todos los σ de la tabla de "Ejes y fórmulas.txt" §1 son [H0].
+  La hipótesis sustantiva es la PROPORCIÓN relativa entre ellos (ratio
+  ítem:lenguaje por eje), no su escala absoluta.
+
+[D-11] ABIERTO — μ y s de referencia para la estandarización de balance_decisional. Sin muestra
+  normativa. Provisionales μ=2.5, s=1.0 sobre escala 0–5. Mientras no se
+  calibren, el cruce en 0 de balance_decisional es nominal, no empírico, y R3 puede estar
+  disparando en el sitio equivocado.
+
+[D-15] ABIERTO — Umbral de la escala de magnitud de acción_efectiva_magnitud_y_duración. Los siete anclajes
+  (0 / 20 / 35 / 50 / 70 / 100) son [H0] y no están validados contra
+  criterio externo. umbral_cambio = 50 es la constante que define acción y
+  mantenimiento, y es la segunda más consecuente del sistema después del
+  umbral de alianza.
+
+═══════════════════════════════════════════════════════════════════
+CONSTANTE MÁS CONSECUENTE DEL SISTEMA
+═══════════════════════════════════════════════════════════════════
+
+El umbral de alianza en 40. Afecta a la modalidad en ~11% de los vectores.
+Sin histéresis produce ≈2.32 conmutaciones espurias por usuario en 12 sesiones
+a niveles de ruido realistas; con (N_on=2, N_off=1, Δ=10) baja a ≈0.49.
+No se toca sin rehacer el análisis de sensibilidad completo.
+
+Recordatorio de redundancia: pesos y tolerancias son matemáticamente redundantes
+(τ_ef = τ/√w, verificado a precisión de máquina). Grados de libertad efectivos: 7.
+No reintroducir pesos libres en la calibración de Fase 1.

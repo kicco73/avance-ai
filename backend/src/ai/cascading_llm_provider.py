@@ -1,11 +1,7 @@
-"""Composite LLMProvider: presents an ordered list of LLMProvider
-implementations as a single one. From a caller's point of view this is
-indistinguishable from talking to a single concrete provider — same
-contract, same exceptions — with retry-in-place, backoff, ordered
-fallback and logging (see cascade.py's ProviderCascade) happening
-underneath. Anywhere an LLMProvider is expected, this is a legal,
-swappable value — see ai_service.py's AiService.
-"""
+"""Composite LLMProvider: presents an ordered list of LLMProviders as a
+single provider with the same contract, with retry, backoff, and
+ordered fallback across the list handled underneath (see cascade.py's
+ProviderCascade)."""
 from __future__ import annotations
 
 from typing import AsyncIterator
@@ -27,22 +23,15 @@ class CascadingLLMProvider(LLMProvider):
     def current_index(self) -> int:
         return self._cascade.current_index
 
-    # Whichever concrete leaf the cascade would call *right now* — reading
-    # this is the only way anything above this wrapper (see AiService.
-    # supports_metadata) can tell what it's actually talking to, since
-    # generate_stream below otherwise hides that entirely, cascading
-    # between leaves on failure (see cascade.py) with no visible seam.
-    # Purely a read: never advances or otherwise mutates the cascade's
-    # own position.
+    # Which leaf the cascade would call right now; a pure read that
+    # never advances or otherwise mutates the cascade's position.
     @property
     def current_provider(self) -> LLMProvider:
         return self._cascade.current
 
-    # generate() has no override here — LLMProvider's own shared default
-    # (see its own docstring) calls self.generate_stream, which correctly
-    # resolves to this class's own override below via normal polymorphic
-    # dispatch, so it's already cascade/retry-aware without needing a
-    # second, separate implementation of that here.
+    # No generate() override: the LLMProvider base default calls
+    # self.generate_stream, which resolves polymorphically to the
+    # override below, so it's already cascade/retry-aware.
     async def generate_stream(
         self, system_prompt: str, history: list[dict]
     ) -> AsyncIterator[str]:

@@ -1,9 +1,6 @@
-"""Shared DataFrame-building helpers for metrics_framework tests. Not a
-test module itself (no test_ prefix, not collected by pytest) — mirrors
-exactly the column shapes UserAnalyticsDataBuilder produces (see
-metrics_framework/timeline.py), so metric-level tests can construct a
-UserAnalyticsData directly, independent of the database (per
-metrics_framework/README.md #18)."""
+"""Shared DataFrame-building helpers for metrics_framework tests. Mirrors
+the column shapes UserAnalyticsDataBuilder produces, so metric-level
+tests can construct a UserAnalyticsData directly, without a database."""
 from __future__ import annotations
 
 import json
@@ -74,10 +71,7 @@ def signal_row(id_, ts, values=None, old_state=None, action=None, new_state=None
         "old_state": old_state,
         "action": action,
         "new_state": new_state,
-        # Defaults to id_ itself when not given — preserves the same
-        # relative ordering every existing call site already relies on
-        # (ascending id_ already matches intended chronological order),
-        # now that Timeline.signal_series orders by message_id rather
-        # than timestamp.
+        # Defaults to id_ itself, matching ascending chronological order
+        # for Timeline.signal_series's message_id-based ordering.
         "message_id": id_ if message_id is None else message_id,
     }

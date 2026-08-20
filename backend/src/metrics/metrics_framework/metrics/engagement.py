@@ -6,12 +6,9 @@ from .base import BaseMetric
 
 
 class EngagementMetric(BaseMetric):
-    """Overall amount of user participation in the observed history.
-
-    The score is a weighted combination of message activity and session
-    activity. References are configurable and are saturation points, not
-    claims about an ideal user.
-    """
+    """Overall user participation, weighted across message and session
+    volume. References are configurable saturation points, not claims
+    about an ideal user."""
 
     def __init__(self, message_reference: int = 100, session_reference: int = 10) -> None:
         self._message_reference = message_reference

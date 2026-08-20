@@ -1,10 +1,6 @@
-"""action_prompt's own dedicated entry point (see chat_service.py's
-_generate_action_prompt_message, tracking/tracking_processor.py's
-extra_prompt/_save_user_message) — an action_prompt is injected into the
-model's own prompt, never saved to the DB as a real user-authored
-message. Regression coverage for the bug this replaced: action_prompt
-used to be passed as `text`, permanently polluting the conversation
-history with a fake role="user" message that was never cleaned up.
+"""action_prompt's dedicated entry point: an action_prompt is injected into
+the model's prompt, never saved to the DB as a real user-authored
+message.
 """
 from __future__ import annotations
 
@@ -16,6 +12,7 @@ from automaton.automaton import Action, Automaton, State
 from chat.chat_service import ChatService
 from chat.session_manager import ChatSessionManager
 from conftest import FakeAiService
+from jobs import JobQueue, PersistedJobSink
 from metrics.metric_service import MetricService
 from tracking.tracking_processor import TrackingProcessor
 from tracking.tracking_service import TrackingService
@@ -60,6 +57,9 @@ class FakeProjectService:
     def get_active_project_name(self) -> str:
         return PROJECT_NAME
 
+    def get_project_availability(self, project_name: str):
+        return (False, None)
+
     def apply_manual_action(self, action_name: str, session_id: int):
         automaton, state = self.get_active_automaton_and_state()
         action = automaton.move(state.key, action_name)
@@ -80,18 +80,15 @@ def _chat_service(db, automaton: Automaton) -> tuple[ChatService, FakeAiService]
     chat_service = ChatService(
         db=db, ai_service=ai_service, project_service=project_service,
         session_manager=ChatSessionManager(db), tracking_service=tracking_service, metric_service=metric_service,
+        persisted_jobs=JobQueue(PersistedJobSink(db), max_concurrent=1),
     )
     return chat_service, ai_service
 
 
 async def test_action_prompt_leaves_no_user_role_message_in_the_db(db):
-    """The whole point of the fix: an action_prompt is engine-generated
-    text injected into the model's own prompt (see extra_prompt), never a
-    real user turn — regardless of how many assistant messages the
-    transition itself produces (the action_prompt reply, plus a separate
-    opening message if the destination state needs one too, see
-    ChatService._messages_for_transition/PROJECT_SPECS.md §6.3), none of
-    them may ever be saved with role="user"."""
+    """An action_prompt is engine-generated text injected into the model's
+    prompt, never a real user turn — none of the resulting assistant
+    messages may ever be saved with role="user"."""
     chat_service, _ = _chat_service(db, _automaton())
     session = chat_service.get_or_create_current_session(None)
 
@@ -115,19 +112,9 @@ async def test_action_prompt_fires_even_when_the_destination_state_disallows_cha
 
 
 async def test_apply_manual_action_reply_entries_are_flat_message_dicts(db):
-    # Regression test: apply_manual_action's own "reply" list used to be
-    # a list of nested turn-response dicts (each carrying only ids —
-    # process_turn's own return shape, see _build_turn_response — never
-    # the reply's own text). chatStore.js's handleAction has always
-    # destructured {id, content, audio_text} straight off each entry,
-    # which silently produced content: undefined/audioText: undefined/
-    # messageId: undefined bubbles for every action-triggered follow-up
-    # message. _messages_for_transition now resolves each turn's own
-    # assistant_message_id through db.get_message, returning the flat
-    # {id, role, content, audio_text, ...} shape the frontend already
-    # expects. State "b" here is both final and chat-enabled, so this
-    # exercises the two-entries case: the action_prompt's own reply,
-    # plus a separate opening message for landing in "b".
+    # apply_manual_action's "reply" list must be flat {id, role, content,
+    # audio_text} dicts, matching what chatStore.js's handleAction expects.
+    # State "b" is final and chat-enabled, exercising the two-entries case.
     chat_service, _ = _chat_service(db, _automaton(chat_on_destination=True))
     session = chat_service.get_or_create_current_session(None)
 
@@ -154,8 +141,6 @@ async def test_action_prompt_text_reaches_the_model_prompt_not_the_saved_message
 
 
 def test_process_turn_extra_prompt_still_defaults_to_none():
-    """_generate_opening_message_body/process_turn's own plain call
-    (no extra_prompt) must keep behaving exactly as before this change —
-    confirms the new parameter is additive, not a required one."""
+    """extra_prompt is optional, not required."""
     sig = inspect.signature(TrackingProcessor.process)
     assert sig.parameters["extra_prompt"].default is None

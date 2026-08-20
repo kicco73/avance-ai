@@ -8,6 +8,15 @@ let socket = null
 let socketConnectingPromise = null
 let pendingTurn = null // { resolve, reject, onStatus, onChunk }
 
+// A server-pushed cross-project wake-up — never a response to anything
+// this client asked for, so it never touches pendingTurn, and can arrive
+// for a project other than the one currently displayed.
+let notificationHandler = null
+
+export function onNotification(handler) {
+  notificationHandler = handler
+}
+
 function normalizeResult(data) {
   return {
     reply: data.reply || [],
@@ -34,7 +43,7 @@ function handleSocketMessage(event) {
     return
   }
 
-  // 1. CHUNK INTERMEDI (Streaming)
+  // Streaming chunk
   if (data.type === 'chunk' || data.chunk !== undefined || data.delta !== undefined) {
     const textChunk = data.content ?? data.chunk ?? data.delta ?? ''
     if (textChunk && pendingTurn?.onChunk) {
@@ -43,7 +52,7 @@ function handleSocketMessage(event) {
     return
   }
 
-  // 2. STATUS / RETRY
+  // Status / retry
   if (data.type === 'status' || data.status) {
     const statusText = data.status ?? data.message
     if (statusText && pendingTurn?.onStatus) {
@@ -58,7 +67,7 @@ function handleSocketMessage(event) {
     return
   }
 
-  // 3. ERRORE
+  // Error
   if (data.type === 'error') {
     setApiError(data.error.message, data.error.detail)
     pendingTurn?.reject(new Error(data.error.message))
@@ -66,12 +75,23 @@ function handleSocketMessage(event) {
     return
   }
 
-  // 4. DONE: Risolve la promise a fine stream
+  // Done: resolves the promise at the end of the stream
   if (data.type === 'done') {
     if (!pendingTurn) return
     const { resolve } = pendingTurn
     pendingTurn = null
     resolve(normalizeResult(data))
+    return
+  }
+
+  // Notification: server-pushed cross-project wake-up, never tied to
+  // pendingTurn — it's up to the registered handler to decide how to show it.
+  if (data.type === 'notification') {
+    notificationHandler?.({
+      project_name: data.project_name,
+      state: data.state,
+      'on-enter': data['on-enter']
+    })
   }
 }
 
@@ -121,7 +141,6 @@ async function ensureSocket() {
   return await connectSocket()
 }
 
-// Corretto: riceve { onStatus, onChunk } come oggetto unico
 async function sendViaWebsocket(text, sessionId, { onStatus, onChunk } = {}) {
   const ws = await ensureSocket()
   return new Promise((resolve, reject) => {

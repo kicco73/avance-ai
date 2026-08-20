@@ -9,11 +9,9 @@ from .utils import _utc_iso
 
 logger = logging.getLogger(__name__)
 
-# Distinguishes "caller didn't pass timestamp at all" (Message's own
-# `default=datetime.utcnow` should apply, same as always) from "caller
-# explicitly wants NULL" (an imported message with no real timestamp —
-# see SessionImportManager) — None itself can't be the sentinel since
-# it's the explicit value being distinguished for.
+# Distinguishes "caller didn't pass timestamp" (default=datetime.utcnow
+# applies) from "caller explicitly wants NULL" — None can't be the
+# sentinel since it's the explicit value being distinguished for.
 _TIMESTAMP_UNSET = object()
 
 class MessageMixin:
@@ -41,10 +39,8 @@ class MessageMixin:
 
     def get_messages(self, session_id: int, last_n: int | None=None, since: datetime | None=None) -> list[dict]:
         # id, not timestamp: always present (never null, unlike an
-        # imported message's — see ChatSession.source) and already the
-        # correct order for any session, native or imported (see
-        # metrics_framework/benchmark_metrics's own move to id-based
-        # ordering for the same reason).
+        # imported message's) and already the correct order for any
+        # session, native or imported.
         query = Message.select().where(Message.session == session_id).order_by(Message.id.desc())
         if since is not None:
             query = query.where(Message.timestamp > since)

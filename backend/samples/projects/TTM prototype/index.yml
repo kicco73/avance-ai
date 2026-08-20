@@ -1,9 +1,14 @@
-# A state-machine implementation of the Transtheoretical Model of Change, 
-# augmented with Motivational Interviewing and Relapse Prevention principles.
-# (Prochaska, DiClemente)
-
+project:
+  id: ttm_prototype
+  ui-label: TTM prototype
+  ui-description: |
+    A state-machine implementation of the Transtheoretical Model of Change, 
+    augmented with Motivational Interviewing and Relapse Prevention principles.
+    (Prochaska, DiClemente)
+  
 init-action:
-  ui-label: new session
+  ui-label: new user
+  on-enter: celebrate()
   target: Precontemplation
 
 # Fixed instructions appended to every state's contextual_prompt (except
@@ -148,11 +153,11 @@ states:
       - name: commit to plan
         ui-label: "User sets a concrete date/step and reduces baseline consumption"
         ui-button: "Mark: plan defined"
-        target: action
+        target: Action
         trigger: "signal.planConcreteness >= 75"
-        on-enter: celebrate
+        on-enter: celebrate()
 
-  action:
+  Action:
     ui-label: "Action"
     ui-description: >
       The user is actively modifying the target behavior. Relapse risk is

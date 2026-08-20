@@ -68,9 +68,8 @@ states:
 
 def test_triggers_preview_merges_metric_values_when_referenced(client):
     _upload_and_activate(client, "metric-trigger", METRIC_TRIGGER_PROJECT)
-    # A freshly bootstrapped session already scores "engagement" above zero
-    # via its own session component (see test_controller_metrics.py) — the
-    # preview must reflect that even though only a *signal* value is sent.
+    # A freshly bootstrapped session already scores "engagement" above
+    # zero; the preview must reflect that even though only a signal is sent.
     client.get("/api/chat/session")
 
     response = client.post("/api/triggers/preview", json={"signals": {"myOwnSignal": 10}})

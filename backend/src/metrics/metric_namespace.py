@@ -1,22 +1,6 @@
-"""Shared laziness for the two metric-bearing evaluation-scope
-namespaces — `session.metric` (tracking.session_facts.SessionFacts.metric)
-and `metric` (MetricService.for_turn) — each backed by its own
-AnalyticsCalculator, but built off a different window (the current
-session's own [start, now) vs. the user's whole cross-session history).
-
-Every namespace attribute is a zero-argument proxy, same convention as
-SystemFacts/SessionFacts: the AnalyticsCalculator itself (an eager,
-whole-history-or-window DB load — see AnalyticsCalculator.__init__) is
-never constructed until an expression actually calls one of these
-methods, so an unreferenced `session.metric`/`metric` costs nothing, same
-as an unreferenced system/session fact. Once built, it's cached for this
-object's own lifetime (one turn — see EvaluationScopeBuilder.build,
-which constructs a fresh namespace instance every turn) so a trigger
-referencing more than one metric off the same namespace still costs
-exactly one dataset load, not one per metric (see AnalyticsCalculator.
-calculate, which evaluates a single metric off an already-loaded
-dataset).
-"""
+"""Shared laziness for the two metric namespaces — `session.metric` and
+`metric` — each backed by its own AnalyticsCalculator, built and cached
+only on first use, scoped to one turn's lifetime."""
 from __future__ import annotations
 
 from typing import Callable

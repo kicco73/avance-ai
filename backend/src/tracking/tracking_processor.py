@@ -60,11 +60,16 @@ class OutVariables:
 	tracking_id: int | None
 	state: State
 	action: Action | None
-	# True once tracking_id's own row already carries the message id of
-	# whichever message actually caused it (see TrackingProcessorAfterUserMessage
-	# ._get_ai_reply, which knows self.user.message_id up front) — process()
-	# must not then overwrite that link with the assistant's own message id.
+	# True once tracking_id's row already carries the message id of
+	# whichever message actually caused it — process() must not then
+	# overwrite that link with the assistant's own message id.
 	tracking_linked_to_message: bool = False
+	# True once this turn's signals are settled and won't change the state
+	# again — either they were actually evaluated (whether or not that
+	# triggered a transition), or a caller determined upfront that no
+	# transition was ever possible. Gates whether buffered reply text is
+	# safe to stream.
+	signals_resolved: bool = False
 
 class TrackingProcessor(object):
 	metadata_processor = MetadataHandler()
@@ -94,12 +99,8 @@ class TrackingProcessor(object):
 
 	def _save_user_message(self, text: str | None) -> None:
 		"""Persists this turn's own user-facing message — the real text if
-		there is one, a '...' placeholder otherwise (an opening message, or
-		an action_prompt firing with no real user text) — and records
-		enough on self.user (message_id, has_ai_started_conversation) for
-		process() to know, once the AI's reply is in, whether that
-		placeholder should be deleted again rather than kept as a fake
-		user turn."""
+		there is one, a '...' placeholder otherwise — and records enough
+		on self.user for process() to later delete that placeholder rather than keep it as a fake user turn."""
 		message_id = self.db.save_message("user", text or '...', self.user.session_id)
 		self.user = replace(self.user, message_id=message_id, has_ai_started_conversation=not text)
 
@@ -126,11 +127,8 @@ class TrackingProcessor(object):
 
 		assistant_id = self.db.save_message("assistant", self.out.reply, self.user.session_id, audio_text=self.metadata.audio)
 		# Linked to the assistant's own message right away — this turn's
-		# reply is what actually reported these env values (see
-		# MetadataHandler.parse_raw_env), so unlike self.out.tracking_id
-		# (which may already be linked to an earlier, causing message —
-		# see TrackingProcessorAfterUserMessage), this row has no such
-		# earlier candidate to prefer.
+		# reply is what actually reported these env values, unlike
+		# self.out.tracking_id, which may already be linked to an earlier message.
 		self.env.update(self.metadata.env, message_id=assistant_id)
 
 		if self.out.tracking_id is not None and not self.out.tracking_linked_to_message:
@@ -156,14 +154,8 @@ class TrackingProcessor(object):
 
 	def _build_base_prompt_and_history(self, state: State) -> tuple[str, list[dict]]:
 		"""Same base_prompt/chat_history generate_reply itself builds for
-		`state` — exposed (single-underscore, so subclasses in other
-		modules can actually call it, unlike the name-mangled
-		__build_turn_prompt_parts) for a caller that needs those two
-		pieces without going through the full tag/signal_definition/env
-		machinery generate_reply's own TurnProtocol.generate_reply call
-		requires — see TrackingProcessorAfterUserMessage._get_ai_reply's
-		own regeneration call, which asks for a narrower tag set via
-		TurnProtocol.generate_reply_with_schema instead."""
+		`state` — exposed single-underscore (rather than name-mangled) so
+		a caller can get those two pieces without the full TurnProtocol.generate_reply machinery."""
 		base_prompt, _signal_definition, turn_attachments = self.__build_turn_prompt_parts(self.user.automaton, state)
 		return base_prompt, self._build_chat_history(turn_attachments)
 

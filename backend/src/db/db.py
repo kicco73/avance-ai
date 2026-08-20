@@ -5,32 +5,30 @@ import os
 import sqlite3
 from datetime import datetime, timezone
 
+from .benchmark_runs import BenchmarkRunMixin
 from .history import HistoryMixin
+from .jobs import JobMixin
 from .messages import MessageMixin
+from .observability import ObservabilityMixin
 from .projects import ProjectMixin
+from .session_summaries import SessionSummaryMixin
 from .sessions import SessionMixin
 from .settings import SettingsMixin
 from .tracking import TrackingMixin
 
 from playhouse.db_url import connect, parse as parse_db_url
 
-from .models import Archive, ChatSession, History, Message, Project, Settings, StateRemap, Tracking, database
+from .models import (
+    Archive, BenchmarkRun, BenchmarkRunObservation, ChatSession, History, Job, Message, Project,
+    ProjectObserverIndex, Settings, SessionSummary, StateRemap, SystemWarning, Tracking, database,
+)
 
 logger = logging.getLogger(__name__)
 
 def _utc_iso(dt: datetime | None) -> str | None:
-    """Every DateTimeField in this module is written with
-    `default=datetime.utcnow` — a naive datetime that's really always UTC,
-    never the server's local time. `dt.isoformat()` alone would drop that
-    fact on the floor, and a frontend `new Date(...)` parses a
-    timezone-less ISO string as *local* time, not UTC — silently shifting
-    every timestamp by the browser's own UTC offset. Stamping the
-    timezone explicitly here is what lets the frontend be the only place
-    that ever converts to the user's local time for display (see
-    MessageBubble.vue's formatTimestamp). `dt` is None for an imported
-    session/message with no real timestamp (see ChatSession.source) —
-    stays None rather than raising, since that's a legitimate value here,
-    not a bug."""
+    """Every DateTimeField here is naive-but-really-UTC. Stamping the
+    timezone explicitly is required: a frontend `new Date(...)` parses a
+    timezone-less ISO string as *local* time, shifting it silently."""
     return dt.replace(tzinfo=timezone.utc).isoformat() if dt is not None else None
 
 class Db(
@@ -39,10 +37,17 @@ class Db(
     TrackingMixin,
     SettingsMixin,
     ProjectMixin,
-    HistoryMixin):
+    HistoryMixin,
+    JobMixin,
+    BenchmarkRunMixin,
+    SessionSummaryMixin,
+    ObservabilityMixin):
 
     _SQLITE_MAGIC = b"SQLite format 3\x00"
-    _MODELS = (Project, ChatSession, Message, Settings, Tracking, Archive, History, StateRemap)
+    _MODELS = (
+        Project, ChatSession, Message, Settings, Tracking, Archive, History, StateRemap, Job,
+        BenchmarkRun, BenchmarkRunObservation, SessionSummary, SystemWarning, ProjectObserverIndex,
+    )
 
     def __init__(self, database_url: str, force_drop_and_create_when_incompatible: bool=False) -> None:
         self._database_url = database_url
@@ -56,12 +61,9 @@ class Db(
 
     @staticmethod
     def _backfill_projects() -> None:
-        """Project didn't exist before ChatSession.project_name/
-        Archive.project_name became foreign keys to it — an install with
-        data from before this migration has distinct project_name values
-        in those tables with no corresponding Project row yet. Idempotent
-        (get_or_create), so safe to run on every startup rather than only
-        once."""
+        """Creates a Project row for every project_name referenced by
+        ChatSession/Archive that doesn't have one yet. Idempotent
+        (get_or_create), so safe to run on every startup."""
         names = {row.project_name_id for row in ChatSession.select(ChatSession.project_name).distinct()}
         names |= {row.project_name_id for row in Archive.select(Archive.project_name).distinct()}
         for name in names:
@@ -77,14 +79,9 @@ class Db(
         if actual == self._expected_schema():
             return
         logger.warning("Database schema at '%s' doesn't match what this code expects — dropping and recreating every table from scratch (database.force-drop-and-create-when-incompatible is enabled).", path)
-        # Dropping a parent table (e.g. 'project') while a child table
-        # (e.g. 'chatsession'/'archive') still has a FOREIGN KEY
-        # referencing it raises IntegrityError under SQLite's own FK
-        # enforcement — verified DROP TABLE is checked, not just DML.
-        # `actual`'s own table order reflects sqlite_master's on-disk
-        # order, not a dependency-safe one, so foreign key checking is
-        # switched off for the duration of the drop only, then restored
-        # before anything gets recreated.
+        # Dropping a parent table while a child still FOREIGN KEYs into
+        # it raises IntegrityError under SQLite. `actual`'s table order
+        # isn't dependency-safe, so FK checking is switched off for the drop only.
         database.execute_sql('PRAGMA foreign_keys = OFF')
         try:
             for table in actual:

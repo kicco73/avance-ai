@@ -1,9 +1,6 @@
 """Tests for tracking.evaluation_scope.EvaluationScopeBuilder — the one
 place a trigger/`env:`-expression evaluation scope gets assembled: the
-`signal`/`env`/`system`/`session` namespaces plus any referenced core
-metric. Moved (and adapted to the new namespaced syntax) from tests that
-used to exercise the same end-to-end concerns through tracking.env.Env's
-own merge_if_referenced, before this class existed.
+`signal`/`env`/`system`/`session` namespaces plus any referenced core metric.
 """
 from __future__ import annotations
 
@@ -122,9 +119,7 @@ def test_env_action_set_value_is_usable_in_a_trigger_end_to_end(db):
 
 def test_env_namespace_excludes_free_form_stored_values(db):
     """Only action_set() feeds the `env` namespace — a model-reported
-    free-form stored() value (see tracking.env.Env's own docstring) must
-    never leak into it, unlike before this refactor (see Env.to_dict's
-    own three-way merge, now gone)."""
+    free-form stored() value must never leak into it."""
     db.ensure_project(PROJECT_NAME)
     db.publish_project(PROJECT_NAME)
     db.create_chat_session(

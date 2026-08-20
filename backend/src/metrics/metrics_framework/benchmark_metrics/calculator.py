@@ -33,22 +33,39 @@ class BenchmarkCalculator(object):
         session_id: int | None = None,
         metrics: Iterable[BenchmarkMetric] | None = None,
     ) -> None:
-        """The *default* metric set is filtered down to whatever's
-        meaningful in a "one_session" context (see BenchmarkMetric.scope)
-        — every current caller (ChatService.get_benchmark_metrics, for
-        both the "Benchmark"/"Edit project" views' own Performance tabs)
-        only ever wants that, session_id given or not. An explicitly
-        passed `metrics` is used as-is, unfiltered — the caller's own
-        explicit choice, not this calculator's to second-guess."""
+        """The default metric set is filtered to whatever's meaningful in
+        a "one_session" context; an explicitly passed `metrics` is used
+        as-is, unfiltered — the caller's own explicit choice."""
         self._db = db
         self._username = username
         self._project_name = project_name
         self._session_id = session_id
         self._configuration = configuration or BenchmarkConfiguration()
+        # None here tells _build_observations to load from `db` normally;
+        # from_data below sets this instead.
+        self._data: BenchmarkData | None = None
+        self._metrics = self._select_metrics(metrics)
+
+    def _select_metrics(self, metrics: Iterable[BenchmarkMetric] | None) -> tuple[BenchmarkMetric, ...]:
         if metrics is not None:
-            self._metrics = tuple(metrics)
-        else:
-            self._metrics = tuple(m for m in self.default_metrics() if "one_session" in m.scope)
+            return tuple(metrics)
+        return tuple(m for m in self.default_metrics() if "one_session" in m.scope)
+
+    @classmethod
+    def from_data(
+        cls,
+        data: BenchmarkData,
+        configuration: BenchmarkConfiguration | None = None,
+        metrics: Iterable[BenchmarkMetric] | None = None,
+    ) -> "BenchmarkCalculator":
+        """Builds directly from an already-ready BenchmarkData, skipping
+        the usual DB round-trips. Same scope filter as the normal
+        constructor: `metrics` explicit if given, else "one_session" defaults."""
+        instance = cls.__new__(cls)
+        instance._configuration = configuration or BenchmarkConfiguration()
+        instance._data = data
+        instance._metrics = instance._select_metrics(metrics)
+        return instance
 
     def default_metrics(self) -> tuple[BenchmarkMetric, ...]:
         return (
@@ -65,10 +82,8 @@ class BenchmarkCalculator(object):
     @property
     def metrics(self) -> tuple[BenchmarkMetric, ...]:
         """The metric instances calculate_all() evaluates, in the same
-        order as its own results — lets a caller (see ChatService.
-        get_benchmark_metrics) pair each BenchmarkMetricResult with its
-        own name/ui_label/ui_description without re-deriving the registry
-        itself (mirrors metrics_framework's own AnalyticsCalculator.metrics)."""
+        order as its own results — lets a caller pair each
+        BenchmarkMetricResult with its own name/ui_label/ui_description."""
         return self._metrics
 
     def calculate_all(self) -> list[BenchmarkMetricResult]:
@@ -82,13 +97,13 @@ class BenchmarkCalculator(object):
         return self._build_observations()
 
     def _build_observations(self):
+        if self._data is not None:
+            return BenchmarkObservationBuilder(self._configuration).build(self._data)
         sessions = self._load_sessions()
         session_ids = [int(row["id"]) for row in sessions]
-        # Tracking rows loaded once per session and reused for both frames:
-        # a message's own expected_state now lives on whichever Tracking
-        # row its evaluation produced (see db.py's Tracking.message), not
-        # on the message itself — refetching per frame would just double
-        # the db calls for the exact same rows.
+        # Tracking rows loaded once per session and reused for both frames
+        # (expected_state lives on the Tracking row, not the message) —
+        # refetching per frame would double the db calls for the same rows.
         signal_rows_by_session = {session_id: self._db.get_signals(session_id) for session_id in session_ids}
         messages = self._load_messages(session_ids, signal_rows_by_session)
         signals = self._load_signals(session_ids, signal_rows_by_session)

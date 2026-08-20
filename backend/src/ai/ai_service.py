@@ -27,14 +27,12 @@ class AiService(object):
 		configs: list[AIServiceConfig] | None = None,
 	) -> None:
 		self._auto_provider = auto_provider
-		# Only present when built via from_config() below — index-aligned
-		# with `configs`, and both empty for a hand-built AiService that
-		# only ever runs in auto mode (select_model has nothing to pick).
+		# Index-aligned with `configs`; both empty for a hand-built
+		# AiService that only ever runs in auto mode.
 		self._selectable_providers = selectable_providers or []
 		self._configs = configs or []
-		# None = auto (use auto_provider); an index pins to that entry of
-		# selectable_providers/configs instead. In-memory only, like the
-		# rest of this prototype's mutable state (e.g. auto_tracking_enabled).
+		# None = auto (use auto_provider); an index pins to that entry
+		# of selectable_providers/configs instead.
 		self._selected_index: int | None = None
 
 	@classmethod
@@ -64,14 +62,9 @@ class AiService(object):
 
 	@property
 	def _current_leaf_provider(self) -> LLMProvider:
-		"""The concrete provider a call would actually reach right now —
-		_active_provider is typically a CascadingLLMProvider (see its own
-		current_provider), but this class's own contract only ever
-		promises a plain LLMProvider (see this class's own docstring), so
-		a hand-built instance wrapping a bare leaf directly is also legal
-		— falls back to _active_provider itself in that case, same
-		defensive getattr as get_models_info's own current_index lookup
-		just below."""
+		"""The concrete provider a call would actually reach; unwraps a
+		CascadingLLMProvider via getattr since _active_provider isn't
+		guaranteed to be one."""
 		return getattr(self._active_provider, "current_provider", self._active_provider)
 
 	def select_model(self, index: int | None) -> None:

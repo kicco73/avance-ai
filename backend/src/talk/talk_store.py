@@ -1,12 +1,8 @@
-"""On-disk cache for generated audio, content-addressed by a caller-
-supplied key (see TalkService.generate — a hash of the text), with a
-retention policy applied both on write (keep at most MAX_FILES) and on
-read (drop everything older than whatever was just served). Also tracks
-in-flight generations (LiveTalkGeneration) so a second request for the
-same key arriving mid-generation gets fed chunks in real time instead of
-triggering a duplicate one. Owned and constructed by TalkService, not
-a singleton.
-"""
+"""On-disk cache for generated audio, content-addressed by a
+caller-supplied key, retained at most MAX_FILES and pruned of anything
+older than what was just served. Also tracks in-flight generations so a
+second request for the same key mid-generation joins it instead of
+triggering a duplicate."""
 from __future__ import annotations
 
 import asyncio
@@ -21,22 +17,9 @@ MAX_FILES = 10
 
 
 class LiveTalkGeneration(object):
-    """One in-flight audio generation for a single cache key: an
-    append-only log of the chunks produced so far, plus an Event any
-    reader can wait on to notice new ones. stream_from(0) — the only way
-    this prototype uses it — replays everything already appended before
-    catching up to the live tail, so a client joining after generation
-    has already produced some chunks still gets all of them, not just
-    whatever comes after it connects.
-
-    push()/finish() are only ever called from the event loop (never from
-    the worker thread actually talking to the provider — see
-    asyncio.to_thread in cascade.py), so no additional locking is needed.
-
-    Single-writer. Any number of readers technically works (each tracks
-    its own index into the same append-only list), but only one is ever
-    expected in practice — see the module's own "single client"
-    simplification."""
+    """One in-flight generation for a single cache key: an append-only
+    log of chunks plus an Event readers wait on. push()/finish() are
+    only ever called from the event loop, so no locking is needed."""
 
     def __init__(self) -> None:
         self._chunks: list[bytes] = []
@@ -70,9 +53,8 @@ class LiveTalkGeneration(object):
 class TalkStore(object):
     def __init__(self) -> None:
         # Kept alive for the process's whole lifetime (not a `with` block,
-        # which would delete it immediately) — the standard library's own
-        # mechanism for a directory that cleans itself up on interpreter
-        # exit, rather than a hand-managed folder under the project.
+        # which would delete it immediately) — cleans itself up on
+        # interpreter exit.
         self._tempdir = tempfile.TemporaryDirectory(prefix="avance-talk-")
         self._base_dir = Path(self._tempdir.name)
         # In-flight generations, keyed by cache key — purely in-memory,
@@ -97,10 +79,8 @@ class TalkStore(object):
         self._enforce_max_files()
 
     def read_and_purge_older(self, key: str) -> bytes | None:
-        """Returns the cached audio for `key`, or None if there isn't any
-        (never generated, or already purged by either policy below). On
-        a hit, also deletes every other cached file older than the one
-        just served — only it and anything more recent survive."""
+        """Returns the cached audio for `key`, or None. On a hit, also
+        deletes every other cached file older than the one just served."""
         path = self._base_dir / f"{key}.wav"
         if not path.is_file():
             return None

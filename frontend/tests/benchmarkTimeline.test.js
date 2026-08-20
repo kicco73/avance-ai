@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   actualStateAtOrBefore,
   buildTimeline,
+  commentForMessage,
   effectiveTimestamp,
   highlightedStateKeyFor,
   nearestMessageIdAtOrBefore,
@@ -32,6 +33,37 @@ function transitionRow(id, { timestamp, oldState = null, newState = null, values
     message_id: messageId
   }
 }
+
+describe('commentForMessage', () => {
+  it('returns null when the message has no linked Signals row at all', () => {
+    const m = message(1, 't1')
+    expect(commentForMessage(m, [])).toBeNull()
+  })
+
+  it('returns null when the linked row exists but has no comment', () => {
+    const m = message(1, 't1')
+    const row = { ...transitionRow(1, { timestamp: 't1', messageId: 1 }), comment: null }
+    expect(commentForMessage(m, [row])).toBeNull()
+  })
+
+  it('returns null (not "") for a blank/whitespace comment — same falsy treatment as null', () => {
+    const m = message(1, 't1')
+    const row = { ...transitionRow(1, { timestamp: 't1', messageId: 1 }), comment: '' }
+    expect(commentForMessage(m, [row])).toBeNull()
+  })
+
+  it('returns the comment text when the linked row has one', () => {
+    const m = message(1, 't1')
+    const row = { ...transitionRow(1, { timestamp: 't1', messageId: 1 }), comment: 'Double-checked this — looks right.' }
+    expect(commentForMessage(m, [row])).toBe('Double-checked this — looks right.')
+  })
+
+  it('never matches a row linked to a different message', () => {
+    const m = message(2, 't1')
+    const row = { ...transitionRow(1, { timestamp: 't1', messageId: 1 }), comment: 'not this message' }
+    expect(commentForMessage(m, [row])).toBeNull()
+  })
+})
 
 describe('valuesToSignalValues', () => {
   it('returns an empty object for null/undefined', () => {

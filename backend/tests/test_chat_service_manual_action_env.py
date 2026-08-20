@@ -1,10 +1,6 @@
-"""ChatService.apply_manual_action's own end of the action-level `env`
-feature (see automaton_builder.py's _build_action/Automaton.
-eval_action_env) — a manually fired (button click) action updates
-chat.env.Env exactly like an auto-tracking-fired one does (see
-test_auto_tracker_action_env.py), just without any signal_values of its
-own (no AI computation runs for a manual action, see ChatService.
-_apply_action_env's own docstring).
+"""ChatService.apply_manual_action's end of the action-level `env`
+feature — a manually fired (button click) action updates env exactly
+like an auto-tracking-fired one does, without any signal_values.
 """
 from __future__ import annotations
 
@@ -15,14 +11,12 @@ from chat.chat_service import ChatService
 from tracking.env import PersistedEnv
 from chat.session_manager import ChatSessionManager
 from conftest import FakeAiService
+from jobs import JobQueue, PersistedJobSink
 from metrics.metric_service import MetricService
 from tracking.tracking_service import TrackingService
 
-# Every test here verifies a specific, punctual fact about the action-
-# level `env` feature (persisted, self-referencing, ordered before the
-# next prompt) — still real current behavior, verified against
-# chat_service.py's apply_manual_action/_apply_action_env and tracking/
-# tracking_processor.py's _apply_action_env.
+# Each test verifies one fact about action-level env: persisted,
+# self-referencing, ordered before the next prompt.
 pytestmark = pytest.mark.regression
 
 PROJECT_NAME = "proj"
@@ -58,6 +52,9 @@ class FakeProjectService:
     def get_active_project_name(self) -> str:
         return PROJECT_NAME
 
+    def get_project_availability(self, project_name: str):
+        return (False, None)
+
     def apply_manual_action(self, action_name: str, session_id: int):
         automaton, state = self.get_active_automaton_and_state()
         action = automaton.move(state.key, action_name)
@@ -74,9 +71,6 @@ def _chat_service(db, automaton: Automaton) -> ChatService:
     metric_service = MetricService(
         db, get_username=lambda: "user", get_active_project_name=lambda: PROJECT_NAME,
     )
-    # TrackingService.__init__ now takes project_service directly, not
-    # get_active_automaton/get_username/get_active_project_name callables
-    # (see tracking/tracking_service.py).
     tracking_service = TrackingService(
         db, ai_service, project_service, metric_service,
     )
@@ -87,6 +81,7 @@ def _chat_service(db, automaton: Automaton) -> ChatService:
         session_manager=ChatSessionManager(db),
         tracking_service=tracking_service,
         metric_service=metric_service,
+        persisted_jobs=JobQueue(PersistedJobSink(db), max_concurrent=1),
     )
 
 
@@ -101,8 +96,6 @@ async def test_a_manually_fired_actions_env_is_persisted(db):
     await chat_service.apply_manual_action("advance", session["id"])
 
     env = _env_for(db)
-    # The Inspector Env tab's own "SET" section, not "AI" — see
-    # Env.action_set/stored.
     assert env.action_set() == {"reset_counter": True}
     assert env.stored() == {}
 
@@ -130,11 +123,8 @@ async def test_manual_actions_env_can_self_reference_a_previously_stored_value(d
 
 
 async def test_env_update_happens_before_the_transitions_own_prompt_is_built(db):
-    """The whole point of the feature: "il prossimo prompt riceva il
-    nuovo ENV aggiornato" — the destination state's own opening-message
-    prompt (see ChatService._build_turn_prompt -> MetadataHandler.
-    build_prompt, which embeds env.to_dict()) must already see the
-    updated value, not last turn's."""
+    """The destination state's own opening-message prompt must already
+    see the updated env value, not last turn's."""
     chat_service = _chat_service(db, _automaton({"reset_counter": "True"}))
     ai_service = chat_service._ai_service
     session = chat_service.get_or_create_current_session(None)

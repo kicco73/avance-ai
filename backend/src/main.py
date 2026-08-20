@@ -18,26 +18,27 @@ from config import AppConfig
 from controller import AvanceController
 from db import Db
 from error_handlers import register_error_handlers
+from jobs import InMemoryJobSink, JobQueue, PersistedJobSink
+from metrics.benchmark_run_service import BenchmarkRunService
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
 from ai.ai_service import AiService
 from session import Session
 from tracking.tracking_service import TrackingService
+from tracking.wakeup_service import WakeupService
 from talk.talk_service import TalkService
 from listen.listen_service import ListenService
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
 def _build_fallback_app(error: Exception) -> FastAPI:
-    """Used only when essential startup wiring below fails: every request,
-    to any path or method, gets the same {error: {message, detail}} shape
-    error_handlers.py already produces for a normal request failure — so
-    the frontend renders it exactly like any other backend error instead
-    of just failing to connect with no explanation.
+    """Used only when essential startup wiring fails: every request gets
+    the same {error: {message, detail}} shape error_handlers.py produces
+    for a normal failure, so the frontend renders it like any other error.
     """
     fallback_app = FastAPI(title="Avance State Engine (misconfigured)")
     fallback_app.add_middleware(
@@ -74,7 +75,13 @@ def create_app() -> FastAPI:
             config.database_url,
             force_drop_and_create_when_incompatible=config.database_force_drop_and_create_when_incompatible,
         )
-        
+
+        # Two independent worker pools, never shared — see jobs/job_queue.py's
+        # JobQueue for why a job must never wait on another job from its own
+        # queue.
+        persisted_job_queue = JobQueue(PersistedJobSink(db), max_concurrent=config.jobs_max_concurrent_persisted)
+        ephemeral_job_queue = JobQueue(InMemoryJobSink(), max_concurrent=config.jobs_max_concurrent_ephemeral)
+
         project_service = ProjectService(db)
         session_manager = ChatSessionManager(db, open_window_minutes=config.max_session_duration_in_minutes)
         
@@ -88,17 +95,37 @@ def create_app() -> FastAPI:
             get_max_session_duration_in_minutes=lambda: config.max_session_duration_in_minutes,
         )
         
-        # Architecturally analogous to ai_service/chat_service/... above —
-        # instantiated once here, not built by ChatService for itself (see
+        # Instantiated once here, not built by ChatService itself (see
         # tracking/tracking_service.py's own module docstring). Both this and
-        # ChatService depend on ai_service (and metric_service) directly,
-        # never through one another.
+        # ChatService depend on ai_service/metric_service directly, never each other.
         tracking_service = TrackingService(db, ai_service, project_service, metric_service)
-        chat_service = ChatService(db, ai_service, project_service, session_manager, tracking_service, metric_service)
+        chat_service = ChatService(
+            db, ai_service, project_service, session_manager, tracking_service, metric_service, persisted_job_queue,
+        )
 
-        chat_ws_adapter = WsAdapter(chat_service) if config.chat_transport == "websocket" else None
+        # Shares persisted_job_queue/ephemeral_job_queue with anything else
+        # that submits a job of either kind (see jobs/job_queue.py's own
+        # module docstring) — never its own private queue.
+        benchmark_run_service = BenchmarkRunService(
+            db, ai_service, tracking_service, persisted_job_queue, ephemeral_job_queue,
+        )
 
-        controller = AvanceController(chat_service, project_service, talk_service, listen_service, db, tracking_service)
+        # Availability cascade (see ProjectService.recompute_availability/
+        # register_availability_cascade) — same "subscribe once, react
+        # forever" shape as WakeupService below.
+        project_service.register_availability_cascade()
+
+        chat_ws_adapter = WsAdapter(chat_service, db) if config.chat_transport == "websocket" else None
+
+        # Cross-project wake-up (see tracking/wakeup_service.py) —
+        # subscribes once for the process lifetime. Built after
+        # chat_ws_adapter: a self-loop wake-up needs it to push the
+        # transition to an already-open connection.
+        WakeupService(db, project_service, ephemeral_job_queue, chat_ws_adapter).register()
+
+        controller = AvanceController(
+            chat_service, project_service, talk_service, listen_service, db, tracking_service, benchmark_run_service,
+        )
         app.include_router(controller.router)
 
         if chat_ws_adapter is not None:
@@ -110,7 +137,6 @@ def create_app() -> FastAPI:
             
         logger.info("Boot completed - server ready.")
 
-        # L'applicazione FastAPI rimane attiva qui durante la gestione delle richieste
         yield
 
         # --- SHUTDOWN / CLEANUP ---

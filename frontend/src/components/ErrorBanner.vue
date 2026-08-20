@@ -1,27 +1,30 @@
 <script setup>
-// The shared error strip — one instance per screen (App.vue for the main
-// page, EditProjectView.vue/BenchmarkProjectView.vue for their own
-// full-screen overlays, SplashScreen.vue for the boot-failed state),
-// each mounted immediately below that screen's own toolbar. Every
-// apiFetch failure (see api.js) lands in the same errorStore.js regardless
-// of which screen triggered it, so this is the one place that ever needs
-// to render it — no props, no per-screen copy of this markup to keep in
-// sync.
+// Shared error strip, one instance per screen. Every apiFetch failure
+// lands in the same errorStore.js regardless of which screen triggered
+// it, so this is the only place that ever needs to render it.
 import { onUnmounted, ref, watch } from 'vue'
-import { clearApiError, errorDetail, errorMessage } from '../errorStore.js'
+import { clearApiError, errorDetail, errorMessage, errorSeverity } from '../errorStore.js'
 
 const showDetail = ref(false)
 
-// A new error replaces whatever was being inspected — stale expanded
-// detail from a previous, unrelated failure would otherwise linger open.
-// It also restarts the auto-dismiss timer below — each error gets its
-// own full 10s, not whatever was left over from the one it replaced.
+// A new error resets any expanded detail and restarts the auto-dismiss
+// timer — each error gets its own full 10s. A 'warning' severity never
+// auto-dismisses; it stays until the user closes it or the caller clears it.
 const AUTO_DISMISS_MS = 10000
 let dismissTimer = null
-watch(errorMessage, (message) => {
+watch([errorMessage, errorSeverity], ([message, severity]) => {
   showDetail.value = false
   if (dismissTimer) clearTimeout(dismissTimer)
-  dismissTimer = message ? setTimeout(clearApiError, AUTO_DISMISS_MS) : null
+  dismissTimer = message && severity !== 'warning' ? setTimeout(clearApiError, AUTO_DISMISS_MS) : null
+})
+
+// Opening the detail means the user is reading it — cancel the timer so
+// auto-dismiss doesn't close it out from under them.
+watch(showDetail, (open) => {
+  if (open && dismissTimer) {
+    clearTimeout(dismissTimer)
+    dismissTimer = null
+  }
 })
 onUnmounted(() => {
   if (dismissTimer) clearTimeout(dismissTimer)
@@ -30,7 +33,7 @@ onUnmounted(() => {
 
 <template>
   <Transition name="error-banner-collapse">
-    <div v-if="errorMessage" class="error-banner-wrap">
+    <div v-if="errorMessage" class="error-banner-wrap" :class="{ 'error-banner-wrap-warning': errorSeverity === 'warning' }">
       <div class="error-banner-row">
         <p class="error-banner-message">{{ errorMessage }}</p>
         <button
@@ -49,9 +52,8 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* "Slide up" — the banner's own height (message + expanded detail, if
-   any) collapses to 0, so whatever sits below it in the page visibly
-   scrolls up over where it used to be, rather than just fading in place. */
+/* "Slide up": collapses the banner's height to 0 so content below it
+   visibly scrolls up, rather than just fading in place. */
 .error-banner-collapse-enter-active, .error-banner-collapse-leave-active {
   transition: max-height 0.25s ease, opacity 0.2s ease;
   overflow: hidden;
@@ -119,5 +121,35 @@ onUnmounted(() => {
   white-space: pre-wrap;
   max-height: 200px;
   overflow-y: auto;
+}
+
+/* severity: 'warning' — amber instead of red, for "this isn't a
+   failure, it's a state you should know about" styling. */
+.error-banner-wrap-warning .error-banner-row {
+  background: #fff4e0;
+  border-bottom-color: #f0d9a8;
+}
+
+.error-banner-wrap-warning .error-banner-message {
+  color: #b06a00;
+}
+
+.error-banner-wrap-warning .error-banner-details-btn {
+  border-color: #b06a00;
+  color: #b06a00;
+}
+
+.error-banner-wrap-warning .error-banner-close-btn {
+  color: #b06a00;
+}
+
+.error-banner-wrap-warning .error-banner-close-btn:hover {
+  background: rgba(176, 106, 0, 0.12);
+}
+
+.error-banner-wrap-warning .error-banner-detail {
+  background: #fff4e0;
+  border-bottom-color: #f0d9a8;
+  color: #7a4f00;
 }
 </style>

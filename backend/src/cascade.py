@@ -1,8 +1,6 @@
 """Generic fallback cascade: ordered providers behind a "current" pointer,
-retry-then-cascade on failure. The shared engine underneath
-CascadingLLMProvider, CascadingTalkProvider and CascadingListenProvider
-(ai/, talk/, listen/), each with their own independent instance — see
-those modules for how a cascade is exposed as a plain provider.
+retried in place on transient failure, advanced to the next provider on
+rate limits. Shared by CascadingLLMProvider, CascadingTalkProvider and CascadingListenProvider.
 """
 from __future__ import annotations
 
@@ -54,10 +52,9 @@ class _Entry(NamedTuple):
 
 
 class ProviderCascade(Generic[Provider]):
-    """Shared "current provider" pointer, advanced only on failure: a
-    transient error retries in place with backoff, an unavailable/
-    rate-limited one advances immediately. One pass max per call; any
-    other exception propagates untouched."""
+    """Tracks a "current provider" pointer: a transient error retries in
+    place with backoff, an unavailable/rate-limited one advances to the
+    next provider. At most one pass through all providers per call."""
 
     def __init__(self, providers: list[tuple[str, Provider]], *, kind: str) -> None:
         if not providers:

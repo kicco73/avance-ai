@@ -1,11 +1,6 @@
-"""Raw-PCM <-> WAV helpers. Gemini's TTS output (see
-talk/gemini_talk_provider.py) is always raw 16-bit mono PCM, never a
-self-describing container — these are the one place that gets turned
-into something a browser can actually play, shared by the cached path (a
-complete, correctly-sized WAV) and TalkService's live streaming path
-(an upfront header for a not-yet-known final size, sent once, before the
-raw PCM chunks that follow it).
-"""
+"""Raw-PCM <-> WAV helpers. TTS output is always raw 16-bit mono PCM,
+never a self-describing container — this is the one place that gets
+turned into something a browser can actually play."""
 from __future__ import annotations
 
 import io
@@ -42,11 +37,7 @@ def pcm_to_wav(pcm_data: bytes, sample_rate: int) -> bytes:
 def streaming_wav_header(sample_rate: int) -> bytes:
     """A WAV header for when the total length isn't known yet — the RIFF
     and data chunk sizes are 0xFFFFFFFF, the conventional sentinel for
-    "streaming, more to come" that lets a client reading it via chunked
-    transfer start playing progressively instead of waiting for (or
-    rejecting) a fully-formed file. Sent once, as the first chunk of a
-    live generation — see TalkService.generate — followed by raw PCM
-    chunks with no further framing."""
+    "streaming, more to come" so a client can start playing progressively."""
     channels = 1
     bits_per_sample = 16
     byte_rate = sample_rate * channels * bits_per_sample // 8

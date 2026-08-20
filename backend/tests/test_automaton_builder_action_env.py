@@ -1,14 +1,6 @@
-"""Action-level `env:` (see automaton_builder.py's _build_action/
-_build_action_env) — a mapping of env-key -> expression, evaluated (see
-Automaton.eval_action_env) whenever the action fires and merged onto
-tracking.env.Env's own action_set() store. Unlike before this refactor,
-an env expression now gets the exact same build-time validation a
-trigger does (see _validate_namespaced_expression) — every `env.<name>`
-reference is checked against every action's own declared `env:` key,
-project-wide (see AutomatonBuilder.build's own two-pass collection),
-which is what makes a running counter's own self-reference (`env.
-number_of_steps: env.number_of_steps + 1`) valid: the key it references
-is declared right there, by this very action's own env: mapping.
+"""Action-level `env:` — a mapping of env-key -> expression, evaluated
+whenever the action fires. Both what an expression reads and what a key
+writes to must already be declared in the project's `env:` section.
 """
 from __future__ import annotations
 
@@ -19,8 +11,9 @@ from automaton.automaton_builder import AutomatonBuilder
 pytestmark = pytest.mark.contract
 
 
-def _build(action_yaml: str):
+def _build(action_yaml: str, env_section: str = ""):
     content = f"""
+{env_section}
 init-action:
   target: a
 states:
@@ -37,23 +30,38 @@ states:
 
 
 def test_env_field_is_parsed_as_a_key_to_expression_mapping():
-    automaton = _build("""
+    automaton = _build(
+        """
         env:
           reset_counter: True
           number_of_steps: env.number_of_steps + 1
-""")
+""",
+        env_section="""
+env:
+  reset_counter: {}
+  number_of_steps: {}
+""",
+    )
 
     action = automaton.states["a"].actions[0]
     assert action.env == {"reset_counter": "True", "number_of_steps": "env.number_of_steps + 1"}
 
 
 def test_non_string_yaml_values_are_normalized_to_expression_source():
-    automaton = _build("""
+    automaton = _build(
+        """
         env:
           enabled: true
           count: 42
           nothing: null
-""")
+""",
+        env_section="""
+env:
+  enabled: {}
+  count: {}
+  nothing: {}
+""",
+    )
 
     action = automaton.states["a"].actions[0]
     assert action.env == {"enabled": "True", "count": "42", "nothing": "None"}
@@ -78,6 +86,8 @@ def test_env_referencing_a_declared_signal_is_valid():
 signals:
   mySignal:
     definition: "Some domain-specific signal."
+env:
+  last_signal: {}
 init-action:
   target: a
 states:
@@ -96,25 +106,43 @@ states:
 
 
 def test_env_referencing_an_undeclared_env_key_is_rejected():
-    """Unlike before this refactor, an env expression now gets the same
-    unknown-name validation a trigger does (see this module's own
-    docstring) — a running counter's own self-reference is fine (see
-    test_env_field_is_parsed_as_a_key_to_expression_mapping, where the
-    key it references is declared right there), but a genuinely
-    undeclared `env.` key is a build error, not a routine no-op."""
+    """A genuinely undeclared `env.` read is a build error. `last_value`
+    is declared, isolating this from the write-side check below."""
     with pytest.raises(ValueError, match="undefined name\\(s\\).*env.never_declared_anywhere"):
-        _build("""
+        _build(
+            """
         env:
           last_value: env.never_declared_anywhere
+""",
+            env_section="""
+env:
+  last_value: {}
+""",
+        )
+
+
+def test_env_write_to_an_undeclared_key_is_rejected():
+    """The write side: an action's `env:` field cannot introduce a new
+    key just by writing to it; the key must already be declared."""
+    with pytest.raises(ValueError, match="env key 'never_declared_anywhere' is not declared"):
+        _build("""
+        env:
+          never_declared_anywhere: "1"
 """)
 
 
 def test_env_with_a_syntactically_invalid_expression_is_rejected():
     with pytest.raises(ValueError, match="is not a valid expression"):
-        _build("""
+        _build(
+            """
         env:
           broken: "1 +"
-""")
+""",
+            env_section="""
+env:
+  broken: {}
+""",
+        )
 
 
 def test_env_must_be_a_mapping():
