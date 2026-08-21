@@ -496,27 +496,62 @@ class ProjectService(object):
 
     @staticmethod
     def _extract_zip_safely(content: bytes, staging_dir: Path) -> None:
-        """Validates zip-slip safety, flatness, and exactly one root
-        'index.yml' — all before extracting anything. Raises ValueError or
-        zipfile.BadZipFile on any violation."""
+        """Validates zip-slip safety, shape, and exactly one root
+        'index.yml' — all before extracting anything. Two shapes are
+        accepted: every file flat at the zip's root, or every file nested
+        exactly one level inside a single common top-level folder (a
+        common export shape, e.g. a GitHub download or drag-a-folder
+        zip) — that folder is stripped, its contents imported as if
+        they'd been flat all along. Anything deeper, or a mix of
+        root-level files and a subdirectory, is rejected. Raises
+        ValueError or zipfile.BadZipFile on any violation."""
         with zipfile.ZipFile(io.BytesIO(content)) as zf:
             names = [entry.replace("\\", "/") for entry in zf.namelist()]
-            staging_resolved = staging_dir.resolve()
+            # macOS's Finder/Archive Utility tacks on a __MACOSX/ sidecar
+            # folder full of resource-fork metadata (AppleDouble ._filename
+            # entries, nothing of actual interest) whenever it zips a
+            # folder — ignored outright rather than counted as a second
+            # top-level folder, so a Mac-zipped single-folder export still
+            # gets descended into instead of rejected.
+            names = [n for n in names if n.split("/", 1)[0] != "__MACOSX"]
 
             for name in names:
-                # Zip-slip protection: mandatory before extracting anything.
                 if name.startswith("/") or any(part == ".." for part in Path(name).parts):
                     raise ValueError(f"Unsafe path inside zip: '{name}'.")
-                resolved = (staging_dir / name).resolve()
-                if resolved != staging_resolved and staging_resolved not in resolved.parents:
-                    raise ValueError(f"Unsafe path inside zip: '{name}'.")
-                # Flat only: a directory entry or a nested file both contain '/'.
-                if "/" in name:
-                    raise ValueError(f"Zip must be flat (no subdirectories): found '{name}'.")
 
-            index_entries = [n for n in names if n == "index.yml"]
+            # A pure directory entry (name ending in '/') carries no file
+            # of its own — irrelevant to both the shape check and
+            # extraction, whether or not the zip tool bothered to include one.
+            file_names = [n for n in names if not n.endswith("/")]
+            flat_names = [n for n in file_names if "/" not in n]
+            top_level_dirs = {n.split("/", 1)[0] for n in file_names if "/" in n}
+
+            if flat_names and top_level_dirs:
+                raise ValueError(
+                    "Zip must be either flat (no subdirectories) or a single folder containing "
+                    "everything — found both root-level file(s) and a subdirectory."
+                )
+            if len(top_level_dirs) > 1:
+                raise ValueError(
+                    f"Zip must be flat or contain a single top-level folder — found multiple: "
+                    f"{', '.join(sorted(top_level_dirs))}."
+                )
+
+            prefix = f"{next(iter(top_level_dirs))}/" if top_level_dirs else ""
+            # original name -> effective (prefix-stripped) name.
+            effective = {n: n[len(prefix):] for n in file_names}
+
+            staging_resolved = staging_dir.resolve()
+            for original, stripped in effective.items():
+                if not stripped or "/" in stripped:
+                    raise ValueError(f"Zip must be flat (no subdirectories): found '{original}'.")
+                resolved = (staging_dir / stripped).resolve()
+                if resolved != staging_resolved and staging_resolved not in resolved.parents:
+                    raise ValueError(f"Unsafe path inside zip: '{original}'.")
+
+            index_entries = [s for s in effective.values() if s == "index.yml"]
             other_yaml_entries = [
-                n for n in names if n != "index.yml" and n.lower().endswith((".yml", ".yaml"))
+                s for s in effective.values() if s != "index.yml" and s.lower().endswith((".yml", ".yaml"))
             ]
             if not index_entries:
                 raise ValueError("Zip must contain an 'index.yml' file at its root.")
@@ -528,7 +563,11 @@ class ProjectService(object):
                     f"also found: {', '.join(sorted(other_yaml_entries))}"
                 )
 
-            zf.extractall(staging_dir)
+            for original, stripped in effective.items():
+                target = staging_dir / stripped
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with zf.open(original) as src, open(target, "wb") as dst:
+                    dst.write(src.read())
 
     def get_active_project_name(self) -> str:
         """The current session user's active project name, read fresh from
@@ -884,8 +923,16 @@ class ProjectService(object):
                 with tempfile.TemporaryDirectory() as tmp:
                     staging_dir = Path(tmp)
                     self._extract_zip_safely(content, staging_dir)
+                    # Everything export_project_zip can produce is UTF-8 text
+                    # except image assets — read_text() on those (e.g. a PNG's
+                    # magic bytes) raised a UnicodeDecodeError, so import/export
+                    # was never actually round-trippable for a project with
+                    # any Theme asset in it.
                     files = {
-                        file.name: file.read_text()
+                        file.name: (
+                            file.read_bytes() if file.suffix.lower() in IMAGE_EXTENSIONS
+                            else file.read_text(encoding="utf-8")
+                        )
                         for file in staging_dir.iterdir()
                     }
             else:

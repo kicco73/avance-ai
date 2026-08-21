@@ -33,22 +33,22 @@
   width: 96px;
   height: 96px;
   background-repeat: no-repeat;
-  background-size: contents;
+  background-size: 96px 96px;
   top: 20px;
 }
 
 .chat-header-icon {
-  animation-duration: 0.5s;
+  animation-duration: 0.15s;
   animation-timing-function: ease-out;
 }
 
-@keyframes icon-pop-precontemplation { from { opacity: 0; transform: scale(0.7); filter: brightness(1.6); } to { opacity: 1; transform: scale(1); filter: brightness(1); } }
-@keyframes icon-pop-contemplation    { from { opacity: 0; transform: scale(0.7); filter: brightness(1.6); } to { opacity: 1; transform: scale(1); filter: brightness(1); } }
-@keyframes icon-pop-preparation      { from { opacity: 0; transform: scale(0.7); filter: brightness(1.6); } to { opacity: 1; transform: scale(1); filter: brightness(1); } }
-@keyframes icon-pop-action           { from { opacity: 0; transform: scale(0.7); filter: brightness(1.6); } to { opacity: 1; transform: scale(1); filter: brightness(1); } }
-@keyframes icon-pop-maintenance      { from { opacity: 0; transform: scale(0.7); filter: brightness(1.6); } to { opacity: 1; transform: scale(1); filter: brightness(1); } }
-@keyframes icon-pop-relapse          { from { opacity: 0; transform: scale(0.7); filter: brightness(1.6); } to { opacity: 1; transform: scale(1); filter: brightness(1); } }
-@keyframes icon-pop-crisis           { from { opacity: 0; transform: scale(0.7); filter: brightness(1.6); } to { opacity: 1; transform: scale(1); filter: brightness(1); } }
+@keyframes icon-pop-precontemplation { from { opacity: 0; transform: scale(0.9); filter: brightness(1.6); } to { opacity: 1; transform: scale(1); filter: brightness(1); } }
+@keyframes icon-pop-contemplation    { from { opacity: 0; transform: scale(0.9); filter: brightness(1.6); } to { opacity: 1; transform: scale(1); filter: brightness(1); } }
+@keyframes icon-pop-preparation      { from { opacity: 0; transform: scale(0.9); filter: brightness(1.6); } to { opacity: 1; transform: scale(1); filter: brightness(1); } }
+@keyframes icon-pop-action           { from { opacity: 0; transform: scale(0.9); filter: brightness(1.6); } to { opacity: 1; transform: scale(1); filter: brightness(1); } }
+@keyframes icon-pop-maintenance      { from { opacity: 0; transform: scale(0.9); filter: brightness(1.6); } to { opacity: 1; transform: scale(1); filter: brightness(1); } }
+@keyframes icon-pop-relapse          { from { opacity: 0; transform: scale(0.9); filter: brightness(1.6); } to { opacity: 1; transform: scale(1); filter: brightness(1); } }
+@keyframes icon-pop-crisis           { from { opacity: 0; transform: scale(0.9); filter: brightness(1.6); } to { opacity: 1; transform: scale(1); filter: brightness(1); } }
 
 .state-Precontemplation .chat-header-icon { animation-name: icon-pop-precontemplation; }
 .state-Contemplation    .chat-header-icon { animation-name: icon-pop-contemplation; }
