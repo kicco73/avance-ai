@@ -1,4 +1,4 @@
-import { nextTick, ref } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 import {
   getCurrentSession,
   postCreateSession,
@@ -16,7 +16,8 @@ import {
   messageAudioUrl,
   postListenTranscribe,
   postReset,
-  postTruncateSession
+  postTruncateSession,
+  projectFileContentUrl
 } from './api.js'
 import { sendMessage as sendChatMessage, onNotification } from './chatClient.js'
 import { playMessageChime, playMessageAudio } from './audio.js'
@@ -61,12 +62,72 @@ export function invalidateSkin() {
 // TestChat.vue's "No theme" toggle. Shared rather than a prop on
 // ChatWindow: App.vue keeps its own ChatWindow mounted (just visually
 // covered) the whole time EditProjectView's overlay is open, and both
-// instances read the same currentProjectName/currentSessionId — each
-// injects its own <style> into the one shared document.head, so a
-// per-instance flag would leave the other instance's skin still applied
-// globally. TestChat.vue resets this to false on unmount so it never
-// leaks into the main chat widget once Test mode is left.
+// instances read the same currentProjectName/currentSessionId. TestChat.vue
+// resets this to false on unmount so it never leaks into the main chat
+// widget once Test mode is left.
 export const themeDisabled = ref(false)
+
+// A project's index.css "skin" — one single <style> element for the whole
+// app, not one per ChatWindow instance. App.vue's own widget stays mounted
+// (just visually covered) the entire time EditProjectView's overlay is
+// open, so a per-instance <style> tag (ChatWindow.vue used to own this
+// directly) left the page with several of them stacked in document.head;
+// which one's rules actually painted then came down to DOM insertion
+// order rather than which fetch was freshest, and in practice the older
+// tag kept winning — the visible chat kept showing a stale skin even
+// though the network response Test's own instance received was already
+// correct. A single shared element removes the ordering question
+// entirely: there is only ever one, so there's nothing for it to lose to.
+let skinStyleEl = null
+
+function clearSkin() {
+  skinStyleEl?.remove()
+  skinStyleEl = null
+}
+
+async function loadSkin() {
+  const projectName = currentProjectName.value
+  const sessionId = currentSessionId.value
+  if (themeDisabled.value || !projectName || sessionId == null) {
+    clearSkin()
+    return
+  }
+  let css
+  try {
+    // credentials: 'include' — this bypasses api.js's apiFetch (which
+    // already sets it), so without this explicit option the request
+    // drops the session cookie behind AuthMiddleware whenever frontend
+    // and backend aren't same-origin, 401s, and loadSkin silently treats
+    // that the same as "no index.css". cache: 'no-store' — this fires on
+    // every index.yml/css save via skinVersion, and the URL doesn't
+    // otherwise change; relying on the browser to always revalidate a
+    // Cache-Control: no-cache response left the skin looking stale in
+    // practice, so this skips the HTTP cache entirely instead of trusting
+    // revalidation.
+    const response = await fetch(
+      projectFileContentUrl(projectName, 'index.css', sessionId),
+      { credentials: 'include', cache: 'no-store' }
+    )
+    if (!response.ok) {
+      clearSkin()
+      return
+    }
+    css = await response.text()
+  } catch {
+    return
+  }
+  if (!skinStyleEl) {
+    skinStyleEl = document.createElement('style')
+    document.head.appendChild(skinStyleEl)
+  }
+  skinStyleEl.textContent = css
+}
+
+// Module-level, not inside any component — runs for the app's whole
+// lifetime, the same singleton lifetime as currentProjectName/skinVersion
+// themselves, so it never needs an onBeforeUnmount to stop it.
+watch([currentProjectName, currentSessionId, skinVersion, themeDisabled], loadSkin, { immediate: true })
+
 export const messages = ref([])
 export const historyLoaded = ref(false)
 export const chatLoading = ref(false)

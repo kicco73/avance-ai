@@ -8,7 +8,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
+  overflow: visible;
+  height: 75px;
 }
 .chat-header::before {
   content: "";
@@ -29,16 +30,18 @@
 .chat-header .chat-header-icon {
   position: relative;
   z-index: 1;
-  width: 56px;
-  height: 56px;
+  width: 96px;
+  height: 96px;
   background-repeat: no-repeat;
-  background-size: contain;
+  background-size: contents;
+  top: 20px;
 }
 
 .chat-header-icon {
   animation-duration: 0.5s;
   animation-timing-function: ease-out;
 }
+
 @keyframes icon-pop-precontemplation { from { opacity: 0; transform: scale(0.7); filter: brightness(1.6); } to { opacity: 1; transform: scale(1); filter: brightness(1); } }
 @keyframes icon-pop-contemplation    { from { opacity: 0; transform: scale(0.7); filter: brightness(1.6); } to { opacity: 1; transform: scale(1); filter: brightness(1); } }
 @keyframes icon-pop-preparation      { from { opacity: 0; transform: scale(0.7); filter: brightness(1.6); } to { opacity: 1; transform: scale(1); filter: brightness(1); } }
@@ -63,41 +66,40 @@
   animation-timing-function: ease;
 }
 
-.chat-body { background: #10101c; }
+.chat-body { background: #10101c; 
+             background-image: url("sky_1800.jpg");
+             background-size: 100% auto;
+             background-position: top center;
+             background-repeat: no-repeat;
+
+           }
 .chat-footer { background: #14141f; border-top: 1px solid #2a2a3c; }
 
-/* Precontemplation: luna nuova, nessuna parte illuminata */
 .state-Precontemplation .chat-header-icon {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%231e1e2f' stroke='%233f3f52' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-image: url("moon precontemplation.png");
 }
 
-/* Contemplation: crescente sottile */
 .state-Contemplation .chat-header-icon {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%231e1e2f' stroke='%233f3f52' stroke-width='1.5'/%3E%3Cpath d='M 50 5 A 45 45 0 0 1 50 95 A 25 45 0 0 0 50 5 Z' fill='%23f5f1e6'/%3E%3C/svg%3E");
+  background-image: url("moon contemplation.png");
 }
 
-/* Preparation: primo quarto */
 .state-Preparation .chat-header-icon {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%231e1e2f' stroke='%233f3f52' stroke-width='1.5'/%3E%3Cpath d='M 50 5 A 45 45 0 0 1 50 95 A 0 45 0 0 0 50 5 Z' fill='%23f5f1e6'/%3E%3C/svg%3E");
+  background-image: url("moon preparation.png");
 }
 
-/* Action, Maintenance: piena — stesso data URI, Maintenance aggiunge solo un alone */
-.state-Action .chat-header-icon,
-.state-Maintenance .chat-header-icon {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%23f5f1e6' stroke='%23e8dfc8' stroke-width='1.5'/%3E%3C/svg%3E");
-}
-.state-Maintenance .chat-header-icon {
-  box-shadow: 0 0 0 3px rgba(245, 241, 230, 0.25);
-  border-radius: 50%;
+.state-Action .chat-header-icon {
+  background-image: url("moon action.png");
 }
 
-/* Relapse: eclissi parziale rossastra */
+.state-Maintenance .chat-header-icon {
+  background-image: url("moon maintenance.png");
+}
+
 .state-Relapse .chat-header-icon {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%231e1e2f' stroke='%233f3f52' stroke-width='1.5'/%3E%3Cpath d='M 50 5 A 45 45 0 0 1 50 95 A 20 45 0 0 1 50 5 Z' fill='%23a8452f'/%3E%3C/svg%3E");
+  background-image: url("moon relapse.png")
 }
 
-/* Crisis: eclissi totale + accento di sicurezza sul bordo header */
 .state-Crisis .chat-header-icon {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%234a1010' stroke='%237f1d1d' stroke-width='2'/%3E%3C/svg%3E");
+  background-image: url("moon crisis.png")
 }
 .state-Crisis .chat-header { border-bottom: 2px solid #7f1d1d; }

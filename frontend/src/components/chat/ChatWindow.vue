@@ -12,7 +12,6 @@ import MessageBubble from './MessageBubble.vue'
 import SessionsPanel from './SessionsPanel.vue'
 import { setApiError } from '../../errorStore.js'
 import { startRecording, stopRecording } from '../../mic.js'
-import { projectFileContentUrl } from '../../api.js'
 import {
   state,
   messages,
@@ -26,9 +25,6 @@ import {
   spokenTextEnabled,
   draft,
   currentSessionId,
-  currentProjectName,
-  skinVersion,
-  themeDisabled,
   selectedSessionActive,
   sessions,
   sessionsLoading,
@@ -186,57 +182,11 @@ watch(
   }
 )
 
-// index.css is injected as a <style> element appended to <head> (so it
-// lands after scoped styles and can override them) — a project's own
-// custom "skin" for its chat UI. A project with no index.css 404s
-// silently: no stylesheet, not an error.
-let skinStyleEl = null
-
-function clearSkin() {
-  skinStyleEl?.remove()
-  skinStyleEl = null
-}
-
-async function loadSkin() {
-  const projectName = currentProjectName.value
-  const sessionId = currentSessionId.value
-  if (themeDisabled.value || !projectName || sessionId == null) {
-    clearSkin()
-    return
-  }
-  let css
-  try {
-    // credentials: 'include' — this bypasses api.js's apiFetch (which
-    // already sets it), so without this explicit option the request
-    // drops the session cookie behind AuthMiddleware whenever frontend
-    // and backend aren't same-origin, 401s, and loadSkin silently treats
-    // that the same as "no index.css". cache: 'no-store' — this fires
-    // on every index.yml/css save via skinVersion (see chatStore.js), and
-    // the URL doesn't otherwise change; relying on the browser to always
-    // revalidate a Cache-Control: no-cache response left Test showing a
-    // stale skin after a save in practice, so this skips the HTTP cache
-    // entirely instead of trusting revalidation.
-    const response = await fetch(
-      projectFileContentUrl(projectName, 'index.css', sessionId),
-      { credentials: 'include', cache: 'no-store' }
-    )
-    if (!response.ok) {
-      clearSkin()
-      return
-    }
-    css = await response.text()
-  } catch {
-    return
-  }
-  if (!skinStyleEl) {
-    skinStyleEl = document.createElement('style')
-    document.head.appendChild(skinStyleEl)
-  }
-  skinStyleEl.textContent = css
-}
-
-watch([currentProjectName, currentSessionId, skinVersion, themeDisabled], loadSkin, { immediate: true })
-onBeforeUnmount(clearSkin)
+// index.css's "skin" is applied globally now (see chatStore.js's own
+// loadSkin) — one shared <style> for the whole app rather than one per
+// ChatWindow instance, since App.vue's own widget stays mounted behind
+// EditProjectView's overlay the entire time it's open and would
+// otherwise fight this instance's tag for which one's rules actually win.
 </script>
 
 <template>

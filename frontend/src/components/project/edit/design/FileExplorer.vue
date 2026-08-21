@@ -66,7 +66,7 @@ watch(
     <div class="file-explorer-header">
       <span class="file-explorer-title">Explorer</span>
       <div class="file-explorer-header-actions">
-        <button class="file-explorer-icon-btn" :disabled="uploading" title="Upload file" @click="triggerUpload">
+        <button class="file-explorer-icon-btn" :disabled="uploading" title="Upload files" @click="triggerUpload">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
             <path d="M12 3l4 4h-3v6h-2V7H8l4-4zM5 19v-6h2v6h10v-6h2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z" />
           </svg>
@@ -76,6 +76,7 @@ watch(
       <input
         ref="fileInputRef"
         type="file"
+        multiple
         accept=".txt,.yml,.yaml,.css,.png,.jpg,.jpeg,.gif,.webp,.svg"
         class="file-explorer-upload-input"
         @change="emit('upload-file', $event)"

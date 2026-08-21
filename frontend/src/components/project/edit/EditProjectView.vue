@@ -1048,28 +1048,42 @@ function handleJumpToAttachment(fileName) {
 }
 
 async function handleUploadFile(event) {
-  const file = event.target.files?.[0]
-  event.target.value = '' // reset so re-selecting the same file re-fires change
-  if (!file) return
-  if (!UPLOADABLE_PATTERN.test(file.name)) {
-    setApiError('Only .txt, .yml/.yaml, .css, or image (.png/.jpg/.gif/.webp/.svg) files can be uploaded.')
+  const files = Array.from(event.target.files ?? [])
+  event.target.value = '' // reset so re-selecting the same file(s) re-fires change
+  if (!files.length) return
+
+  const invalidNames = files.filter((file) => !UPLOADABLE_PATTERN.test(file.name)).map((file) => file.name)
+  if (invalidNames.length) {
+    setApiError(
+      `Only .txt, .yml/.yaml, .css, or image (.png/.jpg/.gif/.webp/.svg) files can be uploaded — ` +
+      `${invalidNames.map((name) => `"${name}"`).join(', ')} ${invalidNames.length === 1 ? "isn't" : "aren't"}.`
+    )
     return
   }
+  const oversizedNames = files
+    .filter((file) => IMAGE_PATTERN.test(file.name) && file.size > MAX_IMAGE_UPLOAD_BYTES)
+    .map((file) => file.name)
+  if (oversizedNames.length) {
+    setApiError(
+      `${oversizedNames.map((name) => `"${name}"`).join(', ')} ` +
+      `${oversizedNames.length === 1 ? 'is' : 'are'} larger than the 5 MB upload limit.`
+    )
+    return
+  }
+
   uploading.value = true
   clearApiError()
   try {
-    if (IMAGE_PATTERN.test(file.name)) {
-      if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
-        setApiError(`"${file.name}" is larger than the 5 MB upload limit.`)
-        return
+    for (const file of files) {
+      if (IMAGE_PATTERN.test(file.name)) {
+        await putProjectFileBinary(props.projectName, file.name, file)
+      } else {
+        const text = await file.text()
+        await putProjectFile(props.projectName, file.name, text)
       }
-      await putProjectFileBinary(props.projectName, file.name, file)
-    } else {
-      const text = await file.text()
-      await putProjectFile(props.projectName, file.name, text)
     }
     await loadFiles()
-    await selectFile(file.name)
+    await selectFile(files[files.length - 1].name)
   } catch {
     // already surfaced via apiFetch
   } finally {
