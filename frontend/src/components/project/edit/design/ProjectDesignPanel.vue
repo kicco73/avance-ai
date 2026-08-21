@@ -1,13 +1,15 @@
 <script setup>
 // Design mode's file explorer plus whichever editor fits the current file:
-// index.yml/index.css get dedicated panels, images get a preview, anything
-// else falls back to CodeEditor. Purely presentational — state is owned by
-// EditProjectView.vue and reached only through props/emits.
+// index.yml/index.css get dedicated panels, images get a preview, a
+// .txt/.md attachment gets MdEditorPanel's Preview/Edit toggle, anything
+// else falls back to a bare CodeEditor. Purely presentational — state is
+// owned by EditProjectView.vue and reached only through props/emits.
 import { ref } from 'vue'
 import FileExplorer from './FileExplorer.vue'
 import CodeEditor from '../../../CodeEditor.vue'
 import IndexYmlEditorPanel from './IndexYmlEditorPanel.vue'
 import IndexCssEditorPanel from './IndexCssEditorPanel.vue'
+import MdEditorPanel from './MdEditorPanel.vue'
 import { projectFileContentUrl } from '../../../../api.js'
 
 defineProps({
@@ -17,13 +19,15 @@ defineProps({
   currentFileName: { type: String, default: null },
   uploading: { type: Boolean, default: false },
   creatingFile: { type: Boolean, default: false },
-  deletingFile: { type: String, default: null },
   explorerWidth: { type: Number, required: true },
   // Gates mounting IndexYmlEditorPanel/CodeEditor: each loads its content
   // as soon as it mounts, so without this they could race the project's
   // undo/redo history being cleared on entry.
   historyCleared: { type: Boolean, default: false },
   currentFileIsImage: { type: Boolean, default: false },
+  // A .txt/.md attachment — gets MdEditorPanel instead of the bare
+  // CodeEditor fallback below.
+  currentFileIsMarkdown: { type: Boolean, default: false },
   highlightedStateKey: { type: String, default: null },
   nextActionEdge: { type: Object, default: null },
   firedActionEdge: { type: Object, default: null },
@@ -31,17 +35,18 @@ defineProps({
 })
 
 const emit = defineEmits([
-  'start-explorer-drag', 'new-file', 'delete-file', 'select-file', 'upload-file',
+  'start-explorer-drag', 'new-file', 'select-file', 'upload-file',
   'jump-to-definition', 'select', 'saved'
 ])
 
 const codeEditorRef = ref(null)
 const indexYmlEditorRef = ref(null)
 const indexCssEditorRef = ref(null)
+const mdEditorRef = ref(null)
 
 // Exposed so EditProjectView.vue can reach the editor instances directly for
 // things a prop/emit can't express (jumpToLine, save/discard/undo/redo, reload, mediaType, ...).
-defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef })
+defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef })
 </script>
 
 <template>
@@ -52,10 +57,8 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef })
       :current-file-name="currentFileName"
       :uploading="uploading"
       :creating-file="creatingFile"
-      :deleting-file="deletingFile"
       :explorer-width="explorerWidth"
       @new-file="emit('new-file')"
-      @delete-file="emit('delete-file', $event)"
       @select-file="emit('select-file', $event)"
       @upload-file="emit('upload-file', $event)"
     />
@@ -86,6 +89,7 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef })
           v-show="currentFileName === 'index.css'"
           ref="indexCssEditorRef"
           :project-name="projectName"
+          :files="files"
           @saved="emit('saved', $event)"
         />
         <div v-if="currentFileIsImage" class="edit-project-editor-attachment">
@@ -96,6 +100,14 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef })
             <img :key="currentFileName" :src="projectFileContentUrl(projectName, currentFileName)" :alt="currentFileName" />
           </div>
         </div>
+        <MdEditorPanel
+          v-else-if="currentFileIsMarkdown"
+          :key="currentFileName"
+          ref="mdEditorRef"
+          :project-name="projectName"
+          :file-name="currentFileName"
+          @saved="emit('saved', $event)"
+        />
         <div v-else-if="currentFileName !== 'index.yml' && currentFileName !== 'index.css'" class="edit-project-editor-attachment">
           <div class="edit-project-editor-toolbar">
             <span class="edit-project-editor-filename">{{ currentFileName }}</span>

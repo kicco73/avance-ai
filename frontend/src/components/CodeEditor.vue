@@ -8,12 +8,18 @@ import { EditorView, basicSetup } from 'codemirror'
 import { keymap } from '@codemirror/view'
 import { indentWithTab } from '@codemirror/commands'
 import { yaml } from '@codemirror/lang-yaml'
-import { css } from '@codemirror/lang-css'
+import { css, cssLanguage } from '@codemirror/lang-css'
+import { markdown } from '@codemirror/lang-markdown'
+import { cssColorPicker } from './cssColorPicker.js'
+import { cssUrlCompletionSource } from './cssUrlCompletion.js'
 import { getProjectFile, putProjectFile, undoProjectFile, redoProjectFile } from '../api.js'
 
 const props = defineProps({
   projectName: { type: String, required: true },
-  fileName: { type: String, required: true }
+  fileName: { type: String, required: true },
+  // Basenames url(...) can complete to — the Theme branch's image assets.
+  // Only meaningful for a text/css buffer; ignored otherwise.
+  cssAssetFiles: { type: Array, default: () => [] }
 })
 
 const emit = defineEmits(['saved'])
@@ -68,7 +74,19 @@ function createEditor(doc) {
     ])
   ]
   if (contentType.value === 'text/yaml') extensions.splice(1, 0, yaml())
-  else if (contentType.value === 'text/css') extensions.splice(1, 0, css())
+  else if (contentType.value === 'text/css') {
+    extensions.splice(
+      1, 0,
+      css(),
+      cssColorPicker,
+      cssLanguage.data.of({ autocomplete: cssUrlCompletionSource(() => props.cssAssetFiles) })
+    )
+  }
+  // text/plain covers .txt attachments — MdEditorPanel.vue treats them the
+  // same as .md, so its CodeEditor gets the same language mode too.
+  else if (contentType.value === 'text/markdown' || contentType.value === 'text/plain') {
+    extensions.splice(1, 0, markdown())
+  }
   view = new EditorView({ doc, extensions, parent: editorHost.value })
 }
 

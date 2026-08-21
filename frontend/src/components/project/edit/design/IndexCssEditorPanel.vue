@@ -9,10 +9,17 @@ import { getProjectGraph } from '../../../../api.js'
 import { invalidateSkin } from '../../../../chatStore.js'
 
 const props = defineProps({
-  projectName: { type: String, required: true }
+  projectName: { type: String, required: true },
+  files: { type: Array, default: () => [] }
 })
 
 const emit = defineEmits(['saved'])
+
+// The Theme branch's own image-extension test (see FileExplorer.vue/
+// EditProjectView.vue) — the basenames the code segment's url(...)
+// autocomplete offers.
+const IMAGE_PATTERN = /\.(png|jpe?g|gif|webp|svg)$/i
+const cssAssetFiles = computed(() => props.files.filter((name) => IMAGE_PATTERN.test(name)))
 
 const segment = ref('preview')
 const codeEditorRef = ref(null)
@@ -126,7 +133,7 @@ defineExpose({ content, isDirty, saving, save, discard, undo, redo, reload })
     </div>
 
     <div v-show="segment === 'preview'" class="index-css-editor-preview">
-      <ChatPreview ref="previewRef" :css="content" :state-key="selectedStateKey" />
+      <ChatPreview ref="previewRef" :css="content" :state-key="selectedStateKey" :project-name="projectName" />
     </div>
 
     <div v-show="segment === 'code'" class="index-css-editor-code">
@@ -134,6 +141,7 @@ defineExpose({ content, isDirty, saving, save, discard, undo, redo, reload })
         ref="codeEditorRef"
         :project-name="projectName"
         file-name="index.css"
+        :css-asset-files="cssAssetFiles"
         @saved="onCodeSaved"
       />
     </div>

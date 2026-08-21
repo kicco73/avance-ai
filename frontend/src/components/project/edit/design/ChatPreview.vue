@@ -16,10 +16,12 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import MessageBubble from '../../../chat/MessageBubble.vue'
 import ActionButtons from '../../../chat/ActionButtons.vue'
 import ChatInput from '../../../chat/ChatInput.vue'
+import { resolveCssAssetUrls } from '../../../../cssAssetUrls.js'
 
 const props = defineProps({
   css: { type: String, default: '' },
-  stateKey: { type: String, default: '' }
+  stateKey: { type: String, default: '' },
+  projectName: { type: String, required: true }
 })
 
 const MOCK_MESSAGES = [
@@ -46,10 +48,10 @@ function syncStyle() {
     styleEl.setAttribute('data-chat-preview-skin', '')
     document.head.appendChild(styleEl)
   }
-  styleEl.textContent = props.css
+  styleEl.textContent = resolveCssAssetUrls(props.css, props.projectName)
 }
 
-watch([() => props.css, visible], syncStyle, { immediate: true })
+watch([() => props.css, () => props.projectName, visible], syncStyle, { immediate: true })
 
 onMounted(() => {
   // jsdom (unit tests) has no IntersectionObserver — fall back to "always

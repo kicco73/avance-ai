@@ -232,14 +232,29 @@ const designPanelRef = ref(null)
 const codeEditorRef = computed(() => designPanelRef.value?.codeEditorRef ?? null)
 const indexYmlEditorRef = computed(() => designPanelRef.value?.indexYmlEditorRef ?? null)
 const indexCssEditorRef = computed(() => designPanelRef.value?.indexCssEditorRef ?? null)
+const mdEditorRef = computed(() => designPanelRef.value?.mdEditorRef ?? null)
 // An image has no editor at all (see the file explorer's own <img>
 // preview branch below) — never dirty, nothing for activeEditor() to
 // save/discard.
 const currentFileIsImage = computed(() => IMAGE_PATTERN.test(currentFileName.value ?? ''))
+// A .txt/.md attachment gets MdEditorPanel's Preview/Edit toggle instead
+// of the bare CodeEditor fallback (see ProjectDesignPanel.vue).
+const currentFileIsMarkdown = computed(() => /\.(md|txt)$/i.test(currentFileName.value ?? ''))
+// Whether the file explorer's "Behavior" node itself (index.yml) is the
+// open file — as opposed to one of its attachments or anything under
+// "Theme". Only then does the Inspector have states/actions/signals to
+// show at all (see inspectorTabs and InspectorStateTab's own gating).
+const isBehaviorNodeSelected = computed(() => currentFileName.value === 'index.yml')
+// The file explorer's "Theme" branch children — every image asset index.css's
+// own url(...) rules could reference. Deleting index.css takes these down
+// with it (see handleDeleteFile) since an asset with no stylesheet left to
+// reference it is just dead weight.
+const themeAssetNames = computed(() => files.value.filter((name) => name !== 'index.css' && IMAGE_PATTERN.test(name)))
 const activeEditorIsDirty = computed(() => {
   if (currentFileName.value === 'index.yml') return indexYmlEditorRef.value?.isDirty ?? false
   if (currentFileName.value === 'index.css') return indexCssEditorRef.value?.isDirty ?? false
   if (currentFileIsImage.value) return false
+  if (currentFileIsMarkdown.value) return mdEditorRef.value?.isDirty ?? false
   return codeEditorRef.value?.isDirty ?? false
 })
 
@@ -303,6 +318,9 @@ const inspectorTabs = computed(() => {
       { id: 'metrics', label: 'Metrics' },
       { id: 'env', label: 'Env' }
     ]
+  }
+  if (mode.value === 'edit' && !isBehaviorNodeSelected.value) {
+    return [{ id: 'state', label: 'Info' }]
   }
   return [
     { id: 'state', label: 'Info' },
@@ -543,6 +561,7 @@ function activeEditor() {
   if (currentFileName.value === 'index.yml') return indexYmlEditorRef.value
   if (currentFileName.value === 'index.css') return indexCssEditorRef.value
   if (currentFileIsImage.value) return null
+  if (currentFileIsMarkdown.value) return mdEditorRef.value
   return codeEditorRef.value
 }
 
@@ -1086,13 +1105,22 @@ async function handleNewFile() {
 // guard against a stale click.
 async function handleDeleteFile(fileName) {
   if (fileName === 'index.yml') return
-  if (!window.confirm(`Delete file "${fileName}"? This cannot be undone.`)) return
+  // The asset list here is only for the confirm prompt's own wording —
+  // the cascade itself (deleting every asset along with index.css) is
+  // server-side, see ProjectService.delete_project_file.
+  const cascadeAssets = fileName === 'index.css' ? themeAssetNames.value : []
+  const confirmMessage = cascadeAssets.length
+    ? `Delete "index.css"? This also deletes the ${cascadeAssets.length} asset${cascadeAssets.length === 1 ? '' : 's'} it can reference: ${cascadeAssets.join(', ')}.\n\nThis cannot be undone.`
+    : `Delete file "${fileName}"? This cannot be undone.`
+  if (!window.confirm(confirmMessage)) return
   deletingFile.value = fileName
   clearApiError()
   try {
     await deleteProjectFile(props.projectName, fileName)
     await loadFiles()
-    if (fileName === currentFileName.value) await switchFile('index.yml')
+    if (fileName === currentFileName.value || cascadeAssets.includes(currentFileName.value)) {
+      await switchFile('index.yml')
+    }
   } catch {
     // already surfaced via apiFetch
   } finally {
@@ -1341,17 +1369,16 @@ onBeforeUnmount(() => {
           :current-file-name="currentFileName"
           :uploading="uploading"
           :creating-file="creatingFile"
-          :deleting-file="deletingFile"
           :explorer-width="explorerWidth"
           :history-cleared="historyCleared"
           :current-file-is-image="currentFileIsImage"
+          :current-file-is-markdown="currentFileIsMarkdown"
           :highlighted-state-key="highlightedStateKey"
           :next-action-edge="selected ? null : nextAction"
           :fired-action-edge="firedActionEdge"
           :selected-element="selectedGraphElement"
           @start-explorer-drag="startExplorerDrag"
           @new-file="handleNewFile"
-          @delete-file="handleDeleteFile"
           @select-file="selectFile"
           @upload-file="handleUploadFile"
           @jump-to-definition="(target) => jumpToDefinition(target, { silent: true })"
@@ -1410,6 +1437,8 @@ onBeforeUnmount(() => {
                 :editable-files="files"
                 :highlighted-state-key="highlightedStateKey"
                 :recently-added-key="recentlyAddedKey"
+                :current-file-name="mode === 'edit' ? currentFileName : null"
+                :deleting-file="deletingFile"
                 @select="handleTabSelect"
                 @select-attachment="selectFile"
                 @jump-to-attachment="handleJumpToAttachment"
@@ -1417,6 +1446,7 @@ onBeforeUnmount(() => {
                 @set-project-field="handleSetProjectField"
                 @delete="handleDeleteState"
                 @add-state="handleAddState"
+                @delete-file="handleDeleteFile"
               />
             </template>
             <template #tab-actions="{ registerTab }">
@@ -1699,8 +1729,12 @@ onBeforeUnmount(() => {
    it fill the column: with Design's own v-show hidden state
    contributing a display:none box (and Test/Auto simply unmounted, see
    their own v-if), there's never a second sibling left to share space
-   with in the first place. */
+   with in the first place. position: relative backs the leaving
+   TestChat's absolute positioning below — its leave transition would
+   otherwise still count as a flex:1 sibling for the ~0.18s it lingers
+   in the DOM, squeezing whichever panel is entering. */
 .edit-project-panels {
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -1711,6 +1745,8 @@ onBeforeUnmount(() => {
 .panel-slide-bottom-enter-active,
 .panel-slide-bottom-leave-active {
   transition: opacity 0.18s ease, transform 0.18s ease;
+  position: absolute;
+  inset: 0;
 }
 
 .panel-slide-bottom-enter-from,

@@ -12,6 +12,9 @@ import zipfile
 import tempfile
 from pathlib import Path
 from typing import Awaitable, Callable, Mapping
+from urllib.parse import quote
+
+import tinycss2
 
 from automaton.automaton import (
     Action, ActionPayload, Automaton, EnvKeyPayload, ProjectPayload, SignalPayload, State, StatePayload,
@@ -101,6 +104,72 @@ def missing_css_references(css_text: str, known_archive_names: set[str]) -> list
         if name not in known_archive_names and name not in missing:
             missing.append(name)
     return missing
+
+
+# @media/@supports are the only at-rules a chat-widget skin plausibly
+# nests rules inside; @font-face/@page/@import etc. take a declaration
+# list or no block at all, which parse_rule_list would misread as rules.
+_NESTED_RULE_AT_RULES = frozenset({"media", "supports"})
+
+
+def _collect_css_syntax_errors(nodes: list) -> list[str]:
+    """Recurses through a parsed stylesheet/declaration-list/value's nodes,
+    collecting every `error` tinycss2 attached anywhere in the tree —
+    structural ones (a malformed rule or declaration) sit alongside their
+    siblings; tokenization ones (an unterminated string/url) sit inside a
+    declaration's own value, which is why this walks all the way down
+    rather than stopping at the top level."""
+    errors = []
+    for node in nodes:
+        node_type = getattr(node, "type", None)
+        if node_type == "error":
+            errors.append(f"line {node.source_line}: {node.message}")
+        elif node_type == "qualified-rule" and node.content is not None:
+            declarations = tinycss2.parse_declaration_list(node.content, skip_comments=True, skip_whitespace=True)
+            errors.extend(_collect_css_syntax_errors(declarations))
+        elif node_type == "at-rule" and node.content is not None and node.lower_at_keyword in _NESTED_RULE_AT_RULES:
+            nested = tinycss2.parse_rule_list(node.content, skip_comments=True, skip_whitespace=True)
+            errors.extend(_collect_css_syntax_errors(nested))
+        elif node_type == "declaration":
+            errors.extend(_collect_css_syntax_errors(node.value))
+        elif node_type == "function":
+            errors.extend(_collect_css_syntax_errors(node.arguments))
+        elif node_type in ("() block", "[] block", "{} block"):
+            errors.extend(_collect_css_syntax_errors(node.content))
+    return errors
+
+
+def css_syntax_errors(css_text: str) -> list[str]:
+    """Every low-level syntax error tinycss2 finds in `css_text` — an
+    unterminated string/block, a malformed selector or at-rule, a
+    declaration missing its colon — as "line N: message" strings, empty if
+    none. tinycss2 is a syntax-only (CSS Syntax Module) parser, not a full
+    CSS engine: it won't flag a nonsense property value like `color: bees;`,
+    only genuine malformation."""
+    rules = tinycss2.parse_stylesheet(css_text, skip_comments=True, skip_whitespace=True)
+    return _collect_css_syntax_errors(rules)
+
+
+def resolve_css_asset_urls(css_text: str, project_name: str, session_id: int | None = None) -> str:
+    """Rewrites every relative `url(...)` target in `css_text` to the file
+    content endpoint. index.css is served as raw text and injected directly
+    into a <style> element (see ChatWindow.vue/ChatPreview.vue) — a bare
+    `url(basename)` would otherwise resolve against the page's own origin
+    instead of the API, 404ing. `session_id`, when given, is carried onto
+    each rewritten URL so an asset resolves at the same pinned revision as
+    the stylesheet referencing it."""
+    query = f"?session_id={session_id}" if session_id is not None else ""
+
+    def _replace(match: re.Match) -> str:
+        quote_char, target = match.group(1), match.group(2)
+        stripped = target.strip()
+        if not stripped or _ABSOLUTE_URL_PATTERN.match(stripped):
+            return match.group(0)
+        basename = Path(stripped).name
+        resolved = f"/api/projects/{quote(project_name)}/files/{quote(basename)}/content{query}"
+        return f"url({quote_char}{resolved}{quote_char})"
+
+    return _CSS_URL_PATTERN.sub(_replace, css_text)
 
 # Called with the newly-active Automaton once activate_project()/put_project()
 # have committed it.
@@ -957,6 +1026,8 @@ class ProjectService(object):
             raise FileNotFoundError(f"File '{file_name}' does not exist in project '{project_name}'.")
         content_type = self._db.get_archive_content_type(project_name, file_name, revision=revision)
         assert content_type is not None  # same Archive row get_archive already found content for
+        if file_name == "index.css":
+            content = resolve_css_asset_urls(content.decode("utf-8"), project_name, session_id).encode("utf-8")
         return content, content_type
 
     async def put_project_file(
@@ -976,6 +1047,11 @@ class ProjectService(object):
             text_content = content.decode("utf-8") if isinstance(content, bytes) else content
             content_type = TEXT_CONTENT_TYPE_BY_EXTENSION.get(extension, "text/plain")
             if file_name == "index.css":
+                syntax_errors = css_syntax_errors(text_content)
+                if syntax_errors:
+                    raise ValueError(
+                        f"index.css has invalid syntax: {'; '.join(syntax_errors)}."
+                    )
                 known_names = set(self._db.list_archives(project_name)) | {file_name}
                 missing = missing_css_references(text_content, known_names)
                 if missing:
@@ -1145,6 +1221,10 @@ class ProjectService(object):
     async def delete_project_file(
         self, project_name: str, file_name: str, commit: CommitCallback
     ) -> None:
+        """Deleting index.css cascades to every image asset it could have
+        referenced — the file explorer's own "Theme" branch never offers
+        deleting one of those individually while index.css still exists, so
+        an orphaned asset would otherwise just be dead weight."""
 
         if project_name not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
@@ -1152,11 +1232,19 @@ class ProjectService(object):
         try:
             archives = self._db.get_archives(project_name=project_name)
             del archives[file_name]
+            cascade_names = (
+                [name for name in archives if Path(name).suffix.lower() in IMAGE_EXTENSIONS]
+                if file_name == "index.css" else []
+            )
+            for name in cascade_names:
+                del archives[name]
             new_automaton = AutomatonBuilder().build(archives, self._known_projects_env_keys(project_name))
         except Exception as exc:
             raise ValueError(f"Invalid project definition: {exc}") from exc
 
         self._db.delete_archive(project_name, file_name)
+        for name in cascade_names:
+            self._db.delete_archive(project_name, name)
         await self._finalize_project_update(project_name, new_automaton, commit)
 
     async def delete_project(self, project_name: str, commit: CommitCallback) -> None:

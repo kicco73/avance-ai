@@ -1,11 +1,14 @@
 <script setup>
 // The Inspector's "Info" tab: the project's id/ui-label/ui-description on top,
-// followed by the same read-only detail card "States" shows for the shared Graph
-// selection. Owns its own project-metadata fetch, but not the state selection itself.
-import { onMounted, ref, watch } from 'vue'
+// then either the shared Graph selection's detail card + "+ Add state" (Behavior
+// node open) or the currently browsed file's read-only card (anything else — see
+// isBehaviorContext). Owns its own project-metadata fetch, but not the state
+// selection itself.
+import { computed, onMounted, ref, watch } from 'vue'
 import { getProjectMetadata } from '../../api.js'
 import InspectorDetailCard from './InspectorDetailCard.vue'
 import InspectorProjectCard from './InspectorProjectCard.vue'
+import InspectorFileCard from './InspectorFileCard.vue'
 
 const props = defineProps({
   projectName: { type: String, required: true },
@@ -15,12 +18,26 @@ const props = defineProps({
   // See EditProjectView.vue's own docstring on this — 'state:<key>' while
   // `selectedElement` is the state a "+ Add state" click just created,
   // null otherwise.
-  recentlyAddedKey: { type: String, default: null }
+  recentlyAddedKey: { type: String, default: null },
+  // Design mode's currently open file — null outside 'edit' mode (see
+  // EditProjectView.vue's own mode-gating for this prop). index.yml is
+  // excluded here since it has no delete and its own dedicated tabs.
+  currentFileName: { type: String, default: null },
+  deletingFile: { type: String, default: null }
 })
 
 const emit = defineEmits([
-  'select', 'select-attachment', 'jump-to-attachment', 'set-field', 'set-project-field', 'delete', 'add-state'
+  'select', 'select-attachment', 'jump-to-attachment', 'set-field', 'set-project-field', 'delete', 'add-state', 'delete-file'
 ])
+
+// True whenever there's no active file browsing to defer to (currentFileName
+// is only ever non-null in edit mode — see EditProjectView.vue's own
+// mode-gating) or index.yml itself is the open file — i.e. exactly when the
+// Behavior node is selected. The state/action detail card and "+ Add state"
+// only make sense then; a Theme file or a Behavior attachment gets the file
+// card below instead.
+const isBehaviorContext = computed(() => !props.currentFileName || props.currentFileName === 'index.yml')
+const showFileCard = computed(() => !isBehaviorContext.value)
 
 // This tab owns the detail card's open/closed state: closed whenever the
 // selection moves to a different state, except when it moved there because
@@ -59,8 +76,14 @@ onMounted(loadProjectMetadata)
       editable
       @set-field="(field, value) => emit('set-project-field', field, value)"
     />
+    <InspectorFileCard
+      v-if="showFileCard"
+      :file-name="currentFileName"
+      :deleting="deletingFile === currentFileName"
+      @delete="emit('delete-file', currentFileName)"
+    />
     <InspectorDetailCard
-      v-if="selectedElement"
+      v-if="selectedElement && isBehaviorContext"
       :selected-element="selectedElement"
       :editable-files="editableFiles"
       :highlighted-state-key="highlightedStateKey"
@@ -76,7 +99,7 @@ onMounted(loadProjectMetadata)
       @set-field="(field, value) => emit('set-field', field, value)"
       @delete="emit('delete', selectedElement.data.id)"
     />
-    <button class="inspector-state-tab-add-btn" @click="emit('add-state')">+ Add state</button>
+    <button v-if="isBehaviorContext" class="inspector-state-tab-add-btn" @click="emit('add-state')">+ Add state</button>
   </div>
 </template>
 
