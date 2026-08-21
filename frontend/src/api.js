@@ -115,6 +115,10 @@ export function getMessages(sessionId) {
   return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/messages`)
 }
 
+export function getSessionState(sessionId) {
+  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/state`)
+}
+
 // The full Signals event log for a session (snapshots + transitions,
 // chronological) — for the "Label sessions" view's timeline.
 export function getSessionSignals(sessionId) {
@@ -428,6 +432,10 @@ export function getProjects() {
 // {name, status, paused_reason, revision, published_revision}.
 export function getProjectsRuntimeStatus() {
   return apiFetch(`${API_URL}/settings/projects/runtime-status`)
+}
+
+export function getUsers() {
+  return apiFetch(`${API_URL}/users`)
 }
 
 // Manual pause/resume — only valid from 'running'/'manually_paused'

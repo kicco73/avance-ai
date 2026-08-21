@@ -3,7 +3,7 @@
 // offering Manage projects and backup download/restore actions.
 import { onBeforeUnmount, ref } from 'vue'
 
-const emit = defineEmits(['manage-projects', 'download-backup', 'restore-backup', 'about', 'logout'])
+const emit = defineEmits(['manage-projects', 'manage-users', 'download-backup', 'restore-backup', 'about', 'logout'])
 
 const open = ref(false)
 const rootEl = ref(null)
@@ -16,6 +16,11 @@ function toggle() {
 function selectManageProjects() {
   open.value = false
   emit('manage-projects')
+}
+
+function selectManageUsers() {
+  open.value = false
+  emit('manage-users')
 }
 
 function selectDownloadBackup() {
@@ -70,6 +75,9 @@ onBeforeUnmount(() => {
       <ul class="settings-list">
         <li>
           <button class="settings-item" @click="selectManageProjects">Manage projects</button>
+        </li>
+        <li>
+          <button class="settings-item" @click="selectManageUsers">Manage users</button>
         </li>
         <li class="settings-separator" role="separator"></li>
         <li>

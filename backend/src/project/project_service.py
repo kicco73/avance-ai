@@ -830,7 +830,7 @@ class ProjectService(object):
         if project_name not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
         draft = self._load_project(project_name)
-        current_state_key = self._db.get_current_state(project_name)
+        current_state_key = self._db.get_current_state(project_name, source='native')
         published_revision = self._db.get_project_published_revision(project_name)
         has_active_sessions = (
             published_revision is not None
@@ -852,7 +852,7 @@ class ProjectService(object):
         if project_name not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
         draft = self._load_project(project_name)
-        current_state_key = self._db.get_current_state(project_name)
+        current_state_key = self._db.get_current_state(project_name, source='native')
         if current_state_key is not None and current_state_key not in draft.states:
             if remap_to is None:
                 raise ValueError(

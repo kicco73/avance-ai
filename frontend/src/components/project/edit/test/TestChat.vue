@@ -2,7 +2,6 @@
 // Test mode's embedded live chat, full height (mode is 'edit'/'test'/'auto', mutually
 // exclusive, so this never shares space with Design's split-view). Auto-tracking state
 // comes straight from chatStore.js's shared singleton rather than being prop-drilled.
-import { onBeforeUnmount } from 'vue'
 import ChatWindow from '../../../chat/ChatWindow.vue'
 import ChatTimeline from '../../../chat/ChatTimeline.vue'
 import RestartFromHereButton from '../../../chat/RestartFromHereButton.vue'
@@ -10,13 +9,6 @@ import ModelMenu from '../../../ModelMenu.vue'
 import {
   autoTrackingEnabled, autoTrackingLoading, toggleAutoTracking, handleReset, spokenTextEnabled, applyAspect
 } from '../../../../chatStore.js'
-
-// applyAspect is shared (see chatStore.js's own docstring on it) — Test mode
-// starts unskinned regardless of the shared default, and restores that
-// default on leaving so it never leaks into App.vue's own chat widget,
-// which stays mounted (just visually covered) the whole time this is open.
-applyAspect.value = false
-onBeforeUnmount(() => { applyAspect.value = true })
 
 defineProps({
   timeline: { type: Array, required: true },
@@ -66,7 +58,7 @@ const emit = defineEmits(['select-message', 'select-transition', 'restart-prefil
           <ModelMenu />
         </div>
       </div>
-      <ChatWindow hide-sessions-panel>
+      <ChatWindow hide-sessions-panel theme-mode="manual">
         <template #timeline>
           <ChatTimeline
             :timeline="timeline"

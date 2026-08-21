@@ -8,6 +8,7 @@ import LoginView from './components/LoginView.vue'
 import ProjectsMenu from './components/ProjectsMenu.vue'
 import SettingsMenu from './components/settings/SettingsMenu.vue'
 import ManageProjectsView from './components/settings/ManageProjectsView.vue'
+import ManageUsersView from './components/settings/ManageUsersView.vue'
 import SplashScreen from './components/SplashScreen.vue'
 import ErrorBanner from './components/ErrorBanner.vue'
 import ToastContainer from './components/ToastContainer.vue'
@@ -45,6 +46,7 @@ const editProjectName = ref(null)
 const showBenchmarkProject = ref(false)
 const benchmarkProjectName = ref(null)
 const showManageProjects = ref(false)
+const showManageUsers = ref(false)
 const modelUploadInput = ref(null)
 const projectsMenu = ref(null)
 const manageProjectsView = ref(null)
@@ -410,6 +412,7 @@ onBeforeUnmount(() => {
         />
         <SettingsMenu
           @manage-projects="showManageProjects = true"
+          @manage-users="showManageUsers = true"
           @about="handleShowAbout"
           @logout="handleLogout"
           @download-backup="handleDownloadBackup"
@@ -457,6 +460,11 @@ onBeforeUnmount(() => {
       @benchmark="handleManageProjectsBenchmark"
       @chat="handleManageProjectsChat"
       @download="handleModelDownload"
+    />
+
+    <ManageUsersView
+      v-if="showManageUsers"
+      @close="showManageUsers = false"
     />
 
   </div>

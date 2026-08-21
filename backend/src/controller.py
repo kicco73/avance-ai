@@ -20,6 +20,7 @@ from controllers.chat_controller import ChatController
 from controllers.edit_project_controller import EditProjectController
 from controllers.label_project_controller import LabelProjectController
 from controllers.settings_controller import SettingsController
+from controllers.user_controller import UserController
 
 
 class AvanceController(object):
@@ -52,7 +53,8 @@ class AvanceController(object):
         )
         self.settings = SettingsController(chat_service, project_service, db, version)
         self.auth = AuthController(auth_service)
+        self.user = UserController(db)
 
         self.router = APIRouter()
-        for controller in (self.chat, self.edit_project, self.label_project, self.settings, self.auth):
+        for controller in (self.chat, self.edit_project, self.label_project, self.settings, self.auth, self.user):
             controller.register_routes(self.router)

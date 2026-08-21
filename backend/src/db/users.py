@@ -3,9 +3,23 @@ from __future__ import annotations
 from datetime import datetime
 
 from .models import DEFAULT_USER, User
+from .utils import _utc_iso
 
 
 class UserMixin:
+
+    def list_users(self) -> list[dict]:
+        return [
+            {
+                "id": user.id,
+                "provider": user.provider,
+                "email": user.email,
+                "name": user.name,
+                "created_at": _utc_iso(user.created_at),
+                "last_login": _utc_iso(user.last_login),
+            }
+            for user in User.select().order_by(User.created_at.asc())
+        ]
 
     def get_or_create_user(self, provider: str, provider_user_id: str, email: str, name: str) -> User:
         user, _ = User.get_or_create(

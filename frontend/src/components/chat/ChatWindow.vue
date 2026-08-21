@@ -3,8 +3,21 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 // A Test/draft session is a single, ephemeral conversation, so the
 // embedded test chat hides the sessions panel entirely.
+//
+// themeMode: 'auto' (default, App.vue's own widget) shows the project's
+// index.css skin the whole time, same as the live chat always has.
+// 'manual' (TestChat.vue) starts unskinned instead and leaves showing it
+// up to the shared applyAspect flag/toggle — owned here, not by whichever
+// component happens to pass the prop, so entering/leaving manual mode is
+// always symmetric: onMounted forces it off, onBeforeUnmount always
+// restores it, with no separate opt-in/opt-out call for a manual-mode
+// consumer to remember. Necessary because App.vue's own widget stays
+// mounted (just visually covered) the entire time EditProjectView's
+// overlay is open — both instances read the same shared applyAspect,
+// see chatStore.js's own docstring on it.
 const props = defineProps({
-  hideSessionsPanel: { type: Boolean, default: false }
+  hideSessionsPanel: { type: Boolean, default: false },
+  themeMode: { type: String, default: 'auto' }
 })
 import ActionButtons from './ActionButtons.vue'
 import ChatInput from './ChatInput.vue'
@@ -38,7 +51,8 @@ import {
   handleVoiceMessage,
   handleAction,
   toggleAudio,
-  toggleSpokenText
+  toggleSpokenText,
+  applyAspect
 } from '../../chatStore.js'
 
 // No transcript import here: imported sessions are a separate pool that
@@ -103,10 +117,12 @@ function stopSessionsDrag() {
 onMounted(() => {
   window.addEventListener('mousemove', onSessionsDrag)
   window.addEventListener('mouseup', stopSessionsDrag)
+  if (props.themeMode === 'manual') applyAspect.value = false
 })
 onBeforeUnmount(() => {
   window.removeEventListener('mousemove', onSessionsDrag)
   window.removeEventListener('mouseup', stopSessionsDrag)
+  if (props.themeMode === 'manual') applyAspect.value = true
 })
 
 function submit() {

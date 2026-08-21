@@ -154,9 +154,10 @@ class ChatService(object):
 			)
 		except ValueError as exc:
 			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
+		automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
 		# Always the active one by construction — see
 		# ChatSessionManager.get_or_create_current_session.
-		return self._session_payload(session, active=True)
+		return {**self._session_payload(session, active=True), "state": automaton.get_state_payload(state)}
 
 	def get_or_create_current_draft_session(self, session_id: int | None, project_name: str) -> dict:
 		"""Like get_or_create_current_session, but for `project_name`'s own
@@ -171,7 +172,8 @@ class ChatService(object):
 			)
 		except ValueError as exc:
 			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
-		return self._session_payload(session, active=True)
+		automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
+		return {**self._session_payload(session, active=True), "state": automaton.get_state_payload(state)}
 
 	def create_session(self) -> dict:
 		"""Explicit "new session" action: starts a fresh session, which
@@ -288,6 +290,11 @@ class ChatService(object):
 		latest = self._db.latest_message_or_signal_timestamp(session_id)
 		_, state = self._project_service.get_automaton_and_state_for_session(session_id)
 		self._db.touch_chat_session(session_id, latest or session["datetime_start"], state.key)
+
+	def get_state_for_session(self, session_id: int) -> dict:
+		self._require_own_session(session_id)
+		automaton, state = self._project_service.get_automaton_and_state_for_session(session_id)
+		return automaton.get_state_payload(state)
 
 	async def get_messages(self, session_id: int, last_n: int | None = None) -> list[dict]:
 		# Checked before open_if_needed (which can write an opening

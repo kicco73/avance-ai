@@ -8,6 +8,7 @@ import {
   getTestSessions,
   deleteSession,
   getMessages,
+  getSessionState,
   postAction,
   getAutoTracking,
   postAutoTracking,
@@ -60,12 +61,15 @@ export const skinVersion = ref(0)
 export function invalidateSkin() {
   skinVersion.value++
 }
-// TestChat.vue's "Apply aspect" toggle. On by default — the general chat
-// always shows the project's theme. TestChat.vue forces this to false on
-// mount so Test mode starts unskinned, and restores it to true on unmount so
-// it never leaks into App.vue's own chat widget, which stays mounted (just
-// visually covered) the whole time EditProjectView's overlay is open — both
-// instances read the same currentProjectName/currentSessionId.
+// Backs both ChatWindow.vue's "auto" mode (App.vue's own widget: always on,
+// this ref is never written there) and its "manual" mode (TestChat.vue,
+// via its themeMode="manual" prop: ChatWindow.vue itself forces this false
+// on mount so Test starts unskinned, and restores it true on unmount so it
+// never leaks into App.vue's own chat widget, which stays mounted — just
+// visually covered — the whole time EditProjectView's overlay is open, both
+// instances reading the same currentProjectName/currentSessionId). The
+// "Apply aspect" checkbox itself lives in TestChat.vue's toolbar and binds
+// straight to this ref — a manual control, not part of the mode plumbing.
 export const applyAspect = ref(true)
 
 // A project's index.css "skin" — one single <style> element for the whole
@@ -79,11 +83,29 @@ export const applyAspect = ref(true)
 // though the network response Test's own instance received was already
 // correct. A single shared element removes the ordering question
 // entirely: there is only ever one, so there's nothing for it to lose to.
+//
+// ChatPreview.vue's live, unsaved-draft preview writes here too (via
+// setSkinCss below) rather than keeping a second tag of its own — a
+// second tag doesn't just risk the same ordering fight, it actively
+// ignores applyAspect (it has no dependency on it), so Test mode's
+// "Apply aspect" toggle had no effect on whatever that tag was showing.
 let skinStyleEl = null
 
 function clearSkin() {
   skinStyleEl?.remove()
   skinStyleEl = null
+}
+
+// Writes `css` into the one shared skin element, creating it on first use.
+// Shared by loadSkin's own fetched-and-saved skin below and by
+// ChatPreview.vue's live draft — both go through this single function so
+// there is still ever only one tag, never a second one racing it.
+export function setSkinCss(css, projectName, sessionId) {
+  if (!skinStyleEl) {
+    skinStyleEl = document.createElement('style')
+    document.head.appendChild(skinStyleEl)
+  }
+  skinStyleEl.textContent = resolveCssAssetUrls(css, projectName, sessionId)
 }
 
 async function loadSkin() {
@@ -117,17 +139,20 @@ async function loadSkin() {
   } catch {
     return
   }
-  if (!skinStyleEl) {
-    skinStyleEl = document.createElement('style')
-    document.head.appendChild(skinStyleEl)
-  }
+  // Stale-response guard: applyAspect/project/session can all move on
+  // while this fetch is in flight — e.g. a save triggers a re-fetch, then
+  // the user flips into Test mode before it lands. A later loadSkin() call
+  // (triggered by whichever of those changed) already reflects the current
+  // state, or will; without this check the earlier, now-stale response
+  // would win the race and re-apply a skin applyAspect just turned off.
+  if (!applyAspect.value || currentProjectName.value !== projectName || currentSessionId.value !== sessionId) return
   // The fetched text's own url(...) references are still bare basenames
   // (see get_project_file_content's own docstring on why the server never
   // rewrites these itself) — resolved here into fetchable URLs the exact
   // same way ChatPreview.vue's live-editor preview already does, so a
   // background-image etc. actually loads instead of silently 404ing
   // against whatever origin this page happens to be running on.
-  skinStyleEl.textContent = resolveCssAssetUrls(css, projectName, sessionId)
+  setSkinCss(css, projectName, sessionId)
 }
 
 // Module-level, not inside any component — runs for the app's whole
@@ -213,6 +238,7 @@ async function ensureSession() {
   currentSessionId.value = session.id
   selectedSessionActive.value = session.active
   currentProjectName.value = session.project_name
+  state.value = session.state
   if (testModeProjectName.value != null) await loadAutoTracking()
   return session.id
 }
@@ -281,8 +307,9 @@ export async function selectSession(session) {
   messages.value = []
   historyLoaded.value = false
   try {
-    const history = await getMessages(session.id)
+    const [history, sessionState] = await Promise.all([getMessages(session.id), getSessionState(session.id)])
     messages.value = history.map(toStoreMessage)
+    state.value = sessionState
   } catch {
     // already surfaced via apiFetch
   } finally {

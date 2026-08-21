@@ -185,6 +185,10 @@ class ChatController(BaseController):
         panel — see ChatService.list_sessions."""
         return self.chat_service.list_sessions(include_imported=include_imported, project_name=project_name)
 
+    @get("/api/chat/sessions/{session_id}/state")
+    def get_session_state(self, session_id: int):
+        return self.chat_service.get_state_for_session(session_id)
+
     @get("/api/chat/sessions/{session_id}/messages")
     async def get_messages(self, session_id: int):
         return await self.chat_service.get_messages(session_id)

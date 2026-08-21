@@ -1,22 +1,31 @@
 <script setup>
 // Renders a real chat instance (not a mock) fed a static fake conversation, so a
-// project's index.css "skin" can be previewed live. The CSS is injected as a <style>
-// element in document.head, updated in place per keystroke, and removed on unmount.
+// project's index.css "skin" can be previewed live, updated in place per keystroke.
+//
+// The CSS goes into chatStore.js's own single shared skin <style> element
+// (setSkinCss) rather than a separate tag of this component's own — a
+// second tag doesn't just risk the ordering fight that element's own
+// docstring describes, it has no dependency on applyAspect, so Test mode's
+// "Apply aspect" toggle had no effect on whatever it was showing. Sharing
+// the one element means entering Test mode (which flips applyAspect off)
+// clears it same as it would for the real skin.
 //
 // This component stays mounted (v-show, not v-if) through several ancestor
 // layers — ProjectDesignPanel's own file switch, IndexCssEditorPanel's own
-// Preview/Code segment toggle — so "unmount" alone isn't enough to keep its
-// injected <style> from lingering (and diverging from whatever real
-// ChatWindow's own skin <style> shows) while this preview isn't the thing
-// on screen. An IntersectionObserver on the root element tracks actual
-// visibility instead: a display:none ancestor (from any v-show layer above)
-// collapses this element's geometry, which the observer reports as
-// non-intersecting — so the injected CSS only ever exists while genuinely visible.
+// Preview/Code segment toggle — so "unmount" alone isn't enough to know
+// when this preview stops being the thing on screen. An IntersectionObserver
+// on the root element tracks actual visibility instead: a display:none
+// ancestor (from any v-show layer above) collapses this element's geometry,
+// which the observer reports as non-intersecting. While invisible this
+// leaves the shared element alone rather than clearing it — chatStore.js's
+// own loadSkin remains the one place that decides what belongs there when
+// this preview isn't contributing, so invalidateSkin() (a re-run of that
+// decision) is what hands control back, not a direct clear here.
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import MessageBubble from '../../../chat/MessageBubble.vue'
 import ActionButtons from '../../../chat/ActionButtons.vue'
 import ChatInput from '../../../chat/ChatInput.vue'
-import { resolveCssAssetUrls } from '../../../../cssAssetUrls.js'
+import { setSkinCss, invalidateSkin } from '../../../../chatStore.js'
 
 const props = defineProps({
   css: { type: String, default: '' },
@@ -34,21 +43,18 @@ const draft = ref('')
 const rootEl = ref(null)
 const visible = ref(false)
 
-let styleEl = null
 let observer = null
 
 function syncStyle() {
   if (!visible.value) {
-    styleEl?.remove()
-    styleEl = null
+    // Reassert whatever the real skin (project's saved index.css, gated on
+    // applyAspect) should be — this preview's draft no longer gets a say.
+    invalidateSkin()
     return
   }
-  if (!styleEl) {
-    styleEl = document.createElement('style')
-    styleEl.setAttribute('data-chat-preview-skin', '')
-    document.head.appendChild(styleEl)
-  }
-  styleEl.textContent = resolveCssAssetUrls(props.css, props.projectName)
+  // sessionId omitted: a design-time preview of the live draft has no
+  // session to pin an asset url(...) to (see resolveCssAssetUrls's own docstring).
+  setSkinCss(props.css, props.projectName)
 }
 
 watch([() => props.css, () => props.projectName, visible], syncStyle, { immediate: true })
@@ -67,8 +73,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   observer?.disconnect()
-  styleEl?.remove()
-  styleEl = null
+  if (visible.value) invalidateSkin()
 })
 </script>
 
