@@ -5,12 +5,10 @@
 // Google Identity Services on demand rather than unconditionally from
 // index.html, so an already-authenticated session never pays for it.
 import { onMounted, ref } from 'vue'
-import { postLogin } from '../api.js'
+import { getAuthProviders, postLogin } from '../api.js'
 import { clearLoginRequirement } from '../authStore.js'
 
 const emit = defineEmits(['logged-in'])
-
-const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
 
 const error = ref('')
 const loading = ref(true)
@@ -44,9 +42,18 @@ async function handleCredentialResponse(response) {
 }
 
 onMounted(async () => {
-  if (!CLIENT_ID) {
+  let clientId
+  try {
+    const { providers } = await getAuthProviders()
+    clientId = providers.find((p) => p.driver === 'google')?.client_id
+  } catch (err) {
     loading.value = false
-    error.value = 'Google sign-in is not configured (missing VITE_GOOGLE_CLIENT_ID).'
+    error.value = err.message
+    return
+  }
+  if (!clientId) {
+    loading.value = false
+    error.value = 'Google sign-in is not configured.'
     return
   }
   try {
@@ -57,7 +64,7 @@ onMounted(async () => {
     return
   }
   window.google.accounts.id.initialize({
-    client_id: CLIENT_ID,
+    client_id: clientId,
     callback: handleCredentialResponse
   })
   loading.value = false

@@ -126,7 +126,7 @@ def test_new_project_creates_and_activates_hello_world(client):
     assert body["project_name"] == "Hello world"
 
     projects = client.get("/api/projects").json()
-    assert projects["projects"] == [{"name": "Hello world", "is_paused": False, "ui_label": None}]
+    assert projects["projects"] == [{"name": "Hello world", "is_paused": False, "ui_label": "Hello, world!"}]
     assert projects["active"] == "Hello world"
 
     # The template's own content really is what got persisted.
@@ -148,7 +148,7 @@ def test_new_project_de_duplicates_the_name_on_repeat_calls(client):
     assert second["project_name"] == "Hello world 2"
     assert third["project_name"] == "Hello world 3"
     assert client.get("/api/projects").json()["projects"] == [
-        {"name": "Hello world", "is_paused": False, "ui_label": None},
-        {"name": "Hello world 2", "is_paused": False, "ui_label": None},
-        {"name": "Hello world 3", "is_paused": False, "ui_label": None},
+        {"name": "Hello world", "is_paused": False, "ui_label": "Hello, world!"},
+        {"name": "Hello world 2", "is_paused": False, "ui_label": "Hello, world!"},
+        {"name": "Hello world 3", "is_paused": False, "ui_label": "Hello, world!"},
     ]

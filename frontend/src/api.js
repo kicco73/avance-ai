@@ -74,6 +74,10 @@ export function getMe() {
   return apiFetch(`${API_URL}/auth/me`)
 }
 
+export function getAuthProviders() {
+  return apiFetch(`${API_URL}/auth/providers`)
+}
+
 export function getCurrentSession(sessionId) {
   const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
   return apiFetch(`${API_URL}/chat/session${query}`)

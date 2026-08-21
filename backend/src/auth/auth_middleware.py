@@ -31,7 +31,7 @@ from session import Session
 # /api/auth/ doesn't silently bypass the wall by sharing that prefix.
 # The three doc routes are FastAPI's own defaults (main.py never disables
 # them); there's no separate /health endpoint today.
-ALLOWED_PATHS = frozenset({"/api/auth/login", "/docs", "/redoc", "/openapi.json"})
+ALLOWED_PATHS = frozenset({"/api/auth/login", "/api/auth/providers", "/docs", "/redoc", "/openapi.json"})
 
 
 def _unauthenticated_response() -> JSONResponse:

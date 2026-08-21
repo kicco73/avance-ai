@@ -20,6 +20,10 @@ class AuthController(BaseController):
     def __init__(self, auth_service: AuthService) -> None:
         self.auth_service = auth_service
 
+    @get("/api/auth/providers")
+    def get_providers(self):
+        return {"providers": self.auth_service.public_providers()}
+
     @post("/api/auth/login")
     def post_login(self, req: LoginRequest, response: Response):
         try:

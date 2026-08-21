@@ -44,6 +44,9 @@ class AuthService:
             if entry.driver in _PROVIDER_CLASSES
         }
 
+    def public_providers(self) -> list[dict]:
+        return [{"driver": driver, **provider.public_config()} for driver, provider in self._providers.items()]
+
     def login(self, provider: str, credential: str) -> str:
         """Raises ValueError for an unrecognized `provider` name (the
         controller turns that into an explicit 400) or AuthError if the

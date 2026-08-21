@@ -25,3 +25,7 @@ class AuthProvider(ABC):
         """Raises AuthError (see auth/errors.py) if `credential` doesn't
         verify — expired, tampered, or issued for a different audience."""
         raise NotImplementedError
+
+    @abstractmethod
+    def public_config(self) -> dict:
+        raise NotImplementedError
