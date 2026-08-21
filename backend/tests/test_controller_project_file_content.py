@@ -40,11 +40,16 @@ def test_content_type_surfaces_on_get_project_file(client, hello_project):
 
 
 @pytest.mark.regression
-def test_get_project_file_reports_no_content_for_a_missing_index_css(client, hello_project):
+def test_get_project_file_reports_no_content_for_a_missing_index_css(client):
     """index.css is the one file every project is allowed not to have —
     missing, this is 204 No Content, not a 404, so an editor can start
     with an empty buffer instead of surfacing an error."""
-    response = client.get(f"/api/projects/{hello_project}/files/index.css")
+    response = client.put(
+        "/api/projects/no-css", content=TWO_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"}
+    )
+    assert response.status_code == 200, response.text
+
+    response = client.get("/api/projects/no-css/files/index.css")
     assert response.status_code == 204
     assert response.content == b""
 

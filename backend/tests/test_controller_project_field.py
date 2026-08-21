@@ -9,9 +9,17 @@ import pytest
 pytestmark = pytest.mark.contract
 
 
+BARE_YML = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
+
+
 class TestGetProjectMetadata:
-    def test_reports_none_for_every_field_when_no_project_section_is_declared(self, client, hello_project):
-        response = client.get(f"/api/projects/{hello_project}/project")
+    def test_reports_none_for_every_field_when_no_project_section_is_declared(self, client):
+        response = client.put(
+            "/api/projects/bare", content=BARE_YML.encode(), headers={"Content-Type": "application/x-yaml"}
+        )
+        assert response.status_code == 200, response.text
+
+        response = client.get("/api/projects/bare/project")
         assert response.status_code == 200
         assert response.json()["project"] == {"id": None, "ui_label": None, "ui_description": None}
 

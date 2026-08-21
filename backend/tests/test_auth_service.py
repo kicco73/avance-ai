@@ -29,6 +29,9 @@ class _FakeProvider(AuthProvider):
             raise AuthError("Invalid credential.")
         return self._identity
 
+    def public_config(self) -> dict:
+        return {"client_id": "fake-client-id"}
+
 
 def _auth_service(db, provider: _FakeProvider) -> AuthService:
     service = AuthService(db, JWT_SECRET, [AuthProviderConfig(driver="google", key="unused", ui_label="Google")])
