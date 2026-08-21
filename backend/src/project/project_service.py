@@ -561,11 +561,17 @@ class ProjectService(object):
         raises, for a project that doesn't exist at all."""
         return self._db.get_project_availability(project_name) or (False, None)
 
-    def _resolve_state(self, project_name: str, automaton: Automaton) -> State:
+    def _resolve_state(
+        self, project_name: str, automaton: Automaton, *, session_id: int | None = None, source: str | None = None
+    ) -> State:
         """No persisted state yet falls back to init_action.target. A
         persisted state that no longer exists means a publish renamed or
         removed it — only StateRemap (written at that publish) may resolve it."""
-        state_key = self._db.get_current_state(project_name)
+        state_key = (
+            self._db.get_current_state_for_session(session_id)
+            if session_id is not None
+            else self._db.get_current_state(project_name, source=source)
+        )
         if state_key is None:
             state_key = automaton.init_action.target
         elif state_key not in automaton.states:
@@ -586,7 +592,7 @@ class ProjectService(object):
         if published_revision is None:
             raise ValueError(f"Project '{project_name}' has never been published.")
         automaton = self._load_project_at_revision(project_name, published_revision)
-        return automaton, self._resolve_state(project_name, automaton)
+        return automaton, self._resolve_state(project_name, automaton, source='native')
 
     def get_active_automaton_and_state(self) -> tuple[Automaton, State]:
         """The active project's published automaton and state — never the
@@ -609,7 +615,7 @@ class ProjectService(object):
             automaton = self._load_project(project_name)
         else:
             automaton = self._load_project_at_revision(project_name, session["project_revision"])
-        return automaton, self._resolve_state(project_name, automaton)
+        return automaton, self._resolve_state(project_name, automaton, session_id=session_id)
 
     def get_automaton_and_state_for_observer(
         self, project_name: str, username: str
@@ -623,7 +629,7 @@ class ProjectService(object):
         if session is None:
             return None
         automaton = self._load_project_at_revision(project_name, session["project_revision"])
-        return automaton, self._resolve_state(project_name, automaton)
+        return automaton, self._resolve_state(project_name, automaton, session_id=session["id"])
 
     def get_draft_automaton_and_state(self, project_name: str) -> tuple[Automaton, State]:
         """Like get_automaton_and_state, but the in-progress draft rather
@@ -636,7 +642,7 @@ class ProjectService(object):
         making this call, even though the URL already says exactly which
         project this is about."""
         automaton = self._load_project(project_name)
-        return automaton, self._resolve_state(project_name, automaton)
+        return automaton, self._resolve_state(project_name, automaton, source='test')
 
     def apply_manual_action(self, action_name: str, session_id: int) -> tuple[StatePayload, Action, str]:
         """Applies a manual (button) action and returns the destination

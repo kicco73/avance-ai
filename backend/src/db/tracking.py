@@ -113,21 +113,46 @@ class TrackingMixin:
         Tracking.update(expected_state=None, expected_values=None).where(Tracking.session == session_id).execute()
         Tracking.delete().where((Tracking.session == session_id) & (Tracking.old_state == '')).execute()
 
-    def _latest_transition(self, project_name: str, *, real_only: bool=False, until: datetime | None=None) -> Tracking | None:
+    def _latest_transition(self, project_name: str, *, source: str | None=None, real_only: bool=False, until: datetime | None=None) -> Tracking | None:
         query = Tracking.select().join(ChatSession, on=Tracking.session == ChatSession.id).where((ChatSession.project_name == project_name) & Tracking.new_state.is_null(False))
+        if source is not None:
+            query = query.where(ChatSession.source == source)
         if real_only:
             query = query.where(Tracking.old_state != Tracking.new_state)
         if until is not None:
             query = query.where(Tracking.timestamp <= until)
         return query.order_by(Tracking.timestamp.desc()).first()
 
-    def get_current_state(self, project_name: str) -> str | None:
-        transition = self._latest_transition(project_name)
+    def get_current_state(self, project_name: str, *, source: str | None=None) -> str | None:
+        transition = self._latest_transition(project_name, source=source)
+        return transition.new_state if transition else None
+
+    def get_current_state_for_session(self, session_id: int) -> str | None:
+        transition = (
+            Tracking.select()
+            .where((Tracking.session == session_id) & Tracking.new_state.is_null(False))
+            .order_by(Tracking.timestamp.desc())
+            .first()
+        )
         return transition.new_state if transition else None
 
     def get_last_transition_timestamp(self, project_name: str, until: datetime | None=None) -> datetime | None:
         transition = self._latest_transition(project_name, real_only=True, until=until)
         return transition.timestamp if transition else None
+
+    def get_last_transition_timestamp_for_session(self, session_id: int, until: datetime | None=None) -> datetime | None:
+        query = Tracking.select().where(
+            (Tracking.session == session_id) & Tracking.new_state.is_null(False) & (Tracking.old_state != Tracking.new_state)
+        )
+        if until is not None:
+            query = query.where(Tracking.timestamp <= until)
+        transition = query.order_by(Tracking.timestamp.desc()).first()
+        return transition.timestamp if transition else None
+
+    def history_cutoff_for_session(self, session_id: int, needs_cutoff: bool) -> datetime | None:
+        if not needs_cutoff:
+            return None
+        return self.get_last_transition_timestamp_for_session(session_id)
 
     def get_env(self, project_name: str, user: str=DEFAULT_USER, until: datetime | None=None) -> dict:
         query = Tracking.select(Tracking.env).join(ChatSession, on=Tracking.session == ChatSession.id).where((ChatSession.project_name == project_name) & (ChatSession.username == user) & Tracking.env.is_null(False))

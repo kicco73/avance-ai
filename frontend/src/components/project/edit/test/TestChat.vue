@@ -25,7 +25,11 @@ defineProps({
   // Function-as-prop: the parent owns the underlying state, this component just renders.
   resolveStateLabel: { type: Function, required: true },
   resolveActionLabel: { type: Function, required: true },
-  isStateGone: { type: Function, required: true }
+  isStateGone: { type: Function, required: true },
+  // Whether the project has an index.css to apply — "Apply aspect" stays
+  // visible but disabled without one rather than disappearing, so the
+  // toolbar's layout doesn't shift as a project gains/loses its theme.
+  hasTheme: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['select-message', 'select-transition', 'restart-prefill', 'restart-resend'])
@@ -48,8 +52,12 @@ const emit = defineEmits(['select-message', 'select-transition', 'restart-prefil
             />
             Freeze transitions
           </label>
-          <label class="dev-mode-toggle" :class="{ 'dev-mode-toggle-active': applyAspect }">
-            <input type="checkbox" v-model="applyAspect" />
+          <label
+            class="dev-mode-toggle"
+            :class="{ 'dev-mode-toggle-active': applyAspect, 'dev-mode-toggle-disabled': !hasTheme }"
+            :title="hasTheme ? null : 'This project has no index.css yet.'"
+          >
+            <input type="checkbox" v-model="applyAspect" :disabled="!hasTheme" />
             Apply aspect
           </label>
         </div>

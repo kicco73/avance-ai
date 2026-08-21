@@ -251,6 +251,9 @@ const isBehaviorNodeSelected = computed(() => currentFileName.value === 'index.y
 // with it (see handleDeleteFile) since an asset with no stylesheet left to
 // reference it is just dead weight.
 const themeAssetNames = computed(() => files.value.filter((name) => name !== 'index.css' && IMAGE_PATTERN.test(name)))
+// TestChat.vue's "Apply aspect" toggle only makes sense once a theme
+// actually exists to apply.
+const hasTheme = computed(() => files.value.includes('index.css'))
 const activeEditorIsDirty = computed(() => {
   if (currentFileName.value === 'index.yml') return indexYmlEditorRef.value?.isDirty ?? false
   if (currentFileName.value === 'index.css') return indexCssEditorRef.value?.isDirty ?? false
@@ -1433,6 +1436,7 @@ onBeforeUnmount(() => {
             :timeline="timeline"
             :signals-log="signalsLog"
             :selected="selected"
+            :has-theme="hasTheme"
             :resolve-state-label="stateLabelFor"
             :resolve-action-label="actionLabelFor"
             :is-state-gone="isStateGone"

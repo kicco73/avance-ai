@@ -437,28 +437,20 @@ class ChatService(object):
 			if action.action_prompt:
 				init_message = await self._generate_action_prompt_message(action, session_id)
 
-		await self._generate_opening_message_if_needed(project_name, session_id, automaton, state)
+		await self._generate_opening_message_if_needed(session_id, automaton, state)
 
 		return init_message
 
-	def _history_cutoff(self, project_name: str, state: State) -> datetime | None:
-		"""Messages at or before this timestamp must be excluded from both
-		the AI reply and auto-tracking's signal evaluation, per `state`'s
-		history_cutoff. None means "no cutoff, use the full history"."""
-		if not state.history_cutoff:
-			return None
-		return self._db.get_last_transition_timestamp(project_name)
-
-	def _should_generate_opening_message(self, project_name: str, session_id: int, state: State) -> bool:
-		content_since = self._history_cutoff(project_name, state)
+	def _should_generate_opening_message(self, session_id: int, state: State) -> bool:
+		content_since = self._db.history_cutoff_for_session(session_id, state.history_cutoff)
 		chat_blocked = state.final or not state.chat
-		gate_since = self._db.get_last_transition_timestamp(project_name) if chat_blocked else content_since
+		gate_since = self._db.get_last_transition_timestamp_for_session(session_id) if chat_blocked else content_since
 		return not self._db.has_messages_since(session_id, gate_since)
 
 	async def _generate_opening_message_if_needed(
-		self, project_name: str, session_id: int, automaton: Automaton, state: State
+		self, session_id: int, automaton: Automaton, state: State
 	) -> dict | None:
-		if not self._should_generate_opening_message(project_name, session_id, state):
+		if not self._should_generate_opening_message(session_id, state):
 			return None
 
 		return await self._generate_opening_message_body(session_id)
@@ -471,12 +463,12 @@ class ChatService(object):
 		return await self.process_turn(session_id, None, extra_prompt=action.action_prompt)
 
 	async def _messages_for_transition(
-		self, action: Action, project_name: str, session_id: int, new_state: State, *, is_self_loop: bool
+		self, action: Action, session_id: int, new_state: State, *, is_self_loop: bool
 	) -> list[dict]:
 		"""Every real, chat-visible message this transition's follow-up
 		turn(s) produced, as flat message rows. A turn whose reply landed
 		in a non-chat state has no assistant_message_id, so it's skipped rather than looked up as None."""
-		should_open = not is_self_loop and self._should_generate_opening_message(project_name, session_id, new_state)
+		should_open = not is_self_loop and self._should_generate_opening_message(session_id, new_state)
 
 		turn_results = []
 		if action.action_prompt:
@@ -511,7 +503,7 @@ class ChatService(object):
 				automaton, action, {}, source_state_key, username=Session().user, project_name=project_name,
 			)
 			reply = await self._messages_for_transition(
-				action, project_name, session["id"], state, is_self_loop=(action.target == source_state_key)
+				action, session["id"], state, is_self_loop=(action.target == source_state_key)
 			)
 			self._session_manager.touch_session(session["id"], state.key)
 			return {
