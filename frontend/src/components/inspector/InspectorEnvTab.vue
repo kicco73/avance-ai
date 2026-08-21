@@ -1,6 +1,7 @@
 <script setup>
 import { computed, nextTick, ref } from 'vue'
 import { clearActionEnv, clearEnv, deleteEnvValue, getEnv, putEnvValue } from '../../api.js'
+import { confirmDialog } from '../../dialogStore.js'
 
 const props = defineProps({
   // When set, shows a historical point-in-time snapshot instead of live env.
@@ -84,7 +85,13 @@ async function removeKey(key) {
 }
 
 async function clearAll() {
-  if (!window.confirm('Clear all stored environment values? This cannot be undone.')) return
+  const ok = await confirmDialog({
+    title: 'Clear environment values',
+    body: 'Clear all stored environment values? This cannot be undone.',
+    okLabel: 'Clear',
+    danger: true
+  })
+  if (!ok) return
   try {
     const result = await clearEnv()
     stored.value = result.stored
@@ -95,7 +102,13 @@ async function clearAll() {
 }
 
 async function clearActionAll() {
-  if (!window.confirm('Clear all action-set environment values? This cannot be undone.')) return
+  const ok = await confirmDialog({
+    title: 'Clear environment values',
+    body: 'Clear all action-set environment values? This cannot be undone.',
+    okLabel: 'Clear',
+    danger: true
+  })
+  if (!ok) return
   try {
     const result = await clearActionEnv()
     stored.value = result.stored

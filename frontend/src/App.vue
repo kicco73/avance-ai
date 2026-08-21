@@ -8,10 +8,10 @@ import LoginView from './components/LoginView.vue'
 import ProjectsMenu from './components/ProjectsMenu.vue'
 import SettingsMenu from './components/settings/SettingsMenu.vue'
 import ManageProjectsView from './components/settings/ManageProjectsView.vue'
-import AboutDialog from './components/settings/AboutDialog.vue'
 import SplashScreen from './components/SplashScreen.vue'
 import ErrorBanner from './components/ErrorBanner.vue'
 import ToastContainer from './components/ToastContainer.vue'
+import DialogHost from './components/DialogHost.vue'
 import {
   getState,
   putProject,
@@ -22,11 +22,13 @@ import {
   getBackup,
   postRestoreBackup,
   postPublishProject,
-  postLogout
+  postLogout,
+  getAbout
 } from './api.js'
 import { disconnect as disconnectChat } from './chatClient.js'
 import { clearApiError } from './errorStore.js'
 import { needsLogin, requireLogin } from './authStore.js'
+import { confirmDialog, infoDialog } from './dialogStore.js'
 import {
   state,
   setCapabilities,
@@ -43,7 +45,6 @@ const editProjectName = ref(null)
 const showBenchmarkProject = ref(false)
 const benchmarkProjectName = ref(null)
 const showManageProjects = ref(false)
-const showAbout = ref(false)
 const modelUploadInput = ref(null)
 const projectsMenu = ref(null)
 const manageProjectsView = ref(null)
@@ -348,11 +349,30 @@ async function handleDownloadBackup() {
 // this needs the same explicit confirmation as handleReset (chatStore.js),
 // then the same reload-everything path as switch/upload/delete.
 async function handleRestoreBackup(file) {
-  if (!window.confirm('Restore this backup? This replaces the entire working database (all projects, sessions, and messages) and cannot be undone.')) return
+  const ok = await confirmDialog({
+    title: 'Restore backup',
+    body: 'Restore this backup? This replaces the entire working database (all projects, sessions, and messages) and cannot be undone.',
+    okLabel: 'Restore',
+    danger: true
+  })
+  if (!ok) return
   clearChatUi()
   try {
     await postRestoreBackup(file)
     await refreshStateAndProjects()
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+// SettingsMenu's "About Avance..." — name/version straight off the
+// running backend (main.py's own __version__), fetched fresh on every
+// open rather than cached, so it always reflects whatever build is
+// actually serving the request.
+async function handleShowAbout() {
+  try {
+    const about = await getAbout()
+    await infoDialog({ title: about.name, body: `Version ${about.version}` })
   } catch {
     // already surfaced via apiFetch
   }
@@ -370,6 +390,7 @@ onBeforeUnmount(() => {
        purpose: nothing should flash before we know whether the backend was
        already up. -->
   <ToastContainer />
+  <DialogHost />
 
   <!-- Overrides everything below regardless of bootStatus — a 401 (see
        api.js's apiFetch) can happen at any point, including mid-boot. -->
@@ -389,7 +410,7 @@ onBeforeUnmount(() => {
         />
         <SettingsMenu
           @manage-projects="showManageProjects = true"
-          @about="showAbout = true"
+          @about="handleShowAbout"
           @logout="handleLogout"
           @download-backup="handleDownloadBackup"
           @restore-backup="handleRestoreBackup"
@@ -438,7 +459,6 @@ onBeforeUnmount(() => {
       @download="handleModelDownload"
     />
 
-    <AboutDialog v-if="showAbout" @close="showAbout = false" />
   </div>
 </template>
 

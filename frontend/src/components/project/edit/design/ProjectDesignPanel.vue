@@ -4,7 +4,7 @@
 // .txt/.md attachment gets MdEditorPanel's Preview/Edit toggle, anything
 // else falls back to a bare CodeEditor. Purely presentational — state is
 // owned by EditProjectView.vue and reached only through props/emits.
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import FileExplorer from './FileExplorer.vue'
 import CodeEditor from '../../../CodeEditor.vue'
 import IndexYmlEditorPanel from './IndexYmlEditorPanel.vue'
@@ -12,7 +12,9 @@ import IndexCssEditorPanel from './IndexCssEditorPanel.vue'
 import MdEditorPanel from './MdEditorPanel.vue'
 import { projectFileContentUrl } from '../../../../api.js'
 
-defineProps({
+const IMAGE_PATTERN = /\.(png|jpe?g|gif|webp|svg)$/i
+
+const props = defineProps({
   projectName: { type: String, required: true },
   files: { type: Array, default: () => [] },
   filesLoading: { type: Boolean, default: true },
@@ -38,6 +40,12 @@ const emit = defineEmits([
   'start-explorer-drag', 'new-file', 'select-file', 'upload-file',
   'jump-to-definition', 'select', 'saved'
 ])
+
+// The Behavior branch's own attachments (see FileExplorer.vue's identical
+// grouping) — index.yml's code segment offers these for `attachments:` autocomplete.
+const attachmentFiles = computed(() =>
+  props.files.filter((name) => name !== 'index.yml' && name !== 'index.css' && !IMAGE_PATTERN.test(name))
+)
 
 const codeEditorRef = ref(null)
 const indexYmlEditorRef = ref(null)
@@ -76,6 +84,7 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef 
           v-show="currentFileName === 'index.yml'"
           ref="indexYmlEditorRef"
           :project-name="projectName"
+          :attachment-files="attachmentFiles"
           :highlighted-state-key="highlightedStateKey"
           :auto-jump-on-highlight-change="true"
           :next-action-edge="nextActionEdge"
@@ -93,9 +102,6 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef 
           @saved="emit('saved', $event)"
         />
         <div v-if="currentFileIsImage" class="edit-project-editor-attachment">
-          <div class="edit-project-editor-toolbar">
-            <span class="edit-project-editor-filename">{{ currentFileName }}</span>
-          </div>
           <div class="edit-project-editor-content edit-project-editor-image">
             <img :key="currentFileName" :src="projectFileContentUrl(projectName, currentFileName)" :alt="currentFileName" />
           </div>

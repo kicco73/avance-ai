@@ -7,6 +7,7 @@
 // ProjectDesignPanel.vue), unlike index.yml/index.css's own fixed-name panels.
 import { computed, ref } from 'vue'
 import CodeEditor from '../../../CodeEditor.vue'
+import DocInfoButton from '../../../DocInfoButton.vue'
 import { renderMarkdown } from '../../../../markdown.js'
 
 const props = defineProps({
@@ -66,6 +67,7 @@ defineExpose({ content, isDirty, saving, save, discard, undo, redo, reload })
           :disabled="codeEditorRef?.loading || codeEditorRef?.saving || !codeEditorRef?.isDirty"
           @click="codeEditorRef?.save()"
         >{{ codeEditorRef?.saving ? 'Saving…' : 'Save' }}</button>
+        <DocInfoButton doc-name="markdown-guide" title="Markdown syntax" />
       </div>
     </div>
 

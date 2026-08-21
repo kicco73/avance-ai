@@ -48,6 +48,7 @@ import {
   postRevertProject
 } from '../../../api.js'
 import { clearApiError, setApiError, setApiWarning } from '../../../errorStore.js'
+import { confirmDialog, promptDialog, chooseDialog } from '../../../dialogStore.js'
 import ErrorBanner from '../../ErrorBanner.vue'
 import { refreshIdentifierRegistry } from '../../../identifierRegistry.js'
 import { buildTimeline, highlightedStateKeyFor, nearestMessageIdAtOrBefore, resultingStateKeyFor, signalValuesFor } from '../../../benchmarkTimeline.js'
@@ -547,10 +548,6 @@ function setMode(next) {
 
 onBeforeUnmount(() => { testModeProjectName.value = null })
 
-// Whatever's queued behind the unsaved-changes dialog below. `run`
-// performs the action; `label` is what the dialog shows (e.g. 'switch to "notes.txt"').
-const pendingAction = ref(null) // { run: () => void, label: string } | null
-
 // Left panel width in px, adjusted by dragging the split divider.
 const explorerWidth = ref(220)
 // Which divider (if any) is currently being dragged — 'explorer' or
@@ -624,42 +621,46 @@ function switchFile(fileName) {
 }
 
 // Every entry point that would discard unsaved code routes through here
-// instead of running `run` directly: dirty means ask first (queuing
-// `run` behind the dialog, see pendingAction), clean runs immediately.
+// instead of running `run` directly: dirty means ask first (via
+// runGuardedAction's chooseDialog), clean runs immediately.
 function guardedAction(label, run) {
   if (!activeEditorIsDirty.value) {
     run()
     return
   }
-  pendingAction.value = { label, run }
+  runGuardedAction(label, run)
+}
+
+async function runGuardedAction(label, run) {
+  const choice = await chooseDialog({
+    title: 'Unsaved changes',
+    body: `"${currentFileName.value}" has unsaved changes. Save before you ${label}?`,
+    options: [
+      { id: 'save', label: 'Save' },
+      { id: 'discard', label: 'Discard' }
+    ]
+  })
+  if (choice === 'save') {
+    if (await activeEditor()?.save?.()) run()
+    return
+  }
+  if (choice === 'discard') {
+    // The whole point of "Discard": the active editor's dirty buffer
+    // actually reverts to its last-loaded content.
+    activeEditor()?.discard?.()
+    run()
+    return
+  }
+  // null (Cancel/backdrop/ESC) — a cursor jump that triggered this action
+  // is moot once it's declined, so it shouldn't fire on some later,
+  // unrelated action either.
+  pendingCursorTarget.value = null
 }
 
 // Entry point for both explorer clicks and post-upload auto-open.
 function selectFile(fileName) {
   if (fileName === currentFileName.value) return
   guardedAction(`switch to "${fileName}"`, () => switchFile(fileName))
-}
-
-async function confirmPendingSave() {
-  const action = pendingAction.value
-  pendingAction.value = null
-  if (await activeEditor()?.save?.()) action.run()
-}
-
-function confirmPendingDiscard() {
-  const action = pendingAction.value
-  pendingAction.value = null
-  // The whole point of "Discard": the active editor's dirty buffer
-  // actually reverts to its last-loaded content.
-  activeEditor()?.discard?.()
-  action.run()
-}
-
-function confirmPendingCancel() {
-  pendingAction.value = null
-  // A cursor jump that triggered this action is moot once it's declined
-  // — don't let it fire on some later, unrelated action.
-  pendingCursorTarget.value = null
 }
 
 // Common tail for every Add/edit/delete/reorder handler below: the
@@ -736,12 +737,17 @@ async function handlePublish() {
     }
     // Only ask when it's actually consequential — a live conversation
     // still running on the currently published revision.
-    if (
-      preview.has_active_sessions &&
-      !window.confirm(`Publish revision ${projectRevision.value?.revision}? There's an active session on the currently published revision — it will stay frozen there; this one becomes the new one.`)
-    ) {
-      resetCloseAfterPublish()
-      return
+    if (preview.has_active_sessions) {
+      const ok = await confirmDialog({
+        title: 'Publish',
+        body: `Publish revision ${projectRevision.value?.revision}? There's an active session on the currently published revision — it will stay frozen there; this one becomes the new one.`,
+        okLabel: 'Publish',
+        danger: true
+      })
+      if (!ok) {
+        resetCloseAfterPublish()
+        return
+      }
     }
     projectRevision.value = await postPublishProject(props.projectName)
     await refreshActiveEditorHistory()
@@ -794,13 +800,13 @@ onBeforeUnmount(() => document.removeEventListener('click', handleDocumentClickF
 async function handleRevert() {
   if (!canRevert.value || publishing.value) return
   const targetRevision = projectRevision.value.published_revision
-  if (
-    !window.confirm(
-      `Revert to rev. ${targetRevision}? This permanently discards every unpublished change on rev. ${projectRevision.value.revision} — there's no undo for this.`
-    )
-  ) {
-    return
-  }
+  const ok = await confirmDialog({
+    title: 'Revert',
+    body: `Revert to rev. ${targetRevision}? This permanently discards every unpublished change on rev. ${projectRevision.value.revision} — there's no undo for this.`,
+    okLabel: 'Revert',
+    danger: true
+  })
+  if (!ok) return
   publishing.value = true
   try {
     await postRevertProject(props.projectName)
@@ -1075,18 +1081,23 @@ async function handleNewFile() {
   // .yml/.yaml is technically accepted (see TEXT_CREATABLE_PATTERN) but
   // never a sensible choice — index.yml is the only YAML file the
   // automaton reads, so a second one could only be an inert attachment.
-  const rawName = window.prompt('New file name (e.g. notes.txt):')
+  // validate runs inline as the user types, so pattern/existence errors
+  // show right under the field instead of bouncing off setApiError after
+  // the prompt's already closed.
+  const rawName = await promptDialog({
+    title: 'New file',
+    body: 'New file name (e.g. notes.txt):',
+    placeholder: 'notes.txt',
+    validate(value) {
+      const trimmed = value.trim()
+      if (!trimmed) return 'Enter a file name.'
+      if (!TEXT_CREATABLE_PATTERN.test(trimmed)) return 'Only .txt, .yml/.yaml, or .css files can be created.'
+      if (files.value.includes(trimmed)) return `A file named "${trimmed}" already exists.`
+      return null
+    }
+  })
   if (rawName === null) return // cancelled
   const name = rawName.trim()
-  if (!name) return
-  if (!TEXT_CREATABLE_PATTERN.test(name)) {
-    setApiError('Only .txt, .yml/.yaml, or .css files can be created.')
-    return
-  }
-  if (files.value.includes(name)) {
-    setApiError(`A file named "${name}" already exists.`)
-    return
-  }
   creatingFile.value = true
   clearApiError()
   try {
@@ -1109,10 +1120,16 @@ async function handleDeleteFile(fileName) {
   // the cascade itself (deleting every asset along with index.css) is
   // server-side, see ProjectService.delete_project_file.
   const cascadeAssets = fileName === 'index.css' ? themeAssetNames.value : []
-  const confirmMessage = cascadeAssets.length
-    ? `Delete "index.css"? This also deletes the ${cascadeAssets.length} asset${cascadeAssets.length === 1 ? '' : 's'} it can reference: ${cascadeAssets.join(', ')}.\n\nThis cannot be undone.`
-    : `Delete file "${fileName}"? This cannot be undone.`
-  if (!window.confirm(confirmMessage)) return
+  // A lone Theme asset is a single, cheap, easily re-uploaded file with
+  // nothing cascading from it — index.css (which does cascade) and every
+  // other file still confirm.
+  if (!IMAGE_PATTERN.test(fileName)) {
+    const confirmMessage = cascadeAssets.length
+      ? `Delete "index.css"? This also deletes the ${cascadeAssets.length} asset${cascadeAssets.length === 1 ? '' : 's'} it can reference: ${cascadeAssets.join(', ')}.\n\nThis cannot be undone.`
+      : `Delete file "${fileName}"? This cannot be undone.`
+    const ok = await confirmDialog({ title: 'Delete file', body: confirmMessage, okLabel: 'Delete', danger: true })
+    if (!ok) return
+  }
   deletingFile.value = fileName
   clearApiError()
   try {
@@ -1134,20 +1151,30 @@ async function handleDeleteFile(fileName) {
 const { confirmLeaveIfNeeded } = useLeaveConfirmation(activeEditorIsDirty, 'Discard unsaved changes to this file?')
 
 // Unsaved-file changes are checked first — the more urgent, data-loss
-// concern. Only past that does a pending revision get its own question:
-// publish before leaving, or leave it pending. "No" still closes.
-function handleClose() {
-  if (!confirmLeaveIfNeeded()) return
-  if (!publishUpToDate.value) {
-    if (window.confirm(
-      `Revision ${projectRevision.value?.revision} isn't published yet. Publish it before leaving? Cancel leaves it pending, exactly as now.`
-    )) {
-      closeAfterPublish.value = true
-      handlePublish()
-      return
-    }
+// concern. Only past that, and only when there's actually a pending
+// revision to decide about, does a three-way choice show: publish before
+// leaving, leave it pending, or cancel the close outright.
+async function handleClose() {
+  if (!(await confirmLeaveIfNeeded())) return
+  if (publishUpToDate.value) {
+    emit('close')
+    return
   }
-  emit('close')
+  const choice = await chooseDialog({
+    title: 'Unpublished changes',
+    body: `Revision ${projectRevision.value?.revision} isn't published yet.`,
+    options: [
+      { id: 'publish', label: 'Publish and close' },
+      { id: 'leave', label: 'Leave pending' }
+    ]
+  })
+  if (choice === 'publish') {
+    closeAfterPublish.value = true
+    handlePublish()
+    return
+  }
+  if (choice === 'leave') emit('close')
+  // null (Cancel/backdrop/ESC) — stay open, nothing to do.
 }
 
 // Live values for whatever signals the active conversation currently
@@ -1506,17 +1533,6 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div v-if="pendingAction" class="switch-dialog-overlay">
-      <div class="switch-dialog">
-        <p>"{{ currentFileName }}" has unsaved changes. Save before you {{ pendingAction.label }}?</p>
-        <div class="switch-dialog-actions">
-          <button class="switch-dialog-save-btn" :disabled="activeEditor()?.saving" @click="confirmPendingSave">Save</button>
-          <button class="switch-dialog-discard-btn" :disabled="activeEditor()?.saving" @click="confirmPendingDiscard">Discard</button>
-          <button class="switch-dialog-cancel-btn" :disabled="activeEditor()?.saving" @click="confirmPendingCancel">Cancel</button>
-        </div>
-      </div>
-    </div>
-
     <div v-if="publishRemapPrompt" class="switch-dialog-overlay">
       <div class="switch-dialog">
         <p>
@@ -1867,21 +1883,6 @@ onBeforeUnmount(() => {
 }
 
 .switch-dialog-save-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.switch-dialog-discard-btn {
-  padding: 0.4rem 0.9rem;
-  border-radius: 6px;
-  border: 1px solid #c62828;
-  background: white;
-  color: #c62828;
-  cursor: pointer;
-  font-size: 0.85rem;
-}
-
-.switch-dialog-discard-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }

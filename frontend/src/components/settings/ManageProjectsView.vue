@@ -4,6 +4,7 @@
 // The status dot toggles running <-> manually_paused only; 'paused' needs an external fix.
 import { onMounted, ref } from 'vue'
 import { getProjectsRuntimeStatus, putProjectPause, putProjectResume } from '../../api.js'
+import { confirmDialog } from '../../dialogStore.js'
 import ErrorBanner from '../ErrorBanner.vue'
 
 // Emits events only; App.vue owns the actual new/upload/delete actions.
@@ -35,7 +36,12 @@ function replaceRow(updated) {
 async function toggleStatus(row) {
   if (row.status === 'paused') return // the automatic case — nothing to toggle here
   if (row.status === 'running') {
-    if (!window.confirm(`Pause "${row.name}"? Live chat on this project will show a maintenance screen until it's resumed.`)) return
+    const ok = await confirmDialog({
+      title: 'Pause project',
+      body: `Pause "${row.name}"? Live chat on this project will show a maintenance screen until it's resumed.`,
+      okLabel: 'Pause'
+    })
+    if (!ok) return
   }
   togglingProject.value = row.name
   try {
@@ -52,8 +58,14 @@ async function toggleStatus(row) {
 
 // App.vue's delete handler has no confirm of its own, so this is the
 // one place that asks before deleting.
-function selectDelete(name) {
-  if (!window.confirm(`Delete project "${name}"? This cannot be undone.`)) return
+async function selectDelete(name) {
+  const ok = await confirmDialog({
+    title: 'Delete project',
+    body: `Delete project "${name}"? This cannot be undone.`,
+    okLabel: 'Delete',
+    danger: true
+  })
+  if (!ok) return
   emit('delete', name)
 }
 

@@ -35,6 +35,7 @@ DOC_FILES = {
     "project-specs": "PROJECT_SPECS.md",
     "metrics": "METRICS.md",
     "benchmark": "BENCHMARK.md",
+    "markdown-guide": "MARKDOWN_GUIDE.md",
 }
 DOCS_DIR = Path(__file__).resolve().parent.parent / "docs"
 

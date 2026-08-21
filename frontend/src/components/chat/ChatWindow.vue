@@ -28,6 +28,7 @@ import {
   currentSessionId,
   currentProjectName,
   skinVersion,
+  themeDisabled,
   selectedSessionActive,
   sessions,
   sessionsLoading,
@@ -199,7 +200,7 @@ function clearSkin() {
 async function loadSkin() {
   const projectName = currentProjectName.value
   const sessionId = currentSessionId.value
-  if (!projectName || sessionId == null) {
+  if (themeDisabled.value || !projectName || sessionId == null) {
     clearSkin()
     return
   }
@@ -209,8 +210,16 @@ async function loadSkin() {
     // already sets it), so without this explicit option the request
     // drops the session cookie behind AuthMiddleware whenever frontend
     // and backend aren't same-origin, 401s, and loadSkin silently treats
-    // that the same as "no index.css".
-    const response = await fetch(projectFileContentUrl(projectName, 'index.css', sessionId), { credentials: 'include' })
+    // that the same as "no index.css". cache: 'no-store' — this fires
+    // on every index.yml/css save via skinVersion (see chatStore.js), and
+    // the URL doesn't otherwise change; relying on the browser to always
+    // revalidate a Cache-Control: no-cache response left Test showing a
+    // stale skin after a save in practice, so this skips the HTTP cache
+    // entirely instead of trusting revalidation.
+    const response = await fetch(
+      projectFileContentUrl(projectName, 'index.css', sessionId),
+      { credentials: 'include', cache: 'no-store' }
+    )
     if (!response.ok) {
       clearSkin()
       return
@@ -226,7 +235,7 @@ async function loadSkin() {
   skinStyleEl.textContent = css
 }
 
-watch([currentProjectName, currentSessionId, skinVersion], loadSkin, { immediate: true })
+watch([currentProjectName, currentSessionId, skinVersion, themeDisabled], loadSkin, { immediate: true })
 onBeforeUnmount(clearSkin)
 </script>
 

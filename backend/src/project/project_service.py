@@ -91,19 +91,25 @@ _CSS_URL_PATTERN = re.compile(r"url\(\s*(['\"]?)([^'\")]+)\1\s*\)", re.IGNORECAS
 _ABSOLUTE_URL_PATTERN = re.compile(r"^(https?:)?//|^data:", re.IGNORECASE)
 
 
-def missing_css_references(css_text: str, known_archive_names: set[str]) -> list[str]:
-    """Every `url(...)` target in `css_text` not in `known_archive_names`.
-    Absolute URLs (http(s)://, //, data:) are skipped. A project's archive
-    namespace is flat, so any relative reference resolves by filename alone."""
-    missing = []
+def css_referenced_basenames(css_text: str) -> set[str]:
+    """Every relative `url(...)` target in `css_text`, reduced to its bare
+    filename — a project's archive namespace is flat, so that's how a
+    reference resolves. Absolute URLs (http(s)://, //, data:) are skipped:
+    they don't name a project file at all."""
+    names = set()
     for _, target in _CSS_URL_PATTERN.findall(css_text):
         target = target.strip()
         if not target or _ABSOLUTE_URL_PATTERN.match(target):
             continue
-        name = Path(target).name
-        if name not in known_archive_names and name not in missing:
-            missing.append(name)
-    return missing
+        names.add(Path(target).name)
+    return names
+
+
+def missing_css_references(css_text: str, known_archive_names: set[str]) -> list[str]:
+    """Every name css_referenced_basenames(css_text) names that isn't in
+    `known_archive_names` — order is whatever set iteration gives; the one
+    caller sorts before display."""
+    return [name for name in css_referenced_basenames(css_text) if name not in known_archive_names]
 
 
 # @media/@supports are the only at-rules a chat-widget skin plausibly
@@ -1224,13 +1230,25 @@ class ProjectService(object):
         """Deleting index.css cascades to every image asset it could have
         referenced — the file explorer's own "Theme" branch never offers
         deleting one of those individually while index.css still exists, so
-        an orphaned asset would otherwise just be dead weight."""
+        an orphaned asset would otherwise just be dead weight. Deleting an
+        asset index.css still references is rejected outright instead:
+        editing index.css's own text to drop the reference is exactly what
+        the CSS editor is for, and rewriting it here on the asset's behalf
+        risks mangling a rule irrecoverably for a small convenience."""
 
         if project_name not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
 
+        archives = self._db.get_archives(project_name=project_name)
+        if file_name != "index.css" and Path(file_name).suffix.lower() in IMAGE_EXTENSIONS:
+            index_css = archives.get("index.css")
+            if index_css is not None and file_name in css_referenced_basenames(index_css.decode("utf-8")):
+                raise ValueError(
+                    f"'{file_name}' is still referenced by index.css — remove the reference "
+                    f"there first (or delete index.css itself, which takes its assets with it)."
+                )
+
         try:
-            archives = self._db.get_archives(project_name=project_name)
             del archives[file_name]
             cascade_names = (
                 [name for name in archives if Path(name).suffix.lower() in IMAGE_EXTENSIONS]

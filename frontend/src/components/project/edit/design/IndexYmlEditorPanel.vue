@@ -14,6 +14,9 @@ import DocInfoButton from '../../../DocInfoButton.vue'
 
 const props = defineProps({
   projectName: { type: String, required: true },
+  // Behavior branch attachment basenames — the code segment's
+  // `attachments:` autocomplete offers these (see CodeEditor.vue).
+  attachmentFiles: { type: Array, default: () => [] },
   highlightedStateKey: { type: String, default: null },
   autoJumpOnHighlightChange: { type: Boolean, default: false },
   nextActionEdge: { type: Object, default: null },
@@ -138,6 +141,7 @@ defineExpose({
         ref="codeEditorRef"
         :project-name="projectName"
         file-name="index.yml"
+        :yaml-attachment-files="attachmentFiles"
         @saved="emit('saved', $event)"
       />
     </div>

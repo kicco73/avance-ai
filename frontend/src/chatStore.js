@@ -22,6 +22,7 @@ import { sendMessage as sendChatMessage, onNotification } from './chatClient.js'
 import { playMessageChime, playMessageAudio } from './audio.js'
 import { runOnEnterScript } from './onEnterActions.js'
 import { clearApiError } from './errorStore.js'
+import { confirmDialog } from './dialogStore.js'
 
 export const state = ref(null)
 // The chat conversation's current session_id — null until the first
@@ -57,6 +58,15 @@ export const skinVersion = ref(0)
 export function invalidateSkin() {
   skinVersion.value++
 }
+// TestChat.vue's "No theme" toggle. Shared rather than a prop on
+// ChatWindow: App.vue keeps its own ChatWindow mounted (just visually
+// covered) the whole time EditProjectView's overlay is open, and both
+// instances read the same currentProjectName/currentSessionId — each
+// injects its own <style> into the one shared document.head, so a
+// per-instance flag would leave the other instance's skin still applied
+// globally. TestChat.vue resets this to false on unmount so it never
+// leaks into the main chat widget once Test mode is left.
+export const themeDisabled = ref(false)
 export const messages = ref([])
 export const historyLoaded = ref(false)
 export const chatLoading = ref(false)
@@ -245,7 +255,13 @@ export async function handleTruncateFrom(timestamp) {
 // currently displayed, falls back to the same bootstrap loadMessages()
 // uses on first load.
 export async function handleDeleteSession(session) {
-  if (!window.confirm(`Delete this session (${session.end_state})? This cannot be undone.`)) return
+  const ok = await confirmDialog({
+    title: 'Delete session',
+    body: `Delete this session (${session.end_state})? This cannot be undone.`,
+    okLabel: 'Delete',
+    danger: true
+  })
+  if (!ok) return
   try {
     await deleteSession(session.id)
     if (session.id === currentSessionId.value) {
@@ -521,7 +537,13 @@ export function clearChatUi() {
 // still works from EditProjectView's embedded "Test" chat toolbar for a
 // project that's never been published.
 export async function handleReset() {
-  if (!window.confirm('Reset the conversation, signals, and transitions? This cannot be undone.')) return
+  const ok = await confirmDialog({
+    title: 'Reset conversation',
+    body: 'Reset the conversation, signals, and transitions? This cannot be undone.',
+    okLabel: 'Reset',
+    danger: true
+  })
+  if (!ok) return
   clearChatUi()
   try {
     // A reset re-enters the automaton through init-action, same as a
@@ -542,7 +564,12 @@ export async function handleReset() {
 export async function handleNewSession() {
   // Only one session is ever active per project — starting a new one
   // always supersedes the current one, not just adds to it.
-  if (!window.confirm('Start a new session? This will close the current session for this project — only one can be active at a time.')) return
+  const ok = await confirmDialog({
+    title: 'Start new session',
+    body: 'Start a new session? This will close the current session for this project — only one can be active at a time.',
+    okLabel: 'Start'
+  })
+  if (!ok) return
   try {
     const session = testModeProjectName.value != null
       ? await postCreateTestSession(testModeProjectName.value)

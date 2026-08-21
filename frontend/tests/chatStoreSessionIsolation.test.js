@@ -28,11 +28,11 @@ vi.mock('../src/api.js', () => ({
   postTruncateSession: vi.fn()
 }))
 vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn() }))
+vi.mock('../src/dialogStore.js', () => ({ confirmDialog: vi.fn().mockResolvedValue(true) }))
 
 describe('testModeProjectName routes session bootstrap/list to the right pool', () => {
   let chatStore
   let api
-  let confirmSpy
 
   beforeEach(async () => {
     vi.resetModules()
@@ -41,12 +41,10 @@ describe('testModeProjectName routes session bootstrap/list to the right pool', 
     api.getMessages.mockResolvedValue([])
     api.getSessions.mockResolvedValue([])
     api.getTestSessions.mockResolvedValue([])
-    confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
   })
 
   afterEach(() => {
     vi.clearAllMocks()
-    confirmSpy.mockRestore()
   })
 
   it('loadMessages calls getCurrentSession, never getCurrentTestSession, when testModeProjectName is null', async () => {
