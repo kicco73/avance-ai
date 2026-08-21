@@ -49,12 +49,10 @@ class ChatService(object):
 		# Shares persisted_jobs with BenchmarkRunService (see main.py's own
 		# wiring) — never its own private queue.
 		self._session_summary_manager = SessionSummaryManager(db, ai_service, persisted_jobs, session_manager)
-		get_username = lambda: Session().user
-		get_active_project_name = lambda: project_service.get_active_project_name()
-		self.env = PersistedEnv(db, get_username=get_username, get_active_project_name=get_active_project_name)
+		self.env = PersistedEnv(db, project_service)
 		self._system_facts = SystemFacts()
-		self._session_facts = SessionFacts(db, get_username=get_username, get_active_project_name=get_active_project_name)
-		self._automaton_namespace = AutomatonNamespace(db, project_service, get_username)
+		self._session_facts = SessionFacts(db, project_service)
+		self._automaton_namespace = AutomatonNamespace(db, project_service)
 		self.evaluation_scope_builder = EvaluationScopeBuilder(
 			self.env, metric_service, self._system_facts, self._session_facts, self._automaton_namespace
 		)
@@ -156,23 +154,26 @@ class ChatService(object):
 			)
 		except ValueError as exc:
 			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
+		automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
 		# Always the active one by construction — see
 		# ChatSessionManager.get_or_create_current_session.
-		return self._session_payload(session, active=True)
+		return {**self._session_payload(session, active=True), "state": automaton.get_state_payload(state)}
 
-	def get_or_create_current_draft_session(self, session_id: int | None) -> dict:
-		"""Like get_or_create_current_session, but for the active
-		project's own *draft* — the embedded "Test" chat is the one place
-		a session is allowed to exist against an unpublished revision."""
-		project_name = self._active_project_name
+	def get_or_create_current_draft_session(self, session_id: int | None, project_name: str) -> dict:
+		"""Like get_or_create_current_session, but for `project_name`'s own
+		*draft* — the embedded "Test" chat is the one place a session is
+		allowed to exist against an unpublished revision. `project_name`
+		comes from the URL, never the active-project pointer — see
+		ProjectService.get_draft_automaton_and_state for why."""
 		try:
-			_, state = self._project_service.get_active_draft_automaton_and_state()
+			_, state = self._project_service.get_draft_automaton_and_state(project_name)
 			session = self._session_manager.get_or_create_current_draft_session(
 				self._username, project_name, session_id, state.key
 			)
 		except ValueError as exc:
 			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
-		return self._session_payload(session, active=True)
+		automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
+		return {**self._session_payload(session, active=True), "state": automaton.get_state_payload(state)}
 
 	def create_session(self) -> dict:
 		"""Explicit "new session" action: starts a fresh session, which
@@ -191,12 +192,13 @@ class ChatService(object):
 		# transition reports, just for init_action instead of a regular Action.
 		return {**self._session_payload(session, active=True), "on-enter": automaton.init_action.on_enter}
 
-	def create_draft_session(self) -> dict:
-		"""Like create_session, but against the active project's own
-		current *draft* revision — the embedded "Test" chat is the only caller."""
-		project_name = self._active_project_name
+	def create_draft_session(self, project_name: str) -> dict:
+		"""Like create_session, but against `project_name`'s own current
+		*draft* revision — the embedded "Test" chat is the only caller.
+		`project_name` comes from the URL, never the active-project
+		pointer — see ProjectService.get_draft_automaton_and_state for why."""
 		try:
-			automaton, _ = self._project_service.get_active_draft_automaton_and_state()
+			automaton, _ = self._project_service.get_draft_automaton_and_state(project_name)
 			session = self._session_manager.create_draft_session(
 				self._username, project_name, automaton.init_action.target
 			)
@@ -217,11 +219,10 @@ class ChatService(object):
 		source = ('native', 'imported') if include_imported else 'native'
 		return self._list_sessions_by_source(project_name, source, active_source='native')
 
-	def list_test_sessions(self) -> list[dict]:
-		"""Like list_sessions, but the active project's own 'test'
-		sessions — native/imported never appear here, symmetric to how a
-		test session never appears in list_sessions."""
-		project_name = self._active_project_name
+	def list_test_sessions(self, project_name: str) -> list[dict]:
+		"""Like list_sessions, but `project_name`'s own 'test' sessions —
+		native/imported never appear here, symmetric to how a test session
+		never appears in list_sessions."""
 		return self._list_sessions_by_source(project_name, 'test', active_source='test')
 
 	def _require_own_session(self, session_id: int) -> None:
@@ -289,6 +290,11 @@ class ChatService(object):
 		latest = self._db.latest_message_or_signal_timestamp(session_id)
 		_, state = self._project_service.get_automaton_and_state_for_session(session_id)
 		self._db.touch_chat_session(session_id, latest or session["datetime_start"], state.key)
+
+	def get_state_for_session(self, session_id: int) -> dict:
+		self._require_own_session(session_id)
+		automaton, state = self._project_service.get_automaton_and_state_for_session(session_id)
+		return automaton.get_state_payload(state)
 
 	async def get_messages(self, session_id: int, last_n: int | None = None) -> list[dict]:
 		# Checked before open_if_needed (which can write an opening
@@ -438,28 +444,20 @@ class ChatService(object):
 			if action.action_prompt:
 				init_message = await self._generate_action_prompt_message(action, session_id)
 
-		await self._generate_opening_message_if_needed(project_name, session_id, automaton, state)
+		await self._generate_opening_message_if_needed(session_id, automaton, state)
 
 		return init_message
 
-	def _history_cutoff(self, project_name: str, state: State) -> datetime | None:
-		"""Messages at or before this timestamp must be excluded from both
-		the AI reply and auto-tracking's signal evaluation, per `state`'s
-		history_cutoff. None means "no cutoff, use the full history"."""
-		if not state.history_cutoff:
-			return None
-		return self._db.get_last_transition_timestamp(project_name)
-
-	def _should_generate_opening_message(self, project_name: str, session_id: int, state: State) -> bool:
-		content_since = self._history_cutoff(project_name, state)
+	def _should_generate_opening_message(self, session_id: int, state: State) -> bool:
+		content_since = self._db.history_cutoff_for_session(session_id, state.history_cutoff)
 		chat_blocked = state.final or not state.chat
-		gate_since = self._db.get_last_transition_timestamp(project_name) if chat_blocked else content_since
+		gate_since = self._db.get_last_transition_timestamp_for_session(session_id) if chat_blocked else content_since
 		return not self._db.has_messages_since(session_id, gate_since)
 
 	async def _generate_opening_message_if_needed(
-		self, project_name: str, session_id: int, automaton: Automaton, state: State
+		self, session_id: int, automaton: Automaton, state: State
 	) -> dict | None:
-		if not self._should_generate_opening_message(project_name, session_id, state):
+		if not self._should_generate_opening_message(session_id, state):
 			return None
 
 		return await self._generate_opening_message_body(session_id)
@@ -472,12 +470,12 @@ class ChatService(object):
 		return await self.process_turn(session_id, None, extra_prompt=action.action_prompt)
 
 	async def _messages_for_transition(
-		self, action: Action, project_name: str, session_id: int, new_state: State, *, is_self_loop: bool
+		self, action: Action, session_id: int, new_state: State, *, is_self_loop: bool
 	) -> list[dict]:
 		"""Every real, chat-visible message this transition's follow-up
 		turn(s) produced, as flat message rows. A turn whose reply landed
 		in a non-chat state has no assistant_message_id, so it's skipped rather than looked up as None."""
-		should_open = not is_self_loop and self._should_generate_opening_message(project_name, session_id, new_state)
+		should_open = not is_self_loop and self._should_generate_opening_message(session_id, new_state)
 
 		turn_results = []
 		if action.action_prompt:
@@ -512,7 +510,7 @@ class ChatService(object):
 				automaton, action, {}, source_state_key, username=Session().user, project_name=project_name,
 			)
 			reply = await self._messages_for_transition(
-				action, project_name, session["id"], state, is_self_loop=(action.target == source_state_key)
+				action, session["id"], state, is_self_loop=(action.target == source_state_key)
 			)
 			self._session_manager.touch_session(session["id"], state.key)
 			return {

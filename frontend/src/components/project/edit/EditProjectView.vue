@@ -48,6 +48,7 @@ import {
   postRevertProject
 } from '../../../api.js'
 import { clearApiError, setApiError, setApiWarning } from '../../../errorStore.js'
+import { confirmDialog, promptDialog, chooseDialog } from '../../../dialogStore.js'
 import ErrorBanner from '../../ErrorBanner.vue'
 import { refreshIdentifierRegistry } from '../../../identifierRegistry.js'
 import { buildTimeline, highlightedStateKeyFor, nearestMessageIdAtOrBefore, resultingStateKeyFor, signalValuesFor } from '../../../benchmarkTimeline.js'
@@ -232,14 +233,32 @@ const designPanelRef = ref(null)
 const codeEditorRef = computed(() => designPanelRef.value?.codeEditorRef ?? null)
 const indexYmlEditorRef = computed(() => designPanelRef.value?.indexYmlEditorRef ?? null)
 const indexCssEditorRef = computed(() => designPanelRef.value?.indexCssEditorRef ?? null)
+const mdEditorRef = computed(() => designPanelRef.value?.mdEditorRef ?? null)
 // An image has no editor at all (see the file explorer's own <img>
 // preview branch below) — never dirty, nothing for activeEditor() to
 // save/discard.
 const currentFileIsImage = computed(() => IMAGE_PATTERN.test(currentFileName.value ?? ''))
+// A .txt/.md attachment gets MdEditorPanel's Preview/Edit toggle instead
+// of the bare CodeEditor fallback (see ProjectDesignPanel.vue).
+const currentFileIsMarkdown = computed(() => /\.(md|txt)$/i.test(currentFileName.value ?? ''))
+// Whether the file explorer's "Behavior" node itself (index.yml) is the
+// open file — as opposed to one of its attachments or anything under
+// "Theme". Only then does the Inspector have states/actions/signals to
+// show at all (see inspectorTabs and InspectorStateTab's own gating).
+const isBehaviorNodeSelected = computed(() => currentFileName.value === 'index.yml')
+// The file explorer's "Theme" branch children — every image asset index.css's
+// own url(...) rules could reference. Deleting index.css takes these down
+// with it (see handleDeleteFile) since an asset with no stylesheet left to
+// reference it is just dead weight.
+const themeAssetNames = computed(() => files.value.filter((name) => name !== 'index.css' && IMAGE_PATTERN.test(name)))
+// TestChat.vue's "Apply aspect" toggle only makes sense once a theme
+// actually exists to apply.
+const hasTheme = computed(() => files.value.includes('index.css'))
 const activeEditorIsDirty = computed(() => {
   if (currentFileName.value === 'index.yml') return indexYmlEditorRef.value?.isDirty ?? false
   if (currentFileName.value === 'index.css') return indexCssEditorRef.value?.isDirty ?? false
   if (currentFileIsImage.value) return false
+  if (currentFileIsMarkdown.value) return mdEditorRef.value?.isDirty ?? false
   return codeEditorRef.value?.isDirty ?? false
 })
 
@@ -303,6 +322,9 @@ const inspectorTabs = computed(() => {
       { id: 'metrics', label: 'Metrics' },
       { id: 'env', label: 'Env' }
     ]
+  }
+  if (mode.value === 'edit' && !isBehaviorNodeSelected.value) {
+    return [{ id: 'state', label: 'Info' }]
   }
   return [
     { id: 'state', label: 'Info' },
@@ -529,10 +551,6 @@ function setMode(next) {
 
 onBeforeUnmount(() => { testModeProjectName.value = null })
 
-// Whatever's queued behind the unsaved-changes dialog below. `run`
-// performs the action; `label` is what the dialog shows (e.g. 'switch to "notes.txt"').
-const pendingAction = ref(null) // { run: () => void, label: string } | null
-
 // Left panel width in px, adjusted by dragging the split divider.
 const explorerWidth = ref(220)
 // Which divider (if any) is currently being dragged — 'explorer' or
@@ -543,6 +561,7 @@ function activeEditor() {
   if (currentFileName.value === 'index.yml') return indexYmlEditorRef.value
   if (currentFileName.value === 'index.css') return indexCssEditorRef.value
   if (currentFileIsImage.value) return null
+  if (currentFileIsMarkdown.value) return mdEditorRef.value
   return codeEditorRef.value
 }
 
@@ -605,42 +624,46 @@ function switchFile(fileName) {
 }
 
 // Every entry point that would discard unsaved code routes through here
-// instead of running `run` directly: dirty means ask first (queuing
-// `run` behind the dialog, see pendingAction), clean runs immediately.
+// instead of running `run` directly: dirty means ask first (via
+// runGuardedAction's chooseDialog), clean runs immediately.
 function guardedAction(label, run) {
   if (!activeEditorIsDirty.value) {
     run()
     return
   }
-  pendingAction.value = { label, run }
+  runGuardedAction(label, run)
+}
+
+async function runGuardedAction(label, run) {
+  const choice = await chooseDialog({
+    title: 'Unsaved changes',
+    body: `"${currentFileName.value}" has unsaved changes. Save before you ${label}?`,
+    options: [
+      { id: 'save', label: 'Save' },
+      { id: 'discard', label: 'Discard' }
+    ]
+  })
+  if (choice === 'save') {
+    if (await activeEditor()?.save?.()) run()
+    return
+  }
+  if (choice === 'discard') {
+    // The whole point of "Discard": the active editor's dirty buffer
+    // actually reverts to its last-loaded content.
+    activeEditor()?.discard?.()
+    run()
+    return
+  }
+  // null (Cancel/backdrop/ESC) — a cursor jump that triggered this action
+  // is moot once it's declined, so it shouldn't fire on some later,
+  // unrelated action either.
+  pendingCursorTarget.value = null
 }
 
 // Entry point for both explorer clicks and post-upload auto-open.
 function selectFile(fileName) {
   if (fileName === currentFileName.value) return
   guardedAction(`switch to "${fileName}"`, () => switchFile(fileName))
-}
-
-async function confirmPendingSave() {
-  const action = pendingAction.value
-  pendingAction.value = null
-  if (await activeEditor()?.save?.()) action.run()
-}
-
-function confirmPendingDiscard() {
-  const action = pendingAction.value
-  pendingAction.value = null
-  // The whole point of "Discard": the active editor's dirty buffer
-  // actually reverts to its last-loaded content.
-  activeEditor()?.discard?.()
-  action.run()
-}
-
-function confirmPendingCancel() {
-  pendingAction.value = null
-  // A cursor jump that triggered this action is moot once it's declined
-  // — don't let it fire on some later, unrelated action.
-  pendingCursorTarget.value = null
 }
 
 // Common tail for every Add/edit/delete/reorder handler below: the
@@ -717,12 +740,17 @@ async function handlePublish() {
     }
     // Only ask when it's actually consequential — a live conversation
     // still running on the currently published revision.
-    if (
-      preview.has_active_sessions &&
-      !window.confirm(`Publish revision ${projectRevision.value?.revision}? There's an active session on the currently published revision — it will stay frozen there; this one becomes the new one.`)
-    ) {
-      resetCloseAfterPublish()
-      return
+    if (preview.has_active_sessions) {
+      const ok = await confirmDialog({
+        title: 'Publish',
+        body: `Publish revision ${projectRevision.value?.revision}? There's an active session on the currently published revision — it will stay frozen there; this one becomes the new one.`,
+        okLabel: 'Publish',
+        danger: true
+      })
+      if (!ok) {
+        resetCloseAfterPublish()
+        return
+      }
     }
     projectRevision.value = await postPublishProject(props.projectName)
     await refreshActiveEditorHistory()
@@ -775,13 +803,13 @@ onBeforeUnmount(() => document.removeEventListener('click', handleDocumentClickF
 async function handleRevert() {
   if (!canRevert.value || publishing.value) return
   const targetRevision = projectRevision.value.published_revision
-  if (
-    !window.confirm(
-      `Revert to rev. ${targetRevision}? This permanently discards every unpublished change on rev. ${projectRevision.value.revision} — there's no undo for this.`
-    )
-  ) {
-    return
-  }
+  const ok = await confirmDialog({
+    title: 'Revert',
+    body: `Revert to rev. ${targetRevision}? This permanently discards every unpublished change on rev. ${projectRevision.value.revision} — there's no undo for this.`,
+    okLabel: 'Revert',
+    danger: true
+  })
+  if (!ok) return
   publishing.value = true
   try {
     await postRevertProject(props.projectName)
@@ -1023,28 +1051,42 @@ function handleJumpToAttachment(fileName) {
 }
 
 async function handleUploadFile(event) {
-  const file = event.target.files?.[0]
-  event.target.value = '' // reset so re-selecting the same file re-fires change
-  if (!file) return
-  if (!UPLOADABLE_PATTERN.test(file.name)) {
-    setApiError('Only .txt, .yml/.yaml, .css, or image (.png/.jpg/.gif/.webp/.svg) files can be uploaded.')
+  const files = Array.from(event.target.files ?? [])
+  event.target.value = '' // reset so re-selecting the same file(s) re-fires change
+  if (!files.length) return
+
+  const invalidNames = files.filter((file) => !UPLOADABLE_PATTERN.test(file.name)).map((file) => file.name)
+  if (invalidNames.length) {
+    setApiError(
+      `Only .txt, .yml/.yaml, .css, or image (.png/.jpg/.gif/.webp/.svg) files can be uploaded — ` +
+      `${invalidNames.map((name) => `"${name}"`).join(', ')} ${invalidNames.length === 1 ? "isn't" : "aren't"}.`
+    )
     return
   }
+  const oversizedNames = files
+    .filter((file) => IMAGE_PATTERN.test(file.name) && file.size > MAX_IMAGE_UPLOAD_BYTES)
+    .map((file) => file.name)
+  if (oversizedNames.length) {
+    setApiError(
+      `${oversizedNames.map((name) => `"${name}"`).join(', ')} ` +
+      `${oversizedNames.length === 1 ? 'is' : 'are'} larger than the 5 MB upload limit.`
+    )
+    return
+  }
+
   uploading.value = true
   clearApiError()
   try {
-    if (IMAGE_PATTERN.test(file.name)) {
-      if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
-        setApiError(`"${file.name}" is larger than the 5 MB upload limit.`)
-        return
+    for (const file of files) {
+      if (IMAGE_PATTERN.test(file.name)) {
+        await putProjectFileBinary(props.projectName, file.name, file)
+      } else {
+        const text = await file.text()
+        await putProjectFile(props.projectName, file.name, text)
       }
-      await putProjectFileBinary(props.projectName, file.name, file)
-    } else {
-      const text = await file.text()
-      await putProjectFile(props.projectName, file.name, text)
     }
     await loadFiles()
-    await selectFile(file.name)
+    await selectFile(files[files.length - 1].name)
   } catch {
     // already surfaced via apiFetch
   } finally {
@@ -1056,18 +1098,23 @@ async function handleNewFile() {
   // .yml/.yaml is technically accepted (see TEXT_CREATABLE_PATTERN) but
   // never a sensible choice — index.yml is the only YAML file the
   // automaton reads, so a second one could only be an inert attachment.
-  const rawName = window.prompt('New file name (e.g. notes.txt):')
+  // validate runs inline as the user types, so pattern/existence errors
+  // show right under the field instead of bouncing off setApiError after
+  // the prompt's already closed.
+  const rawName = await promptDialog({
+    title: 'New file',
+    body: 'New file name (e.g. notes.txt):',
+    placeholder: 'notes.txt',
+    validate(value) {
+      const trimmed = value.trim()
+      if (!trimmed) return 'Enter a file name.'
+      if (!TEXT_CREATABLE_PATTERN.test(trimmed)) return 'Only .txt, .yml/.yaml, or .css files can be created.'
+      if (files.value.includes(trimmed)) return `A file named "${trimmed}" already exists.`
+      return null
+    }
+  })
   if (rawName === null) return // cancelled
   const name = rawName.trim()
-  if (!name) return
-  if (!TEXT_CREATABLE_PATTERN.test(name)) {
-    setApiError('Only .txt, .yml/.yaml, or .css files can be created.')
-    return
-  }
-  if (files.value.includes(name)) {
-    setApiError(`A file named "${name}" already exists.`)
-    return
-  }
   creatingFile.value = true
   clearApiError()
   try {
@@ -1086,13 +1133,28 @@ async function handleNewFile() {
 // guard against a stale click.
 async function handleDeleteFile(fileName) {
   if (fileName === 'index.yml') return
-  if (!window.confirm(`Delete file "${fileName}"? This cannot be undone.`)) return
+  // The asset list here is only for the confirm prompt's own wording —
+  // the cascade itself (deleting every asset along with index.css) is
+  // server-side, see ProjectService.delete_project_file.
+  const cascadeAssets = fileName === 'index.css' ? themeAssetNames.value : []
+  // A lone Theme asset is a single, cheap, easily re-uploaded file with
+  // nothing cascading from it — index.css (which does cascade) and every
+  // other file still confirm.
+  if (!IMAGE_PATTERN.test(fileName)) {
+    const confirmMessage = cascadeAssets.length
+      ? `Delete "index.css"? This also deletes the ${cascadeAssets.length} asset${cascadeAssets.length === 1 ? '' : 's'} it can reference: ${cascadeAssets.join(', ')}.\n\nThis cannot be undone.`
+      : `Delete file "${fileName}"? This cannot be undone.`
+    const ok = await confirmDialog({ title: 'Delete file', body: confirmMessage, okLabel: 'Delete', danger: true })
+    if (!ok) return
+  }
   deletingFile.value = fileName
   clearApiError()
   try {
     await deleteProjectFile(props.projectName, fileName)
     await loadFiles()
-    if (fileName === currentFileName.value) await switchFile('index.yml')
+    if (fileName === currentFileName.value || cascadeAssets.includes(currentFileName.value)) {
+      await switchFile('index.yml')
+    }
   } catch {
     // already surfaced via apiFetch
   } finally {
@@ -1106,20 +1168,30 @@ async function handleDeleteFile(fileName) {
 const { confirmLeaveIfNeeded } = useLeaveConfirmation(activeEditorIsDirty, 'Discard unsaved changes to this file?')
 
 // Unsaved-file changes are checked first — the more urgent, data-loss
-// concern. Only past that does a pending revision get its own question:
-// publish before leaving, or leave it pending. "No" still closes.
-function handleClose() {
-  if (!confirmLeaveIfNeeded()) return
-  if (!publishUpToDate.value) {
-    if (window.confirm(
-      `Revision ${projectRevision.value?.revision} isn't published yet. Publish it before leaving? Cancel leaves it pending, exactly as now.`
-    )) {
-      closeAfterPublish.value = true
-      handlePublish()
-      return
-    }
+// concern. Only past that, and only when there's actually a pending
+// revision to decide about, does a three-way choice show: publish before
+// leaving, leave it pending, or cancel the close outright.
+async function handleClose() {
+  if (!(await confirmLeaveIfNeeded())) return
+  if (publishUpToDate.value) {
+    emit('close')
+    return
   }
-  emit('close')
+  const choice = await chooseDialog({
+    title: 'Unpublished changes',
+    body: `Revision ${projectRevision.value?.revision} isn't published yet.`,
+    options: [
+      { id: 'publish', label: 'Publish and close' },
+      { id: 'leave', label: 'Leave pending' }
+    ]
+  })
+  if (choice === 'publish') {
+    closeAfterPublish.value = true
+    handlePublish()
+    return
+  }
+  if (choice === 'leave') emit('close')
+  // null (Cancel/backdrop/ESC) — stay open, nothing to do.
 }
 
 // Live values for whatever signals the active conversation currently
@@ -1341,17 +1413,16 @@ onBeforeUnmount(() => {
           :current-file-name="currentFileName"
           :uploading="uploading"
           :creating-file="creatingFile"
-          :deleting-file="deletingFile"
           :explorer-width="explorerWidth"
           :history-cleared="historyCleared"
           :current-file-is-image="currentFileIsImage"
+          :current-file-is-markdown="currentFileIsMarkdown"
           :highlighted-state-key="highlightedStateKey"
           :next-action-edge="selected ? null : nextAction"
           :fired-action-edge="firedActionEdge"
           :selected-element="selectedGraphElement"
           @start-explorer-drag="startExplorerDrag"
           @new-file="handleNewFile"
-          @delete-file="handleDeleteFile"
           @select-file="selectFile"
           @upload-file="handleUploadFile"
           @jump-to-definition="(target) => jumpToDefinition(target, { silent: true })"
@@ -1365,6 +1436,7 @@ onBeforeUnmount(() => {
             :timeline="timeline"
             :signals-log="signalsLog"
             :selected="selected"
+            :has-theme="hasTheme"
             :resolve-state-label="stateLabelFor"
             :resolve-action-label="actionLabelFor"
             :is-state-gone="isStateGone"
@@ -1410,6 +1482,8 @@ onBeforeUnmount(() => {
                 :editable-files="files"
                 :highlighted-state-key="highlightedStateKey"
                 :recently-added-key="recentlyAddedKey"
+                :current-file-name="mode === 'edit' ? currentFileName : null"
+                :deleting-file="deletingFile"
                 @select="handleTabSelect"
                 @select-attachment="selectFile"
                 @jump-to-attachment="handleJumpToAttachment"
@@ -1417,6 +1491,7 @@ onBeforeUnmount(() => {
                 @set-project-field="handleSetProjectField"
                 @delete="handleDeleteState"
                 @add-state="handleAddState"
+                @delete-file="handleDeleteFile"
               />
             </template>
             <template #tab-actions="{ registerTab }">
@@ -1472,17 +1547,6 @@ onBeforeUnmount(() => {
               />
             </template>
           </Inspector>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="pendingAction" class="switch-dialog-overlay">
-      <div class="switch-dialog">
-        <p>"{{ currentFileName }}" has unsaved changes. Save before you {{ pendingAction.label }}?</p>
-        <div class="switch-dialog-actions">
-          <button class="switch-dialog-save-btn" :disabled="activeEditor()?.saving" @click="confirmPendingSave">Save</button>
-          <button class="switch-dialog-discard-btn" :disabled="activeEditor()?.saving" @click="confirmPendingDiscard">Discard</button>
-          <button class="switch-dialog-cancel-btn" :disabled="activeEditor()?.saving" @click="confirmPendingCancel">Cancel</button>
         </div>
       </div>
     </div>
@@ -1699,8 +1763,12 @@ onBeforeUnmount(() => {
    it fill the column: with Design's own v-show hidden state
    contributing a display:none box (and Test/Auto simply unmounted, see
    their own v-if), there's never a second sibling left to share space
-   with in the first place. */
+   with in the first place. position: relative backs the leaving
+   TestChat's absolute positioning below — its leave transition would
+   otherwise still count as a flex:1 sibling for the ~0.18s it lingers
+   in the DOM, squeezing whichever panel is entering. */
 .edit-project-panels {
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -1711,6 +1779,8 @@ onBeforeUnmount(() => {
 .panel-slide-bottom-enter-active,
 .panel-slide-bottom-leave-active {
   transition: opacity 0.18s ease, transform 0.18s ease;
+  position: absolute;
+  inset: 0;
 }
 
 .panel-slide-bottom-enter-from,
@@ -1831,21 +1901,6 @@ onBeforeUnmount(() => {
 }
 
 .switch-dialog-save-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.switch-dialog-discard-btn {
-  padding: 0.4rem 0.9rem;
-  border-radius: 6px;
-  border: 1px solid #c62828;
-  background: white;
-  color: #c62828;
-  cursor: pointer;
-  font-size: 0.85rem;
-}
-
-.switch-dialog-discard-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }

@@ -1,10 +1,11 @@
 """MetricService covers a project's metrics: metrics_framework's core
 always-on metrics and its benchmark metrics. A leaf service — depends
-only on `db` and metrics_framework, never on ChatService/TrackingService."""
+only on `db`, `project_service`, and metrics_framework, never on
+ChatService/TrackingService."""
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Callable, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from automaton.automaton import Automaton
 from chat.session_manager import DEFAULT_OPEN_WINDOW_MINUTES
@@ -19,6 +20,15 @@ from metrics.metrics_framework import (
     UserAnalyticsDataBuilder,
 )
 from metrics.metrics_framework import metric_names as _metric_names
+from session import Session
+
+if TYPE_CHECKING:
+    # Deferred: project.project_service -> tracking.tracking_engine ->
+    # tracking.evaluation_scope -> MetricService from this very module —
+    # a real top-level import here would be circular. Safe as a type-only
+    # import since `from __future__ import annotations` (above) never
+    # evaluates it at runtime.
+    from project.project_service import ProjectService
 
 # Metrics scoped to "all_sessions_per_user" but not "one_session" — the
 # `metric` namespace's own membership. Excluding "one_session" matters:
@@ -28,11 +38,6 @@ def _user_scoped_metrics() -> list[MetricCalculator]:
         metric for metric in AnalyticsCalculator.default_metrics()
         if "all_sessions_per_user" in metric.scope and "one_session" not in metric.scope
     ]
-
-GetUsername = Callable[[], str]
-GetActiveProjectName = Callable[[], str]
-GetMaxSessionDurationInMinutes = Callable[[], float]
-
 
 class MetricsProvider(Protocol):
     """Whatever a caller needs from a metrics source to evaluate
@@ -57,26 +62,26 @@ class MetricService(object):
     def __init__(
         self,
         db: Db,
-        get_username: GetUsername,
-        get_active_project_name: GetActiveProjectName,
+        project_service: "ProjectService",
         # Same source of truth as ChatSessionManager's own open-session
         # window default — reused rather than duplicated, and never taken
         # from a live ChatSessionManager instance (no other reason to depend on chat/).
-        get_max_session_duration_in_minutes: GetMaxSessionDurationInMinutes = lambda: DEFAULT_OPEN_WINDOW_MINUTES,
+        # A static value, unlike project_service/Session — known once at
+        # boot from config.py, never needs to be "read fresh".
+        max_session_duration_in_minutes: float = DEFAULT_OPEN_WINDOW_MINUTES,
     ) -> None:
         self._db = db
-        self._get_username = get_username
-        self._get_active_project_name = get_active_project_name
-        self._get_max_session_duration_in_minutes = get_max_session_duration_in_minutes
+        self._project_service = project_service
+        self._max_session_duration_in_minutes = max_session_duration_in_minutes
 
     def _calculate(
         self, until: datetime | None = None, project_name: str | None = None
     ) -> list[tuple[MetricCalculator, MetricResult]]:
         """Loads the analytical dataset once per call, then evaluates every
         core metric against it. `until` restricts the dataset; `project_name`
-        omitted falls back to the bound get_active_project_name callable."""
+        omitted falls back to the active project."""
         calculator = AnalyticsCalculator(
-            self._db, self._get_username(), project_name or self._get_active_project_name(), until=until
+            self._db, Session().user, project_name or self._project_service.get_active_project_name(), until=until
         )
         return list(zip(calculator.metrics, calculator.calculate_all()))
 
@@ -105,7 +110,7 @@ class MetricService(object):
         call unconditionally: no AnalyticsCalculator is built until an
         expression calls one of the namespace's own methods."""
         return UserMetricNamespace(lambda: AnalyticsCalculator(
-            self._db, self._get_username(), self._get_active_project_name(),
+            self._db, Session().user, self._project_service.get_active_project_name(),
             metrics=_user_scoped_metrics(), until=datetime.utcnow(),
         ))
 
@@ -122,10 +127,10 @@ class MetricService(object):
         (omitted: active project) — every annotated session, or just
         `session_id` if given. Adds `sample_count` alongside each score."""
         configuration = BenchmarkConfiguration(
-            max_session_duration_in_minutes=self._get_max_session_duration_in_minutes()
+            max_session_duration_in_minutes=self._max_session_duration_in_minutes
         )
         calculator = BenchmarkCalculator(
-            self._db, self._get_username(), project_name or self._get_active_project_name(),
+            self._db, Session().user, project_name or self._project_service.get_active_project_name(),
             configuration=configuration, session_id=session_id,
         )
         results = calculator.calculate_all()

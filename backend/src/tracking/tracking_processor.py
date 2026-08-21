@@ -1,6 +1,5 @@
 
 from dataclasses import dataclass, replace
-from datetime import datetime
 from http import HTTPStatus
 import logging
 from typing import AsyncIterator
@@ -20,6 +19,7 @@ from .turn_protocol_using_text_extraction import TurnProcotolUsingTextExtraction
 from .metadata_handler import MetadataHandler
 from .definitions import Signals
 from .errors import TrackingServiceError
+from .fixed_project_context import FixedProjectContext
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +161,7 @@ class TrackingProcessor(object):
 
 	def _build_chat_history(self, turn_attachments: list) -> list[dict]:
 		priming_messages = build_priming_messages(turn_attachments)
-		since = self._history_cutoff(self.user.project_name, self.user.state)
+		since = self.db.history_cutoff_for_session(self.user.session_id, self.user.state.history_cutoff)
 		return priming_messages + self._strip_timestamps(
 			self.db.get_messages(self.user.session_id, since=since)
 		)
@@ -179,7 +179,10 @@ class TrackingProcessor(object):
 			return FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message), None, []
 
 		# which action fires from here.
-		signals = Signals(lambda: automaton, self.db)
+		# Pinned to THIS turn's own already-resolved automaton (never
+		# whatever project happens to be "active" right now, which need
+		# not be the same one this session actually belongs to).
+		signals = Signals(FixedProjectContext(automaton), self.db)
 		signal_names = automaton.triggerable_signal_names(state.key)
 		signal_definition = signals.get_definition(signal_names)
 		base_prompt = f"{automaton.general_prompt}\n\n{state.contextual_prompt}"
@@ -187,14 +190,6 @@ class TrackingProcessor(object):
 			base_prompt = f"{base_prompt}\n\n{self.extra_prompt}"
 		return base_prompt, signal_definition, list(automaton.general_attachments.values()) + list(state.attachments.values())
 
-
-	def _history_cutoff(self, project_name: str, state: State) -> datetime | None:
-		"""Messages at or before this timestamp must be excluded from both
-		the AI reply and auto-tracking's signal evaluation, per `state`'s
-		history_cutoff. None means "no cutoff, use the full history"."""
-		if not state.history_cutoff:
-			return None
-		return self.db.get_last_transition_timestamp(project_name)
 
 	@staticmethod
 	def _strip_timestamps(history: list[dict]) -> list[dict]:

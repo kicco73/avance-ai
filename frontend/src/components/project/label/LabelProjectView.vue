@@ -23,6 +23,7 @@ import {
 } from '../../../benchmarkTimeline.js'
 import { summarizeImportFailures } from '../../../sessionImport.js'
 import { setApiError, clearApiError } from '../../../errorStore.js'
+import { confirmDialog } from '../../../dialogStore.js'
 
 const props = defineProps({
   projectName: {
@@ -176,7 +177,13 @@ function onSelectSession(session) {
 // is the record of a real conversation, not this view's to discard.
 const deletingSessionId = ref(null)
 async function handleDeleteSession(session) {
-  if (!window.confirm(`Delete this imported session (${session.title || session.end_state})? This cannot be undone.`)) return
+  const ok = await confirmDialog({
+    title: 'Delete session',
+    body: `Delete this imported session (${session.title || session.end_state})? This cannot be undone.`,
+    okLabel: 'Delete',
+    danger: true
+  })
+  if (!ok) return
   deletingSessionId.value = session.id
   try {
     await deleteSession(session.id)
@@ -420,7 +427,13 @@ const unlabelingAll = ref(false)
 
 async function onUnlabelAll() {
   if (!currentSessionId.value || !hasAnyAnnotations.value) return
-  if (!window.confirm('Remove every annotation in this session? This cannot be undone.')) return
+  const ok = await confirmDialog({
+    title: 'Remove annotations',
+    body: 'Remove every annotation in this session? This cannot be undone.',
+    okLabel: 'Remove',
+    danger: true
+  })
+  if (!ok) return
   unlabelingAll.value = true
   try {
     await deleteSessionAnnotations(currentSessionId.value)

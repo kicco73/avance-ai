@@ -13,14 +13,14 @@ from .observability import ObservabilityMixin
 from .projects import ProjectMixin
 from .session_summaries import SessionSummaryMixin
 from .sessions import SessionMixin
-from .settings import SettingsMixin
+from .users import UserMixin
 from .tracking import TrackingMixin
 
 from playhouse.db_url import connect, parse as parse_db_url
 
 from .models import (
     Archive, BenchmarkRun, BenchmarkRunObservation, ChatSession, History, Job, Message, Project,
-    ProjectObserverIndex, Settings, SessionSummary, StateRemap, SystemWarning, Tracking, database,
+    ProjectObserverIndex, User, SessionSummary, StateRemap, SystemWarning, Tracking, database,
 )
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ class Db(
     SessionMixin,
     MessageMixin,
     TrackingMixin,
-    SettingsMixin,
+    UserMixin,
     ProjectMixin,
     HistoryMixin,
     JobMixin,
@@ -45,7 +45,7 @@ class Db(
 
     _SQLITE_MAGIC = b"SQLite format 3\x00"
     _MODELS = (
-        Project, ChatSession, Message, Settings, Tracking, Archive, History, StateRemap, Job,
+        Project, ChatSession, Message, User, Tracking, Archive, History, StateRemap, Job,
         BenchmarkRun, BenchmarkRunObservation, SessionSummary, SystemWarning, ProjectObserverIndex,
     )
 

@@ -3,8 +3,21 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 // A Test/draft session is a single, ephemeral conversation, so the
 // embedded test chat hides the sessions panel entirely.
+//
+// themeMode: 'auto' (default, App.vue's own widget) shows the project's
+// index.css skin the whole time, same as the live chat always has.
+// 'manual' (TestChat.vue) starts unskinned instead and leaves showing it
+// up to the shared applyAspect flag/toggle — owned here, not by whichever
+// component happens to pass the prop, so entering/leaving manual mode is
+// always symmetric: onMounted forces it off, onBeforeUnmount always
+// restores it, with no separate opt-in/opt-out call for a manual-mode
+// consumer to remember. Necessary because App.vue's own widget stays
+// mounted (just visually covered) the entire time EditProjectView's
+// overlay is open — both instances read the same shared applyAspect,
+// see chatStore.js's own docstring on it.
 const props = defineProps({
-  hideSessionsPanel: { type: Boolean, default: false }
+  hideSessionsPanel: { type: Boolean, default: false },
+  themeMode: { type: String, default: 'auto' }
 })
 import ActionButtons from './ActionButtons.vue'
 import ChatInput from './ChatInput.vue'
@@ -12,7 +25,6 @@ import MessageBubble from './MessageBubble.vue'
 import SessionsPanel from './SessionsPanel.vue'
 import { setApiError } from '../../errorStore.js'
 import { startRecording, stopRecording } from '../../mic.js'
-import { projectFileContentUrl } from '../../api.js'
 import {
   state,
   messages,
@@ -26,7 +38,6 @@ import {
   spokenTextEnabled,
   draft,
   currentSessionId,
-  currentProjectName,
   selectedSessionActive,
   sessions,
   sessionsLoading,
@@ -40,7 +51,8 @@ import {
   handleVoiceMessage,
   handleAction,
   toggleAudio,
-  toggleSpokenText
+  toggleSpokenText,
+  applyAspect
 } from '../../chatStore.js'
 
 // No transcript import here: imported sessions are a separate pool that
@@ -70,7 +82,10 @@ async function onDeleteSession(session) {
 // most recently started open session per project is ever active.
 const chatDisabled = computed(() => !state.value?.key || !state.value?.chat || !selectedSessionActive.value)
 
-// Mirrors chatDisabled's own conditions, in the same order.
+// Mirrors chatDisabled's own conditions, in the same order. A state with
+// no chat has nothing generic to say here — it may have no actions
+// either, so pointing at "use an action instead" would be wrong as often
+// as not; the input stays disabled with no explanation for that case.
 const chatDisabledReason = computed(() => {
   if (!state.value?.key) return 'Please select a project from the menu.'
   if (!selectedSessionActive.value) {
@@ -78,7 +93,7 @@ const chatDisabledReason = computed(() => {
       ? 'No active session for this project yet.'
       : 'This session is no longer active.'
   }
-  return "This state doesn't accept messages; use an action instead."
+  return null
 })
 
 // Draggable divider between the sessions panel and the chat itself.
@@ -102,10 +117,12 @@ function stopSessionsDrag() {
 onMounted(() => {
   window.addEventListener('mousemove', onSessionsDrag)
   window.addEventListener('mouseup', stopSessionsDrag)
+  if (props.themeMode === 'manual') applyAspect.value = false
 })
 onBeforeUnmount(() => {
   window.removeEventListener('mousemove', onSessionsDrag)
   window.removeEventListener('mouseup', stopSessionsDrag)
+  if (props.themeMode === 'manual') applyAspect.value = true
 })
 
 function submit() {
@@ -184,44 +201,11 @@ watch(
   }
 )
 
-// index.css is injected as a <style> element appended to <head> (so it
-// lands after scoped styles and can override them) — a project's own
-// custom "skin" for its chat UI. A project with no index.css 404s
-// silently: no stylesheet, not an error.
-let skinStyleEl = null
-
-function clearSkin() {
-  skinStyleEl?.remove()
-  skinStyleEl = null
-}
-
-async function loadSkin() {
-  const projectName = currentProjectName.value
-  const sessionId = currentSessionId.value
-  if (!projectName || sessionId == null) {
-    clearSkin()
-    return
-  }
-  let css
-  try {
-    const response = await fetch(projectFileContentUrl(projectName, 'index.css', sessionId))
-    if (!response.ok) {
-      clearSkin()
-      return
-    }
-    css = await response.text()
-  } catch {
-    return
-  }
-  if (!skinStyleEl) {
-    skinStyleEl = document.createElement('style')
-    document.head.appendChild(skinStyleEl)
-  }
-  skinStyleEl.textContent = css
-}
-
-watch([currentProjectName, currentSessionId], loadSkin, { immediate: true })
-onBeforeUnmount(clearSkin)
+// index.css's "skin" is applied globally now (see chatStore.js's own
+// loadSkin) — one shared <style> for the whole app rather than one per
+// ChatWindow instance, since App.vue's own widget stays mounted behind
+// EditProjectView's overlay the entire time it's open and would
+// otherwise fight this instance's tag for which one's rules actually win.
 </script>
 
 <template>
@@ -251,7 +235,9 @@ onBeforeUnmount(clearSkin)
     </div>
 
     <div class="chat-window">
-    <div class="chat-header"></div>
+    <div class="chat-header">
+      <div class="chat-header-icon"></div>
+    </div>
 
     <div class="messages chat-body" ref="scrollEl">
       <slot name="timeline">
@@ -267,7 +253,7 @@ onBeforeUnmount(clearSkin)
     </div>
 
     <p
-      v-if="chatDisabled"
+      v-if="chatDisabledReason"
       class="chat-ended-notice"
     >
       {{ chatDisabledReason }}

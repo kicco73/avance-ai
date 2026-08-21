@@ -3,7 +3,7 @@
 // offering Manage projects and backup download/restore actions.
 import { onBeforeUnmount, ref } from 'vue'
 
-const emit = defineEmits(['manage-projects', 'download-backup', 'restore-backup'])
+const emit = defineEmits(['manage-projects', 'manage-users', 'download-backup', 'restore-backup', 'about', 'logout'])
 
 const open = ref(false)
 const rootEl = ref(null)
@@ -18,6 +18,11 @@ function selectManageProjects() {
   emit('manage-projects')
 }
 
+function selectManageUsers() {
+  open.value = false
+  emit('manage-users')
+}
+
 function selectDownloadBackup() {
   open.value = false
   emit('download-backup')
@@ -26,6 +31,16 @@ function selectDownloadBackup() {
 function selectRestoreBackup() {
   open.value = false
   restoreInput.value?.click()
+}
+
+function selectAbout() {
+  open.value = false
+  emit('about')
+}
+
+function selectLogout() {
+  open.value = false
+  emit('logout')
 }
 
 function handleRestoreFileChange(event) {
@@ -61,12 +76,22 @@ onBeforeUnmount(() => {
         <li>
           <button class="settings-item" @click="selectManageProjects">Manage projects</button>
         </li>
+        <li>
+          <button class="settings-item" @click="selectManageUsers">Manage users</button>
+        </li>
         <li class="settings-separator" role="separator"></li>
         <li>
           <button class="settings-item" @click="selectDownloadBackup">Download backup</button>
         </li>
         <li>
           <button class="settings-item" @click="selectRestoreBackup">Restore backup...</button>
+        </li>
+        <li class="settings-separator" role="separator"></li>
+        <li>
+          <button class="settings-item" @click="selectAbout">About Avance...</button>
+        </li>
+        <li>
+          <button class="settings-item" @click="selectLogout">Logout</button>
         </li>
       </ul>
     </div>

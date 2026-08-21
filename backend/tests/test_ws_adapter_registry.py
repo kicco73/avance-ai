@@ -10,12 +10,23 @@ import asyncio
 import pytest
 from fastapi import WebSocketDisconnect
 
+from auth.auth_provider import AuthenticatedUser
+from auth.auth_service import SESSION_COOKIE_NAME
 from chat.ws_adapter import WsAdapter
 from session import Session
 
 pytestmark = pytest.mark.contract
 
 USERNAME = "user"
+
+
+class _FakeAuthService:
+    """Every fake websocket below carries a cookie this always accepts,
+    resolving to USERNAME — chat_loop's own auth check isn't what these
+    tests are about."""
+
+    def verify_token(self, token):
+        return AuthenticatedUser(provider_user_id="fake", email=USERNAME, name="Fake User")
 
 
 @pytest.fixture(autouse=True)
@@ -46,9 +57,14 @@ class _FakeWebSocket:
     def __init__(self, messages: list[dict]):
         self._messages = list(messages)
         self.sent: list[dict] = []
+        self.cookies = {SESSION_COOKIE_NAME: "fake-token"}
+        self.closed_with: int | None = None
 
     async def accept(self):
         pass
+
+    async def close(self, code: int = 1000):
+        self.closed_with = code
 
     async def receive_json(self):
         if not self._messages:
@@ -66,14 +82,14 @@ def _publish_project(db, project_name: str) -> None:
 
 class TestPush:
     def test_returns_false_when_no_connection_is_registered(self, db):
-        adapter = WsAdapter(_FakeChatService(), db)
+        adapter = WsAdapter(_FakeChatService(), db, _FakeAuthService())
 
         result = asyncio.run(adapter.push(USERNAME, {"type": "notification"}))
 
         assert result is False
 
     def test_sends_the_payload_and_returns_true_when_a_connection_exists(self, db):
-        adapter = WsAdapter(_FakeChatService(), db)
+        adapter = WsAdapter(_FakeChatService(), db, _FakeAuthService())
         websocket = _FakeWebSocket([])
         adapter._connections[USERNAME] = websocket
 
@@ -84,7 +100,7 @@ class TestPush:
         assert websocket.sent == [payload]
 
     def test_never_reaches_a_different_users_own_connection(self, db):
-        adapter = WsAdapter(_FakeChatService(), db)
+        adapter = WsAdapter(_FakeChatService(), db, _FakeAuthService())
         other_user_socket = _FakeWebSocket([])
         adapter._connections["other-user"] = other_user_socket
 
@@ -98,7 +114,7 @@ class TestChatLoopRegistration:
     def test_registers_session_user_immediately_after_accept(self, db):
         _publish_project(db, "proj")
         session_id = db.create_chat_session(username=USERNAME, project_name="proj")
-        adapter = WsAdapter(_FakeChatService(), db)
+        adapter = WsAdapter(_FakeChatService(), db, _FakeAuthService())
 
         pushed = {}
 
@@ -122,7 +138,7 @@ class TestCleanupOnDisconnect:
     def test_the_registration_is_removed_on_disconnect(self, db):
         _publish_project(db, "proj")
         session_id = db.create_chat_session(username=USERNAME, project_name="proj")
-        adapter = WsAdapter(_FakeChatService(), db)
+        adapter = WsAdapter(_FakeChatService(), db, _FakeAuthService())
         websocket = _FakeWebSocket([{"message": "hi", "session_id": session_id}])
 
         asyncio.run(adapter.chat_loop(websocket))
@@ -131,7 +147,7 @@ class TestCleanupOnDisconnect:
         assert asyncio.run(adapter.push(USERNAME, {})) is False
 
     def test_a_different_users_own_registration_is_left_alone(self, db):
-        adapter = WsAdapter(_FakeChatService(), db)
+        adapter = WsAdapter(_FakeChatService(), db, _FakeAuthService())
         other_socket = _FakeWebSocket([])
         adapter._connections["other-user"] = other_socket
 

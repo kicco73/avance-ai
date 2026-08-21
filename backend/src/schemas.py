@@ -4,6 +4,14 @@ from __future__ import annotations
 from pydantic import BaseModel, field_validator
 
 
+class LoginRequest(BaseModel):
+    # 'google' for now — see auth/auth_service.py's own provider registry.
+    provider: str
+    # The provider's own opaque credential (Google: the Identity Services
+    # ID token) — verified by AuthProvider.verify(), never inspected here.
+    credential: str
+
+
 class ActionRequest(BaseModel):
     action_name: str
 

@@ -4,6 +4,7 @@ import pytest
 
 from automaton.automaton import Action, Automaton, State
 from metrics.metric_service import MetricService
+from tracking.fixed_project_context import FixedProjectContext
 from metrics.metrics_framework import AnalyticsCalculator
 
 pytestmark = pytest.mark.contract
@@ -35,7 +36,7 @@ def _automaton_with_trigger(trigger_expr: str) -> Automaton:
 
 
 def _metrics(db) -> MetricService:
-    return MetricService(db, get_username=lambda: "user", get_active_project_name=lambda: "proj")
+    return MetricService(db, FixedProjectContext(project_name="proj"))
 
 
 def test_calculate_values_returns_a_flat_name_to_value_mapping(db):

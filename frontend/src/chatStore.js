@@ -1,4 +1,4 @@
-import { nextTick, ref } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 import {
   getCurrentSession,
   postCreateSession,
@@ -8,6 +8,7 @@ import {
   getTestSessions,
   deleteSession,
   getMessages,
+  getSessionState,
   postAction,
   getAutoTracking,
   postAutoTracking,
@@ -16,12 +17,15 @@ import {
   messageAudioUrl,
   postListenTranscribe,
   postReset,
-  postTruncateSession
+  postTruncateSession,
+  projectFileContentUrl
 } from './api.js'
 import { sendMessage as sendChatMessage, onNotification } from './chatClient.js'
 import { playMessageChime, playMessageAudio } from './audio.js'
 import { runOnEnterScript } from './onEnterActions.js'
 import { clearApiError } from './errorStore.js'
+import { confirmDialog } from './dialogStore.js'
+import { resolveCssAssetUrls } from './cssAssetUrls.js'
 
 export const state = ref(null)
 // The chat conversation's current session_id — null until the first
@@ -48,6 +52,114 @@ export const testModeProjectName = ref(null)
 // session payload inside ensureSession() below. ChatWindow's index.css
 // skin-loading fetch uses this to know which project's files to fetch.
 export const currentProjectName = ref(null)
+// Bumped by IndexCssEditorPanel.vue whenever index.css is saved — the
+// skin-loading fetch below only re-runs on a project/session change, so a
+// save that doesn't change either would otherwise leave the live Test
+// chat showing the pre-save CSS until the next unrelated project/session
+// switch. Value itself is meaningless, only used as a watch dependency.
+export const skinVersion = ref(0)
+export function invalidateSkin() {
+  skinVersion.value++
+}
+// Backs both ChatWindow.vue's "auto" mode (App.vue's own widget: always on,
+// this ref is never written there) and its "manual" mode (TestChat.vue,
+// via its themeMode="manual" prop: ChatWindow.vue itself forces this false
+// on mount so Test starts unskinned, and restores it true on unmount so it
+// never leaks into App.vue's own chat widget, which stays mounted — just
+// visually covered — the whole time EditProjectView's overlay is open, both
+// instances reading the same currentProjectName/currentSessionId). The
+// "Apply aspect" checkbox itself lives in TestChat.vue's toolbar and binds
+// straight to this ref — a manual control, not part of the mode plumbing.
+export const applyAspect = ref(true)
+
+// A project's index.css "skin" — one single <style> element for the whole
+// app, not one per ChatWindow instance. App.vue's own widget stays mounted
+// (just visually covered) the entire time EditProjectView's overlay is
+// open, so a per-instance <style> tag (ChatWindow.vue used to own this
+// directly) left the page with several of them stacked in document.head;
+// which one's rules actually painted then came down to DOM insertion
+// order rather than which fetch was freshest, and in practice the older
+// tag kept winning — the visible chat kept showing a stale skin even
+// though the network response Test's own instance received was already
+// correct. A single shared element removes the ordering question
+// entirely: there is only ever one, so there's nothing for it to lose to.
+//
+// ChatPreview.vue's live, unsaved-draft preview writes here too (via
+// setSkinCss below) rather than keeping a second tag of its own — a
+// second tag doesn't just risk the same ordering fight, it actively
+// ignores applyAspect (it has no dependency on it), so Test mode's
+// "Apply aspect" toggle had no effect on whatever that tag was showing.
+let skinStyleEl = null
+
+function clearSkin() {
+  skinStyleEl?.remove()
+  skinStyleEl = null
+}
+
+// Writes `css` into the one shared skin element, creating it on first use.
+// Shared by loadSkin's own fetched-and-saved skin below and by
+// ChatPreview.vue's live draft — both go through this single function so
+// there is still ever only one tag, never a second one racing it.
+export function setSkinCss(css, projectName, sessionId) {
+  if (!skinStyleEl) {
+    skinStyleEl = document.createElement('style')
+    document.head.appendChild(skinStyleEl)
+  }
+  skinStyleEl.textContent = resolveCssAssetUrls(css, projectName, sessionId)
+}
+
+async function loadSkin() {
+  const projectName = currentProjectName.value
+  const sessionId = currentSessionId.value
+  if (!applyAspect.value || !projectName || sessionId == null) {
+    clearSkin()
+    return
+  }
+  let css
+  try {
+    // credentials: 'include' — this bypasses api.js's apiFetch (which
+    // already sets it), so without this explicit option the request
+    // drops the session cookie behind AuthMiddleware whenever frontend
+    // and backend aren't same-origin, 401s, and loadSkin silently treats
+    // that the same as "no index.css". cache: 'no-store' — this fires on
+    // every index.yml/css save via skinVersion, and the URL doesn't
+    // otherwise change; relying on the browser to always revalidate a
+    // Cache-Control: no-cache response left the skin looking stale in
+    // practice, so this skips the HTTP cache entirely instead of trusting
+    // revalidation.
+    const response = await fetch(
+      projectFileContentUrl(projectName, 'index.css', sessionId),
+      { credentials: 'include', cache: 'no-store' }
+    )
+    if (!response.ok) {
+      clearSkin()
+      return
+    }
+    css = await response.text()
+  } catch {
+    return
+  }
+  // Stale-response guard: applyAspect/project/session can all move on
+  // while this fetch is in flight — e.g. a save triggers a re-fetch, then
+  // the user flips into Test mode before it lands. A later loadSkin() call
+  // (triggered by whichever of those changed) already reflects the current
+  // state, or will; without this check the earlier, now-stale response
+  // would win the race and re-apply a skin applyAspect just turned off.
+  if (!applyAspect.value || currentProjectName.value !== projectName || currentSessionId.value !== sessionId) return
+  // The fetched text's own url(...) references are still bare basenames
+  // (see get_project_file_content's own docstring on why the server never
+  // rewrites these itself) — resolved here into fetchable URLs the exact
+  // same way ChatPreview.vue's live-editor preview already does, so a
+  // background-image etc. actually loads instead of silently 404ing
+  // against whatever origin this page happens to be running on.
+  setSkinCss(css, projectName, sessionId)
+}
+
+// Module-level, not inside any component — runs for the app's whole
+// lifetime, the same singleton lifetime as currentProjectName/skinVersion
+// themselves, so it never needs an onBeforeUnmount to stop it.
+watch([currentProjectName, currentSessionId, skinVersion, applyAspect], loadSkin, { immediate: true })
+
 export const messages = ref([])
 export const historyLoaded = ref(false)
 export const chatLoading = ref(false)
@@ -126,6 +238,7 @@ async function ensureSession() {
   currentSessionId.value = session.id
   selectedSessionActive.value = session.active
   currentProjectName.value = session.project_name
+  state.value = session.state
   if (testModeProjectName.value != null) await loadAutoTracking()
   return session.id
 }
@@ -194,8 +307,9 @@ export async function selectSession(session) {
   messages.value = []
   historyLoaded.value = false
   try {
-    const history = await getMessages(session.id)
+    const [history, sessionState] = await Promise.all([getMessages(session.id), getSessionState(session.id)])
     messages.value = history.map(toStoreMessage)
+    state.value = sessionState
   } catch {
     // already surfaced via apiFetch
   } finally {
@@ -236,7 +350,13 @@ export async function handleTruncateFrom(timestamp) {
 // currently displayed, falls back to the same bootstrap loadMessages()
 // uses on first load.
 export async function handleDeleteSession(session) {
-  if (!window.confirm(`Delete this session (${session.end_state})? This cannot be undone.`)) return
+  const ok = await confirmDialog({
+    title: 'Delete session',
+    body: `Delete this session (${session.end_state})? This cannot be undone.`,
+    okLabel: 'Delete',
+    danger: true
+  })
+  if (!ok) return
   try {
     await deleteSession(session.id)
     if (session.id === currentSessionId.value) {
@@ -512,7 +632,13 @@ export function clearChatUi() {
 // still works from EditProjectView's embedded "Test" chat toolbar for a
 // project that's never been published.
 export async function handleReset() {
-  if (!window.confirm('Reset the conversation, signals, and transitions? This cannot be undone.')) return
+  const ok = await confirmDialog({
+    title: 'Reset conversation',
+    body: 'Reset the conversation, signals, and transitions? This cannot be undone.',
+    okLabel: 'Reset',
+    danger: true
+  })
+  if (!ok) return
   clearChatUi()
   try {
     // A reset re-enters the automaton through init-action, same as a
@@ -533,7 +659,12 @@ export async function handleReset() {
 export async function handleNewSession() {
   // Only one session is ever active per project — starting a new one
   // always supersedes the current one, not just adds to it.
-  if (!window.confirm('Start a new session? This will close the current session for this project — only one can be active at a time.')) return
+  const ok = await confirmDialog({
+    title: 'Start new session',
+    body: 'Start a new session? This will close the current session for this project — only one can be active at a time.',
+    okLabel: 'Start'
+  })
+  if (!ok) return
   try {
     const session = testModeProjectName.value != null
       ? await postCreateTestSession(testModeProjectName.value)

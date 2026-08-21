@@ -142,7 +142,7 @@ class TestWsAdapterPush:
         observed_session = db.get_latest_chat_session(USERNAME, "observed")
         db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
 
-        ws_adapter = WsAdapter(chat_service=None, db=db)
+        ws_adapter = WsAdapter(chat_service=None, db=db, auth_service=None)
         websocket = _FakeWebSocket()
         ws_adapter._connections[USERNAME] = websocket
 
@@ -165,7 +165,7 @@ class TestWsAdapterPush:
         db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
         watcher_session = db.get_latest_chat_session(USERNAME, "watcher")
 
-        ws_adapter = WsAdapter(chat_service=None, db=db)  # nobody registered for USERNAME
+        ws_adapter = WsAdapter(chat_service=None, db=db, auth_service=None)  # nobody registered for USERNAME
 
         ephemeral_jobs = JobQueue(InMemoryJobSink(), max_concurrent=1)
         service = WakeupService(db, project_service, ephemeral_jobs, ws_adapter)
@@ -197,7 +197,7 @@ class TestWsAdapterPush:
         db.create_chat_session(username=USERNAME, project_name="observed")
         # No transition to state 'b' at all — the watcher's own trigger never matches.
 
-        ws_adapter = WsAdapter(chat_service=None, db=db)
+        ws_adapter = WsAdapter(chat_service=None, db=db, auth_service=None)
         websocket = _FakeWebSocket()
         ws_adapter._connections[USERNAME] = websocket
 

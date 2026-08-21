@@ -13,6 +13,7 @@ from automaton.automaton import Action, Automaton, Signal, State
 from metrics.metric_service import MetricService
 from tracking.env import PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
+from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
 from tracking.system_facts import SystemFacts
 from tracking.tracking_processor import UserVariables
@@ -78,12 +79,11 @@ async def test_regeneration_call_does_not_request_signals(db):
     )
     automaton = _automaton()
     ai_service = RecordingSchemaAiService()
-    get_username = lambda: USERNAME
-    get_active_project_name = lambda: PROJECT_NAME
-    metrics = MetricService(db, get_username=get_username, get_active_project_name=get_active_project_name)
-    env = PersistedEnv(db, get_username=get_username, get_active_project_name=get_active_project_name)
+    project_service = FixedProjectContext(project_name=PROJECT_NAME)
+    metrics = MetricService(db, project_service)
+    env = PersistedEnv(db, project_service)
     scope_builder = EvaluationScopeBuilder(
-        env, metrics, SystemFacts(), SessionFacts(db, get_username, get_active_project_name)
+        env, metrics, SystemFacts(), SessionFacts(db, project_service)
     )
 
     processor = TrackingProcessorAfterUserMessage(

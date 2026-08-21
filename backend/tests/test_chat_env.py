@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import pytest
 
+from tracking.fixed_project_context import FixedProjectContext
 from tracking.env import PersistedEnv
 
 USERNAME = "user"
@@ -14,7 +15,7 @@ PROJECT_NAME = "proj"
 
 
 def _env(db) -> PersistedEnv:
-    return PersistedEnv(db, get_username=lambda: USERNAME, get_active_project_name=lambda: PROJECT_NAME)
+    return PersistedEnv(db, FixedProjectContext(project_name=PROJECT_NAME))
 
 
 def _session(db, username=USERNAME, project_name=PROJECT_NAME, start=None):

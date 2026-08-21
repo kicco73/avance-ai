@@ -21,9 +21,7 @@ pytestmark = pytest.mark.regression
 def chat_service(db):
     # ai_service/project_service are never touched: _require_own_session
     # raises before either would be used.
-    metric_service = MetricService(
-        db, get_username=lambda: "user", get_active_project_name=lambda: None,
-    )
+    metric_service = MetricService(db, project_service=None)
     # None is fine here since these tests never reach any path that reads it.
     tracking_service = TrackingService(
         db, ai_service=None, project_service=None, metrics_service=metric_service,

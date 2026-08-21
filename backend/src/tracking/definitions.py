@@ -6,10 +6,10 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Callable
 
 from automaton.automaton import Automaton, SignalPayload
 from db import Db
+from project.project_service import ProjectService
 
 logger = logging.getLogger(__name__)
 
@@ -18,18 +18,14 @@ logger = logging.getLogger(__name__)
 # (history strictly alternates user/assistant, in pairs).
 SIGNALS_HISTORY_WINDOW = 14
 
-# Supplies the currently-active Automaton — constructor-injected rather
-# than imported: this module doesn't own which project is active.
-GetActiveAutomaton = Callable[[], Automaton]
-
 class Signals(object):
-    def __init__(self, get_active_automaton: GetActiveAutomaton, db: Db) -> None:
-        self._get_active_automaton = get_active_automaton
+    def __init__(self, project_service: ProjectService, db: Db) -> None:
+        self._project_service = project_service
         self._db = db
 
     @property
     def automaton(self) -> Automaton:
-        return self._get_active_automaton()
+        return self._project_service.get_active_automaton_and_state()[0]
 
     def _active_project_name(self) -> str:
         name = self._db.get_active_project_name()

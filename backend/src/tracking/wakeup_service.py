@@ -13,9 +13,11 @@ from events import EnvChanged, StateChanged, subscribe
 from jobs import JobQueue, OnProgress
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
+from session import Session
 from tracking.automaton_namespace import AutomatonNamespace
 from tracking.env import PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
+from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
 from tracking.system_facts import SystemFacts
 from tracking.tracking_engine import DbTrackingSink, TrackingEngine
@@ -62,36 +64,51 @@ class WakeupService:
 
         automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
 
-        get_username = lambda: username
-        get_project_name = lambda: observer_project_name
-        env = PersistedEnv(self._db, get_username=get_username, get_active_project_name=get_project_name)
-        metrics = MetricService(self._db, get_username=get_username, get_active_project_name=get_project_name)
-        system = SystemFacts()
-        session_facts = SessionFacts(self._db, get_username=get_username, get_active_project_name=get_project_name)
-        automaton_namespace = AutomatonNamespace(self._db, self._project_service, get_username)
-        scope_builder = EvaluationScopeBuilder(env, metrics, system, session_facts, automaton_namespace)
-        tracking_engine = TrackingEngine(DbTrackingSink(self._db), env, scope_builder)
+        # PersistedEnv/MetricService/SessionFacts/AutomatonNamespace all
+        # read Session().user themselves now — pinned to the observer
+        # being woken (never whatever's live for this job's own context),
+        # then restored. project_context stands in for the *live* active
+        # project these would otherwise resolve, staying fixed on
+        # observer_project_name instead — a wake-up must never silently
+        # evaluate against whatever project happens to be active right now.
+        previous_user = Session().user
+        Session().user = username
+        try:
+            project_context = FixedProjectContext(project_name=observer_project_name)
+            env = PersistedEnv(self._db, project_context)
+            metrics = MetricService(self._db, project_context)
+            system = SystemFacts()
+            session_facts = SessionFacts(self._db, project_context)
+            # The real project_service here, unlike project_context above:
+            # AutomatonNamespace's automaton.<project> cross-references
+            # resolve an OTHER project entirely, a genuinely different
+            # mechanism from "the current one's own active project".
+            automaton_namespace = AutomatonNamespace(self._db, self._project_service)
+            scope_builder = EvaluationScopeBuilder(env, metrics, system, session_facts, automaton_namespace)
+            tracking_engine = TrackingEngine(DbTrackingSink(self._db), env, scope_builder)
 
-        scope = scope_builder.build(automaton, state.key, {})
-        action = automaton.evaluate_triggers_action(state.key, scope)
-        # Self-loop only — re-checked here rather than relying solely on
-        # the build-time guarantee, since a wake-up must never apply a
-        # real, non-self-loop transition on the user's behalf.
-        if action is not None and action.target == state.key:
-            tracking_engine.apply_transition(
-                automaton, state, action, {}, session["id"],
-                username=username, project_name=observer_project_name,
-            )
-            # A "notification" frame, never "done" — chatClient.js drops a
-            # "done" with no pendingTurn in flight, which a push never is.
-            # Best-effort live nudge only; the transition above is already persisted regardless.
-            if self._ws_adapter is not None:
-                await self._ws_adapter.push(username, {
-                    "type": "notification",
-                    "project_name": observer_project_name,
-                    "state": Automaton.get_state_payload(state),
-                    "on-enter": action.on_enter,
-                })
+            scope = scope_builder.build(automaton, state.key, {})
+            action = automaton.evaluate_triggers_action(state.key, scope)
+            # Self-loop only — re-checked here rather than relying solely on
+            # the build-time guarantee, since a wake-up must never apply a
+            # real, non-self-loop transition on the user's behalf.
+            if action is not None and action.target == state.key:
+                tracking_engine.apply_transition(
+                    automaton, state, action, {}, session["id"],
+                    username=username, project_name=observer_project_name,
+                )
+                # A "notification" frame, never "done" — chatClient.js drops a
+                # "done" with no pendingTurn in flight, which a push never is.
+                # Best-effort live nudge only; the transition above is already persisted regardless.
+                if self._ws_adapter is not None:
+                    await self._ws_adapter.push(username, {
+                        "type": "notification",
+                        "project_name": observer_project_name,
+                        "state": Automaton.get_state_payload(state),
+                        "on-enter": action.on_enter,
+                    })
+        finally:
+            Session().user = previous_user
 
     def _wake(self, username: str, observer_project_name: str) -> None:
         async def work(on_progress: OnProgress) -> tuple[str | None, str | None]:

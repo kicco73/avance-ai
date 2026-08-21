@@ -8,6 +8,7 @@ import pytest
 
 from automaton.automaton import Action, Automaton, Signal, State
 from tracking.definitions import Signals
+from tracking.fixed_project_context import FixedProjectContext
 
 pytestmark = pytest.mark.contract
 
@@ -27,7 +28,7 @@ def _automaton(signals: list[Signal]) -> Automaton:
 
 
 def _signals(automaton: Automaton) -> Signals:
-    return Signals(get_active_automaton=lambda: automaton, db=None)
+    return Signals(FixedProjectContext(automaton), db=None)
 
 
 def test_no_names_includes_every_declared_signal():

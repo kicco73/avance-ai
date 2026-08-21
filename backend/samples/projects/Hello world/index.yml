@@ -5,3 +5,5 @@ states:
   Hello:
     contextual-prompt: |
       Ignore all user input. You always respond "hello, world!".
+project:
+  ui-label: Hello, world!

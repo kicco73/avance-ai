@@ -13,6 +13,8 @@ import tempfile
 from pathlib import Path
 from typing import Awaitable, Callable, Mapping
 
+import tinycss2
+
 from automaton.automaton import (
     Action, ActionPayload, Automaton, EnvKeyPayload, ProjectPayload, SignalPayload, State, StatePayload,
     trigger_automaton_project_refs,
@@ -88,19 +90,70 @@ _CSS_URL_PATTERN = re.compile(r"url\(\s*(['\"]?)([^'\")]+)\1\s*\)", re.IGNORECAS
 _ABSOLUTE_URL_PATTERN = re.compile(r"^(https?:)?//|^data:", re.IGNORECASE)
 
 
-def missing_css_references(css_text: str, known_archive_names: set[str]) -> list[str]:
-    """Every `url(...)` target in `css_text` not in `known_archive_names`.
-    Absolute URLs (http(s)://, //, data:) are skipped. A project's archive
-    namespace is flat, so any relative reference resolves by filename alone."""
-    missing = []
+def css_referenced_basenames(css_text: str) -> set[str]:
+    """Every relative `url(...)` target in `css_text`, reduced to its bare
+    filename — a project's archive namespace is flat, so that's how a
+    reference resolves. Absolute URLs (http(s)://, //, data:) are skipped:
+    they don't name a project file at all."""
+    names = set()
     for _, target in _CSS_URL_PATTERN.findall(css_text):
         target = target.strip()
         if not target or _ABSOLUTE_URL_PATTERN.match(target):
             continue
-        name = Path(target).name
-        if name not in known_archive_names and name not in missing:
-            missing.append(name)
-    return missing
+        names.add(Path(target).name)
+    return names
+
+
+def missing_css_references(css_text: str, known_archive_names: set[str]) -> list[str]:
+    """Every name css_referenced_basenames(css_text) names that isn't in
+    `known_archive_names` — order is whatever set iteration gives; the one
+    caller sorts before display."""
+    return [name for name in css_referenced_basenames(css_text) if name not in known_archive_names]
+
+
+# @media/@supports are the only at-rules a chat-widget skin plausibly
+# nests rules inside; @font-face/@page/@import etc. take a declaration
+# list or no block at all, which parse_rule_list would misread as rules.
+_NESTED_RULE_AT_RULES = frozenset({"media", "supports"})
+
+
+def _collect_css_syntax_errors(nodes: list) -> list[str]:
+    """Recurses through a parsed stylesheet/declaration-list/value's nodes,
+    collecting every `error` tinycss2 attached anywhere in the tree —
+    structural ones (a malformed rule or declaration) sit alongside their
+    siblings; tokenization ones (an unterminated string/url) sit inside a
+    declaration's own value, which is why this walks all the way down
+    rather than stopping at the top level."""
+    errors = []
+    for node in nodes:
+        node_type = getattr(node, "type", None)
+        if node_type == "error":
+            errors.append(f"line {node.source_line}: {node.message}")
+        elif node_type == "qualified-rule" and node.content is not None:
+            declarations = tinycss2.parse_declaration_list(node.content, skip_comments=True, skip_whitespace=True)
+            errors.extend(_collect_css_syntax_errors(declarations))
+        elif node_type == "at-rule" and node.content is not None and node.lower_at_keyword in _NESTED_RULE_AT_RULES:
+            nested = tinycss2.parse_rule_list(node.content, skip_comments=True, skip_whitespace=True)
+            errors.extend(_collect_css_syntax_errors(nested))
+        elif node_type == "declaration":
+            errors.extend(_collect_css_syntax_errors(node.value))
+        elif node_type == "function":
+            errors.extend(_collect_css_syntax_errors(node.arguments))
+        elif node_type in ("() block", "[] block", "{} block"):
+            errors.extend(_collect_css_syntax_errors(node.content))
+    return errors
+
+
+def css_syntax_errors(css_text: str) -> list[str]:
+    """Every low-level syntax error tinycss2 finds in `css_text` — an
+    unterminated string/block, a malformed selector or at-rule, a
+    declaration missing its colon — as "line N: message" strings, empty if
+    none. tinycss2 is a syntax-only (CSS Syntax Module) parser, not a full
+    CSS engine: it won't flag a nonsense property value like `color: bees;`,
+    only genuine malformation."""
+    rules = tinycss2.parse_stylesheet(css_text, skip_comments=True, skip_whitespace=True)
+    return _collect_css_syntax_errors(rules)
+
 
 # Called with the newly-active Automaton once activate_project()/put_project()
 # have committed it.
@@ -421,27 +474,62 @@ class ProjectService(object):
 
     @staticmethod
     def _extract_zip_safely(content: bytes, staging_dir: Path) -> None:
-        """Validates zip-slip safety, flatness, and exactly one root
-        'index.yml' — all before extracting anything. Raises ValueError or
-        zipfile.BadZipFile on any violation."""
+        """Validates zip-slip safety, shape, and exactly one root
+        'index.yml' — all before extracting anything. Two shapes are
+        accepted: every file flat at the zip's root, or every file nested
+        exactly one level inside a single common top-level folder (a
+        common export shape, e.g. a GitHub download or drag-a-folder
+        zip) — that folder is stripped, its contents imported as if
+        they'd been flat all along. Anything deeper, or a mix of
+        root-level files and a subdirectory, is rejected. Raises
+        ValueError or zipfile.BadZipFile on any violation."""
         with zipfile.ZipFile(io.BytesIO(content)) as zf:
             names = [entry.replace("\\", "/") for entry in zf.namelist()]
-            staging_resolved = staging_dir.resolve()
+            # macOS's Finder/Archive Utility tacks on a __MACOSX/ sidecar
+            # folder full of resource-fork metadata (AppleDouble ._filename
+            # entries, nothing of actual interest) whenever it zips a
+            # folder — ignored outright rather than counted as a second
+            # top-level folder, so a Mac-zipped single-folder export still
+            # gets descended into instead of rejected.
+            names = [n for n in names if n.split("/", 1)[0] != "__MACOSX"]
 
             for name in names:
-                # Zip-slip protection: mandatory before extracting anything.
                 if name.startswith("/") or any(part == ".." for part in Path(name).parts):
                     raise ValueError(f"Unsafe path inside zip: '{name}'.")
-                resolved = (staging_dir / name).resolve()
-                if resolved != staging_resolved and staging_resolved not in resolved.parents:
-                    raise ValueError(f"Unsafe path inside zip: '{name}'.")
-                # Flat only: a directory entry or a nested file both contain '/'.
-                if "/" in name:
-                    raise ValueError(f"Zip must be flat (no subdirectories): found '{name}'.")
 
-            index_entries = [n for n in names if n == "index.yml"]
+            # A pure directory entry (name ending in '/') carries no file
+            # of its own — irrelevant to both the shape check and
+            # extraction, whether or not the zip tool bothered to include one.
+            file_names = [n for n in names if not n.endswith("/")]
+            flat_names = [n for n in file_names if "/" not in n]
+            top_level_dirs = {n.split("/", 1)[0] for n in file_names if "/" in n}
+
+            if flat_names and top_level_dirs:
+                raise ValueError(
+                    "Zip must be either flat (no subdirectories) or a single folder containing "
+                    "everything — found both root-level file(s) and a subdirectory."
+                )
+            if len(top_level_dirs) > 1:
+                raise ValueError(
+                    f"Zip must be flat or contain a single top-level folder — found multiple: "
+                    f"{', '.join(sorted(top_level_dirs))}."
+                )
+
+            prefix = f"{next(iter(top_level_dirs))}/" if top_level_dirs else ""
+            # original name -> effective (prefix-stripped) name.
+            effective = {n: n[len(prefix):] for n in file_names}
+
+            staging_resolved = staging_dir.resolve()
+            for original, stripped in effective.items():
+                if not stripped or "/" in stripped:
+                    raise ValueError(f"Zip must be flat (no subdirectories): found '{original}'.")
+                resolved = (staging_dir / stripped).resolve()
+                if resolved != staging_resolved and staging_resolved not in resolved.parents:
+                    raise ValueError(f"Unsafe path inside zip: '{original}'.")
+
+            index_entries = [s for s in effective.values() if s == "index.yml"]
             other_yaml_entries = [
-                n for n in names if n != "index.yml" and n.lower().endswith((".yml", ".yaml"))
+                s for s in effective.values() if s != "index.yml" and s.lower().endswith((".yml", ".yaml"))
             ]
             if not index_entries:
                 raise ValueError("Zip must contain an 'index.yml' file at its root.")
@@ -453,7 +541,11 @@ class ProjectService(object):
                     f"also found: {', '.join(sorted(other_yaml_entries))}"
                 )
 
-            zf.extractall(staging_dir)
+            for original, stripped in effective.items():
+                target = staging_dir / stripped
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with zf.open(original) as src, open(target, "wb") as dst:
+                    dst.write(src.read())
 
     def get_active_project_name(self) -> str:
         """The current session user's active project name, read fresh from
@@ -469,11 +561,17 @@ class ProjectService(object):
         raises, for a project that doesn't exist at all."""
         return self._db.get_project_availability(project_name) or (False, None)
 
-    def _resolve_state(self, project_name: str, automaton: Automaton) -> State:
+    def _resolve_state(
+        self, project_name: str, automaton: Automaton, *, session_id: int | None = None, source: str | None = None
+    ) -> State:
         """No persisted state yet falls back to init_action.target. A
         persisted state that no longer exists means a publish renamed or
         removed it — only StateRemap (written at that publish) may resolve it."""
-        state_key = self._db.get_current_state(project_name)
+        state_key = (
+            self._db.get_current_state_for_session(session_id)
+            if session_id is not None
+            else self._db.get_current_state(project_name, source=source)
+        )
         if state_key is None:
             state_key = automaton.init_action.target
         elif state_key not in automaton.states:
@@ -494,7 +592,7 @@ class ProjectService(object):
         if published_revision is None:
             raise ValueError(f"Project '{project_name}' has never been published.")
         automaton = self._load_project_at_revision(project_name, published_revision)
-        return automaton, self._resolve_state(project_name, automaton)
+        return automaton, self._resolve_state(project_name, automaton, source='native')
 
     def get_active_automaton_and_state(self) -> tuple[Automaton, State]:
         """The active project's published automaton and state — never the
@@ -517,7 +615,7 @@ class ProjectService(object):
             automaton = self._load_project(project_name)
         else:
             automaton = self._load_project_at_revision(project_name, session["project_revision"])
-        return automaton, self._resolve_state(project_name, automaton)
+        return automaton, self._resolve_state(project_name, automaton, session_id=session_id)
 
     def get_automaton_and_state_for_observer(
         self, project_name: str, username: str
@@ -531,17 +629,20 @@ class ProjectService(object):
         if session is None:
             return None
         automaton = self._load_project_at_revision(project_name, session["project_revision"])
-        return automaton, self._resolve_state(project_name, automaton)
+        return automaton, self._resolve_state(project_name, automaton, session_id=session["id"])
 
-    def get_active_draft_automaton_and_state(self) -> tuple[Automaton, State]:
-        """Like get_active_automaton_and_state, but the in-progress draft
-        rather than published-only — needed so a "Test" session stays
-        creatable against a project that's never been published yet."""
-        project_name = self.get_active_project_name()
-        if project_name is None:
-            raise FileNotFoundError("No project is currently active.")
+    def get_draft_automaton_and_state(self, project_name: str) -> tuple[Automaton, State]:
+        """Like get_automaton_and_state, but the in-progress draft rather
+        than published-only — needed so a "Test" session stays creatable
+        against a project that's never been published yet. Takes
+        `project_name` explicitly (the embedded "Test" chat's own URL
+        already carries it) rather than resolving it off the
+        active-project pointer — that pointer is keyed per Session().user
+        and can easily be unset or pointing elsewhere for whoever's
+        making this call, even though the URL already says exactly which
+        project this is about."""
         automaton = self._load_project(project_name)
-        return automaton, self._resolve_state(project_name, automaton)
+        return automaton, self._resolve_state(project_name, automaton, source='test')
 
     def apply_manual_action(self, action_name: str, session_id: int) -> tuple[StatePayload, Action, str]:
         """Applies a manual (button) action and returns the destination
@@ -729,7 +830,7 @@ class ProjectService(object):
         if project_name not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
         draft = self._load_project(project_name)
-        current_state_key = self._db.get_current_state(project_name)
+        current_state_key = self._db.get_current_state(project_name, source='native')
         published_revision = self._db.get_project_published_revision(project_name)
         has_active_sessions = (
             published_revision is not None
@@ -751,7 +852,7 @@ class ProjectService(object):
         if project_name not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
         draft = self._load_project(project_name)
-        current_state_key = self._db.get_current_state(project_name)
+        current_state_key = self._db.get_current_state(project_name, source='native')
         if current_state_key is not None and current_state_key not in draft.states:
             if remap_to is None:
                 raise ValueError(
@@ -806,8 +907,16 @@ class ProjectService(object):
                 with tempfile.TemporaryDirectory() as tmp:
                     staging_dir = Path(tmp)
                     self._extract_zip_safely(content, staging_dir)
+                    # Everything export_project_zip can produce is UTF-8 text
+                    # except image assets — read_text() on those (e.g. a PNG's
+                    # magic bytes) raised a UnicodeDecodeError, so import/export
+                    # was never actually round-trippable for a project with
+                    # any Theme asset in it.
                     files = {
-                        file.name: file.read_text()
+                        file.name: (
+                            file.read_bytes() if file.suffix.lower() in IMAGE_EXTENSIONS
+                            else file.read_text(encoding="utf-8")
+                        )
                         for file in staging_dir.iterdir()
                     }
             else:
@@ -947,7 +1056,17 @@ class ProjectService(object):
     ) -> tuple[bytes, str]:
         """Raw (content, content_type) for `file_name` — bytes aren't
         JSON-serializable, so this exists separately from get_project_file.
-        `session_id` resolves via _resolve_inspector_revision."""
+        `session_id` resolves via _resolve_inspector_revision. index.css's
+        own url(...) references are left exactly as written — resolving
+        them into fetchable URLs is the frontend's job (see
+        cssAssetUrls.js's resolveCssAssetUrls, applied client-side by both
+        ChatPreview.vue and chatStore.js's loadSkin): this endpoint has no
+        way to know what origin the page injecting the result actually
+        runs on relative to the API, and a relative /api/... path this
+        raw text would otherwise get rewritten to only happens to resolve
+        correctly in production, where nginx proxies the frontend and API
+        onto the same origin — not in dev, where they're on two different
+        ports with no proxy between them."""
         revision = self._resolve_inspector_revision(project_name, session_id)
         content = self._db.get_archive(project_name, file_name, revision=revision)
         if content is None:
@@ -973,6 +1092,11 @@ class ProjectService(object):
             text_content = content.decode("utf-8") if isinstance(content, bytes) else content
             content_type = TEXT_CONTENT_TYPE_BY_EXTENSION.get(extension, "text/plain")
             if file_name == "index.css":
+                syntax_errors = css_syntax_errors(text_content)
+                if syntax_errors:
+                    raise ValueError(
+                        f"index.css has invalid syntax: {'; '.join(syntax_errors)}."
+                    )
                 known_names = set(self._db.list_archives(project_name)) | {file_name}
                 missing = missing_css_references(text_content, known_names)
                 if missing:
@@ -1142,18 +1266,42 @@ class ProjectService(object):
     async def delete_project_file(
         self, project_name: str, file_name: str, commit: CommitCallback
     ) -> None:
+        """Deleting index.css cascades to every image asset it could have
+        referenced — the file explorer's own "Theme" branch never offers
+        deleting one of those individually while index.css still exists, so
+        an orphaned asset would otherwise just be dead weight. Deleting an
+        asset index.css still references is rejected outright instead:
+        editing index.css's own text to drop the reference is exactly what
+        the CSS editor is for, and rewriting it here on the asset's behalf
+        risks mangling a rule irrecoverably for a small convenience."""
 
         if project_name not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
 
+        archives = self._db.get_archives(project_name=project_name)
+        if file_name != "index.css" and Path(file_name).suffix.lower() in IMAGE_EXTENSIONS:
+            index_css = archives.get("index.css")
+            if index_css is not None and file_name in css_referenced_basenames(index_css.decode("utf-8")):
+                raise ValueError(
+                    f"'{file_name}' is still referenced by index.css — remove the reference "
+                    f"there first (or delete index.css itself, which takes its assets with it)."
+                )
+
         try:
-            archives = self._db.get_archives(project_name=project_name)
             del archives[file_name]
+            cascade_names = (
+                [name for name in archives if Path(name).suffix.lower() in IMAGE_EXTENSIONS]
+                if file_name == "index.css" else []
+            )
+            for name in cascade_names:
+                del archives[name]
             new_automaton = AutomatonBuilder().build(archives, self._known_projects_env_keys(project_name))
         except Exception as exc:
             raise ValueError(f"Invalid project definition: {exc}") from exc
 
         self._db.delete_archive(project_name, file_name)
+        for name in cascade_names:
+            self._db.delete_archive(project_name, name)
         await self._finalize_project_update(project_name, new_automaton, commit)
 
     async def delete_project(self, project_name: str, commit: CommitCallback) -> None:

@@ -19,12 +19,22 @@ from project.project_service import ProjectService
 from .base_controller import BaseController, delete, get, post, put
 
 
+APP_NAME = "Avance"
+
+
 class SettingsController(BaseController):
 
-    def __init__(self, chat_service: ChatService, project_service: ProjectService, db: Db) -> None:
+    def __init__(self, chat_service: ChatService, project_service: ProjectService, db: Db, version: str) -> None:
         self.chat_service = chat_service
         self.project_service = project_service
         self.db = db
+        self.version = version
+
+    @get("/api/settings/about")
+    def get_about(self):
+        """The Settings menu's own "About Avance..." dialog — just the
+        display name and running backend version, __version__ in main.py."""
+        return {"name": APP_NAME, "version": self.version}
 
     @get("/api/settings/backup")
     async def get_backup(self):

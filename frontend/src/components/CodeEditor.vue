@@ -7,13 +7,24 @@ import { Compartment } from '@codemirror/state'
 import { EditorView, basicSetup } from 'codemirror'
 import { keymap } from '@codemirror/view'
 import { indentWithTab } from '@codemirror/commands'
-import { yaml } from '@codemirror/lang-yaml'
-import { css } from '@codemirror/lang-css'
+import { yaml, yamlLanguage } from '@codemirror/lang-yaml'
+import { css, cssLanguage } from '@codemirror/lang-css'
+import { markdown } from '@codemirror/lang-markdown'
+import { cssColorPicker } from './cssColorPicker.js'
+import { cssUrlCompletionSource } from './cssUrlCompletion.js'
+import { yamlAttachmentCompletionSource } from './yamlAttachmentCompletion.js'
 import { getProjectFile, putProjectFile, undoProjectFile, redoProjectFile } from '../api.js'
 
 const props = defineProps({
   projectName: { type: String, required: true },
-  fileName: { type: String, required: true }
+  fileName: { type: String, required: true },
+  // Basenames url(...) can complete to — the Theme branch's image assets.
+  // Only meaningful for a text/css buffer; ignored otherwise.
+  cssAssetFiles: { type: Array, default: () => [] },
+  // Basenames an `attachments:` entry can complete to — the Behavior
+  // branch's own attachments (index.yml/index.css/Theme assets excluded).
+  // Only meaningful for index.yml's text/yaml buffer; ignored otherwise.
+  yamlAttachmentFiles: { type: Array, default: () => [] }
 })
 
 const emit = defineEmits(['saved'])
@@ -67,8 +78,26 @@ function createEditor(doc) {
       indentWithTab
     ])
   ]
-  if (contentType.value === 'text/yaml') extensions.splice(1, 0, yaml())
-  else if (contentType.value === 'text/css') extensions.splice(1, 0, css())
+  if (contentType.value === 'text/yaml') {
+    extensions.splice(
+      1, 0,
+      yaml(),
+      yamlLanguage.data.of({ autocomplete: yamlAttachmentCompletionSource(() => props.yamlAttachmentFiles) })
+    )
+  }
+  else if (contentType.value === 'text/css') {
+    extensions.splice(
+      1, 0,
+      css(),
+      cssColorPicker,
+      cssLanguage.data.of({ autocomplete: cssUrlCompletionSource(() => props.cssAssetFiles) })
+    )
+  }
+  // text/plain covers .txt attachments — MdEditorPanel.vue treats them the
+  // same as .md, so its CodeEditor gets the same language mode too.
+  else if (contentType.value === 'text/markdown' || contentType.value === 'text/plain') {
+    extensions.splice(1, 0, markdown())
+  }
   view = new EditorView({ doc, extensions, parent: editorHost.value })
 }
 

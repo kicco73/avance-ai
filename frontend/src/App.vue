@@ -4,12 +4,15 @@ import ChatWindow from './components/chat/ChatWindow.vue'
 import StateBar from './components/StateBar.vue'
 import EditProjectView from './components/project/edit/EditProjectView.vue'
 import LabelProjectView from './components/project/label/LabelProjectView.vue'
+import LoginView from './components/LoginView.vue'
 import ProjectsMenu from './components/ProjectsMenu.vue'
 import SettingsMenu from './components/settings/SettingsMenu.vue'
 import ManageProjectsView from './components/settings/ManageProjectsView.vue'
+import ManageUsersView from './components/settings/ManageUsersView.vue'
 import SplashScreen from './components/SplashScreen.vue'
 import ErrorBanner from './components/ErrorBanner.vue'
 import ToastContainer from './components/ToastContainer.vue'
+import DialogHost from './components/DialogHost.vue'
 import {
   getState,
   putProject,
@@ -19,10 +22,14 @@ import {
   downloadProject,
   getBackup,
   postRestoreBackup,
-  postPublishProject
+  postPublishProject,
+  postLogout,
+  getAbout
 } from './api.js'
 import { disconnect as disconnectChat } from './chatClient.js'
 import { clearApiError } from './errorStore.js'
+import { needsLogin, requireLogin } from './authStore.js'
+import { confirmDialog, infoDialog } from './dialogStore.js'
 import {
   state,
   setCapabilities,
@@ -39,6 +46,7 @@ const editProjectName = ref(null)
 const showBenchmarkProject = ref(false)
 const benchmarkProjectName = ref(null)
 const showManageProjects = ref(false)
+const showManageUsers = ref(false)
 const modelUploadInput = ref(null)
 const projectsMenu = ref(null)
 const manageProjectsView = ref(null)
@@ -129,6 +137,23 @@ function startBootSequence() {
   runPingAttempt(bootSequenceToken)
 }
 
+// LoginView.vue's own 'logged-in' — the session cookie is set, so the
+// exact same startup path a fresh page load takes now succeeds instead
+// of 401ing.
+function handleLoggedIn() {
+  startBootSequence()
+}
+
+async function handleLogout() {
+  try {
+    await postLogout()
+  } catch {
+    // already surfaced via apiFetch
+  }
+  disconnectChat()
+  requireLogin()
+}
+
 function triggerModelUpload() {
   modelUploadInput.value?.click()
 }
@@ -217,6 +242,14 @@ function handleManageProjectsEdit(projectName) {
 function handleManageProjectsBenchmark(projectName) {
   showManageProjects.value = false
   handleModelBenchmark(projectName)
+}
+
+// "Open chat" on a project's own row: same switch as picking it from
+// ProjectsMenu, then back to the main chat screen (closing Manage
+// projects is what actually reveals it — there's no separate route).
+function handleManageProjectsChat(projectName) {
+  showManageProjects.value = false
+  handleProjectSwitch(projectName)
 }
 
 // Edit/Label are only ever opened from Manage projects now (ProjectsMenu.vue
@@ -318,11 +351,30 @@ async function handleDownloadBackup() {
 // this needs the same explicit confirmation as handleReset (chatStore.js),
 // then the same reload-everything path as switch/upload/delete.
 async function handleRestoreBackup(file) {
-  if (!window.confirm('Restore this backup? This replaces the entire working database (all projects, sessions, and messages) and cannot be undone.')) return
+  const ok = await confirmDialog({
+    title: 'Restore backup',
+    body: 'Restore this backup? This replaces the entire working database (all projects, sessions, and messages) and cannot be undone.',
+    okLabel: 'Restore',
+    danger: true
+  })
+  if (!ok) return
   clearChatUi()
   try {
     await postRestoreBackup(file)
     await refreshStateAndProjects()
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+// SettingsMenu's "About Avance..." — name/version straight off the
+// running backend (main.py's own __version__), fetched fresh on every
+// open rather than cached, so it always reflects whatever build is
+// actually serving the request.
+async function handleShowAbout() {
+  try {
+    const about = await getAbout()
+    await infoDialog({ title: about.name, body: `Version ${about.version}` })
   } catch {
     // already surfaced via apiFetch
   }
@@ -340,8 +392,13 @@ onBeforeUnmount(() => {
        purpose: nothing should flash before we know whether the backend was
        already up. -->
   <ToastContainer />
+  <DialogHost />
 
-  <SplashScreen v-if="bootStatus === 'waiting'" variant="connecting" />
+  <!-- Overrides everything below regardless of bootStatus — a 401 (see
+       api.js's apiFetch) can happen at any point, including mid-boot. -->
+  <LoginView v-if="needsLogin" @logged-in="handleLoggedIn" />
+
+  <SplashScreen v-else-if="bootStatus === 'waiting'" variant="connecting" />
   <SplashScreen v-else-if="bootStatus === 'failed'" variant="failed" @retry="startBootSequence" />
 
   <div v-else-if="bootStatus === 'ready'" class="app">
@@ -355,6 +412,9 @@ onBeforeUnmount(() => {
         />
         <SettingsMenu
           @manage-projects="showManageProjects = true"
+          @manage-users="showManageUsers = true"
+          @about="handleShowAbout"
+          @logout="handleLogout"
           @download-backup="handleDownloadBackup"
           @restore-backup="handleRestoreBackup"
         />
@@ -398,8 +458,15 @@ onBeforeUnmount(() => {
       @delete="handleModelDelete"
       @edit="handleManageProjectsEdit"
       @benchmark="handleManageProjectsBenchmark"
+      @chat="handleManageProjectsChat"
       @download="handleModelDownload"
     />
+
+    <ManageUsersView
+      v-if="showManageUsers"
+      @close="showManageUsers = false"
+    />
+
   </div>
 </template>
 

@@ -28,11 +28,11 @@ vi.mock('../src/api.js', () => ({
   postTruncateSession: vi.fn()
 }))
 vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn() }))
+vi.mock('../src/dialogStore.js', () => ({ confirmDialog: vi.fn().mockResolvedValue(true) }))
 
 describe('testModeProjectName routes session bootstrap/list to the right pool', () => {
   let chatStore
   let api
-  let confirmSpy
 
   beforeEach(async () => {
     vi.resetModules()
@@ -41,16 +41,14 @@ describe('testModeProjectName routes session bootstrap/list to the right pool', 
     api.getMessages.mockResolvedValue([])
     api.getSessions.mockResolvedValue([])
     api.getTestSessions.mockResolvedValue([])
-    confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
   })
 
   afterEach(() => {
     vi.clearAllMocks()
-    confirmSpy.mockRestore()
   })
 
   it('loadMessages calls getCurrentSession, never getCurrentTestSession, when testModeProjectName is null', async () => {
-    api.getCurrentSession.mockResolvedValue({ id: 1, active: true })
+    api.getCurrentSession.mockResolvedValue({ id: 1, active: true, state: { key: 'x', ui_label: 'X', actions: [] } })
 
     await chatStore.loadMessages()
 
@@ -59,7 +57,7 @@ describe('testModeProjectName routes session bootstrap/list to the right pool', 
   })
 
   it('loadMessages calls getCurrentTestSession, never getCurrentSession, when testModeProjectName is set', async () => {
-    api.getCurrentTestSession.mockResolvedValue({ id: 2, active: true })
+    api.getCurrentTestSession.mockResolvedValue({ id: 2, active: true, state: { key: 'x', ui_label: 'X', actions: [] } })
     chatStore.testModeProjectName.value = 'my-project'
 
     await chatStore.loadMessages()
@@ -86,7 +84,7 @@ describe('testModeProjectName routes session bootstrap/list to the right pool', 
 
   it('handleNewSession calls postCreateSession when testModeProjectName is null', async () => {
     api.postCreateSession.mockResolvedValue({ id: 3, active: true })
-    api.getCurrentSession.mockResolvedValue({ id: 3, active: true })
+    api.getCurrentSession.mockResolvedValue({ id: 3, active: true, state: { key: 'x', ui_label: 'X', actions: [] } })
 
     await chatStore.handleNewSession()
 
@@ -96,7 +94,7 @@ describe('testModeProjectName routes session bootstrap/list to the right pool', 
 
   it('handleNewSession calls postCreateTestSession, scoped to the project, when testModeProjectName is set', async () => {
     api.postCreateTestSession.mockResolvedValue({ id: 4, active: true })
-    api.getCurrentTestSession.mockResolvedValue({ id: 4, active: true })
+    api.getCurrentTestSession.mockResolvedValue({ id: 4, active: true, state: { key: 'x', ui_label: 'X', actions: [] } })
     chatStore.testModeProjectName.value = 'my-project'
 
     await chatStore.handleNewSession()
@@ -107,7 +105,7 @@ describe('testModeProjectName routes session bootstrap/list to the right pool', 
 
   it('handleNewSession runs a brand new session\'s own on-enter (init-action fired it)', async () => {
     api.postCreateSession.mockResolvedValue({ id: 5, active: true, 'on-enter': 'celebrate()' })
-    api.getCurrentSession.mockResolvedValue({ id: 5, active: true })
+    api.getCurrentSession.mockResolvedValue({ id: 5, active: true, state: { key: 'x', ui_label: 'X', actions: [] } })
 
     const onEnterActions = await import('../src/onEnterActions.js')
     await chatStore.handleNewSession()
@@ -117,7 +115,7 @@ describe('testModeProjectName routes session bootstrap/list to the right pool', 
 
   it('handleReset runs the reset response\'s own on-enter (also entering through init-action)', async () => {
     api.postReset.mockResolvedValue({ key: 'a', ui_label: 'A', actions: [], 'on-enter': 'celebrate()' })
-    api.getCurrentSession.mockResolvedValue({ id: 6, active: true })
+    api.getCurrentSession.mockResolvedValue({ id: 6, active: true, state: { key: 'a', ui_label: 'A', actions: [] } })
 
     const onEnterActions = await import('../src/onEnterActions.js')
     await chatStore.handleReset()

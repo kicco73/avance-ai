@@ -11,6 +11,8 @@ from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from auth.auth_middleware import AuthMiddleware
+from auth.auth_service import AuthService
 from chat.chat_service import ChatService
 from chat.session_manager import ChatSessionManager
 from chat.ws_adapter import WsAdapter
@@ -23,13 +25,12 @@ from metrics.benchmark_run_service import BenchmarkRunService
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
 from ai.ai_service import AiService
-from session import Session
 from tracking.tracking_service import TrackingService
 from tracking.wakeup_service import WakeupService
 from talk.talk_service import TalkService
 from listen.listen_service import ListenService
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -76,6 +77,13 @@ def create_app() -> FastAPI:
             force_drop_and_create_when_incompatible=config.database_force_drop_and_create_when_incompatible,
         )
 
+        # Built once here (not a global singleton — see auth/auth_service.py's
+        # own module docstring), passed explicitly to whatever needs it.
+        # Also bridged onto app.state: AuthMiddleware was already
+        # registered (add_middleware, below) before this existed.
+        auth_service = AuthService(db, config.auth_jwt_secret, config.auth_providers)
+        app.state.auth_service = auth_service
+
         # Two independent worker pools, never shared — see jobs/job_queue.py's
         # JobQueue for why a job must never wait on another job from its own
         # queue.
@@ -86,13 +94,11 @@ def create_app() -> FastAPI:
         session_manager = ChatSessionManager(db, open_window_minutes=config.max_session_duration_in_minutes)
         
         # A leaf service (see metrics/metric_service.py's own module
-        # docstring) — depends only on db, so it's built first and handed to
-        # whoever needs it, never the other way around.
+        # docstring) — never depends on ChatService/TrackingService, so
+        # it's built first and handed to whoever needs it, never the
+        # other way around.
         metric_service = MetricService(
-            db,
-            get_username=lambda: Session().user,
-            get_active_project_name=lambda: project_service.get_active_project_name(),
-            get_max_session_duration_in_minutes=lambda: config.max_session_duration_in_minutes,
+            db, project_service, max_session_duration_in_minutes=config.max_session_duration_in_minutes,
         )
         
         # Instantiated once here, not built by ChatService itself (see
@@ -115,7 +121,7 @@ def create_app() -> FastAPI:
         # forever" shape as WakeupService below.
         project_service.register_availability_cascade()
 
-        chat_ws_adapter = WsAdapter(chat_service, db) if config.chat_transport == "websocket" else None
+        chat_ws_adapter = WsAdapter(chat_service, db, auth_service) if config.chat_transport == "websocket" else None
 
         # Cross-project wake-up (see tracking/wakeup_service.py) —
         # subscribes once for the process lifetime. Built after
@@ -125,6 +131,7 @@ def create_app() -> FastAPI:
 
         controller = AvanceController(
             chat_service, project_service, talk_service, listen_service, db, tracking_service, benchmark_run_service,
+            auth_service, __version__,
         )
         app.include_router(controller.router)
 
@@ -151,6 +158,12 @@ def create_app() -> FastAPI:
                     close_fn()
 
     app = FastAPI(title="Avance State Engine", lifespan=lifespan)
+
+    # Registered before CORSMiddleware so CORS ends up the outer layer
+    # (Starlette wraps middleware in the reverse of add_middleware() call
+    # order) — an early 401 from AuthMiddleware still needs CORS headers
+    # attached on its way back out, or the frontend can't even read it.
+    app.add_middleware(AuthMiddleware)
 
     app.add_middleware(
         CORSMiddleware,

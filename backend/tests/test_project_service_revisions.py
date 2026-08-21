@@ -31,6 +31,28 @@ def _save_index_yml(db, state_key: str) -> None:
     )
 
 
+TWO_STATE_YML = """
+init-action:
+  target: a
+states:
+  a:
+    ui-label: a
+    contextual-prompt: hi
+    actions:
+      - name: go
+        target: b
+  b:
+    ui-label: b
+    contextual-prompt: there
+"""
+
+
+def _save_two_state_index_yml(db) -> None:
+    db.save_project_files(
+        PROJECT_NAME, {"index.yml": TWO_STATE_YML.encode("utf-8")}, {"index.yml": "text/yaml"}
+    )
+
+
 @pytest.fixture
 def project_service(db) -> ProjectService:
     db.ensure_project(PROJECT_NAME)
@@ -73,21 +95,21 @@ def test_get_active_automaton_and_state_uses_the_published_revision_not_the_draf
     assert state.key == "a"
 
 
-def test_get_active_draft_automaton_and_state_works_for_a_never_published_project(db, project_service):
+def test_get_draft_automaton_and_state_works_for_a_never_published_project(db, project_service):
     _save_index_yml(db, "a")
 
-    automaton, state = project_service.get_active_draft_automaton_and_state()
+    automaton, state = project_service.get_draft_automaton_and_state(PROJECT_NAME)
 
     assert set(automaton.states) == {"", "a"}
     assert state.key == "a"
 
 
-def test_get_active_draft_automaton_and_state_sees_the_in_progress_draft(db, project_service):
+def test_get_draft_automaton_and_state_sees_the_in_progress_draft(db, project_service):
     _save_index_yml(db, "a")
     db.publish_project(PROJECT_NAME)
     _save_index_yml(db, "b")
 
-    automaton, _ = project_service.get_active_draft_automaton_and_state()
+    automaton, _ = project_service.get_draft_automaton_and_state(PROJECT_NAME)
 
     assert set(automaton.states) == {"", "b"}
 
@@ -136,3 +158,37 @@ def test_get_automaton_and_state_for_session_works_for_a_draft_session_too(db, p
 def test_get_automaton_and_state_for_session_raises_for_an_unknown_session(db, project_service):
     with pytest.raises(FileNotFoundError):
         project_service.get_automaton_and_state_for_session(999999)
+
+
+def test_get_automaton_and_state_for_session_does_not_leak_a_native_transition_into_a_test_session(db, project_service):
+    _save_two_state_index_yml(db)
+    db.publish_project(PROJECT_NAME)
+    native_session_id = db.create_chat_session(
+        username=Session().user, project_name=PROJECT_NAME, start_state="a",
+    )
+    db.save_transition("a", "go", "b", native_session_id, transition_log_level="INFO")
+
+    test_session_id = db.create_draft_chat_session(
+        username=Session().user, project_name=PROJECT_NAME, start_state="a",
+    )
+
+    _, state = project_service.get_automaton_and_state_for_session(test_session_id)
+
+    assert state.key == "a"
+
+
+def test_get_automaton_and_state_for_session_does_not_leak_a_test_transition_into_a_native_session(db, project_service):
+    _save_two_state_index_yml(db)
+    db.publish_project(PROJECT_NAME)
+    test_session_id = db.create_draft_chat_session(
+        username=Session().user, project_name=PROJECT_NAME, start_state="a",
+    )
+    db.save_transition("a", "go", "b", test_session_id, transition_log_level="INFO")
+
+    native_session_id = db.create_chat_session(
+        username=Session().user, project_name=PROJECT_NAME, start_state="a",
+    )
+
+    _, state = project_service.get_automaton_and_state_for_session(native_session_id)
+
+    assert state.key == "a"
