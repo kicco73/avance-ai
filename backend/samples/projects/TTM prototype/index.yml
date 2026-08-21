@@ -5,7 +5,7 @@ project:
     A state-machine implementation of the Transtheoretical Model of Change, 
     augmented with Motivational Interviewing and Relapse Prevention principles.
     (Prochaska, DiClemente)
-  
+
 init-action:
   ui-label: new user
   on-enter: celebrate()
@@ -230,7 +230,7 @@ states:
   Crisis:
     ui-label: Crisis
     transition-log-level: CRITICAL
-    chat: no
+    chat: false
     ui-description: >
       An acute-risk signal has been detected. Control passes to a fixed,
       non-generative safety protocol: this state has no contextual_prompt —
@@ -247,3 +247,4 @@ states:
       - Teléfono de la Esperanza: 717 003 717
 
     actions: []
+    history-cutoff: true

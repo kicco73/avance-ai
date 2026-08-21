@@ -125,7 +125,7 @@ watch(
             title="index.css"
             @click="emit('select-file', 'index.css')"
           >
-            Theme
+            Aspect
           </button>
         </div>
         <div class="file-explorer-children-wrap" :class="{ 'file-explorer-children-wrap-open': expanded.theme }">

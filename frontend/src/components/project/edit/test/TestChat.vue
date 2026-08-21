@@ -8,13 +8,15 @@ import ChatTimeline from '../../../chat/ChatTimeline.vue'
 import RestartFromHereButton from '../../../chat/RestartFromHereButton.vue'
 import ModelMenu from '../../../ModelMenu.vue'
 import {
-  autoTrackingEnabled, autoTrackingLoading, toggleAutoTracking, handleReset, spokenTextEnabled, themeDisabled
+  autoTrackingEnabled, autoTrackingLoading, toggleAutoTracking, handleReset, spokenTextEnabled, applyAspect
 } from '../../../../chatStore.js'
 
-// themeDisabled is shared (see chatStore.js's own docstring on it) — reset
-// on leaving Test mode so it never leaks into App.vue's own chat widget,
+// applyAspect is shared (see chatStore.js's own docstring on it) — Test mode
+// starts unskinned regardless of the shared default, and restores that
+// default on leaving so it never leaks into App.vue's own chat widget,
 // which stays mounted (just visually covered) the whole time this is open.
-onBeforeUnmount(() => { themeDisabled.value = false })
+applyAspect.value = false
+onBeforeUnmount(() => { applyAspect.value = true })
 
 defineProps({
   timeline: { type: Array, required: true },
@@ -46,9 +48,9 @@ const emit = defineEmits(['select-message', 'select-transition', 'restart-prefil
             />
             Freeze transitions
           </label>
-          <label class="dev-mode-toggle" :class="{ 'dev-mode-toggle-active': themeDisabled }">
-            <input type="checkbox" v-model="themeDisabled" />
-            No theme
+          <label class="dev-mode-toggle" :class="{ 'dev-mode-toggle-active': applyAspect }">
+            <input type="checkbox" v-model="applyAspect" />
+            Apply aspect
           </label>
         </div>
         <div class="edit-project-chat-toolbar-actions">

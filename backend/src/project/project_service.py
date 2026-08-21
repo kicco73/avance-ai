@@ -12,7 +12,6 @@ import zipfile
 import tempfile
 from pathlib import Path
 from typing import Awaitable, Callable, Mapping
-from urllib.parse import quote
 
 import tinycss2
 
@@ -155,27 +154,6 @@ def css_syntax_errors(css_text: str) -> list[str]:
     rules = tinycss2.parse_stylesheet(css_text, skip_comments=True, skip_whitespace=True)
     return _collect_css_syntax_errors(rules)
 
-
-def resolve_css_asset_urls(css_text: str, project_name: str, session_id: int | None = None) -> str:
-    """Rewrites every relative `url(...)` target in `css_text` to the file
-    content endpoint. index.css is served as raw text and injected directly
-    into a <style> element (see ChatWindow.vue/ChatPreview.vue) — a bare
-    `url(basename)` would otherwise resolve against the page's own origin
-    instead of the API, 404ing. `session_id`, when given, is carried onto
-    each rewritten URL so an asset resolves at the same pinned revision as
-    the stylesheet referencing it."""
-    query = f"?session_id={session_id}" if session_id is not None else ""
-
-    def _replace(match: re.Match) -> str:
-        quote_char, target = match.group(1), match.group(2)
-        stripped = target.strip()
-        if not stripped or _ABSOLUTE_URL_PATTERN.match(stripped):
-            return match.group(0)
-        basename = Path(stripped).name
-        resolved = f"/api/projects/{quote(project_name)}/files/{quote(basename)}/content{query}"
-        return f"url({quote_char}{resolved}{quote_char})"
-
-    return _CSS_URL_PATTERN.sub(_replace, css_text)
 
 # Called with the newly-active Automaton once activate_project()/put_project()
 # have committed it.
@@ -1072,15 +1050,23 @@ class ProjectService(object):
     ) -> tuple[bytes, str]:
         """Raw (content, content_type) for `file_name` — bytes aren't
         JSON-serializable, so this exists separately from get_project_file.
-        `session_id` resolves via _resolve_inspector_revision."""
+        `session_id` resolves via _resolve_inspector_revision. index.css's
+        own url(...) references are left exactly as written — resolving
+        them into fetchable URLs is the frontend's job (see
+        cssAssetUrls.js's resolveCssAssetUrls, applied client-side by both
+        ChatPreview.vue and chatStore.js's loadSkin): this endpoint has no
+        way to know what origin the page injecting the result actually
+        runs on relative to the API, and a relative /api/... path this
+        raw text would otherwise get rewritten to only happens to resolve
+        correctly in production, where nginx proxies the frontend and API
+        onto the same origin — not in dev, where they're on two different
+        ports with no proxy between them."""
         revision = self._resolve_inspector_revision(project_name, session_id)
         content = self._db.get_archive(project_name, file_name, revision=revision)
         if content is None:
             raise FileNotFoundError(f"File '{file_name}' does not exist in project '{project_name}'.")
         content_type = self._db.get_archive_content_type(project_name, file_name, revision=revision)
         assert content_type is not None  # same Archive row get_archive already found content for
-        if file_name == "index.css":
-            content = resolve_css_asset_urls(content.decode("utf-8"), project_name, session_id).encode("utf-8")
         return content, content_type
 
     async def put_project_file(

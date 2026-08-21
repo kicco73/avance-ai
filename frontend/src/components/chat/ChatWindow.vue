@@ -68,7 +68,10 @@ async function onDeleteSession(session) {
 // most recently started open session per project is ever active.
 const chatDisabled = computed(() => !state.value?.key || !state.value?.chat || !selectedSessionActive.value)
 
-// Mirrors chatDisabled's own conditions, in the same order.
+// Mirrors chatDisabled's own conditions, in the same order. A state with
+// no chat has nothing generic to say here — it may have no actions
+// either, so pointing at "use an action instead" would be wrong as often
+// as not; the input stays disabled with no explanation for that case.
 const chatDisabledReason = computed(() => {
   if (!state.value?.key) return 'Please select a project from the menu.'
   if (!selectedSessionActive.value) {
@@ -76,7 +79,7 @@ const chatDisabledReason = computed(() => {
       ? 'No active session for this project yet.'
       : 'This session is no longer active.'
   }
-  return "This state doesn't accept messages; use an action instead."
+  return null
 })
 
 // Draggable divider between the sessions panel and the chat itself.
@@ -234,7 +237,7 @@ watch(
     </div>
 
     <p
-      v-if="chatDisabled"
+      v-if="chatDisabledReason"
       class="chat-ended-notice"
     >
       {{ chatDisabledReason }}

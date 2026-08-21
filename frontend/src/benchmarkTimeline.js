@@ -207,10 +207,20 @@ export function commentForMessage(message, signalsLog) {
 // The state key the Inspector treats as current for the selection. A
 // message resolves to whatever state was active when it arrived, even
 // if its own evaluation caused a transition (see resultingStateKeyFor).
+// Walks the timeline directly rather than going through stateAsOf's key
+// comparison: buildTimeline's own tie-break already sorts a message
+// before the transition it caused, so stopping at the message avoids
+// that transition (and anything after it) without needing to single out
+// the tied entry by key.
 export function highlightedStateKeyFor(selected, timeline, sessionStartState) {
   if (!selected) return null
   if (selected.kind === 'transition') return selected.transition.new_state
-  return stateAsOf(timeline, sessionStartState, orderKey(selected.message.timestamp, selected.message.id))
+  let result = sessionStartState
+  for (const entry of timeline) {
+    if (entry.kind === 'message' && entry.message.id === selected.message.id) break
+    if (entry.kind === 'transition') result = entry.transition.new_state
+  }
+  return result
 }
 
 // "What state did this turn ultimately leave the conversation in" —

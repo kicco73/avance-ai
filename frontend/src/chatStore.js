@@ -24,6 +24,7 @@ import { playMessageChime, playMessageAudio } from './audio.js'
 import { runOnEnterScript } from './onEnterActions.js'
 import { clearApiError } from './errorStore.js'
 import { confirmDialog } from './dialogStore.js'
+import { resolveCssAssetUrls } from './cssAssetUrls.js'
 
 export const state = ref(null)
 // The chat conversation's current session_id — null until the first
@@ -59,13 +60,13 @@ export const skinVersion = ref(0)
 export function invalidateSkin() {
   skinVersion.value++
 }
-// TestChat.vue's "No theme" toggle. Shared rather than a prop on
-// ChatWindow: App.vue keeps its own ChatWindow mounted (just visually
-// covered) the whole time EditProjectView's overlay is open, and both
-// instances read the same currentProjectName/currentSessionId. TestChat.vue
-// resets this to false on unmount so it never leaks into the main chat
-// widget once Test mode is left.
-export const themeDisabled = ref(false)
+// TestChat.vue's "Apply aspect" toggle. On by default — the general chat
+// always shows the project's theme. TestChat.vue forces this to false on
+// mount so Test mode starts unskinned, and restores it to true on unmount so
+// it never leaks into App.vue's own chat widget, which stays mounted (just
+// visually covered) the whole time EditProjectView's overlay is open — both
+// instances read the same currentProjectName/currentSessionId.
+export const applyAspect = ref(true)
 
 // A project's index.css "skin" — one single <style> element for the whole
 // app, not one per ChatWindow instance. App.vue's own widget stays mounted
@@ -88,7 +89,7 @@ function clearSkin() {
 async function loadSkin() {
   const projectName = currentProjectName.value
   const sessionId = currentSessionId.value
-  if (themeDisabled.value || !projectName || sessionId == null) {
+  if (!applyAspect.value || !projectName || sessionId == null) {
     clearSkin()
     return
   }
@@ -120,13 +121,19 @@ async function loadSkin() {
     skinStyleEl = document.createElement('style')
     document.head.appendChild(skinStyleEl)
   }
-  skinStyleEl.textContent = css
+  // The fetched text's own url(...) references are still bare basenames
+  // (see get_project_file_content's own docstring on why the server never
+  // rewrites these itself) — resolved here into fetchable URLs the exact
+  // same way ChatPreview.vue's live-editor preview already does, so a
+  // background-image etc. actually loads instead of silently 404ing
+  // against whatever origin this page happens to be running on.
+  skinStyleEl.textContent = resolveCssAssetUrls(css, projectName, sessionId)
 }
 
 // Module-level, not inside any component — runs for the app's whole
 // lifetime, the same singleton lifetime as currentProjectName/skinVersion
 // themselves, so it never needs an onBeforeUnmount to stop it.
-watch([currentProjectName, currentSessionId, skinVersion, themeDisabled], loadSkin, { immediate: true })
+watch([currentProjectName, currentSessionId, skinVersion, applyAspect], loadSkin, { immediate: true })
 
 export const messages = ref([])
 export const historyLoaded = ref(false)
