@@ -269,7 +269,5 @@ class ChatController(BaseController):
 
     @post("/api/triggers/preview")
     def post_triggers_preview(self, req: TriggersPreviewRequest):
-        automaton, state = self.project_service.get_active_automaton_and_state()
-        scope = self.chat_service.evaluation_scope_builder.build(automaton, state.key, req.signals)
-        return automaton.preview_triggers(state.key, scope)
+        return self.chat_service.preview_triggers(req.signals)
 

@@ -17,12 +17,13 @@ from db import Db
 from project.project_service import ProjectService
 
 from .base_controller import BaseController, delete, get, post, put
+from .project_commit_mixin import ProjectCommitMixin
 
 
 APP_NAME = "Avance"
 
 
-class SettingsController(BaseController):
+class SettingsController(BaseController, ProjectCommitMixin):
 
     def __init__(self, chat_service: ChatService, project_service: ProjectService, db: Db, version: str) -> None:
         self.chat_service = chat_service

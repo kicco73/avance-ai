@@ -16,6 +16,7 @@ from project.project_service import ProjectService
 from schemas import PublishProjectRequest, ReorderActionRequest, SetProjectFieldRequest
 
 from .base_controller import BaseController, delete, get, post, put
+from .project_commit_mixin import ProjectCommitMixin
 
 # Explicit per-type whitelists for the field-by-field edit endpoints
 # below — name/key is deliberately never in any of these three: it's
@@ -31,7 +32,7 @@ ENV_KEY_EDITABLE_FIELDS = {"name", "ui-description", "value"}
 PROJECT_EDITABLE_FIELDS = {"id", "ui-label", "ui-description"}
 
 
-class EditProjectController(BaseController):
+class EditProjectController(BaseController, ProjectCommitMixin):
 
     def __init__(self, chat_service: ChatService, project_service: ProjectService) -> None:
         self.chat_service = chat_service

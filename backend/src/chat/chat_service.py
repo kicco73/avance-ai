@@ -56,10 +56,10 @@ class ChatService(object):
 		self._system_facts = SystemFacts()
 		self._session_facts = SessionFacts(db, project_service)
 		self._automaton_namespace = AutomatonNamespace(db, project_service)
-		self.evaluation_scope_builder = EvaluationScopeBuilder(
+		self._evaluation_scope_builder = EvaluationScopeBuilder(
 			self.env, metric_service, self._system_facts, self._session_facts, self._automaton_namespace
 		)
-		self._tracking_engine = TrackingEngine(DbTrackingSink(db), self.env, self.evaluation_scope_builder)
+		self._tracking_engine = TrackingEngine(DbTrackingSink(db), self.env, self._evaluation_scope_builder)
 
 		self._project_locks = KeyedLockRegistry(ProjectRwLock)
 		self._session_locks = KeyedLockRegistry(asyncio.Lock)
@@ -345,6 +345,11 @@ class ChatService(object):
 		until = self._until_from_message(message_id)
 		return self.metric_service.calculate_all(until=until, project_name=project_name)
 
+	def preview_triggers(self, signals: dict) -> list:
+		automaton, state = self._project_service.get_active_automaton_and_state()
+		scope = self._evaluation_scope_builder.build(automaton, state.key, signals)
+		return automaton.preview_triggers(state.key, scope)
+
 	def get_env(self, message_id: int | None = None) -> dict:
 		"""{"stored": ..., "action_set": ...}, reported separately so the
 		Inspector Env tab knows which section each value belongs in and
@@ -473,10 +478,12 @@ class ChatService(object):
 		# message timestamps would make has_messages_since wrongly report
 		# "no messages" and crash trying to generate an opening one.
 		session = self._db.get_chat_session(session_id)
-		if session is not None and session["type"] == "imported":
+		if session is None:
+			raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
+		if session["type"] == "imported":
 			return None
 
-		project_name = self._active_project_name
+		project_name = session["project_name"]
 		automaton, state = self._project_service.get_automaton_and_state_for_session(session_id)
 
 		init_message = None
