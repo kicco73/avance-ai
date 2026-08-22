@@ -504,18 +504,20 @@ body {
 }
 
 .app-body {
+  position: relative;
   flex: 1;
   display: flex;
   min-height: 0;
   overflow: hidden;
 }
 
-/* Fixed rather than absolute: the settings/profile buttons and their
-   dropdowns must never be clipped by .app-body's own overflow: hidden
-   (which exists to contain the chat's internal scrolling, not this
-   overlay). */
+/* Anchored to .app-body, not the viewport: when ErrorBanner pushes
+   .app-body down, these must shift down with it, staying aligned with
+   ChatWindow.vue's own .sessions-reopen-btn (also positioned relative
+   to something inside .app-body) instead of staying put while
+   everything else moves. */
 .profile-menu-overlay {
-  position: fixed;
+  position: absolute;
   top: 0.75rem;
   right: 0.75rem;
   z-index: 30;
@@ -526,7 +528,7 @@ body {
    as one row of overlay icon buttons even though this one lives here,
    not inside ChatWindow.vue itself. */
 .settings-menu-overlay {
-  position: fixed;
+  position: absolute;
   top: 0.75rem;
   left: 3.25rem;
   z-index: 30;

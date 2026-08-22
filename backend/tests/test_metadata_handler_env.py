@@ -84,6 +84,7 @@ def test_generate_reply_renders_an_env_block_with_stored_values_only(db):
     db.publish_project(PROJECT_NAME)
     db.create_chat_session(
         username=USERNAME, project_name=PROJECT_NAME,
+        revision=db.get_project_published_revision(PROJECT_NAME),
         datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
         start_state="a", end_state="a",
     )

@@ -145,6 +145,7 @@ def test_restore_backup_replaces_data_and_reconnects(file_db):
     kept_id = file_db.create_chat_session(
         username="user",
         project_name="proj",
+        revision=file_db.get_project_published_revision("proj"),
         datetime_start=datetime(2026, 1, 1),
         datetime_end=datetime(2026, 1, 1),
         start_state="start",
@@ -156,6 +157,7 @@ def test_restore_backup_replaces_data_and_reconnects(file_db):
     file_db.create_chat_session(
         username="user",
         project_name="proj2",
+        revision=file_db.get_project_published_revision("proj2"),
         datetime_start=datetime(2026, 1, 2),
         datetime_end=datetime(2026, 1, 2),
         start_state="start",

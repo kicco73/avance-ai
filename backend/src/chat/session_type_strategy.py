@@ -43,10 +43,7 @@ class LiveSessionStrategy(SessionTypeStrategy):
         )
 
     def revision_for(self, project_service: "ProjectService", project_name: str) -> int:
-        published_revision = project_service._db.get_project_published_revision(project_name)
-        if published_revision is None:
-            raise ValueError(f"Project '{project_name}' has never been published.")
-        return published_revision
+        return project_service.get_published_revision(project_name)
 
 
 class TestSessionStrategy(SessionTypeStrategy):
@@ -62,7 +59,7 @@ class TestSessionStrategy(SessionTypeStrategy):
         return automaton.init_action.target
 
     def revision_for(self, project_service: "ProjectService", project_name: str) -> int:
-        return project_service._db.get_project_revision(project_name)
+        return project_service.get_draft_revision(project_name)
 
 
 class ImportedSessionStrategy(SessionTypeStrategy):

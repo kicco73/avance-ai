@@ -93,6 +93,7 @@ def test_session_fact_is_usable_in_a_trigger_end_to_end(db):
 
     db.create_chat_session(
         username=USERNAME, project_name=PROJECT_NAME,
+        revision=db.get_project_published_revision(PROJECT_NAME),
         datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
         start_state="a", end_state="a",
     )
@@ -105,6 +106,7 @@ def test_env_action_set_value_is_usable_in_a_trigger_end_to_end(db):
     db.publish_project(PROJECT_NAME)
     session_id = db.create_chat_session(
         username=USERNAME, project_name=PROJECT_NAME,
+        revision=db.get_project_published_revision(PROJECT_NAME),
         datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
         start_state="a", end_state="a",
     )
@@ -124,6 +126,7 @@ def test_env_namespace_excludes_free_form_stored_values(db):
     db.publish_project(PROJECT_NAME)
     db.create_chat_session(
         username=USERNAME, project_name=PROJECT_NAME,
+        revision=db.get_project_published_revision(PROJECT_NAME),
         datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
         start_state="a", end_state="a",
     )

@@ -96,13 +96,13 @@ def test_reverse_index_is_cleared_when_the_reference_is_removed(db, project_serv
 def test_reevaluate_and_apply_fires_the_self_loop_when_the_observed_state_now_matches(db, project_service):
     _publish_project(db, project_service, "observed", OBSERVED_YML)
     _publish_project(db, project_service, "watcher", WATCHER_YML)
-    db.create_chat_session(username=USERNAME, project_name="watcher")
+    db.create_chat_session(username=USERNAME, project_name="watcher", revision=db.get_project_published_revision("watcher"))
     watcher_session = db.get_latest_chat_session(USERNAME, "watcher")
     before = len(db.get_signals(watcher_session["id"]))
 
     # "observed" moves to state 'b' — the state the watcher's own
     # self-loop trigger is actually watching for.
-    db.create_chat_session(username=USERNAME, project_name="observed")
+    db.create_chat_session(username=USERNAME, project_name="observed", revision=db.get_project_published_revision("observed"))
     observed_session = db.get_latest_chat_session(USERNAME, "observed")
     db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
 
@@ -137,8 +137,8 @@ class TestWsAdapterPush:
     def test_pushes_state_on_enter_and_project_name_when_the_self_loop_fires_and_a_connection_exists(self, db, project_service):
         _publish_project(db, project_service, "observed", OBSERVED_YML)
         _publish_project(db, project_service, "watcher", WATCHER_YML)
-        db.create_chat_session(username=USERNAME, project_name="watcher")
-        db.create_chat_session(username=USERNAME, project_name="observed")
+        db.create_chat_session(username=USERNAME, project_name="watcher", revision=db.get_project_published_revision("watcher"))
+        db.create_chat_session(username=USERNAME, project_name="observed", revision=db.get_project_published_revision("observed"))
         observed_session = db.get_latest_chat_session(USERNAME, "observed")
         db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
 
@@ -159,8 +159,8 @@ class TestWsAdapterPush:
     def test_no_connection_registered_is_a_silent_no_op_not_an_error(self, db, project_service):
         _publish_project(db, project_service, "observed", OBSERVED_YML)
         _publish_project(db, project_service, "watcher", WATCHER_YML)
-        db.create_chat_session(username=USERNAME, project_name="watcher")
-        db.create_chat_session(username=USERNAME, project_name="observed")
+        db.create_chat_session(username=USERNAME, project_name="watcher", revision=db.get_project_published_revision("watcher"))
+        db.create_chat_session(username=USERNAME, project_name="observed", revision=db.get_project_published_revision("observed"))
         observed_session = db.get_latest_chat_session(USERNAME, "observed")
         db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
         watcher_session = db.get_latest_chat_session(USERNAME, "watcher")
@@ -178,8 +178,8 @@ class TestWsAdapterPush:
     def test_no_ws_adapter_at_all_is_unaffected_same_as_before_this_parameter_existed(self, db, project_service):
         _publish_project(db, project_service, "observed", OBSERVED_YML)
         _publish_project(db, project_service, "watcher", WATCHER_YML)
-        db.create_chat_session(username=USERNAME, project_name="watcher")
-        db.create_chat_session(username=USERNAME, project_name="observed")
+        db.create_chat_session(username=USERNAME, project_name="watcher", revision=db.get_project_published_revision("watcher"))
+        db.create_chat_session(username=USERNAME, project_name="observed", revision=db.get_project_published_revision("observed"))
         observed_session = db.get_latest_chat_session(USERNAME, "observed")
         db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
         watcher_session = db.get_latest_chat_session(USERNAME, "watcher")
@@ -193,8 +193,8 @@ class TestWsAdapterPush:
     def test_push_is_never_called_when_the_self_loop_does_not_fire(self, db, project_service):
         _publish_project(db, project_service, "observed", OBSERVED_YML)
         _publish_project(db, project_service, "watcher", WATCHER_YML)
-        db.create_chat_session(username=USERNAME, project_name="watcher")
-        db.create_chat_session(username=USERNAME, project_name="observed")
+        db.create_chat_session(username=USERNAME, project_name="watcher", revision=db.get_project_published_revision("watcher"))
+        db.create_chat_session(username=USERNAME, project_name="observed", revision=db.get_project_published_revision("observed"))
         # No transition to state 'b' at all — the watcher's own trigger never matches.
 
         ws_adapter = WsAdapter(chat_service=None, db=db, auth_service=None)
@@ -211,8 +211,8 @@ class TestWsAdapterPush:
 def test_reevaluate_and_apply_does_nothing_when_the_observed_state_does_not_match(db, project_service):
     _publish_project(db, project_service, "observed", OBSERVED_YML)
     _publish_project(db, project_service, "watcher", WATCHER_YML)
-    db.create_chat_session(username=USERNAME, project_name="watcher")
-    db.create_chat_session(username=USERNAME, project_name="observed")
+    db.create_chat_session(username=USERNAME, project_name="watcher", revision=db.get_project_published_revision("watcher"))
+    db.create_chat_session(username=USERNAME, project_name="observed", revision=db.get_project_published_revision("observed"))
     watcher_session = db.get_latest_chat_session(USERNAME, "watcher")
     before = len(db.get_signals(watcher_session["id"]))
 
@@ -231,9 +231,9 @@ def test_publishing_state_changed_wakes_up_every_observer_with_a_session(app_db)
     project_service = ProjectService(db)
     _publish_project(db, project_service, "observed", OBSERVED_YML)
     _publish_project(db, project_service, "watcher", WATCHER_YML)
-    db.create_chat_session(username=USERNAME, project_name="watcher")
+    db.create_chat_session(username=USERNAME, project_name="watcher", revision=db.get_project_published_revision("watcher"))
     watcher_session = db.get_latest_chat_session(USERNAME, "watcher")
-    db.create_chat_session(username=USERNAME, project_name="observed")
+    db.create_chat_session(username=USERNAME, project_name="observed", revision=db.get_project_published_revision("observed"))
     observed_session = db.get_latest_chat_session(USERNAME, "observed")
     db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
 
@@ -260,7 +260,7 @@ def test_a_user_with_no_session_in_the_observer_project_is_never_woken(app_db):
     _publish_project(db, project_service, "observed", OBSERVED_YML)
     _publish_project(db, project_service, "watcher", WATCHER_YML)
     # No chat session created in "watcher" at all for this user.
-    db.create_chat_session(username=USERNAME, project_name="observed")
+    db.create_chat_session(username=USERNAME, project_name="observed", revision=db.get_project_published_revision("observed"))
 
     ephemeral_jobs = JobQueue(InMemoryJobSink(), max_concurrent=1)
     service = WakeupService(db, project_service, ephemeral_jobs)

@@ -2,8 +2,14 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 
+from automaton.automaton import Automaton
+from chat.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
 from db import Db
+
+if TYPE_CHECKING:
+    from project.project_service import ProjectService
 
 logger = logging.getLogger(__name__)
 
@@ -40,83 +46,72 @@ class ChatSessionManager(object):
             return latest
         return None
 
-    def get_or_create_current_session(
-        self, username: str, project_name: str, session_id: int | None, current_state: str
+    def create_session(
+        self, strategy: SessionTypeStrategy, project_service: ProjectService, username: str, project_name: str,
+        automaton: Automaton, current_state: str | None = None,
+    ) -> dict:
+        state_key = current_state if strategy.type_name == 'live' else strategy.starting_state(automaton)
+        now = datetime.utcnow()
+        revision = strategy.revision_for(project_service, project_name)
+        session_id = self._db.create_chat_session(
+            username, project_name, revision,
+            datetime_start=now, datetime_end=now,
+            start_state=state_key, end_state=state_key,
+            type=strategy.type_name,
+        )
+        session = self._db.get_chat_session(session_id)
+        assert session is not None
+        return session
+
+    def resolve_or_create_session(
+        self, strategy: SessionTypeStrategy, project_service: ProjectService, username: str, project_name: str,
+        session_id: int | None, automaton: Automaton, current_state: str | None = None,
     ) -> dict:
         """The one session `username`+`project_name` may write to right
-        now: the most recently started one if still open, else a freshly
-        created one. `session_id` is only logged when stale, never trusted."""
+        now. `strategy.resolves_by_id()` (test): `session_id`, when given
+        and still valid, is always authoritative — never falls back to
+        "most recently started". Otherwise (live): the most recently
+        started still-open session, `session_id` only logged when stale, never trusted."""
         now = datetime.utcnow()
-        active = self.get_active_session(username, project_name)
+        if strategy.resolves_by_id():
+            if session_id is not None:
+                session = self._db.get_chat_session(session_id)
+                if (
+                    session is not None and session["username"] == username
+                    and session["project_name"] == project_name and session["type"] == strategy.type_name
+                ):
+                    return self._touch(session["id"], now, current_state)
+            return self.create_session(strategy, project_service, username, project_name, automaton, current_state)
+        active = self.get_active_session(username, project_name, type=strategy.type_name)
         if active is not None:
             if session_id is not None and session_id != active["id"]:
                 logger.info(
-                    "get_or_create_current_session(): caller's session_id=%s is stale for %s/%s, "
+                    "resolve_or_create_session(): caller's session_id=%s is stale for %s/%s, "
                     "current session is %s", session_id, username, project_name, active["id"]
                 )
             return self._touch(active["id"], now, current_state)
-        return self.create_session(username, project_name, current_state)
-
-    def get_or_create_current_draft_session(
-        self, username: str, project_name: str, session_id: int | None, current_state: str
-    ) -> dict:
-        """Like get_or_create_current_session, but a fresh session is
-        stamped against the project's current *draft* revision instead
-        of requiring a published one."""
-        now = datetime.utcnow()
-        active = self.get_active_session(username, project_name, type='test')
-        if active is not None:
-            if session_id is not None and session_id != active["id"]:
-                logger.info(
-                    "get_or_create_current_draft_session(): caller's session_id=%s is stale for %s/%s, "
-                    "current session is %s", session_id, username, project_name, active["id"]
-                )
-            return self._touch(active["id"], now, current_state)
-        return self.create_draft_session(username, project_name, current_state)
+        return self.create_session(strategy, project_service, username, project_name, automaton, current_state)
 
     def require_active_session(
         self, username: str, project_name: str, session_id: int | None, current_state: str
     ) -> dict:
         """The exact session a chat turn must write to — raises
         ValueError (never falls back to creating/picking another one) if
-        `session_id` is missing, unknown, or not the active session."""
+        `session_id` is missing, unknown, or not the active session.
+        A strategy whose type resolves_by_id() (test) skips the
+        active-session uniqueness check entirely — existing and owned is
+        already enough, since test sessions aren't a single-active-slot pool."""
         if session_id is None:
             raise ValueError("No session specified.")
         session = self._db.get_chat_session(session_id)
         if session is None or session["username"] != username or session["project_name"] != project_name:
             raise ValueError("Session not found.")
-        active = self.get_active_session(username, project_name, type=session["type"])
-        if active is None or active["id"] != session["id"]:
-            raise ValueError("Session is not active.")
+        strategy = get_session_type_strategy(session["type"])
+        if not strategy.resolves_by_id():
+            active = self.get_active_session(username, project_name, type=session["type"])
+            if active is None or active["id"] != session["id"]:
+                raise ValueError("Session is not active.")
         return self._touch(session["id"], datetime.utcnow(), current_state)
-
-    def create_session(self, username: str, project_name: str, current_state: str) -> dict:
-        now = datetime.utcnow()
-        session_id = self._db.create_chat_session(
-            username=username,
-            project_name=project_name,
-            datetime_start=now,
-            datetime_end=now,
-            start_state=current_state,
-            end_state=current_state,
-        )
-        session = self._db.get_chat_session(session_id)
-        assert session is not None
-        return session
-
-    def create_draft_session(self, username: str, project_name: str, current_state: str) -> dict:
-        now = datetime.utcnow()
-        session_id = self._db.create_draft_chat_session(
-            username=username,
-            project_name=project_name,
-            datetime_start=now,
-            datetime_end=now,
-            start_state=current_state,
-            end_state=current_state,
-        )
-        session = self._db.get_chat_session(session_id)
-        assert session is not None
-        return session
 
     def touch_session(self, session_id: int, current_state: str) -> dict | None:
         return self._touch(session_id, datetime.utcnow(), current_state)

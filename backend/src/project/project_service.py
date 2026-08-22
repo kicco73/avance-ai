@@ -139,7 +139,7 @@ def _collect_css_syntax_errors(nodes: list) -> list[str]:
             errors.extend(_collect_css_syntax_errors(node.value))
         elif node_type == "function":
             errors.extend(_collect_css_syntax_errors(node.arguments))
-        elif node_type in ("() block", "[] block", "{} block"):
+        elif node_type in ("() block", "[] block", "{} block") and node.content is not None:
             errors.extend(_collect_css_syntax_errors(node.content))
     return errors
 
@@ -584,15 +584,25 @@ class ProjectService(object):
             state_key = remapped
         return automaton.get_state(state_key)
 
-    def get_automaton_and_state(self, project_name: str) -> tuple[Automaton, State]:
-        """`project_name`'s own *published* Automaton paired with its
-        current State — never the in-progress draft. Raises ValueError
-        when `project_name` has no published revision yet."""
+    def get_published_revision(self, project_name: str) -> int:
         published_revision = self._db.get_project_published_revision(project_name)
         if published_revision is None:
             raise ValueError(f"Project '{project_name}' has never been published.")
-        automaton = self._load_project_at_revision(project_name, published_revision)
-        return automaton, self._resolve_state(project_name, automaton, type='live')
+        return published_revision
+
+    def get_draft_revision(self, project_name: str) -> int:
+        return self._db.get_project_revision(project_name)
+
+    def get_automaton_and_state(self, project_name: str, type: str = 'live') -> tuple[Automaton, State]:
+        """`project_name`'s own Automaton paired with its current State —
+        `type='live'` (default) resolves the *published* revision, raising
+        ValueError when `project_name` has no published revision yet;
+        `type='test'` resolves the in-progress draft instead, published or
+        not — needed so a "Test" session stays creatable against a project
+        that's never been published yet."""
+        revision = self.get_published_revision(project_name) if type == 'live' else self.get_draft_revision(project_name)
+        automaton = self._load_project_at_revision(project_name, revision)
+        return automaton, self._resolve_state(project_name, automaton, type=type)
 
     def get_active_automaton_and_state(self) -> tuple[Automaton, State]:
         """The active project's published automaton and state — never the
@@ -630,19 +640,6 @@ class ProjectService(object):
             return None
         automaton = self._load_project_at_revision(project_name, session["project_revision"])
         return automaton, self._resolve_state(project_name, automaton, session_id=session["id"])
-
-    def get_draft_automaton_and_state(self, project_name: str) -> tuple[Automaton, State]:
-        """Like get_automaton_and_state, but the in-progress draft rather
-        than published-only — needed so a "Test" session stays creatable
-        against a project that's never been published yet. Takes
-        `project_name` explicitly (the embedded "Test" chat's own URL
-        already carries it) rather than resolving it off the
-        active-project pointer — that pointer is keyed per Session().user
-        and can easily be unset or pointing elsewhere for whoever's
-        making this call, even though the URL already says exactly which
-        project this is about."""
-        automaton = self._load_project(project_name)
-        return automaton, self._resolve_state(project_name, automaton, type='test')
 
     def apply_manual_action(self, action_name: str, session_id: int) -> tuple[StatePayload, Action, str]:
         """Applies a manual (button) action and returns the destination
@@ -926,6 +923,7 @@ class ProjectService(object):
             # sessions.json fails the whole upload rather than partially
             # succeeding. Actually imported only once the project commits below.
             raw_sessions = files.pop(SESSIONS_EXPORT_FILENAME, None)
+            assert not isinstance(raw_sessions, bytes)  # .json is never in IMAGE_EXTENSIONS, always read as text above
             sessions_to_import = self._parse_sessions_export(raw_sessions)
             new_automaton, to_persist = self._prepare_project_update(project_name, files)
         except (zipfile.BadZipFile, ValueError) as exc:

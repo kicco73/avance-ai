@@ -23,6 +23,7 @@ from chat.errors import ChatServiceError
 from tracking.metadata_handler import MetadataHandler
 from chat.session_manager import ChatSessionManager
 from chat.session_summary_manager import SessionSummaryManager
+from chat.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
 from jobs import JobQueue
 from tracking.tracking_engine import DbTrackingSink, TrackingEngine
 from tracking.turn_callbacks import OnMetadata
@@ -138,6 +139,23 @@ class ChatService(object):
 		except ValueError as exc:
 			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 
+	def _resolve_or_create_session_of_type(
+		self, strategy: SessionTypeStrategy, project_name: str, session_id: int | None
+	) -> dict:
+		try:
+			# No active session means a new one is about to be created —
+			# the moment the previously active one (if any) is discovered closed.
+			if strategy.type_name == 'live' and self._session_manager.get_active_session(self._username, project_name) is None:
+				self._session_summary_manager.check_for_closed_sessions(self._username, project_name)
+			automaton, state = self._project_service.get_automaton_and_state(project_name, type=strategy.type_name)
+			session = self._session_manager.resolve_or_create_session(
+				strategy, self._project_service, self._username, project_name, session_id, automaton, state.key
+			)
+		except ValueError as exc:
+			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
+		automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
+		return {**self._session_payload(session, active=True), "state": automaton.get_state_payload(state)}
+
 	def get_or_create_current_session(self, session_id: int | None) -> dict:
 		"""Bootstrap for a client with no (or a possibly-stale) session_id:
 		resolves or creates the one session currently writable for the
@@ -146,72 +164,46 @@ class ChatService(object):
 		is_paused, paused_reason = self._project_service.get_project_availability(project_name)
 		if is_paused:
 			return {"paused": True, "paused_reason": paused_reason}
-		try:
-			# No active session means a new one is about to be created —
-			# the moment the previously active one (if any) is discovered closed.
-			if self._session_manager.get_active_session(self._username, project_name) is None:
-				self._session_summary_manager.check_for_closed_sessions(self._username, project_name)
-			_, state = self._project_service.get_active_automaton_and_state()
-			session = self._session_manager.get_or_create_current_session(
-				self._username, project_name, session_id, state.key
-			)
-		except ValueError as exc:
-			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
-		automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
-		# Always the active one by construction — see
-		# ChatSessionManager.get_or_create_current_session.
-		return {**self._session_payload(session, active=True), "state": automaton.get_state_payload(state)}
+		return self._resolve_or_create_session_of_type(get_session_type_strategy('live'), project_name, session_id)
 
 	def get_or_create_current_draft_session(self, session_id: int | None, project_name: str) -> dict:
 		"""Like get_or_create_current_session, but for `project_name`'s own
 		*draft* — the embedded "Test" chat is the one place a session is
 		allowed to exist against an unpublished revision. `project_name`
-		comes from the URL, never the active-project pointer — see
-		ProjectService.get_draft_automaton_and_state for why."""
-		try:
-			_, state = self._project_service.get_draft_automaton_and_state(project_name)
-			session = self._session_manager.get_or_create_current_draft_session(
-				self._username, project_name, session_id, state.key
-			)
-		except ValueError as exc:
-			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
-		automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
-		return {**self._session_payload(session, active=True), "state": automaton.get_state_payload(state)}
+		comes from the URL, never the active-project pointer."""
+		return self._resolve_or_create_session_of_type(get_session_type_strategy('test'), project_name, session_id)
 
-	def create_session(self) -> dict:
-		"""Explicit "new session" action: starts a fresh session, which
-		immediately becomes the active project's writable one, recorded
-		as starting at the automaton's initial state, not wherever the shared position sits."""
-		project_name = self._active_project_name
+	def _create_session_of_type(self, strategy: SessionTypeStrategy, project_name: str) -> dict:
 		try:
-			automaton, _ = self._project_service.get_active_automaton_and_state()
+			automaton, state = self._project_service.get_automaton_and_state(project_name, type=strategy.type_name)
+			current_state = state.key if strategy.type_name == 'live' else None
 			session = self._session_manager.create_session(
-				self._username, project_name, automaton.init_action.target
+				strategy, self._project_service, self._username, project_name, automaton, current_state
 			)
 		except ValueError as exc:
 			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
-		# "on-enter": a new session enters init_action.target *through*
+		# "on-enter": a new session enters its starting state *through*
 		# init_action itself — the same wire key every other real
 		# transition reports, just for init_action instead of a regular Action.
 		return {**self._session_payload(session, active=True), "on-enter": automaton.init_action.on_enter}
 
+	def create_session(self) -> dict:
+		"""Explicit "new session" action: starts a fresh session, which
+		immediately becomes the active project's writable one, recorded as
+		starting at the automaton's current state — wherever the shared
+		position sits right now, not necessarily the initial one."""
+		return self._create_session_of_type(get_session_type_strategy('live'), self._active_project_name)
+
 	def create_draft_session(self, project_name: str) -> dict:
 		"""Like create_session, but against `project_name`'s own current
-		*draft* revision — the embedded "Test" chat is the only caller.
-		`project_name` comes from the URL, never the active-project
-		pointer — see ProjectService.get_draft_automaton_and_state for why."""
-		try:
-			automaton, _ = self._project_service.get_draft_automaton_and_state(project_name)
-			session = self._session_manager.create_draft_session(
-				self._username, project_name, automaton.init_action.target
-			)
-		except ValueError as exc:
-			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
-		return {**self._session_payload(session, active=True), "on-enter": automaton.init_action.on_enter}
+		*draft* revision, always starting fresh from the automaton's own
+		initial state — the embedded "Test" chat is the only caller.
+		`project_name` comes from the URL, never the active-project pointer."""
+		return self._create_session_of_type(get_session_type_strategy('test'), project_name)
 
 	def reset_test_sessions(self, project_name: str) -> dict:
 		self._project_service.reset_test_sessions(project_name)
-		automaton, state = self._project_service.get_draft_automaton_and_state(project_name)
+		automaton, state = self._project_service.get_automaton_and_state(project_name, type='test')
 		return {**Automaton.get_state_payload(state), "on-enter": automaton.init_action.on_enter}
 
 	def _list_sessions_by_type(self, project_name: str, type: str | tuple[str, ...], active_type: str) -> list[dict]:

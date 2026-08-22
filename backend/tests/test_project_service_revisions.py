@@ -98,7 +98,7 @@ def test_get_active_automaton_and_state_uses_the_published_revision_not_the_draf
 def test_get_draft_automaton_and_state_works_for_a_never_published_project(db, project_service):
     _save_index_yml(db, "a")
 
-    automaton, state = project_service.get_draft_automaton_and_state(PROJECT_NAME)
+    automaton, state = project_service.get_automaton_and_state(PROJECT_NAME, type='test')
 
     assert set(automaton.states) == {"", "a"}
     assert state.key == "a"
@@ -109,7 +109,7 @@ def test_get_draft_automaton_and_state_sees_the_in_progress_draft(db, project_se
     db.publish_project(PROJECT_NAME)
     _save_index_yml(db, "b")
 
-    automaton, _ = project_service.get_draft_automaton_and_state(PROJECT_NAME)
+    automaton, _ = project_service.get_automaton_and_state(PROJECT_NAME, type='test')
 
     assert set(automaton.states) == {"", "b"}
 
@@ -118,7 +118,8 @@ def test_get_automaton_and_state_for_session_uses_that_sessions_own_pinned_revis
     _save_index_yml(db, "a")
     db.publish_project(PROJECT_NAME)  # revision 0
     old_session_id = db.create_chat_session(
-        username=Session().user, project_name=PROJECT_NAME, start_state="a",
+        username=Session().user, project_name=PROJECT_NAME,
+        revision=db.get_project_published_revision(PROJECT_NAME), start_state="a",
     )
 
     # A later edit + publish moves published_revision ahead — the old
@@ -136,7 +137,8 @@ def test_get_automaton_and_state_for_session_uses_that_sessions_own_pinned_revis
     # revision instead — proving the difference is genuinely per-session,
     # not some other global effect.
     new_session_id = db.create_chat_session(
-        username=Session().user, project_name=PROJECT_NAME, start_state="b",
+        username=Session().user, project_name=PROJECT_NAME,
+        revision=db.get_project_published_revision(PROJECT_NAME), start_state="b",
     )
     new_automaton, new_state = project_service.get_automaton_and_state_for_session(new_session_id)
     assert set(new_automaton.states) == {"", "b"}
@@ -145,8 +147,9 @@ def test_get_automaton_and_state_for_session_uses_that_sessions_own_pinned_revis
 
 def test_get_automaton_and_state_for_session_works_for_a_draft_session_too(db, project_service):
     _save_index_yml(db, "a")
-    draft_session_id = db.create_draft_chat_session(
-        username=Session().user, project_name=PROJECT_NAME, start_state="a",
+    draft_session_id = db.create_chat_session(
+        username=Session().user, project_name=PROJECT_NAME,
+        revision=db.get_project_revision(PROJECT_NAME), start_state="a", type="test",
     )
 
     automaton, state = project_service.get_automaton_and_state_for_session(draft_session_id)
@@ -164,12 +167,14 @@ def test_get_automaton_and_state_for_session_does_not_leak_a_native_transition_i
     _save_two_state_index_yml(db)
     db.publish_project(PROJECT_NAME)
     native_session_id = db.create_chat_session(
-        username=Session().user, project_name=PROJECT_NAME, start_state="a",
+        username=Session().user, project_name=PROJECT_NAME,
+        revision=db.get_project_published_revision(PROJECT_NAME), start_state="a",
     )
     db.save_transition("a", "go", "b", native_session_id, transition_log_level="INFO")
 
-    test_session_id = db.create_draft_chat_session(
-        username=Session().user, project_name=PROJECT_NAME, start_state="a",
+    test_session_id = db.create_chat_session(
+        username=Session().user, project_name=PROJECT_NAME,
+        revision=db.get_project_revision(PROJECT_NAME), start_state="a", type="test",
     )
 
     _, state = project_service.get_automaton_and_state_for_session(test_session_id)
@@ -180,13 +185,15 @@ def test_get_automaton_and_state_for_session_does_not_leak_a_native_transition_i
 def test_get_automaton_and_state_for_session_does_not_leak_a_test_transition_into_a_native_session(db, project_service):
     _save_two_state_index_yml(db)
     db.publish_project(PROJECT_NAME)
-    test_session_id = db.create_draft_chat_session(
-        username=Session().user, project_name=PROJECT_NAME, start_state="a",
+    test_session_id = db.create_chat_session(
+        username=Session().user, project_name=PROJECT_NAME,
+        revision=db.get_project_revision(PROJECT_NAME), start_state="a", type="test",
     )
     db.save_transition("a", "go", "b", test_session_id, transition_log_level="INFO")
 
     native_session_id = db.create_chat_session(
-        username=Session().user, project_name=PROJECT_NAME, start_state="a",
+        username=Session().user, project_name=PROJECT_NAME,
+        revision=db.get_project_published_revision(PROJECT_NAME), start_state="a",
     )
 
     _, state = project_service.get_automaton_and_state_for_session(native_session_id)

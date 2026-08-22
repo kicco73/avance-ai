@@ -16,51 +16,19 @@ _DEFAULT_OPEN_WINDOW_MINUTES = 60.0
 class SessionMixin:
 
     def create_chat_session(
-        self, username: str, project_name: str,
+        self, username: str, project_name: str, revision: int, *,
         datetime_start: datetime | None = None, datetime_end: datetime | None = None,
         start_state: str | None = None, end_state: str | None = None,
         type: str = 'live', title: str | None = None,
     ) -> int:
-        """A real session — always stamped with whatever's published
-        right now, never a revision nobody's published yet. The embedded
-        "Test" chat calls create_draft_chat_session instead."""
-        project = Project.get_or_none(Project.name == project_name)
-        if project is None:
+        """`revision` arrives already resolved by the caller (see
+        chat.session_type_strategy.SessionTypeStrategy.revision_for) —
+        published for a 'live' session, draft for a 'test' one."""
+        if Project.get_or_none(Project.name == project_name) is None:
             raise ValueError(f"Project '{project_name}' does not exist.")
-        if project.published_revision is None:
-            raise ValueError(f"Project '{project_name}' has never been published — cannot create a chat session.")
-        return self._create_chat_session_row(
-            username, project_name, project.published_revision,
-            datetime_start=datetime_start, datetime_end=datetime_end,
-            start_state=start_state, end_state=end_state, type=type, title=title,
-        )
-
-    def create_draft_chat_session(
-        self, username: str, project_name: str,
-        datetime_start: datetime | None = None, datetime_end: datetime | None = None,
-        start_state: str | None = None, end_state: str | None = None,
-        type: str = 'test', title: str | None = None,
-    ) -> int:
-        """Like create_chat_session, but always stamped with the
-        project's current *draft* revision — published or not.
-        `type='test'` by default so it's never mistaken for a real session."""
-        project = Project.get_or_none(Project.name == project_name)
-        if project is None:
-            raise ValueError(f"Project '{project_name}' does not exist.")
-        return self._create_chat_session_row(
-            username, project_name, self._current_revision(project_name),
-            datetime_start=datetime_start, datetime_end=datetime_end,
-            start_state=start_state, end_state=end_state, type=type, title=title,
-        )
-
-    def _create_chat_session_row(
-        self, username: str, project_name: str, project_revision: int, *,
-        datetime_start: datetime | None, datetime_end: datetime | None,
-        start_state: str | None, end_state: str | None, type: str, title: str | None,
-    ) -> int:
         session = ChatSession.create(
             username=username, project_name=project_name, type=type, title=title,
-            project_revision=project_revision,
+            project_revision=revision,
             datetime_start=datetime_start, datetime_end=datetime_end,
             start_state=start_state, end_state=end_state,
         )

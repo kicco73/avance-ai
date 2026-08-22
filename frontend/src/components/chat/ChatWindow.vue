@@ -378,13 +378,15 @@ watch(
 }
 
 /* Overlays the chat rather than sitting in the flex flow — opening it
-   must never resize/reflow the chat pane underneath. */
+   must never resize/reflow the chat pane underneath. z-index above
+   App.vue's .profile-menu-overlay/.settings-menu-overlay (30): open,
+   this panel must cover those fixed buttons, never sit under them. */
 .sessions-panel-wrap {
   position: absolute;
   top: 0;
   left: 0;
   bottom: 0;
-  z-index: 20;
+  z-index: 35;
   display: flex;
   flex-direction: row;
   min-width: 0;
