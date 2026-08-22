@@ -111,24 +111,26 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
-/* Padding matches ProjectsMenu.vue's .projects-btn (0.4rem top/bottom)
-   so both buttons compute to the same height via inherited line-height,
-   without hardcoding a pixel value. */
+/* Matches ChatWindow.vue's .sessions-reopen-btn exactly — both are
+   overlay icon buttons on the main chat screen, semi-transparent until
+   hovered rather than always fully opaque. */
 .settings-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.4rem;
+  width: 2rem;
+  height: 2rem;
   border-radius: 6px;
   border: 1px solid #4a6fa5;
   background: white;
   color: #4a6fa5;
   cursor: pointer;
+  opacity: 0.35;
+  transition: opacity 0.15s ease;
 }
 
 .settings-btn:hover {
-  background: #4a6fa5;
-  color: white;
+  opacity: 1;
 }
 
 .settings-panel {

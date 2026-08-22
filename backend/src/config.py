@@ -311,7 +311,9 @@ class AppConfig:
 
         # Not provider-specific — needed regardless of which auth provider
         # actually authenticated the user.
-        self.auth_jwt_secret = self._require_str(raw, "auth-service", "jwt-secret", path)
+        self.auth_token_ttl_in_hours = self._get_optional_positive_int(
+            raw, "auth-service", "token-ttl-in-hours", path, default=24 * 7
+        )
         self.auth_providers = self._parse_auth_providers(raw, path)
 
 

@@ -109,7 +109,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     # No real providers: this app fixture never goes through AuthMiddleware
     # (that's only wired in main.py's create_app(), not here) or exercises
     # /api/auth/*, so nothing needs a real Google client id to resolve.
-    auth_service = AuthService(app_db, "test-jwt-secret", [])
+    auth_service = AuthService(app_db, [], token_ttl_in_hours=24 * 7)
 
     fastapi_app = FastAPI(title="Avance State Engine (test)")
     register_error_handlers(fastapi_app)

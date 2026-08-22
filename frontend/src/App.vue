@@ -1,11 +1,9 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import ChatWindow from './components/chat/ChatWindow.vue'
-import StateBar from './components/StateBar.vue'
 import EditProjectView from './components/project/edit/EditProjectView.vue'
 import LabelProjectView from './components/project/label/LabelProjectView.vue'
 import LoginView from './components/LoginView.vue'
-import ProjectsMenu from './components/ProjectsMenu.vue'
 import SettingsMenu from './components/settings/SettingsMenu.vue'
 import ManageProjectsView from './components/settings/ManageProjectsView.vue'
 import ManageUsersView from './components/settings/ManageUsersView.vue'
@@ -31,14 +29,11 @@ import { clearApiError } from './errorStore.js'
 import { needsLogin, requireLogin } from './authStore.js'
 import { confirmDialog, infoDialog } from './dialogStore.js'
 import {
-  state,
   setCapabilities,
   handleStateChange,
   loadMessages,
   loadAiModels,
-  clearChatUi,
-  projectPaused,
-  projectPausedReason
+  clearChatUi
 } from './chatStore.js'
 
 const showEditProject = ref(false)
@@ -48,7 +43,7 @@ const benchmarkProjectName = ref(null)
 const showManageProjects = ref(false)
 const showManageUsers = ref(false)
 const modelUploadInput = ref(null)
-const projectsMenu = ref(null)
+const chatWindowRef = ref(null)
 const manageProjectsView = ref(null)
 
 // Initial-boot backend readiness gate — entirely separate from the shared
@@ -166,7 +161,7 @@ function triggerModelUpload() {
 // the opening message via REST, regardless of chat transport.
 async function refreshStateAndProjects() {
   const newState = await getState()
-  projectsMenu.value?.refresh()
+  chatWindowRef.value?.refreshProjectsMenu()
   manageProjectsView.value?.refresh()
   handleStateChange(newState)
   await loadMessages()
@@ -402,14 +397,16 @@ onBeforeUnmount(() => {
   <SplashScreen v-else-if="bootStatus === 'failed'" variant="failed" @retry="startBootSequence" />
 
   <div v-else-if="bootStatus === 'ready'" class="app">
-    <header class="topbar">
-      <StateBar :state="state" />
-      <div class="topbar-actions">
-        <ProjectsMenu
-          ref="projectsMenu"
-          @select="handleProjectSwitch"
-          @download="handleModelDownload"
-        />
+    <ErrorBanner />
+
+    <div class="app-body">
+      <ChatWindow
+        ref="chatWindowRef"
+        @project-select="handleProjectSwitch"
+        @project-download="handleModelDownload"
+      />
+
+      <div class="settings-menu-overlay">
         <SettingsMenu
           @manage-projects="showManageProjects = true"
           @manage-users="showManageUsers = true"
@@ -418,22 +415,15 @@ onBeforeUnmount(() => {
           @download-backup="handleDownloadBackup"
           @restore-backup="handleRestoreBackup"
         />
-        <input
-          ref="modelUploadInput"
-          type="file"
-          accept=".zip,.yml,.yaml"
-          class="upload-model-input"
-          @change="handleModelUploadChange"
-        />
       </div>
-    </header>
 
-    <ErrorBanner />
-
-    <div class="app-body">
-      <SplashScreen v-if="projectPaused" variant="paused" :reason="projectPausedReason" embedded />
-      <SplashScreen v-else-if="!state?.key" variant="no-project" embedded />
-      <ChatWindow v-else />
+      <input
+        ref="modelUploadInput"
+        type="file"
+        accept=".zip,.yml,.yaml"
+        class="upload-model-input"
+        @change="handleModelUploadChange"
+      />
     </div>
 
     <EditProjectView
@@ -470,21 +460,26 @@ onBeforeUnmount(() => {
   </div>
 </template>
 
+<style>
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+#app {
+  height: 100%;
+}
+</style>
+
 <style scoped>
 .app {
   display: flex;
   flex-direction: column;
   height: 100vh;
   font-family: system-ui, -apple-system, sans-serif;
-}
-
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 1rem;
-  background: #f5f5f7;
-  border-bottom: 1px solid #ddd;
 }
 
 .app-body {
@@ -494,15 +489,14 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-.topbar-actions {
-  display: flex;
-  gap: 0.5rem;
-  /* StateBar renders nothing at all when there's no active project (see
-     its own v-if="state?.key") — margin-left: auto keeps this pinned to
-     the right on its own, rather than relying on .topbar's
-     justify-content: space-between, which only works with two flex
-     children and collapses to the left with just this one. */
-  margin-left: auto;
+/* Fixed rather than absolute: the settings button/dropdown must never
+   be clipped by .app-body's own overflow: hidden (which exists to
+   contain the chat's internal scrolling, not this overlay). */
+.settings-menu-overlay {
+  position: fixed;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 30;
 }
 
 .upload-model-input {

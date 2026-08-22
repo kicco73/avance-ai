@@ -69,7 +69,7 @@ class Message(BaseModel):
     session = ForeignKeyField(ChatSession, null=False, backref='messages', on_delete='CASCADE')
 
 class User(BaseModel):
-    id = AutoField()
+    id = CharField(primary_key=True)
     # "google", etc. — which AuthProvider verified this account. Nullable
     # along with provider_user_id/name: UserMixin's get_active_project_name/
     # set_active_project_name/clear_active_project_name still take a bare
@@ -228,5 +228,9 @@ class History(BaseModel):
 
     class Meta:
         indexes = ((('user_id', 'project_name', 'archive_name', 'kind', 'seq'), True),)
+
+class Settings(BaseModel):
+    key = CharField(primary_key=True)
+    value = CharField()
 
 DEFAULT_USER = "user"

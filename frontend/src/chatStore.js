@@ -203,8 +203,8 @@ export function handleStateChange(newState, onEnter) {
 }
 
 // A server-pushed cross-project wake-up — can land for a project other
-// than the one currently open. Only applies state.value/StateBar when
-// the notification is about the currently displayed project.
+// than the one currently open. Only applies state.value when the
+// notification is about the currently displayed project.
 export function handleNotification({ project_name, state: newState, 'on-enter': onEnter }) {
   if (project_name === currentProjectName.value) {
     handleStateChange(newState, onEnter)
@@ -661,7 +661,7 @@ export async function handleNewSession() {
   // always supersedes the current one, not just adds to it.
   const ok = await confirmDialog({
     title: 'Start new session',
-    body: 'Start a new session? This will close the current session for this project — only one can be active at a time.',
+    body: 'Start a new session? This will close the current session — only one can be active at a time.',
     okLabel: 'Start'
   })
   if (!ok) return

@@ -14,6 +14,10 @@ const props = defineProps({
   // just that row's own delete button. Ignored when allowDelete is false.
   deletingSessionId: { type: [Number, String], default: null },
   allowCreate: { type: Boolean, default: true },
+  // True when there's no project to start a session against (e.g. no
+  // active project) — the button stays visible but inert, same pattern
+  // as ProjectsMenu.vue's own grayed-out state.
+  createDisabled: { type: Boolean, default: false },
   allowDelete: { type: Boolean, default: true },
   // When true, only an imported session is ever deletable, never a
   // native one.
@@ -28,6 +32,10 @@ const props = defineProps({
   // The parent owns the actual width/layout collapse; this only owns its
   // own header toggle button and hiding its content while collapsed.
   collapsed: { type: Boolean, default: false },
+  // True when the parent renders its own close control elsewhere (e.g.
+  // ChatWindow.vue's, next to its ProjectsMenu row) instead of this
+  // component's own header toggle button.
+  hideCollapseToggle: { type: Boolean, default: false },
   // A footer button to download every session of this project as one
   // .json file.
   allowDownloadAll: { type: Boolean, default: false },
@@ -81,24 +89,20 @@ const {
     <span v-if="!collapsed" class="sessions-panel-title">Sessions</span>
     <div style="display: flex">
 
-    <div v-if="!collapsed && (allowCreate || allowImport)" class="sessions-panel-header-actions">
-      <button v-if="allowImport" type="button" class="sessions-panel-icon-btn" title="Import transcript(s) — .txt or a 'Download all' .json export" @click="triggerImport">
+    <div v-if="!collapsed && allowImport" class="sessions-panel-header-actions">
+      <button type="button" class="sessions-panel-icon-btn" title="Import transcript(s) — .txt or a 'Download all' .json export" @click="triggerImport">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
           <path d="M12 3l4 4h-3v6h-2V7H8l4-4zM5 19v-6h2v6h10v-6h2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z" />
         </svg>
       </button>
-      <input v-if="allowImport" ref="importInput" type="file" accept=".txt,text/plain,.json,application/json" multiple class="sessions-panel-import-input" @change="onImportFileChosen" />
-      <button v-if="allowCreate" type="button" class="sessions-panel-icon-btn" title="New session" @click="emit('create')">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-          <path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z" />
-        </svg>
-      </button>
+      <input ref="importInput" type="file" accept=".txt,text/plain,.json,application/json" multiple class="sessions-panel-import-input" @change="onImportFileChosen" />
     </div>
     <button
+      v-if="!hideCollapseToggle"
       class="collapse-toggle-btn"
       :title="collapsed ? 'Expand sessions' : 'Collapse sessions'"
       @click="emit('update:collapsed', !collapsed)"
-    >{{ collapsed ? '◂' : '▸' }}</button>
+    >{{ collapsed ? '◂' : '✕' }}</button>
   </div>
 
   </div>
@@ -146,6 +150,9 @@ const {
       </button>
     </li>
   </ul>
+  <button v-if="allowCreate" class="sessions-panel-add-btn" :disabled="createDisabled" @click="emit('create')">
+    New session
+  </button>
   <button v-if="allowDownloadAll" class="sessions-panel-download-btn" :disabled="downloadingAll" @click="emit('download-all')">
     {{ downloadingAll ? 'Downloading…' : 'Download all' }}
   </button>
@@ -235,6 +242,27 @@ const {
   overflow-y: auto;
   flex: 1;
   min-height: 0;
+}
+
+.sessions-panel-add-btn {
+  flex-shrink: 0;
+  margin: 0.5rem 0.9rem 0.9rem;
+  padding: 0.5rem;
+  border-radius: 6px;
+  border: 1px solid #4a6fa5;
+  background: white;
+  color: #4a6fa5;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.sessions-panel-add-btn:hover:not(:disabled) {
+  background: #eef2f9;
+}
+
+.sessions-panel-add-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .sessions-panel-download-btn {

@@ -35,6 +35,7 @@ async function loadProjects() {
 }
 
 async function toggle() {
+  if (projects.value.length === 0) return
   if (open.value) {
     open.value = false
     return
@@ -69,10 +70,15 @@ onBeforeUnmount(() => {
   <div class="projects-menu" ref="rootEl">
     <button
       class="projects-btn"
+      :class="{ 'projects-btn-disabled': projects.length === 0 }"
+      :disabled="projects.length === 0"
       :title="activeProjectLabel ?? 'Projects'"
       @click="toggle"
     >
-      {{ activeProjectLabel ?? 'Projects' }}
+      <span class="projects-btn-label">{{ activeProjectLabel ?? 'Projects' }}</span>
+      <svg class="projects-btn-chevron" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+        <path d="M7 10l5 5 5-5z" />
+      </svg>
     </button>
 
     <div v-if="open" class="projects-panel">
@@ -110,25 +116,44 @@ onBeforeUnmount(() => {
 }
 
 .projects-btn {
-  padding: 0.4rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.4rem 0.7rem;
   border-radius: 6px;
   border: 1px solid #4a6fa5;
   background: white;
   color: #4a6fa5;
   cursor: pointer;
-  max-width: 160px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
   /* Pinned to 18px to match .settings-btn's icon height exactly — a
      button's text content doesn't reliably compute to the same line box
      across fonts, so this keeps both buttons' total heights aligned. */
   line-height: 18px;
 }
 
+.projects-btn-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.projects-btn-chevron {
+  flex-shrink: 0;
+}
+
 .projects-btn:hover {
   background: #4a6fa5;
   color: white;
+}
+
+.projects-btn-disabled,
+.projects-btn-disabled:hover {
+  border-color: #ccc;
+  background: #f0f0f0;
+  color: #999;
+  cursor: default;
 }
 
 .projects-panel {

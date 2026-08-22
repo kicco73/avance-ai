@@ -51,7 +51,8 @@ const emit = defineEmits(['retry'])
       </template>
 
       <template v-else>
-        <p class="splash-message">Select a project from the menu to get started.</p>
+        <p class="splash-message">No project is currently available.</p>
+        <p class="splash-message">Please contact your admin to fix this.</p>
       </template>
     </div>
   </div>

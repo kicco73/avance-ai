@@ -8,7 +8,7 @@ from http import HTTPStatus
 
 from fastapi import HTTPException, Response
 
-from auth.auth_service import SESSION_COOKIE_NAME, TOKEN_TTL, AuthService
+from auth.auth_service import SESSION_COOKIE_NAME, AuthService
 from schemas import LoginRequest
 from session import Session
 
@@ -36,7 +36,7 @@ class AuthController(BaseController):
             httponly=True,
             secure=True,
             samesite="lax",
-            max_age=int(TOKEN_TTL.total_seconds()),
+            max_age=int(self.auth_service.token_ttl.total_seconds()),
         )
         return {"success": True}
 

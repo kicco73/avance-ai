@@ -23,15 +23,15 @@ class UserMixin:
 
     def get_or_create_user(self, provider: str, provider_user_id: str, email: str, name: str) -> User:
         user, _ = User.get_or_create(
-            provider=provider, provider_user_id=provider_user_id,
-            defaults={"email": email, "name": name},
+            id=email,
+            defaults={"provider": provider, "provider_user_id": provider_user_id, "email": email, "name": name},
         )
         return user
 
-    def get_user_by_id(self, user_id: int) -> dict | None:
+    def get_user_by_id(self, user_id: str) -> dict | None:
         """AuthService.verify_token's own lookup: the JWT payload only
-        carries user_id, so the identity it needs back out (provider_
-        user_id/email/name) has to come from here."""
+        carries user_id (the user's email), so the identity it needs back
+        out (provider_user_id/email/name) has to come from here."""
         user = User.get_or_none(User.id == user_id)
         if user is None:
             return None
@@ -57,7 +57,7 @@ class UserMixin:
             row.active_project = project_name
             row.save()
         else:
-            User.create(email=user, active_project=project_name)
+            User.create(id=user, email=user, active_project=project_name)
 
     def clear_active_project_name(self, user: str = DEFAULT_USER) -> None:
         User.update(active_project=None).where(User.email == user).execute()
