@@ -36,7 +36,8 @@ import {
   handleStateChange,
   loadMessages,
   loadAiModels,
-  clearChatUi
+  clearChatUi,
+  testModeProjectName
 } from './chatStore.js'
 
 const showEditProject = ref(false)
@@ -257,6 +258,8 @@ function handleManageProjectsChat(projectName) {
 function closeEditProject() {
   showEditProject.value = false
   showManageProjects.value = true
+  testModeProjectName.value = null
+  loadMessages()
 }
 
 function closeBenchmarkProject() {
@@ -413,6 +416,7 @@ onBeforeUnmount(() => {
 
     <div class="app-body">
       <ChatWindow
+        v-if="!showEditProject"
         ref="chatWindowRef"
         @project-select="handleProjectSwitch"
         @project-download="handleModelDownload"

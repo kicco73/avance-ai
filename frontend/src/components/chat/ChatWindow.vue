@@ -56,7 +56,8 @@ import {
   toggleSpokenText,
   applyAspect,
   projectPaused,
-  projectPausedReason
+  projectPausedReason,
+  clearChatUi
 } from '../../chatStore.js'
 
 const emit = defineEmits(['project-select', 'project-download'])
@@ -142,6 +143,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('mousemove', onSessionsDrag)
   window.removeEventListener('mouseup', stopSessionsDrag)
   if (props.themeMode === 'manual') applyAspect.value = true
+  clearChatUi()
 })
 
 function submit() {
