@@ -11,6 +11,7 @@ from automaton.automaton import Automaton
 from automaton.automaton_builder import AutomatonBuilder
 from ai.ai_service import AiService
 from db import Db
+from db.benchmark_runs import _USERNAME_UNSPECIFIED
 from jobs import JobQueue, JobWork, OnProgress
 from metrics.benchmark_errors import BenchmarkServiceError
 from metrics.benchmark_processor import BenchmarkProcessor
@@ -60,7 +61,7 @@ class BenchmarkRunService:
         self._persisted_jobs = persisted_jobs
         self._ephemeral_jobs = ephemeral_jobs
 
-    def create_run(self, username: str, project_name: str, session_id: int | None, strategy: str) -> dict:
+    def create_run(self, username: str | None, project_name: str, session_id: int | None, strategy: str) -> dict:
         if strategy not in VALID_STRATEGIES:
             raise ValueError(f"Unknown benchmark run strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
 
@@ -88,8 +89,13 @@ class BenchmarkRunService:
             raise BenchmarkServiceError(f"Benchmark run {run_id} not found.", status_code=HTTPStatus.NOT_FOUND)
         return self._merge_with_job(run)
 
-    def list_runs(self, project_name: str, session_id: int | None = None) -> list[dict]:
-        runs = [self._merge_with_job(run) for run in self._db.list_benchmark_runs(project_name, session_id)]
+    def list_runs(
+        self, project_name: str, session_id: int | None = None, username: str | None = _USERNAME_UNSPECIFIED,
+    ) -> list[dict]:
+        runs = [
+            self._merge_with_job(run)
+            for run in self._db.list_benchmark_runs(project_name, session_id, username)
+        ]
         return sorted(runs, key=lambda run: run['created_at'], reverse=True)
 
     def _load_automaton(self, project_name: str) -> Automaton:
@@ -98,7 +104,7 @@ class BenchmarkRunService:
             raise ValueError(f"Project '{project_name}' does not exist or has no index.yml.")
         return AutomatonBuilder().build(decode_text_archives(archives))
 
-    def _resolve_scope(self, username: str, project_name: str, session_id: int | None) -> list[int]:
+    def _resolve_scope(self, username: str | None, project_name: str, session_id: int | None) -> list[int]:
         if session_id is not None:
             return [session_id]
         # type=None: a whole-project run must cover every labeled session,
@@ -191,10 +197,10 @@ class BenchmarkRunService:
         current_run = self._db.get_benchmark_run(run['id'])
         data = build_benchmark_run_data(self._db, current_run)
 
-        if current_run['session_id'] is not None:
+        if current_run['session_id'] is not None or current_run['username'] is None:
             calculator = BenchmarkCalculator.from_data(data)
         else:
-            unfiltered_metrics = BenchmarkCalculator(self._db, run['username'], run['project_name']).default_metrics()
+            unfiltered_metrics = BenchmarkCalculator(self._db, current_run['username'], current_run['project_name']).default_metrics()
             calculator = BenchmarkCalculator.from_data(data, metrics=unfiltered_metrics)
 
         results = [_serialize_metric_result(result) for result in calculator.calculate_all()]
@@ -234,6 +240,44 @@ class BenchmarkRunService:
             kind='state_aggregation', reference_id=None, total=len(sub_run_ids), work=work,
         )
 
+    def start_users_aggregation_job(self, project_name: str, strategy: str) -> int:
+        """The "Users" branch's root aggregation — a simple mean across
+        one whole-project-scope run per user, same ephemeral-job pattern
+        as start_job/_aggregate_signal_accuracy above."""
+        if strategy not in VALID_STRATEGIES:
+            raise ValueError(f"Unknown benchmark run strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
+
+        sessions = self._db.list_chat_sessions(None, project_name, type=None)
+        usernames = sorted({row['username'] for row in sessions if row['labeled']})
+
+        sub_run_ids: list[int] = []
+        for username in usernames:
+            candidates = [
+                run for run in self.list_runs(project_name, None, username) if run['strategy'] == strategy
+            ]
+            fresh = candidates[0] if candidates and not candidates[0]['stale'] else None
+            if fresh is not None:
+                sub_run_ids.append(fresh['id'])
+            else:
+                new_run = self.create_run(username, project_name, None, strategy)
+                sub_run_ids.append(new_run['id'])
+
+        async def work(on_progress: OnProgress) -> tuple[str | None, str | None]:
+            completed = 0
+            for run_id in sub_run_ids:
+                final_run = await self._wait_for_run(run_id)
+                if final_run['status'] != 'completed':
+                    raise RuntimeError(f"Sub-run {run_id} for users aggregation failed: {final_run['error']}")
+                completed += 1
+                on_progress(completed)
+
+            result = self._aggregate_users_mean(sub_run_ids)
+            return None, json.dumps(result)
+
+        return self._ephemeral_jobs.submit(
+            kind='users_aggregation', reference_id=None, total=len(sub_run_ids), work=work,
+        )
+
     def get_job_status(self, job_id: int) -> dict | None:
         return self._ephemeral_jobs.get(job_id)
 
@@ -253,3 +297,25 @@ class BenchmarkRunService:
 
         filtered = tuple(o for o in observations if o.expected_state == state_key)
         return _serialize_metric_result(SignalAccuracyMetric().calculate(filtered))
+
+    def _aggregate_users_mean(self, sub_run_ids: list[int]) -> list[dict]:
+        results_by_name: dict[str, list[dict]] = {}
+        for run_id in sub_run_ids:
+            run = self._db.get_benchmark_run(run_id)
+            for result in run['results'] or []:
+                results_by_name.setdefault(result['name'], []).append(result)
+
+        return [
+            {
+                'name': name,
+                'value': sum(result['value'] for result in results) / len(results),
+                'mean': None,
+                'median': None,
+                'standard_deviation': None,
+                'minimum': None,
+                'maximum': None,
+                'sample_count': sum(result['sample_count'] for result in results),
+                'components': {},
+            }
+            for name, results in results_by_name.items()
+        ]

@@ -131,11 +131,15 @@ def test_get_benchmark_metrics_response_shape(client, hello_project, app_db):
 
     assert response.status_code == 200
     body = response.json()
-    # Always a one_session context — benchmark_stability/benchmark_consistency
-    # are scoped to {all_sessions}, so neither is included here.
+    # This is the frontend's own metric catalog (see MetricService.
+    # get_benchmark_metrics) — every metric belongs here, including
+    # benchmark_stability/benchmark_consistency (scoped to {all_sessions}
+    # in a real run's own results, but that scoping is irrelevant to a
+    # name -> label/description lookup).
     assert {m["name"] for m in body} == {
         "state_accuracy", "state_accuracy_stable", "state_accuracy_transition",
         "signal_accuracy", "transition_responsiveness", "benchmark_accuracy",
+        "benchmark_stability", "benchmark_consistency",
     }
     for metric in body:
         assert set(metric) == {"name", "ui_label", "ui_description", "value", "sample_count"}

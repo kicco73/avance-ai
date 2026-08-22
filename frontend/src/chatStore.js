@@ -62,13 +62,13 @@ export function invalidateSkin() {
   skinVersion.value++
 }
 // Backs both ChatWindow.vue's "auto" mode (App.vue's own widget: always on,
-// this ref is never written there) and its "manual" mode (TestChat.vue,
+// this ref is never written there) and its "manual" mode (RunChat.vue,
 // via its themeMode="manual" prop: ChatWindow.vue itself forces this false
-// on mount so Test starts unskinned, and restores it true on unmount so it
+// on mount so Run starts unskinned, and restores it true on unmount so it
 // never leaks into App.vue's own chat widget, which stays mounted — just
 // visually covered — the whole time EditProjectView's overlay is open, both
 // instances reading the same currentProjectName/currentSessionId). The
-// "Apply aspect" checkbox itself lives in TestChat.vue's toolbar and binds
+// "Apply aspect" checkbox itself lives in RunChat.vue's toolbar and binds
 // straight to this ref — a manual control, not part of the mode plumbing.
 export const applyAspect = ref(true)
 
@@ -658,13 +658,17 @@ export async function handleReset() {
 // button reaches this from either context alike.
 export async function handleNewSession() {
   // Only one session is ever active per project — starting a new one
-  // always supersedes the current one, not just adds to it.
-  const ok = await confirmDialog({
-    title: 'Start new session',
-    body: 'Start a new session? This will close the current session — only one can be active at a time.',
-    okLabel: 'Start'
-  })
-  if (!ok) return
+  // always supersedes the current one, not just adds to it. Test mode's
+  // draft sessions are cheap and disposable, so this confirmation only
+  // guards the real/live session pool.
+  if (testModeProjectName.value == null) {
+    const ok = await confirmDialog({
+      title: 'Start new session',
+      body: 'Start a new session? This will close the current session — only one can be active at a time.',
+      okLabel: 'Start'
+    })
+    if (!ok) return
+  }
   try {
     const session = testModeProjectName.value != null
       ? await postCreateTestSession(testModeProjectName.value)

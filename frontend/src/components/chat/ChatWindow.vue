@@ -6,7 +6,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 //
 // themeMode: 'auto' (default, App.vue's own widget) shows the project's
 // index.css skin the whole time, same as the live chat always has.
-// 'manual' (TestChat.vue) starts unskinned instead and leaves showing it
+// 'manual' (RunChat.vue) starts unskinned instead and leaves showing it
 // up to the shared applyAspect flag/toggle — owned here, not by whichever
 // component happens to pass the prop, so entering/leaving manual mode is
 // always symmetric: onMounted forces it off, onBeforeUnmount always
@@ -134,15 +134,44 @@ function stopSessionsDrag() {
   draggingSessions = false
 }
 
+// Auto-collapses the sessions panel after 5s of no interaction inside it —
+// reset on every mousemove/click/keydown/scroll there (see the template's
+// own listeners on .sessions-panel-wrap), started/stopped by the watch
+// below whenever sessionsPanelOpen itself changes.
+const SESSIONS_PANEL_AUTO_COLLAPSE_MS = 5000
+let sessionsPanelIdleTimer = null
+
+function clearSessionsPanelIdleTimer() {
+  if (sessionsPanelIdleTimer) {
+    clearTimeout(sessionsPanelIdleTimer)
+    sessionsPanelIdleTimer = null
+  }
+}
+
+function resetSessionsPanelIdleTimer() {
+  clearSessionsPanelIdleTimer()
+  if (props.hideSessionsPanel || !sessionsPanelOpen.value) return
+  sessionsPanelIdleTimer = setTimeout(() => {
+    if (sessionsPanelOpen.value) toggleSessionsPanel()
+  }, SESSIONS_PANEL_AUTO_COLLAPSE_MS)
+}
+
+watch(sessionsPanelOpen, (open) => {
+  if (open) resetSessionsPanelIdleTimer()
+  else clearSessionsPanelIdleTimer()
+})
+
 onMounted(() => {
   window.addEventListener('mousemove', onSessionsDrag)
   window.addEventListener('mouseup', stopSessionsDrag)
   if (props.themeMode === 'manual') applyAspect.value = false
+  if (sessionsPanelOpen.value) resetSessionsPanelIdleTimer()
 })
 onBeforeUnmount(() => {
   window.removeEventListener('mousemove', onSessionsDrag)
   window.removeEventListener('mouseup', stopSessionsDrag)
   if (props.themeMode === 'manual') applyAspect.value = true
+  clearSessionsPanelIdleTimer()
   clearChatUi()
 })
 
@@ -237,7 +266,14 @@ watch(
     :data-prev-state="prevStateKey"
   >
     <Transition name="sessions-slide">
-      <div v-if="!hideSessionsPanel && sessionsPanelOpen" class="sessions-panel-wrap">
+      <div
+        v-if="!hideSessionsPanel && sessionsPanelOpen"
+        class="sessions-panel-wrap"
+        @mousemove="resetSessionsPanelIdleTimer"
+        @click="resetSessionsPanelIdleTimer"
+        @keydown="resetSessionsPanelIdleTimer"
+        @scroll.capture="resetSessionsPanelIdleTimer"
+      >
         <div class="sessions-panel" :style="{ width: sessionsWidth + 'px' }">
           <div class="sessions-panel-project-menu">
             <ProjectsMenu

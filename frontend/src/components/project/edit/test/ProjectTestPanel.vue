@@ -1,12 +1,15 @@
 <script setup>
-// "Auto" mode's content, shown when EditProjectView.vue's `autoOpen` is set.
+// "Test" mode's content, shown when EditProjectView.vue's `testOpen` is set.
 // Two columns: TestsTree on the left (Sessions/States), a node's results on
 // the right. Owns all data fetching/launching/polling — TestsTree itself
-// (alongside TestNodeButton, both in this same auto/ folder) stays purely presentational.
+// (alongside TestNodeButton, both in this same test/ folder) stays purely presentational.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import TestsTree from './TestsTree.vue'
+import DocInfoButton from '../../../DocInfoButton.vue'
+import MetricDetail from '../../../inspector/MetricDetail.vue'
 import {
-  getBenchmarkRun, getBenchmarkRuns, getProjectStates, getStateJob, postBenchmarkRun, postStateTest
+  getBenchmarkMetrics, getBenchmarkRun, getBenchmarkRuns, getProjectStates, getStateJob, getUsersAggregationJob,
+  postBenchmarkRun, postStateTest, postUsersAggregation
 } from '../../../../api.js'
 import { loadSessions, sessions, sessionsLoading } from '../../../../chatStore.js'
 
@@ -28,6 +31,30 @@ const strategy = ref('batch')
 const projectStates = ref([])
 const statesLoading = ref(false)
 
+// name -> {ui_label, ui_description} for the fixed core-benchmark-metric
+// registry (state_accuracy, signal_accuracy, ...) — every result row's own
+// `name` below is one of these, resolved for display instead of the raw
+// identifier. Loaded once; this registry is static per backend build, not
+// per-project data.
+const metricDefinitions = ref({})
+
+async function loadMetricDefinitions() {
+  try {
+    const metrics = await getBenchmarkMetrics(props.projectName)
+    metricDefinitions.value = Object.fromEntries(metrics.map((m) => [m.name, m]))
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+function metricLabel(name) {
+  return metricDefinitions.value[name]?.ui_label ?? name
+}
+
+function metricDescription(name) {
+  return metricDefinitions.value[name]?.ui_description ?? null
+}
+
 // Every cache below is keyed by `${strategy}:${nodeId}`, never nodeId
 // alone — turn_by_turn and batch results aren't comparable, so switching
 // strategy must never show the other strategy's cached status/result for
@@ -47,6 +74,11 @@ const nodeLastResult = ref({})
 // nodeLastResult above (null result on failure must stay distinguishable
 // from "never run").
 const nodeError = ref({})
+// users-branch's own most recent aggregation job result — already the
+// per-metric mean-across-users list (see backend _aggregate_users_mean),
+// kept client-side only, same as nodeLastResult/nodeError above.
+const usersAggregateResults = ref({})
+const usersAggregateErrors = ref({})
 // cacheKey -> pending setTimeout id, plain bookkeeping (never rendered).
 const pollTimers = {}
 
@@ -86,7 +118,9 @@ const currentStrategyStatuses = computed(() => {
     if (key.startsWith(prefix)) result[key.slice(prefix.length)] = status
   }
   result['states-branch'] = statesBranchStatus.value
-  result['root'] = aggregateStatus([result['sessions-branch'] ?? 'idle', statesBranchStatus.value])
+  result['root'] = aggregateStatus([
+    result['sessions-branch'] ?? 'idle', statesBranchStatus.value, result['users-branch'] ?? 'idle'
+  ])
   return result
 })
 
@@ -168,7 +202,7 @@ function pollSessionRun(nodeId, runStrategy, key, runId, mirrorLeafNodeIds = [])
   tick()
 }
 
-function pollStateJob(key, jobId) {
+function pollStateJob(key, jobId, runStrategy, mirrorLeafNodeIds = []) {
   clearPoll(key)
   const tick = async () => {
     let job = null
@@ -182,10 +216,45 @@ function pollStateJob(key, jobId) {
       pollTimers[key] = setTimeout(tick, 1000)
       return
     }
-    setStatus(key, statusFromOutcome(job.status, job.error))
+    const outcome = statusFromOutcome(job.status, job.error)
+    setStatus(key, outcome)
+    // A state test replays every session annotated with this state under
+    // the hood (see BenchmarkRunService.start_job) — mirroring its outcome
+    // onto those session leaves the same way activateWholeProjectRun does.
+    mirrorLeafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(runStrategy, leafNodeId), outcome))
     nodeError.value = { ...nodeError.value, [key]: job.status === 'failed' ? job.error : null }
     nodeLastResult.value = {
       ...nodeLastResult.value,
+      [key]: job.result ? JSON.parse(job.result) : null
+    }
+  }
+  tick()
+}
+
+function pollUsersAggregationJob(key, jobId, runStrategy, mirrorLeafNodeIds = []) {
+  clearPoll(key)
+  const tick = async () => {
+    let job = null
+    try {
+      job = await getUsersAggregationJob(props.projectName, jobId)
+    } catch {
+      pollTimers[key] = setTimeout(tick, 1000)
+      return
+    }
+    if (job == null || job.status === 'pending' || job.status === 'running') {
+      pollTimers[key] = setTimeout(tick, 1000)
+      return
+    }
+    const outcome = statusFromOutcome(job.status, job.error)
+    setStatus(key, outcome)
+    // Same mirroring idea as activateWholeProjectRun/pollStateJob: one job
+    // covers every user (and, through them, every annotated session) at
+    // once, so its outcome is the closest thing each of those has to its
+    // own status.
+    mirrorLeafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(runStrategy, leafNodeId), outcome))
+    usersAggregateErrors.value = { ...usersAggregateErrors.value, [key]: job.status === 'failed' ? job.error : null }
+    usersAggregateResults.value = {
+      ...usersAggregateResults.value,
       [key]: job.result ? JSON.parse(job.result) : null
     }
   }
@@ -205,23 +274,28 @@ async function activateSessionLeaf(nodeId, activeStrategy) {
   }
 }
 
-async function activateStateLeaf(nodeId, activeStrategy) {
-  const key = cacheKey(activeStrategy, nodeId)
-  setStatus(key, 'running')
-  try {
-    const stateKey = nodeId.slice('state:'.length)
-    const { job_id } = await postStateTest(props.projectName, stateKey, activeStrategy)
-    pollStateJob(key, job_id)
-  } catch {
-    // already surfaced via apiFetch
-    setStatus(key, 'fail')
-  }
-}
-
 // Every session-leaf nodeId the "Sessions" branch shows — same filter as
 // TestsTree.vue's own annotatedSessions.
 function annotatedSessionNodeIds() {
   return sessions.value.filter((s) => s.has_annotations).map((s) => `session:${s.id}`)
+}
+
+async function activateStateLeaf(nodeId, activeStrategy, mirrorLeafNodeIds = []) {
+  const key = cacheKey(activeStrategy, nodeId)
+  setStatus(key, 'running')
+  // A state test replays every annotated session under the hood (see
+  // BenchmarkRunService.start_job) — mirrored here the same way
+  // activateWholeProjectRun mirrors its own whole-project replay.
+  mirrorLeafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(activeStrategy, leafNodeId), 'running'))
+  try {
+    const stateKey = nodeId.slice('state:'.length)
+    const { job_id } = await postStateTest(props.projectName, stateKey, activeStrategy)
+    pollStateJob(key, job_id, activeStrategy, mirrorLeafNodeIds)
+  } catch {
+    // already surfaced via apiFetch
+    setStatus(key, 'fail')
+    mirrorLeafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(activeStrategy, leafNodeId), 'fail'))
+  }
 }
 
 // The whole-project replay (session_id: null) — same backend run kind as
@@ -246,9 +320,53 @@ async function activateWholeProjectRun(activeStrategy) {
 }
 
 async function activateAllStates(activeStrategy) {
+  const leafNodeIds = annotatedSessionNodeIds()
   await Promise.all(
-    projectStates.value.map((stateKey) => activateStateLeaf(`state:${stateKey}`, activeStrategy))
+    projectStates.value.map((stateKey) => activateStateLeaf(`state:${stateKey}`, activeStrategy, leafNodeIds))
   )
+}
+
+// Every user-leaf nodeId the "Users" branch shows — one per distinct
+// username among annotated sessions, same source annotatedSessionNodeIds
+// uses for its own leaves.
+function annotatedUsernames() {
+  return [...new Set(sessions.value.filter((s) => s.has_annotations).map((s) => s.username))]
+}
+
+// One user's own whole-project-scope run (session_id: null, username
+// given) — independent of the "Users" branch's own aggregation job, same
+// relationship activateSessionLeaf has to activateWholeProjectRun.
+async function activateUserLeaf(nodeId, activeStrategy) {
+  const key = cacheKey(activeStrategy, nodeId)
+  const username = nodeId.slice('user:'.length)
+  setStatus(key, 'running')
+  try {
+    const run = await postBenchmarkRun(props.projectName, null, activeStrategy, username)
+    pollSessionRun(nodeId, activeStrategy, key, run.id)
+  } catch {
+    // already surfaced via apiFetch
+    setStatus(key, 'fail')
+  }
+}
+
+// The "Users" branch's own root aggregation — a mean across one
+// whole-project-scope run per distinct annotated user (see backend
+// BenchmarkRunService.start_users_aggregation_job).
+async function activateUsersAggregation(activeStrategy) {
+  const key = cacheKey(activeStrategy, 'users-branch')
+  const userLeafNodeIds = annotatedUsernames().map((username) => `user:${username}`)
+  const sessionLeafNodeIds = annotatedSessionNodeIds()
+  setStatus(key, 'running')
+  userLeafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(activeStrategy, leafNodeId), 'running'))
+  sessionLeafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(activeStrategy, leafNodeId), 'running'))
+  try {
+    const { job_id } = await postUsersAggregation(props.projectName, activeStrategy)
+    pollUsersAggregationJob(key, job_id, activeStrategy, [...userLeafNodeIds, ...sessionLeafNodeIds])
+  } catch {
+    // already surfaced via apiFetch
+    setStatus(key, 'fail')
+    ;[...userLeafNodeIds, ...sessionLeafNodeIds].forEach((leafNodeId) => setStatus(cacheKey(activeStrategy, leafNodeId), 'fail'))
+  }
 }
 
 async function onActivate(nodeId) {
@@ -262,24 +380,33 @@ async function onActivate(nodeId) {
   if (nodeId.startsWith('session:')) {
     await activateSessionLeaf(nodeId, activeStrategy)
   } else if (nodeId.startsWith('state:')) {
-    await activateStateLeaf(nodeId, activeStrategy)
+    await activateStateLeaf(nodeId, activeStrategy, annotatedSessionNodeIds())
+  } else if (nodeId.startsWith('user:')) {
+    await activateUserLeaf(nodeId, activeStrategy)
   } else if (nodeId === 'sessions-branch') {
     await activateWholeProjectRun(activeStrategy)
   } else if (nodeId === 'states-branch') {
     await activateAllStates(activeStrategy)
+  } else if (nodeId === 'users-branch') {
+    await activateUsersAggregation(activeStrategy)
   } else if (nodeId === 'root') {
-    // Every sub-test at once: the whole-project replay plus every state's own test.
-    await Promise.all([activateWholeProjectRun(activeStrategy), activateAllStates(activeStrategy)])
+    // Every sub-test at once: the whole-project replay, every state's own
+    // test, and the users aggregation.
+    await Promise.all([
+      activateWholeProjectRun(activeStrategy), activateAllStates(activeStrategy), activateUsersAggregation(activeStrategy)
+    ])
   }
 }
 
 async function loadSelectedRun(nodeId) {
-  // null for sessions-branch: the whole-project run, not a filter (see
-  // backend BenchmarkRunService.list_runs' own session_id docstring).
+  // null for sessions-branch/a user leaf: the whole-project run, not a
+  // filter (see backend BenchmarkRunService.list_runs' own session_id
+  // docstring).
   const sessionId = nodeId.startsWith('session:') ? Number(nodeId.slice('session:'.length)) : null
+  const username = nodeId.startsWith('user:') ? nodeId.slice('user:'.length) : null
   selectedRunLoading.value = true
   try {
-    const runs = await getBenchmarkRuns(props.projectName, sessionId)
+    const runs = await getBenchmarkRuns(props.projectName, sessionId, username)
     // Already most-recent-first (see backend BenchmarkRunService.list_runs)
     // — filtered to the active strategy, since turn_by_turn and batch
     // runs aren't comparable and must never be shown as if they were.
@@ -291,12 +418,14 @@ async function loadSelectedRun(nodeId) {
   }
 }
 
-// root deliberately isn't one of these: sessions-branch and states-branch
-// each have a real result (a whole-project run, a weighted state average),
-// but there's no sound way to combine those two into one number — root
-// shows a plain "go pick a branch" message instead (see the template).
+// root deliberately isn't one of these: sessions-branch/states-branch/
+// users-branch each have a real result of their own (a whole-project run,
+// a weighted state average, a mean-across-users), but there's no sound
+// way to combine those into one number — root shows a plain "go pick a
+// branch" message instead (see the template). A user leaf does have a
+// real run of its own, same as a session leaf.
 function isRunNode(nodeId) {
-  return nodeId.startsWith('session:') || nodeId === 'sessions-branch'
+  return nodeId.startsWith('session:') || nodeId === 'sessions-branch' || nodeId.startsWith('user:')
 }
 
 async function onSelect(nodeId) {
@@ -322,12 +451,14 @@ const selectedNodeLabel = computed(() => {
   if (nodeId === 'root') return props.projectName
   if (nodeId === 'sessions-branch') return 'Sessions'
   if (nodeId === 'states-branch') return 'Stats'
+  if (nodeId === 'users-branch') return 'Users'
   if (nodeId.startsWith('session:')) {
     const id = Number(nodeId.slice('session:'.length))
     const session = sessions.value.find((s) => s.id === id)
     return session ? (session.title || session.end_state || `Session ${id}`) : `Session ${id}`
   }
   if (nodeId.startsWith('state:')) return nodeId.slice('state:'.length)
+  if (nodeId.startsWith('user:')) return nodeId.slice('user:'.length)
   return nodeId
 })
 
@@ -341,6 +472,7 @@ onMounted(() => {
   // so there's never anything already selected to defer to here.
   onSelect('root')
   loadSessions(true, props.projectName)
+  loadMetricDefinitions()
   statesLoading.value = true
   getProjectStates(props.projectName).then((states) => {
     projectStates.value = states
@@ -357,7 +489,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="project-auto-panel">
+  <div class="project-test-panel">
     <div class="tests-panel-tree">
       <div class="tests-panel-strategy">
         <label class="tests-panel-strategy-label">
@@ -385,15 +517,21 @@ onBeforeUnmount(() => {
       <p v-if="!selectedNodeId" class="tests-panel-placeholder">Select a node to see its results.</p>
 
       <template v-else-if="selectedNodeId === 'root'">
-        <h3 class="tests-panel-title">{{ selectedNodeLabel }}</h3>
+        <div class="tests-panel-title-row">
+          <h3 class="tests-panel-title">{{ selectedNodeLabel }}</h3>
+          <DocInfoButton doc-name="benchmark" title="Benchmark" />
+        </div>
         <p class="tests-panel-placeholder">Aggregates not available at this time.<br />Please select Sessions or States to see results.</p>
       </template>
 
-      <template v-else-if="selectedNodeId.startsWith('session:') || selectedNodeId === 'sessions-branch'">
-        <h3 class="tests-panel-title">{{ selectedNodeLabel }}</h3>
+      <template v-else-if="selectedNodeId.startsWith('session:') || selectedNodeId === 'sessions-branch' || selectedNodeId.startsWith('user:')">
+        <div class="tests-panel-title-row">
+          <h3 class="tests-panel-title">{{ selectedNodeLabel }}</h3>
+          <DocInfoButton doc-name="benchmark" title="Benchmark" />
+        </div>
         <p v-if="selectedRunLoading" class="tests-panel-placeholder">Loading…</p>
         <p v-else-if="!selectedRun" class="tests-panel-placeholder">
-          No test has been run for {{ selectedNodeId.startsWith('session:') ? 'this session' : 'the whole project' }} under this strategy yet.
+          No test has been run for {{ selectedNodeId.startsWith('session:') ? 'this session' : selectedNodeId.startsWith('user:') ? 'this user' : 'the whole project' }} under this strategy yet.
         </p>
         <p v-else-if="selectedRun.status === 'failed'" class="tests-panel-error">{{ selectedRun.error || 'Test failed.' }}</p>
         <p v-else-if="selectedRun.status !== 'completed'" class="tests-panel-placeholder">Test {{ selectedRun.status }}…</p>
@@ -405,13 +543,12 @@ onBeforeUnmount(() => {
           <table v-if="selectedRun.results && selectedRun.results.length" class="tests-panel-metrics-table">
             <thead>
               <tr>
-                <th>Metric</th><th>Value</th><th>Mean</th><th>Median</th><th>Std dev</th><th>Samples</th>
+                <th>Metric</th><th>Mean</th><th>Median</th><th>Std dev</th><th>Samples</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="metric in selectedRun.results" :key="metric.name">
-                <td>{{ metric.name }}</td>
-                <td>{{ formatNumber(metric.value) }}</td>
+              <tr v-for="metric in selectedRun.results" :key="metric.name" :class="{ 'tests-panel-row-empty': !metric.sample_count }">
+                <td><MetricDetail :label="metricLabel(metric.name)" :description="metricDescription(metric.name)" :value="metric.value" /></td>
                 <td>{{ formatNumber(metric.mean) }}</td>
                 <td>{{ formatNumber(metric.median) }}</td>
                 <td>{{ formatNumber(metric.standard_deviation) }}</td>
@@ -423,7 +560,10 @@ onBeforeUnmount(() => {
       </template>
 
       <template v-else-if="selectedNodeId.startsWith('state:')">
-        <h3 class="tests-panel-title">{{ selectedNodeLabel }}</h3>
+        <div class="tests-panel-title-row">
+          <h3 class="tests-panel-title">{{ selectedNodeLabel }}</h3>
+          <DocInfoButton doc-name="benchmark" title="Benchmark" />
+        </div>
         <p v-if="nodeError[selectedCacheKey]" class="tests-panel-error">{{ nodeError[selectedCacheKey] }}</p>
         <p v-else-if="!nodeLastResult[selectedCacheKey]" class="tests-panel-placeholder">
           No test has been run for this state under this strategy yet.
@@ -431,13 +571,12 @@ onBeforeUnmount(() => {
         <table v-else class="tests-panel-metrics-table">
           <thead>
             <tr>
-              <th>Metric</th><th>Value</th><th>Mean</th><th>Median</th><th>Std dev</th><th>Samples</th>
+              <th>Metric</th><th>Mean</th><th>Median</th><th>Std dev</th><th>Samples</th>
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td>{{ nodeLastResult[selectedCacheKey].name }}</td>
-              <td>{{ formatNumber(nodeLastResult[selectedCacheKey].value) }}</td>
+            <tr :class="{ 'tests-panel-row-empty': !nodeLastResult[selectedCacheKey].sample_count }">
+              <td><MetricDetail :label="metricLabel(nodeLastResult[selectedCacheKey].name)" :description="metricDescription(nodeLastResult[selectedCacheKey].name)" :value="nodeLastResult[selectedCacheKey].value" /></td>
               <td>{{ formatNumber(nodeLastResult[selectedCacheKey].mean) }}</td>
               <td>{{ formatNumber(nodeLastResult[selectedCacheKey].median) }}</td>
               <td>{{ formatNumber(nodeLastResult[selectedCacheKey].standard_deviation) }}</td>
@@ -448,7 +587,10 @@ onBeforeUnmount(() => {
       </template>
 
       <template v-else-if="selectedNodeId === 'states-branch'">
-        <h3 class="tests-panel-title">{{ selectedNodeLabel }}</h3>
+        <div class="tests-panel-title-row">
+          <h3 class="tests-panel-title">{{ selectedNodeLabel }}</h3>
+          <DocInfoButton doc-name="benchmark" title="Benchmark" />
+        </div>
         <div v-if="statesFailedEntries.length" class="tests-panel-error">
           <div v-for="entry in statesFailedEntries" :key="entry.name">{{ entry.name }}: {{ entry.error }}</div>
         </div>
@@ -458,23 +600,46 @@ onBeforeUnmount(() => {
         <table v-else class="tests-panel-metrics-table">
           <thead>
             <tr>
-              <th>State</th><th>Value</th><th>Mean</th><th>Median</th><th>Std dev</th><th>Samples</th>
+              <th>State</th><th>Mean</th><th>Median</th><th>Std dev</th><th>Samples</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in statesAggregateRows" :key="row.name">
-              <td>{{ row.name }}</td>
-              <td>{{ formatNumber(row.value) }}</td>
+            <tr v-for="row in statesAggregateRows" :key="row.name" :class="{ 'tests-panel-row-empty': !row.sample_count }">
+              <td><MetricDetail :label="row.name" :value="row.value" /></td>
               <td>{{ formatNumber(row.mean) }}</td>
               <td>{{ formatNumber(row.median) }}</td>
               <td>{{ formatNumber(row.standard_deviation) }}</td>
               <td>{{ row.sample_count }}</td>
             </tr>
-            <tr v-if="statesOverall" class="tests-panel-overall-row">
-              <td>Overall</td>
-              <td>{{ formatNumber(statesOverall.value) }}</td>
+            <tr v-if="statesOverall" class="tests-panel-overall-row" :class="{ 'tests-panel-row-empty': !statesOverall.sample_count }">
+              <td><MetricDetail label="Overall" :value="statesOverall.value" /></td>
               <td colspan="3"></td>
               <td>{{ statesOverall.sample_count }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </template>
+
+      <template v-else-if="selectedNodeId === 'users-branch'">
+        <div class="tests-panel-title-row">
+          <h3 class="tests-panel-title">{{ selectedNodeLabel }}</h3>
+          <DocInfoButton doc-name="benchmark" title="Benchmark" />
+        </div>
+        <p v-if="usersAggregateErrors[selectedCacheKey]" class="tests-panel-error">{{ usersAggregateErrors[selectedCacheKey] }}</p>
+        <p v-else-if="!usersAggregateResults[selectedCacheKey] || !usersAggregateResults[selectedCacheKey].length" class="tests-panel-placeholder">
+          No users aggregation has been run under this strategy yet.
+        </p>
+        <table v-else class="tests-panel-metrics-table">
+          <thead>
+            <tr><th>Metric</th><th>Samples</th></tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="metric in usersAggregateResults[selectedCacheKey]" :key="metric.name"
+              :class="{ 'tests-panel-row-empty': !metric.sample_count }"
+            >
+              <td><MetricDetail :label="metricLabel(metric.name)" :description="metricDescription(metric.name)" :value="metric.value" /></td>
+              <td>{{ metric.sample_count }}</td>
             </tr>
           </tbody>
         </table>
@@ -486,7 +651,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.project-auto-panel {
+.project-test-panel {
   flex: 1;
   display: flex;
   flex-direction: row;
@@ -549,8 +714,15 @@ onBeforeUnmount(() => {
   padding: 1rem;
 }
 
-.tests-panel-title {
+.tests-panel-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   margin: 0 0 0.75rem;
+}
+
+.tests-panel-title {
+  margin: 0;
   font-size: 1rem;
 }
 
@@ -604,5 +776,9 @@ onBeforeUnmount(() => {
 .tests-panel-overall-row td {
   font-weight: 600;
   border-top: 2px solid #ccc;
+}
+
+.tests-panel-row-empty td {
+  color: #aaa;
 }
 </style>

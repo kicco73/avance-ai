@@ -2,6 +2,15 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { getProjects } from '../api.js'
 
+// `selectedName`, when given, overrides which project the button label and
+// the ✓ mark reflect — for a caller (e.g. ManageUsersView.vue's own
+// project picker) that reuses this menu to choose a project without that
+// choice being the app's actual active project. Defaults to `null`, which
+// falls back to the normal behavior (the app's own active project).
+const props = defineProps({
+  selectedName: { type: String, default: null }
+})
+
 const emit = defineEmits([
   'select',
   'download'
@@ -15,10 +24,12 @@ const projects = ref([])
 const activeProjectName = ref(null)
 const rootEl = ref(null)
 
+const displayedProjectName = computed(() => props.selectedName ?? activeProjectName.value)
+
 // Falls back to the raw name before loadProjects() resolves, and for a
 // project that never declared a ui_label.
 const activeProjectLabel = computed(() => {
-  return projects.value.find((p) => p.name === activeProjectName.value)?.ui_label ?? activeProjectName.value
+  return projects.value.find((p) => p.name === displayedProjectName.value)?.ui_label ?? displayedProjectName.value
 })
 
 async function loadProjects() {
@@ -95,7 +106,7 @@ onBeforeUnmount(() => {
             @click="selectProject(project.name)"
           >
             <span class="projects-item-check">
-              {{ project.name === activeProjectName ? '✓' : '' }}
+              {{ project.name === displayedProjectName ? '✓' : '' }}
             </span>
             <span
               class="projects-item-status"

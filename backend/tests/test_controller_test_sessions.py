@@ -67,6 +67,30 @@ def test_test_session_bootstrap_succeeds_for_an_unpublished_project(client):
     assert body["active"] is True
 
 
+def test_current_test_session_resumes_the_most_recent_one_instead_of_creating_a_new_one(client):
+    """Regression: EditProjectView's own mode-switch flow (Design -> Run ->
+    Design -> Run) always resolves current-test-session with no session_id
+    of its own — this must resume the existing draft, never spawn a new
+    one each time the tab is re-entered."""
+    _upload_and_activate(client, "resume-1", UNPUBLISHED_PROJECT)
+    _publish(client, "resume-1")
+    first = client.get("/api/projects/resume-1/test-sessions/current").json()
+
+    second = client.get("/api/projects/resume-1/test-sessions/current").json()
+
+    assert second["id"] == first["id"]
+
+
+def test_current_test_session_still_creates_one_when_none_exists(client):
+    _upload_and_activate(client, "resume-2", UNPUBLISHED_PROJECT)
+    _publish(client, "resume-2")
+
+    response = client.get("/api/projects/resume-2/test-sessions/current")
+
+    assert response.status_code == 200
+    assert response.json()["id"] is not None
+
+
 def test_post_test_session_succeeds_for_an_unpublished_project(client):
     _upload_and_activate(client, "draft-only-4", UNPUBLISHED_PROJECT)
 
@@ -123,6 +147,19 @@ def test_regular_bootstrap_and_test_bootstrap_never_resolve_to_the_same_session(
     # Each is "active" only within its own pool.
     assert native_session["active"] is True
     assert test_session["active"] is True
+
+
+def test_every_test_session_is_reported_active_not_just_the_most_recent(client):
+    _upload_and_activate(client, "isolation-5", UNPUBLISHED_PROJECT)
+    _publish(client, "isolation-5")
+    first = client.post("/api/projects/isolation-5/test-sessions").json()
+    second = client.post("/api/projects/isolation-5/test-sessions").json()
+
+    body = client.get("/api/projects/isolation-5/test-sessions").json()
+
+    by_id = {s["id"]: s for s in body}
+    assert by_id[first["id"]]["active"] is True
+    assert by_id[second["id"]]["active"] is True
 
 
 def test_a_chat_turn_against_a_test_session_is_accepted_as_active(client):

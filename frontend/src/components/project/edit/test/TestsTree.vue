@@ -3,7 +3,7 @@
 // and "States" (a leaf per state key). Root and the two branch nodes are
 // activatable too — root/sessions-branch launches the whole-project
 // replay, states-branch launches every state's own test — and carry that
-// scope's own aggregate status, same as any leaf. ProjectAutoPanel.vue
+// scope's own aggregate status, same as any leaf. ProjectTestPanel.vue
 // owns all data fetching/launching/polling — this component only renders and emits.
 //
 // Node identifiers are plain strings prefixed by kind — 'root',
@@ -31,6 +31,17 @@ const emit = defineEmits(['select', 'activate'])
 
 const annotatedSessions = computed(() => props.sessions.filter((s) => s.has_annotations))
 
+// One entry per distinct username among annotated sessions, each carrying
+// its own annotated sessions — the "Users" branch's own two-level shape.
+const usersByUsername = computed(() => {
+  const grouped = new Map()
+  for (const session of annotatedSessions.value) {
+    if (!grouped.has(session.username)) grouped.set(session.username, [])
+    grouped.get(session.username).push(session)
+  }
+  return [...grouped.entries()].map(([username, userSessions]) => ({ username, sessions: userSessions }))
+})
+
 function statusFor(nodeId) {
   return props.statuses[nodeId] ?? 'idle'
 }
@@ -52,7 +63,12 @@ const flatNodeIds = computed(() => [
   'sessions-branch',
   ...annotatedSessions.value.map((s) => `session:${s.id}`),
   'states-branch',
-  ...props.states.map((key) => `state:${key}`)
+  ...props.states.map((key) => `state:${key}`),
+  'users-branch',
+  ...usersByUsername.value.flatMap((user) => [
+    `user:${user.username}`,
+    ...user.sessions.map((s) => `session:${s.id}`)
+  ])
 ])
 
 const treeRef = ref(null)
@@ -163,6 +179,63 @@ function moveSelection(delta) {
                   @activate="emit('activate', `state:${stateKey}`)"
                 />
               </div>
+            </li>
+          </ul>
+        </li>
+
+        <li class="tests-tree-node">
+          <div class="tests-tree-item">
+            <button
+              type="button"
+              class="tests-tree-row"
+              data-node-id="users-branch"
+              :class="{ 'tests-tree-row-selected': selectedNodeId === 'users-branch' }"
+              @click="emit('select', 'users-branch')"
+            >
+              <span class="tests-tree-label">Users</span>
+            </button>
+            <TestNodeButton :status="statusFor('users-branch')" @activate="emit('activate', 'users-branch')" />
+          </div>
+
+          <ul class="tests-tree-children">
+            <li v-if="!usersByUsername.length" class="tests-tree-empty">No annotated sessions yet.</li>
+            <li v-for="user in usersByUsername" :key="user.username" class="tests-tree-node">
+              <div class="tests-tree-item">
+                <button
+                  type="button"
+                  class="tests-tree-row"
+                  :data-node-id="`user:${user.username}`"
+                  :class="{ 'tests-tree-row-selected': selectedNodeId === `user:${user.username}` }"
+                  @click="emit('select', `user:${user.username}`)"
+                >
+                  <span class="tests-tree-label">{{ user.username }}</span>
+                </button>
+                <TestNodeButton
+                  :status="statusFor(`user:${user.username}`)"
+                  @activate="emit('activate', `user:${user.username}`)"
+                />
+              </div>
+
+              <ul class="tests-tree-children">
+                <li v-for="session in user.sessions" :key="session.id" class="tests-tree-node">
+                  <div class="tests-tree-item">
+                    <button
+                      type="button"
+                      class="tests-tree-row"
+                      :data-node-id="`session:${session.id}`"
+                      :class="{ 'tests-tree-row-selected': selectedNodeId === `session:${session.id}` }"
+                      @click="emit('select', `session:${session.id}`)"
+                    >
+                      <span class="tests-tree-label">{{ sessionLabel(session) }}</span>
+                      <span class="tests-tree-sublabel">{{ formatSessionTimestamp(session.datetime_start) }}</span>
+                    </button>
+                    <TestNodeButton
+                      :status="statusFor(`session:${session.id}`)"
+                      @activate="emit('activate', `session:${session.id}`)"
+                    />
+                  </div>
+                </li>
+              </ul>
             </li>
           </ul>
         </li>

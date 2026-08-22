@@ -126,11 +126,17 @@ class ChatController(BaseController):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
     @get("/api/projects/{project_name}/metrics")
-    def get_metrics(self, project_name: str, message_id: int | None = None):
+    def get_metrics(self, project_name: str, message_id: int | None = None, full: bool = False, username: str | None = None):
         """Core metrics for `project_name`, live or (`message_id` given)
-        as of that exact message — no caching. ChatServiceError for an
-        unknown message_id is handled globally, see error_handlers.py."""
-        return self.chat_service.get_metrics(project_name=project_name, message_id=message_id)
+        as of that exact message — no caching. `full`: every core metric,
+        including ones that need more than one session (e.g. Retention),
+        instead of the usual "one_session" subset. `username` (omitted:
+        the caller's own sessions): Manage Users' statistics panel, to
+        inspect a specific user's sessions rather than its own. ChatServiceError
+        for an unknown message_id is handled globally, see error_handlers.py."""
+        return self.chat_service.get_metrics(
+            project_name=project_name, message_id=message_id, full=full, username=username,
+        )
 
     @get("/api/state")
     def get_state(self):

@@ -20,6 +20,9 @@ class SessionTypeStrategy(ABC):
     def resolves_by_id(self) -> bool: ...
 
     @abstractmethod
+    def default_active(self) -> bool | None: ...
+
+    @abstractmethod
     def starting_state(self, automaton: Automaton) -> str: ...
 
     @abstractmethod
@@ -36,6 +39,9 @@ class LiveSessionStrategy(SessionTypeStrategy):
 
     def resolves_by_id(self) -> bool:
         return False
+
+    def default_active(self) -> bool | None:
+        return None
 
     def starting_state(self, automaton: Automaton) -> str:
         raise NotImplementedError(
@@ -55,6 +61,9 @@ class TestSessionStrategy(SessionTypeStrategy):
     def resolves_by_id(self) -> bool:
         return True
 
+    def default_active(self) -> bool | None:
+        return True
+
     def starting_state(self, automaton: Automaton) -> str:
         return automaton.init_action.target
 
@@ -70,6 +79,9 @@ class ImportedSessionStrategy(SessionTypeStrategy):
 
     def resolves_by_id(self) -> bool:
         return True
+
+    def default_active(self) -> bool | None:
+        return False
 
     def starting_state(self, automaton: Automaton) -> str:
         raise NotImplementedError(

@@ -7,11 +7,16 @@ from peewee import fn
 from .models import BenchmarkRun, BenchmarkRunObservation
 from .utils import _utc_iso
 
+# Distinguishes "no username filter at all" (this sentinel, the default)
+# from an explicitly passed `username=None` — which instead filters down
+# to the multi-user pool runs (BenchmarkRun.username IS NULL).
+_USERNAME_UNSPECIFIED = object()
+
 
 class BenchmarkRunMixin:
 
     def create_benchmark_run(
-        self, username: str, project_name: str, session_id: int | None, strategy: str,
+        self, username: str | None, project_name: str, session_id: int | None, strategy: str,
         project_revision: int, ai_model_snapshot: dict,
     ) -> dict:
         row = BenchmarkRun.create(
@@ -26,12 +31,19 @@ class BenchmarkRunMixin:
             return None
         return self._benchmark_run_to_dict(row)
 
-    def list_benchmark_runs(self, project_name: str, session_id: int | None=None) -> list[dict]:
+    def list_benchmark_runs(
+        self, project_name: str, session_id: int | None=None, username: str | None=_USERNAME_UNSPECIFIED,
+    ) -> list[dict]:
         query = BenchmarkRun.select().where(BenchmarkRun.project_name == project_name)
         if session_id is None:
             query = query.where(BenchmarkRun.session.is_null(True))
         else:
             query = query.where(BenchmarkRun.session == session_id)
+        if username is not _USERNAME_UNSPECIFIED:
+            if username is None:
+                query = query.where(BenchmarkRun.username.is_null(True))
+            else:
+                query = query.where(BenchmarkRun.username == username)
         return [self._benchmark_run_to_dict(row) for row in query]
 
     def set_benchmark_run_results(self, run_id: int, results: str) -> None:

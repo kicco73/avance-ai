@@ -14,6 +14,9 @@ _DEFAULT_OPEN_WINDOW_MINUTES = 60.0
 
 class SessionMixin:
 
+    def count_chat_sessions(self, username: str, type: str) -> int:
+        return ChatSession.select().where((ChatSession.username == username) & (ChatSession.type == type)).count()
+
     def create_chat_session(
         self, username: str, project_name: str, revision: int, *,
         datetime_start: datetime | None = None, datetime_end: datetime | None = None,
@@ -25,6 +28,8 @@ class SessionMixin:
         published for a 'live' session, draft for a 'test' one."""
         if Project.get_or_none(Project.name == project_name) is None:
             raise ValueError(f"Project '{project_name}' does not exist.")
+        if title is None:
+            title = f"{type.capitalize()} session {self.count_chat_sessions(username, type) + 1}"
         session = ChatSession.create(
             username=username, project_name=project_name, type=type, title=title,
             project_revision=revision,
@@ -52,11 +57,18 @@ class SessionMixin:
             return query.where(ChatSession.type.in_(type))
         return query.where(ChatSession.type == type)
 
+    @staticmethod
+    def _filter_by_username(query, username: str | None):
+        if username is None:
+            return query
+        return query.where(ChatSession.username == username)
+
     def get_latest_chat_session(
-        self, username: str, project_name: str, until: datetime | None=None,
+        self, username: str | None, project_name: str, until: datetime | None=None,
         type: str | tuple[str, ...] | None='live',
     ) -> dict | None:
-        query = ChatSession.select().where((ChatSession.username == username) & (ChatSession.project_name == project_name))
+        query = ChatSession.select().where(ChatSession.project_name == project_name)
+        query = self._filter_by_username(query, username)
         if until is not None:
             query = query.where(ChatSession.datetime_start <= until)
         query = self._filter_by_type(query, type)
@@ -64,10 +76,11 @@ class SessionMixin:
         return self._chat_session_to_dict(session) if session is not None else None
 
     def list_chat_sessions(
-        self, username: str, project_name: str, until: datetime | None=None,
+        self, username: str | None, project_name: str, until: datetime | None=None,
         type: str | tuple[str, ...] | None='live',
     ) -> list[dict]:
-        query = ChatSession.select().where((ChatSession.username == username) & (ChatSession.project_name == project_name))
+        query = ChatSession.select().where(ChatSession.project_name == project_name)
+        query = self._filter_by_username(query, username)
         if until is not None:
             query = query.where(ChatSession.datetime_start <= until)
         query = self._filter_by_type(query, type)

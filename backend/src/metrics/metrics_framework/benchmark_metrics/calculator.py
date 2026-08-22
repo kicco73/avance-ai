@@ -26,7 +26,7 @@ class BenchmarkCalculator(object):
     def __init__(
         self,
         db: Any,
-        username: str,
+        username: str | None,
         project_name: str,
         configuration: BenchmarkConfiguration | None = None,
         session_id: int | None = None,

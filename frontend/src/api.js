@@ -365,9 +365,17 @@ export function clearActionEnv() {
 
 // `messageId`, when given, computes metrics as of that exact message's
 // own timestamp instead of the live/current history — see the
-// "Label sessions" view's point-in-time Inspector.
-export function getMetrics(projectName, messageId) {
-  const query = messageId != null ? `?message_id=${encodeURIComponent(messageId)}` : ''
+// "Label sessions" view's point-in-time Inspector. `full`: every core
+// metric, including ones that need more than one session (e.g.
+// Retention/Activity Consistency) instead of the usual "one_session"
+// subset. `username`, when given, computes metrics for that user's own
+// sessions instead of the caller's — see Manage Users' own statistics panel.
+export function getMetrics(projectName, messageId, full, username) {
+  const params = new URLSearchParams()
+  if (messageId != null) params.set('message_id', messageId)
+  if (full) params.set('full', 'true')
+  if (username != null) params.set('username', username)
+  const query = params.size ? `?${params}` : ''
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/metrics${query}`)
 }
 
@@ -736,12 +744,14 @@ export function postRevertProject(projectName) {
 }
 
 // The "Auto" tab's own replay launch — sessionId null means the
-// whole-project-scope run (every labeled session at once).
-export function postBenchmarkRun(projectName, sessionId, strategy) {
+// whole-project-scope run (every labeled session at once). `username`,
+// when given, scopes that whole-project run to just that user's sessions
+// instead of the requesting user's own.
+export function postBenchmarkRun(projectName, sessionId, strategy, username) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/benchmark-runs`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ session_id: sessionId, strategy })
+    body: JSON.stringify({ session_id: sessionId, strategy, ...(username != null ? { username } : {}) })
   })
 }
 
@@ -749,9 +759,16 @@ export function getBenchmarkRun(projectName, runId) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/benchmark-runs/${encodeURIComponent(runId)}`)
 }
 
-export function getBenchmarkRuns(projectName, sessionId) {
-  const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
+export function getBenchmarkRuns(projectName, sessionId, username) {
+  const params = new URLSearchParams()
+  if (sessionId != null) params.set('session_id', sessionId)
+  if (username != null) params.set('username', username)
+  const query = params.size ? `?${params}` : ''
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/benchmark-runs${query}`)
+}
+
+export function getBenchmarkMetrics(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/benchmark-metrics`)
 }
 
 // Every real state key of the project's current draft automaton.
@@ -768,5 +785,19 @@ export function postStateTest(projectName, stateKey, strategy) {
 }
 
 export function getStateJob(projectName, jobId) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/state-jobs/${encodeURIComponent(jobId)}`)
+}
+
+export function postUsersAggregation(projectName, strategy) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/users/aggregation`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ strategy })
+  })
+}
+
+// The job is the same generic 'state-jobs' resource start_job's own jobs
+// use — no dedicated read route for 'users_aggregation' jobs.
+export function getUsersAggregationJob(projectName, jobId) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/state-jobs/${encodeURIComponent(jobId)}`)
 }

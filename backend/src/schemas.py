@@ -147,6 +147,9 @@ class CreateBenchmarkRunRequest(BaseModel):
     # 'turn_by_turn' or 'batch' — see benchmark_run_service.py's own
     # VALID_STRATEGIES.
     strategy: str
+    # None = the requesting user (Session().user), the default. Set to
+    # scope the run to a different user's sessions instead.
+    username: str | None = None
 
 
 class StateTestRequest(BaseModel):

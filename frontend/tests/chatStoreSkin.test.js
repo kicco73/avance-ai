@@ -1,6 +1,6 @@
 // Real, executable verification of chatStore.js's shared index.css "skin"
 // loader (see its own module-level watch/loadSkin) — not just a read of
-// the code. Drives the actual exported refs the way TestChat.vue/
+// the code. Drives the actual exported refs the way RunChat.vue/
 // ChatWindow.vue really do, mocks only fetch, and asserts on the real
 // jsdom document.head: does a request actually go out, does a <style>
 // tag actually land, does toggling applyAspect back on actually resume
@@ -99,7 +99,7 @@ describe("chatStore.js's shared index.css skin loader", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1) // no second call — applyAspect off short-circuits before fetch
   })
 
-  it('turning applyAspect back on resumes loading — the exact toggle TestChat.vue exposes', async () => {
+  it('turning applyAspect back on resumes loading — the exact toggle RunChat.vue exposes', async () => {
     fetchMock.mockResolvedValue({ ok: true, text: async () => 'body { color: green; }' })
     chatStore.currentProjectName.value = 'proj'
     chatStore.currentSessionId.value = 1
