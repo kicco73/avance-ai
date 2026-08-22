@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timezone
 from http import HTTPStatus
 
-from automaton.automaton import Action, Automaton, State
+from automaton.automaton import Action, Automaton, SignalPayload, State
 from db import Db, _utc_iso
 from ai.ai_service import AiService
 from session import Session
@@ -44,7 +44,7 @@ class ChatService(object):
 		self._ai_service = ai_service
 		self._project_service = project_service
 		self._session_manager = session_manager
-		self.tracking_service = tracking_service
+		self._tracking_service = tracking_service
 		self.metric_service = metric_service
 		# Shares persisted_jobs with BenchmarkRunService (see main.py's own
 		# wiring) — never its own private queue.
@@ -61,7 +61,7 @@ class ChatService(object):
 
 		# Serializes chat-turn processing across both transports and
 		# against a concurrent reset/activate/upload/delete.
-		self.lock = asyncio.Lock()
+		self._lock = asyncio.Lock()
 
 
 	@property
@@ -314,7 +314,7 @@ class ChatService(object):
 		snapshot/transition row, chronological — for the "Label sessions"
 		view's timeline, reconstructed entirely client-side."""
 		self._require_own_session(session_id)
-		return self.tracking_service.get_session_signals(session_id)
+		return self._tracking_service.get_session_signals(session_id)
 
 	def _require_own_message(self, message_id: int) -> dict:
 		"""Raises (404) unless `message_id` exists and belongs to a
@@ -398,28 +398,45 @@ class ChatService(object):
 		annotated expected state for message_id's evaluation — ownership
 		is checked here, the rest is TrackingService's job."""
 		self._require_own_message(message_id)
-		return self.tracking_service.set_message_expected_state(message_id, expected_state)
+		return self._tracking_service.set_message_expected_state(message_id, expected_state)
 
 	def set_message_expected_signals(self, message_id: int, expected_values: dict | None) -> dict | None:
 		"""Sets or clears the expert-annotated expected signal values for
 		message_id's evaluation — same ownership-then-delegate split as
 		set_message_expected_state above."""
 		self._require_own_message(message_id)
-		return self.tracking_service.set_message_expected_signals(message_id, expected_values)
+		return self._tracking_service.set_message_expected_signals(message_id, expected_values)
 
 	def set_message_comment(self, message_id: int, comment: str | None) -> dict | None:
 		"""Sets or clears message_id's expert-left free-text comment.
 		Unlike set_message_expected_state, every message is a legitimate
 		target, so there's no 409 here, only the usual 404 for an unowned message_id."""
 		self._require_own_message(message_id)
-		return self.tracking_service.set_message_comment(message_id, comment)
+		return self._tracking_service.set_message_comment(message_id, comment)
 
 	def clear_session_annotations(self, session_id: int) -> None:
 		"""Clears every expert annotation (expected_state and
 		expected_values alike) across session_id's Tracking rows — the
 		"Label sessions" view's "Unlabel all" action."""
 		self._require_own_session(session_id)
-		self.tracking_service.clear_session_annotations(session_id)
+		self._tracking_service.clear_session_annotations(session_id)
+
+	def get_latest_signals(self) -> list[SignalPayload]:
+		return self._tracking_service.get_latest_signals()
+
+	def is_auto_tracking_enabled(self, session_id: int) -> bool:
+		self._require_own_session(session_id)
+		return self._tracking_service.is_auto_tracking_enabled(session_id)
+
+	def set_auto_tracking_enabled(self, session_id: int, enabled: bool) -> None:
+		self._require_own_session(session_id)
+		self._tracking_service.set_auto_tracking_enabled(session_id, enabled)
+
+	def clear_auto_tracking_overrides(self) -> None:
+		self._tracking_service.clear_auto_tracking_overrides()
+
+	def exclusive_access(self):
+		return self._lock
 
 	async def open_if_needed(self, session_id: int) -> dict | None:
 		# An imported session is a fixed transcript, never live — its NULL
@@ -494,9 +511,9 @@ class ChatService(object):
 		return messages
 
 	async def apply_manual_action(self, action_name: str, session_id: int) -> dict:
-		if self.lock.locked():
+		if self._lock.locked():
 			raise ChatServiceError("A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT)
-		async with self.lock:
+		async with self._lock:
 			project_name = self._active_project_name
 			_, source_state = self._project_service.get_automaton_and_state_for_session(session_id)
 			# Resolved before applying the action: save_transition (inside
@@ -531,7 +548,7 @@ class ChatService(object):
 		project_name = self._active_project_name
 		_, state = self._project_service.get_automaton_and_state_for_session(session_id)
 		self._require_active_session(session_id, project_name, state.key)
-		reply = await self.tracking_service.process(session_id, text, on_metadata, extra_prompt=extra_prompt)
+		reply = await self._tracking_service.process(session_id, text, on_metadata, extra_prompt=extra_prompt)
 		# touch_session wants the plain state key — reply['state'] is the
 		# full StatePayload dict, not a string; passing it whole would
 		# silently store its Python repr as end_state.

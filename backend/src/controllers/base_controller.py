@@ -48,5 +48,5 @@ class BaseController:
         # Unused param: kept only to match ProjectService's own
         # CommitCallback shape. The lock itself is the whole point — it
         # serializes this commit against a concurrent chat turn.
-        async with self.chat_service.lock:
+        async with self.chat_service.exclusive_access():
             pass

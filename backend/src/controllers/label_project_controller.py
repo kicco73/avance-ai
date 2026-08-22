@@ -123,7 +123,7 @@ class LabelProjectController(BaseController):
         the live state may have moved backward, so the fresh payload is
         read back only once the mutation has released the lock."""
         try:
-            async with self.chat_service.lock:
+            async with self.chat_service.exclusive_access():
                 self.chat_service.truncate_session(session_id, req.timestamp)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc

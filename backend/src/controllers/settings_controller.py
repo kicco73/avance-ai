@@ -41,7 +41,7 @@ class SettingsController(BaseController):
         """Downloads the whole working SQLite database file — every
         project, session, message, and signal — as a restorable backup
         (see POST /api/settings/backup)."""
-        async with self.chat_service.lock:
+        async with self.chat_service.exclusive_access():
             content = self.db.export_backup()
         filename = Path(self.db.backup_file_path()).stem + ".sqlite"
         return Response(
@@ -56,12 +56,12 @@ class SettingsController(BaseController):
         file, replacing it in place. Wipes whatever the server currently
         has (all projects, sessions, messages)."""
         content = await request.body()
-        async with self.chat_service.lock:
+        async with self.chat_service.exclusive_access():
             try:
                 self.db.restore_backup(content)
             except ValueError as exc:
                 raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-            self.chat_service.tracking_service.clear_auto_tracking_overrides()
+            self.chat_service.clear_auto_tracking_overrides()
         return {"success": True}
 
     @get("/api/projects")
