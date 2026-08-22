@@ -31,8 +31,8 @@ const props = defineProps({
   selectedSession: { type: Object, default: null },
   sessionStartElement: { type: Object, default: null },
   sessionEndElement: { type: Object, default: null },
-  // Auto mode only: no edit form, no delete, no "+ Add state" — this tab
-  // is a plain read-only viewer for whatever's selected in the Auto tree.
+  // Test mode only: no edit form, no delete, no "+ Add state" — this tab
+  // is a plain read-only viewer for whatever's selected in the Test tree.
   readOnly: { type: Boolean, default: false }
 })
 
@@ -151,7 +151,7 @@ onMounted(loadProjectMetadata)
 /* The read-only session card (Auto mode) — same classes as
    InspectorSignalsTab.vue/LabelProjectView.vue's own session block,
    copied here since Vue's scoped styles never cross component files. */
-.inspector-signal-block { display: flex; flex-direction: column; gap: 0.2rem; padding: 0.6rem 0.75rem; border-radius: 8px; border: 1px solid #eee; background: #fafafa; }
+.inspector-signal-block { display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.75rem; padding: 0.6rem 0.75rem; border-radius: 8px; border: 1px solid #eee; background: #fafafa; }
 .inspector-signal-header { display: flex; align-items: center; gap: 0.4rem; }
 .inspector-detail-badge { flex-shrink: 0; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.15rem 0.5rem; border-radius: 999px; color: white; }
 .inspector-detail-badge-session { background: #455a64; }

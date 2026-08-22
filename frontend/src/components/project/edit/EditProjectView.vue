@@ -1,12 +1,12 @@
 <script setup>
 // Composes three mutually exclusive mode panels (ProjectDesignPanel/
-// TestChat/ProjectAutoPanel — see `mode` below) as siblings under
+// RunChat/ProjectTestPanel — see `mode` below) as siblings under
 // .edit-project-panels; this view owns only what's cross-cutting: the
 // mode switch, header/publish controls, dialogs, and the shared Inspector.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ProjectDesignPanel from './design/ProjectDesignPanel.vue'
-import TestChat from './test/TestChat.vue'
-import ProjectAutoPanel from './auto/ProjectAutoPanel.vue'
+import RunChat from './run/RunChat.vue'
+import ProjectTestPanel from './test/ProjectTestPanel.vue'
 import Inspector from '../../inspector/Inspector.vue'
 import InspectorGraphTab from '../../inspector/InspectorGraphTab.vue'
 import InspectorSignalsTab from '../../inspector/InspectorSignalsTab.vue'
@@ -15,6 +15,8 @@ import InspectorEnvTab from '../../inspector/InspectorEnvTab.vue'
 import InspectorEnvKeysTab from '../../inspector/InspectorEnvKeysTab.vue'
 import InspectorStateTab from '../../inspector/InspectorStateTab.vue'
 import InspectorActionsTab from '../../inspector/InspectorActionsTab.vue'
+import SessionDetailCard from '../../inspector/SessionDetailCard.vue'
+import InspectorUserInfoCard from '../../inspector/InspectorUserInfoCard.vue'
 import { useLeaveConfirmation } from '../../../composables/useLeaveConfirmation.js'
 import {
   getProjectFiles,
@@ -45,7 +47,8 @@ import {
   getProjectRevision,
   getPublishPreview,
   postPublishProject,
-  postRevertProject
+  postRevertProject,
+  getUsers
 } from '../../../api.js'
 import { clearApiError, setApiError, setApiWarning } from '../../../errorStore.js'
 import { confirmDialog, promptDialog, chooseDialog } from '../../../dialogStore.js'
@@ -64,8 +67,10 @@ import {
   handleSend,
   handleTruncateFrom,
   loadMessages,
+  loadSessions,
   testModeProjectName,
-  sessions
+  sessions,
+  refreshSessionsQuietly
 } from '../../../chatStore.js'
 
 const props = defineProps({
@@ -252,7 +257,7 @@ const isBehaviorNodeSelected = computed(() => currentFileName.value === 'index.y
 // with it (see handleDeleteFile) since an asset with no stylesheet left to
 // reference it is just dead weight.
 const themeAssetNames = computed(() => files.value.filter((name) => name !== 'index.css' && IMAGE_PATTERN.test(name)))
-// TestChat.vue's "Apply aspect" toggle only makes sense once a theme
+// RunChat.vue's "Apply aspect" toggle only makes sense once a theme
 // actually exists to apply.
 const hasTheme = computed(() => files.value.includes('index.css'))
 const activeEditorIsDirty = computed(() => {
@@ -297,6 +302,11 @@ const selectedStateKey = computed(() => {
     : selectedGraphElement.value.data.matchStateKey
 })
 
+// Run mode's own currently selected test session, from the same shared
+// list its Session Explorer (RunChat.vue) loads — read here for the
+// Inspector's SessionDetailCard, which RunChat.vue doesn't itself show.
+const runCurrentSession = computed(() => sessions.value.find((s) => s.id === currentSessionId.value) ?? null)
+
 // Resolved off index.yml's own already-loaded graph data (see
 // IndexYmlEditorPanel.vue's stateElementFor/actionsForState) rather than
 // a second fetch — null/[] whenever nothing is selected.
@@ -312,7 +322,7 @@ const actionsTabList = computed(() => {
   return key == null ? [] : (indexYmlEditorRef.value?.actionsForState(key) ?? [])
 })
 
-// Auto mode's own selection (ProjectAutoPanel.vue's own selectedNodeId —
+// Test mode's own selection (ProjectTestPanel.vue's own selectedNodeId —
 // this view only ever gets told what it is via @select, never owns the
 // canonical value) — 'root' | 'sessions-branch' | 'states-branch' |
 // `session:<id>` | `state:<key>` | null. Drives the Inspector's Info tab
@@ -324,7 +334,7 @@ const autoSelectedSessionId = computed(() => {
   const id = autoSelectedNodeId.value
   return id && id.startsWith('session:') ? Number(id.slice('session:'.length)) : null
 })
-// From chatStore.js's already-loaded list — ProjectAutoPanel.vue's own
+// From chatStore.js's already-loaded list — ProjectTestPanel.vue's own
 // onMounted triggers that load, so it's there by the time anything here can be selected.
 const autoSelectedSession = computed(() => {
   const id = autoSelectedSessionId.value
@@ -333,6 +343,32 @@ const autoSelectedSession = computed(() => {
 const autoSelectedStateKey = computed(() => {
   const id = autoSelectedNodeId.value
   return id && id.startsWith('state:') ? id.slice('state:'.length) : null
+})
+
+// The Test tree's "Users" branch — a user node directly, or any session
+// leaf (its own `username`, now that sessions carry one — see db/sessions'
+// own username plumbing). Resolved against usersList (loaded lazily, see
+// ensureUsersList) for the same read-only profile card ManageUsersView.vue
+// shows (see InspectorUserInfoCard.vue).
+const usersList = ref([])
+let usersListLoaded = false
+async function ensureUsersList() {
+  if (usersListLoaded) return
+  usersListLoaded = true
+  try {
+    usersList.value = (await getUsers()).users
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+const autoSelectedUsername = computed(() => {
+  const id = autoSelectedNodeId.value
+  if (id && id.startsWith('user:')) return id.slice('user:'.length)
+  return autoSelectedSession.value?.username ?? null
+})
+const autoSelectedUser = computed(() => {
+  const username = autoSelectedUsername.value
+  return username == null ? null : (usersList.value.find((u) => u.email === username || u.id === username) ?? null)
 })
 const autoSelectedElement = computed(() => {
   const key = autoSelectedStateKey.value
@@ -364,21 +400,21 @@ const autoSessionEndElement = computed(() => (
 ))
 
 // The tab set this view's Inspector shows (see Inspector.vue's slot-based
-// contract; LabelProjectView.vue passes a different set). 'test' mode
+// contract; LabelProjectView.vue passes a different set). 'run' mode
 // shows the live conversation's Metrics/Env; edit mode shows index.yml's own Info/Actions/Signals/Env-keys instead.
-// Auto mode only ever shows Info — plain read-only viewing, no Actions/
+// Test mode only ever shows Info — plain read-only viewing, no Actions/
 // Signals/Env-keys editing surface makes sense while browsing test results.
 const inspectorTabs = computed(() => {
-  if (mode.value === 'test') {
+  if (mode.value === 'run') {
     return [
-      { id: 'states', label: 'States' },
+      { id: 'states', label: 'Info' },
       { id: 'signals', label: 'Signals' },
       { id: 'metrics', label: 'Metrics' },
       { id: 'env', label: 'Env' }
     ]
   }
-  if (mode.value === 'auto') {
-    return [{ id: 'state', label: 'Info' }]
+  if (mode.value === 'test') {
+    return [{ id: 'state', label: 'Info' }, { id: 'user', label: 'User' }]
   }
   if (mode.value === 'edit' && !isBehaviorNodeSelected.value) {
     return [{ id: 'state', label: 'Info' }]
@@ -523,9 +559,9 @@ function selectTransition(transition) {
 
 // Falls back to the *live* current state/signals (rather than null)
 // whenever nothing is selected. "Current state" only means anything in
-// 'test' mode — 'edit' has no live conversation driving the graph, so nothing is ever "current" while editing.
+// 'run' mode — 'edit' has no live conversation driving the graph, so nothing is ever "current" while editing.
 const highlightedStateKey = computed(() => {
-  if (mode.value !== 'test') return null
+  if (mode.value !== 'run') return null
   return selected.value ? highlightedStateKeyFor(selected.value, timeline.value, sessionStartState.value) : (liveState.value?.key ?? null)
 })
 
@@ -582,28 +618,39 @@ async function restartAndResend(message) {
 // to (see jumpToDefinition/applyPendingCursorTarget). Cleared once applied.
 const pendingCursorTarget = ref(null)
 
-// Single "Edit | Test | Auto" segmented control: 'edit' shows the file
-// explorer + editor, 'test' shows the embedded chat, 'auto' shows the
+// Single "Design | Run | Test" segmented control: 'edit' shows the file
+// explorer + editor, 'run' shows the embedded chat, 'test' shows the
 // replay tree. Also gates the Inspector's tab set (see inspectorTabs).
 const mode = ref('edit')
 const editorOpen = computed(() => mode.value === 'edit')
-const chatOpen = computed(() => mode.value === 'test')
-const autoOpen = computed(() => mode.value === 'auto')
+const runOpen = computed(() => mode.value === 'run')
+const testOpen = computed(() => mode.value === 'test')
 
-// Entering 'test' mode bootstraps a chat session against the draft, even
+// Entering 'run' mode bootstraps a chat session against the draft, even
 // if a real native session is already active — loadMessages()/ensureSession()
 // resolve the correct session pool from testModeProjectName (see setMode).
+// rememberedRunSessionId (set by setMode below, right before leaving 'run')
+// carries currentSessionId across a Design/Test <-> Run switch — otherwise
+// ChatWindow's own onBeforeUnmount clears it, and re-entering 'run' with no
+// session_id would resolve to a different (if still most-recent) session
+// than the one actually left open.
+let rememberedRunSessionId = null
+
 async function ensureDraftChatSession() {
+  if (rememberedRunSessionId != null) currentSessionId.value = rememberedRunSessionId
   await loadMessages()
+  await loadSessions()
 }
 
 // testModeProjectName (see chatStore.js) signals every session
-// bootstrap/list/refresh function there that "Test" mode's separate
-// session pool is in effect — set while 'test' is active, cleared otherwise (and on unmount, defensively).
+// bootstrap/list/refresh function there that "Run" mode's separate
+// session pool is in effect — set while 'run' is active, cleared otherwise (and on unmount, defensively).
 function setMode(next) {
+  if (mode.value === 'run' && next !== 'run') rememberedRunSessionId = currentSessionId.value
   mode.value = next
-  testModeProjectName.value = next === 'test' ? props.projectName : null
-  if (next === 'test') ensureDraftChatSession()
+  testModeProjectName.value = next === 'run' ? props.projectName : null
+  if (next === 'run') ensureDraftChatSession()
+  if (next === 'test') ensureUsersList()
 }
 
 onBeforeUnmount(() => { testModeProjectName.value = null })
@@ -1420,14 +1467,14 @@ onBeforeUnmount(() => {
           >Design</button>
           <button
             class="mode-segment-btn"
+            :class="{ 'mode-segment-btn-active': mode === 'run' }"
+            @click="setMode('run')"
+          >Run</button>
+          <button
+            class="mode-segment-btn"
             :class="{ 'mode-segment-btn-active': mode === 'test' }"
             @click="setMode('test')"
           >Test</button>
-          <button
-            class="mode-segment-btn"
-            :class="{ 'mode-segment-btn-active': mode === 'auto' }"
-            @click="setMode('auto')"
-          >Auto</button>
         </div>
         <div v-if="projectRevision" class="publish-split-btn">
           <button
@@ -1488,8 +1535,8 @@ onBeforeUnmount(() => {
         />
 
         <Transition name="panel-slide-bottom">
-          <TestChat
-            v-if="chatOpen"
+          <RunChat
+            v-if="runOpen"
             :timeline="timeline"
             :signals-log="signalsLog"
             :selected="selected"
@@ -1504,7 +1551,7 @@ onBeforeUnmount(() => {
           />
         </Transition>
 
-        <ProjectAutoPanel v-if="autoOpen" :project-name="projectName" @select="handleAutoSelect" />
+        <ProjectTestPanel v-if="testOpen" :project-name="projectName" @select="handleAutoSelect" />
       </div>
 
       <div class="inspector-wrap">
@@ -1519,6 +1566,11 @@ onBeforeUnmount(() => {
             @update:collapsed="handleInspectorCollapsedChange"
           >
             <template #tab-states="{ registerTab }">
+              <SessionDetailCard
+                v-if="runCurrentSession"
+                :session="runCurrentSession"
+                @updated="refreshSessionsQuietly"
+              />
               <InspectorGraphTab
                 :ref="registerTab('states')"
                 :project-name="projectName"
@@ -1535,11 +1587,11 @@ onBeforeUnmount(() => {
               <InspectorStateTab
                 :ref="registerTab('state')"
                 :project-name="projectName"
-                :selected-element="mode === 'auto' ? autoSelectedElement : stateTabElement"
-                :selected-session="mode === 'auto' ? autoSelectedSession : null"
-                :session-start-element="mode === 'auto' ? autoSessionStartElement : null"
-                :session-end-element="mode === 'auto' ? autoSessionEndElement : null"
-                :read-only="mode === 'auto'"
+                :selected-element="mode === 'test' ? autoSelectedElement : stateTabElement"
+                :selected-session="mode === 'test' ? autoSelectedSession : null"
+                :session-start-element="mode === 'test' ? autoSessionStartElement : null"
+                :session-end-element="mode === 'test' ? autoSessionEndElement : null"
+                :read-only="mode === 'test'"
                 :editable-files="files"
                 :highlighted-state-key="highlightedStateKey"
                 :recently-added-key="recentlyAddedKey"
@@ -1554,6 +1606,9 @@ onBeforeUnmount(() => {
                 @add-state="handleAddState"
                 @delete-file="handleDeleteFile"
               />
+            </template>
+            <template #tab-user="{ registerTab }">
+              <InspectorUserInfoCard :ref="registerTab('user')" :user="autoSelectedUser" />
             </template>
             <template #tab-actions="{ registerTab }">
               <InspectorActionsTab
@@ -1817,15 +1872,15 @@ onBeforeUnmount(() => {
   padding: 1rem;
 }
 
-/* Holds whichever one of ProjectDesignPanel/TestChat/
-   ProjectAutoPanel is actually showing (`mode` makes them mutually
+/* Holds whichever one of ProjectDesignPanel/RunChat/
+   ProjectTestPanel is actually showing (`mode` makes them mutually
    exclusive — see this file's own docstring) — each one is simply
    flex: 1 on its own now, no more "-full" override class needed to make
    it fill the column: with Design's own v-show hidden state
-   contributing a display:none box (and Test/Auto simply unmounted, see
+   contributing a display:none box (and Run/Test simply unmounted, see
    their own v-if), there's never a second sibling left to share space
    with in the first place. position: relative backs the leaving
-   TestChat's absolute positioning below — its leave transition would
+   RunChat's absolute positioning below — its leave transition would
    otherwise still count as a flex:1 sibling for the ~0.18s it lingers
    in the DOM, squeezing whichever panel is entering. */
 .edit-project-panels {
@@ -1844,9 +1899,9 @@ onBeforeUnmount(() => {
   inset: 0;
 }
 
-/* Leaving TestChat lingers ~0.18s as a positioned element (see above),
+/* Leaving RunChat lingers ~0.18s as a positioned element (see above),
    which by itself would paint over a static-flow sibling that mounts in
-   the same instant (e.g. ProjectAutoPanel on switching to Auto) —
+   the same instant (e.g. ProjectTestPanel on switching to Test) —
    negative z-index drops it behind static siblings instead, so the
    panel actually being switched to is never hidden under a fading-out
    ghost of the old one. */

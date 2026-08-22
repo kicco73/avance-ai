@@ -54,6 +54,13 @@ def test_is_open_is_false_never_a_crash_for_a_session_with_no_datetime_end(manag
     assert manager.is_open(session) is False
 
 
+@pytest.mark.regression
+def test_is_open_never_expires_for_a_test_session(manager):
+    long_ago = datetime.utcnow() - timedelta(days=365)
+    session = {"type": "test", "datetime_end": long_ago}
+    assert manager.is_open(session) is True
+
+
 @pytest.mark.contract
 def test_creates_a_new_session_when_none_exists(manager, project_service):
     session = _resolve_or_create(manager, project_service, "user", "proj", None, "start")

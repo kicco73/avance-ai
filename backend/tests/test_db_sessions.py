@@ -72,6 +72,41 @@ def test_create_chat_session_stamps_whatever_revision_the_caller_resolved(db):
 
 
 @pytest.mark.regression
+def test_create_chat_session_defaults_the_title_to_type_and_count(db):
+    first_id = _make_session(db, start=datetime(2026, 1, 1, 9, 0, 0))
+    second_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+
+    assert db.get_chat_session(first_id)["title"] == "Live session 1"
+    assert db.get_chat_session(second_id)["title"] == "Live session 2"
+
+
+@pytest.mark.regression
+def test_create_chat_session_default_title_never_overrides_an_explicit_one(db):
+    db.ensure_project("proj")
+    db.publish_project("proj")
+    revision = db.get_project_published_revision("proj")
+
+    session_id = db.create_chat_session("user", "proj", revision, start_state="start", title="Renamed")
+
+    assert db.get_chat_session(session_id)["title"] == "Renamed"
+
+
+@pytest.mark.regression
+def test_create_chat_session_default_title_counts_are_independent_per_type_and_username(db):
+    db.ensure_project("proj")
+    db.publish_project("proj")
+    revision = db.get_project_published_revision("proj")
+
+    live_id = db.create_chat_session("user", "proj", revision, start_state="start", type="live")
+    test_id = db.create_chat_session("user", "proj", revision, start_state="start", type="test")
+    other_user_live_id = db.create_chat_session("other-user", "proj", revision, start_state="start", type="live")
+
+    assert db.get_chat_session(live_id)["title"] == "Live session 1"
+    assert db.get_chat_session(test_id)["title"] == "Test session 1"
+    assert db.get_chat_session(other_user_live_id)["title"] == "Live session 1"
+
+
+@pytest.mark.regression
 def test_get_latest_chat_session_picks_most_recent_start(db):
     _make_session(db, start=datetime(2026, 1, 1, 9, 0, 0))
     newer = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))

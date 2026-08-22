@@ -160,7 +160,7 @@ class SessionSummary(BaseModel):
 
 class BenchmarkRun(BaseModel):
     id = AutoField()
-    username = CharField()
+    username = CharField(null=True)
     project_name = CharField(index=True)
     # None means "every labeled session of the project", never a single
     # unresolved session — same dual as BenchmarkCalculator(session_id=

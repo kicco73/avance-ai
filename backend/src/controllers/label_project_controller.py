@@ -169,9 +169,10 @@ class LabelProjectController(BaseController):
         """Creates a BenchmarkRun and submits its replay job — returns
         immediately with status='pending', before the job's worker
         thread has actually started it. BenchmarkServiceError is handled globally."""
+        username = req.username if req.username is not None else Session().user
         try:
             return self.benchmark_run_service.create_run(
-                Session().user, project_name, req.session_id, req.strategy,
+                username, project_name, req.session_id, req.strategy,
             )
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
@@ -184,11 +185,15 @@ class LabelProjectController(BaseController):
         return self.benchmark_run_service.get_run(run_id)
 
     @get("/api/projects/{project_name}/benchmark-runs")
-    def get_benchmark_runs(self, project_name: str, session_id: int | None = None):
+    def get_benchmark_runs(self, project_name: str, session_id: int | None = None, username: str | None = None):
         """Every BenchmarkRun for `project_name` with that exact
         session_id — None (the default) means every whole-project-scope
-        run, not "no filter". Most recent first."""
-        return self.benchmark_run_service.list_runs(project_name, session_id)
+        run, not "no filter". `username`, when given, further narrows to
+        that user's runs; omitted, no username filter is applied. Most
+        recent first."""
+        if username is None:
+            return self.benchmark_run_service.list_runs(project_name, session_id)
+        return self.benchmark_run_service.list_runs(project_name, session_id, username)
 
     @post("/api/projects/{project_name}/states/{state_key}/test")
     def post_state_test(self, project_name: str, state_key: str, req: StateTestRequest):
@@ -207,3 +212,15 @@ class LabelProjectController(BaseController):
         result. None (never a 404) for an unknown job_id, e.g. after a
         backend restart — distinguishable from "in progress"/"completed"."""
         return self.benchmark_run_service.get_job_status(job_id)
+
+    @post("/api/projects/{project_name}/users/aggregation")
+    def post_users_aggregation(self, project_name: str, req: StateTestRequest):
+        """Launches the "Users" branch's aggregation job — a simple mean
+        across one whole-project-scope run per distinct annotated user.
+        Returns immediately with the ephemeral job's id; poll GET
+        .../state-jobs/{job_id} (the job is generic, same as start_job's) for its outcome."""
+        try:
+            job_id = self.benchmark_run_service.start_users_aggregation_job(project_name, req.strategy)
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return {"job_id": job_id}

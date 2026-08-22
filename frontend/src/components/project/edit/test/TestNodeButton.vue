@@ -1,5 +1,5 @@
 <script setup>
-// Play/status control shared by every level of the "Auto" tab's tree —
+// Play/status control shared by every level of the "Test" tab's tree —
 // root and the two branch nodes run every test in their scope at once,
 // same gesture as a single leaf. Purely presentational — only emits.
 const props = defineProps({

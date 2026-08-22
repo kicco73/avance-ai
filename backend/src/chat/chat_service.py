@@ -104,6 +104,7 @@ class ChatService(object):
 	def _session_payload(self, session: dict, *, active: bool) -> dict:
 		return {
 			"id": session["id"],
+			"username": session["username"],
 			"project_name": session["project_name"],
 			"type": session["type"],
 			"title": session["title"],
@@ -204,11 +205,15 @@ class ChatService(object):
 		automaton, state = self._project_service.get_automaton_and_state(project_name, type='test')
 		return {**Automaton.get_state_payload(state), "on-enter": automaton.init_action.on_enter}
 
+	def _is_session_active(self, session: dict, pool_active_id: int | None) -> bool:
+		fixed = get_session_type_strategy(session["type"]).default_active()
+		return fixed if fixed is not None else session["id"] == pool_active_id
+
 	def _list_sessions_by_type(self, project_name: str, type: str | tuple[str, ...], active_type: str) -> list[dict]:
 		sessions = self._db.list_chat_sessions(self._username, project_name, type=type)
 		active = self._session_manager.get_active_session(self._username, project_name, type=active_type)
 		active_id = active["id"] if active is not None else None
-		return [self._session_payload(s, active=(s["id"] == active_id)) for s in sessions]
+		return [self._session_payload(s, active=self._is_session_active(s, active_id)) for s in sessions]
 
 	def list_sessions(self, project_name: str, include_imported: bool = False) -> list[dict]:
 		"""Every real (live, and optionally imported) session for
@@ -240,12 +245,12 @@ class ChatService(object):
 
 	def _reloaded_session_payload(self, session_id: int) -> dict:
 		"""Common tail for every "write one field, then hand back a fresh
-		payload" mutation below. An imported session is never "active":
-		its datetime_end is always None, so resolving it would crash."""
+		payload" mutation below."""
 		session = self._db.get_chat_session(session_id)
 		assert session is not None
-		if session["type"] == "imported":
-			active = False
+		fixed = get_session_type_strategy(session["type"]).default_active()
+		if fixed is not None:
+			active = fixed
 		else:
 			resolved = self._session_manager.get_active_session(self._username, session["project_name"], type=session["type"])
 			active = resolved is not None and resolved["id"] == session_id
@@ -338,12 +343,19 @@ class ChatService(object):
 		# Python raises on naive-vs-aware comparison.
 		return datetime.fromisoformat(message["timestamp"]).replace(tzinfo=None)
 
-	def get_metrics(self, project_name: str, message_id: int | None = None) -> list[dict]:
+	def get_metrics(
+		self, project_name: str, message_id: int | None = None, full: bool = False, username: str | None = None,
+	) -> list[dict]:
 		"""metrics.metrics_framework's core metrics for `project_name` —
 		the full current history, or (`message_id` given) restricted to
-		what existed at or before that message's own timestamp."""
+		what existed at or before that message's own timestamp. `full`:
+		every core metric, not just the "one_session" subset — see
+		MetricService.calculate_all's own `include_all_scopes`. `username`
+		omitted means the caller's own sessions — see its own `username`."""
 		until = self._until_from_message(message_id)
-		return self.metric_service.calculate_all(until=until, project_name=project_name)
+		return self.metric_service.calculate_all(
+			until=until, project_name=project_name, include_all_scopes=full, username=username,
+		)
 
 	def preview_triggers(self, signals: dict) -> list:
 		automaton, state = self._project_service.get_active_automaton_and_state()

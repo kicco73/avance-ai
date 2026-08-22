@@ -3,7 +3,7 @@
 // status (see backend ProjectService._project_status) and revision info.
 // The status dot toggles running <-> manually_paused only; 'paused' needs an external fix.
 import { onMounted, ref } from 'vue'
-import { getProjectsRuntimeStatus, putProjectPause, putProjectResume } from '../../api.js'
+import { getProjectMetadata, getProjectsRuntimeStatus, putProjectPause, putProjectResume } from '../../api.js'
 import { confirmDialog } from '../../dialogStore.js'
 import ErrorBanner from '../ErrorBanner.vue'
 
@@ -15,17 +15,41 @@ const loading = ref(true)
 // Name of the project with a pause/resume request in flight; disables
 // only that row's button.
 const togglingProject = ref(null)
+// name -> { id, ui_label, ui_description }, filled in after the runtime-status
+// list loads — the project detail card's own content (title/id/description).
+const metadataByName = ref({})
+
+async function loadMetadata(names) {
+  const results = await Promise.allSettled(names.map((name) => getProjectMetadata(name)))
+  results.forEach((result, i) => {
+    if (result.status === 'fulfilled') metadataByName.value[names[i]] = result.value.project
+  })
+}
 
 async function load() {
   loading.value = true
   try {
     const res = await getProjectsRuntimeStatus()
     rows.value = res.projects
+    loadMetadata(rows.value.map((row) => row.name))
   } catch {
     // already surfaced via apiFetch
   } finally {
     loading.value = false
   }
+}
+
+function projectTitle(name) {
+  return metadataByName.value[name]?.ui_label || name
+}
+
+function projectId(name) {
+  const id = metadataByName.value[name]?.id
+  return id && id !== name ? id : null
+}
+
+function projectDescription(name) {
+  return metadataByName.value[name]?.ui_description || null
 }
 
 function replaceRow(updated) {
@@ -163,7 +187,14 @@ defineExpose({ refresh: load })
               </button>
             </td>
             <td class="manage-projects-name">
-              <button type="button" class="manage-projects-name-btn" title="Edit project" @click="selectEdit(row.name)">{{ row.name }}</button>
+              <button type="button" class="project-card" title="Edit project" @click="selectEdit(row.name)">
+                <span class="project-card-badge">Project</span>
+                <span class="project-card-body">
+                  <span class="project-card-title">{{ projectTitle(row.name) }}</span>
+                  <code v-if="projectId(row.name)" class="project-card-id">{{ projectId(row.name) }}</code>
+                  <span v-if="projectDescription(row.name)" class="project-card-desc">{{ projectDescription(row.name) }}</span>
+                </span>
+              </button>
             </td>
             <td>{{ statusLabel(row.status) }}</td>
             <td class="manage-projects-reason">{{ row.paused_reason ?? '—' }}</td>
@@ -350,25 +381,68 @@ defineExpose({ refresh: load })
   width: 2.2rem;
 }
 
-.manage-projects-name {
+.project-card {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  max-width: 320px;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid #eee;
+  border-radius: 8px;
+  background: #fafafa;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.project-card:hover {
+  border-color: #4a6fa5;
+  background: #f3f6fb;
+}
+
+.project-card-badge {
+  flex-shrink: 0;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: #6a1b9a;
+  color: white;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.project-card-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.project-card-title {
+  font-size: 0.85rem;
   font-weight: 600;
   color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.manage-projects-name-btn {
-  padding: 0;
-  border: none;
-  background: none;
-  font: inherit;
-  font-weight: 600;
-  color: #4a6fa5;
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
+.project-card-id {
+  font-size: 0.7rem;
+  color: #888;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.manage-projects-name-btn:hover {
-  color: #2e4c78;
+.project-card-desc {
+  font-size: 0.75rem;
+  color: #777;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .manage-projects-reason {

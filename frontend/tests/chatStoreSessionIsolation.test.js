@@ -103,6 +103,28 @@ describe('testModeProjectName routes session bootstrap/list to the right pool', 
     expect(api.postCreateSession).not.toHaveBeenCalled()
   })
 
+  it('handleNewSession skips the confirmation dialog when testModeProjectName is set', async () => {
+    api.postCreateTestSession.mockResolvedValue({ id: 4, active: true })
+    api.getCurrentTestSession.mockResolvedValue({ id: 4, active: true, state: { key: 'x', ui_label: 'X', actions: [] } })
+    chatStore.testModeProjectName.value = 'my-project'
+
+    const dialogStore = await import('../src/dialogStore.js')
+    await chatStore.handleNewSession()
+
+    expect(dialogStore.confirmDialog).not.toHaveBeenCalled()
+    expect(api.postCreateTestSession).toHaveBeenCalled()
+  })
+
+  it('handleNewSession still asks for confirmation when testModeProjectName is null', async () => {
+    api.postCreateSession.mockResolvedValue({ id: 3, active: true })
+    api.getCurrentSession.mockResolvedValue({ id: 3, active: true, state: { key: 'x', ui_label: 'X', actions: [] } })
+
+    const dialogStore = await import('../src/dialogStore.js')
+    await chatStore.handleNewSession()
+
+    expect(dialogStore.confirmDialog).toHaveBeenCalled()
+  })
+
   it('handleNewSession runs a brand new session\'s own on-enter (init-action fired it)', async () => {
     api.postCreateSession.mockResolvedValue({ id: 5, active: true, 'on-enter': 'celebrate()' })
     api.getCurrentSession.mockResolvedValue({ id: 5, active: true, state: { key: 'x', ui_label: 'X', actions: [] } })

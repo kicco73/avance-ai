@@ -15,6 +15,7 @@ class UserMixin:
                 "provider": user.provider,
                 "email": user.email,
                 "name": user.name,
+                "picture_url": user.picture_url,
                 "created_at": _utc_iso(user.created_at),
                 "last_login": _utc_iso(user.last_login),
             }

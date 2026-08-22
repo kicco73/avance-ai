@@ -35,7 +35,8 @@ class ChatSessionManager(object):
         if session["datetime_end"] is None:
             return False
         now = now if now is not None else datetime.utcnow()
-        return now - session["datetime_end"] < self._open_window
+        strategy = get_session_type_strategy(session["type"])
+        return not strategy.is_expired(session, now, self._open_window)
 
     def get_active_session(self, username: str, project_name: str, type: str = 'live') -> dict | None:
         """The single session `username`+`project_name` may currently
@@ -69,9 +70,12 @@ class ChatSessionManager(object):
     ) -> dict:
         """The one session `username`+`project_name` may write to right
         now. `strategy.resolves_by_id()` (test): `session_id`, when given
-        and still valid, is always authoritative — never falls back to
-        "most recently started". Otherwise (live): the most recently
-        started still-open session, `session_id` only logged when stale, never trusted."""
+        and still valid, is always authoritative. Without one, falls back
+        to the most recently started session of this type rather than
+        creating a new one — a fresh one only ever appears with no
+        `session_id` given and none already existing. Otherwise (live):
+        the most recently started still-open session, `session_id` only
+        logged when stale, never trusted."""
         now = datetime.utcnow()
         if strategy.resolves_by_id():
             if session_id is not None:
@@ -81,6 +85,10 @@ class ChatSessionManager(object):
                     and session["project_name"] == project_name and session["type"] == strategy.type_name
                 ):
                     return self._touch(session["id"], now, current_state)
+            else:
+                latest = self._db.get_latest_chat_session(username, project_name, type=strategy.type_name)
+                if latest is not None:
+                    return self._touch(latest["id"], now, current_state)
             return self.create_session(strategy, project_service, username, project_name, automaton, current_state)
         active = self.get_active_session(username, project_name, type=strategy.type_name)
         if active is not None:

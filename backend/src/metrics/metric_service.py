@@ -79,20 +79,34 @@ class MetricService(object):
         return self._max_session_duration_in_minutes
 
     def _calculate(
-        self, until: datetime | None = None, project_name: str | None = None
+        self, until: datetime | None = None, project_name: str | None = None,
+        metrics: list[MetricCalculator] | None = None, username: str | None = None,
     ) -> list[tuple[MetricCalculator, MetricResult]]:
         """Loads the analytical dataset once per call, then evaluates every
         core metric against it. `until` restricts the dataset; `project_name`
-        omitted falls back to the active project."""
+        omitted falls back to the active project; `username` omitted falls
+        back to the caller's own session. `metrics` omitted uses
+        AnalyticsCalculator's own default (scoped to "one_session")."""
         calculator = AnalyticsCalculator(
-            self._db, Session().user, project_name or self._project_service.get_active_project_name(), until=until
+            self._db, username or Session().user, project_name or self._project_service.get_active_project_name(),
+            metrics=metrics, until=until,
         )
         return list(zip(calculator.metrics, calculator.calculate_all()))
 
-    def calculate_all(self, until: datetime | None = None, project_name: str | None = None) -> list[dict]:
+    def calculate_all(
+        self, until: datetime | None = None, project_name: str | None = None,
+        include_all_scopes: bool = False, username: str | None = None,
+    ) -> list[dict]:
         """ui_label/ui_description/value per metric. `until`/`project_name`
         omitted means the live active project; both set gives a point-in-time
-        view of a specific project, so it never leaks another project's state."""
+        view of a specific project, so it never leaks another project's state.
+        `include_all_scopes`: every core metric (e.g. Retention/Activity
+        Consistency, which need more than one session) instead of the usual
+        "one_session" subset — for a view aggregating a whole project's
+        history rather than a single live session. `username` omitted means
+        the caller's own sessions — Manage Users' statistics panel passes
+        the Explorer's selected user instead, to inspect *their* sessions."""
+        metrics = AnalyticsCalculator.default_metrics() if include_all_scopes else None
         return [
             {
                 "name": metric.name,
@@ -100,7 +114,7 @@ class MetricService(object):
                 "ui_description": metric.ui_description,
                 "value": result.value,
             }
-            for metric, result in self._calculate(until=until, project_name=project_name)
+            for metric, result in self._calculate(until=until, project_name=project_name, metrics=metrics, username=username)
         ]
 
     def calculate_values(self) -> dict[str, float]:
@@ -133,9 +147,18 @@ class MetricService(object):
         configuration = BenchmarkConfiguration(
             max_session_duration_in_minutes=self._max_session_duration_in_minutes
         )
+        resolved_project_name = project_name or self._project_service.get_active_project_name()
+        # This is the frontend's own metric *catalog* (name -> ui_label/
+        # ui_description) — every metric belongs in it regardless of
+        # session_id, unlike a real run's own results, which stay scoped
+        # to whatever's meaningful for that run (see BenchmarkCalculator's
+        # own default "one_session" filtering).
+        unfiltered_metrics = BenchmarkCalculator(
+            self._db, Session().user, resolved_project_name, configuration=configuration, session_id=session_id,
+        ).default_metrics()
         calculator = BenchmarkCalculator(
-            self._db, Session().user, project_name or self._project_service.get_active_project_name(),
-            configuration=configuration, session_id=session_id,
+            self._db, Session().user, resolved_project_name,
+            configuration=configuration, session_id=session_id, metrics=unfiltered_metrics,
         )
         results = calculator.calculate_all()
         return [
