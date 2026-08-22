@@ -65,7 +65,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
     @get("/api/projects/{project_name}/states")
     def get_project_states(self, project_name: str):
         """Every real state key of `project_name`'s current draft
-        automaton — the "Stati" branch's own node list (see
+        automaton — the "States" branch's own node list (see
         TestsTree.vue)."""
         try:
             return self.project_service.get_project_states(project_name)

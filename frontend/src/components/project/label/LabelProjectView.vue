@@ -994,6 +994,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  transition: width 0.15s ease;
 }
 
 /* Collapsed (see Inspector.vue's own always-visible header toggle) —

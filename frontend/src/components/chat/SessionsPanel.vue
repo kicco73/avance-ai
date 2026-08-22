@@ -102,7 +102,7 @@ const {
       class="collapse-toggle-btn"
       :title="collapsed ? 'Expand sessions' : 'Collapse sessions'"
       @click="emit('update:collapsed', !collapsed)"
-    >{{ collapsed ? '◂' : '✕' }}</button>
+    >{{ collapsed ? '▸' : '◂' }}</button>
   </div>
 
   </div>

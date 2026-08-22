@@ -192,7 +192,7 @@ class LabelProjectController(BaseController):
 
     @post("/api/projects/{project_name}/states/{state_key}/test")
     def post_state_test(self, project_name: str, state_key: str, req: StateTestRequest):
-        """Launches the "Stati" branch's aggregation job for one state.
+        """Launches the "States" branch's aggregation job for one state.
         Returns immediately with the ephemeral job's id; poll GET
         .../state-jobs/{job_id} for its outcome."""
         try:

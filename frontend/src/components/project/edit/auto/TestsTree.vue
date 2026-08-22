@@ -1,6 +1,6 @@
 <script setup>
-// Two-level tree under one root: "Sessioni" (a leaf per annotated session)
-// and "Stati" (a leaf per state key). ProjectAutoPanel.vue owns all data
+// Two-level tree under one root: "Sessions" (a leaf per annotated session)
+// and "States" (a leaf per state key). ProjectAutoPanel.vue owns all data
 // fetching/launching/polling — this component only renders and emits.
 //
 // Node identifiers are plain strings prefixed by kind — 'root',
@@ -13,7 +13,7 @@ const props = defineProps({
   projectName: { type: String, required: true },
   // Full session list (see chatStore.js's sessions, fetched with
   // include_imported=true upstream) — filtered here to has_annotations,
-  // the only ones the "Sessioni" branch ever shows.
+  // the only ones the "Sessions" branch ever shows.
   sessions: { type: Array, required: true },
   // Every real state key of the project's current draft automaton (see
   // api.js's getProjectStates).
@@ -67,7 +67,7 @@ function formatSessionTimestamp(iso) {
               :class="{ 'tests-tree-row-selected': selectedNodeId === 'sessions-branch' }"
               @click="emit('select', 'sessions-branch')"
             >
-              <span class="tests-tree-label">Sessioni</span>
+              <span class="tests-tree-label">Sessions</span>
             </button>
             <TestNodeButton :status="statusFor('sessions-branch')" :disabled="true" />
           </div>
@@ -102,7 +102,7 @@ function formatSessionTimestamp(iso) {
               :class="{ 'tests-tree-row-selected': selectedNodeId === 'states-branch' }"
               @click="emit('select', 'states-branch')"
             >
-              <span class="tests-tree-label">Stati</span>
+              <span class="tests-tree-label">States</span>
             </button>
             <TestNodeButton :status="statusFor('states-branch')" :disabled="true" />
           </div>

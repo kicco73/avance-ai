@@ -1,6 +1,6 @@
 <script setup>
 // "Auto" mode's content, shown when EditProjectView.vue's `autoOpen` is set.
-// Two columns: TestsTree on the left (Sessioni/Stati), a node's results on
+// Two columns: TestsTree on the left (Sessions/States), a node's results on
 // the right. Owns all data fetching/launching/polling — TestsTree itself
 // (alongside TestNodeButton, both in this same auto/ folder) stays purely presentational.
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -141,8 +141,8 @@ const selectedNodeLabel = computed(() => {
   const nodeId = selectedNodeId.value
   if (!nodeId) return ''
   if (nodeId === 'root') return props.projectName
-  if (nodeId === 'sessions-branch') return 'Sessioni'
-  if (nodeId === 'states-branch') return 'Stati'
+  if (nodeId === 'sessions-branch') return 'Sessions'
+  if (nodeId === 'states-branch') return 'Stats'
   if (nodeId.startsWith('session:')) {
     const id = Number(nodeId.slice('session:'.length))
     const session = sessions.value.find((s) => s.id === id)
