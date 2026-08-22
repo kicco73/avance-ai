@@ -120,7 +120,7 @@ def test_import_json_restores_a_native_looking_session_with_real_timestamps(clie
     assert exported["messages"][1]["new_state"] == "Hello"
 
     sessions = {s["id"]: s for s in client.get("/api/projects/hello/sessions?include_imported=true").json()}
-    assert sessions[session_id]["source"] == "imported"
+    assert sessions[session_id]["type"] == "imported"
 
 
 @pytest.mark.contract

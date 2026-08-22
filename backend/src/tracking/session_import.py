@@ -62,7 +62,7 @@ class SessionImportManager:
         session_id = self._db.create_chat_session(
             username, project_name,
             datetime_start=None, datetime_end=None, start_state=None, end_state=None,
-            source='imported', title=title,
+            type='imported', title=title,
         )
         for message in messages:
             self._db.save_message(message["role"], message["content"], session_id, timestamp=None)
@@ -70,7 +70,7 @@ class SessionImportManager:
 
     def import_session_json(self, username: str, project_name: str, session_data: dict) -> int:
         """Restores one session_export.py-produced session exactly. Always
-        `source='imported'`, since a round-tripped session never ran
+        `type='imported'`, since a round-tripped session never ran
         against *this* automaton/revision. Raises KeyError/TypeError on malformed input."""
         messages = session_data.get('messages', [])
         session_id = self._db.create_chat_session(
@@ -79,7 +79,7 @@ class SessionImportManager:
             datetime_end=_parse_iso(session_data.get('datetime_end')),
             start_state=session_data.get('start_state'),
             end_state=session_data.get('end_state'),
-            source='imported', title=session_data.get('name'),
+            type='imported', title=session_data.get('name'),
         )
         try:
             if session_data.get('labeled'):

@@ -66,7 +66,7 @@ function formatSessionTimestamp(iso) {
 }
 
 function notSelectable(session) {
-  return props.restrictSelectionToNative && session.source !== 'native'
+  return props.restrictSelectionToNative && session.type !== 'live'
 }
 
 function selectSession(session) {
@@ -139,7 +139,7 @@ const {
         <span class="session-timestamp">{{ formatSessionTimestamp(session.datetime_start) }}</span>
       </button>
       <button
-        v-if="allowDelete && (!deleteImportedOnly || session.source === 'imported')"
+        v-if="allowDelete && (!deleteImportedOnly || session.type === 'imported')"
         type="button"
         class="session-delete-btn"
         :disabled="deletingSessionId === session.id"

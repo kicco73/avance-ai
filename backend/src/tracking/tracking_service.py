@@ -117,7 +117,7 @@ class TrackingService(object):
 		if message is None:
 			return None
 		session = self._db.get_chat_session(message["session_id"])
-		if session is None or session["source"] != "imported":
+		if session is None or session["type"] != "imported":
 			return None
 		self._db.save_transition(
 			None, None, None, message["session_id"], transition_log_level="INFO", message_id=message_id
@@ -148,7 +148,7 @@ class TrackingService(object):
 		# old_state == "" specifically means "the automaton's own init
 		# transition" — an imported session never ran through the automaton
 		# at all, so writing ""->None here would falsely claim one happened.
-		if session is None or session["source"] == "imported":
+		if session is None or session["type"] == "imported":
 			return None
 		self._db.save_transition(
 			"", "", session["start_state"], session_id, transition_log_level="INFO", message_id=message_id
@@ -249,7 +249,7 @@ class TrackingService(object):
 
 		automaton, state = self._project_service.get_automaton_and_state_for_session(session_id)
 		session = self._db.get_chat_session(session_id)
-		is_test_session = session is not None and session["source"] == "test"
+		is_test_session = session is not None and session["type"] == "test"
 		project_name = session["project_name"]
 
 		user_vars = UserVariables(

@@ -58,24 +58,24 @@ class ProjectMixin:
         Message.delete().where(Message.session.in_(session_ids)).execute()
         ChatSession.delete().where(ChatSession.project_name == project_name).execute()
 
-    def reset_project_for_user(self, username: str, project_name: str, source: str) -> None:
+    def reset_project_for_user(self, username: str, project_name: str, type: str) -> None:
         session_ids = ChatSession.select(ChatSession.id).where(
-            (ChatSession.username == username) & (ChatSession.project_name == project_name) & (ChatSession.source == source)
+            (ChatSession.username == username) & (ChatSession.project_name == project_name) & (ChatSession.type == type)
         )
         Tracking.delete().where(Tracking.session.in_(session_ids)).execute()
         Message.delete().where(Message.session.in_(session_ids)).execute()
         ChatSession.delete().where(
-            (ChatSession.username == username) & (ChatSession.project_name == project_name) & (ChatSession.source == source)
+            (ChatSession.username == username) & (ChatSession.project_name == project_name) & (ChatSession.type == type)
         ).execute()
 
     def wipe_live_sessions_for_project(self, project_name: str) -> None:
         session_ids = ChatSession.select(ChatSession.id).where(
-            (ChatSession.project_name == project_name) & (ChatSession.source == 'native')
+            (ChatSession.project_name == project_name) & (ChatSession.type == 'live')
         )
         Tracking.delete().where(Tracking.session.in_(session_ids)).execute()
         Message.delete().where(Message.session.in_(session_ids)).execute()
         ChatSession.delete().where(
-            (ChatSession.project_name == project_name) & (ChatSession.source == 'native')
+            (ChatSession.project_name == project_name) & (ChatSession.type == 'live')
         ).execute()
 
     def reset_all(self) -> None:
@@ -220,7 +220,7 @@ class ProjectMixin:
         publish_project/revert_to_published, the two moments a Test
         session's anchored revision stops meaning anything."""
         ChatSession.delete().where(
-            (ChatSession.project_name == project_name) & (ChatSession.source == 'test')
+            (ChatSession.project_name == project_name) & (ChatSession.type == 'test')
         ).execute()
 
     def publish_project(self, project_name: str) -> None:

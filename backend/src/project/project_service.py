@@ -562,7 +562,7 @@ class ProjectService(object):
         return self._db.get_project_availability(project_name) or (False, None)
 
     def _resolve_state(
-        self, project_name: str, automaton: Automaton, *, session_id: int | None = None, source: str | None = None
+        self, project_name: str, automaton: Automaton, *, session_id: int | None = None, type: str | None = None
     ) -> State:
         """No persisted state yet falls back to init_action.target. A
         persisted state that no longer exists means a publish renamed or
@@ -570,7 +570,7 @@ class ProjectService(object):
         state_key = (
             self._db.get_current_state_for_session(session_id)
             if session_id is not None
-            else self._db.get_current_state(project_name, source=source)
+            else self._db.get_current_state(project_name, type=type)
         )
         if state_key is None:
             state_key = automaton.init_action.target
@@ -592,7 +592,7 @@ class ProjectService(object):
         if published_revision is None:
             raise ValueError(f"Project '{project_name}' has never been published.")
         automaton = self._load_project_at_revision(project_name, published_revision)
-        return automaton, self._resolve_state(project_name, automaton, source='native')
+        return automaton, self._resolve_state(project_name, automaton, type='live')
 
     def get_active_automaton_and_state(self) -> tuple[Automaton, State]:
         """The active project's published automaton and state — never the
@@ -611,7 +611,7 @@ class ProjectService(object):
         if session is None:
             raise FileNotFoundError(f"Session {session_id} does not exist.")
         project_name = session["project_name"]
-        if session["source"] == "test":
+        if session["type"] == "test":
             automaton = self._load_project(project_name)
         else:
             automaton = self._load_project_at_revision(project_name, session["project_revision"])
@@ -642,7 +642,7 @@ class ProjectService(object):
         making this call, even though the URL already says exactly which
         project this is about."""
         automaton = self._load_project(project_name)
-        return automaton, self._resolve_state(project_name, automaton, source='test')
+        return automaton, self._resolve_state(project_name, automaton, type='test')
 
     def apply_manual_action(self, action_name: str, session_id: int) -> tuple[StatePayload, Action, str]:
         """Applies a manual (button) action and returns the destination
@@ -672,7 +672,7 @@ class ProjectService(object):
         return automaton.get_state_payload(state)
 
     def reset_test_sessions(self, project_name: str) -> None:
-        self._db.reset_project_for_user(Session().user, project_name, source='test')
+        self._db.reset_project_for_user(Session().user, project_name, type='test')
 
     def wipe_live_sessions(self, project_name: str) -> None:
         self._db.wipe_live_sessions_for_project(project_name)
@@ -686,7 +686,7 @@ class ProjectService(object):
         session = self._db.get_chat_session(session_id)
         if session is None:
             raise FileNotFoundError(f"Session {session_id} does not exist.")
-        if session["source"] == "test":
+        if session["type"] == "test":
             return self._db.get_project_revision(project_name)
         return session["project_revision"]
 
@@ -831,7 +831,7 @@ class ProjectService(object):
         if project_name not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
         draft = self._load_project(project_name)
-        current_state_key = self._db.get_current_state(project_name, source='native')
+        current_state_key = self._db.get_current_state(project_name, type='live')
         published_revision = self._db.get_project_published_revision(project_name)
         has_active_sessions = (
             published_revision is not None
@@ -853,7 +853,7 @@ class ProjectService(object):
         if project_name not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
         draft = self._load_project(project_name)
-        current_state_key = self._db.get_current_state(project_name, source='native')
+        current_state_key = self._db.get_current_state(project_name, type='live')
         if current_state_key is not None and current_state_key not in draft.states:
             if remap_to is None:
                 raise ValueError(
@@ -1016,7 +1016,7 @@ class ProjectService(object):
             for archive_name, archive_content in archives.items():
                 zf.writestr(archive_name, archive_content)
             imported_sessions = self._session_export_manager.export_sessions(
-                Session().user, project_name, source='imported',
+                Session().user, project_name, type='imported',
             )
             if imported_sessions:
                 zf.writestr(SESSIONS_EXPORT_FILENAME, json.dumps(imported_sessions, indent=2))

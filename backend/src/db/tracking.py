@@ -113,18 +113,18 @@ class TrackingMixin:
         Tracking.update(expected_state=None, expected_values=None).where(Tracking.session == session_id).execute()
         Tracking.delete().where((Tracking.session == session_id) & (Tracking.old_state == '')).execute()
 
-    def _latest_transition(self, project_name: str, *, source: str | None=None, real_only: bool=False, until: datetime | None=None) -> Tracking | None:
+    def _latest_transition(self, project_name: str, *, type: str | None=None, real_only: bool=False, until: datetime | None=None) -> Tracking | None:
         query = Tracking.select().join(ChatSession, on=Tracking.session == ChatSession.id).where((ChatSession.project_name == project_name) & Tracking.new_state.is_null(False))
-        if source is not None:
-            query = query.where(ChatSession.source == source)
+        if type is not None:
+            query = query.where(ChatSession.type == type)
         if real_only:
             query = query.where(Tracking.old_state != Tracking.new_state)
         if until is not None:
             query = query.where(Tracking.timestamp <= until)
         return query.order_by(Tracking.timestamp.desc()).first()
 
-    def get_current_state(self, project_name: str, *, source: str | None=None) -> str | None:
-        transition = self._latest_transition(project_name, source=source)
+    def get_current_state(self, project_name: str, *, type: str | None=None) -> str | None:
+        transition = self._latest_transition(project_name, type=type)
         return transition.new_state if transition else None
 
     def get_current_state_for_session(self, session_id: int) -> str | None:

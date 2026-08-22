@@ -80,13 +80,13 @@ def _tracking_service(db, automaton: Automaton, signals_json: str = '{"mySignal"
     return TrackingService(db, ai_service, project_service, metrics)
 
 
-def _session_id(db, *, source: str = "test") -> int:
+def _session_id(db, *, type: str = "test") -> int:
     db.ensure_project(PROJECT_NAME)
     db.publish_project(PROJECT_NAME)
     return db.create_chat_session(
         username=USERNAME, project_name=PROJECT_NAME,
         datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
-        start_state="a", end_state="a", source=source,
+        start_state="a", end_state="a", type=type,
     )
 
 
@@ -128,12 +128,12 @@ async def test_signals_are_still_computed_and_logged_while_frozen(db):
     assert json.loads(logged[0]["values"])["mySignal"] == 1
 
 
-async def test_freezing_a_native_session_has_no_effect(db):
+async def test_freezing_a_live_session_has_no_effect(db):
     """Auto-tracking freeze only ever applies to 'test' sessions — a
-    native session's trigger still fires normally even if
+    live session's trigger still fires normally even if
     set_auto_tracking_enabled(session_id, False) was called for it."""
     automaton = _automaton("signal.mySignal >= 1")
-    session_id = _session_id(db, source="native")
+    session_id = _session_id(db, type="live")
     service = _tracking_service(db, automaton, '{"mySignal": 1}')
     service.set_auto_tracking_enabled(session_id, False)
 
@@ -154,7 +154,7 @@ async def test_freezing_one_test_session_never_affects_another(db):
     session_kwargs = dict(
         username=USERNAME, project_name=PROJECT_NAME,
         datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
-        start_state="a", end_state="a", source="test",
+        start_state="a", end_state="a", type="test",
     )
     frozen_session_id = db.create_chat_session(**session_kwargs)
     other_session_id = db.create_chat_session(**session_kwargs)

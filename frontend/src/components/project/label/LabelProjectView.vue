@@ -289,7 +289,7 @@ const currentSession = computed(() => sessions.value.find((s) => s.id === curren
 // Whether the session currently being reviewed was imported rather than
 // played live — the one case with no real Tracking rows for
 // annotatableSignalsRow below to consult.
-const currentSessionIsImported = computed(() => currentSession.value?.source === 'imported')
+const currentSessionIsImported = computed(() => currentSession.value?.type === 'imported')
 
 // The Info tab's read-only start/end state cards resolve through the
 // States tab's already-loaded graph rather than a second fetch.

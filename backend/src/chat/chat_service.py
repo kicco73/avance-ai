@@ -106,7 +106,7 @@ class ChatService(object):
 		return {
 			"id": session["id"],
 			"project_name": session["project_name"],
-			"source": session["source"],
+			"type": session["type"],
 			"title": session["title"],
 			"datetime_start": _utc_iso(session["datetime_start"]),
 			"datetime_end": _utc_iso(session["datetime_end"]),
@@ -214,24 +214,24 @@ class ChatService(object):
 		automaton, state = self._project_service.get_draft_automaton_and_state(project_name)
 		return {**Automaton.get_state_payload(state), "on-enter": automaton.init_action.on_enter}
 
-	def _list_sessions_by_source(self, project_name: str, source: str | tuple[str, ...], active_source: str) -> list[dict]:
-		sessions = self._db.list_chat_sessions(self._username, project_name, source=source)
-		active = self._session_manager.get_active_session(self._username, project_name, source=active_source)
+	def _list_sessions_by_type(self, project_name: str, type: str | tuple[str, ...], active_type: str) -> list[dict]:
+		sessions = self._db.list_chat_sessions(self._username, project_name, type=type)
+		active = self._session_manager.get_active_session(self._username, project_name, type=active_type)
 		active_id = active["id"] if active is not None else None
 		return [self._session_payload(s, active=(s["id"] == active_id)) for s in sessions]
 
 	def list_sessions(self, project_name: str, include_imported: bool = False) -> list[dict]:
-		"""Every real (native, and optionally imported) session for
+		"""Every real (live, and optionally imported) session for
 		`project_name`, most recently started first — for the "Sessions"
 		panel. Never a 'test' session (see list_test_sessions instead)."""
-		source = ('native', 'imported') if include_imported else 'native'
-		return self._list_sessions_by_source(project_name, source, active_source='native')
+		type = ('live', 'imported') if include_imported else 'live'
+		return self._list_sessions_by_type(project_name, type, active_type='live')
 
 	def list_test_sessions(self, project_name: str) -> list[dict]:
 		"""Like list_sessions, but `project_name`'s own 'test' sessions —
-		native/imported never appear here, symmetric to how a test session
+		live/imported never appear here, symmetric to how a test session
 		never appears in list_sessions."""
-		return self._list_sessions_by_source(project_name, 'test', active_source='test')
+		return self._list_sessions_by_type(project_name, 'test', active_type='test')
 
 	def _require_own_session(self, session_id: int) -> None:
 		"""Raises (404) unless `session_id` still exists and belongs to
@@ -254,10 +254,10 @@ class ChatService(object):
 		its datetime_end is always None, so resolving it would crash."""
 		session = self._db.get_chat_session(session_id)
 		assert session is not None
-		if session["source"] == "imported":
+		if session["type"] == "imported":
 			active = False
 		else:
-			resolved = self._session_manager.get_active_session(self._username, session["project_name"], source=session["source"])
+			resolved = self._session_manager.get_active_session(self._username, session["project_name"], type=session["type"])
 			active = resolved is not None and resolved["id"] == session_id
 		return self._session_payload(session, active=active)
 
@@ -483,7 +483,7 @@ class ChatService(object):
 		# message timestamps would make has_messages_since wrongly report
 		# "no messages" and crash trying to generate an opening one.
 		session = self._db.get_chat_session(session_id)
-		if session is not None and session["source"] == "imported":
+		if session is not None and session["type"] == "imported":
 			return None
 
 		project_name = self._active_project_name

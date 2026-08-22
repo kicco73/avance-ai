@@ -43,9 +43,9 @@ def test_download_has_no_sessions_json_when_there_are_no_imported_sessions(clien
 
 
 def test_download_includes_only_imported_sessions_never_native_ones(client, hello_project):
-    # A native session (just bootstrapping the chat).
+    # A live session (just bootstrapping the chat).
     native_session = client.get("/api/chat/session").json()
-    assert native_session["source"] == "native"
+    assert native_session["type"] == "live"
     # An imported session.
     resp = client.post(
         "/api/projects/hello/sessions/import", files={"file": ("t.txt", "user: hi\nassistant: yo\n", "text/plain")}
@@ -89,7 +89,7 @@ def test_uploading_a_zip_with_sessions_json_imports_them_automatically(client):
 
     sessions = client.get("/api/projects/proj/sessions?include_imported=true").json()
     assert len(sessions) == 1
-    assert sessions[0]["source"] == "imported"
+    assert sessions[0]["type"] == "imported"
     assert sessions[0]["title"] == "Reference transcript"
     messages = client.get(f"/api/chat/sessions/{sessions[0]['id']}/messages").json()
     assert [m["content"] for m in messages] == ["hi", "hello"]

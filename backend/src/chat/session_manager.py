@@ -31,11 +31,11 @@ class ChatSessionManager(object):
         now = now if now is not None else datetime.utcnow()
         return now - session["datetime_end"] < self._open_window
 
-    def get_active_session(self, username: str, project_name: str, source: str = 'native') -> dict | None:
+    def get_active_session(self, username: str, project_name: str, type: str = 'live') -> dict | None:
         """The single session `username`+`project_name` may currently
-        write to — the most recently started one, if still open. `source`:
-        'native'/'test' are separate "active session" pools, never interchangeable."""
-        latest = self._db.get_latest_chat_session(username, project_name, source=source)
+        write to — the most recently started one, if still open. `type`:
+        'live'/'test' are separate "active session" pools, never interchangeable."""
+        latest = self._db.get_latest_chat_session(username, project_name, type=type)
         if latest is not None and self.is_open(latest):
             return latest
         return None
@@ -64,7 +64,7 @@ class ChatSessionManager(object):
         stamped against the project's current *draft* revision instead
         of requiring a published one."""
         now = datetime.utcnow()
-        active = self.get_active_session(username, project_name, source='test')
+        active = self.get_active_session(username, project_name, type='test')
         if active is not None:
             if session_id is not None and session_id != active["id"]:
                 logger.info(
@@ -85,7 +85,7 @@ class ChatSessionManager(object):
         session = self._db.get_chat_session(session_id)
         if session is None or session["username"] != username or session["project_name"] != project_name:
             raise ValueError("Session not found.")
-        active = self.get_active_session(username, project_name, source=session["source"])
+        active = self.get_active_session(username, project_name, type=session["type"])
         if active is None or active["id"] != session["id"]:
             raise ValueError("Session is not active.")
         return self._touch(session["id"], datetime.utcnow(), current_state)

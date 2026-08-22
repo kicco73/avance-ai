@@ -28,9 +28,9 @@ class SessionSummaryManager:
         self._session_manager = session_manager
 
     def check_for_closed_sessions(self, username: str, project_name: str) -> None:
-        # Only 'native' — an imported session and a "Test" (draft) one
+        # Only 'live' — an imported session and a "Test" (draft) one
         # have no real usage timeline for "closed" to mean anything about.
-        sessions = self._db.list_chat_sessions(username, project_name, source='native')
+        sessions = self._db.list_chat_sessions(username, project_name, type='live')
         session_ids = [session['id'] for session in sessions]
         already_summarized = self._db.get_session_ids_with_summary(session_ids)
 
