@@ -1,0 +1,475 @@
+from __future__ import annotations
+
+import io
+import json
+import logging
+import tempfile
+import zipfile
+from pathlib import Path
+from typing import Mapping
+
+from automaton.automaton import Automaton, trigger_automaton_project_refs
+from automaton.automaton_builder import AutomatonBuilder
+from db import Db
+from events import AvailabilityChanged, publish, subscribe
+from session import Session
+from tracking.session_export import SessionExportManager
+from tracking.session_import import SessionImportManager
+
+from .inspector import ProjectInspector
+from .parsers import AutomatonLoader, decode_text_archives, extract_zip_safely, looks_like_zip
+from .parsers import IMAGE_EXTENSIONS, TEXT_CONTENT_TYPE_BY_EXTENSION
+from .types import CommitCallback
+
+logger = logging.getLogger(__name__)
+
+# Optional "bring your own sessions" file in a project zip — a
+# session_export.py-shaped JSON array, imported-only, never a project file
+# (excluded before AutomatonBuilder sees `files`, never persisted as Archive).
+SESSIONS_EXPORT_FILENAME = "sessions.json"
+
+# "New project" starts from this sample zip, resolved off this module's own
+# location, not the cwd.
+NEW_PROJECT_TEMPLATE = Path(__file__).resolve().parents[2] / "samples" / "projects" / "Hello world.zip"
+NEW_PROJECT_NAME = "Hello world"
+
+
+class ProjectManager:
+    def __init__(
+        self, db: Db, automaton_loader: AutomatonLoader, inspector: ProjectInspector,
+        session_export_manager: SessionExportManager, session_import_manager: SessionImportManager,
+    ) -> None:
+        self._db = db
+        self._automaton_loader = automaton_loader
+        self._inspector = inspector
+        self._session_export_manager = session_export_manager
+        self._session_import_manager = session_import_manager
+
+    @staticmethod
+    def _automaton_project_refs(automaton: Automaton) -> set[str]:
+        """Every project_id `automaton`'s self-loop actions reference via
+        automaton.* — raw tokens, not yet resolved to a project_name."""
+        refs: set[str] = set()
+        for state in automaton.states.values():
+            for action in state.actions:
+                if action.trigger and action.target == state.key:
+                    refs |= trigger_automaton_project_refs(action.trigger)
+        return refs
+
+    def _resolve_automaton_project_refs(self, project_ids: set[str]) -> set[str]:
+        """Translates automaton.* project_id tokens into project_name. A
+        token matching no known project_id is silently dropped, not an
+        error — a dangling reference is a runtime concern, not build-time."""
+        names: set[str] = set()
+        for project_id in project_ids:
+            name = self._db.get_project_name_by_project_id(project_id)
+            if name is not None:
+                names.add(name)
+        return names
+
+    def recompute_availability(self, project_name: str) -> None:
+        """Available exactly when the build succeeds and every automaton.*
+        dependency is itself available. Writes only on change — this is
+        what makes it safe to call from a cascade with no cycle detection."""
+        if self._db.get_manually_paused(project_name):
+            available, reason = False, "Manually paused."
+        else:
+            try:
+                self._automaton_loader.load(project_name)
+                available, reason = True, None
+            except Exception as exc:  # noqa: BLE001 — any failure to build at all means "not available"
+                available, reason = False, f"Build failed: {exc}"
+
+            if available:
+                blocking = next(
+                    (
+                        dep for dep in self._db.get_observed_projects(project_name)
+                        if (self._db.get_project_availability(dep) or (False, None))[0]
+                    ),
+                    None,
+                )
+                if blocking is not None:
+                    available, reason = False, f"Depends on unavailable project '{blocking}'."
+
+        current = self._db.get_project_availability(project_name)
+        if current is None:
+            return  # project no longer exists — nothing left to update
+        was_paused, _ = current
+        if was_paused == (not available):
+            return  # unchanged — see this method's own docstring on why this is the whole guard
+        self._db.set_project_availability(project_name, is_paused=not available, paused_reason=reason)
+        publish(AvailabilityChanged(project_name=project_name, available=available))
+
+    def register_availability_cascade(self) -> None:
+        """Subscribed once, for the process's lifetime. Recursive by
+        construction: recompute_availability's write-only-on-change guard
+        is what makes the cascade stop propagating on its own."""
+        subscribe(AvailabilityChanged, self._on_availability_changed)
+
+    def _on_availability_changed(self, event: AvailabilityChanged) -> None:
+        try:
+            for observer in self._db.get_observers(event.project_name):
+                self.recompute_availability(observer)
+        except Exception:
+            logger.exception(
+                "Availability cascade failed while reacting to '%s' (available=%s).",
+                event.project_name, event.available,
+            )
+
+    @staticmethod
+    def _project_status(is_paused: bool, manually_paused: bool) -> str:
+        """'running' | 'paused' | 'manually_paused'. manually_paused
+        always implies is_paused, so checking it first is enough to tell
+        the two paused cases apart."""
+        if manually_paused:
+            return "manually_paused"
+        if is_paused:
+            return "paused"
+        return "running"
+
+    def get_runtime_status(self) -> list[dict]:
+        """One row per project for the Settings > Runtime status view."""
+        return [
+            {
+                "name": row["name"],
+                "status": self._project_status(row["is_paused"], row["manually_paused"]),
+                "paused_reason": row["paused_reason"],
+                "revision": row["revision"],
+                "published_revision": row["published_revision"],
+            }
+            for row in self._db.list_projects_runtime_status()
+        ]
+
+    def set_manually_paused(self, project_name: str) -> dict:
+        """Only allowed from 'running', enforced here rather than left to
+        the UI alone. Recomputing afterward reuses the normal
+        AvailabilityChanged cascade rather than a separate one."""
+        if not self._db.project_exists(project_name):
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+        is_paused, _ = self._db.get_project_availability(project_name) or (False, None)
+        manually_paused = self._db.get_manually_paused(project_name) or False
+        status = self._project_status(is_paused, manually_paused)
+        if status != "running":
+            raise ValueError(f"Project '{project_name}' isn't running (status: '{status}') — can't be manually paused.")
+        self._db.set_manually_paused(project_name, True)
+        self.recompute_availability(project_name)
+        return self.get_project_runtime_status(project_name)
+
+    def set_manually_running(self, project_name: str) -> dict:
+        """Only allowed from 'manually_paused'. Clears the flag and lets
+        recompute_availability report the real state again, which may
+        still be unavailable if a dependency went down in the meantime."""
+        if not self._db.project_exists(project_name):
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+        is_paused, _ = self._db.get_project_availability(project_name) or (False, None)
+        manually_paused = self._db.get_manually_paused(project_name) or False
+        status = self._project_status(is_paused, manually_paused)
+        if status != "manually_paused":
+            raise ValueError(f"Project '{project_name}' isn't manually paused (status: '{status}') — can't be resumed.")
+        self._db.set_manually_paused(project_name, False)
+        self.recompute_availability(project_name)
+        return self.get_project_runtime_status(project_name)
+
+    def get_project_runtime_status(self, project_name: str) -> dict:
+        """One row, same shape as get_runtime_status — lets the
+        pause/resume endpoints refresh just this row."""
+        is_paused, paused_reason = self._db.get_project_availability(project_name) or (False, None)
+        manually_paused = self._db.get_manually_paused(project_name) or False
+        return {
+            "name": project_name,
+            "status": self._project_status(is_paused, manually_paused),
+            "paused_reason": paused_reason,
+            "revision": self._db.get_project_revision(project_name),
+            "published_revision": self._db.get_project_published_revision(project_name),
+        }
+
+    def get_project_availability(self, project_name: str) -> tuple[bool, str | None]:
+        """(is_paused, paused_reason). Returns (False, None), never
+        raises, for a project that doesn't exist at all."""
+        return self._db.get_project_availability(project_name) or (False, None)
+
+    def _project_update_changed(self, existing: Mapping[str, str | bytes], files: Mapping[str, str | bytes]) -> bool:
+        """Whether `files` is a genuine change against `existing`. A file
+        `existing` doesn't have yet always counts as changed, even with ""
+        content — a brand-new empty file must still get persisted."""
+        return any(name not in existing or existing[name] != content for name, content in files.items())
+
+    def prepare_update(
+        self, project_name: str, files: Mapping[str, str | bytes]
+    ) -> tuple[Automaton, dict[str, str | bytes] | None]:
+        """Builds+validates the Automaton for `files` merged onto
+        `project_name`'s current files. Read-only. Returns (automaton,
+        to_persist), where to_persist is None if nothing actually changed."""
+        existing = decode_text_archives(self._db.get_archives(project_name))
+        merged = {**existing, **files}
+
+        automaton = AutomatonBuilder().build(merged, self._automaton_loader.known_projects_env_keys(project_name))
+        self._validate_project_id_globally_unique(project_name, automaton.project_id)
+
+        if not self._project_update_changed(existing, files):
+            return automaton, None
+        return automaton, merged
+
+    def _validate_project_id_globally_unique(self, project_name: str, project_id: str | None) -> None:
+        """The one project.id check AutomatonBuilder can't do itself:
+        whether some *other* project has already claimed it. Raises before
+        anything gets persisted, so a failed save leaves nothing partial."""
+        if project_id is None:
+            return
+        owner = self._db.get_project_name_by_project_id(project_id)
+        if owner is not None and owner != project_name:
+            raise ValueError(
+                f"project.id '{project_id}' is already used by project '{owner}' — "
+                "project.id must be globally unique."
+            )
+
+    async def finalize_update(
+        self, project_name: str, automaton: Automaton, commit: CommitCallback
+    ) -> bool:
+        """Called by every project-mutating path before awaiting `commit`.
+        Refreshes the automaton cache and resets the active project's live
+        conversation only when its current state no longer exists."""
+
+        # Synced first: the reverse index below translates other projects'
+        # project_id into project_name, so this project's own row must be
+        # current before anything can resolve against it.
+        self._db.set_project_metadata(
+            project_name, automaton.project_id, automaton.project_ui_label, automaton.project_ui_description,
+        )
+
+        revision = self._db.get_project_revision(project_name)
+        self._automaton_loader.set_cached(project_name, revision, automaton)
+        # Reverse index of every project this one's self-loop actions
+        # reference via automaton.* — recomputed on every successful build
+        # regardless of whether `project_name` is currently active.
+        observed_project_names = self._resolve_automaton_project_refs(self._automaton_project_refs(automaton))
+        self._db.set_project_observers(project_name, observed_project_names)
+        self.recompute_availability(project_name)
+        if project_name == self._inspector.get_active_project_name():
+            current_state_key = self._db.get_current_state(project_name)
+            if current_state_key is None or current_state_key not in automaton.states:
+                self._db.reset_project(project_name)
+            await commit(project_name, automaton)
+            return True
+        return False
+
+    def reset_test_sessions(self, project_name: str) -> None:
+        self._db.reset_project_for_user(Session().user, project_name, type='test')
+
+    def wipe_live_sessions(self, project_name: str) -> None:
+        self._db.wipe_live_sessions_for_project(project_name)
+
+    def preview_publish(self, project_name: str) -> dict:
+        """Whether publishing `project_name` needs a human state remap
+        decision: the current persisted state has gone missing from the
+        draft about to be published. Also reports `has_active_sessions`."""
+        if project_name not in self._db.list_projects():
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+        draft = self._automaton_loader.load(project_name)
+        current_state_key = self._db.get_current_state(project_name, type='live')
+        published_revision = self._db.get_project_published_revision(project_name)
+        has_active_sessions = (
+            published_revision is not None
+            and self._db.has_open_sessions_for_revision(project_name, published_revision)
+        )
+        if current_state_key is None or current_state_key in draft.states:
+            return {"needs_remap": False, "has_active_sessions": has_active_sessions}
+        return {
+            "needs_remap": True,
+            "missing_state": current_state_key,
+            "available_states": [state.key for state in draft.states.values() if state.key != ""],
+            "has_active_sessions": has_active_sessions,
+        }
+
+    def publish_project(self, project_name: str, remap_to: str | None = None) -> dict:
+        """Sets published_revision = revision, freezing the current draft.
+        If the persisted state has gone missing from it, `remap_to` must
+        name a real state; the StateRemap written is consulted from then on."""
+        if project_name not in self._db.list_projects():
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+        draft = self._automaton_loader.load(project_name)
+        current_state_key = self._db.get_current_state(project_name, type='live')
+        if current_state_key is not None and current_state_key not in draft.states:
+            if remap_to is None:
+                raise ValueError(
+                    f"State '{current_state_key}' no longer exists in this revision — a remap target is required."
+                )
+            if remap_to == "" or remap_to not in draft.states:
+                raise ValueError(f"'{remap_to}' is not a valid state in this revision.")
+            self._db.write_state_remap(project_name, current_state_key, remap_to)
+        self._db.publish_project(project_name)
+        return self._inspector.get_project_revision_info(project_name)
+
+    async def revert_to_published(self, project_name: str, commit: CommitCallback) -> dict:
+        """Discards the entire in-progress draft revision, reverting to
+        whatever was last published."""
+        if project_name not in self._db.list_projects():
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+        self._db.revert_to_published(project_name)
+        self._automaton_loader.invalidate_cache(project_name)
+        new_automaton = self._automaton_loader.load(project_name)
+        await self.finalize_update(project_name, new_automaton, commit)
+        return self._inspector.get_project_revision_info(project_name)
+
+    async def activate_project(self, project_name: str, commit: CommitCallback) -> Automaton:
+        """Validates via _load_and_validate(), persists `project_name` as
+        active, then awaits `commit(project_name, new_automaton)`."""
+        new_automaton = self._automaton_loader.load(project_name)
+        self._db.set_active_project_name(project_name, Session().user)
+        await commit(project_name, new_automaton)
+        return new_automaton
+
+    async def activate_project_idempotent(self, project_name: str, commit: CommitCallback) -> Automaton:
+        """Always validates `project_name` first, even if already active —
+        idempotency only skips the swap + commit, never the correctness
+        checks. A different project delegates to activate_project()."""
+        new_automaton = self._automaton_loader.load(project_name)
+        if project_name == self._inspector.get_active_project_name():
+            return new_automaton
+        return await self.activate_project(project_name, commit)
+
+    async def put_project(
+        self, project_name: str, content: bytes, content_type: str | None, commit: CommitCallback
+    ) -> dict:
+        """Creates or replaces `project_name` from a raw body — a zip
+        archive, or a single bare YAML file treated as index.yml's own
+        content with no attachments."""
+
+        if not self._automaton_loader.is_safe_project_name(project_name):
+            raise ValueError(f"Invalid project name: '{project_name}'.")
+
+        try:
+            if looks_like_zip(content_type, content):
+                with tempfile.TemporaryDirectory() as tmp:
+                    staging_dir = Path(tmp)
+                    extract_zip_safely(content, staging_dir)
+                    # Everything export_project_zip can produce is UTF-8 text
+                    # except image assets — read_text() on those (e.g. a PNG's
+                    # magic bytes) raised a UnicodeDecodeError, so import/export
+                    # was never actually round-trippable for a project with
+                    # any Theme asset in it.
+                    files = {
+                        file.name: (
+                            file.read_bytes() if file.suffix.lower() in IMAGE_EXTENSIONS
+                            else file.read_text(encoding="utf-8")
+                        )
+                        for file in staging_dir.iterdir()
+                    }
+            else:
+                files = {"index.yml": content.decode("utf-8")}
+            # Pulled out before AutomatonBuilder sees `files`; a malformed
+            # sessions.json fails the whole upload rather than partially
+            # succeeding. Actually imported only once the project commits below.
+            raw_sessions = files.pop(SESSIONS_EXPORT_FILENAME, None)
+            assert not isinstance(raw_sessions, bytes)  # .json is never in IMAGE_EXTENSIONS, always read as text above
+            sessions_to_import = self._parse_sessions_export(raw_sessions)
+            new_automaton, to_persist = self.prepare_update(project_name, files)
+        except (zipfile.BadZipFile, ValueError) as exc:
+            raise ValueError(str(exc)) from exc
+        except Exception as exc:
+            logger.exception(exc)
+            raise ValueError(f"Invalid project definition: {exc}") from exc
+
+        self._db.set_active_project_name(project_name, Session().user)
+        self._db.ensure_project(project_name)
+        if to_persist is not None:
+            # This upload path is text-only; content_type is inferred from
+            # each entry's own extension, same as put_project_file.
+            to_persist_bytes = {
+                name: value.encode("utf-8") if isinstance(value, str) else value
+                for name, value in to_persist.items()
+            }
+            content_types = {
+                name: TEXT_CONTENT_TYPE_BY_EXTENSION.get(Path(name).suffix.lower(), "text/plain")
+                for name in to_persist
+            }
+            self._db.save_project_files(project_name, to_persist_bytes, content_types)
+        await self.finalize_update(project_name, new_automaton, commit)
+        self._import_sessions_export(project_name, sessions_to_import)
+
+        return {"success": True, "project_name": project_name}
+
+    @staticmethod
+    def _parse_sessions_export(raw_sessions: str | None) -> list[dict]:
+        """None -> []. Otherwise must be a JSON array of session objects;
+        anything else raises ValueError."""
+        if raw_sessions is None:
+            return []
+        try:
+            parsed = json.loads(raw_sessions)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"'{SESSIONS_EXPORT_FILENAME}' is not valid JSON: {exc}") from exc
+        if not isinstance(parsed, list):
+            raise ValueError(f"'{SESSIONS_EXPORT_FILENAME}' must be a JSON array of sessions.")
+        return parsed
+
+    def _import_sessions_export(self, project_name: str, sessions: list[dict]) -> None:
+        """Best-effort, one session at a time: a malformed entry is
+        skipped and logged rather than blocking the rest. Publishes
+        `project_name` first, since every ChatSession needs a published revision."""
+        if not sessions:
+            return
+        self._db.publish_project(project_name)
+        username = Session().user
+        for session_data in sessions:
+            try:
+                self._session_import_manager.import_session_json(username, project_name, session_data)
+            except (ValueError, KeyError, TypeError):
+                logger.exception(
+                    "Skipped a malformed session while importing '%s' from '%s'.",
+                    project_name, SESSIONS_EXPORT_FILENAME,
+                )
+
+    def _unique_project_name(self, base: str) -> str:
+        """`base` itself if free, else the first "`base` N" (N starting
+        at 2) not already in use."""
+        existing = set(self._db.list_projects())
+        if base not in existing:
+            return base
+        suffix = 2
+        while f"{base} {suffix}" in existing:
+            suffix += 1
+        return f"{base} {suffix}"
+
+    async def create_new_project(self, commit: CommitCallback) -> dict:
+        """Creates a project from NEW_PROJECT_TEMPLATE, going through
+        put_project so validation/staging/commit stay identical to a
+        real upload."""
+        content = NEW_PROJECT_TEMPLATE.read_bytes()
+        project_name = self._unique_project_name(NEW_PROJECT_NAME)
+        return await self.put_project(project_name, content, "application/zip", commit)
+
+    def export_project_zip(self, project_name: str) -> bytes:
+        """`project_name`'s files, round-trippable back through
+        put_project, plus a SESSIONS_EXPORT_FILENAME holding every
+        *imported* session, omitted when there are none."""
+        archives = self._db.get_archives(project_name)
+        if archives is None:
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+            for archive_name, archive_content in archives.items():
+                zf.writestr(archive_name, archive_content)
+            imported_sessions = self._session_export_manager.export_sessions(
+                Session().user, project_name, type='imported',
+            )
+            if imported_sessions:
+                zf.writestr(SESSIONS_EXPORT_FILENAME, json.dumps(imported_sessions, indent=2))
+
+        return buffer.getvalue()
+
+    async def delete_project(self, project_name: str, commit: CommitCallback) -> None:
+        self._db.reset_project(project_name)
+        self._db.delete_archives(project_name)
+        self._automaton_loader.invalidate_cache(project_name)
+
+        if project_name == self._inspector.get_active_project_name():
+            # Falls back to whatever's left, or nothing at all (the
+            # "select a project" empty state) if that was the last one.
+            remaining = self._db.list_projects()
+            fallback = next(iter(remaining), None)
+            if fallback is not None:
+                await self.activate_project(fallback, commit)
+            else:
+                self._db.clear_active_project_name(Session().user)

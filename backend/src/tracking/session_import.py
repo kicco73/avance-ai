@@ -57,10 +57,16 @@ class SessionImportManager:
     def __init__(self, db: Db) -> None:
         self._db = db
 
+    def _published_revision(self, project_name: str) -> int:
+        revision = self._db.get_project_published_revision(project_name)
+        if revision is None:
+            raise ValueError(f"Project '{project_name}' has never been published.")
+        return revision
+
     def import_transcript(self, username: str, project_name: str, text: str, title: str | None = None) -> int:
         messages = parse_transcript(text)
         session_id = self._db.create_chat_session(
-            username, project_name,
+            username, project_name, self._published_revision(project_name),
             datetime_start=None, datetime_end=None, start_state=None, end_state=None,
             type='imported', title=title,
         )
@@ -74,7 +80,7 @@ class SessionImportManager:
         against *this* automaton/revision. Raises KeyError/TypeError on malformed input."""
         messages = session_data.get('messages', [])
         session_id = self._db.create_chat_session(
-            username, project_name,
+            username, project_name, self._published_revision(project_name),
             datetime_start=_parse_iso(session_data.get('timestamp')),
             datetime_end=_parse_iso(session_data.get('datetime_end')),
             start_state=session_data.get('start_state'),

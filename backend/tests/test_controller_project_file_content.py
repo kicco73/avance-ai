@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from project.project_service import MAX_IMAGE_UPLOAD_BYTES
+from project.parsers import MAX_IMAGE_UPLOAD_BYTES
 
 pytestmark = pytest.mark.contract
 

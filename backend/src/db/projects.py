@@ -78,11 +78,6 @@ class ProjectMixin:
             (ChatSession.project_name == project_name) & (ChatSession.type == 'live')
         ).execute()
 
-    def reset_all(self) -> None:
-        Tracking.delete().execute()
-        Message.delete().execute()
-        ChatSession.delete().execute()
-
     def _current_revision(self, project_name: str) -> int:
         project = Project.get_or_none(Project.name == project_name)
         return project.revision if project is not None else 0

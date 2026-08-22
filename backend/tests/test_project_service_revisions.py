@@ -65,16 +65,16 @@ def test_load_project_at_revision_caches_by_project_and_revision(db, project_ser
     db.publish_project(PROJECT_NAME)  # revision 0
     _save_index_yml(db, "b")  # forks to revision 1
 
-    rev0 = project_service._load_project_at_revision(PROJECT_NAME, 0)
-    rev1 = project_service._load_project_at_revision(PROJECT_NAME, 1)
+    rev0 = project_service._automaton_loader.load_at_revision(PROJECT_NAME, 0)
+    rev1 = project_service._automaton_loader.load_at_revision(PROJECT_NAME, 1)
 
     assert set(rev0.states) == {"", "a"}
     assert set(rev1.states) == {"", "b"}
     # Cached under distinct keys — a second call for the same revision
     # returns the exact same object, never silently re-resolving from the
     # other one.
-    assert project_service._load_project_at_revision(PROJECT_NAME, 0) is rev0
-    assert project_service._load_project_at_revision(PROJECT_NAME, 1) is rev1
+    assert project_service._automaton_loader.load_at_revision(PROJECT_NAME, 0) is rev0
+    assert project_service._automaton_loader.load_at_revision(PROJECT_NAME, 1) is rev1
 
 
 def test_get_active_automaton_and_state_raises_when_never_published(db, project_service):

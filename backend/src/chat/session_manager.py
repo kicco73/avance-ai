@@ -121,6 +121,3 @@ class ChatSessionManager(object):
         session = self._db.get_chat_session(session_id)
         assert session is not None
         return session
-
-    def get_session(self, session_id: int) -> dict | None:
-        return self._db.get_chat_session(session_id)

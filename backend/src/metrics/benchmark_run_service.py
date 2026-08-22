@@ -21,7 +21,7 @@ from metrics.metrics_framework.benchmark_metrics.calculator import BenchmarkCalc
 from metrics.metrics_framework.benchmark_metrics.dto import BenchmarkConfiguration, BenchmarkMetricResult
 from metrics.metrics_framework.benchmark_metrics.metrics import SignalAccuracyMetric
 from metrics.metrics_framework.benchmark_metrics.observations import BenchmarkObservationBuilder
-from project.project_service import decode_text_archives
+from project.parsers import decode_text_archives
 from session import Session
 from tracking.env import Env, PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder

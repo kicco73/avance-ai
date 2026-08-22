@@ -20,7 +20,6 @@ from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.session_facts import SessionFacts
 from tracking.system_facts import SystemFacts
 from chat.errors import ChatServiceError
-from tracking.metadata_handler import MetadataHandler
 from chat.session_manager import ChatSessionManager
 from chat.session_summary_manager import SessionSummaryManager
 from chat.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
@@ -60,7 +59,6 @@ class ChatService(object):
 		self.evaluation_scope_builder = EvaluationScopeBuilder(
 			self.env, metric_service, self._system_facts, self._session_facts, self._automaton_namespace
 		)
-		self._metadata_handler = MetadataHandler()
 		self._tracking_engine = TrackingEngine(DbTrackingSink(db), self.env, self.evaluation_scope_builder)
 
 		self._project_locks = KeyedLockRegistry(ProjectRwLock)

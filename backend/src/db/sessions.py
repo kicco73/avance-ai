@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 from peewee import fn
 
 from .models import ChatSession, Message, Project, Tracking
-from .utils import _utc_iso
 
 # Same default as chat.session_manager.DEFAULT_OPEN_WINDOW_MINUTES, kept
 # here too (same reasoning as that module's own docstring) so this layer

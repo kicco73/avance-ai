@@ -59,7 +59,7 @@ def _publish_project(db, project_service: ProjectService, project_name: str, ind
     async def commit(_project_name, _automaton):
         pass
 
-    asyncio.run(project_service._finalize_project_update(project_name, automaton, commit))
+    asyncio.run(project_service._manager.finalize_update(project_name, automaton, commit))
 
 
 @pytest.fixture

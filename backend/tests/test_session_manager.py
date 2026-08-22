@@ -130,11 +130,6 @@ def test_sessions_for_different_projects_are_independent(manager, project_servic
 
 
 @pytest.mark.contract
-def test_get_session_returns_none_for_unknown_id(manager):
-    assert manager.get_session(999999) is None
-
-
-@pytest.mark.contract
 def test_touch_session_refreshes_end_state(manager, project_service):
     session = _create(manager, project_service, "user", "proj", "start")
 
@@ -183,7 +178,7 @@ def test_require_active_session_rejects_a_different_projects_session(manager, pr
 
 
 @pytest.mark.contract
-def test_require_active_session_rejects_a_closed_session_no_auto_rotation(manager, project_service, monkeypatch):
+def test_require_active_session_rejects_a_closed_session_no_auto_rotation(manager, project_service, db, monkeypatch):
     """The behavior this reinforces: unlike resolve_or_create_session, a
     closed session is never silently swapped for a new one here — the
     caller must bootstrap or start a new session explicitly instead."""
@@ -201,7 +196,7 @@ def test_require_active_session_rejects_a_closed_session_no_auto_rotation(manage
         manager.require_active_session("user", "proj", session["id"], "start")
 
     # Rejected, not replaced — no new session should have appeared.
-    assert manager.get_session(session["id"])["end_state"] == "start"
+    assert db.get_chat_session(session["id"])["end_state"] == "start"
 
 
 @pytest.mark.contract
