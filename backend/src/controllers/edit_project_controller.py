@@ -56,6 +56,11 @@ class EditProjectController(BaseController):
         draft-session equivalent of GET .../sessions. The two pools never mix."""
         return self.chat_service.list_test_sessions(project_name)
 
+    @post("/api/projects/{project_name}/test-sessions/reset")
+    async def post_reset_test_sessions(self, project_name: str):
+        async with self.chat_service.acquire_write(project_name):
+            return self.chat_service.reset_test_sessions(project_name)
+
     @get("/api/projects/{project_name}/states")
     def get_project_states(self, project_name: str):
         """Every real state key of `project_name`'s current draft

@@ -53,7 +53,7 @@ class AvanceController(object):
         )
         self.settings = SettingsController(chat_service, project_service, db, version)
         self.auth = AuthController(auth_service)
-        self.user = UserController(db)
+        self.user = UserController(auth_service)
 
         self.router = APIRouter()
         for controller in (self.chat, self.edit_project, self.label_project, self.settings, self.auth, self.user):

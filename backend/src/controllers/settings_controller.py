@@ -41,7 +41,7 @@ class SettingsController(BaseController):
         """Downloads the whole working SQLite database file — every
         project, session, message, and signal — as a restorable backup
         (see POST /api/settings/backup)."""
-        async with self.chat_service.exclusive_access():
+        async with self.chat_service.global_exclusive_access():
             content = self.db.export_backup()
         filename = Path(self.db.backup_file_path()).stem + ".sqlite"
         return Response(
@@ -56,7 +56,7 @@ class SettingsController(BaseController):
         file, replacing it in place. Wipes whatever the server currently
         has (all projects, sessions, messages)."""
         content = await request.body()
-        async with self.chat_service.exclusive_access():
+        async with self.chat_service.global_exclusive_access():
             try:
                 self.db.restore_backup(content)
             except ValueError as exc:
@@ -157,4 +157,10 @@ class SettingsController(BaseController):
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except OSError as exc:
             raise HTTPException(status_code=HTTPStatus.INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+        return {"success": True}
+
+    @post("/api/projects/{project_name}/live-sessions/wipe")
+    async def post_wipe_live_sessions(self, project_name: str):
+        async with self.chat_service.acquire_write(project_name):
+            self.project_service.wipe_live_sessions(project_name)
         return {"success": True}

@@ -16,7 +16,7 @@ import {
   postAiModelSelection,
   messageAudioUrl,
   postListenTranscribe,
-  postReset,
+  postResetTestSessions,
   postTruncateSession,
   projectFileContentUrl
 } from './api.js'
@@ -644,7 +644,7 @@ export async function handleReset() {
     // A reset re-enters the automaton through init-action, same as a
     // session's very first transition — its on-enter rides along under
     // the same "on-enter" wire key as any other real transition.
-    const { 'on-enter': onEnter, ...newState } = await postReset()
+    const { 'on-enter': onEnter, ...newState } = await postResetTestSessions(testModeProjectName.value)
     state.value = null
     handleStateChange(newState, onEnter)
     await loadMessages()

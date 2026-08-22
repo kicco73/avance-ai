@@ -23,8 +23,6 @@ PROJECT_NAME = "proj"
 
 
 def _builder(db) -> EvaluationScopeBuilder:
-    # USERNAME matches DEFAULT_USER, so Session().user already resolves
-    # to it without needing to be set explicitly here.
     project_service = FixedProjectContext(project_name=PROJECT_NAME)
     env = PersistedEnv(db, project_service)
     metrics = MetricService(db, project_service)

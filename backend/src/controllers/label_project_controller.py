@@ -119,12 +119,11 @@ class LabelProjectController(BaseController):
 
     @post("/api/chat/sessions/{session_id}/truncate")
     async def post_truncate_session(self, session_id: int, req: TruncateSessionRequest):
-        """"Restart from here". Same lock/response shape as post_reset:
-        the live state may have moved backward, so the fresh payload is
-        read back only once the mutation has released the lock."""
+        """"Restart from here": the live state may have moved backward,
+        so the fresh payload is read back only once the mutation itself
+        (see ChatService.truncate_session for its own synchronization) has completed."""
         try:
-            async with self.chat_service.exclusive_access():
-                self.chat_service.truncate_session(session_id, req.timestamp)
+            await self.chat_service.truncate_session(session_id, req.timestamp)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return self.project_service.get_active_state_payload()

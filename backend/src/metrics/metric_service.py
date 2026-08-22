@@ -74,6 +74,10 @@ class MetricService(object):
         self._project_service = project_service
         self._max_session_duration_in_minutes = max_session_duration_in_minutes
 
+    @property
+    def max_session_duration_in_minutes(self) -> float:
+        return self._max_session_duration_in_minutes
+
     def _calculate(
         self, until: datetime | None = None, project_name: str | None = None
     ) -> list[tuple[MetricCalculator, MetricResult]]:

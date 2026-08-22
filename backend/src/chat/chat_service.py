@@ -3,12 +3,15 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from http import HTTPStatus
 
 from automaton.automaton import Action, Automaton, SignalPayload, State
 from db import Db, _utc_iso
 from ai.ai_service import AiService
+from keyed_lock_registry import KeyedLockRegistry
+from project_rw_lock import ProjectRwLock
 from session import Session
 
 from tracking.automaton_namespace import AutomatonNamespace
@@ -59,9 +62,9 @@ class ChatService(object):
 		self._metadata_handler = MetadataHandler()
 		self._tracking_engine = TrackingEngine(DbTrackingSink(db), self.env, self.evaluation_scope_builder)
 
-		# Serializes chat-turn processing across both transports and
-		# against a concurrent reset/activate/upload/delete.
-		self._lock = asyncio.Lock()
+		self._project_locks = KeyedLockRegistry(ProjectRwLock)
+		self._session_locks = KeyedLockRegistry(asyncio.Lock)
+		self._global_lock = asyncio.Lock()
 
 
 	@property
@@ -206,6 +209,11 @@ class ChatService(object):
 			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 		return {**self._session_payload(session, active=True), "on-enter": automaton.init_action.on_enter}
 
+	def reset_test_sessions(self, project_name: str) -> dict:
+		self._project_service.reset_test_sessions(project_name)
+		automaton, state = self._project_service.get_draft_automaton_and_state(project_name)
+		return {**Automaton.get_state_payload(state), "on-enter": automaton.init_action.on_enter}
+
 	def _list_sessions_by_source(self, project_name: str, source: str | tuple[str, ...], active_source: str) -> list[dict]:
 		sessions = self._db.list_chat_sessions(self._username, project_name, source=source)
 		active = self._session_manager.get_active_session(self._username, project_name, source=active_source)
@@ -278,18 +286,20 @@ class ChatService(object):
 		self._db.set_session_labeled(session_id, labeled)
 		return self._reloaded_session_payload(session_id)
 
-	def truncate_session(self, session_id: int, timestamp: str) -> None:
+	async def truncate_session(self, session_id: int, timestamp: str) -> None:
 		""""Restart from here": deletes every message/signal at or after
 		`timestamp` in `session_id`; the live automaton state is just
 		recomputed from whatever Tracking rows survive."""
 		self._require_own_session(session_id)
-		cutoff = datetime.fromisoformat(timestamp).replace(tzinfo=None)
-		self._db.truncate_session(session_id, cutoff)
-		session = self._db.get_chat_session(session_id)
-		assert session is not None
-		latest = self._db.latest_message_or_signal_timestamp(session_id)
-		_, state = self._project_service.get_automaton_and_state_for_session(session_id)
-		self._db.touch_chat_session(session_id, latest or session["datetime_start"], state.key)
+		project_name = self._project_name_for_session(session_id)
+		async with self._session_scope(project_name, session_id):
+			cutoff = datetime.fromisoformat(timestamp).replace(tzinfo=None)
+			self._db.truncate_session(session_id, cutoff)
+			session = self._db.get_chat_session(session_id)
+			assert session is not None
+			latest = self._db.latest_message_or_signal_timestamp(session_id)
+			_, state = self._project_service.get_automaton_and_state_for_session(session_id)
+			self._db.touch_chat_session(session_id, latest or session["datetime_start"], state.key)
 
 	def get_state_for_session(self, session_id: int) -> dict:
 		self._require_own_session(session_id)
@@ -435,8 +445,38 @@ class ChatService(object):
 	def clear_auto_tracking_overrides(self) -> None:
 		self._tracking_service.clear_auto_tracking_overrides()
 
-	def exclusive_access(self):
-		return self._lock
+	def global_exclusive_access(self):
+		return self._global_lock
+
+	@asynccontextmanager
+	async def acquire_read(self, project_name: str):
+		lock = self._project_locks.get(project_name)
+		await lock.acquire_read()
+		try:
+			yield
+		finally:
+			await lock.release_read()
+
+	@asynccontextmanager
+	async def acquire_write(self, project_name: str):
+		lock = self._project_locks.get(project_name)
+		await lock.acquire_write()
+		try:
+			yield
+		finally:
+			await lock.release_write()
+
+	@asynccontextmanager
+	async def _session_scope(self, project_name: str, session_id: int):
+		async with self.acquire_read(project_name):
+			async with self._session_locks.get(str(session_id)):
+				yield
+
+	def _project_name_for_session(self, session_id: int) -> str:
+		session = self._db.get_chat_session(session_id)
+		if session is None:
+			raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
+		return session["project_name"]
 
 	async def open_if_needed(self, session_id: int) -> dict | None:
 		# An imported session is a fixed transcript, never live — its NULL
@@ -482,9 +522,11 @@ class ChatService(object):
 	async def _generate_opening_message_body(self, session_id: int) -> dict:
 		return await self.process_turn(session_id)
 
-	async def _generate_action_prompt_message(self, action: Action, session_id: int) -> dict:
+	async def _generate_action_prompt_message(self, action: Action, session_id: int, *, locked: bool = True) -> dict:
 		logger.warning("Executing action_prompt for action '%s'.", action.name)
-		return await self.process_turn(session_id, None, extra_prompt=action.action_prompt)
+		if locked:
+			return await self.process_turn(session_id, None, extra_prompt=action.action_prompt)
+		return await self._process_turn_body(session_id, None, extra_prompt=action.action_prompt)
 
 	async def _messages_for_transition(
 		self, action: Action, session_id: int, new_state: State, *, is_self_loop: bool
@@ -496,9 +538,9 @@ class ChatService(object):
 
 		turn_results = []
 		if action.action_prompt:
-			turn_results.append(await self._generate_action_prompt_message(action, session_id))
+			turn_results.append(await self._generate_action_prompt_message(action, session_id, locked=False))
 		if should_open:
-			turn_results.append(await self.process_turn(session_id))
+			turn_results.append(await self._process_turn_body(session_id))
 
 		messages = []
 		for turn_result in turn_results:
@@ -511,10 +553,10 @@ class ChatService(object):
 		return messages
 
 	async def apply_manual_action(self, action_name: str, session_id: int) -> dict:
-		if self._lock.locked():
+		project_name = self._project_name_for_session(session_id)
+		if self._session_locks.get(str(session_id)).locked():
 			raise ChatServiceError("A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT)
-		async with self._lock:
-			project_name = self._active_project_name
+		async with self._session_scope(project_name, session_id):
 			_, source_state = self._project_service.get_automaton_and_state_for_session(session_id)
 			# Resolved before applying the action: save_transition (inside
 			# project_service.apply_manual_action) now needs a session_id.
@@ -545,7 +587,18 @@ class ChatService(object):
 		on_metadata: OnMetadata | None = None,
 		extra_prompt: str | None = None,
 	) -> dict:
-		project_name = self._active_project_name
+		project_name = self._project_name_for_session(session_id)
+		async with self._session_scope(project_name, session_id):
+			return await self._process_turn_body(session_id, text, on_metadata, extra_prompt=extra_prompt)
+
+	async def _process_turn_body(
+		self,
+		session_id: int,
+		text: str | None = None,
+		on_metadata: OnMetadata | None = None,
+		extra_prompt: str | None = None,
+	) -> dict:
+		project_name = self._project_name_for_session(session_id)
 		_, state = self._project_service.get_automaton_and_state_for_session(session_id)
 		self._require_active_session(session_id, project_name, state.key)
 		reply = await self._tracking_service.process(session_id, text, on_metadata, extra_prompt=extra_prompt)

@@ -97,6 +97,6 @@ def test_reset_project_for_user_also_wipes_their_env(db):
     _session(db, username="alice")
     db.set_env("proj", {"a": "1"}, "alice")
 
-    db.reset_project_for_user("alice", "proj")
+    db.reset_project_for_user("alice", "proj", source="native")
 
     assert db.get_env("proj", "alice") == {}

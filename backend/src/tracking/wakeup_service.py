@@ -71,9 +71,7 @@ class WakeupService:
         # project these would otherwise resolve, staying fixed on
         # observer_project_name instead — a wake-up must never silently
         # evaluate against whatever project happens to be active right now.
-        previous_user = Session().user
-        Session().user = username
-        try:
+        with Session().impersonate(username):
             project_context = FixedProjectContext(project_name=observer_project_name)
             env = PersistedEnv(self._db, project_context)
             metrics = MetricService(self._db, project_context)
@@ -107,8 +105,6 @@ class WakeupService:
                         "state": Automaton.get_state_payload(state),
                         "on-enter": action.on_enter,
                     })
-        finally:
-            Session().user = previous_user
 
     def _wake(self, username: str, observer_project_name: str) -> None:
         async def work(on_progress: OnProgress) -> tuple[str | None, str | None]:

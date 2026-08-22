@@ -17,6 +17,7 @@ from jobs import InMemoryJobSink, JobQueue, PersistedJobSink
 from metrics.benchmark_run_service import BenchmarkRunService
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
+from session import Session
 from tracking.tracking_service import TrackingService
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
@@ -30,6 +31,11 @@ def _reset_dispatcher():
     _reset_dispatcher_for_tests()
     yield
     _reset_dispatcher_for_tests()
+
+
+@pytest.fixture(autouse=True)
+def _default_session_user():
+    Session().user = "user"
 
 
 @pytest.fixture

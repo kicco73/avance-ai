@@ -47,7 +47,6 @@ states:
 
 
 def _namespace(db) -> AutomatonNamespace:
-    # USERNAME matches DEFAULT_USER, so Session().user already resolves to it.
     return AutomatonNamespace(db, ProjectService(db))
 
 

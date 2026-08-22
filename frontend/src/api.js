@@ -111,6 +111,10 @@ export function getTestSessions(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/test-sessions`)
 }
 
+export function postResetTestSessions(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/test-sessions/reset`, { method: 'POST' })
+}
+
 export function deleteSession(sessionId) {
   return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
 }
@@ -413,10 +417,6 @@ export function postTriggersPreview(signals) {
   })
 }
 
-export function postReset() {
-  return apiFetch(`${API_URL}/chat/reset`, { method: 'POST' })
-}
-
 // "Restart from here": deletes every message (and its Signals rows) at
 // or after `timestamp` in `sessionId`, rolling state back to what it was
 // immediately before. `timestamp` must be a backend-issued ISO string.
@@ -609,6 +609,12 @@ export function clearProjectHistory(projectName) {
 export function deleteProject(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}`, {
     method: 'DELETE'
+  })
+}
+
+export function postWipeLiveSessions(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/live-sessions/wipe`, {
+    method: 'POST'
   })
 }
 

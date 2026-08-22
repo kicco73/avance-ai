@@ -157,7 +157,7 @@ def css_syntax_errors(css_text: str) -> list[str]:
 
 # Called with the newly-active Automaton once activate_project()/put_project()
 # have committed it.
-CommitCallback = Callable[[Automaton], Awaitable[None]]
+CommitCallback = Callable[[str, Automaton], Awaitable[None]]
 
 # "New project" starts from this sample zip, resolved off this module's own
 # location, not the cwd.
@@ -317,7 +317,7 @@ class ProjectService(object):
             current_state_key = self._db.get_current_state(project_name)
             if current_state_key is None or current_state_key not in automaton.states:
                 self._db.reset_project(project_name)
-            await commit(automaton)
+            await commit(project_name, automaton)
             return True
         return False
 
@@ -671,10 +671,11 @@ class ProjectService(object):
         automaton, state = self.get_active_automaton_and_state()
         return automaton.get_state_payload(state)
 
-    def reset_active_project(self) -> None:
-        # User-scoped: wipes only the current user's own sessions/messages/
-        # signals, not every user's, unlike delete_project's reset_project.
-        self._db.reset_project_for_user(Session().user, self.get_active_project_name())
+    def reset_test_sessions(self, project_name: str) -> None:
+        self._db.reset_project_for_user(Session().user, project_name, source='test')
+
+    def wipe_live_sessions(self, project_name: str) -> None:
+        self._db.wipe_live_sessions_for_project(project_name)
 
     def _resolve_inspector_revision(self, project_name: str, session_id: int | None) -> int:
         """The revision an Inspect-panel read should read `project_name`
@@ -877,10 +878,10 @@ class ProjectService(object):
 
     async def activate_project(self, project_name: str, commit: CommitCallback) -> Automaton:
         """Validates via _load_and_validate(), persists `project_name` as
-        active, then awaits `commit(new_automaton)`."""
+        active, then awaits `commit(project_name, new_automaton)`."""
         new_automaton = self._load_project(project_name)
         self._db.set_active_project_name(project_name, Session().user)
-        await commit(new_automaton)
+        await commit(project_name, new_automaton)
         return new_automaton
 
     async def activate_project_idempotent(self, project_name: str, commit: CommitCallback) -> Automaton:

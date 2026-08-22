@@ -12,7 +12,6 @@ from pathlib import Path
 from fastapi import HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
-from automaton.automaton import Automaton
 from chat.chat_service import ChatService
 from listen.listen_service import ListenService, ListenServiceError, ListenServiceNotAvailableError
 from project.project_service import ProjectService
@@ -274,12 +273,3 @@ class ChatController(BaseController):
         scope = self.chat_service.evaluation_scope_builder.build(automaton, state.key, req.signals)
         return automaton.preview_triggers(state.key, scope)
 
-    @post("/api/chat/reset")
-    async def post_reset(self):
-        """Wipes this user's own sessions for the active project — the
-        next state resolution falls back to init_action.target, so
-        on-enter rides along the same way it does on any real transition."""
-        async with self.chat_service.exclusive_access():
-            self.project_service.reset_active_project()
-        automaton, state = self.project_service.get_active_automaton_and_state()
-        return {**Automaton.get_state_payload(state), "on-enter": automaton.init_action.on_enter}

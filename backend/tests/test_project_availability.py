@@ -56,7 +56,7 @@ def _publish_project(db, project_service: ProjectService, project_name: str, ind
     db.set_active_project_name(project_name, USERNAME)
     automaton = AutomatonBuilder().build({"index.yml": index_yml})
 
-    async def commit(_automaton):
+    async def commit(_project_name, _automaton):
         pass
 
     asyncio.run(project_service._finalize_project_update(project_name, automaton, commit))

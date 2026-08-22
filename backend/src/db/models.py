@@ -36,7 +36,7 @@ class ChatSession(BaseModel):
     id = AutoField()
     username = CharField()
     project_name = ForeignKeyField(Project, field='name', column_name='project_name', backref='chat_sessions')
-    source = CharField(default='native')
+    type = CharField(default='live')
     # Optional, freeform — an imported session gets the uploaded
     # transcript's filename to start with; a native one has none until
     # renamed. Shown in the Sessions panel's badge in place of end_state.
@@ -74,8 +74,8 @@ class User(BaseModel):
     # along with provider_user_id/name: UserMixin's get_active_project_name/
     # set_active_project_name/clear_active_project_name still take a bare
     # `user: str` (resolved against `email`, see db/users.py) rather than a
-    # real FK — a row created that way (DEFAULT_USER, or any pre-auth
-    # caller) has no provider identity at all.
+    # real FK — set_active_project_name's own create-fallback, for a user
+    # with no User row yet, has no provider identity to fill these with.
     provider = CharField(null=True)
     # The provider's own opaque id for this account (Google: the "sub"
     # claim) — stable identity, unlike email, which a provider account
@@ -233,5 +233,3 @@ class History(BaseModel):
 class Settings(BaseModel):
     key = CharField(primary_key=True)
     value = CharField()
-
-DEFAULT_USER = "user"

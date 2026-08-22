@@ -161,7 +161,7 @@ def test_reset_project_for_user_only_touches_that_user(db):
     db.save_message("user", "hello", mine)
     db.save_message("other-user", "hi", theirs)
 
-    db.reset_project_for_user("user", "proj")
+    db.reset_project_for_user("user", "proj", source="native")
 
     assert db.get_chat_session(mine) is None
     assert db.get_messages(mine) == []
@@ -174,7 +174,7 @@ def test_reset_project_for_user_only_touches_that_project(db):
     session_a = _make_session(db, username="user", project_name="proj-a", start=datetime(2026, 1, 1, 10, 0, 0))
     session_b = _make_session(db, username="user", project_name="proj-b", start=datetime(2026, 1, 1, 10, 0, 0))
 
-    db.reset_project_for_user("user", "proj-a")
+    db.reset_project_for_user("user", "proj-a", source="native")
 
     assert db.get_chat_session(session_a) is None
     assert db.get_chat_session(session_b) is not None

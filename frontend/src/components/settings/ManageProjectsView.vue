@@ -8,7 +8,7 @@ import { confirmDialog } from '../../dialogStore.js'
 import ErrorBanner from '../ErrorBanner.vue'
 
 // Emits events only; App.vue owns the actual new/upload/delete actions.
-const emit = defineEmits(['close', 'new-project', 'upload', 'delete', 'edit', 'benchmark', 'download', 'chat'])
+const emit = defineEmits(['close', 'new-project', 'upload', 'delete', 'edit', 'benchmark', 'download', 'chat', 'wipe-live-sessions'])
 
 const rows = ref([])
 const loading = ref(true)
@@ -85,6 +85,19 @@ function selectDownload(name) {
   emit('download', name)
 }
 
+// This view's own confirm, same pattern as selectDelete above — the
+// caller (App.vue) just performs the wipe, no confirm of its own.
+async function selectWipeLiveSessions(name) {
+  const ok = await confirmDialog({
+    title: 'Wipe live sessions',
+    body: `Delete every user's live conversation for "${name}"? This cannot be undone.`,
+    okLabel: 'Wipe',
+    danger: true
+  })
+  if (!ok) return
+  emit('wipe-live-sessions', name)
+}
+
 function statusLabel(status) {
   if (status === 'running') return 'Running'
   if (status === 'manually_paused') return 'Manually paused'
@@ -131,6 +144,7 @@ defineExpose({ refresh: load })
             <th class="manage-projects-col-chat"></th>
             <th class="manage-projects-col-benchmark"></th>
             <th class="manage-projects-col-download"></th>
+            <th class="manage-projects-col-wipe"></th>
             <th class="manage-projects-col-delete"></th>
           </tr>
         </thead>
@@ -188,6 +202,18 @@ defineExpose({ refresh: load })
               >
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
                   <path d="M12 3a1 1 0 0 1 1 1v9.59l2.3-2.3a1 1 0 1 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.42l2.3 2.3V4a1 1 0 0 1 1-1zM5 19a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1z" />
+                </svg>
+              </button>
+            </td>
+            <td class="manage-projects-col-wipe">
+              <button
+                type="button"
+                class="manage-projects-wipe-btn"
+                title="Wipe live sessions"
+                @click="selectWipeLiveSessions(row.name)"
+              >
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
+                  <path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
                 </svg>
               </button>
             </td>
@@ -316,6 +342,10 @@ defineExpose({ refresh: load })
   width: 2.2rem;
 }
 
+.manage-projects-col-wipe {
+  width: 2.2rem;
+}
+
 .manage-projects-col-delete {
   width: 2.2rem;
 }
@@ -437,6 +467,24 @@ defineExpose({ refresh: load })
 
 .manage-projects-download-btn:hover {
   background: #f0f4fa;
+}
+
+.manage-projects-wipe-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: #c62828;
+  cursor: pointer;
+}
+
+.manage-projects-wipe-btn:hover {
+  background: #fdecea;
 }
 
 .manage-projects-delete-btn {

@@ -19,6 +19,7 @@ import {
   postNewProject,
   activateProject,
   deleteProject,
+  postWipeLiveSessions,
   downloadProject,
   getBackup,
   postRestoreBackup,
@@ -325,6 +326,14 @@ async function handleModelDelete(projectName) {
   }
 }
 
+async function handleManageProjectsWipeLiveSessions(projectName) {
+  try {
+    await postWipeLiveSessions(projectName)
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
 // Whole-database download (every project, session, message, signal — not
 // scoped to the active project), unlike handleModelDownload's per-project
 // zip. No UI state changes on success, same reasoning as that one.
@@ -456,6 +465,7 @@ onBeforeUnmount(() => {
       @benchmark="handleManageProjectsBenchmark"
       @chat="handleManageProjectsChat"
       @download="handleModelDownload"
+      @wipe-live-sessions="handleManageProjectsWipeLiveSessions"
     />
 
     <ManageUsersView

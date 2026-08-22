@@ -58,11 +58,25 @@ class ProjectMixin:
         Message.delete().where(Message.session.in_(session_ids)).execute()
         ChatSession.delete().where(ChatSession.project_name == project_name).execute()
 
-    def reset_project_for_user(self, username: str, project_name: str) -> None:
-        session_ids = ChatSession.select(ChatSession.id).where((ChatSession.username == username) & (ChatSession.project_name == project_name))
+    def reset_project_for_user(self, username: str, project_name: str, source: str) -> None:
+        session_ids = ChatSession.select(ChatSession.id).where(
+            (ChatSession.username == username) & (ChatSession.project_name == project_name) & (ChatSession.source == source)
+        )
         Tracking.delete().where(Tracking.session.in_(session_ids)).execute()
         Message.delete().where(Message.session.in_(session_ids)).execute()
-        ChatSession.delete().where((ChatSession.username == username) & (ChatSession.project_name == project_name)).execute()
+        ChatSession.delete().where(
+            (ChatSession.username == username) & (ChatSession.project_name == project_name) & (ChatSession.source == source)
+        ).execute()
+
+    def wipe_live_sessions_for_project(self, project_name: str) -> None:
+        session_ids = ChatSession.select(ChatSession.id).where(
+            (ChatSession.project_name == project_name) & (ChatSession.source == 'native')
+        )
+        Tracking.delete().where(Tracking.session.in_(session_ids)).execute()
+        Message.delete().where(Message.session.in_(session_ids)).execute()
+        ChatSession.delete().where(
+            (ChatSession.project_name == project_name) & (ChatSession.source == 'native')
+        ).execute()
 
     def reset_all(self) -> None:
         Tracking.delete().execute()

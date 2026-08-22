@@ -26,7 +26,7 @@ vi.mock('../src/api.js', () => ({
   postAiModelSelection: vi.fn(),
   messageAudioUrl: vi.fn(),
   postListenTranscribe: vi.fn(),
-  postReset: vi.fn(),
+  postResetTestSessions: vi.fn(),
   postTruncateSession: vi.fn(),
   projectFileContentUrl: vi.fn((projectName, fileName, sessionId) => `/api/projects/${projectName}/files/${fileName}/content?session_id=${sessionId}`)
 }))

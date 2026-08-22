@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from .models import DEFAULT_USER, User
+from .models import User
 from .utils import _utc_iso
 
 
@@ -66,11 +66,11 @@ class UserMixin:
     def update_last_login(self, user_id) -> None:
         User.update(last_login=datetime.utcnow()).where(User.id == user_id).execute()
 
-    def get_active_project_name(self, user: str = DEFAULT_USER) -> str | None:
+    def get_active_project_name(self, user: str) -> str | None:
         row = User.get_or_none(User.email == user)
         return row.active_project if row is not None else None
 
-    def set_active_project_name(self, project_name: str, user: str = DEFAULT_USER) -> None:
+    def set_active_project_name(self, project_name: str, user: str) -> None:
         row = User.get_or_none(User.email == user)
         if row is not None:
             row.active_project = project_name
@@ -78,5 +78,5 @@ class UserMixin:
         else:
             User.create(id=user, email=user, active_project=project_name)
 
-    def clear_active_project_name(self, user: str = DEFAULT_USER) -> None:
+    def clear_active_project_name(self, user: str) -> None:
         User.update(active_project=None).where(User.email == user).execute()

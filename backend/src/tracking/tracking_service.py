@@ -12,6 +12,7 @@ from metrics.metric_service import MetricService
 
 from .automaton_namespace import AutomatonNamespace
 from .errors import TrackingServiceError
+from .fixed_project_context import FixedProjectContext
 from .turn_callbacks import OnMetadata
 from .env import PersistedEnv
 from .evaluation_scope import EvaluationScopeBuilder
@@ -249,11 +250,12 @@ class TrackingService(object):
 		automaton, state = self._project_service.get_automaton_and_state_for_session(session_id)
 		session = self._db.get_chat_session(session_id)
 		is_test_session = session is not None and session["source"] == "test"
+		project_name = session["project_name"]
 
 		user_vars = UserVariables(
 			automaton=automaton,
 			state=state,
-			project_name=self._project_service.get_active_project_name(),
+			project_name=project_name,
 			session_id=session_id
 		)
 
@@ -262,11 +264,15 @@ class TrackingService(object):
 		else:
 			TrackingProcessor = TrackingProcessorAfterAiMessage
 
-		env = PersistedEnv(self._db, self._project_service)
+		fixed_context = FixedProjectContext(automaton=automaton, project_name=project_name)
+		env = PersistedEnv(self._db, fixed_context)
 		system_facts = SystemFacts()
-		session_facts = SessionFacts(self._db, self._project_service)
+		session_facts = SessionFacts(self._db, fixed_context)
 		automaton_namespace = AutomatonNamespace(self._db, self._project_service)
-		scope_builder = EvaluationScopeBuilder(env, self._metrics, system_facts, session_facts, automaton_namespace)
+		metrics = MetricService(
+			self._db, fixed_context, max_session_duration_in_minutes=self._metrics.max_session_duration_in_minutes
+		)
+		scope_builder = EvaluationScopeBuilder(env, metrics, system_facts, session_facts, automaton_namespace)
 
 		def on_metadata_sync_to_async(key: str, value: Any):
 			if on_metadata:

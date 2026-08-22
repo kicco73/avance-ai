@@ -133,14 +133,10 @@ class BenchmarkRunService:
         # PersistedEnv now reads Session().user itself — pinned to this
         # historical session's own username for the two calls that need
         # it, then restored (see FixedProjectContext's own docstring).
-        previous_user = Session().user
-        Session().user = session['username']
-        try:
+        with Session().impersonate(session['username']):
             persisted_env = PersistedEnv(self._db, FixedProjectContext(project_name=session['project_name']))
             until = session['datetime_start']
             return Env(stored=persisted_env.stored(until=until), action_set=persisted_env.action_set(until=until))
-        finally:
-            Session().user = previous_user
 
     def _build_replay_work(
         self, run: dict, automaton: Automaton, session_ids: list[int], signal_source_cls: type,
@@ -156,9 +152,7 @@ class BenchmarkRunService:
             # context/task across unrelated jobs afterward (see
             # FixedProjectContext's own docstring for why it must never
             # read whatever's live instead).
-            previous_user = Session().user
-            Session().user = run['username']
-            try:
+            with Session().impersonate(run['username']):
                 for session_id in session_ids:
                     session = self._db.get_chat_session(session_id)
                     env = self._build_seed_env(session)
@@ -186,8 +180,6 @@ class BenchmarkRunService:
                         self._db.add_benchmark_run_batch_segments(run['id'], signal_source.batch_segments)
 
                 self._calculate_and_save_results(run)
-            finally:
-                Session().user = previous_user
 
             return ("; ".join(warnings) if warnings else None), None
 

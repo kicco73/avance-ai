@@ -94,3 +94,6 @@ class AuthService:
 
     def get_profile(self, email: str) -> dict | None:
         return self._db.get_user_by_email(email)
+
+    def list_users(self) -> list[dict]:
+        return self._db.list_users()
