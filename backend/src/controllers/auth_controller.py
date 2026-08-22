@@ -48,6 +48,8 @@ class AuthController(BaseController):
     @get("/api/auth/me")
     def get_me(self):
         """The auth middleware already validated the cookie for this
-        request to have reached here at all — this just reflects the
-        username it resolved into Session().user."""
-        return {"user": Session().user}
+        request to have reached here at all — Session().user is the
+        email it resolved. Serves both the topbar avatar and
+        ProfileView.vue, the only two consumers of the current user's
+        own profile data."""
+        return self.auth_service.get_profile(Session().user)

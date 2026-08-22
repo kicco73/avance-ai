@@ -26,7 +26,7 @@ class _FakeAuthService:
     tests are about."""
 
     def verify_token(self, token):
-        return AuthenticatedUser(provider_user_id="fake", email=USERNAME, name="Fake User")
+        return AuthenticatedUser(provider_user_id="fake", email=USERNAME, name="Fake User", picture_url=None)
 
 
 @pytest.fixture(autouse=True)

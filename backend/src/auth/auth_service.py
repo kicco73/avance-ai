@@ -65,7 +65,7 @@ class AuthService:
 
         identity = auth_provider.verify(credential)
         user = self._db.get_or_create_user(
-            provider, identity.provider_user_id, identity.email, identity.name
+            provider, identity.provider_user_id, identity.email, identity.name, identity.picture_url
         )
         self._db.update_last_login(user.id)
         return self._issue_token(user.id, provider)
@@ -88,5 +88,9 @@ class AuthService:
         if user is None:
             return None
         return AuthenticatedUser(
-            provider_user_id=user["provider_user_id"], email=user["email"], name=user["name"]
+            provider_user_id=user["provider_user_id"], email=user["email"], name=user["name"],
+            picture_url=user["picture_url"],
         )
+
+    def get_profile(self, email: str) -> dict | None:
+        return self._db.get_user_by_email(email)

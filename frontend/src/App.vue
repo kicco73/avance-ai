@@ -4,6 +4,8 @@ import ChatWindow from './components/chat/ChatWindow.vue'
 import EditProjectView from './components/project/edit/EditProjectView.vue'
 import LabelProjectView from './components/project/label/LabelProjectView.vue'
 import LoginView from './components/LoginView.vue'
+import ProfileMenu from './components/ProfileMenu.vue'
+import ProfileView from './components/ProfileView.vue'
 import SettingsMenu from './components/settings/SettingsMenu.vue'
 import ManageProjectsView from './components/settings/ManageProjectsView.vue'
 import ManageUsersView from './components/settings/ManageUsersView.vue'
@@ -42,6 +44,7 @@ const showBenchmarkProject = ref(false)
 const benchmarkProjectName = ref(null)
 const showManageProjects = ref(false)
 const showManageUsers = ref(false)
+const showProfile = ref(false)
 const modelUploadInput = ref(null)
 const chatWindowRef = ref(null)
 const manageProjectsView = ref(null)
@@ -406,12 +409,15 @@ onBeforeUnmount(() => {
         @project-download="handleModelDownload"
       />
 
+      <div class="profile-menu-overlay">
+        <ProfileMenu @profile="showProfile = true" @logout="handleLogout" />
+      </div>
+
       <div class="settings-menu-overlay">
         <SettingsMenu
           @manage-projects="showManageProjects = true"
           @manage-users="showManageUsers = true"
           @about="handleShowAbout"
-          @logout="handleLogout"
           @download-backup="handleDownloadBackup"
           @restore-backup="handleRestoreBackup"
         />
@@ -457,6 +463,11 @@ onBeforeUnmount(() => {
       @close="showManageUsers = false"
     />
 
+    <ProfileView
+      v-if="showProfile"
+      @close="showProfile = false"
+    />
+
   </div>
 </template>
 
@@ -489,13 +500,25 @@ body {
   overflow: hidden;
 }
 
-/* Fixed rather than absolute: the settings button/dropdown must never
-   be clipped by .app-body's own overflow: hidden (which exists to
-   contain the chat's internal scrolling, not this overlay). */
-.settings-menu-overlay {
+/* Fixed rather than absolute: the settings/profile buttons and their
+   dropdowns must never be clipped by .app-body's own overflow: hidden
+   (which exists to contain the chat's internal scrolling, not this
+   overlay). */
+.profile-menu-overlay {
   position: fixed;
   top: 0.75rem;
   right: 0.75rem;
+  z-index: 30;
+}
+
+/* Left: 3.25rem sits it immediately to the right of ChatWindow.vue's
+   own .sessions-reopen-btn (left: 0.75rem, width: 2rem) — the two read
+   as one row of overlay icon buttons even though this one lives here,
+   not inside ChatWindow.vue itself. */
+.settings-menu-overlay {
+  position: fixed;
+  top: 0.75rem;
+  left: 3.25rem;
   z-index: 30;
 }
 

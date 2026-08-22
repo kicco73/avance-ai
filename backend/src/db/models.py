@@ -83,6 +83,7 @@ class User(BaseModel):
     provider_user_id = CharField(null=True)
     email = CharField()
     name = CharField(null=True)
+    picture_url = CharField(null=True)
     created_at = DateTimeField(default=datetime.utcnow)
     last_login = DateTimeField(null=True)
     # Absorbs the old standalone Settings table — its only field, the

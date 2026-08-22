@@ -34,7 +34,7 @@ def _restore_session_user():
 
 @pytest.fixture
 def identity() -> AuthenticatedUser:
-    return AuthenticatedUser(provider_user_id="sub-1", email="alice@example.com", name="Alice")
+    return AuthenticatedUser(provider_user_id="sub-1", email="alice@example.com", name="Alice", picture_url=None)
 
 
 @pytest.fixture

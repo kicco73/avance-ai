@@ -21,17 +21,20 @@ class UserMixin:
             for user in User.select().order_by(User.created_at.asc())
         ]
 
-    def get_or_create_user(self, provider: str, provider_user_id: str, email: str, name: str) -> User:
+    def get_or_create_user(self, provider: str, provider_user_id: str, email: str, name: str, picture_url: str | None) -> User:
         user, _ = User.get_or_create(
             id=email,
-            defaults={"provider": provider, "provider_user_id": provider_user_id, "email": email, "name": name},
+            defaults={"provider": provider, "provider_user_id": provider_user_id, "email": email, "name": name, "picture_url": picture_url},
         )
+        user.name = name
+        user.picture_url = picture_url
+        user.save()
         return user
 
     def get_user_by_id(self, user_id: str) -> dict | None:
         """AuthService.verify_token's own lookup: the JWT payload only
         carries user_id (the user's email), so the identity it needs back
-        out (provider_user_id/email/name) has to come from here."""
+        out (provider_user_id/email/name/picture_url) has to come from here."""
         user = User.get_or_none(User.id == user_id)
         if user is None:
             return None
@@ -41,7 +44,23 @@ class UserMixin:
             "provider_user_id": user.provider_user_id,
             "email": user.email,
             "name": user.name,
+            "picture_url": user.picture_url,
             "last_login": user.last_login,
+        }
+
+    def get_user_by_email(self, email: str) -> dict | None:
+        """AuthService.get_profile's own lookup — GET /api/auth/me's
+        source, both for the topbar avatar and ProfileView.vue."""
+        user = User.get_or_none(User.email == email)
+        if user is None:
+            return None
+        return {
+            "email": user.email,
+            "name": user.name,
+            "picture_url": user.picture_url,
+            "provider": user.provider,
+            "created_at": _utc_iso(user.created_at),
+            "last_login": _utc_iso(user.last_login),
         }
 
     def update_last_login(self, user_id) -> None:

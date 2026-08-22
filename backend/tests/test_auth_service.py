@@ -44,7 +44,7 @@ def _auth_service(db, provider: _FakeProvider) -> AuthService:
 
 @pytest.fixture
 def identity() -> AuthenticatedUser:
-    return AuthenticatedUser(provider_user_id="sub-123", email="alice@example.com", name="Alice")
+    return AuthenticatedUser(provider_user_id="sub-123", email="alice@example.com", name="Alice", picture_url="https://example.com/alice.png")
 
 
 @pytest.fixture
