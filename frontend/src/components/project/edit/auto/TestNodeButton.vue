@@ -1,7 +1,7 @@
 <script setup>
-// Play/status control shared by every level of the "Auto" tab's tree. Root and branch
-// nodes are always disabled (no aggregation exists for them yet); a leaf is the only
-// place `activate` actually launches something. Purely presentational — only emits.
+// Play/status control shared by every level of the "Auto" tab's tree —
+// root and the two branch nodes run every test in their scope at once,
+// same gesture as a single leaf. Purely presentational — only emits.
 const props = defineProps({
   status: {
     type: String,

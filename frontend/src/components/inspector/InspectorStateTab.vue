@@ -23,7 +23,17 @@ const props = defineProps({
   // EditProjectView.vue's own mode-gating for this prop). index.yml is
   // excluded here since it has no delete and its own dedicated tabs.
   currentFileName: { type: String, default: null },
-  deletingFile: { type: String, default: null }
+  deletingFile: { type: String, default: null },
+  // Auto mode's own selection (see EditProjectView.vue's autoSelected*
+  // computeds) — a session read-only, in place of selectedElement's
+  // state/action. { id, title, comment, type, ... }, same shape as
+  // chatStore.js's sessions rows.
+  selectedSession: { type: Object, default: null },
+  sessionStartElement: { type: Object, default: null },
+  sessionEndElement: { type: Object, default: null },
+  // Auto mode only: no edit form, no delete, no "+ Add state" — this tab
+  // is a plain read-only viewer for whatever's selected in the Auto tree.
+  readOnly: { type: Boolean, default: false }
 })
 
 const emit = defineEmits([
@@ -38,6 +48,12 @@ const emit = defineEmits([
 // card below instead.
 const isBehaviorContext = computed(() => !props.currentFileName || props.currentFileName === 'index.yml')
 const showFileCard = computed(() => !isBehaviorContext.value)
+
+// Same session, shown once with a combined badge rather than two
+// identical cards — mirrors LabelProjectView.vue's own Info tab.
+const sessionStartIsEnd = computed(() => (
+  props.sessionStartElement != null && props.sessionStartElement.data.id === props.sessionEndElement?.data.id
+))
 
 // This tab owns the detail card's open/closed state: closed whenever the
 // selection moves to a different state, except when it moved there because
@@ -73,7 +89,7 @@ onMounted(loadProjectMetadata)
   <div class="inspector-state-tab">
     <InspectorProjectCard
       :project="projectMetadata"
-      editable
+      :editable="!readOnly"
       @set-field="(field, value) => emit('set-project-field', field, value)"
     />
     <InspectorFileCard
@@ -82,14 +98,38 @@ onMounted(loadProjectMetadata)
       :deleting="deletingFile === currentFileName"
       @delete="emit('delete-file', currentFileName)"
     />
+
+    <template v-if="selectedSession">
+      <div class="inspector-signal-block">
+        <div class="inspector-signal-readonly">
+          <div class="inspector-signal-header">
+            <span class="inspector-detail-badge inspector-detail-badge-session">Session</span>
+            <span class="inspector-signal-name">{{ selectedSession.title || selectedSession.end_state || 'Untitled session' }}</span>
+          </div>
+          <span v-if="selectedSession.type === 'imported'" class="inspector-detail-badge inspector-detail-badge-neutral">Imported</span>
+          <span v-if="selectedSession.comment" class="inspector-signal-ui_description">{{ selectedSession.comment }}</span>
+        </div>
+      </div>
+      <InspectorDetailCard
+        v-if="sessionStartIsEnd"
+        :selected-element="sessionStartElement"
+        :closable="false"
+        role-badge="Start / End"
+      />
+      <template v-else>
+        <InspectorDetailCard v-if="sessionStartElement" :selected-element="sessionStartElement" :closable="false" role-badge="Start" />
+        <InspectorDetailCard v-if="sessionEndElement" :selected-element="sessionEndElement" :closable="false" role-badge="End" />
+      </template>
+    </template>
+
     <InspectorDetailCard
-      v-if="selectedElement && isBehaviorContext"
+      v-else-if="selectedElement && isBehaviorContext"
       :selected-element="selectedElement"
       :editable-files="editableFiles"
       :highlighted-state-key="highlightedStateKey"
       :recently-added-key="recentlyAddedKey"
-      selectable
-      editable
+      :selectable="!readOnly"
+      :editable="!readOnly"
       :closable="false"
       :open="open"
       @update:open="open = $event"
@@ -99,7 +139,7 @@ onMounted(loadProjectMetadata)
       @set-field="(field, value) => emit('set-field', field, value)"
       @delete="emit('delete', selectedElement.data.id)"
     />
-    <button v-if="isBehaviorContext" class="inspector-state-tab-add-btn" @click="emit('add-state')">+ Add state</button>
+    <button v-if="isBehaviorContext && !readOnly" class="inspector-state-tab-add-btn" @click="emit('add-state')">+ Add state</button>
   </div>
 </template>
 
@@ -107,4 +147,15 @@ onMounted(loadProjectMetadata)
 .inspector-state-tab { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
 .inspector-state-tab-add-btn { flex-shrink: 0; margin-top: 0.5rem; padding: 0.5rem; border-radius: 6px; border: 1px dashed #4a6fa5; background: white; color: #4a6fa5; font-size: 0.82rem; cursor: pointer; }
 .inspector-state-tab-add-btn:hover { background: #eef2f9; }
+
+/* The read-only session card (Auto mode) — same classes as
+   InspectorSignalsTab.vue/LabelProjectView.vue's own session block,
+   copied here since Vue's scoped styles never cross component files. */
+.inspector-signal-block { display: flex; flex-direction: column; gap: 0.2rem; padding: 0.6rem 0.75rem; border-radius: 8px; border: 1px solid #eee; background: #fafafa; }
+.inspector-signal-header { display: flex; align-items: center; gap: 0.4rem; }
+.inspector-detail-badge { flex-shrink: 0; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.15rem 0.5rem; border-radius: 999px; color: white; }
+.inspector-detail-badge-session { background: #455a64; }
+.inspector-detail-badge-neutral { background: #4a6fa5; }
+.inspector-signal-name { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; }
+.inspector-signal-ui_description { font-size: 0.78rem; color: #666; line-height: 1.4; }
 </style>

@@ -17,8 +17,13 @@ const props = defineProps({
   }
 })
 
+// Lets EditProjectView.vue mirror this panel's own selection into the
+// Inspector's read-only Info tab — this stays the single source of truth
+// for selectedNodeId, the parent just gets told when it changes.
+const emit = defineEmits(['select'])
+
 // Applies to whichever node gets activated next — one shared control, not a per-node choice.
-const strategy = ref('turn_by_turn')
+const strategy = ref('batch')
 
 const projectStates = ref([])
 const statesLoading = ref(false)
@@ -49,20 +54,71 @@ const selectedNodeId = ref(null)
 const selectedRun = ref(null)
 const selectedRunLoading = ref(false)
 
+// running beats fail beats warning beats ok; idle only when nothing in
+// scope has ever run under this strategy — used to roll leaf statuses
+// up into their branch/root node.
+function aggregateStatus(statuses) {
+  if (statuses.some((s) => s === 'running')) return 'running'
+  if (statuses.some((s) => s === 'fail')) return 'fail'
+  if (statuses.some((s) => s === 'warning')) return 'warning'
+  if (statuses.length > 0 && statuses.every((s) => s === 'ok')) return 'ok'
+  return 'idle'
+}
+
+// Every state leaf's own status under the active strategy, rolled up
+// into states-branch's own status below.
+const statesBranchStatus = computed(() => {
+  const prefix = `${strategy.value}:state:`
+  const statuses = Object.entries(nodeStatuses.value)
+    .filter(([key]) => key.startsWith(prefix))
+    .map(([, status]) => status)
+  return aggregateStatus(statuses)
+})
+
 // TestsTree only ever sees the active strategy's own statuses — a node
-// with no entry here falls back to its own 'idle' default.
+// with no entry here falls back to its own 'idle' default. states-branch
+// and root are derived (not launched jobs in their own right), so they're
+// computed here rather than read straight off nodeStatuses.
 const currentStrategyStatuses = computed(() => {
   const prefix = `${strategy.value}:`
   const result = {}
   for (const [key, status] of Object.entries(nodeStatuses.value)) {
     if (key.startsWith(prefix)) result[key.slice(prefix.length)] = status
   }
+  result['states-branch'] = statesBranchStatus.value
+  result['root'] = aggregateStatus([result['sessions-branch'] ?? 'idle', statesBranchStatus.value])
   return result
 })
 
 const selectedCacheKey = computed(() => (
   selectedNodeId.value ? cacheKey(strategy.value, selectedNodeId.value) : null
 ))
+
+// One row per state, its own SignalAccuracy result under the active
+// strategy — states-branch's own "aggregate stats" view.
+const statesAggregateRows = computed(() => {
+  const prefix = `${strategy.value}:state:`
+  return Object.entries(nodeLastResult.value)
+    .filter(([key, result]) => key.startsWith(prefix) && result)
+    .map(([key, result]) => ({ ...result, name: key.slice(prefix.length) }))
+})
+
+// Sample-count-weighted average across every state that has a result —
+// the single "how's the whole state machine doing" number.
+const statesOverall = computed(() => {
+  const rows = statesAggregateRows.value
+  const totalSamples = rows.reduce((sum, row) => sum + (row.sample_count || 0), 0)
+  if (totalSamples === 0) return null
+  const weightedSum = rows.reduce((sum, row) => sum + (row.value || 0) * (row.sample_count || 0), 0)
+  return { value: weightedSum / totalSamples, sample_count: totalSamples }
+})
+
+const statesFailedEntries = computed(() => {
+  const prefix = `${strategy.value}:state:`
+  return Object.entries(nodeError.value)
+    .filter(([key, error]) => key.startsWith(prefix) && error)
+    .map(([key, error]) => ({ name: key.slice(prefix.length), error }))
+})
 
 function clearPoll(key) {
   if (pollTimers[key] != null) {
@@ -84,7 +140,7 @@ function statusFromOutcome(status, error) {
   return 'running'
 }
 
-function pollSessionRun(nodeId, runStrategy, key, runId) {
+function pollSessionRun(nodeId, runStrategy, key, runId, mirrorLeafNodeIds = []) {
   clearPoll(key)
   const tick = async () => {
     let run = null
@@ -100,7 +156,13 @@ function pollSessionRun(nodeId, runStrategy, key, runId) {
       pollTimers[key] = setTimeout(tick, 1000)
       return
     }
-    setStatus(key, statusFromOutcome(run.status, run.error))
+    const outcome = statusFromOutcome(run.status, run.error)
+    setStatus(key, outcome)
+    // The whole-project replay is one job with no per-session status of
+    // its own — every session leaf lit up together at launch mirrors
+    // this same run's outcome now that it's done, the closest we can get
+    // to "that session's own test" without one job per session.
+    mirrorLeafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(runStrategy, leafNodeId), outcome))
     if (selectedNodeId.value === nodeId && strategy.value === runStrategy) selectedRun.value = run
   }
   tick()
@@ -130,34 +192,91 @@ function pollStateJob(key, jobId) {
   tick()
 }
 
-async function onActivate(nodeId) {
-  // Pressing play selects the node it belongs to, same as clicking its
-  // row — the results panel should already be pointed at it once the
-  // run/job finishes.
-  onSelect(nodeId)
-  // Snapshot the strategy at launch time — the job is dispatched under
-  // it regardless of whether the dropdown changes before it finishes.
-  const activeStrategy = strategy.value
+async function activateSessionLeaf(nodeId, activeStrategy) {
   const key = cacheKey(activeStrategy, nodeId)
   setStatus(key, 'running')
   try {
-    if (nodeId.startsWith('session:')) {
-      const sessionId = Number(nodeId.slice('session:'.length))
-      const run = await postBenchmarkRun(props.projectName, sessionId, activeStrategy)
-      pollSessionRun(nodeId, activeStrategy, key, run.id)
-    } else if (nodeId.startsWith('state:')) {
-      const stateKey = nodeId.slice('state:'.length)
-      const { job_id } = await postStateTest(props.projectName, stateKey, activeStrategy)
-      pollStateJob(key, job_id)
-    }
+    const sessionId = Number(nodeId.slice('session:'.length))
+    const run = await postBenchmarkRun(props.projectName, sessionId, activeStrategy)
+    pollSessionRun(nodeId, activeStrategy, key, run.id)
   } catch {
     // already surfaced via apiFetch
     setStatus(key, 'fail')
   }
 }
 
-async function loadSelectedSessionRun(nodeId) {
-  const sessionId = Number(nodeId.slice('session:'.length))
+async function activateStateLeaf(nodeId, activeStrategy) {
+  const key = cacheKey(activeStrategy, nodeId)
+  setStatus(key, 'running')
+  try {
+    const stateKey = nodeId.slice('state:'.length)
+    const { job_id } = await postStateTest(props.projectName, stateKey, activeStrategy)
+    pollStateJob(key, job_id)
+  } catch {
+    // already surfaced via apiFetch
+    setStatus(key, 'fail')
+  }
+}
+
+// Every session-leaf nodeId the "Sessions" branch shows — same filter as
+// TestsTree.vue's own annotatedSessions.
+function annotatedSessionNodeIds() {
+  return sessions.value.filter((s) => s.has_annotations).map((s) => `session:${s.id}`)
+}
+
+// The whole-project replay (session_id: null) — same backend run kind as
+// a single session's, just scoped to every labeled session at once (see
+// BenchmarkRunService.create_run). Both sessions-branch and root show it.
+async function activateWholeProjectRun(activeStrategy) {
+  const key = cacheKey(activeStrategy, 'sessions-branch')
+  const leafNodeIds = annotatedSessionNodeIds()
+  setStatus(key, 'running')
+  // Light up every session leaf right away — this one job replays all of
+  // them at once, so from the tree's point of view every session under
+  // it is "running" for as long as it is.
+  leafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(activeStrategy, leafNodeId), 'running'))
+  try {
+    const run = await postBenchmarkRun(props.projectName, null, activeStrategy)
+    pollSessionRun('sessions-branch', activeStrategy, key, run.id, leafNodeIds)
+  } catch {
+    // already surfaced via apiFetch
+    setStatus(key, 'fail')
+    leafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(activeStrategy, leafNodeId), 'fail'))
+  }
+}
+
+async function activateAllStates(activeStrategy) {
+  await Promise.all(
+    projectStates.value.map((stateKey) => activateStateLeaf(`state:${stateKey}`, activeStrategy))
+  )
+}
+
+async function onActivate(nodeId) {
+  // Pressing play selects the node it belongs to, same as clicking its
+  // row — the results panel should already be pointed at it once the
+  // run/job(s) finish.
+  onSelect(nodeId)
+  // Snapshot the strategy at launch time — every job this dispatches is
+  // pinned to it regardless of whether the dropdown changes before they finish.
+  const activeStrategy = strategy.value
+  if (nodeId.startsWith('session:')) {
+    await activateSessionLeaf(nodeId, activeStrategy)
+  } else if (nodeId.startsWith('state:')) {
+    await activateStateLeaf(nodeId, activeStrategy)
+  } else if (nodeId === 'sessions-branch') {
+    await activateWholeProjectRun(activeStrategy)
+  } else if (nodeId === 'states-branch') {
+    await activateAllStates(activeStrategy)
+  } else if (nodeId === 'root') {
+    // Every sub-test at once: the whole-project replay plus every state's own test.
+    await Promise.all([activateWholeProjectRun(activeStrategy), activateAllStates(activeStrategy)])
+  }
+}
+
+async function loadSelectedRun(nodeId) {
+  // null for sessions-branch: the whole-project run, not a filter (see
+  // backend BenchmarkRunService.list_runs' own session_id docstring).
+  const sessionId = nodeId.startsWith('session:') ? Number(nodeId.slice('session:'.length)) : null
   selectedRunLoading.value = true
   try {
     const runs = await getBenchmarkRuns(props.projectName, sessionId)
@@ -172,19 +291,28 @@ async function loadSelectedSessionRun(nodeId) {
   }
 }
 
+// root deliberately isn't one of these: sessions-branch and states-branch
+// each have a real result (a whole-project run, a weighted state average),
+// but there's no sound way to combine those two into one number — root
+// shows a plain "go pick a branch" message instead (see the template).
+function isRunNode(nodeId) {
+  return nodeId.startsWith('session:') || nodeId === 'sessions-branch'
+}
+
 async function onSelect(nodeId) {
   selectedNodeId.value = nodeId
+  emit('select', nodeId)
   selectedRun.value = null
-  if (!nodeId.startsWith('session:')) return
-  await loadSelectedSessionRun(nodeId)
+  if (!isRunNode(nodeId)) return
+  await loadSelectedRun(nodeId)
 }
 
 // Switching strategy must refresh whatever's on screen for the currently
-// selected session — otherwise it would keep showing the other
-// strategy's last-fetched run.
+// selected node — otherwise it would keep showing the other strategy's
+// last-fetched run.
 watch(strategy, () => {
-  if (selectedNodeId.value && selectedNodeId.value.startsWith('session:')) {
-    loadSelectedSessionRun(selectedNodeId.value)
+  if (selectedNodeId.value && isRunNode(selectedNodeId.value)) {
+    loadSelectedRun(selectedNodeId.value)
   }
 })
 
@@ -208,6 +336,10 @@ function formatNumber(value) {
 }
 
 onMounted(() => {
+  // selectedNodeId always starts null on a fresh mount (this tab isn't
+  // kept alive while closed — see EditProjectView.vue's autoOpen v-if),
+  // so there's never anything already selected to defer to here.
+  onSelect('root')
   loadSessions(true, props.projectName)
   statesLoading.value = true
   getProjectStates(props.projectName).then((states) => {
@@ -231,8 +363,8 @@ onBeforeUnmount(() => {
         <label class="tests-panel-strategy-label">
           Strategy
           <select v-model="strategy" class="tests-panel-strategy-select">
-            <option value="turn_by_turn">Turn-by-turn</option>
             <option value="batch">Batch</option>
+            <option value="turn_by_turn">Turn-by-turn</option>
           </select>
         </label>
       </div>
@@ -252,10 +384,17 @@ onBeforeUnmount(() => {
     <div class="tests-panel-content">
       <p v-if="!selectedNodeId" class="tests-panel-placeholder">Select a node to see its results.</p>
 
-      <template v-else-if="selectedNodeId.startsWith('session:')">
+      <template v-else-if="selectedNodeId === 'root'">
+        <h3 class="tests-panel-title">{{ selectedNodeLabel }}</h3>
+        <p class="tests-panel-placeholder">Aggregates not available at this time.<br />Please select Sessions or States to see results.</p>
+      </template>
+
+      <template v-else-if="selectedNodeId.startsWith('session:') || selectedNodeId === 'sessions-branch'">
         <h3 class="tests-panel-title">{{ selectedNodeLabel }}</h3>
         <p v-if="selectedRunLoading" class="tests-panel-placeholder">Loading…</p>
-        <p v-else-if="!selectedRun" class="tests-panel-placeholder">No test has been run for this session under this strategy yet.</p>
+        <p v-else-if="!selectedRun" class="tests-panel-placeholder">
+          No test has been run for {{ selectedNodeId.startsWith('session:') ? 'this session' : 'the whole project' }} under this strategy yet.
+        </p>
         <p v-else-if="selectedRun.status === 'failed'" class="tests-panel-error">{{ selectedRun.error || 'Test failed.' }}</p>
         <p v-else-if="selectedRun.status !== 'completed'" class="tests-panel-placeholder">Test {{ selectedRun.status }}…</p>
         <template v-else>
@@ -303,6 +442,39 @@ onBeforeUnmount(() => {
               <td>{{ formatNumber(nodeLastResult[selectedCacheKey].median) }}</td>
               <td>{{ formatNumber(nodeLastResult[selectedCacheKey].standard_deviation) }}</td>
               <td>{{ nodeLastResult[selectedCacheKey].sample_count }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </template>
+
+      <template v-else-if="selectedNodeId === 'states-branch'">
+        <h3 class="tests-panel-title">{{ selectedNodeLabel }}</h3>
+        <div v-if="statesFailedEntries.length" class="tests-panel-error">
+          <div v-for="entry in statesFailedEntries" :key="entry.name">{{ entry.name }}: {{ entry.error }}</div>
+        </div>
+        <p v-if="!statesAggregateRows.length" class="tests-panel-placeholder">
+          No state test has been run under this strategy yet.
+        </p>
+        <table v-else class="tests-panel-metrics-table">
+          <thead>
+            <tr>
+              <th>State</th><th>Value</th><th>Mean</th><th>Median</th><th>Std dev</th><th>Samples</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in statesAggregateRows" :key="row.name">
+              <td>{{ row.name }}</td>
+              <td>{{ formatNumber(row.value) }}</td>
+              <td>{{ formatNumber(row.mean) }}</td>
+              <td>{{ formatNumber(row.median) }}</td>
+              <td>{{ formatNumber(row.standard_deviation) }}</td>
+              <td>{{ row.sample_count }}</td>
+            </tr>
+            <tr v-if="statesOverall" class="tests-panel-overall-row">
+              <td>Overall</td>
+              <td>{{ formatNumber(statesOverall.value) }}</td>
+              <td colspan="3"></td>
+              <td>{{ statesOverall.sample_count }}</td>
             </tr>
           </tbody>
         </table>
@@ -427,5 +599,10 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
   font-size: 0.7rem;
   letter-spacing: 0.03em;
+}
+
+.tests-panel-overall-row td {
+  font-weight: 600;
+  border-top: 2px solid #ccc;
 }
 </style>
