@@ -3,7 +3,7 @@
 // Two columns: TestsTree on the left (Sessions/States), a node's results on
 // the right. Owns all data fetching/launching/polling — TestsTree itself
 // (alongside TestNodeButton, both in this same auto/ folder) stays purely presentational.
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import TestsTree from './TestsTree.vue'
 import {
   getBenchmarkRun, getBenchmarkRuns, getProjectStates, getStateJob, postBenchmarkRun, postStateTest
@@ -23,29 +23,56 @@ const strategy = ref('turn_by_turn')
 const projectStates = ref([])
 const statesLoading = ref(false)
 
-// { [nodeId]: 'idle'|'running'|'ok'|'warning'|'fail' } — idle is TestsTree's
+// Every cache below is keyed by `${strategy}:${nodeId}`, never nodeId
+// alone — turn_by_turn and batch results aren't comparable, so switching
+// strategy must never show the other strategy's cached status/result for
+// the same node.
+function cacheKey(strategyName, nodeId) {
+  return `${strategyName}:${nodeId}`
+}
+
+// { [cacheKey]: 'idle'|'running'|'ok'|'warning'|'fail' } — idle is TestsTree's
 // own implicit default for anything missing here.
 const nodeStatuses = ref({})
 // A state node's own most recent job result — Signal Accuracy only, kept
 // purely client-side (no server-side history for an ephemeral job, see
 // backend jobs/job_sink.py's InMemoryJobSink), lost on page refresh.
 const nodeLastResult = ref({})
-// nodeId -> pending setTimeout id, plain bookkeeping (never rendered).
+// A state node's own most recent job failure message, alongside
+// nodeLastResult above (null result on failure must stay distinguishable
+// from "never run").
+const nodeError = ref({})
+// cacheKey -> pending setTimeout id, plain bookkeeping (never rendered).
 const pollTimers = {}
 
 const selectedNodeId = ref(null)
 const selectedRun = ref(null)
 const selectedRunLoading = ref(false)
 
-function clearPoll(nodeId) {
-  if (pollTimers[nodeId] != null) {
-    clearTimeout(pollTimers[nodeId])
-    delete pollTimers[nodeId]
+// TestsTree only ever sees the active strategy's own statuses — a node
+// with no entry here falls back to its own 'idle' default.
+const currentStrategyStatuses = computed(() => {
+  const prefix = `${strategy.value}:`
+  const result = {}
+  for (const [key, status] of Object.entries(nodeStatuses.value)) {
+    if (key.startsWith(prefix)) result[key.slice(prefix.length)] = status
+  }
+  return result
+})
+
+const selectedCacheKey = computed(() => (
+  selectedNodeId.value ? cacheKey(strategy.value, selectedNodeId.value) : null
+))
+
+function clearPoll(key) {
+  if (pollTimers[key] != null) {
+    clearTimeout(pollTimers[key])
+    delete pollTimers[key]
   }
 }
 
-function setStatus(nodeId, status) {
-  nodeStatuses.value = { ...nodeStatuses.value, [nodeId]: status }
+function setStatus(key, status) {
+  nodeStatuses.value = { ...nodeStatuses.value, [key]: status }
 }
 
 // completed with no error -> ok; completed but error carries text (one
@@ -57,8 +84,8 @@ function statusFromOutcome(status, error) {
   return 'running'
 }
 
-function pollSessionRun(nodeId, runId) {
-  clearPoll(nodeId)
+function pollSessionRun(nodeId, runStrategy, key, runId) {
+  clearPoll(key)
   const tick = async () => {
     let run = null
     try {
@@ -66,57 +93,82 @@ function pollSessionRun(nodeId, runId) {
     } catch {
       // already surfaced via apiFetch — keep polling, a transient
       // network hiccup shouldn't drop this node's own status tracking.
-      pollTimers[nodeId] = setTimeout(tick, 1000)
+      pollTimers[key] = setTimeout(tick, 1000)
       return
     }
     if (run.status === 'pending' || run.status === 'running') {
-      pollTimers[nodeId] = setTimeout(tick, 1000)
+      pollTimers[key] = setTimeout(tick, 1000)
       return
     }
-    setStatus(nodeId, statusFromOutcome(run.status, run.error))
-    if (selectedNodeId.value === nodeId) selectedRun.value = run
+    setStatus(key, statusFromOutcome(run.status, run.error))
+    if (selectedNodeId.value === nodeId && strategy.value === runStrategy) selectedRun.value = run
   }
   tick()
 }
 
-function pollStateJob(nodeId, jobId) {
-  clearPoll(nodeId)
+function pollStateJob(key, jobId) {
+  clearPoll(key)
   const tick = async () => {
     let job = null
     try {
       job = await getStateJob(props.projectName, jobId)
     } catch {
-      pollTimers[nodeId] = setTimeout(tick, 1000)
+      pollTimers[key] = setTimeout(tick, 1000)
       return
     }
     if (job == null || job.status === 'pending' || job.status === 'running') {
-      pollTimers[nodeId] = setTimeout(tick, 1000)
+      pollTimers[key] = setTimeout(tick, 1000)
       return
     }
-    setStatus(nodeId, statusFromOutcome(job.status, job.error))
+    setStatus(key, statusFromOutcome(job.status, job.error))
+    nodeError.value = { ...nodeError.value, [key]: job.status === 'failed' ? job.error : null }
     nodeLastResult.value = {
       ...nodeLastResult.value,
-      [nodeId]: job.result ? JSON.parse(job.result) : null
+      [key]: job.result ? JSON.parse(job.result) : null
     }
   }
   tick()
 }
 
 async function onActivate(nodeId) {
-  setStatus(nodeId, 'running')
+  // Pressing play selects the node it belongs to, same as clicking its
+  // row — the results panel should already be pointed at it once the
+  // run/job finishes.
+  onSelect(nodeId)
+  // Snapshot the strategy at launch time — the job is dispatched under
+  // it regardless of whether the dropdown changes before it finishes.
+  const activeStrategy = strategy.value
+  const key = cacheKey(activeStrategy, nodeId)
+  setStatus(key, 'running')
   try {
     if (nodeId.startsWith('session:')) {
       const sessionId = Number(nodeId.slice('session:'.length))
-      const run = await postBenchmarkRun(props.projectName, sessionId, strategy.value)
-      pollSessionRun(nodeId, run.id)
+      const run = await postBenchmarkRun(props.projectName, sessionId, activeStrategy)
+      pollSessionRun(nodeId, activeStrategy, key, run.id)
     } else if (nodeId.startsWith('state:')) {
       const stateKey = nodeId.slice('state:'.length)
-      const { job_id } = await postStateTest(props.projectName, stateKey, strategy.value)
-      pollStateJob(nodeId, job_id)
+      const { job_id } = await postStateTest(props.projectName, stateKey, activeStrategy)
+      pollStateJob(key, job_id)
     }
   } catch {
     // already surfaced via apiFetch
-    setStatus(nodeId, 'fail')
+    setStatus(key, 'fail')
+  }
+}
+
+async function loadSelectedSessionRun(nodeId) {
+  const sessionId = Number(nodeId.slice('session:'.length))
+  selectedRunLoading.value = true
+  try {
+    const runs = await getBenchmarkRuns(props.projectName, sessionId)
+    // Already most-recent-first (see backend BenchmarkRunService.list_runs)
+    // — filtered to the active strategy, since turn_by_turn and batch
+    // runs aren't comparable and must never be shown as if they were.
+    selectedRun.value = runs.find((run) => run.strategy === strategy.value) ?? null
+  } catch {
+    selectedRun.value = null
+  } finally {
+    selectedRunLoading.value = false
   }
 }
 
@@ -124,18 +176,17 @@ async function onSelect(nodeId) {
   selectedNodeId.value = nodeId
   selectedRun.value = null
   if (!nodeId.startsWith('session:')) return
-  const sessionId = Number(nodeId.slice('session:'.length))
-  selectedRunLoading.value = true
-  try {
-    const runs = await getBenchmarkRuns(props.projectName, sessionId)
-    // Already most-recent-first (see backend BenchmarkRunService.list_runs).
-    selectedRun.value = runs[0] ?? null
-  } catch {
-    selectedRun.value = null
-  } finally {
-    selectedRunLoading.value = false
-  }
+  await loadSelectedSessionRun(nodeId)
 }
+
+// Switching strategy must refresh whatever's on screen for the currently
+// selected session — otherwise it would keep showing the other
+// strategy's last-fetched run.
+watch(strategy, () => {
+  if (selectedNodeId.value && selectedNodeId.value.startsWith('session:')) {
+    loadSelectedSessionRun(selectedNodeId.value)
+  }
+})
 
 const selectedNodeLabel = computed(() => {
   const nodeId = selectedNodeId.value
@@ -191,7 +242,7 @@ onBeforeUnmount(() => {
         :project-name="projectName"
         :sessions="sessions"
         :states="projectStates"
-        :statuses="nodeStatuses"
+        :statuses="currentStrategyStatuses"
         :selected-node-id="selectedNodeId"
         @select="onSelect"
         @activate="onActivate"
@@ -204,9 +255,11 @@ onBeforeUnmount(() => {
       <template v-else-if="selectedNodeId.startsWith('session:')">
         <h3 class="tests-panel-title">{{ selectedNodeLabel }}</h3>
         <p v-if="selectedRunLoading" class="tests-panel-placeholder">Loading…</p>
-        <p v-else-if="!selectedRun" class="tests-panel-placeholder">No test has been run for this session yet.</p>
+        <p v-else-if="!selectedRun" class="tests-panel-placeholder">No test has been run for this session under this strategy yet.</p>
+        <p v-else-if="selectedRun.status === 'failed'" class="tests-panel-error">{{ selectedRun.error || 'Test failed.' }}</p>
         <p v-else-if="selectedRun.status !== 'completed'" class="tests-panel-placeholder">Test {{ selectedRun.status }}…</p>
         <template v-else>
+          <p v-if="selectedRun.error" class="tests-panel-error">{{ selectedRun.error }}</p>
           <p v-if="selectedRun.stale" class="tests-panel-stale-warning">
             The project has changed since this test ran — results may not reflect the current version.
           </p>
@@ -232,8 +285,9 @@ onBeforeUnmount(() => {
 
       <template v-else-if="selectedNodeId.startsWith('state:')">
         <h3 class="tests-panel-title">{{ selectedNodeLabel }}</h3>
-        <p v-if="!nodeLastResult[selectedNodeId]" class="tests-panel-placeholder">
-          No test has been run for this state yet.
+        <p v-if="nodeError[selectedCacheKey]" class="tests-panel-error">{{ nodeError[selectedCacheKey] }}</p>
+        <p v-else-if="!nodeLastResult[selectedCacheKey]" class="tests-panel-placeholder">
+          No test has been run for this state under this strategy yet.
         </p>
         <table v-else class="tests-panel-metrics-table">
           <thead>
@@ -243,12 +297,12 @@ onBeforeUnmount(() => {
           </thead>
           <tbody>
             <tr>
-              <td>{{ nodeLastResult[selectedNodeId].name }}</td>
-              <td>{{ formatNumber(nodeLastResult[selectedNodeId].value) }}</td>
-              <td>{{ formatNumber(nodeLastResult[selectedNodeId].mean) }}</td>
-              <td>{{ formatNumber(nodeLastResult[selectedNodeId].median) }}</td>
-              <td>{{ formatNumber(nodeLastResult[selectedNodeId].standard_deviation) }}</td>
-              <td>{{ nodeLastResult[selectedNodeId].sample_count }}</td>
+              <td>{{ nodeLastResult[selectedCacheKey].name }}</td>
+              <td>{{ formatNumber(nodeLastResult[selectedCacheKey].value) }}</td>
+              <td>{{ formatNumber(nodeLastResult[selectedCacheKey].mean) }}</td>
+              <td>{{ formatNumber(nodeLastResult[selectedCacheKey].median) }}</td>
+              <td>{{ formatNumber(nodeLastResult[selectedCacheKey].standard_deviation) }}</td>
+              <td>{{ nodeLastResult[selectedCacheKey].sample_count }}</td>
             </tr>
           </tbody>
         </table>
@@ -340,6 +394,18 @@ onBeforeUnmount(() => {
   border: 1px solid #f0c674;
   color: #7a5300;
   font-size: 0.82rem;
+}
+
+.tests-panel-error {
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: #fde8e8;
+  border: 1px solid #f0a8a8;
+  color: #8a1f1f;
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .tests-panel-metrics-table {

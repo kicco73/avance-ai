@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import threading
 from contextlib import contextmanager
 from typing import Any, AsyncIterator, Generator
 import logging
@@ -49,11 +51,33 @@ def _handle_gemini_errors() -> Generator[None, None, None]:
 
 class GeminiProvider(LLMProviderWithSchema):
 	def __init__(self, config: AIServiceConfig) -> None:
-		self._client: genai.Client = genai.Client(
-			api_key=config.key,
-			http_options={"base_url": config.url} if config.url else None,
-		)
+		self._api_key: str = config.key
+		self._base_url: str | None = config.url
 		self._model_name: str = config.model
+		# genai.Client's async transport lazily binds internal
+		# asyncio.Lock/Event objects to whichever event loop first uses
+		# it. This provider is a single app-wide instance shared by both
+		# the main FastAPI loop and every JobQueue worker thread's own
+		# loop (see jobs/job_queue.py) — reusing one Client across those
+		# raises "... is bound to a different event loop". A client per
+		# loop avoids it; self._clients_lock guards concurrent first-use
+		# from different worker threads.
+		self._clients: dict[asyncio.AbstractEventLoop, genai.Client] = {}
+		self._clients_lock = threading.Lock()
+
+	def _client(self) -> genai.Client:
+		loop = asyncio.get_running_loop()
+		client = self._clients.get(loop)
+		if client is None:
+			with self._clients_lock:
+				client = self._clients.get(loop)
+				if client is None:
+					client = genai.Client(
+						api_key=self._api_key,
+						http_options={"base_url": self._base_url} if self._base_url else None,
+					)
+					self._clients[loop] = client
+		return client
 
 	def build_schema(self, tags: dict[str, str]) -> dict:
 
@@ -109,7 +133,7 @@ class GeminiProvider(LLMProviderWithSchema):
 		contents, config = self._format_history_and_config(system_prompt, history, schema or {})
 
 		with _handle_gemini_errors():
-			response_stream = await self._client.aio.models.generate_content_stream(
+			response_stream = await self._client().aio.models.generate_content_stream(
 				model=self._model_name,
 				contents=contents,
 				config=config,

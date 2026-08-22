@@ -101,7 +101,9 @@ class BenchmarkRunService:
     def _resolve_scope(self, username: str, project_name: str, session_id: int | None) -> list[int]:
         if session_id is not None:
             return [session_id]
-        sessions = self._db.list_chat_sessions(username, project_name)
+        # type=None: a whole-project run must cover every labeled session,
+        # not just 'live' ones — same reasoning as BenchmarkCalculator._load_sessions.
+        sessions = self._db.list_chat_sessions(username, project_name, type=None)
         return [int(row['id']) for row in sessions if row['labeled']]
 
     def _count_user_messages(self, session_ids: list[int]) -> int:

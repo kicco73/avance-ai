@@ -117,7 +117,11 @@ class BenchmarkCalculator(object):
         return BenchmarkObservationBuilder(self._configuration).build(data)
 
     def _load_sessions(self) -> list[dict[str, object]]:
-        sessions = self._db.list_chat_sessions(self._username, self._project_name)
+        # type=None: benchmark metrics compare expert annotations against
+        # replayed behaviour regardless of a session's origin — list_chat_sessions'
+        # own default (type='live') would silently drop every imported session,
+        # which is exactly where annotations usually live.
+        sessions = self._db.list_chat_sessions(self._username, self._project_name, type=None)
         if self._session_id is None:
             return sessions
         return [row for row in sessions if int(row["id"]) == self._session_id]
