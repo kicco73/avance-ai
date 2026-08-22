@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Protocol
-
 from ..scope import ALL_METRIC_SCOPES, MetricScope
 from .dto import BenchmarkMetricResult, BenchmarkObservation
 

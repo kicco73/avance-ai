@@ -12,7 +12,6 @@ from pathlib import Path
 from fastapi import HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
-from automaton.automaton import Automaton
 from chat.chat_service import ChatService
 from listen.listen_service import ListenService, ListenServiceError, ListenServiceNotAvailableError
 from project.project_service import ProjectService
@@ -69,7 +68,7 @@ class ChatController(BaseController):
         """Read-only: never calls the AI. Signals are only (re)computed inside
         the auto-tracking flow (see TrackingService.run_auto_tracking); this just
         reports the latest persisted snapshot."""
-        return self.chat_service.tracking_service.get_latest_signals()
+        return self.chat_service.get_latest_signals()
 
     @get("/api/chat/env")
     def get_env(self, message_id: int | None = None):
@@ -212,12 +211,12 @@ class ChatController(BaseController):
         """"Dev mode: freeze automatic state transitions" — EditProjectView.
         vue's own embedded "Test" chat only; a native/imported session is
         always auto-tracked (see TrackingService.process)."""
-        return {"enabled": self.chat_service.tracking_service.is_auto_tracking_enabled(session_id)}
+        return {"enabled": self.chat_service.is_auto_tracking_enabled(session_id)}
 
     @post("/api/chat/sessions/{session_id}/autotracking")
     def post_autotracking(self, session_id: int, req: AutoTrackingRequest):
-        self.chat_service.tracking_service.set_auto_tracking_enabled(session_id, req.enabled)
-        return {"enabled": self.chat_service.tracking_service.is_auto_tracking_enabled(session_id)}
+        self.chat_service.set_auto_tracking_enabled(session_id, req.enabled)
+        return {"enabled": self.chat_service.is_auto_tracking_enabled(session_id)}
 
     @get("/api/chat/messages/{message_id}/audio")
     def get_message_audio(self, message_id: int, request: Request):
@@ -270,16 +269,5 @@ class ChatController(BaseController):
 
     @post("/api/triggers/preview")
     def post_triggers_preview(self, req: TriggersPreviewRequest):
-        automaton, state = self.project_service.get_active_automaton_and_state()
-        scope = self.chat_service.evaluation_scope_builder.build(automaton, state.key, req.signals)
-        return automaton.preview_triggers(state.key, scope)
+        return self.chat_service.preview_triggers(req.signals)
 
-    @post("/api/chat/reset")
-    async def post_reset(self):
-        """Wipes this user's own sessions for the active project — the
-        next state resolution falls back to init_action.target, so
-        on-enter rides along the same way it does on any real transition."""
-        async with self.chat_service.lock:
-            self.project_service.reset_active_project()
-        automaton, state = self.project_service.get_active_automaton_and_state()
-        return {**Automaton.get_state_payload(state), "on-enter": automaton.init_action.on_enter}

@@ -64,7 +64,8 @@ import {
   handleSend,
   handleTruncateFrom,
   loadMessages,
-  testModeProjectName
+  testModeProjectName,
+  sessions
 } from '../../../chatStore.js'
 
 const props = defineProps({
@@ -311,9 +312,62 @@ const actionsTabList = computed(() => {
   return key == null ? [] : (indexYmlEditorRef.value?.actionsForState(key) ?? [])
 })
 
+// Auto mode's own selection (ProjectAutoPanel.vue's own selectedNodeId —
+// this view only ever gets told what it is via @select, never owns the
+// canonical value) — 'root' | 'sessions-branch' | 'states-branch' |
+// `session:<id>` | `state:<key>` | null. Drives the Inspector's Info tab
+// below, read-only, in place of the Graph selection edit mode uses.
+const autoSelectedNodeId = ref(null)
+function handleAutoSelect(nodeId) { autoSelectedNodeId.value = nodeId }
+
+const autoSelectedSessionId = computed(() => {
+  const id = autoSelectedNodeId.value
+  return id && id.startsWith('session:') ? Number(id.slice('session:'.length)) : null
+})
+// From chatStore.js's already-loaded list — ProjectAutoPanel.vue's own
+// onMounted triggers that load, so it's there by the time anything here can be selected.
+const autoSelectedSession = computed(() => {
+  const id = autoSelectedSessionId.value
+  return id == null ? null : (sessions.value.find((s) => s.id === id) ?? null)
+})
+const autoSelectedStateKey = computed(() => {
+  const id = autoSelectedNodeId.value
+  return id && id.startsWith('state:') ? id.slice('state:'.length) : null
+})
+const autoSelectedElement = computed(() => {
+  const key = autoSelectedStateKey.value
+  return key == null ? null : (indexYmlEditorRef.value?.stateElementFor(key) ?? null)
+})
+
+// A selected session's own start/end state — same resolution as
+// LabelProjectView.vue's own Info tab (see its sessionStartStateKey/
+// sessionEndStateKey docstring): an imported session never actually ran
+// against the automaton, so its first/last expert-annotated expected_state
+// stands in for start_state/end_state.
+const autoSessionSignals = ref([])
+watch(autoSelectedSessionId, async (id) => {
+  autoSessionSignals.value = id == null ? [] : await getSessionSignals(id).catch(() => [])
+})
+const autoSessionIsImported = computed(() => autoSelectedSession.value?.type === 'imported')
+const autoSessionAnnotatedStates = computed(() => autoSessionSignals.value.map((row) => row.expected_state).filter(Boolean))
+const autoSessionStartStateKey = computed(() => (
+  autoSessionIsImported.value ? (autoSessionAnnotatedStates.value[0] ?? null) : (autoSelectedSession.value?.start_state ?? null)
+))
+const autoSessionEndStateKey = computed(() => (
+  autoSessionIsImported.value ? (autoSessionAnnotatedStates.value.at(-1) ?? null) : (autoSelectedSession.value?.end_state ?? null)
+))
+const autoSessionStartElement = computed(() => (
+  autoSessionStartStateKey.value == null ? null : (indexYmlEditorRef.value?.stateElementFor(autoSessionStartStateKey.value) ?? null)
+))
+const autoSessionEndElement = computed(() => (
+  autoSessionEndStateKey.value == null ? null : (indexYmlEditorRef.value?.stateElementFor(autoSessionEndStateKey.value) ?? null)
+))
+
 // The tab set this view's Inspector shows (see Inspector.vue's slot-based
 // contract; LabelProjectView.vue passes a different set). 'test' mode
 // shows the live conversation's Metrics/Env; edit mode shows index.yml's own Info/Actions/Signals/Env-keys instead.
+// Auto mode only ever shows Info — plain read-only viewing, no Actions/
+// Signals/Env-keys editing surface makes sense while browsing test results.
 const inspectorTabs = computed(() => {
   if (mode.value === 'test') {
     return [
@@ -322,6 +376,9 @@ const inspectorTabs = computed(() => {
       { id: 'metrics', label: 'Metrics' },
       { id: 'env', label: 'Env' }
     ]
+  }
+  if (mode.value === 'auto') {
+    return [{ id: 'state', label: 'Info' }]
   }
   if (mode.value === 'edit' && !isBehaviorNodeSelected.value) {
     return [{ id: 'state', label: 'Info' }]
@@ -1447,7 +1504,7 @@ onBeforeUnmount(() => {
           />
         </Transition>
 
-        <ProjectAutoPanel v-if="autoOpen" :project-name="projectName" />
+        <ProjectAutoPanel v-if="autoOpen" :project-name="projectName" @select="handleAutoSelect" />
       </div>
 
       <div class="inspector-wrap">
@@ -1478,7 +1535,11 @@ onBeforeUnmount(() => {
               <InspectorStateTab
                 :ref="registerTab('state')"
                 :project-name="projectName"
-                :selected-element="stateTabElement"
+                :selected-element="mode === 'auto' ? autoSelectedElement : stateTabElement"
+                :selected-session="mode === 'auto' ? autoSelectedSession : null"
+                :session-start-element="mode === 'auto' ? autoSessionStartElement : null"
+                :session-end-element="mode === 'auto' ? autoSessionEndElement : null"
+                :read-only="mode === 'auto'"
                 :editable-files="files"
                 :highlighted-state-key="highlightedStateKey"
                 :recently-added-key="recentlyAddedKey"
@@ -1781,6 +1842,16 @@ onBeforeUnmount(() => {
   transition: opacity 0.18s ease, transform 0.18s ease;
   position: absolute;
   inset: 0;
+}
+
+/* Leaving TestChat lingers ~0.18s as a positioned element (see above),
+   which by itself would paint over a static-flow sibling that mounts in
+   the same instant (e.g. ProjectAutoPanel on switching to Auto) —
+   negative z-index drops it behind static siblings instead, so the
+   panel actually being switched to is never hidden under a fading-out
+   ghost of the old one. */
+.panel-slide-bottom-leave-active {
+  z-index: -1;
 }
 
 .panel-slide-bottom-enter-from,

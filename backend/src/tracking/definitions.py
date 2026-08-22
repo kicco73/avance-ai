@@ -10,6 +10,7 @@ from datetime import datetime
 from automaton.automaton import Automaton, SignalPayload
 from db import Db
 from project.project_service import ProjectService
+from session import Session
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ class Signals(object):
         return self._project_service.get_active_automaton_and_state()[0]
 
     def _active_project_name(self) -> str:
-        name = self._db.get_active_project_name()
+        name = self._db.get_active_project_name(Session().user)
         if name is None:
             raise ValueError("No active project")
         return name

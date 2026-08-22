@@ -47,7 +47,6 @@ states:
 
 
 def _namespace(db) -> AutomatonNamespace:
-    # USERNAME matches DEFAULT_USER, so Session().user already resolves to it.
     return AutomatonNamespace(db, ProjectService(db))
 
 
@@ -74,7 +73,7 @@ def test_state_resolves_to_none_and_warns_when_the_user_has_no_session(db):
 
 def test_state_resolves_to_the_current_state_when_a_session_exists(db):
     _publish(db, "observed", BASIC_YML)
-    db.create_chat_session(username=USERNAME, project_name="observed")
+    db.create_chat_session(username=USERNAME, project_name="observed", revision=db.get_project_published_revision("observed"))
     namespace = _namespace(db)
 
     assert namespace.observed.state == "a"
@@ -82,7 +81,7 @@ def test_state_resolves_to_the_current_state_when_a_session_exists(db):
 
 def test_env_key_resolves_to_none_and_warns_when_not_declared(db):
     _publish(db, "observed", WITH_ENV_YML)
-    db.create_chat_session(username=USERNAME, project_name="observed")
+    db.create_chat_session(username=USERNAME, project_name="observed", revision=db.get_project_published_revision("observed"))
     namespace = _namespace(db)
 
     assert namespace.observed.env.never_declared is None
@@ -94,7 +93,7 @@ def test_env_key_resolves_to_none_and_warns_when_not_declared(db):
 
 def test_env_key_resolves_to_its_action_set_value_when_declared(db):
     _publish(db, "observed", WITH_ENV_YML)
-    db.create_chat_session(username=USERNAME, project_name="observed")
+    db.create_chat_session(username=USERNAME, project_name="observed", revision=db.get_project_published_revision("observed"))
     db.set_action_env("observed", {"visits": 3}, USERNAME)
     namespace = _namespace(db)
 
@@ -103,7 +102,7 @@ def test_env_key_resolves_to_its_action_set_value_when_declared(db):
 
 def test_env_key_resolves_to_none_with_no_warning_when_declared_but_never_set(db):
     _publish(db, "observed", WITH_ENV_YML)
-    db.create_chat_session(username=USERNAME, project_name="observed")
+    db.create_chat_session(username=USERNAME, project_name="observed", revision=db.get_project_published_revision("observed"))
     namespace = _namespace(db)
 
     assert namespace.observed.env.visits is None

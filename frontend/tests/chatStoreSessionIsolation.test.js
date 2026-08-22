@@ -24,7 +24,7 @@ vi.mock('../src/api.js', () => ({
   postAiModelSelection: vi.fn(),
   messageAudioUrl: vi.fn(),
   postListenTranscribe: vi.fn(),
-  postReset: vi.fn(),
+  postResetTestSessions: vi.fn(),
   postTruncateSession: vi.fn()
 }))
 vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn() }))
@@ -114,7 +114,7 @@ describe('testModeProjectName routes session bootstrap/list to the right pool', 
   })
 
   it('handleReset runs the reset response\'s own on-enter (also entering through init-action)', async () => {
-    api.postReset.mockResolvedValue({ key: 'a', ui_label: 'A', actions: [], 'on-enter': 'celebrate()' })
+    api.postResetTestSessions.mockResolvedValue({ key: 'a', ui_label: 'A', actions: [], 'on-enter': 'celebrate()' })
     api.getCurrentSession.mockResolvedValue({ id: 6, active: true, state: { key: 'a', ui_label: 'A', actions: [] } })
 
     const onEnterActions = await import('../src/onEnterActions.js')

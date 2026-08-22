@@ -203,9 +203,10 @@ def test_delete_session_rejects_unknown_id(client, hello_project):
 
 
 @pytest.mark.regression
-def test_manual_new_session_starts_at_the_automatons_initial_state_not_the_current_one(client):
-    """A brand new session must start at the automaton's init_action.target,
-    not wherever the project's shared automaton position has since moved."""
+def test_manual_new_session_starts_at_the_automatons_current_state_not_the_initial_one(client):
+    """A brand new session must start wherever the project's shared
+    automaton position currently sits, never silently rewound to
+    init_action.target."""
     samples_dir = Path(__file__).resolve().parent.parent / "samples" / "projects"
     content = (samples_dir / "Aprendr català.zip").read_bytes()
     resp = client.put("/api/projects/cat", content=content, headers={"Content-Type": "application/zip"})
@@ -219,11 +220,12 @@ def test_manual_new_session_starts_at_the_automatons_initial_state_not_the_curre
     # Move the automaton away from its initial state.
     action_response = client.post(f"/api/chat/sessions/{bootstrap['id']}/action", json={"action_name": "unit-subjuntive"})
     assert action_response.status_code == 200
-    assert action_response.json()["state"]["key"] != "welcome"
+    current_state = action_response.json()["state"]["key"]
+    assert current_state != "welcome"
 
     new_session = client.post("/api/chat/sessions").json()
 
-    assert new_session["start_state"] == "welcome"
+    assert new_session["start_state"] == current_state
 
 
 @pytest.mark.regression

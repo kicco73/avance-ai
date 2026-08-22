@@ -180,13 +180,9 @@ class BatchSignalSource:
         # session's own username for the one call that needs it, then
         # restored, so a concurrent request's own Session().user (a
         # separate context already, but belt-and-suspenders) is never at risk.
-        previous_user = Session().user
-        Session().user = session['username']
-        try:
+        with Session().impersonate(session['username']):
             persisted_env = PersistedEnv(self._db, FixedProjectContext(self._automaton, session['project_name']))
             return persisted_env.stored(until=session['datetime_start'])
-        finally:
-            Session().user = previous_user
 
     def _user_message_ids(self) -> list[int]:
         return [m['id'] for m in self._db.get_messages(self._session_id) if m['role'] == 'user']

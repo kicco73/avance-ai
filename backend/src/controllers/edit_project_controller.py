@@ -16,6 +16,7 @@ from project.project_service import ProjectService
 from schemas import PublishProjectRequest, ReorderActionRequest, SetProjectFieldRequest
 
 from .base_controller import BaseController, delete, get, post, put
+from .project_commit_mixin import ProjectCommitMixin
 
 # Explicit per-type whitelists for the field-by-field edit endpoints
 # below — name/key is deliberately never in any of these three: it's
@@ -31,7 +32,7 @@ ENV_KEY_EDITABLE_FIELDS = {"name", "ui-description", "value"}
 PROJECT_EDITABLE_FIELDS = {"id", "ui-label", "ui-description"}
 
 
-class EditProjectController(BaseController):
+class EditProjectController(BaseController, ProjectCommitMixin):
 
     def __init__(self, chat_service: ChatService, project_service: ProjectService) -> None:
         self.chat_service = chat_service
@@ -56,10 +57,15 @@ class EditProjectController(BaseController):
         draft-session equivalent of GET .../sessions. The two pools never mix."""
         return self.chat_service.list_test_sessions(project_name)
 
+    @post("/api/projects/{project_name}/test-sessions/reset")
+    async def post_reset_test_sessions(self, project_name: str):
+        async with self.chat_service.acquire_write(project_name):
+            return self.chat_service.reset_test_sessions(project_name)
+
     @get("/api/projects/{project_name}/states")
     def get_project_states(self, project_name: str):
         """Every real state key of `project_name`'s current draft
-        automaton — the "Stati" branch's own node list (see
+        automaton — the "States" branch's own node list (see
         TestsTree.vue)."""
         try:
             return self.project_service.get_project_states(project_name)

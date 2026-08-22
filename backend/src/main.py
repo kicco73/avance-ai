@@ -30,7 +30,7 @@ from tracking.wakeup_service import WakeupService
 from talk.talk_service import TalkService
 from listen.listen_service import ListenService
 
-__version__ = "1.4.1"
+__version__ = "1.5.0"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -81,7 +81,7 @@ def create_app() -> FastAPI:
         # own module docstring), passed explicitly to whatever needs it.
         # Also bridged onto app.state: AuthMiddleware was already
         # registered (add_middleware, below) before this existed.
-        auth_service = AuthService(db, config.auth_jwt_secret, config.auth_providers)
+        auth_service = AuthService(db, config.auth_providers, config.auth_token_ttl_in_hours)
         app.state.auth_service = auth_service
 
         # Two independent worker pools, never shared — see jobs/job_queue.py's

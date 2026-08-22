@@ -28,6 +28,7 @@ class GoogleAuthProvider(AuthProvider):
             provider_user_id=payload["sub"],
             email=payload["email"],
             name=payload.get("name", payload["email"]),
+            picture_url=payload.get("picture"),
         )
 
     def public_config(self) -> dict:

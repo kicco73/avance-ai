@@ -69,12 +69,12 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
         "CREATE TABLE project (name TEXT PRIMARY KEY, revision INTEGER, published_revision INTEGER, "
         "is_paused INTEGER, paused_reason TEXT, manually_paused INTEGER, project_id TEXT, "
         "ui_label TEXT, ui_description TEXT)",
-        "CREATE TABLE chatsession (id INTEGER PRIMARY KEY, username TEXT, project_name TEXT, source TEXT, "
+        "CREATE TABLE chatsession (id INTEGER PRIMARY KEY, username TEXT, project_name TEXT, type TEXT, "
         "title TEXT, project_revision INTEGER, datetime_start TEXT, datetime_end TEXT, start_state TEXT, "
         "end_state TEXT, labeled INTEGER, comment TEXT)",
         "CREATE TABLE message (id INTEGER PRIMARY KEY, role TEXT, content TEXT, timestamp TEXT, audio_text TEXT)",
-        "CREATE TABLE user (id INTEGER PRIMARY KEY, provider TEXT, provider_user_id TEXT, email TEXT, "
-        "name TEXT, created_at TEXT, last_login TEXT, active_project TEXT)",
+        "CREATE TABLE user (id TEXT PRIMARY KEY, provider TEXT, provider_user_id TEXT, email TEXT, "
+        "name TEXT, picture_url TEXT, created_at TEXT, last_login TEXT, active_project TEXT)",
         "CREATE TABLE tracking (id INTEGER PRIMARY KEY, session_id INTEGER, timestamp TEXT, "
         "\"values\" TEXT, old_state TEXT, action TEXT, new_state TEXT, env TEXT)",
         "CREATE TABLE archive (project_name TEXT, archive_name TEXT, revision INTEGER, content BLOB)",
@@ -92,6 +92,7 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
         "CREATE TABLE systemwarning (id INTEGER PRIMARY KEY, username TEXT, project_name TEXT, kind TEXT, "
         "message TEXT, timestamp TEXT)",
         "CREATE TABLE projectobserverindex (id INTEGER PRIMARY KEY, project_name TEXT, observer_project_name TEXT)",
+        "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)",
     ]
     wrong = _make_sqlite_bytes(tmp_path, "wrong_columns.db", ddl)
 
@@ -144,6 +145,7 @@ def test_restore_backup_replaces_data_and_reconnects(file_db):
     kept_id = file_db.create_chat_session(
         username="user",
         project_name="proj",
+        revision=file_db.get_project_published_revision("proj"),
         datetime_start=datetime(2026, 1, 1),
         datetime_end=datetime(2026, 1, 1),
         start_state="start",
@@ -155,6 +157,7 @@ def test_restore_backup_replaces_data_and_reconnects(file_db):
     file_db.create_chat_session(
         username="user",
         project_name="proj2",
+        revision=file_db.get_project_published_revision("proj2"),
         datetime_start=datetime(2026, 1, 2),
         datetime_end=datetime(2026, 1, 2),
         start_state="start",

@@ -6,7 +6,7 @@ from datetime import datetime
 
 from peewee import fn
 
-from .models import ChatSession, Tracking, DEFAULT_USER
+from .models import ChatSession, Tracking
 from .utils import _utc_iso
 
 logger = logging.getLogger(__name__)
@@ -113,18 +113,18 @@ class TrackingMixin:
         Tracking.update(expected_state=None, expected_values=None).where(Tracking.session == session_id).execute()
         Tracking.delete().where((Tracking.session == session_id) & (Tracking.old_state == '')).execute()
 
-    def _latest_transition(self, project_name: str, *, source: str | None=None, real_only: bool=False, until: datetime | None=None) -> Tracking | None:
+    def _latest_transition(self, project_name: str, *, type: str | None=None, real_only: bool=False, until: datetime | None=None) -> Tracking | None:
         query = Tracking.select().join(ChatSession, on=Tracking.session == ChatSession.id).where((ChatSession.project_name == project_name) & Tracking.new_state.is_null(False))
-        if source is not None:
-            query = query.where(ChatSession.source == source)
+        if type is not None:
+            query = query.where(ChatSession.type == type)
         if real_only:
             query = query.where(Tracking.old_state != Tracking.new_state)
         if until is not None:
             query = query.where(Tracking.timestamp <= until)
         return query.order_by(Tracking.timestamp.desc()).first()
 
-    def get_current_state(self, project_name: str, *, source: str | None=None) -> str | None:
-        transition = self._latest_transition(project_name, source=source)
+    def get_current_state(self, project_name: str, *, type: str | None=None) -> str | None:
+        transition = self._latest_transition(project_name, type=type)
         return transition.new_state if transition else None
 
     def get_current_state_for_session(self, session_id: int) -> str | None:
@@ -154,27 +154,27 @@ class TrackingMixin:
             return None
         return self.get_last_transition_timestamp_for_session(session_id)
 
-    def get_env(self, project_name: str, user: str=DEFAULT_USER, until: datetime | None=None) -> dict:
+    def get_env(self, project_name: str, user: str, until: datetime | None=None) -> dict:
         query = Tracking.select(Tracking.env).join(ChatSession, on=Tracking.session == ChatSession.id).where((ChatSession.project_name == project_name) & (ChatSession.username == user) & Tracking.env.is_null(False))
         if until is not None:
             query = query.where(Tracking.timestamp <= until)
         row = query.order_by(Tracking.timestamp.desc()).first()
         return json.loads(row.env) if row is not None else {}
 
-    def set_env(self, project_name: str, env: dict, user: str=DEFAULT_USER, message_id: int | None=None) -> None:
+    def set_env(self, project_name: str, env: dict, user: str, message_id: int | None=None) -> None:
         session = self.get_latest_chat_session(user, project_name)
         if session is None:
             return
         Tracking.create(session=session['id'], env=json.dumps(env), message=message_id)
 
-    def get_action_env(self, project_name: str, user: str=DEFAULT_USER, until: datetime | None=None) -> dict:
+    def get_action_env(self, project_name: str, user: str, until: datetime | None=None) -> dict:
         query = Tracking.select(Tracking.action_env).join(ChatSession, on=Tracking.session == ChatSession.id).where((ChatSession.project_name == project_name) & (ChatSession.username == user) & Tracking.action_env.is_null(False))
         if until is not None:
             query = query.where(Tracking.timestamp <= until)
         row = query.order_by(Tracking.timestamp.desc()).first()
         return json.loads(row.action_env) if row is not None else {}
 
-    def set_action_env(self, project_name: str, action_env: dict, user: str=DEFAULT_USER) -> None:
+    def set_action_env(self, project_name: str, action_env: dict, user: str) -> None:
         session = self.get_latest_chat_session(user, project_name)
         if session is None:
             return

@@ -74,6 +74,7 @@ async def test_regeneration_call_does_not_request_signals(db):
     db.publish_project(PROJECT_NAME)
     session_id = db.create_chat_session(
         username=USERNAME, project_name=PROJECT_NAME,
+        revision=db.get_project_published_revision(PROJECT_NAME),
         datetime_start=datetime.utcnow(), datetime_end=datetime.utcnow(),
         start_state="a", end_state="a",
     )

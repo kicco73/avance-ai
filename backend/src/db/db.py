@@ -13,6 +13,7 @@ from .observability import ObservabilityMixin
 from .projects import ProjectMixin
 from .session_summaries import SessionSummaryMixin
 from .sessions import SessionMixin
+from .settings import SettingsMixin
 from .users import UserMixin
 from .tracking import TrackingMixin
 
@@ -20,7 +21,7 @@ from playhouse.db_url import connect, parse as parse_db_url
 
 from .models import (
     Archive, BenchmarkRun, BenchmarkRunObservation, ChatSession, History, Job, Message, Project,
-    ProjectObserverIndex, User, SessionSummary, StateRemap, SystemWarning, Tracking, database,
+    ProjectObserverIndex, Settings, User, SessionSummary, StateRemap, SystemWarning, Tracking, database,
 )
 
 logger = logging.getLogger(__name__)
@@ -41,12 +42,13 @@ class Db(
     JobMixin,
     BenchmarkRunMixin,
     SessionSummaryMixin,
+    SettingsMixin,
     ObservabilityMixin):
 
     _SQLITE_MAGIC = b"SQLite format 3\x00"
     _MODELS = (
         Project, ChatSession, Message, User, Tracking, Archive, History, StateRemap, Job,
-        BenchmarkRun, BenchmarkRunObservation, SessionSummary, SystemWarning, ProjectObserverIndex,
+        BenchmarkRun, BenchmarkRunObservation, SessionSummary, SystemWarning, ProjectObserverIndex, Settings,
     )
 
     def __init__(self, database_url: str, force_drop_and_create_when_incompatible: bool=False) -> None:

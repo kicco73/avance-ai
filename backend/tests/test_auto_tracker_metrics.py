@@ -101,6 +101,7 @@ def _session_id(db) -> int:
     return db.create_chat_session(
         username=USERNAME,
         project_name=PROJECT_NAME,
+        revision=db.get_project_published_revision(PROJECT_NAME),
         datetime_start=datetime(2026, 1, 1),
         datetime_end=datetime(2026, 1, 1),
         start_state="a",

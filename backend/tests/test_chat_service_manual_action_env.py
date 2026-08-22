@@ -47,11 +47,17 @@ class FakeProjectService:
     def get_active_automaton_and_state(self):
         return self._automaton, self._automaton.states[self._state_key]
 
+    def get_automaton_and_state(self, project_name: str, type: str = 'live'):
+        return self._automaton, self._automaton.states[self._state_key]
+
     def get_automaton_and_state_for_session(self, session_id: int):
         return self._automaton, self._automaton.states[self._state_key]
 
     def get_active_project_name(self) -> str:
         return PROJECT_NAME
+
+    def get_published_revision(self, project_name: str) -> int:
+        return 0
 
     def get_project_availability(self, project_name: str):
         return (False, None)

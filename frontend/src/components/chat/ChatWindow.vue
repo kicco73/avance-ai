@@ -23,6 +23,8 @@ import ActionButtons from './ActionButtons.vue'
 import ChatInput from './ChatInput.vue'
 import MessageBubble from './MessageBubble.vue'
 import SessionsPanel from './SessionsPanel.vue'
+import ProjectsMenu from '../ProjectsMenu.vue'
+import SplashScreen from '../SplashScreen.vue'
 import { setApiError } from '../../errorStore.js'
 import { startRecording, stopRecording } from '../../mic.js'
 import {
@@ -52,8 +54,19 @@ import {
   handleAction,
   toggleAudio,
   toggleSpokenText,
-  applyAspect
+  applyAspect,
+  projectPaused,
+  projectPausedReason,
+  clearChatUi
 } from '../../chatStore.js'
+
+const emit = defineEmits(['project-select', 'project-download'])
+
+const projectsMenuRef = ref(null)
+
+defineExpose({
+  refreshProjectsMenu: () => projectsMenuRef.value?.refresh()
+})
 
 // No transcript import here: imported sessions are a separate pool that
 // never shows up in this component's own sessions list, so importing
@@ -61,6 +74,13 @@ import {
 
 function createSession() {
   handleNewSession()
+}
+
+// The sessions panel overlays the chat rather than sharing space with it
+// (see .sessions-panel-wrap), so any click into the chat pane behind it
+// reads as "dismiss the panel" — same as tapping outside a drawer/sheet.
+function closeSessionsPanelOnChatClick() {
+  if (!props.hideSessionsPanel && sessionsPanelOpen.value) toggleSessionsPanel()
 }
 
 const scrollEl = ref(null)
@@ -123,6 +143,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('mousemove', onSessionsDrag)
   window.removeEventListener('mouseup', stopSessionsDrag)
   if (props.themeMode === 'manual') applyAspect.value = true
+  clearChatUi()
 })
 
 function submit() {
@@ -215,26 +236,51 @@ watch(
     :data-state="state?.key ?? null"
     :data-prev-state="prevStateKey"
   >
-    <div v-if="!hideSessionsPanel" class="sessions-panel-wrap">
-      <div class="sessions-panel" :class="{ 'sessions-panel-collapsed': !sessionsPanelOpen }" :style="sessionsPanelOpen ? { width: sessionsWidth + 'px' } : null">
-        <SessionsPanel
-          :sessions="sessions"
-          :loading="sessionsLoading"
-          :current-session-id="currentSessionId"
-          :deleting-session-id="deletingSessionId"
-          :collapsed="!sessionsPanelOpen"
-          restrict-selection-to-native
-          @update:collapsed="toggleSessionsPanel"
-          @select="selectSession"
-          @create="createSession"
-          @delete="onDeleteSession"
-        />
+    <Transition name="sessions-slide">
+      <div v-if="!hideSessionsPanel && sessionsPanelOpen" class="sessions-panel-wrap">
+        <div class="sessions-panel" :style="{ width: sessionsWidth + 'px' }">
+          <div class="sessions-panel-project-menu">
+            <ProjectsMenu
+              ref="projectsMenuRef"
+              @select="(name) => emit('project-select', name)"
+              @download="(name) => emit('project-download', name)"
+            />
+            <button
+              class="sessions-panel-close-btn"
+              title="Collapse sessions"
+              @click="toggleSessionsPanel"
+            >✕</button>
+          </div>
+          <SessionsPanel
+            :sessions="sessions"
+            :loading="sessionsLoading"
+            :current-session-id="currentSessionId"
+            :deleting-session-id="deletingSessionId"
+            :create-disabled="!state?.key"
+            hide-collapse-toggle
+            restrict-selection-to-native
+            @select="selectSession"
+            @create="createSession"
+            @delete="onDeleteSession"
+          />
+        </div>
+
+        <div class="split-divider" @mousedown="startSessionsDrag"></div>
       </div>
+    </Transition>
 
-      <div v-if="sessionsPanelOpen" class="split-divider" @mousedown="startSessionsDrag"></div>
-    </div>
+    <div class="chat-window" @click="closeSessionsPanelOnChatClick">
+    <button
+      v-if="!hideSessionsPanel && !sessionsPanelOpen"
+      type="button"
+      class="sessions-reopen-btn"
+      title="Show sessions"
+      @click.stop="toggleSessionsPanel"
+    >☰</button>
 
-    <div class="chat-window">
+    <SplashScreen v-if="!hideSessionsPanel && projectPaused" variant="paused" :reason="projectPausedReason" embedded />
+    <SplashScreen v-else-if="!hideSessionsPanel && !state?.key" variant="no-project" embedded />
+    <template v-else>
     <div class="chat-header">
       <div class="chat-header-icon"></div>
     </div>
@@ -284,12 +330,14 @@ watch(
         @toggle-spoken-text="toggleSpokenText"
       />
     </div>
+    </template>
     </div>
   </div>
 </template>
 
 <style scoped>
 .chat-window-shell {
+  position: relative;
   display: flex;
   flex-direction: row;
   flex: 1;
@@ -298,6 +346,7 @@ watch(
 }
 
 .chat-window {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -305,11 +354,55 @@ watch(
   min-width: 0;
 }
 
+.sessions-reopen-btn {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  line-height: 1;
+  border: 1px solid #4a6fa5;
+  border-radius: 6px;
+  background: #fff;
+  color: #4a6fa5;
+  cursor: pointer;
+  font-size: 0.9rem;
+  opacity: 0.35;
+  transition: opacity 0.15s ease;
+}
+
+.sessions-reopen-btn:hover {
+  opacity: 1;
+}
+
+/* Overlays the chat rather than sitting in the flex flow — opening it
+   must never resize/reflow the chat pane underneath. z-index above
+   App.vue's .profile-menu-overlay/.settings-menu-overlay (30): open,
+   this panel must cover those fixed buttons, never sit under them. */
 .sessions-panel-wrap {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 35;
   display: flex;
   flex-direction: row;
   min-width: 0;
   min-height: 0;
+}
+
+.sessions-slide-enter-active,
+.sessions-slide-leave-active {
+  transition: transform 0.18s ease;
+}
+
+.sessions-slide-enter-from,
+.sessions-slide-leave-to {
+  transform: translateX(-100%);
 }
 
 .sessions-panel {
@@ -319,12 +412,38 @@ watch(
   min-height: 0;
   border-right: 1px solid #ddd;
   background: #f9fafb;
-  transition: width 0.15s ease;
+  box-shadow: 1px 0 3px rgba(0, 0, 0, 0.55), 6px 0 24px rgba(0, 0, 0, 0.35);
 }
 
-/* Collapsed to a slim strip; the header toggle stays visible. */
-.sessions-panel-collapsed {
-  width: 2.4rem !important;
+.sessions-panel-project-menu {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid #ddd;
+}
+
+.sessions-panel-project-menu .projects-menu {
+  flex: 1;
+  min-width: 0;
+}
+
+.sessions-panel-close-btn {
+  flex-shrink: 0;
+  width: 1.4rem;
+  height: 1.4rem;
+  line-height: 1;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: #666;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.sessions-panel-close-btn:hover {
+  background: #eee;
 }
 
 .split-divider {

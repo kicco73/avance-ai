@@ -6,6 +6,7 @@ automatic fallback between them.
 """
 from __future__ import annotations
 
+import secrets
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -16,7 +17,6 @@ from config import AuthProviderConfig
 from db import Db
 
 _JWT_ALGORITHM = "HS256"
-TOKEN_TTL = timedelta(days=7)
 
 # Shared by AuthController (sets/clears it), the auth middleware, and
 # WsAdapter's own handshake check (both read it) — one name, defined once.
@@ -28,13 +28,14 @@ _PROVIDER_CLASSES: dict[str, type[AuthProvider]] = {
 
 
 class AuthService:
-    # Takes the two specific config values it needs (from AppConfig.
-    # auth_jwt_secret/auth_providers), not the whole AppConfig object —
-    # same shape as AiService.from_config(config.ai_services) elsewhere,
-    # and easier to construct from a test without a real config.yml.
-    def __init__(self, db: Db, jwt_secret: str, providers: list[AuthProviderConfig]) -> None:
+    # Takes the specific config value it needs (AppConfig.auth_providers),
+    # not the whole AppConfig object — same shape as AiService.from_config
+    # (config.ai_services) elsewhere, and easier to construct from a test
+    # without a real config.yml.
+    def __init__(self, db: Db, providers: list[AuthProviderConfig], token_ttl_in_hours: float) -> None:
         self._db = db
-        self._jwt_secret = jwt_secret
+        self._jwt_secret = self._resolve_jwt_secret()
+        self.token_ttl = timedelta(hours=token_ttl_in_hours)
         # Only entries whose driver this build actually knows how to
         # construct a provider for — config.py's own parsing doesn't
         # restrict `driver` to a known set (see AppConfig._parse_auth_providers).
@@ -43,6 +44,13 @@ class AuthService:
             for entry in providers
             if entry.driver in _PROVIDER_CLASSES
         }
+
+    def _resolve_jwt_secret(self) -> str:
+        secret = self._db.get_setting("jwt-secret")
+        if secret is None:
+            secret = secrets.token_hex(32)
+            self._db.set_setting("jwt-secret", secret)
+        return secret
 
     def public_providers(self) -> list[dict]:
         return [{"driver": driver, **provider.public_config()} for driver, provider in self._providers.items()]
@@ -57,14 +65,14 @@ class AuthService:
 
         identity = auth_provider.verify(credential)
         user = self._db.get_or_create_user(
-            provider, identity.provider_user_id, identity.email, identity.name
+            provider, identity.provider_user_id, identity.email, identity.name, identity.picture_url
         )
         self._db.update_last_login(user.id)
         return self._issue_token(user.id, provider)
 
-    def _issue_token(self, user_id: int, provider: str) -> str:
+    def _issue_token(self, user_id: str, provider: str) -> str:
         now = datetime.now(timezone.utc)
-        payload = {"user_id": user_id, "provider": provider, "exp": now + TOKEN_TTL}
+        payload = {"user_id": user_id, "provider": provider, "exp": now + self.token_ttl}
         return jwt.encode(payload, self._jwt_secret, algorithm=_JWT_ALGORITHM)
 
     def verify_token(self, token: str) -> AuthenticatedUser | None:
@@ -80,5 +88,12 @@ class AuthService:
         if user is None:
             return None
         return AuthenticatedUser(
-            provider_user_id=user["provider_user_id"], email=user["email"], name=user["name"]
+            provider_user_id=user["provider_user_id"], email=user["email"], name=user["name"],
+            picture_url=user["picture_url"],
         )
+
+    def get_profile(self, email: str) -> dict | None:
+        return self._db.get_user_by_email(email)
+
+    def list_users(self) -> list[dict]:
+        return self._db.list_users()

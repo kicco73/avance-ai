@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-from db import Db
+from auth.auth_service import AuthService
 
 from .base_controller import BaseController, get
 
 
 class UserController(BaseController):
 
-    def __init__(self, db: Db) -> None:
-        self.db = db
+    def __init__(self, auth_service: AuthService) -> None:
+        self.auth_service = auth_service
 
     @get("/api/users")
     def get_users(self):
-        return {"users": self.db.list_users()}
+        return {"users": self.auth_service.list_users()}

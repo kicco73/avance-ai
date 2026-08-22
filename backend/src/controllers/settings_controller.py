@@ -17,12 +17,13 @@ from db import Db
 from project.project_service import ProjectService
 
 from .base_controller import BaseController, delete, get, post, put
+from .project_commit_mixin import ProjectCommitMixin
 
 
 APP_NAME = "Avance"
 
 
-class SettingsController(BaseController):
+class SettingsController(BaseController, ProjectCommitMixin):
 
     def __init__(self, chat_service: ChatService, project_service: ProjectService, db: Db, version: str) -> None:
         self.chat_service = chat_service
@@ -41,7 +42,7 @@ class SettingsController(BaseController):
         """Downloads the whole working SQLite database file — every
         project, session, message, and signal — as a restorable backup
         (see POST /api/settings/backup)."""
-        async with self.chat_service.lock:
+        async with self.chat_service.global_exclusive_access():
             content = self.db.export_backup()
         filename = Path(self.db.backup_file_path()).stem + ".sqlite"
         return Response(
@@ -56,12 +57,12 @@ class SettingsController(BaseController):
         file, replacing it in place. Wipes whatever the server currently
         has (all projects, sessions, messages)."""
         content = await request.body()
-        async with self.chat_service.lock:
+        async with self.chat_service.global_exclusive_access():
             try:
                 self.db.restore_backup(content)
             except ValueError as exc:
                 raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-            self.chat_service.tracking_service.clear_auto_tracking_overrides()
+            self.chat_service.clear_auto_tracking_overrides()
         return {"success": True}
 
     @get("/api/projects")
@@ -157,4 +158,10 @@ class SettingsController(BaseController):
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except OSError as exc:
             raise HTTPException(status_code=HTTPStatus.INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+        return {"success": True}
+
+    @post("/api/projects/{project_name}/live-sessions/wipe")
+    async def post_wipe_live_sessions(self, project_name: str):
+        async with self.chat_service.acquire_write(project_name):
+            self.project_service.wipe_live_sessions(project_name)
         return {"success": True}

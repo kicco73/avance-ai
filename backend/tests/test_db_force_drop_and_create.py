@@ -93,7 +93,7 @@ def test_flag_on_leaves_an_already_compatible_schema_and_its_data_alone(tmp_path
 
 # 'project' is a real FK parent of 'chatsession'/'archive', created first
 # here so it's also the first table the (unordered) drop loop tries to
-# drop. The missing 'source' column makes the schema incompatible.
+# drop. The missing 'type' column makes the schema incompatible.
 FK_PARENT_FIRST_DDL = [
     "CREATE TABLE project (name TEXT PRIMARY KEY, revision INTEGER, published_revision INTEGER)",
     "CREATE TABLE chatsession (id INTEGER PRIMARY KEY, username TEXT, "

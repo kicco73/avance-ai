@@ -1,19 +1,22 @@
 <script setup>
-// Two-level tree under one root: "Sessioni" (a leaf per annotated session)
-// and "Stati" (a leaf per state key). ProjectAutoPanel.vue owns all data
-// fetching/launching/polling — this component only renders and emits.
+// Two-level tree under one root: "Sessions" (a leaf per annotated session)
+// and "States" (a leaf per state key). Root and the two branch nodes are
+// activatable too — root/sessions-branch launches the whole-project
+// replay, states-branch launches every state's own test — and carry that
+// scope's own aggregate status, same as any leaf. ProjectAutoPanel.vue
+// owns all data fetching/launching/polling — this component only renders and emits.
 //
 // Node identifiers are plain strings prefixed by kind — 'root',
 // 'sessions-branch', 'states-branch', `session:<id>`, `state:<key>` — used
 // directly as both the emitted identifier and the key into `statuses` below.
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import TestNodeButton from './TestNodeButton.vue'
 
 const props = defineProps({
   projectName: { type: String, required: true },
   // Full session list (see chatStore.js's sessions, fetched with
   // include_imported=true upstream) — filtered here to has_annotations,
-  // the only ones the "Sessioni" branch ever shows.
+  // the only ones the "Sessions" branch ever shows.
   sessions: { type: Array, required: true },
   // Every real state key of the project's current draft automaton (see
   // api.js's getProjectStates).
@@ -41,21 +44,53 @@ function formatSessionTimestamp(iso) {
   const date = new Date(iso)
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString()
 }
+
+// Every node in on-screen top-to-bottom order — what Up/Down walks
+// through, regardless of tree depth.
+const flatNodeIds = computed(() => [
+  'root',
+  'sessions-branch',
+  ...annotatedSessions.value.map((s) => `session:${s.id}`),
+  'states-branch',
+  ...props.states.map((key) => `state:${key}`)
+])
+
+const treeRef = ref(null)
+
+function moveSelection(delta) {
+  const ids = flatNodeIds.value
+  if (!ids.length) return
+  const currentIndex = ids.indexOf(props.selectedNodeId)
+  const nextIndex = Math.max(0, Math.min(ids.length - 1, currentIndex + delta))
+  const nextId = ids[nextIndex]
+  emit('select', nextId)
+  // Keep keyboard focus (and the scroll position) on the row that's now
+  // selected, same as clicking it would — querySelector over refs since
+  // every row already carries its own nodeId as a data attribute.
+  treeRef.value?.querySelector(`[data-node-id="${CSS.escape(nextId)}"]`)?.focus()
+}
 </script>
 
 <template>
-  <ul class="tests-tree">
+  <ul
+    ref="treeRef"
+    class="tests-tree"
+    tabindex="0"
+    @keydown.up.prevent="moveSelection(-1)"
+    @keydown.down.prevent="moveSelection(1)"
+  >
     <li class="tests-tree-node">
       <div class="tests-tree-item">
         <button
           type="button"
           class="tests-tree-row"
+          data-node-id="root"
           :class="{ 'tests-tree-row-selected': selectedNodeId === 'root' }"
           @click="emit('select', 'root')"
         >
           <span class="tests-tree-label">{{ projectName }}</span>
         </button>
-        <TestNodeButton :status="statusFor('root')" :disabled="true" />
+        <TestNodeButton :status="statusFor('root')" @activate="emit('activate', 'root')" />
       </div>
 
       <ul class="tests-tree-children">
@@ -64,12 +99,13 @@ function formatSessionTimestamp(iso) {
             <button
               type="button"
               class="tests-tree-row"
+              data-node-id="sessions-branch"
               :class="{ 'tests-tree-row-selected': selectedNodeId === 'sessions-branch' }"
               @click="emit('select', 'sessions-branch')"
             >
-              <span class="tests-tree-label">Sessioni</span>
+              <span class="tests-tree-label">Sessions</span>
             </button>
-            <TestNodeButton :status="statusFor('sessions-branch')" :disabled="true" />
+            <TestNodeButton :status="statusFor('sessions-branch')" @activate="emit('activate', 'sessions-branch')" />
           </div>
 
           <ul class="tests-tree-children">
@@ -79,6 +115,7 @@ function formatSessionTimestamp(iso) {
                 <button
                   type="button"
                   class="tests-tree-row"
+                  :data-node-id="`session:${session.id}`"
                   :class="{ 'tests-tree-row-selected': selectedNodeId === `session:${session.id}` }"
                   @click="emit('select', `session:${session.id}`)"
                 >
@@ -99,12 +136,13 @@ function formatSessionTimestamp(iso) {
             <button
               type="button"
               class="tests-tree-row"
+              data-node-id="states-branch"
               :class="{ 'tests-tree-row-selected': selectedNodeId === 'states-branch' }"
               @click="emit('select', 'states-branch')"
             >
-              <span class="tests-tree-label">Stati</span>
+              <span class="tests-tree-label">States</span>
             </button>
-            <TestNodeButton :status="statusFor('states-branch')" :disabled="true" />
+            <TestNodeButton :status="statusFor('states-branch')" @activate="emit('activate', 'states-branch')" />
           </div>
 
           <ul class="tests-tree-children">
@@ -114,6 +152,7 @@ function formatSessionTimestamp(iso) {
                 <button
                   type="button"
                   class="tests-tree-row"
+                  :data-node-id="`state:${stateKey}`"
                   :class="{ 'tests-tree-row-selected': selectedNodeId === `state:${stateKey}` }"
                   @click="emit('select', `state:${stateKey}`)"
                 >
@@ -138,6 +177,15 @@ function formatSessionTimestamp(iso) {
   margin: 0;
   padding: 0.4rem;
   overflow-y: auto;
+}
+
+.tests-tree:focus {
+  outline: none;
+}
+
+.tests-tree-row:focus-visible {
+  outline: 2px solid #4a6fa5;
+  outline-offset: -2px;
 }
 
 .tests-tree-children {

@@ -17,6 +17,7 @@ from jobs import InMemoryJobSink, JobQueue, PersistedJobSink
 from metrics.benchmark_run_service import BenchmarkRunService
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
+from session import Session
 from tracking.tracking_service import TrackingService
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
@@ -30,6 +31,11 @@ def _reset_dispatcher():
     _reset_dispatcher_for_tests()
     yield
     _reset_dispatcher_for_tests()
+
+
+@pytest.fixture(autouse=True)
+def _default_session_user():
+    Session().user = "user"
 
 
 @pytest.fixture
@@ -109,7 +115,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     # No real providers: this app fixture never goes through AuthMiddleware
     # (that's only wired in main.py's create_app(), not here) or exercises
     # /api/auth/*, so nothing needs a real Google client id to resolve.
-    auth_service = AuthService(app_db, "test-jwt-secret", [])
+    auth_service = AuthService(app_db, [], token_ttl_in_hours=24 * 7)
 
     fastapi_app = FastAPI(title="Avance State Engine (test)")
     register_error_handlers(fastapi_app)

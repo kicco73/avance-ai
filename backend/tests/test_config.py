@@ -20,7 +20,6 @@ ai-service:
       key: fake-key
 
 auth-service:
-  jwt-secret: fake-jwt-secret
   providers:
     - driver: google
       key: fake-client-id
@@ -131,6 +130,30 @@ class TestDatabaseForceDropAndCreateWhenIncompatible:
         content = MINIMAL_CONFIG.replace(
             'database:\n  url: "sqlite:///:memory:"',
             'database:\n  url: "sqlite:///:memory:"\n  force-drop-and-create-when-incompatible: "yes"',
+        )
+        with pytest.raises(ConfigError):
+            _load(monkeypatch, tmp_path, content)
+
+
+class TestAuthTokenTtlInHours:
+    """End-to-end: a real AppConfig() built from a real (temp) config file."""
+
+    def test_defaults_to_7_days_when_omitted(self, monkeypatch, tmp_path):
+        config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
+        assert config.auth_token_ttl_in_hours == 24 * 7
+
+    def test_reads_a_custom_value(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG.replace(
+            "auth-service:\n  providers:",
+            "auth-service:\n  token-ttl-in-hours: 12\n  providers:",
+        )
+        config = _load(monkeypatch, tmp_path, content)
+        assert config.auth_token_ttl_in_hours == 12
+
+    def test_rejects_a_non_positive_value(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG.replace(
+            "auth-service:\n  providers:",
+            "auth-service:\n  token-ttl-in-hours: 0\n  providers:",
         )
         with pytest.raises(ConfigError):
             _load(monkeypatch, tmp_path, content)

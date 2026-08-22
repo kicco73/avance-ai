@@ -29,6 +29,7 @@ def test_number_of_user_sessions_counts_every_session_for_the_project(db):
 
     db.create_chat_session(
         username=USERNAME, project_name=PROJECT_NAME,
+        revision=db.get_project_published_revision(PROJECT_NAME),
         datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
         start_state="a", end_state="a",
     )
@@ -36,6 +37,7 @@ def test_number_of_user_sessions_counts_every_session_for_the_project(db):
 
     db.create_chat_session(
         username=USERNAME, project_name=PROJECT_NAME,
+        revision=db.get_project_published_revision(PROJECT_NAME),
         datetime_start=datetime(2026, 1, 2), datetime_end=datetime(2026, 1, 2),
         start_state="a", end_state="a",
     )
@@ -58,6 +60,7 @@ def test_current_session_duration_in_minutes_uses_the_most_recent_session(db):
     ten_minutes_ago = datetime.utcnow() - timedelta(minutes=10)
     db.create_chat_session(
         username=USERNAME, project_name=PROJECT_NAME,
+        revision=db.get_project_published_revision(PROJECT_NAME),
         datetime_start=ten_minutes_ago, datetime_end=ten_minutes_ago,
         start_state="a", end_state="a",
     )
@@ -74,6 +77,7 @@ def test_last_user_session_datetime_is_none_for_a_first_ever_session(db):
     db.set_active_project_name(PROJECT_NAME, USERNAME)
     db.create_chat_session(
         username=USERNAME, project_name=PROJECT_NAME,
+        revision=db.get_project_published_revision(PROJECT_NAME),
         datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
         start_state="a", end_state="a",
     )
@@ -88,11 +92,13 @@ def test_last_user_session_datetime_is_the_previous_sessions_start(db):
     db.set_active_project_name(PROJECT_NAME, USERNAME)
     db.create_chat_session(
         username=USERNAME, project_name=PROJECT_NAME,
+        revision=db.get_project_published_revision(PROJECT_NAME),
         datetime_start=datetime(2026, 1, 1, 9, 0), datetime_end=datetime(2026, 1, 1, 9, 30),
         start_state="a", end_state="a",
     )
     db.create_chat_session(
         username=USERNAME, project_name=PROJECT_NAME,
+        revision=db.get_project_published_revision(PROJECT_NAME),
         datetime_start=datetime(2026, 1, 2, 9, 0), datetime_end=datetime(2026, 1, 2, 9, 30),
         start_state="a", end_state="a",
     )
@@ -124,6 +130,7 @@ def test_state_duration_in_minutes_since_the_last_real_transition(db):
     db.set_active_project_name(PROJECT_NAME, USERNAME)
     session_id = db.create_chat_session(
         username=USERNAME, project_name=PROJECT_NAME,
+        revision=db.get_project_published_revision(PROJECT_NAME),
         datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
         start_state="a", end_state="b",
     )

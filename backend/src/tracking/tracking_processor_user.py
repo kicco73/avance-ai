@@ -1,8 +1,7 @@
-import asyncio
 from dataclasses import dataclass
 import logging
 
-from automaton.automaton import Action, Automaton, State
+from automaton.automaton import State
 from session import Session
 from tracking.tracking_processor import OutVariables, TrackingProcessor
 

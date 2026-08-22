@@ -1,11 +1,11 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import ChatWindow from './components/chat/ChatWindow.vue'
-import StateBar from './components/StateBar.vue'
 import EditProjectView from './components/project/edit/EditProjectView.vue'
 import LabelProjectView from './components/project/label/LabelProjectView.vue'
 import LoginView from './components/LoginView.vue'
-import ProjectsMenu from './components/ProjectsMenu.vue'
+import ProfileMenu from './components/ProfileMenu.vue'
+import ProfileView from './components/ProfileView.vue'
 import SettingsMenu from './components/settings/SettingsMenu.vue'
 import ManageProjectsView from './components/settings/ManageProjectsView.vue'
 import ManageUsersView from './components/settings/ManageUsersView.vue'
@@ -19,6 +19,7 @@ import {
   postNewProject,
   activateProject,
   deleteProject,
+  postWipeLiveSessions,
   downloadProject,
   getBackup,
   postRestoreBackup,
@@ -31,14 +32,12 @@ import { clearApiError } from './errorStore.js'
 import { needsLogin, requireLogin } from './authStore.js'
 import { confirmDialog, infoDialog } from './dialogStore.js'
 import {
-  state,
   setCapabilities,
   handleStateChange,
   loadMessages,
   loadAiModels,
   clearChatUi,
-  projectPaused,
-  projectPausedReason
+  testModeProjectName
 } from './chatStore.js'
 
 const showEditProject = ref(false)
@@ -47,8 +46,9 @@ const showBenchmarkProject = ref(false)
 const benchmarkProjectName = ref(null)
 const showManageProjects = ref(false)
 const showManageUsers = ref(false)
+const showProfile = ref(false)
 const modelUploadInput = ref(null)
-const projectsMenu = ref(null)
+const chatWindowRef = ref(null)
 const manageProjectsView = ref(null)
 
 // Initial-boot backend readiness gate — entirely separate from the shared
@@ -166,7 +166,7 @@ function triggerModelUpload() {
 // the opening message via REST, regardless of chat transport.
 async function refreshStateAndProjects() {
   const newState = await getState()
-  projectsMenu.value?.refresh()
+  chatWindowRef.value?.refreshProjectsMenu()
   manageProjectsView.value?.refresh()
   handleStateChange(newState)
   await loadMessages()
@@ -258,6 +258,8 @@ function handleManageProjectsChat(projectName) {
 function closeEditProject() {
   showEditProject.value = false
   showManageProjects.value = true
+  testModeProjectName.value = null
+  loadMessages()
 }
 
 function closeBenchmarkProject() {
@@ -322,6 +324,14 @@ async function handleModelDelete(projectName) {
   try {
     await deleteProject(projectName)
     await refreshStateAndProjects()
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+async function handleManageProjectsWipeLiveSessions(projectName) {
+  try {
+    await postWipeLiveSessions(projectName)
   } catch {
     // already surfaced via apiFetch
   }
@@ -402,38 +412,37 @@ onBeforeUnmount(() => {
   <SplashScreen v-else-if="bootStatus === 'failed'" variant="failed" @retry="startBootSequence" />
 
   <div v-else-if="bootStatus === 'ready'" class="app">
-    <header class="topbar">
-      <StateBar :state="state" />
-      <div class="topbar-actions">
-        <ProjectsMenu
-          ref="projectsMenu"
-          @select="handleProjectSwitch"
-          @download="handleModelDownload"
-        />
+    <ErrorBanner />
+
+    <div class="app-body">
+      <ChatWindow
+        v-if="!showEditProject"
+        ref="chatWindowRef"
+        @project-select="handleProjectSwitch"
+        @project-download="handleModelDownload"
+      />
+
+      <div class="profile-menu-overlay">
+        <ProfileMenu @profile="showProfile = true" @logout="handleLogout" />
+      </div>
+
+      <div class="settings-menu-overlay">
         <SettingsMenu
           @manage-projects="showManageProjects = true"
           @manage-users="showManageUsers = true"
           @about="handleShowAbout"
-          @logout="handleLogout"
           @download-backup="handleDownloadBackup"
           @restore-backup="handleRestoreBackup"
         />
-        <input
-          ref="modelUploadInput"
-          type="file"
-          accept=".zip,.yml,.yaml"
-          class="upload-model-input"
-          @change="handleModelUploadChange"
-        />
       </div>
-    </header>
 
-    <ErrorBanner />
-
-    <div class="app-body">
-      <SplashScreen v-if="projectPaused" variant="paused" :reason="projectPausedReason" embedded />
-      <SplashScreen v-else-if="!state?.key" variant="no-project" embedded />
-      <ChatWindow v-else />
+      <input
+        ref="modelUploadInput"
+        type="file"
+        accept=".zip,.yml,.yaml"
+        class="upload-model-input"
+        @change="handleModelUploadChange"
+      />
     </div>
 
     <EditProjectView
@@ -460,6 +469,7 @@ onBeforeUnmount(() => {
       @benchmark="handleManageProjectsBenchmark"
       @chat="handleManageProjectsChat"
       @download="handleModelDownload"
+      @wipe-live-sessions="handleManageProjectsWipeLiveSessions"
     />
 
     <ManageUsersView
@@ -467,8 +477,27 @@ onBeforeUnmount(() => {
       @close="showManageUsers = false"
     />
 
+    <ProfileView
+      v-if="showProfile"
+      @close="showProfile = false"
+    />
+
   </div>
 </template>
+
+<style>
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+#app {
+  height: 100%;
+}
+</style>
 
 <style scoped>
 .app {
@@ -478,31 +507,35 @@ onBeforeUnmount(() => {
   font-family: system-ui, -apple-system, sans-serif;
 }
 
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 1rem;
-  background: #f5f5f7;
-  border-bottom: 1px solid #ddd;
-}
-
 .app-body {
+  position: relative;
   flex: 1;
   display: flex;
   min-height: 0;
   overflow: hidden;
 }
 
-.topbar-actions {
-  display: flex;
-  gap: 0.5rem;
-  /* StateBar renders nothing at all when there's no active project (see
-     its own v-if="state?.key") — margin-left: auto keeps this pinned to
-     the right on its own, rather than relying on .topbar's
-     justify-content: space-between, which only works with two flex
-     children and collapses to the left with just this one. */
-  margin-left: auto;
+/* Anchored to .app-body, not the viewport: when ErrorBanner pushes
+   .app-body down, these must shift down with it, staying aligned with
+   ChatWindow.vue's own .sessions-reopen-btn (also positioned relative
+   to something inside .app-body) instead of staying put while
+   everything else moves. */
+.profile-menu-overlay {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 30;
+}
+
+/* Left: 3.25rem sits it immediately to the right of ChatWindow.vue's
+   own .sessions-reopen-btn (left: 0.75rem, width: 2rem) — the two read
+   as one row of overlay icon buttons even though this one lives here,
+   not inside ChatWindow.vue itself. */
+.settings-menu-overlay {
+  position: absolute;
+  top: 0.75rem;
+  left: 3.25rem;
+  z-index: 30;
 }
 
 .upload-model-input {

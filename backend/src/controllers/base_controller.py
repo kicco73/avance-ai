@@ -9,8 +9,6 @@ import inspect
 
 from fastapi import APIRouter
 
-from automaton.automaton import Automaton
-
 
 def route(method: str, path: str, **kwargs):
     def decorator(func):
@@ -43,10 +41,3 @@ class BaseController:
             if info is not None:
                 method, path, kwargs = info
                 router.add_api_route(path, member, methods=[method], **kwargs)
-
-    async def _activate_project(self, new_automaton: Automaton) -> None:
-        # Unused param: kept only to match ProjectService's own
-        # CommitCallback shape. The lock itself is the whole point — it
-        # serializes this commit against a concurrent chat turn.
-        async with self.chat_service.lock:
-            pass

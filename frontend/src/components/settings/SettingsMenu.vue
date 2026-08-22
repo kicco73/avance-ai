@@ -3,7 +3,7 @@
 // offering Manage projects and backup download/restore actions.
 import { onBeforeUnmount, ref } from 'vue'
 
-const emit = defineEmits(['manage-projects', 'manage-users', 'download-backup', 'restore-backup', 'about', 'logout'])
+const emit = defineEmits(['manage-projects', 'manage-users', 'download-backup', 'restore-backup', 'about'])
 
 const open = ref(false)
 const rootEl = ref(null)
@@ -36,11 +36,6 @@ function selectRestoreBackup() {
 function selectAbout() {
   open.value = false
   emit('about')
-}
-
-function selectLogout() {
-  open.value = false
-  emit('logout')
 }
 
 function handleRestoreFileChange(event) {
@@ -90,9 +85,6 @@ onBeforeUnmount(() => {
         <li>
           <button class="settings-item" @click="selectAbout">About Avance...</button>
         </li>
-        <li>
-          <button class="settings-item" @click="selectLogout">Logout</button>
-        </li>
       </ul>
     </div>
 
@@ -111,30 +103,32 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
-/* Padding matches ProjectsMenu.vue's .projects-btn (0.4rem top/bottom)
-   so both buttons compute to the same height via inherited line-height,
-   without hardcoding a pixel value. */
+/* Matches ChatWindow.vue's .sessions-reopen-btn exactly — both are
+   overlay icon buttons on the main chat screen, semi-transparent until
+   hovered rather than always fully opaque. */
 .settings-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.4rem;
+  width: 2rem;
+  height: 2rem;
   border-radius: 6px;
   border: 1px solid #4a6fa5;
   background: white;
   color: #4a6fa5;
   cursor: pointer;
+  opacity: 0.35;
+  transition: opacity 0.15s ease;
 }
 
 .settings-btn:hover {
-  background: #4a6fa5;
-  color: white;
+  opacity: 1;
 }
 
 .settings-panel {
   position: absolute;
   top: calc(100% + 0.4rem);
-  right: 0;
+  left: 0;
   min-width: 180px;
   background: white;
   border: 1px solid #ddd;

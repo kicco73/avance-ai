@@ -17,6 +17,7 @@ class AuthenticatedUser:
     provider_user_id: str
     email: str
     name: str
+    picture_url: str | None
 
 
 class AuthProvider(ABC):

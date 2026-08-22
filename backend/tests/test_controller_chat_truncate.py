@@ -49,7 +49,7 @@ def test_truncate_response_shape_is_a_bare_state_payload(client, hello_project):
     response = client.post(
         f"/api/chat/sessions/{session['id']}/truncate", json={"timestamp": "2099-01-01T00:00:00+00:00"}
     )
-    reset_response = client.post("/api/chat/reset")
+    reset_response = client.post(f"/api/projects/{hello_project}/test-sessions/reset")
 
     assert response.status_code == 200
     assert "on-enter" not in response.json()

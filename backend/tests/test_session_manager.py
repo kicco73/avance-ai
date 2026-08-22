@@ -5,6 +5,15 @@ from datetime import datetime, timedelta
 import pytest
 
 from chat.session_manager import ChatSessionManager
+from chat.session_type_strategy import get_session_type_strategy
+from project.project_service import ProjectService
+
+LIVE = get_session_type_strategy('live')
+
+
+@pytest.fixture
+def project_service(db) -> ProjectService:
+    return ProjectService(db)
 
 
 @pytest.fixture
@@ -16,6 +25,14 @@ def manager(db) -> ChatSessionManager:
     db.ensure_project("proj-b")
     db.publish_project("proj-b")
     return ChatSessionManager(db)
+
+
+def _create(manager, project_service, username, project_name, current_state):
+    return manager.create_session(LIVE, project_service, username, project_name, None, current_state)
+
+
+def _resolve_or_create(manager, project_service, username, project_name, session_id, current_state):
+    return manager.resolve_or_create_session(LIVE, project_service, username, project_name, session_id, None, current_state)
 
 
 @pytest.mark.contract
@@ -38,8 +55,8 @@ def test_is_open_is_false_never_a_crash_for_a_session_with_no_datetime_end(manag
 
 
 @pytest.mark.contract
-def test_creates_a_new_session_when_none_exists(manager):
-    session = manager.get_or_create_current_session("user", "proj", None, "start")
+def test_creates_a_new_session_when_none_exists(manager, project_service):
+    session = _resolve_or_create(manager, project_service, "user", "proj", None, "start")
 
     assert session["username"] == "user"
     assert session["project_name"] == "proj"
@@ -49,10 +66,10 @@ def test_creates_a_new_session_when_none_exists(manager):
 
 
 @pytest.mark.contract
-def test_reuses_open_session_and_refreshes_end_state(manager):
-    first = manager.get_or_create_current_session("user", "proj", None, "start")
+def test_reuses_open_session_and_refreshes_end_state(manager, project_service):
+    first = _resolve_or_create(manager, project_service, "user", "proj", None, "start")
 
-    second = manager.get_or_create_current_session("user", "proj", first["id"], "next")
+    second = _resolve_or_create(manager, project_service, "user", "proj", first["id"], "next")
 
     assert second["id"] == first["id"]
     assert second["start_state"] == "start"
@@ -60,20 +77,20 @@ def test_reuses_open_session_and_refreshes_end_state(manager):
 
 
 @pytest.mark.contract
-def test_ignores_a_stale_or_unknown_session_id_from_the_caller(manager):
-    first = manager.get_or_create_current_session("user", "proj", None, "start")
+def test_ignores_a_stale_or_unknown_session_id_from_the_caller(manager, project_service):
+    first = _resolve_or_create(manager, project_service, "user", "proj", None, "start")
 
     # A caller passing a session_id that isn't the real current one (stale
     # cache, another tab already rotated it, ...) must still resolve to the
     # actual current session — never trusted for the decision itself.
-    second = manager.get_or_create_current_session("user", "proj", 999999, "next")
+    second = _resolve_or_create(manager, project_service, "user", "proj", 999999, "next")
 
     assert second["id"] == first["id"]
 
 
 @pytest.mark.regression
-def test_creates_a_new_session_once_the_current_one_has_gone_idle(manager, monkeypatch):
-    first = manager.get_or_create_current_session("user", "proj", None, "start")
+def test_creates_a_new_session_once_the_current_one_has_gone_idle(manager, project_service, monkeypatch):
+    first = _resolve_or_create(manager, project_service, "user", "proj", None, "start")
     stale_now = first["datetime_end"] + manager.open_window + timedelta(seconds=1)
 
     class FrozenDatetime(datetime):
@@ -83,43 +100,38 @@ def test_creates_a_new_session_once_the_current_one_has_gone_idle(manager, monke
 
     monkeypatch.setattr("chat.session_manager.datetime", FrozenDatetime)
 
-    second = manager.get_or_create_current_session("user", "proj", first["id"], "start")
+    second = _resolve_or_create(manager, project_service, "user", "proj", first["id"], "start")
 
     assert second["id"] != first["id"]
     assert second["start_state"] == "start"
 
 
 @pytest.mark.contract
-def test_manual_create_session_supersedes_a_still_open_one(manager):
+def test_manual_create_session_supersedes_a_still_open_one(manager, project_service):
     """At most one writable session per user+project — an explicit "new
     session" action must immediately become that one, even though the
     previous session is still within its open window."""
-    first = manager.get_or_create_current_session("user", "proj", None, "start")
+    first = _resolve_or_create(manager, project_service, "user", "proj", None, "start")
 
-    manual = manager.create_session("user", "proj", "start")
+    manual = _create(manager, project_service, "user", "proj", "start")
     assert manual["id"] != first["id"]
 
-    resolved = manager.get_or_create_current_session("user", "proj", first["id"], "next")
+    resolved = _resolve_or_create(manager, project_service, "user", "proj", first["id"], "next")
     assert resolved["id"] == manual["id"]
 
 
 @pytest.mark.contract
-def test_sessions_for_different_projects_are_independent(manager):
-    proj_a = manager.get_or_create_current_session("user", "proj-a", None, "start")
-    proj_b = manager.get_or_create_current_session("user", "proj-b", None, "start")
+def test_sessions_for_different_projects_are_independent(manager, project_service):
+    proj_a = _resolve_or_create(manager, project_service, "user", "proj-a", None, "start")
+    proj_b = _resolve_or_create(manager, project_service, "user", "proj-b", None, "start")
 
     assert proj_a["id"] != proj_b["id"]
-    assert manager.get_or_create_current_session("user", "proj-a", None, "next")["id"] == proj_a["id"]
+    assert _resolve_or_create(manager, project_service, "user", "proj-a", None, "next")["id"] == proj_a["id"]
 
 
 @pytest.mark.contract
-def test_get_session_returns_none_for_unknown_id(manager):
-    assert manager.get_session(999999) is None
-
-
-@pytest.mark.contract
-def test_touch_session_refreshes_end_state(manager):
-    session = manager.create_session("user", "proj", "start")
+def test_touch_session_refreshes_end_state(manager, project_service):
+    session = _create(manager, project_service, "user", "proj", "start")
 
     touched = manager.touch_session(session["id"], "next")
 
@@ -128,8 +140,8 @@ def test_touch_session_refreshes_end_state(manager):
 
 
 @pytest.mark.contract
-def test_require_active_session_accepts_and_touches_an_open_session(manager):
-    session = manager.create_session("user", "proj", "start")
+def test_require_active_session_accepts_and_touches_an_open_session(manager, project_service):
+    session = _create(manager, project_service, "user", "proj", "start")
 
     result = manager.require_active_session("user", "proj", session["id"], "next")
 
@@ -150,27 +162,27 @@ def test_require_active_session_rejects_unknown_session(manager):
 
 
 @pytest.mark.contract
-def test_require_active_session_rejects_someone_elses_session(manager):
-    theirs = manager.create_session("other-user", "proj", "start")
+def test_require_active_session_rejects_someone_elses_session(manager, project_service):
+    theirs = _create(manager, project_service, "other-user", "proj", "start")
 
     with pytest.raises(ValueError):
         manager.require_active_session("user", "proj", theirs["id"], "start")
 
 
 @pytest.mark.contract
-def test_require_active_session_rejects_a_different_projects_session(manager):
-    session = manager.create_session("user", "proj-a", "start")
+def test_require_active_session_rejects_a_different_projects_session(manager, project_service):
+    session = _create(manager, project_service, "user", "proj-a", "start")
 
     with pytest.raises(ValueError):
         manager.require_active_session("user", "proj-b", session["id"], "start")
 
 
 @pytest.mark.contract
-def test_require_active_session_rejects_a_closed_session_no_auto_rotation(manager, monkeypatch):
-    """The behavior this reinforces: unlike get_or_create_current_session,
-    a closed session is never silently swapped for a new one here — the
+def test_require_active_session_rejects_a_closed_session_no_auto_rotation(manager, project_service, db, monkeypatch):
+    """The behavior this reinforces: unlike resolve_or_create_session, a
+    closed session is never silently swapped for a new one here — the
     caller must bootstrap or start a new session explicitly instead."""
-    session = manager.create_session("user", "proj", "start")
+    session = _create(manager, project_service, "user", "proj", "start")
     stale_now = session["datetime_end"] + manager.open_window + timedelta(seconds=1)
 
     class FrozenDatetime(datetime):
@@ -184,7 +196,7 @@ def test_require_active_session_rejects_a_closed_session_no_auto_rotation(manage
         manager.require_active_session("user", "proj", session["id"], "start")
 
     # Rejected, not replaced — no new session should have appeared.
-    assert manager.get_session(session["id"])["end_state"] == "start"
+    assert db.get_chat_session(session["id"])["end_state"] == "start"
 
 
 @pytest.mark.contract
@@ -193,9 +205,9 @@ def test_get_active_session_is_none_when_none_exist(manager):
 
 
 @pytest.mark.contract
-def test_get_active_session_is_the_most_recently_started_open_one(manager):
-    manager.create_session("user", "proj", "start")
-    newer = manager.create_session("user", "proj", "start")
+def test_get_active_session_is_the_most_recently_started_open_one(manager, project_service):
+    _create(manager, project_service, "user", "proj", "start")
+    newer = _create(manager, project_service, "user", "proj", "start")
 
     active = manager.get_active_session("user", "proj")
 
@@ -203,11 +215,11 @@ def test_get_active_session_is_the_most_recently_started_open_one(manager):
 
 
 @pytest.mark.regression
-def test_require_active_session_rejects_an_open_but_superseded_session(manager):
+def test_require_active_session_rejects_an_open_but_superseded_session(manager, project_service):
     """An older session that is still individually open (not expired)
     must not be usable for writes once a newer one has superseded it."""
-    older = manager.create_session("user", "proj", "start")
-    newer = manager.create_session("user", "proj", "start")
+    older = _create(manager, project_service, "user", "proj", "start")
+    newer = _create(manager, project_service, "user", "proj", "start")
     assert manager.is_open(older)  # not expired — this is the crux of the bug
 
     with pytest.raises(ValueError):

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Protocol
+from typing import Protocol
 
 from automaton.automaton import Action, Automaton, State
 from db.db import Db

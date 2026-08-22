@@ -10,9 +10,9 @@ def _make_session(db, *, username="user", project_name="proj", start, end=None, 
     end_state = end_state if end_state is not None else start_state
     db.ensure_project(project_name)
     db.publish_project(project_name)
+    revision = db.get_project_published_revision(project_name)
     return db.create_chat_session(
-        username=username,
-        project_name=project_name,
+        username, project_name, revision,
         datetime_start=start,
         datetime_end=end,
         start_state=start_state,
@@ -38,36 +38,27 @@ def test_get_chat_session_returns_none_for_unknown_id(db):
 
 
 @pytest.mark.regression
-def test_create_chat_session_rejects_an_unpublished_project_by_default(db):
-    db.ensure_project("draft-only")
-    with pytest.raises(ValueError, match="never been published"):
-        db.create_chat_session(username="user", project_name="draft-only", start_state="start")
+def test_create_chat_session_rejects_a_nonexistent_project(db):
+    with pytest.raises(ValueError, match="does not exist"):
+        db.create_chat_session("user", "no-such-project", 0, start_state="start")
 
 
 @pytest.mark.regression
-def test_create_draft_chat_session_permits_an_unpublished_project(db):
-    db.ensure_project("draft-only")
-    session_id = db.create_draft_chat_session(
-        username="user", project_name="draft-only", start_state="start"
-    )
-    session = db.get_chat_session(session_id)
-    assert session is not None
-
-
-@pytest.mark.regression
-def test_create_draft_chat_session_stamps_the_current_draft_revision_not_published(db):
-    # After a publish plus an edit, the draft is at revision 1 while
-    # published_revision stays at 0 — a draft session must be stamped
-    # with the draft revision, not the published one.
+def test_create_chat_session_stamps_whatever_revision_the_caller_resolved(db):
+    # Revision resolution (published vs. draft) lives one layer up now —
+    # see chat.session_type_strategy.SessionTypeStrategy.revision_for —
+    # create_chat_session itself just stamps whatever it's given.
     db.ensure_project("ahead-of-published")
     db.publish_project("ahead-of-published")
     db.save_project_file("user", "ahead-of-published", "index.yml", b"states: {}\n", "text/yaml")
 
-    draft_session_id = db.create_draft_chat_session(
-        username="user", project_name="ahead-of-published", start_state="start"
+    draft_session_id = db.create_chat_session(
+        "user", "ahead-of-published", db.get_project_revision("ahead-of-published"),
+        start_state="start", type="test",
     )
     normal_session_id = db.create_chat_session(
-        username="user", project_name="ahead-of-published", start_state="start"
+        "user", "ahead-of-published", db.get_project_published_revision("ahead-of-published"),
+        start_state="start",
     )
 
     assert db.get_project_revision("ahead-of-published") == 1
@@ -161,7 +152,7 @@ def test_reset_project_for_user_only_touches_that_user(db):
     db.save_message("user", "hello", mine)
     db.save_message("other-user", "hi", theirs)
 
-    db.reset_project_for_user("user", "proj")
+    db.reset_project_for_user("user", "proj", type="live")
 
     assert db.get_chat_session(mine) is None
     assert db.get_messages(mine) == []
@@ -174,7 +165,7 @@ def test_reset_project_for_user_only_touches_that_project(db):
     session_a = _make_session(db, username="user", project_name="proj-a", start=datetime(2026, 1, 1, 10, 0, 0))
     session_b = _make_session(db, username="user", project_name="proj-b", start=datetime(2026, 1, 1, 10, 0, 0))
 
-    db.reset_project_for_user("user", "proj-a")
+    db.reset_project_for_user("user", "proj-a", type="live")
 
     assert db.get_chat_session(session_a) is None
     assert db.get_chat_session(session_b) is not None

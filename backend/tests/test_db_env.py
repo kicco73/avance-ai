@@ -17,6 +17,7 @@ def _session(db, username="user", project_name="proj", start=None):
     db.publish_project(project_name)
     return db.create_chat_session(
         username=username, project_name=project_name,
+        revision=db.get_project_published_revision(project_name),
         datetime_start=start, datetime_end=start,
         start_state="a", end_state="a",
     )
@@ -97,6 +98,6 @@ def test_reset_project_for_user_also_wipes_their_env(db):
     _session(db, username="alice")
     db.set_env("proj", {"a": "1"}, "alice")
 
-    db.reset_project_for_user("alice", "proj")
+    db.reset_project_for_user("alice", "proj", type="live")
 
     assert db.get_env("proj", "alice") == {}

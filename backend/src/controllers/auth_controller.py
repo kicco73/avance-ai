@@ -8,7 +8,7 @@ from http import HTTPStatus
 
 from fastapi import HTTPException, Response
 
-from auth.auth_service import SESSION_COOKIE_NAME, TOKEN_TTL, AuthService
+from auth.auth_service import SESSION_COOKIE_NAME, AuthService
 from schemas import LoginRequest
 from session import Session
 
@@ -36,7 +36,7 @@ class AuthController(BaseController):
             httponly=True,
             secure=True,
             samesite="lax",
-            max_age=int(TOKEN_TTL.total_seconds()),
+            max_age=int(self.auth_service.token_ttl.total_seconds()),
         )
         return {"success": True}
 
@@ -48,6 +48,8 @@ class AuthController(BaseController):
     @get("/api/auth/me")
     def get_me(self):
         """The auth middleware already validated the cookie for this
-        request to have reached here at all — this just reflects the
-        username it resolved into Session().user."""
-        return {"user": Session().user}
+        request to have reached here at all — Session().user is the
+        email it resolved. Serves both the topbar avatar and
+        ProfileView.vue, the only two consumers of the current user's
+        own profile data."""
+        return self.auth_service.get_profile(Session().user)

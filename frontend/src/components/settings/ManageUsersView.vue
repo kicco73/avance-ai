@@ -47,7 +47,7 @@ defineExpose({ refresh: load })
         <thead>
           <tr>
             <th>Name</th>
-            <th>Email</th>
+            <th>User ID</th>
             <th>Provider</th>
             <th>Created</th>
             <th>Last login</th>
@@ -56,7 +56,7 @@ defineExpose({ refresh: load })
         <tbody>
           <tr v-for="row in rows" :key="row.id">
             <td class="manage-users-name">{{ row.name ?? '—' }}</td>
-            <td>{{ row.email }}</td>
+            <td>{{ row.id }}</td>
             <td>{{ row.provider ?? '—' }}</td>
             <td>{{ formatDate(row.created_at) }}</td>
             <td>{{ formatDate(row.last_login) }}</td>

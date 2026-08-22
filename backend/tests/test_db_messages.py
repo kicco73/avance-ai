@@ -13,6 +13,7 @@ def _make_session(db, *, username="user", project_name="proj", start=datetime(20
     return db.create_chat_session(
         username=username,
         project_name=project_name,
+        revision=db.get_project_published_revision(project_name),
         datetime_start=start,
         datetime_end=start,
         start_state="a",

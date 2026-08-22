@@ -13,12 +13,8 @@ would leak the previous request's user into the next one.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from contextvars import ContextVar
-
-# Same placeholder value as db.py's own DEFAULT_USER — kept as an
-# independent constant since session.py is meant to be a standalone
-# module other layers (including db.py) can depend on, not the reverse.
-DEFAULT_USER = "user"
 
 _user: ContextVar[str] = ContextVar("session_user")
 
@@ -27,8 +23,8 @@ class Session(object):
     """Singleton: `Session()` always returns the same instance — only
     what's behind its `user` property is context-scoped, not the
     instance itself. Unset in the current context (e.g. a test, or any
-    code path that never went through the auth middleware) reads back as
-    DEFAULT_USER, the same fallback this always had."""
+    code path that never went through the auth middleware) raises
+    rather than silently resolving to a placeholder user."""
 
     _instance: "Session | None" = None
 
@@ -39,8 +35,19 @@ class Session(object):
 
     @property
     def user(self) -> str:
-        return _user.get(DEFAULT_USER)
+        try:
+            return _user.get()
+        except LookupError as exc:
+            raise RuntimeError("Session().user accessed outside an authenticated request context.") from exc
 
     @user.setter
     def user(self, value: str) -> None:
         _user.set(value)
+
+    @contextmanager
+    def impersonate(self, username: str):
+        token = _user.set(username)
+        try:
+            yield
+        finally:
+            _user.reset(token)

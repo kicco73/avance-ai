@@ -21,7 +21,7 @@ from metrics.metrics_framework.benchmark_metrics.calculator import BenchmarkCalc
 from metrics.metrics_framework.benchmark_metrics.dto import BenchmarkConfiguration, BenchmarkMetricResult
 from metrics.metrics_framework.benchmark_metrics.metrics import SignalAccuracyMetric
 from metrics.metrics_framework.benchmark_metrics.observations import BenchmarkObservationBuilder
-from project.project_service import decode_text_archives
+from project.parsers import decode_text_archives
 from session import Session
 from tracking.env import Env, PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
@@ -101,7 +101,9 @@ class BenchmarkRunService:
     def _resolve_scope(self, username: str, project_name: str, session_id: int | None) -> list[int]:
         if session_id is not None:
             return [session_id]
-        sessions = self._db.list_chat_sessions(username, project_name)
+        # type=None: a whole-project run must cover every labeled session,
+        # not just 'live' ones — same reasoning as BenchmarkCalculator._load_sessions.
+        sessions = self._db.list_chat_sessions(username, project_name, type=None)
         return [int(row['id']) for row in sessions if row['labeled']]
 
     def _count_user_messages(self, session_ids: list[int]) -> int:
@@ -133,14 +135,10 @@ class BenchmarkRunService:
         # PersistedEnv now reads Session().user itself — pinned to this
         # historical session's own username for the two calls that need
         # it, then restored (see FixedProjectContext's own docstring).
-        previous_user = Session().user
-        Session().user = session['username']
-        try:
+        with Session().impersonate(session['username']):
             persisted_env = PersistedEnv(self._db, FixedProjectContext(project_name=session['project_name']))
             until = session['datetime_start']
             return Env(stored=persisted_env.stored(until=until), action_set=persisted_env.action_set(until=until))
-        finally:
-            Session().user = previous_user
 
     def _build_replay_work(
         self, run: dict, automaton: Automaton, session_ids: list[int], signal_source_cls: type,
@@ -156,9 +154,7 @@ class BenchmarkRunService:
             # context/task across unrelated jobs afterward (see
             # FixedProjectContext's own docstring for why it must never
             # read whatever's live instead).
-            previous_user = Session().user
-            Session().user = run['username']
-            try:
+            with Session().impersonate(run['username']):
                 for session_id in session_ids:
                     session = self._db.get_chat_session(session_id)
                     env = self._build_seed_env(session)
@@ -186,8 +182,6 @@ class BenchmarkRunService:
                         self._db.add_benchmark_run_batch_segments(run['id'], signal_source.batch_segments)
 
                 self._calculate_and_save_results(run)
-            finally:
-                Session().user = previous_user
 
             return ("; ".join(warnings) if warnings else None), None
 

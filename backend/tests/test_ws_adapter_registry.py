@@ -26,7 +26,7 @@ class _FakeAuthService:
     tests are about."""
 
     def verify_token(self, token):
-        return AuthenticatedUser(provider_user_id="fake", email=USERNAME, name="Fake User")
+        return AuthenticatedUser(provider_user_id="fake", email=USERNAME, name="Fake User", picture_url=None)
 
 
 @pytest.fixture(autouse=True)
@@ -113,7 +113,7 @@ class TestPush:
 class TestChatLoopRegistration:
     def test_registers_session_user_immediately_after_accept(self, db):
         _publish_project(db, "proj")
-        session_id = db.create_chat_session(username=USERNAME, project_name="proj")
+        session_id = db.create_chat_session(username=USERNAME, project_name="proj", revision=db.get_project_published_revision("proj"))
         adapter = WsAdapter(_FakeChatService(), db, _FakeAuthService())
 
         pushed = {}
@@ -137,7 +137,7 @@ class TestChatLoopRegistration:
 class TestCleanupOnDisconnect:
     def test_the_registration_is_removed_on_disconnect(self, db):
         _publish_project(db, "proj")
-        session_id = db.create_chat_session(username=USERNAME, project_name="proj")
+        session_id = db.create_chat_session(username=USERNAME, project_name="proj", revision=db.get_project_published_revision("proj"))
         adapter = WsAdapter(_FakeChatService(), db, _FakeAuthService())
         websocket = _FakeWebSocket([{"message": "hi", "session_id": session_id}])
 

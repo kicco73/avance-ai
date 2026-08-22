@@ -3,12 +3,15 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from http import HTTPStatus
 
-from automaton.automaton import Action, Automaton, State
+from automaton.automaton import Action, Automaton, SignalPayload, State
 from db import Db, _utc_iso
 from ai.ai_service import AiService
+from keyed_lock_registry import KeyedLockRegistry
+from project_rw_lock import ProjectRwLock
 from session import Session
 
 from tracking.automaton_namespace import AutomatonNamespace
@@ -17,9 +20,9 @@ from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.session_facts import SessionFacts
 from tracking.system_facts import SystemFacts
 from chat.errors import ChatServiceError
-from tracking.metadata_handler import MetadataHandler
 from chat.session_manager import ChatSessionManager
 from chat.session_summary_manager import SessionSummaryManager
+from chat.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
 from jobs import JobQueue
 from tracking.tracking_engine import DbTrackingSink, TrackingEngine
 from tracking.turn_callbacks import OnMetadata
@@ -44,7 +47,7 @@ class ChatService(object):
 		self._ai_service = ai_service
 		self._project_service = project_service
 		self._session_manager = session_manager
-		self.tracking_service = tracking_service
+		self._tracking_service = tracking_service
 		self.metric_service = metric_service
 		# Shares persisted_jobs with BenchmarkRunService (see main.py's own
 		# wiring) — never its own private queue.
@@ -53,15 +56,14 @@ class ChatService(object):
 		self._system_facts = SystemFacts()
 		self._session_facts = SessionFacts(db, project_service)
 		self._automaton_namespace = AutomatonNamespace(db, project_service)
-		self.evaluation_scope_builder = EvaluationScopeBuilder(
+		self._evaluation_scope_builder = EvaluationScopeBuilder(
 			self.env, metric_service, self._system_facts, self._session_facts, self._automaton_namespace
 		)
-		self._metadata_handler = MetadataHandler()
-		self._tracking_engine = TrackingEngine(DbTrackingSink(db), self.env, self.evaluation_scope_builder)
+		self._tracking_engine = TrackingEngine(DbTrackingSink(db), self.env, self._evaluation_scope_builder)
 
-		# Serializes chat-turn processing across both transports and
-		# against a concurrent reset/activate/upload/delete.
-		self.lock = asyncio.Lock()
+		self._project_locks = KeyedLockRegistry(ProjectRwLock)
+		self._session_locks = KeyedLockRegistry(asyncio.Lock)
+		self._global_lock = asyncio.Lock()
 
 
 	@property
@@ -103,7 +105,7 @@ class ChatService(object):
 		return {
 			"id": session["id"],
 			"project_name": session["project_name"],
-			"source": session["source"],
+			"type": session["type"],
 			"title": session["title"],
 			"datetime_start": _utc_iso(session["datetime_start"]),
 			"datetime_end": _utc_iso(session["datetime_end"]),
@@ -135,6 +137,23 @@ class ChatService(object):
 		except ValueError as exc:
 			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 
+	def _resolve_or_create_session_of_type(
+		self, strategy: SessionTypeStrategy, project_name: str, session_id: int | None
+	) -> dict:
+		try:
+			# No active session means a new one is about to be created —
+			# the moment the previously active one (if any) is discovered closed.
+			if strategy.type_name == 'live' and self._session_manager.get_active_session(self._username, project_name) is None:
+				self._session_summary_manager.check_for_closed_sessions(self._username, project_name)
+			automaton, state = self._project_service.get_automaton_and_state(project_name, type=strategy.type_name)
+			session = self._session_manager.resolve_or_create_session(
+				strategy, self._project_service, self._username, project_name, session_id, automaton, state.key
+			)
+		except ValueError as exc:
+			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
+		automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
+		return {**self._session_payload(session, active=True), "state": automaton.get_state_payload(state)}
+
 	def get_or_create_current_session(self, session_id: int | None) -> dict:
 		"""Bootstrap for a client with no (or a possibly-stale) session_id:
 		resolves or creates the one session currently writable for the
@@ -143,87 +162,66 @@ class ChatService(object):
 		is_paused, paused_reason = self._project_service.get_project_availability(project_name)
 		if is_paused:
 			return {"paused": True, "paused_reason": paused_reason}
-		try:
-			# No active session means a new one is about to be created —
-			# the moment the previously active one (if any) is discovered closed.
-			if self._session_manager.get_active_session(self._username, project_name) is None:
-				self._session_summary_manager.check_for_closed_sessions(self._username, project_name)
-			_, state = self._project_service.get_active_automaton_and_state()
-			session = self._session_manager.get_or_create_current_session(
-				self._username, project_name, session_id, state.key
-			)
-		except ValueError as exc:
-			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
-		automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
-		# Always the active one by construction — see
-		# ChatSessionManager.get_or_create_current_session.
-		return {**self._session_payload(session, active=True), "state": automaton.get_state_payload(state)}
+		return self._resolve_or_create_session_of_type(get_session_type_strategy('live'), project_name, session_id)
 
 	def get_or_create_current_draft_session(self, session_id: int | None, project_name: str) -> dict:
 		"""Like get_or_create_current_session, but for `project_name`'s own
 		*draft* — the embedded "Test" chat is the one place a session is
 		allowed to exist against an unpublished revision. `project_name`
-		comes from the URL, never the active-project pointer — see
-		ProjectService.get_draft_automaton_and_state for why."""
-		try:
-			_, state = self._project_service.get_draft_automaton_and_state(project_name)
-			session = self._session_manager.get_or_create_current_draft_session(
-				self._username, project_name, session_id, state.key
-			)
-		except ValueError as exc:
-			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
-		automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
-		return {**self._session_payload(session, active=True), "state": automaton.get_state_payload(state)}
+		comes from the URL, never the active-project pointer."""
+		return self._resolve_or_create_session_of_type(get_session_type_strategy('test'), project_name, session_id)
 
-	def create_session(self) -> dict:
-		"""Explicit "new session" action: starts a fresh session, which
-		immediately becomes the active project's writable one, recorded
-		as starting at the automaton's initial state, not wherever the shared position sits."""
-		project_name = self._active_project_name
+	def _create_session_of_type(self, strategy: SessionTypeStrategy, project_name: str) -> dict:
 		try:
-			automaton, _ = self._project_service.get_active_automaton_and_state()
+			automaton, state = self._project_service.get_automaton_and_state(project_name, type=strategy.type_name)
+			current_state = state.key if strategy.type_name == 'live' else None
 			session = self._session_manager.create_session(
-				self._username, project_name, automaton.init_action.target
+				strategy, self._project_service, self._username, project_name, automaton, current_state
 			)
 		except ValueError as exc:
 			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
-		# "on-enter": a new session enters init_action.target *through*
+		# "on-enter": a new session enters its starting state *through*
 		# init_action itself — the same wire key every other real
 		# transition reports, just for init_action instead of a regular Action.
 		return {**self._session_payload(session, active=True), "on-enter": automaton.init_action.on_enter}
 
+	def create_session(self) -> dict:
+		"""Explicit "new session" action: starts a fresh session, which
+		immediately becomes the active project's writable one, recorded as
+		starting at the automaton's current state — wherever the shared
+		position sits right now, not necessarily the initial one."""
+		return self._create_session_of_type(get_session_type_strategy('live'), self._active_project_name)
+
 	def create_draft_session(self, project_name: str) -> dict:
 		"""Like create_session, but against `project_name`'s own current
-		*draft* revision — the embedded "Test" chat is the only caller.
-		`project_name` comes from the URL, never the active-project
-		pointer — see ProjectService.get_draft_automaton_and_state for why."""
-		try:
-			automaton, _ = self._project_service.get_draft_automaton_and_state(project_name)
-			session = self._session_manager.create_draft_session(
-				self._username, project_name, automaton.init_action.target
-			)
-		except ValueError as exc:
-			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
-		return {**self._session_payload(session, active=True), "on-enter": automaton.init_action.on_enter}
+		*draft* revision, always starting fresh from the automaton's own
+		initial state — the embedded "Test" chat is the only caller.
+		`project_name` comes from the URL, never the active-project pointer."""
+		return self._create_session_of_type(get_session_type_strategy('test'), project_name)
 
-	def _list_sessions_by_source(self, project_name: str, source: str | tuple[str, ...], active_source: str) -> list[dict]:
-		sessions = self._db.list_chat_sessions(self._username, project_name, source=source)
-		active = self._session_manager.get_active_session(self._username, project_name, source=active_source)
+	def reset_test_sessions(self, project_name: str) -> dict:
+		self._project_service.reset_test_sessions(project_name)
+		automaton, state = self._project_service.get_automaton_and_state(project_name, type='test')
+		return {**Automaton.get_state_payload(state), "on-enter": automaton.init_action.on_enter}
+
+	def _list_sessions_by_type(self, project_name: str, type: str | tuple[str, ...], active_type: str) -> list[dict]:
+		sessions = self._db.list_chat_sessions(self._username, project_name, type=type)
+		active = self._session_manager.get_active_session(self._username, project_name, type=active_type)
 		active_id = active["id"] if active is not None else None
 		return [self._session_payload(s, active=(s["id"] == active_id)) for s in sessions]
 
 	def list_sessions(self, project_name: str, include_imported: bool = False) -> list[dict]:
-		"""Every real (native, and optionally imported) session for
+		"""Every real (live, and optionally imported) session for
 		`project_name`, most recently started first — for the "Sessions"
 		panel. Never a 'test' session (see list_test_sessions instead)."""
-		source = ('native', 'imported') if include_imported else 'native'
-		return self._list_sessions_by_source(project_name, source, active_source='native')
+		type = ('live', 'imported') if include_imported else 'live'
+		return self._list_sessions_by_type(project_name, type, active_type='live')
 
 	def list_test_sessions(self, project_name: str) -> list[dict]:
 		"""Like list_sessions, but `project_name`'s own 'test' sessions —
-		native/imported never appear here, symmetric to how a test session
+		live/imported never appear here, symmetric to how a test session
 		never appears in list_sessions."""
-		return self._list_sessions_by_source(project_name, 'test', active_source='test')
+		return self._list_sessions_by_type(project_name, 'test', active_type='test')
 
 	def _require_own_session(self, session_id: int) -> None:
 		"""Raises (404) unless `session_id` still exists and belongs to
@@ -246,10 +244,10 @@ class ChatService(object):
 		its datetime_end is always None, so resolving it would crash."""
 		session = self._db.get_chat_session(session_id)
 		assert session is not None
-		if session["source"] == "imported":
+		if session["type"] == "imported":
 			active = False
 		else:
-			resolved = self._session_manager.get_active_session(self._username, session["project_name"], source=session["source"])
+			resolved = self._session_manager.get_active_session(self._username, session["project_name"], type=session["type"])
 			active = resolved is not None and resolved["id"] == session_id
 		return self._session_payload(session, active=active)
 
@@ -278,18 +276,20 @@ class ChatService(object):
 		self._db.set_session_labeled(session_id, labeled)
 		return self._reloaded_session_payload(session_id)
 
-	def truncate_session(self, session_id: int, timestamp: str) -> None:
+	async def truncate_session(self, session_id: int, timestamp: str) -> None:
 		""""Restart from here": deletes every message/signal at or after
 		`timestamp` in `session_id`; the live automaton state is just
 		recomputed from whatever Tracking rows survive."""
 		self._require_own_session(session_id)
-		cutoff = datetime.fromisoformat(timestamp).replace(tzinfo=None)
-		self._db.truncate_session(session_id, cutoff)
-		session = self._db.get_chat_session(session_id)
-		assert session is not None
-		latest = self._db.latest_message_or_signal_timestamp(session_id)
-		_, state = self._project_service.get_automaton_and_state_for_session(session_id)
-		self._db.touch_chat_session(session_id, latest or session["datetime_start"], state.key)
+		project_name = self._project_name_for_session(session_id)
+		async with self._session_scope(project_name, session_id):
+			cutoff = datetime.fromisoformat(timestamp).replace(tzinfo=None)
+			self._db.truncate_session(session_id, cutoff)
+			session = self._db.get_chat_session(session_id)
+			assert session is not None
+			latest = self._db.latest_message_or_signal_timestamp(session_id)
+			_, state = self._project_service.get_automaton_and_state_for_session(session_id)
+			self._db.touch_chat_session(session_id, latest or session["datetime_start"], state.key)
 
 	def get_state_for_session(self, session_id: int) -> dict:
 		self._require_own_session(session_id)
@@ -314,7 +314,7 @@ class ChatService(object):
 		snapshot/transition row, chronological — for the "Label sessions"
 		view's timeline, reconstructed entirely client-side."""
 		self._require_own_session(session_id)
-		return self.tracking_service.get_session_signals(session_id)
+		return self._tracking_service.get_session_signals(session_id)
 
 	def _require_own_message(self, message_id: int) -> dict:
 		"""Raises (404) unless `message_id` exists and belongs to a
@@ -344,6 +344,11 @@ class ChatService(object):
 		what existed at or before that message's own timestamp."""
 		until = self._until_from_message(message_id)
 		return self.metric_service.calculate_all(until=until, project_name=project_name)
+
+	def preview_triggers(self, signals: dict) -> list:
+		automaton, state = self._project_service.get_active_automaton_and_state()
+		scope = self._evaluation_scope_builder.build(automaton, state.key, signals)
+		return automaton.preview_triggers(state.key, scope)
 
 	def get_env(self, message_id: int | None = None) -> dict:
 		"""{"stored": ..., "action_set": ...}, reported separately so the
@@ -398,38 +403,87 @@ class ChatService(object):
 		annotated expected state for message_id's evaluation — ownership
 		is checked here, the rest is TrackingService's job."""
 		self._require_own_message(message_id)
-		return self.tracking_service.set_message_expected_state(message_id, expected_state)
+		return self._tracking_service.set_message_expected_state(message_id, expected_state)
 
 	def set_message_expected_signals(self, message_id: int, expected_values: dict | None) -> dict | None:
 		"""Sets or clears the expert-annotated expected signal values for
 		message_id's evaluation — same ownership-then-delegate split as
 		set_message_expected_state above."""
 		self._require_own_message(message_id)
-		return self.tracking_service.set_message_expected_signals(message_id, expected_values)
+		return self._tracking_service.set_message_expected_signals(message_id, expected_values)
 
 	def set_message_comment(self, message_id: int, comment: str | None) -> dict | None:
 		"""Sets or clears message_id's expert-left free-text comment.
 		Unlike set_message_expected_state, every message is a legitimate
 		target, so there's no 409 here, only the usual 404 for an unowned message_id."""
 		self._require_own_message(message_id)
-		return self.tracking_service.set_message_comment(message_id, comment)
+		return self._tracking_service.set_message_comment(message_id, comment)
 
 	def clear_session_annotations(self, session_id: int) -> None:
 		"""Clears every expert annotation (expected_state and
 		expected_values alike) across session_id's Tracking rows — the
 		"Label sessions" view's "Unlabel all" action."""
 		self._require_own_session(session_id)
-		self.tracking_service.clear_session_annotations(session_id)
+		self._tracking_service.clear_session_annotations(session_id)
+
+	def get_latest_signals(self) -> list[SignalPayload]:
+		return self._tracking_service.get_latest_signals()
+
+	def is_auto_tracking_enabled(self, session_id: int) -> bool:
+		self._require_own_session(session_id)
+		return self._tracking_service.is_auto_tracking_enabled(session_id)
+
+	def set_auto_tracking_enabled(self, session_id: int, enabled: bool) -> None:
+		self._require_own_session(session_id)
+		self._tracking_service.set_auto_tracking_enabled(session_id, enabled)
+
+	def clear_auto_tracking_overrides(self) -> None:
+		self._tracking_service.clear_auto_tracking_overrides()
+
+	def global_exclusive_access(self):
+		return self._global_lock
+
+	@asynccontextmanager
+	async def acquire_read(self, project_name: str):
+		lock = self._project_locks.get(project_name)
+		await lock.acquire_read()
+		try:
+			yield
+		finally:
+			await lock.release_read()
+
+	@asynccontextmanager
+	async def acquire_write(self, project_name: str):
+		lock = self._project_locks.get(project_name)
+		await lock.acquire_write()
+		try:
+			yield
+		finally:
+			await lock.release_write()
+
+	@asynccontextmanager
+	async def _session_scope(self, project_name: str, session_id: int):
+		async with self.acquire_read(project_name):
+			async with self._session_locks.get(str(session_id)):
+				yield
+
+	def _project_name_for_session(self, session_id: int) -> str:
+		session = self._db.get_chat_session(session_id)
+		if session is None:
+			raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
+		return session["project_name"]
 
 	async def open_if_needed(self, session_id: int) -> dict | None:
 		# An imported session is a fixed transcript, never live — its NULL
 		# message timestamps would make has_messages_since wrongly report
 		# "no messages" and crash trying to generate an opening one.
 		session = self._db.get_chat_session(session_id)
-		if session is not None and session["source"] == "imported":
+		if session is None:
+			raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
+		if session["type"] == "imported":
 			return None
 
-		project_name = self._active_project_name
+		project_name = session["project_name"]
 		automaton, state = self._project_service.get_automaton_and_state_for_session(session_id)
 
 		init_message = None
@@ -465,9 +519,11 @@ class ChatService(object):
 	async def _generate_opening_message_body(self, session_id: int) -> dict:
 		return await self.process_turn(session_id)
 
-	async def _generate_action_prompt_message(self, action: Action, session_id: int) -> dict:
+	async def _generate_action_prompt_message(self, action: Action, session_id: int, *, locked: bool = True) -> dict:
 		logger.warning("Executing action_prompt for action '%s'.", action.name)
-		return await self.process_turn(session_id, None, extra_prompt=action.action_prompt)
+		if locked:
+			return await self.process_turn(session_id, None, extra_prompt=action.action_prompt)
+		return await self._process_turn_body(session_id, None, extra_prompt=action.action_prompt)
 
 	async def _messages_for_transition(
 		self, action: Action, session_id: int, new_state: State, *, is_self_loop: bool
@@ -479,9 +535,9 @@ class ChatService(object):
 
 		turn_results = []
 		if action.action_prompt:
-			turn_results.append(await self._generate_action_prompt_message(action, session_id))
+			turn_results.append(await self._generate_action_prompt_message(action, session_id, locked=False))
 		if should_open:
-			turn_results.append(await self.process_turn(session_id))
+			turn_results.append(await self._process_turn_body(session_id))
 
 		messages = []
 		for turn_result in turn_results:
@@ -494,10 +550,10 @@ class ChatService(object):
 		return messages
 
 	async def apply_manual_action(self, action_name: str, session_id: int) -> dict:
-		if self.lock.locked():
+		project_name = self._project_name_for_session(session_id)
+		if self._session_locks.get(str(session_id)).locked():
 			raise ChatServiceError("A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT)
-		async with self.lock:
-			project_name = self._active_project_name
+		async with self._session_scope(project_name, session_id):
 			_, source_state = self._project_service.get_automaton_and_state_for_session(session_id)
 			# Resolved before applying the action: save_transition (inside
 			# project_service.apply_manual_action) now needs a session_id.
@@ -528,10 +584,21 @@ class ChatService(object):
 		on_metadata: OnMetadata | None = None,
 		extra_prompt: str | None = None,
 	) -> dict:
-		project_name = self._active_project_name
+		project_name = self._project_name_for_session(session_id)
+		async with self._session_scope(project_name, session_id):
+			return await self._process_turn_body(session_id, text, on_metadata, extra_prompt=extra_prompt)
+
+	async def _process_turn_body(
+		self,
+		session_id: int,
+		text: str | None = None,
+		on_metadata: OnMetadata | None = None,
+		extra_prompt: str | None = None,
+	) -> dict:
+		project_name = self._project_name_for_session(session_id)
 		_, state = self._project_service.get_automaton_and_state_for_session(session_id)
 		self._require_active_session(session_id, project_name, state.key)
-		reply = await self.tracking_service.process(session_id, text, on_metadata, extra_prompt=extra_prompt)
+		reply = await self._tracking_service.process(session_id, text, on_metadata, extra_prompt=extra_prompt)
 		# touch_session wants the plain state key — reply['state'] is the
 		# full StatePayload dict, not a string; passing it whole would
 		# silently store its Python repr as end_state.

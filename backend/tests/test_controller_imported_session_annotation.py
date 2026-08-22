@@ -109,8 +109,8 @@ def test_expected_signals_can_also_be_annotated_on_an_imported_session(client):
 
 
 def test_a_native_sessions_message_is_unaffected_by_the_imported_fallback(client):
-    """The fallback only applies to source='imported' sessions — a real
-    turn's user message on a native session must still 409; only the
+    """The fallback only applies to type='imported' sessions — a real
+    turn's user message on a live session must still 409; only the
     session's literal first message gets the existing treatment."""
     native_session_id = _setup_project(client, autotracking_on_ai_message=False)
     turn = client.post(f"/api/chat/sessions/{native_session_id}/messages", json={"message": "hi"})
