@@ -19,16 +19,18 @@ object. Every session of the project is included, whether it was a real
 
 ## Session object
 
-| Field         | Type              | Meaning                                                                 |
-| ------------- | ----------------- | ------------------------------------------------------------------------ |
-| `name`        | `string \| null`  | Session title, shown as its label in the Sessions panel.                 |
-| `timestamp`   | `string \| null`  | Session start time, ISO 8601 UTC (e.g. `2026-08-20T12:34:56+00:00`).     |
-| `datetime_end`| `string \| null`  | Session end time, ISO 8601 UTC.                                          |
-| `start_state` | `string \| null`  | Automaton state the session started in.                                  |
-| `end_state`   | `string \| null`  | Automaton state the session ended in (or currently sits in).             |
-| `labeled`     | `boolean`         | Whether a reviewer has marked this session "done" (the Mark done button).|
-| `comment`     | `string \| null`  | Reviewer's free-text note about the whole session.                       |
-| `messages`    | `array`           | The session's messages, in chronological order. See below.               |
+| Field          | Type             | Meaning                                                                                                                                                                                   |
+| -------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`         | `string \| null` | Session title, shown as its label in the Sessions panel.                                                                                                                                  |
+| `username`     | `string \| null` | The session's owner. Preserved on reimport when present; a `.txt`-style import with no `username` generates a fresh test user instead.                                                    |
+| `type`         | `string \| null` | The session's original kind — `"live"` or `"imported"`. Preserved on reimport; missing or any other value falls back to `"imported"` (e.g. an export produced before this field existed). |
+| `timestamp`    | `string \| null` | Session start time, ISO 8601 UTC (e.g. `2026-08-20T12:34:56+00:00`).                                                                                                                      |
+| `datetime_end` | `string \| null` | Session end time, ISO 8601 UTC.                                                                                                                                                           |
+| `start_state`  | `string \| null` | Automaton state the session started in.                                                                                                                                                   |
+| `end_state`    | `string \| null` | Automaton state the session ended in (or currently sits in).                                                                                                                              |
+| `labeled`      | `boolean`        | Whether a reviewer has marked this session "done" (the Mark done button).                                                                                                                 |
+| `comment`      | `string \| null` | Reviewer's free-text note about the whole session.                                                                                                                                        |
+| `messages`     | `array`          | The session's messages, in chronological order. See below.                                                                                                                                |
 
 ## Message object
 
@@ -61,6 +63,8 @@ no linked transition — don't assume they're present with `null` values:
 [
   {
     "name": "Checkout walkthrough",
+    "username": "alice@example.com",
+    "type": "live",
     "timestamp": "2026-08-20T12:34:56+00:00",
     "datetime_end": "2026-08-20T12:40:03+00:00",
     "start_state": "greeting",
@@ -101,10 +105,10 @@ no linked transition — don't assume they're present with `null` values:
   linked message (the session's very first, implicit transition into
   `start_state`) is dropped on export; the importing side reconstructs it
   from `start_state` instead of expecting it in `messages`.
-- **Round-tripping always produces an "imported" session**, even if the
-  original was a live conversation. A live session is only meaningful
-  against the exact database/automaton revision it actually ran against, so
-  re-importing it elsewhere would misrepresent it as a real one.
+- **Round-tripping preserves the original `type`.** A live session reimports
+  as `"live"` again, not force-converted to `"imported"` — `username` is
+  preserved the same way. Only a file with no `type` at all (an export
+  produced before this field existed) falls back to `"imported"`.
 - **Every field except `role`/`text` is optional.** A hand-written or
   externally generated file can omit any other key — `SessionImportJsonRequest`
   defaults everything else to `null`/`false`/`[]`.

@@ -90,6 +90,7 @@ class SessionImportJsonRequest(BaseModel):
     # _export_session — one entry of the array "Download all" produces.
     name: str | None = None
     username: str | None = None
+    type: str | None = None
     timestamp: str | None = None
     datetime_end: str | None = None
     start_state: str | None = None

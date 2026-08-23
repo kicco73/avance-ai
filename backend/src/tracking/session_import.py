@@ -79,15 +79,13 @@ class SessionImportManager:
         return session_id
 
     def import_session_json(self, username: str, project_name: str, session_data: dict) -> int:
-        """Restores one session_export.py-produced session exactly. Always
-        `type='imported'`, since a round-tripped session never ran
-        against *this* automaton/revision. Raises KeyError/TypeError on malformed input."""
         datetime_start = _parse_iso(session_data.get('timestamp'))
         datetime_end = _parse_iso(session_data.get('datetime_end'))
         if datetime_start is not None and datetime_end is not None and self._db.chat_session_exists(
             username, project_name, datetime_start, datetime_end
         ):
             raise ValueError('A session with the same start and end time already exists for this user.')
+        restored_type = session_data.get('type') if session_data.get('type') in ('live', 'imported') else 'imported'
         messages = session_data.get('messages', [])
         session_id = self._db.create_chat_session(
             username, project_name, self._published_revision(project_name),
@@ -95,7 +93,7 @@ class SessionImportManager:
             datetime_end=datetime_end,
             start_state=session_data.get('start_state'),
             end_state=session_data.get('end_state'),
-            type='imported', title=session_data.get('name'),
+            type=restored_type, title=session_data.get('name'),
         )
         try:
             if session_data.get('labeled'):

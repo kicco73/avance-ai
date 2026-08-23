@@ -131,3 +131,20 @@ def test_create_run_rejects_unknown_strategy(client, hello_project):
     )
 
     assert response.status_code == 400
+
+
+def test_delete_benchmark_runs_forces_a_fresh_run_instead_of_a_cache_hit(client, hello_project):
+    session_id = _make_labeled_session(client)
+    first = client.post(
+        f"/api/projects/{hello_project}/benchmark-runs", json={"session_id": session_id, "strategy": "turn_by_turn"},
+    ).json()
+    _wait_for_terminal_status(client, hello_project, first["id"])
+
+    response = client.delete(f"/api/projects/{hello_project}/benchmark-runs")
+    assert response.status_code == 200, response.text
+    assert client.get(f"/api/projects/{hello_project}/benchmark-runs/{first['id']}").status_code == 404
+
+    second = client.post(
+        f"/api/projects/{hello_project}/benchmark-runs", json={"session_id": session_id, "strategy": "turn_by_turn"},
+    ).json()
+    _wait_for_terminal_status(client, hello_project, second["id"])

@@ -42,6 +42,7 @@ class SessionExportManager:
         return {
             'name': session['title'],
             'username': session['username'],
+            'type': session['type'],
             'timestamp': _utc_iso(session['datetime_start']),
             'datetime_end': _utc_iso(session['datetime_end']),
             'start_state': session['start_state'],

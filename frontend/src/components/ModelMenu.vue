@@ -90,7 +90,8 @@ onBeforeUnmount(() => {
 <template>
   <div class="model-menu" ref="rootEl">
     <button ref="btnEl" class="model-btn" :title="buttonLabel" @click="toggle">
-      {{ buttonLabel }}
+      <span class="model-btn-label">{{ buttonLabel }}</span>
+      <span class="model-btn-caret">▾</span>
     </button>
     <button
       class="model-info-btn"
@@ -152,9 +153,15 @@ onBeforeUnmount(() => {
 <style scoped>
 .model-menu {
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
 }
 
 .model-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
   padding: 0.4rem 1rem;
   border-radius: 6px;
   border: 1px solid #4a6fa5;
@@ -162,9 +169,17 @@ onBeforeUnmount(() => {
   color: #4a6fa5;
   cursor: pointer;
   max-width: 160px;
+}
+
+.model-btn-label {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.model-btn-caret {
+  flex: none;
+  font-size: 0.65rem;
 }
 
 .model-btn:hover {
@@ -173,10 +188,10 @@ onBeforeUnmount(() => {
 }
 
 .model-info-btn {
+  flex: none;
   width: 1.6rem;
   height: 1.6rem;
   line-height: 1;
-  margin-left: 0.3rem;
   padding: 0;
   border-radius: 50%;
   border: 1px solid #4a6fa5;

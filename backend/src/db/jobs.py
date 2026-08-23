@@ -47,6 +47,11 @@ class JobMixin:
             return None
         return self._job_to_dict(row)
 
+    def delete_jobs_by_reference_ids(self, kind: str, reference_ids: list[int]) -> None:
+        if not reference_ids:
+            return
+        Job.delete().where((Job.kind == kind) & (Job.reference_id.in_(reference_ids))).execute()
+
     def list_jobs(self, kind: str | None=None) -> list[dict]:
         query = Job.select()
         if kind is not None:

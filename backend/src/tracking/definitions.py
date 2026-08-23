@@ -26,7 +26,7 @@ class Signals(object):
 
     @property
     def automaton(self) -> Automaton:
-        return self._project_service.get_active_automaton_and_state()[0]
+        return self._project_service.get_active_automaton()
 
     def _active_project_name(self) -> str:
         name = self._db.get_active_project_name(Session().user)
