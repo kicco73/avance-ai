@@ -8,7 +8,6 @@ import Inspector from '../../inspector/Inspector.vue'
 import InspectorGraphTab from '../../inspector/InspectorGraphTab.vue'
 import InspectorSignalsTab from '../../inspector/InspectorSignalsTab.vue'
 import InspectorMetricsTab from '../../inspector/InspectorMetricsTab.vue'
-import InspectorDetailCard from '../../inspector/InspectorDetailCard.vue'
 import InspectorUserInfoCard from '../../inspector/InspectorUserInfoCard.vue'
 import CardMenu from '../../inspector/CardMenu.vue'
 import { vAutosize } from '../../inspector/textareaAutosize.js'
@@ -58,9 +57,9 @@ const inspectorTabs = computed(() => {
     { id: 'signals', label: 'Signals' }
   ]
   const withMetrics = currentSessionIsImported.value ? base : [...base, { id: 'metrics', label: 'Metrics' }]
-  return [...withMetrics, { id: 'info', label: 'Info' }]
+  return [{ id: 'info', label: 'Info' }, ...withMetrics]
 })
-const inspectorActiveTab = ref('states')
+const inspectorActiveTab = ref('info')
 // Starts open — reviewing a specific session is the point of this view.
 const benchmarkSessionsPanelOpen = ref(true)
 const sessionsPanelWidth = ref(240)
@@ -268,29 +267,6 @@ const sessionUser = computed(() => {
   if (currentSessionIsImported.value || !currentSession.value) return null
   return users.value.find((u) => u.id === currentSession.value.username) ?? null
 })
-
-// The Info tab's read-only start/end state cards resolve through the
-// States tab's already-loaded graph rather than a second fetch.
-const statesTabRef = ref(null)
-// Not `statesTabRef.value = el` inline in the template — in dev-mode
-// compile, a template's auto-unwrapping proxy makes `.value = ` write
-// onto the unwrapped value instead of the ref, throwing on mount.
-function setStatesTabRef(el) {
-  statesTabRef.value = el
-}
-
-// An imported session's start_state/end_state are always null since it
-// never ran against the automaton, so a domain expert's own
-// expected_state annotations are the only "start"/"end" it gets.
-const importedAnnotatedStates = computed(() => signalsLog.value.map((row) => row.expected_state).filter(Boolean))
-const sessionStartStateKey = computed(() =>
-  currentSessionIsImported.value ? (importedAnnotatedStates.value[0] ?? null) : (currentSession.value?.start_state ?? null)
-)
-const sessionEndStateKey = computed(() =>
-  currentSessionIsImported.value ? (importedAnnotatedStates.value.at(-1) ?? null) : (currentSession.value?.end_state ?? null)
-)
-const startStateElement = computed(() => statesTabRef.value?.stateElementFor(sessionStartStateKey.value) ?? null)
-const endStateElement = computed(() => statesTabRef.value?.stateElementFor(sessionEndStateKey.value) ?? null)
 
 // Same fallback convention as SessionsPanel.vue's own
 // formatSessionTimestamp, which isn't exported so is reimplemented here.
@@ -656,35 +632,6 @@ onBeforeUnmount(() => {
           v-model:active-tab="inspectorActiveTab"
           v-model:collapsed="inspectorCollapsed"
         >
-          <template #tab-states="{ registerTab }">
-            <InspectorGraphTab
-              :ref="(el) => { registerTab('states')(el); setStatesTabRef(el) }"
-              :project-name="projectName"
-              :highlighted-state-key="highlightedStateKey"
-              :fired-action-edge="firedActionEdge"
-              :annotatable="annotatableSignalsRow != null"
-              :expected-state="expectedState"
-              :imported="currentSessionIsImported"
-              :session-id="currentSessionId"
-              @update-expected-state="onUpdateExpectedState"
-            />
-          </template>
-          <template #tab-signals="{ registerTab }">
-            <InspectorSignalsTab
-              :ref="registerTab('signals')"
-              :project-name="projectName"
-              :signal-values="signalValues"
-              :annotatable="annotatableExpectedSignals"
-              :expected-values="expectedValues"
-              :state-key="highlightedStateKey"
-              :imported="currentSessionIsImported"
-              :session-id="currentSessionId"
-              @update-expected-signals="onUpdateExpectedSignals"
-            />
-          </template>
-          <template #tab-metrics="{ registerTab }">
-            <InspectorMetricsTab :ref="registerTab('metrics')" :until-message-id="untilMessageId" :project-name="projectName" />
-          </template>
           <template #tab-info>
             <div v-if="currentSession" class="benchmark-session-info">
               <InspectorUserInfoCard v-if="sessionUser" :user="sessionUser" />
@@ -741,18 +688,37 @@ onBeforeUnmount(() => {
                   </div>
                 </Transition>
               </div>
-              <InspectorDetailCard
-                v-if="sessionStartStateKey === sessionEndStateKey"
-                :selected-element="startStateElement"
-                :closable="false"
-                role-badge="Start / End"
-              />
-              <template v-else>
-                <InspectorDetailCard :selected-element="startStateElement" :closable="false" role-badge="Start" />
-                <InspectorDetailCard :selected-element="endStateElement" :closable="false" role-badge="End" />
-              </template>
             </div>
             <p v-else class="benchmark-session-info-empty">No session selected.</p>
+          </template>
+          <template #tab-states="{ registerTab }">
+            <InspectorGraphTab
+              :ref="registerTab('states')"
+              :project-name="projectName"
+              :highlighted-state-key="highlightedStateKey"
+              :fired-action-edge="firedActionEdge"
+              :annotatable="annotatableSignalsRow != null"
+              :expected-state="expectedState"
+              :imported="currentSessionIsImported"
+              :session-id="currentSessionId"
+              @update-expected-state="onUpdateExpectedState"
+            />
+          </template>
+          <template #tab-signals="{ registerTab }">
+            <InspectorSignalsTab
+              :ref="registerTab('signals')"
+              :project-name="projectName"
+              :signal-values="signalValues"
+              :annotatable="annotatableExpectedSignals"
+              :expected-values="expectedValues"
+              :state-key="highlightedStateKey"
+              :imported="currentSessionIsImported"
+              :session-id="currentSessionId"
+              @update-expected-signals="onUpdateExpectedSignals"
+            />
+          </template>
+          <template #tab-metrics="{ registerTab }">
+            <InspectorMetricsTab :ref="registerTab('metrics')" :until-message-id="untilMessageId" :project-name="projectName" />
           </template>
         </Inspector>
       </div>
