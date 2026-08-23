@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ChatTimeline from '../../chat/ChatTimeline.vue'
-import SessionsPanel from '../../chat/SessionsPanel.vue'
+import SessionsTree from '../../chat/SessionsTree.vue'
 import MessageCommentButton from '../../chat/MessageCommentButton.vue'
 import ProjectsMenu from '../../ProjectsMenu.vue'
 import Inspector from '../../inspector/Inspector.vue'
@@ -124,11 +124,36 @@ async function handleImportSession(files) {
   else clearApiError()
 }
 
-// Uses the same shared selectSession as every other session picker in
-// the app — currentSessionId is the one source of truth.
-function onSelectSession(session) {
-  selectSession(session)
+// SessionsTree's own node id, either `user:<username>` (a user branch was
+// clicked, not one of their sessions) or `session:<id>`. Kept separate
+// from currentSessionId so the tree can highlight a selected user even
+// though that's not a session — see onSelectTreeNode below.
+const selectedUserNode = ref(null)
+const treeSelectedNodeId = computed(() =>
+  selectedUserNode.value ? `user:${selectedUserNode.value}` : (currentSessionId.value != null ? `session:${currentSessionId.value}` : null)
+)
+
+// A session leaf uses the same shared selectSession as every other
+// session picker in the app — currentSessionId is the one source of
+// truth. A user branch has no session of its own, so it just clears the
+// active session, which the chat pane and Info tab then both render as
+// "Please select a session."
+function onSelectTreeNode(nodeId) {
+  if (nodeId.startsWith('user:')) {
+    selectedUserNode.value = nodeId.slice('user:'.length)
+    currentSessionId.value = null
+    return
+  }
+  const sessionId = Number(nodeId.slice('session:'.length))
+  const session = sessions.value.find((s) => s.id === sessionId)
+  if (session) selectSession(session)
 }
+
+// A session picked some other way (import, auto-select on load) should
+// clear a stale user-branch highlight so the tree's own selection follows.
+watch(currentSessionId, (id) => {
+  if (id != null) selectedUserNode.value = null
+})
 
 // Only an imported session is ever deletable here — a live/native one
 // is the record of a real conversation, not this view's to discard.
@@ -549,19 +574,17 @@ onBeforeUnmount(() => {
       <div class="benchmark-chat-pane">
         <div class="sessions-panel-wrap">
           <div class="sessions-panel" :class="{ 'sessions-panel-collapsed': !benchmarkSessionsPanelOpen }" :style="benchmarkSessionsPanelOpen ? { width: sessionsPanelWidth + 'px' } : null">
-            <SessionsPanel
+            <SessionsTree
               :sessions="sessions"
+              :users="users"
               :loading="sessionsLoading"
-              :current-session-id="currentSessionId"
-              :deleting-session-id="deletingSessionId"
-              :allow-create="false"
-              :allow-delete="false"
+              :selected-node-id="treeSelectedNodeId"
               :allow-import="true"
               :allow-download-all="true"
               :downloading-all="downloadingSessions"
               :collapsed="!benchmarkSessionsPanelOpen"
               @update:collapsed="toggleBenchmarkSessionsPanel"
-              @select="onSelectSession"
+              @select="onSelectTreeNode"
               @import="handleImportSession"
               @download-all="handleDownloadSessions"
             />
@@ -595,7 +618,7 @@ onBeforeUnmount(() => {
 
           <p v-if="loading" class="benchmark-status">Loading…</p>
           <p v-else-if="!currentSessionId" class="benchmark-status">
-            No session selected — pick one from the Sessions panel first.
+            Please select a session.
           </p>
           <p v-else-if="!timeline.length" class="benchmark-status">This session has no messages yet.</p>
 
@@ -689,7 +712,7 @@ onBeforeUnmount(() => {
                 </Transition>
               </div>
             </div>
-            <p v-else class="benchmark-session-info-empty">No session selected.</p>
+            <p v-else class="benchmark-session-info-empty">Please select a session.</p>
           </template>
           <template #tab-states="{ registerTab }">
             <InspectorGraphTab

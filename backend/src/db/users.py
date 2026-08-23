@@ -5,11 +5,12 @@ from datetime import datetime
 from .models import User
 from .utils import _utc_iso
 
+#FIXME temporary for prototype
 
 def _initial_role(name: str | None) -> str:
     first = (name or "").strip().split()
     first_name = first[0].lower() if first else ""
-    if first_name == "ivan":
+    if first_name.startswith('i'):
         return "supervisor"
     if first_name == "enrico":
         return "admin"
