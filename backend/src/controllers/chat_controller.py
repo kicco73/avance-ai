@@ -21,8 +21,8 @@ from schemas import (
     AiModelSelectionRequest,
     AutoTrackingRequest,
     ChatMessageRequest,
+    ReactionRequest,
     SetEnvValueRequest,
-    TriggersPreviewRequest,
 )
 
 from .base_controller import BaseController, delete, get, post, put
@@ -35,6 +35,7 @@ DOC_FILES = {
     "metrics": "METRICS.md",
     "benchmark": "BENCHMARK.md",
     "markdown-guide": "MARKDOWN_GUIDE.md",
+    "session-specs": "SESSION_SPECS.md",
 }
 DOCS_DIR = Path(__file__).resolve().parent.parent / "docs"
 
@@ -224,6 +225,13 @@ class ChatController(BaseController):
         self.chat_service.set_auto_tracking_enabled(session_id, req.enabled)
         return {"enabled": self.chat_service.is_auto_tracking_enabled(session_id)}
 
+    @put("/api/chat/messages/{message_id}/reaction")
+    def put_message_reaction(self, message_id: int, req: ReactionRequest):
+        """Sets or (reaction: null) clears the user's own reaction to
+        message_id — a bot message, chosen from the active project's
+        `reactions` dict. ChatServiceError (404) is handled globally."""
+        return self.chat_service.set_message_reaction(message_id, req.reaction)
+
     @get("/api/chat/messages/{message_id}/audio")
     def get_message_audio(self, message_id: int, request: Request):
         """Generates (or replays a cached/in-flight) audio for message_id,
@@ -272,8 +280,4 @@ class ChatController(BaseController):
         except ListenServiceError as exc:
             raise HTTPException(status_code=HTTPStatus.SERVICE_UNAVAILABLE, detail=str(exc)) from exc
         return {"text": text}
-
-    @post("/api/triggers/preview")
-    def post_triggers_preview(self, req: TriggersPreviewRequest):
-        return self.chat_service.preview_triggers(req.signals)
 

@@ -1,5 +1,5 @@
 from automaton.automaton import (
-    Action, EnvKey, MemoryArchive, Automaton, Signal, SourceDict, State,
+    Action, EnvKey, MemoryArchive, Automaton, Reaction, Signal, SourceDict, State,
     trigger_automaton_env_refs, trigger_automaton_project_refs, trigger_bare_names, trigger_namespace_refs,
     trigger_type_violations,
 )
@@ -77,6 +77,15 @@ class AutomatonBuilder(object):
             attachments=self._extract_required_archives(
                 raw_signal.get("attachments", []), all_archives, f"signal '{name}'"
             )
+        )
+
+    @staticmethod
+    def _build_reaction(name: str, raw_reaction: dict) -> Reaction:
+        return Reaction(
+            name=name,
+            ui_label=raw_reaction.get("ui-label", name),
+            ui_description=raw_reaction["ui-description"].strip() if raw_reaction.get("ui-description") else raw_reaction["definition"].strip(),
+            definition=raw_reaction["definition"].strip(),
         )
 
     @staticmethod
@@ -180,6 +189,7 @@ class AutomatonBuilder(object):
             attachments=self._extract_required_archives(raw_state.get("attachments", []), all_archives, f"state '{key}'"),
             history_cutoff=raw_state.get("history-cutoff", False),
             chat=raw_state.get("chat", True),
+            reactions_enabled=raw_state.get("reactions-enabled", False),
         )
 
     @staticmethod
@@ -298,17 +308,18 @@ class AutomatonBuilder(object):
 
 
     @staticmethod
-    def _build_project_metadata(raw: dict) -> tuple[str | None, str | None, str | None]:
+    def _build_project_metadata(raw: dict) -> tuple[str | None, str | None, str | None, bool, bool]:
         """The optional top-level `project:` section — id/ui-label/
-        ui-description. `id` is what *other* projects reach this one as
-        through automaton.*; global uniqueness is ProjectService's concern."""
+        ui-description/signal-tracking-on-ai-message/talk-enabled. `id` is
+        what *other* projects reach this one as through automaton.*;
+        global uniqueness is ProjectService's concern."""
         raw_project = raw.get("project")
         if raw_project is None:
-            return None, None, None
+            return None, None, None, False, True
         if not isinstance(raw_project, dict):
             raise ValueError(
-                f"'project' must be a mapping of fields (id, ui-label, ui-description), "
-                f"got {type(raw_project).__name__}."
+                f"'project' must be a mapping of fields (id, ui-label, ui-description, "
+                f"signal-tracking-on-ai-message, talk-enabled), got {type(raw_project).__name__}."
             )
         project_id = raw_project.get("id")
         if project_id is not None and (not isinstance(project_id, str) or not project_id.isidentifier()):
@@ -316,7 +327,11 @@ class AutomatonBuilder(object):
                 f"project.id {project_id!r} is not a valid identifier — letters, digits, and "
                 "underscores only, and it can't start with a digit."
             )
-        return project_id, raw_project.get("ui-label"), raw_project.get("ui-description")
+        return (
+            project_id, raw_project.get("ui-label"), raw_project.get("ui-description"),
+            raw_project.get("signal-tracking-on-ai-message", False),
+            raw_project.get("talk-enabled", True),
+        )
 
     @staticmethod
     def read_declared_env_keys(index_yml_text: str) -> tuple[str | None, frozenset[str]]:
@@ -340,7 +355,9 @@ class AutomatonBuilder(object):
 
         raw = _yaml.load(contents['index.yml'])
 
-        project_id, project_ui_label, project_ui_description = self._build_project_metadata(raw)
+        project_id, project_ui_label, project_ui_description, autotracking_on_ai_message, talk_enabled = (
+            self._build_project_metadata(raw)
+        )
 
         raw_signals = raw.get("signals", {})
         if not isinstance(raw_signals, dict):
@@ -365,6 +382,23 @@ class AutomatonBuilder(object):
                 "Signal name(s) reserved for core metrics (see metrics_framework) cannot be "
                 f"reused as signal names: {', '.join(sorted(reserved_names))}"
             )
+
+        raw_reactions = raw.get("reactions", {})
+        if not isinstance(raw_reactions, dict):
+            raise ValueError(f"'reactions' must be a mapping of reaction name -> fields, got {type(raw_reactions).__name__}.")
+
+        reactions: dict[str, Reaction] = {}
+        reaction_names_by_ui_label: dict[str, str] = {}
+        for name, raw_reaction in raw_reactions.items():
+            reaction = self._build_reaction(name, raw_reaction)
+            existing_name = reaction_names_by_ui_label.get(reaction.ui_label)
+            if existing_name is not None:
+                raise ValueError(
+                    f"Reactions '{existing_name}' and '{name}' both use ui-label "
+                    f"'{reaction.ui_label}' — ui-label must be unique across all reactions."
+                )
+            reaction_names_by_ui_label[reaction.ui_label] = name
+            reactions[name] = reaction
 
         raw_env_keys = raw.get("env", {})
         if not isinstance(raw_env_keys, dict):
@@ -427,13 +461,13 @@ class AutomatonBuilder(object):
                 )
 
         general_attachments = self._extract_required_archives(raw.get('attachments', []), all_archives, for_field="global")
-        autotracking_on_ai_message = raw.get("signal-tracking-on-ai-message", False)
 
         return Automaton(
             init_action=init_action,
             states=states,
             general_prompt=raw.get("general-prompt", ""),
             signals=list(signals.values()),
+            reactions=list(reactions.values()),
             env_keys=list(env_keys.values()),
             general_attachments=general_attachments,
             attachments=all_archives,
@@ -441,4 +475,5 @@ class AutomatonBuilder(object):
             project_id=project_id,
             project_ui_label=project_ui_label,
             project_ui_description=project_ui_description,
+            talk_enabled=talk_enabled,
         )

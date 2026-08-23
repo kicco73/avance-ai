@@ -23,6 +23,7 @@ from chat.errors import ChatServiceError
 from chat.session_manager import ChatSessionManager
 from chat.session_summary_manager import SessionSummaryManager
 from chat.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
+from auth.roles import role_satisfies
 from jobs import JobQueue
 from tracking.tracking_engine import DbTrackingSink, TrackingEngine
 from tracking.turn_callbacks import OnMetadata
@@ -73,6 +74,11 @@ class ChatService(object):
 	@property
 	def _username(self) -> str:
 		return Session().user
+
+	def _owns_session(self, session_username: str) -> bool:
+		if session_username == self._username:
+			return True
+		return session_username.startswith('Test user ') and role_satisfies(Session().role, 'supervisor')
 
 	def get_message_audio_text(self, message_id: int) -> str | None:
 		return self._db.get_message_audio_text(message_id)
@@ -203,14 +209,15 @@ class ChatService(object):
 	def reset_test_sessions(self, project_name: str) -> dict:
 		self._project_service.reset_test_sessions(project_name)
 		automaton, state = self._project_service.get_automaton_and_state(project_name, type='test')
-		return {**Automaton.get_state_payload(state), "on-enter": automaton.init_action.on_enter}
+		return {**automaton.get_state_payload(state), "on-enter": automaton.init_action.on_enter}
 
 	def _is_session_active(self, session: dict, pool_active_id: int | None) -> bool:
 		fixed = get_session_type_strategy(session["type"]).default_active()
 		return fixed if fixed is not None else session["id"] == pool_active_id
 
 	def _list_sessions_by_type(self, project_name: str, type: str | tuple[str, ...], active_type: str) -> list[dict]:
-		sessions = self._db.list_chat_sessions(self._username, project_name, type=type)
+		sessions = self._db.list_chat_sessions(None, project_name, type=type)
+		sessions = [s for s in sessions if self._owns_session(s['username'])]
 		active = self._session_manager.get_active_session(self._username, project_name, type=active_type)
 		active_id = active["id"] if active is not None else None
 		return [self._session_payload(s, active=self._is_session_active(s, active_id)) for s in sessions]
@@ -233,7 +240,7 @@ class ChatService(object):
 		the current user — sessions can be deleted independently, so a
 		caller about to write to one can't just assume it's still there."""
 		session = self._db.get_chat_session(session_id)
-		if session is None or session["username"] != self._username:
+		if session is None or not self._owns_session(session["username"]):
 			raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
 
 	def delete_session(self, session_id: int) -> None:
@@ -327,7 +334,7 @@ class ChatService(object):
 		message = self._db.get_message(message_id)
 		if message is not None:
 			session = self._db.get_chat_session(message["session_id"])
-			if session is not None and session["username"] == self._username:
+			if session is not None and self._owns_session(session["username"]):
 				return message
 		raise ChatServiceError("Message not found.", status_code=HTTPStatus.NOT_FOUND)
 
@@ -356,11 +363,6 @@ class ChatService(object):
 		return self.metric_service.calculate_all(
 			until=until, project_name=project_name, include_all_scopes=full, username=username,
 		)
-
-	def preview_triggers(self, signals: dict) -> list:
-		automaton, state = self._project_service.get_active_automaton_and_state()
-		scope = self._evaluation_scope_builder.build(automaton, state.key, signals)
-		return automaton.preview_triggers(state.key, scope)
 
 	def get_env(self, message_id: int | None = None) -> dict:
 		"""{"stored": ..., "action_set": ...}, reported separately so the
@@ -430,6 +432,13 @@ class ChatService(object):
 		target, so there's no 409 here, only the usual 404 for an unowned message_id."""
 		self._require_own_message(message_id)
 		return self._tracking_service.set_message_comment(message_id, comment)
+
+	def set_message_reaction(self, message_id: int, reaction: str | None) -> dict | None:
+		"""Sets or clears the reaction message_id received from the other
+		party — the user's own choice on a bot message. Every message is a
+		legitimate target, same as set_message_comment above."""
+		self._require_own_message(message_id)
+		return self._db.set_message_reaction(message_id, reaction)
 
 	def clear_session_annotations(self, session_id: int) -> None:
 		"""Clears every expert annotation (expected_state and

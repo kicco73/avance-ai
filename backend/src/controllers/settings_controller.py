@@ -31,13 +31,13 @@ class SettingsController(BaseController, ProjectCommitMixin):
         self.db = db
         self.version = version
 
-    @get("/api/settings/about")
+    @get("/api/settings/about", role="supervisor")
     def get_about(self):
         """The Settings menu's own "About Avance..." dialog — just the
         display name and running backend version, __version__ in main.py."""
         return {"name": APP_NAME, "version": self.version}
 
-    @get("/api/settings/backup")
+    @get("/api/settings/backup", role="admin")
     async def get_backup(self):
         """Downloads the whole working SQLite database file — every
         project, session, message, and signal — as a restorable backup
@@ -51,7 +51,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
-    @post("/api/settings/backup")
+    @post("/api/settings/backup", role="admin")
     async def post_backup(self, request: Request):
         """Restores the working SQLite database from an uploaded backup
         file, replacing it in place. Wipes whatever the server currently
@@ -69,14 +69,14 @@ class SettingsController(BaseController, ProjectCommitMixin):
     def get_projects(self):
         return self.project_service.list_projects()
 
-    @get("/api/settings/projects/runtime-status")
+    @get("/api/settings/projects/runtime-status", role="admin")
     def get_all_projects_runtime_status(self):
         """One row per project — name/status/paused_reason/revision/
         published_revision — the Settings > Runtime status view's own
         table."""
         return {"projects": self.project_service.get_runtime_status()}
 
-    @put("/api/projects/{project_name}/pause")
+    @put("/api/projects/{project_name}/pause", role="admin")
     def put_project_pause(self, project_name: str):
         """An operator's own explicit override — only ever allowed while
         `project_name` is actually running."""
@@ -87,7 +87,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @put("/api/projects/{project_name}/resume")
+    @put("/api/projects/{project_name}/resume", role="admin")
     def put_project_resume(self, project_name: str):
         """The other half of pause above — only ever allowed while
         `project_name` is manually paused (see ProjectService.
@@ -99,14 +99,14 @@ class SettingsController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @post("/api/projects")
+    @post("/api/projects", role="admin")
     async def post_new_project(self):
         """"New project" — same effect as PUT /api/projects/{project_name}
         with backend/samples/Hello world.zip as the body, minus picking a
         name first (see ProjectService.create_new_project)."""
         return await self.project_service.create_new_project(self._activate_project)
 
-    @put("/api/projects/{project_name}/activate")
+    @put("/api/projects/{project_name}/activate", role="admin")
     async def activate_project(self, project_name: str):
         try:
             await self.project_service.activate_project_idempotent(project_name, self._activate_project)
@@ -117,7 +117,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
             "project_name": project_name,
         }
 
-    @get("/api/projects/{project_name}")
+    @get("/api/projects/{project_name}", role="admin")
     def get_project(self, project_name: str):
         """Downloads `project_name` as a zip — the read side of PUT
         /api/projects/{project_name}, built so it round-trips back through PUT
@@ -135,7 +135,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
             },
         )
 
-    @put("/api/projects/{project_name}")
+    @put("/api/projects/{project_name}", role="admin")
     async def put_project(self, project_name: str, request: Request):
         """Creates or replaces `project_name` from a raw body (YAML or zip, see
         ProjectService._looks_like_zip). Stage -> validate -> only on success
@@ -149,7 +149,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return result
 
-    @delete("/api/projects/{project_name}")
+    @delete("/api/projects/{project_name}", role="admin")
     async def delete_project(self, project_name: str):
 
         try:
@@ -160,7 +160,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
         return {"success": True}
 
-    @post("/api/projects/{project_name}/live-sessions/wipe")
+    @post("/api/projects/{project_name}/live-sessions/wipe", role="admin")
     async def post_wipe_live_sessions(self, project_name: str):
         async with self.chat_service.acquire_write(project_name):
             self.project_service.wipe_live_sessions(project_name)

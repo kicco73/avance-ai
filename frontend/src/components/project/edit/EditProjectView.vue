@@ -28,7 +28,6 @@ import {
   getSessionSignals,
   getSessions,
   getProjectGraph,
-  postTriggersPreview,
   postAddState,
   postAddSignal,
   postAddEnvKey,
@@ -458,7 +457,8 @@ const rawLiveMessages = computed(() =>
     timestamp: m.timestamp,
     role: m.role,
     content: m.content,
-    audio_text: m.audioText
+    audio_text: m.audioText,
+    reaction: m.reaction
   }))
 )
 
@@ -1309,38 +1309,12 @@ async function refreshSignalValues() {
   }
 }
 
-// { stateKey, actionName } of the action the engine would fire next from
-// the live current state, or null (see refreshNextAction). Fed to the
-// Inspector as its next-action-edge prop, which draws and highlights it.
-const nextAction = ref(null)
-
-// Reuses the same triggers-preview endpoint SignalsView calls — no
-// separate client-side reimplementation of trigger evaluation. would_fire's
-// FIFO-priority logic (see backend Automaton.preview_triggers) decides the winner; this just finds it.
-async function refreshNextAction() {
-  const stateKeyAtFetch = liveState.value?.key
-  if (stateKeyAtFetch == null) {
-    nextAction.value = null
-    return
-  }
-  try {
-    const signalsList = await getSignals()
-    const signalValues = Object.fromEntries(signalsList.map((s) => [s.name, s.error ? null : s.value]))
-    const previews = await postTriggersPreview(signalValues)
-    const winner = previews.find((p) => p.would_fire)
-    nextAction.value = winner ? { stateKey: stateKeyAtFetch, actionName: winner.action_name } : null
-  } catch {
-    // already surfaced via apiFetch — the graph just shows no "next" edge
-    nextAction.value = null
-  }
-}
-
 // Shared by the initial mount (Inspect is open by default) and every
 // later re-expand (see handleInspectorCollapsedChange). Inspector.vue
 // loads its own graph/signals definitions on mount — this view only owns the live/point-in-time pieces layered on top.
 async function openInspect() {
   await nextTick()
-  await Promise.all([refreshNextAction(), refreshSignalValues()])
+  await refreshSignalValues()
 }
 
 // Inspector.vue's own collapse toggle (see its own header) drives this.
@@ -1391,7 +1365,6 @@ watch(turnCount, () => {
   selected.value = null
   refreshSignalsLog()
   if (!inspecting.value) return
-  refreshNextAction()
   refreshSignalValues()
   inspectorRef.value?.refresh()
   // index.yml's own dedicated graph needs the same nudge while it's the
@@ -1522,7 +1495,6 @@ onBeforeUnmount(() => {
           :current-file-is-image="currentFileIsImage"
           :current-file-is-markdown="currentFileIsMarkdown"
           :highlighted-state-key="highlightedStateKey"
-          :next-action-edge="selected ? null : nextAction"
           :fired-action-edge="firedActionEdge"
           :selected-element="selectedGraphElement"
           @start-explorer-drag="startExplorerDrag"
@@ -1576,7 +1548,6 @@ onBeforeUnmount(() => {
                 :project-name="projectName"
                 :highlighted-state-key="highlightedStateKey"
                 :auto-jump-on-highlight-change="true"
-                :next-action-edge="selected ? null : nextAction"
                 :fired-action-edge="firedActionEdge"
                 :editable-files="files"
                 @jump-to-definition="jumpToDefinition"
@@ -1616,7 +1587,6 @@ onBeforeUnmount(() => {
                 :actions="actionsTabList"
                 :editable-files="files"
                 :selected-element="selectedGraphElement"
-                :next-action-edge="selected ? null : nextAction"
                 :fired-action-edge="firedActionEdge"
                 :highlighted-state-key="highlightedStateKey"
                 :available-states="availableStates"

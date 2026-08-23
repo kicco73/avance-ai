@@ -1,21 +1,23 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ChatTimeline from '../../chat/ChatTimeline.vue'
-import SessionsPanel from '../../chat/SessionsPanel.vue'
+import SessionsTree from '../../chat/SessionsTree.vue'
 import MessageCommentButton from '../../chat/MessageCommentButton.vue'
+import ProjectsMenu from '../../ProjectsMenu.vue'
 import Inspector from '../../inspector/Inspector.vue'
 import InspectorGraphTab from '../../inspector/InspectorGraphTab.vue'
 import InspectorSignalsTab from '../../inspector/InspectorSignalsTab.vue'
 import InspectorMetricsTab from '../../inspector/InspectorMetricsTab.vue'
-import InspectorDetailCard from '../../inspector/InspectorDetailCard.vue'
+import InspectorUserInfoCard from '../../inspector/InspectorUserInfoCard.vue'
 import CardMenu from '../../inspector/CardMenu.vue'
 import { vAutosize } from '../../inspector/textareaAutosize.js'
 import { handleEnterNext } from '../../inspector/enterToNextField.js'
 import ErrorBanner from '../../ErrorBanner.vue'
 import {
-  getMessages, getSessionSignals, getSessions, getProjectGraph, postImportSession, postImportSessionJson,
+  getMessages, getSessionSignals, getSessions, getProjectGraph, postImportSessions,
   getExportSessions, putMessageExpectedState, putMessageExpectedSignals, putMessageComment, putSessionLabeled,
-  putSessionTitle, putSessionComment, deleteSessionAnnotations, deleteSession
+  putSessionTitle, putSessionComment, deleteSessionAnnotations, deleteSession, getUsers,
+  putSessionsTestUser, deleteTestUser
 } from '../../../api.js'
 import { currentSessionId, sessions, sessionsLoading, loadSessions, refreshSessionsQuietly, selectSession } from '../../../chatStore.js'
 import {
@@ -32,7 +34,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['close'])
+const emit = defineEmits(['close', 'project-select'])
 
 const loading = ref(true)
 // Raw backend message rows, kept as-is rather than chatStore.js's live
@@ -56,9 +58,9 @@ const inspectorTabs = computed(() => {
     { id: 'signals', label: 'Signals' }
   ]
   const withMetrics = currentSessionIsImported.value ? base : [...base, { id: 'metrics', label: 'Metrics' }]
-  return [...withMetrics, { id: 'info', label: 'Info' }]
+  return [{ id: 'info', label: 'Info' }, ...withMetrics]
 })
-const inspectorActiveTab = ref('states')
+const inspectorActiveTab = ref('info')
 // Starts open — reviewing a specific session is the point of this view.
 const benchmarkSessionsPanelOpen = ref(true)
 const sessionsPanelWidth = ref(240)
@@ -97,80 +99,86 @@ function toggleBenchmarkSessionsPanel() {
 // This view's Sessions panel reviews imported transcripts alongside live
 // ones, so every load/refresh below passes includeImported.
 
-// One .txt transcript, exactly one session — pushes its own {file, ok,
-// error?} onto the shared `results` accumulator and returns the new
-// session_id, or null on failure.
-async function importTranscriptFile(file, results) {
-  try {
-    const { session_id } = await postImportSession(props.projectName, file)
-    results.push({ file, ok: true })
-    return session_id
-  } catch (err) {
-    // apiFetch already wrote this failure to the error banner;
-    // summarizeImportFailures below builds the batch's own summary once
-    // every file is done, which is what should stay on screen.
-    results.push({ file, ok: false, error: err.message })
-    return null
-  }
-}
-
-// A "Download all" .json export is an *array* of sessions in one file,
-// unlike a .txt transcript — pushes one result per session found inside
-// it, each under a pseudo-file label since no real File object exists.
-async function importJsonFile(file, results) {
-  let sessionsData
-  try {
-    const parsed = JSON.parse(await file.text())
-    if (!Array.isArray(parsed)) throw new Error('Expected a JSON array of sessions.')
-    sessionsData = parsed
-  } catch (err) {
-    results.push({ file, ok: false, error: err.message })
-    return null
-  }
-  let lastId = null
-  for (const [index, sessionData] of sessionsData.entries()) {
-    const label = { name: sessionData?.name || `${file.name} #${index + 1}` }
-    try {
-      const { session_id } = await postImportSessionJson(props.projectName, sessionData)
-      results.push({ file: label, ok: true })
-      lastId = session_id
-    } catch (err) {
-      results.push({ file: label, ok: false, error: err.message })
-    }
-  }
-  return lastId
-}
-
-// One bad item must never abort the rest of the batch. The session list
-// is refreshed only once, after every file has settled — N sequential
-// refreshes would be wasted round trips for a list only needed at the end.
+// Every selected file (whichever mix of .txt transcripts and "Download
+// all" .json exports) uploaded in one request — all per-file/per-session
+// dispatch and error handling happens server-side; this just renders the
+// returned result.
 async function handleImportSession(files) {
-  const results = []
-  let lastImportedId = null
-  for (const file of files) {
-    const sessionId = file.name.toLowerCase().endsWith('.json')
-      ? await importJsonFile(file, results)
-      : await importTranscriptFile(file, results)
-    if (sessionId != null) lastImportedId = sessionId
+  let result
+  try {
+    result = await postImportSessions(props.projectName, files)
+  } catch {
+    // already surfaced via apiFetch
+    return
   }
 
-  if (lastImportedId != null) {
+  if (result.last_session_id != null) {
     // The list must contain the new session before it can be looked up
     // in it — refresh first, select second, not the other way around.
     await refreshSessionsQuietly(true, props.projectName)
-    const imported = sessions.value.find((s) => s.id === lastImportedId)
+    const imported = sessions.value.find((s) => s.id === result.last_session_id)
     if (imported) selectSession(imported)
   }
 
-  const failureSummary = summarizeImportFailures(results)
+  const failureSummary = summarizeImportFailures(result.results)
   if (failureSummary) setApiError(failureSummary.message, failureSummary.detail)
   else clearApiError()
 }
 
-// Uses the same shared selectSession as every other session picker in
-// the app — currentSessionId is the one source of truth.
-function onSelectSession(session) {
-  selectSession(session)
+// SessionsTree's own node id, either `user:<username>` (a user branch was
+// clicked, not one of their sessions) or `session:<id>`. Kept separate
+// from currentSessionId so the tree can highlight a selected user even
+// though that's not a session — see onSelectTreeNode below.
+const selectedUserNode = ref(null)
+const treeSelectedNodeId = computed(() =>
+  selectedUserNode.value ? `user:${selectedUserNode.value}` : (currentSessionId.value != null ? `session:${currentSessionId.value}` : null)
+)
+
+// A session leaf uses the same shared selectSession as every other
+// session picker in the app — currentSessionId is the one source of
+// truth. A user branch has no session of its own, so it just clears the
+// active session, which the chat pane and Info tab then both render as
+// "Please select a session."
+function onSelectTreeNode(nodeId) {
+  if (nodeId.startsWith('user:')) {
+    selectedUserNode.value = nodeId.slice('user:'.length)
+    currentSessionId.value = null
+    return
+  }
+  const sessionId = Number(nodeId.slice('session:'.length))
+  const session = sessions.value.find((s) => s.id === sessionId)
+  if (session) selectSession(session)
+}
+
+// A session picked some other way (import, auto-select on load) should
+// clear a stale user-branch highlight so the tree's own selection follows.
+watch(currentSessionId, (id) => {
+  if (id != null) selectedUserNode.value = null
+})
+
+async function onMoveSessions({ sessionIds, testUserSeq }) {
+  try {
+    await putSessionsTestUser(props.projectName, sessionIds, testUserSeq)
+    await refreshSessionsQuietly(true, props.projectName)
+  } catch {
+  }
+}
+
+async function onDeleteTestUser({ testUserSeq }) {
+  const ok = await confirmDialog({
+    title: 'Delete test user',
+    body: `Delete Test User ${testUserSeq} and all of their sessions? This cannot be undone.`,
+    okLabel: 'Delete',
+    danger: true
+  })
+  if (!ok) return
+  const deletedUsername = `Test user ${testUserSeq}`
+  try {
+    await deleteTestUser(props.projectName, testUserSeq)
+    if (currentSession.value?.username === deletedUsername) currentSessionId.value = null
+    await refreshSessionsQuietly(true, props.projectName)
+  } catch {
+  }
 }
 
 // Only an imported session is ever deletable here — a live/native one
@@ -291,28 +299,33 @@ const currentSession = computed(() => sessions.value.find((s) => s.id === curren
 // annotatableSignalsRow below to consult.
 const currentSessionIsImported = computed(() => currentSession.value?.type === 'imported')
 
-// The Info tab's read-only start/end state cards resolve through the
-// States tab's already-loaded graph rather than a second fetch.
-const statesTabRef = ref(null)
-// Not `statesTabRef.value = el` inline in the template — in dev-mode
-// compile, a template's auto-unwrapping proxy makes `.value = ` write
-// onto the unwrapped value instead of the ref, throwing on mount.
-function setStatesTabRef(el) {
-  statesTabRef.value = el
+// Every registered user, fetched once — same list ManageUsersView.vue
+// shows, reused here just to resolve a live session's `username` (the
+// user's own id/email) into a full profile for the Info tab's card below.
+const users = ref([])
+async function loadUsers() {
+  try {
+    const res = await getUsers()
+    users.value = res.users
+  } catch {
+    // already surfaced via apiFetch
+  }
 }
 
-// An imported session's start_state/end_state are always null since it
-// never ran against the automaton, so a domain expert's own
-// expected_state annotations are the only "start"/"end" it gets.
-const importedAnnotatedStates = computed(() => signalsLog.value.map((row) => row.expected_state).filter(Boolean))
-const sessionStartStateKey = computed(() =>
-  currentSessionIsImported.value ? (importedAnnotatedStates.value[0] ?? null) : (currentSession.value?.start_state ?? null)
-)
-const sessionEndStateKey = computed(() =>
-  currentSessionIsImported.value ? (importedAnnotatedStates.value.at(-1) ?? null) : (currentSession.value?.end_state ?? null)
-)
-const startStateElement = computed(() => statesTabRef.value?.stateElementFor(sessionStartStateKey.value) ?? null)
-const endStateElement = computed(() => statesTabRef.value?.stateElementFor(sessionEndStateKey.value) ?? null)
+// null for an imported session (no real user) or before the users list
+// or a match resolves — the Info tab only renders the card once this is set.
+const sessionUser = computed(() => {
+  if (currentSessionIsImported.value || !currentSession.value) return null
+  return users.value.find((u) => u.id === currentSession.value.username) ?? null
+})
+
+// The user whose branch (not a session within it) is selected in the
+// sessions tree — the Info tab shows their profile card in place of the
+// session card while this is set.
+const selectedUserProfile = computed(() => {
+  if (!selectedUserNode.value) return null
+  return users.value.find((u) => u.id === selectedUserNode.value) ?? null
+})
 
 // Same fallback convention as SessionsPanel.vue's own
 // formatSessionTimestamp, which isn't exported so is reimplemented here.
@@ -549,6 +562,7 @@ watch(selected, () => {
 })
 
 onMounted(async () => {
+  loadUsers()
   // currentSessionId is a shared ref also driven by the main chat window,
   // so it may still point at another project's session on entry. Loading
   // the list first and checking membership avoids opening into it.
@@ -583,6 +597,7 @@ onBeforeUnmount(() => {
     <div class="benchmark-header">
       <h2>Label sessions — {{ projectName }}</h2>
       <div class="benchmark-header-actions">
+        <ProjectsMenu :selected-name="projectName" @select="(name) => emit('project-select', name)" />
         <button class="close-btn" @click="handleClose">Back</button>
       </div>
     </div>
@@ -593,21 +608,21 @@ onBeforeUnmount(() => {
       <div class="benchmark-chat-pane">
         <div class="sessions-panel-wrap">
           <div class="sessions-panel" :class="{ 'sessions-panel-collapsed': !benchmarkSessionsPanelOpen }" :style="benchmarkSessionsPanelOpen ? { width: sessionsPanelWidth + 'px' } : null">
-            <SessionsPanel
+            <SessionsTree
               :sessions="sessions"
+              :users="users"
               :loading="sessionsLoading"
-              :current-session-id="currentSessionId"
-              :deleting-session-id="deletingSessionId"
-              :allow-create="false"
-              :allow-delete="false"
+              :selected-node-id="treeSelectedNodeId"
               :allow-import="true"
               :allow-download-all="true"
               :downloading-all="downloadingSessions"
               :collapsed="!benchmarkSessionsPanelOpen"
               @update:collapsed="toggleBenchmarkSessionsPanel"
-              @select="onSelectSession"
+              @select="onSelectTreeNode"
               @import="handleImportSession"
               @download-all="handleDownloadSessions"
+              @move-sessions="onMoveSessions"
+              @delete-test-user="onDeleteTestUser"
             />
           </div>
           <div v-if="benchmarkSessionsPanelOpen" class="split-divider" @mousedown="startSessionsDrag"></div>
@@ -639,7 +654,7 @@ onBeforeUnmount(() => {
 
           <p v-if="loading" class="benchmark-status">Loading…</p>
           <p v-else-if="!currentSessionId" class="benchmark-status">
-            No session selected — pick one from the Sessions panel first.
+            Please select a session.
           </p>
           <p v-else-if="!timeline.length" class="benchmark-status">This session has no messages yet.</p>
 
@@ -676,37 +691,9 @@ onBeforeUnmount(() => {
           v-model:active-tab="inspectorActiveTab"
           v-model:collapsed="inspectorCollapsed"
         >
-          <template #tab-states="{ registerTab }">
-            <InspectorGraphTab
-              :ref="(el) => { registerTab('states')(el); setStatesTabRef(el) }"
-              :project-name="projectName"
-              :highlighted-state-key="highlightedStateKey"
-              :fired-action-edge="firedActionEdge"
-              :annotatable="annotatableSignalsRow != null"
-              :expected-state="expectedState"
-              :imported="currentSessionIsImported"
-              :session-id="currentSessionId"
-              @update-expected-state="onUpdateExpectedState"
-            />
-          </template>
-          <template #tab-signals="{ registerTab }">
-            <InspectorSignalsTab
-              :ref="registerTab('signals')"
-              :project-name="projectName"
-              :signal-values="signalValues"
-              :annotatable="annotatableExpectedSignals"
-              :expected-values="expectedValues"
-              :state-key="highlightedStateKey"
-              :imported="currentSessionIsImported"
-              :session-id="currentSessionId"
-              @update-expected-signals="onUpdateExpectedSignals"
-            />
-          </template>
-          <template #tab-metrics="{ registerTab }">
-            <InspectorMetricsTab :ref="registerTab('metrics')" :until-message-id="untilMessageId" :project-name="projectName" />
-          </template>
           <template #tab-info>
             <div v-if="currentSession" class="benchmark-session-info">
+              <InspectorUserInfoCard v-if="sessionUser" :user="sessionUser" />
               <div
                 class="inspector-signal-block inspector-signal-block-clickable"
                 title="Click to open"
@@ -760,18 +747,40 @@ onBeforeUnmount(() => {
                   </div>
                 </Transition>
               </div>
-              <InspectorDetailCard
-                v-if="sessionStartStateKey === sessionEndStateKey"
-                :selected-element="startStateElement"
-                :closable="false"
-                role-badge="Start / End"
-              />
-              <template v-else>
-                <InspectorDetailCard :selected-element="startStateElement" :closable="false" role-badge="Start" />
-                <InspectorDetailCard :selected-element="endStateElement" :closable="false" role-badge="End" />
-              </template>
             </div>
-            <p v-else class="benchmark-session-info-empty">No session selected.</p>
+            <div v-else-if="selectedUserProfile" class="benchmark-session-info">
+              <InspectorUserInfoCard :user="selectedUserProfile" />
+            </div>
+            <p v-else class="benchmark-session-info-empty">Please select a session.</p>
+          </template>
+          <template #tab-states="{ registerTab }">
+            <InspectorGraphTab
+              :ref="registerTab('states')"
+              :project-name="projectName"
+              :highlighted-state-key="highlightedStateKey"
+              :fired-action-edge="firedActionEdge"
+              :annotatable="annotatableSignalsRow != null"
+              :expected-state="expectedState"
+              :imported="currentSessionIsImported"
+              :session-id="currentSessionId"
+              @update-expected-state="onUpdateExpectedState"
+            />
+          </template>
+          <template #tab-signals="{ registerTab }">
+            <InspectorSignalsTab
+              :ref="registerTab('signals')"
+              :project-name="projectName"
+              :signal-values="signalValues"
+              :annotatable="annotatableExpectedSignals"
+              :expected-values="expectedValues"
+              :state-key="highlightedStateKey"
+              :imported="currentSessionIsImported"
+              :session-id="currentSessionId"
+              @update-expected-signals="onUpdateExpectedSignals"
+            />
+          </template>
+          <template #tab-metrics="{ registerTab }">
+            <InspectorMetricsTab :ref="registerTab('metrics')" :until-message-id="untilMessageId" :project-name="projectName" />
           </template>
         </Inspector>
       </div>
@@ -807,6 +816,10 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+.benchmark-header-actions .projects-menu {
+  max-width: 220px;
 }
 
 .close-btn {

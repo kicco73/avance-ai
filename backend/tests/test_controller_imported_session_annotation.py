@@ -40,7 +40,8 @@ states:
     actions:
       - name: stay
         target: a
-signal-tracking-on-ai-message: {str(autotracking_on_ai_message).lower()}
+project:
+  signal-tracking-on-ai-message: {str(autotracking_on_ai_message).lower()}
 """
 
 
@@ -65,10 +66,10 @@ def _setup_project(client, *, autotracking_on_ai_message: bool) -> int:
 
 def _import_and_get_messages(client) -> tuple[int, dict]:
     response = client.post(
-        "/api/projects/proj/sessions/import", files={"file": ("transcript.txt", TRANSCRIPT, "text/plain")}
+        "/api/projects/proj/sessions/import", files=[("files", ("transcript.txt", TRANSCRIPT, "text/plain"))]
     )
     assert response.status_code == 200, response.text
-    session_id = response.json()["session_id"]
+    session_id = response.json()["last_session_id"]
     messages = client.get(f"/api/chat/sessions/{session_id}/messages").json()
     by_role = {m["role"]: m for m in messages}
     assert set(by_role) == {"user", "assistant"}

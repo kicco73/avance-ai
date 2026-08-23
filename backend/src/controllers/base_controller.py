@@ -10,27 +10,28 @@ import inspect
 from fastapi import APIRouter
 
 
-def route(method: str, path: str, **kwargs):
+def route(method: str, path: str, role: str | None = "user", **kwargs):
     def decorator(func):
         func.__route_info__ = (method, path, kwargs)
+        func.__required_role__ = role
         return func
     return decorator
 
 
-def get(path: str, **kwargs):
-    return route("GET", path, **kwargs)
+def get(path: str, role: str | None = "user", **kwargs):
+    return route("GET", path, role=role, **kwargs)
 
 
-def post(path: str, **kwargs):
-    return route("POST", path, **kwargs)
+def post(path: str, role: str | None = "user", **kwargs):
+    return route("POST", path, role=role, **kwargs)
 
 
-def put(path: str, **kwargs):
-    return route("PUT", path, **kwargs)
+def put(path: str, role: str | None = "user", **kwargs):
+    return route("PUT", path, role=role, **kwargs)
 
 
-def delete(path: str, **kwargs):
-    return route("DELETE", path, **kwargs)
+def delete(path: str, role: str | None = "user", **kwargs):
+    return route("DELETE", path, role=role, **kwargs)
 
 
 class BaseController:

@@ -149,6 +149,44 @@ describe('submitMessage correlates ids directly, never through result.reply', ()
     expect(userMessage.messageId).toBe(42)
   })
 
+  it('applies the bot-supplied reaction to the local user bubble live, via a replaced object (not a direct mutation)', async () => {
+    // Regression: an earlier version mutated the raw `message` object this
+    // closure holds directly (message.reaction = ...) instead of replacing
+    // its slot in messages.value — that bypasses Vue's reactive proxy
+    // entirely, so the bubble never re-rendered until something else (e.g.
+    // a full reload) rebuilt messages.value from scratch.
+    chatClient.sendMessage.mockResolvedValue({
+      reply: [],
+      user_message_id: 42,
+      user_message_reaction: 'listening',
+      assistant_message_id: 5,
+      state: { key: 'a', ui_label: 'A', actions: [] },
+      'on-enter': null,
+      session_id: 1
+    })
+
+    await chatStore.handleSend('hello')
+
+    const userMessage = chatStore.messages.value.find((m) => m.role === 'user')
+    expect(userMessage.reaction).toBe('listening')
+  })
+
+  it('clears any stale reaction on the local user bubble when this turn carries none', async () => {
+    chatClient.sendMessage.mockResolvedValue({
+      reply: [],
+      user_message_id: 42,
+      assistant_message_id: 5,
+      state: { key: 'a', ui_label: 'A', actions: [] },
+      'on-enter': null,
+      session_id: 1
+    })
+
+    await chatStore.handleSend('hello')
+
+    const userMessage = chatStore.messages.value.find((m) => m.role === 'user')
+    expect(userMessage.reaction).toBe(null)
+  })
+
   it('stamps the streaming bubble with the backend-assigned assistant_message_id', async () => {
     // Regression test: chat_service.py's process_turn never populates
     // "reply" with message objects (OutVariables.messages stays [], see

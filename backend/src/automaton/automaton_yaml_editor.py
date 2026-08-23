@@ -182,6 +182,8 @@ class AutomatonYamlEditor:
             "id": raw_project.get("id"),
             "ui_label": raw_project.get("ui-label"),
             "ui_description": raw_project.get("ui-description"),
+            "talk_enabled": raw_project.get("talk-enabled", True),
+            "signal_tracking_on_ai_message": raw_project.get("signal-tracking-on-ai-message", False),
         }
 
     def _env_key_payload(self, name: str) -> EnvKeyPayload:

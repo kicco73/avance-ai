@@ -10,6 +10,6 @@ class UserController(BaseController):
     def __init__(self, auth_service: AuthService) -> None:
         self.auth_service = auth_service
 
-    @get("/api/users")
+    @get("/api/users", role="admin")
     def get_users(self):
         return {"users": self.auth_service.list_users()}

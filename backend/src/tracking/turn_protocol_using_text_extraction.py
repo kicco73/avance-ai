@@ -28,7 +28,7 @@ Always add a [signals]...[/signals] tag at the end of every response.
         - put all of the signals using their name as the key and their value as the value.
 """
 
-EMBED_ENV_TAG_PROMPT = """"     
+EMBED_ENV_TAG_PROMPT = """"
 Definition of env metadata:
     - a persistent, cross-session memory of free-form facts about the
       user/conversation (e.g. preferences, ongoing goals) — distinct from
@@ -38,12 +38,23 @@ Always add a [env]...[/env] tag at the end of every response:
     - Write one "key: value" pair per line (optionally prefixed with "-").
     - Never invent values for the keys shown to you below — those are inputs supplied to you.
 """
+
+EMBED_REACTION_TAG_PROMPT = """"
+Definition of reaction metadata:
+    - the key of one reaction from the project's own declared reaction
+      vocabulary, chosen to react to the user's last message.
+    - leave it empty when no declared reaction fits this turn.
+
+Always add a [reaction]...[/reaction] tag at the end of every response:
+    - put the chosen reaction key between the markups, or leave it empty.
+"""
 class TurnProcotolUsingTextExtraction(TurnProtocol):
 
     prompt_preambles = {
         'env': EMBED_ENV_TAG_PROMPT,
         'audio': EMBED_AUDIO_TAG_PROMPT,
         'signals': EMBED_SIGNAL_TAG_PROMPT,
+        'reaction': EMBED_REACTION_TAG_PROMPT,
         'text': ''
     }
 

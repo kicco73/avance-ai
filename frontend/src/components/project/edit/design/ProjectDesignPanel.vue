@@ -31,7 +31,6 @@ const props = defineProps({
   // CodeEditor fallback below.
   currentFileIsMarkdown: { type: Boolean, default: false },
   highlightedStateKey: { type: String, default: null },
-  nextActionEdge: { type: Object, default: null },
   firedActionEdge: { type: Object, default: null },
   selectedElement: { type: Object, default: null }
 })
@@ -87,7 +86,6 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef 
           :attachment-files="attachmentFiles"
           :highlighted-state-key="highlightedStateKey"
           :auto-jump-on-highlight-change="true"
-          :next-action-edge="nextActionEdge"
           :fired-action-edge="firedActionEdge"
           :selected-element="selectedElement"
           @jump-to-definition="emit('jump-to-definition', $event)"

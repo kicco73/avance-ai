@@ -184,6 +184,8 @@ class ProjectInspector:
             "id": automaton.project_id,
             "ui_label": automaton.project_ui_label,
             "ui_description": automaton.project_ui_description,
+            "talk_enabled": automaton.talk_enabled,
+            "signal_tracking_on_ai_message": automaton.autotracking_on_ai_message,
         }
 
     def get_identifier_registry(self, project_name: str) -> dict[str, dict[str, str]]:
@@ -224,9 +226,10 @@ class ProjectInspector:
         real_states = [state for state in automaton.states.values() if state.key != ""]
         nodes = [
             {
-                "state": Automaton.get_state_payload(state),
+                "state": automaton.get_state_payload(state),
                 "is_start": state.key == automaton.init_action.target,
                 "history_cutoff": state.history_cutoff,
+                "reactions_enabled": state.reactions_enabled,
                 "transition_log_level": state.transition_log_level,
                 "attachments": list(state.attachments.keys()),
                 # Not part of StatePayload — a state's system-prompt text

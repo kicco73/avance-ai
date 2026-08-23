@@ -3,7 +3,7 @@
 // offering Manage projects and backup download/restore actions.
 import { onBeforeUnmount, ref } from 'vue'
 
-const emit = defineEmits(['manage-projects', 'manage-users', 'download-backup', 'restore-backup', 'about'])
+const emit = defineEmits(['manage-projects', 'manage-users', 'label-sessions', 'download-backup', 'restore-backup', 'about'])
 
 const open = ref(false)
 const rootEl = ref(null)
@@ -21,6 +21,11 @@ function selectManageProjects() {
 function selectManageUsers() {
   open.value = false
   emit('manage-users')
+}
+
+function selectLabelSessions() {
+  open.value = false
+  emit('label-sessions')
 }
 
 function selectDownloadBackup() {
@@ -73,6 +78,9 @@ onBeforeUnmount(() => {
         </li>
         <li>
           <button class="settings-item" @click="selectManageUsers">Manage users</button>
+        </li>
+        <li>
+          <button class="settings-item" @click="selectLabelSessions">Label sessions</button>
         </li>
         <li class="settings-separator" role="separator"></li>
         <li>

@@ -98,10 +98,14 @@ class TrackingMixin:
 
     def set_signal_expected_state(self, signal_row_id: int, expected_state: str | None) -> None:
         Tracking.update(expected_state=expected_state).where(Tracking.id == signal_row_id).execute()
+        row = Tracking.get(Tracking.id == signal_row_id)
+        self.bump_session_labeling_revision(row.session_id)
 
     def set_signal_expected_values(self, signal_row_id: int, expected_values: dict | None) -> None:
         serialized = json.dumps(expected_values) if expected_values else None
         Tracking.update(expected_values=serialized).where(Tracking.id == signal_row_id).execute()
+        row = Tracking.get(Tracking.id == signal_row_id)
+        self.bump_session_labeling_revision(row.session_id)
 
     def set_signal_comment(self, signal_row_id: int, comment: str | None) -> None:
         Tracking.update(comment=comment).where(Tracking.id == signal_row_id).execute()
@@ -112,6 +116,7 @@ class TrackingMixin:
     def clear_session_annotations(self, session_id: int) -> None:
         Tracking.update(expected_state=None, expected_values=None).where(Tracking.session == session_id).execute()
         Tracking.delete().where((Tracking.session == session_id) & (Tracking.old_state == '')).execute()
+        self.bump_session_labeling_revision(session_id)
 
     def _latest_transition(self, project_name: str, *, type: str | None=None, real_only: bool=False, until: datetime | None=None) -> Tracking | None:
         query = Tracking.select().join(ChatSession, on=Tracking.session == ChatSession.id).where((ChatSession.project_name == project_name) & Tracking.new_state.is_null(False))

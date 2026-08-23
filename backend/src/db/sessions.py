@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from http import HTTPStatus
 
 from peewee import fn
+
+from tracking.errors import TrackingServiceError
 
 from .models import ChatSession, Message, Project, Tracking
 
@@ -37,6 +40,14 @@ class SessionMixin:
             start_state=start_state, end_state=end_state,
         )
         return session.id
+
+    def next_test_user_username(self, project_name: str) -> str:
+        n = 1
+        while ChatSession.select().where(
+            (ChatSession.project_name == project_name) & (ChatSession.username == f'Test user {n}')
+        ).exists():
+            n += 1
+        return f'Test user {n}'
 
     @staticmethod
     def _chat_session_to_dict(session: ChatSession) -> dict:
@@ -118,6 +129,13 @@ class SessionMixin:
         been reviewed."""
         ChatSession.update(labeled=labeled).where(ChatSession.id == session_id).execute()
 
+    def get_session_labeling_revision(self, session_id: int) -> int:
+        session = ChatSession.get_or_none(ChatSession.id == session_id)
+        return session.labeling_revision if session is not None else 0
+
+    def bump_session_labeling_revision(self, session_id: int) -> None:
+        ChatSession.update(labeling_revision=ChatSession.labeling_revision + 1).where(ChatSession.id == session_id).execute()
+
     def touch_chat_session(self, session_id: int, datetime_end: datetime, end_state: str) -> None:
         ChatSession.update(datetime_end=datetime_end, end_state=end_state).where(ChatSession.id == session_id).execute()
 
@@ -125,6 +143,19 @@ class SessionMixin:
         Tracking.delete().where(Tracking.session == session_id).execute()
         Message.delete().where(Message.session == session_id).execute()
         ChatSession.delete().where(ChatSession.id == session_id).execute()
+
+    def reassign_sessions_to_test_user(self, session_ids: list[int], test_user_seq: int) -> None:
+        sessions = list(ChatSession.select().where(ChatSession.id.in_(session_ids)))
+        for session in sessions:
+            if not session.username.startswith('Test user '):
+                raise TrackingServiceError(
+                    f"Session {session.id} belongs to a real user and can't be moved to a test user.",
+                    status_code=HTTPStatus.CONFLICT,
+                )
+        ChatSession.update(username=f'Test user {test_user_seq}').where(ChatSession.id.in_(session_ids)).execute()
+
+    def delete_sessions_by_username(self, username: str) -> None:
+        ChatSession.delete().where(ChatSession.username == username).execute()
 
     def truncate_session(self, session_id: int, cutoff: datetime) -> None:
         Tracking.delete().where((Tracking.session == session_id) & (Tracking.timestamp >= cutoff) & (Tracking.old_state.is_null(True) | (Tracking.old_state != ''))).execute()

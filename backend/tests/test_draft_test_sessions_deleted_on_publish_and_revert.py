@@ -124,10 +124,10 @@ def test_native_sessions_are_unaffected_by_publish(client):
 def test_imported_sessions_are_unaffected_by_publish(client):
     _upload_activate_and_establish_state(client, "proj")
     response = client.post(
-        "/api/projects/proj/sessions/import", files={"file": ("t.txt", "user: hi\nassistant: hello\n", "text/plain")}
+        "/api/projects/proj/sessions/import", files=[("files", ("t.txt", "user: hi\nassistant: hello\n", "text/plain"))]
     )
     assert response.status_code == 200, response.text
-    imported_session_id = response.json()["session_id"]
+    imported_session_id = response.json()["last_session_id"]
 
     client.put("/api/projects/proj/files/notes.txt", content=b"edited")
     assert client.post("/api/projects/proj/publish", json={}).status_code == 200

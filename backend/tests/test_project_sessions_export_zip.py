@@ -11,6 +11,8 @@ import zipfile
 
 import pytest
 
+from session import Session
+
 pytestmark = pytest.mark.contract
 
 MINIMAL_YML = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
@@ -48,7 +50,7 @@ def test_download_includes_only_imported_sessions_never_native_ones(client, hell
     assert native_session["type"] == "live"
     # An imported session.
     resp = client.post(
-        "/api/projects/hello/sessions/import", files={"file": ("t.txt", "user: hi\nassistant: yo\n", "text/plain")}
+        "/api/projects/hello/sessions/import", files=[("files", ("t.txt", "user: hi\nassistant: yo\n", "text/plain"))]
     )
     assert resp.status_code == 200, resp.text
 
@@ -61,7 +63,7 @@ def test_download_includes_only_imported_sessions_never_native_ones(client, hell
 
 
 def test_sessions_json_never_appears_among_the_projects_own_files(client, hello_project):
-    client.post("/api/projects/hello/sessions/import", files={"file": ("t.txt", "user: hi\nassistant: yo\n", "text/plain")})
+    client.post("/api/projects/hello/sessions/import", files=[("files", ("t.txt", "user: hi\nassistant: yo\n", "text/plain"))])
 
     file_list = client.get(f"/api/projects/{hello_project}/files").json()["files"]
 
@@ -74,6 +76,7 @@ def test_uploading_a_zip_with_sessions_json_imports_them_automatically(client):
     sessions_payload = [
         {
             "name": "Reference transcript",
+            "username": "User 1",
             "start_state": "a", "end_state": "a", "labeled": True, "comment": "worth keeping",
             "messages": [
                 {"role": "user", "text": "hi"},
@@ -87,6 +90,7 @@ def test_uploading_a_zip_with_sessions_json_imports_them_automatically(client):
     })
     assert resp.status_code == 200, resp.text
 
+    Session().user = "User 1"
     sessions = client.get("/api/projects/proj/sessions?include_imported=true").json()
     assert len(sessions) == 1
     assert sessions[0]["type"] == "imported"
@@ -103,7 +107,7 @@ def test_download_then_reupload_round_trips_the_imported_session(client):
     resp = client.post("/api/projects/roundtrip/publish", json={})
     assert resp.status_code == 200, resp.text
     resp = client.post(
-        "/api/projects/roundtrip/sessions/import", files={"file": ("t.txt", "user: hi\nassistant: yo\n", "text/plain")}
+        "/api/projects/roundtrip/sessions/import", files=[("files", ("t.txt", "user: hi\nassistant: yo\n", "text/plain"))]
     )
     assert resp.status_code == 200, resp.text
 
@@ -144,7 +148,7 @@ def test_upload_rejects_the_whole_project_when_sessions_json_is_not_a_list(clien
 def test_a_malformed_individual_session_is_skipped_others_still_import(client):
     sessions_payload = [
         {"messages": [{"role": "user"}]},  # missing required 'text' — malformed
-        {"name": "Good one", "messages": [{"role": "user", "text": "hi"}]},
+        {"name": "Good one", "username": "User 1", "messages": [{"role": "user", "text": "hi"}]},
     ]
     resp = _upload_zip(client, "proj", {
         "index.yml": MINIMAL_YML.encode(),
@@ -152,6 +156,7 @@ def test_a_malformed_individual_session_is_skipped_others_still_import(client):
     })
     assert resp.status_code == 200, resp.text
 
+    Session().user = "User 1"
     sessions = client.get("/api/projects/proj/sessions?include_imported=true").json()
     assert len(sessions) == 1
     assert sessions[0]["title"] == "Good one"

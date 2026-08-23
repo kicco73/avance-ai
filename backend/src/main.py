@@ -30,7 +30,7 @@ from tracking.wakeup_service import WakeupService
 from talk.talk_service import TalkService
 from listen.listen_service import ListenService
 
-__version__ = "1.6.0"
+__version__ = "1.7.0"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -104,7 +104,7 @@ def create_app() -> FastAPI:
         # Instantiated once here, not built by ChatService itself (see
         # tracking/tracking_service.py's own module docstring). Both this and
         # ChatService depend on ai_service/metric_service directly, never each other.
-        tracking_service = TrackingService(db, ai_service, project_service, metric_service)
+        tracking_service = TrackingService(db, ai_service, project_service, metric_service, talk_enabled=talk_service is not None)
         chat_service = ChatService(
             db, ai_service, project_service, session_manager, tracking_service, metric_service, persisted_job_queue,
         )

@@ -16,6 +16,7 @@ class Project(BaseModel):
     name = CharField(primary_key=True)
     revision = IntegerField(null=False, default=0)
     published_revision = IntegerField(null=True)
+    draft_edit_count = IntegerField(null=False, default=0)
     # A project is paused when its own build fails, or when any project
     # it references via automaton.* is itself unavailable. paused_reason
     # is null exactly when is_paused is False.
@@ -56,6 +57,7 @@ class ChatSession(BaseModel):
     # A domain expert's own free-text note on the session as a whole —
     # distinct from Tracking.comment, which is per-message.
     comment = TextField(null=True)
+    labeling_revision = IntegerField(null=False, default=0)
 
     class Meta:
         indexes = ((('username', 'project_name', 'datetime_start', 'datetime_end'), False), (('username', 'project_name', 'start_state', 'end_state'), False))
@@ -66,6 +68,10 @@ class Message(BaseModel):
     content = TextField()
     timestamp = DateTimeField(index=True, default=datetime.utcnow, null=True)
     audio_text = TextField(null=True)
+    # The key of the reaction this message received from the other party —
+    # the user's own choice on a bot message, or the bot's own choice on a
+    # user message (see automaton.Reaction/State.reactions_enabled).
+    reaction = TextField(null=True)
     session = ForeignKeyField(ChatSession, null=False, backref='messages', on_delete='CASCADE')
 
 class User(BaseModel):
@@ -90,6 +96,7 @@ class User(BaseModel):
     # user's own active_project, unrelated to any Project FK since a
     # user with no projects yet still needs a row.
     active_project = CharField(null=True)
+    role = CharField(default='user')
 
     class Meta:
         indexes = ((('provider', 'provider_user_id'), True),)
@@ -167,17 +174,21 @@ class BenchmarkRun(BaseModel):
     # None|int) (see metrics/metrics_framework/benchmark_metrics/calculator.py).
     session = ForeignKeyField(ChatSession, null=True, backref='benchmark_runs', on_delete='CASCADE')
     strategy = CharField()
-    # The project's own draft revision at the moment this run was
+    # The project's own draft edit count at the moment this run was
     # created — captured once, up front, regardless of which revision is
     # published (see ChatSession.project_revision, same idea).
-    project_revision = IntegerField(null=False)
+    project_draft_edit_count = IntegerField(null=False)
+    session_labeling_revision = IntegerField(null=True)
     # Only ever set for strategy='batch' — stays null for 'turn_by_turn'.
     batch_segments = IntegerField(null=True)
     ai_model_snapshot = TextField(null=True)
     results = TextField(null=True)
 
     class Meta:
-        indexes = ((('username', 'project_name'), False),)
+        indexes = (
+            (('username', 'project_name'), False),
+            (('session', 'strategy', 'project_draft_edit_count', 'session_labeling_revision'), True),
+        )
 
 class BenchmarkRunObservation(BaseModel):
     """A replay's own signal snapshot/transition — the same shape

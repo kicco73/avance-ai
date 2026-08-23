@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { summarizeImportFailures } from '../src/sessionImport.js'
 
 function fileResult(name, ok, error = null) {
-  return { file: { name }, ok, error }
+  return { file: name, ok, error }
 }
 
 describe('summarizeImportFailures', () => {

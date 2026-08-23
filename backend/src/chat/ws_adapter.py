@@ -36,6 +36,7 @@ class WsAdapter(object):
             await websocket.close(code=4401)
             return
         Session().user = identity.email
+        Session().role = identity.role
 
         username = Session().user
         await websocket.accept()

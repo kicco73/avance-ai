@@ -21,7 +21,10 @@ class TestGetProjectMetadata:
 
         response = client.get("/api/projects/bare/project")
         assert response.status_code == 200
-        assert response.json()["project"] == {"id": None, "ui_label": None, "ui_description": None}
+        assert response.json()["project"] == {
+            "id": None, "ui_label": None, "ui_description": None,
+            "talk_enabled": True, "signal_tracking_on_ai_message": False,
+        }
 
     def test_reports_declared_fields(self, client, hello_project):
         client.put(f"/api/projects/{hello_project}/project/id", json={"value": "concierge"})
@@ -31,7 +34,8 @@ class TestGetProjectMetadata:
         response = client.get(f"/api/projects/{hello_project}/project")
         assert response.status_code == 200
         assert response.json()["project"] == {
-            "id": "concierge", "ui_label": "Concierge", "ui_description": "The front desk."
+            "id": "concierge", "ui_label": "Concierge", "ui_description": "The front desk.",
+            "talk_enabled": True, "signal_tracking_on_ai_message": False,
         }
 
     def test_unknown_project_is_404(self, client):
@@ -54,6 +58,18 @@ class TestPutProjectField:
         response = client.put(f"/api/projects/{hello_project}/project/ui-description", json={"value": "A greeting bot."})
         assert response.status_code == 200
         assert response.json()["ui_description"] == "A greeting bot."
+
+    def test_edits_talk_enabled(self, client, hello_project):
+        response = client.put(f"/api/projects/{hello_project}/project/talk-enabled", json={"value": False})
+        assert response.status_code == 200
+        assert response.json()["talk_enabled"] is False
+
+    def test_edits_signal_tracking_on_ai_message(self, client, hello_project):
+        response = client.put(
+            f"/api/projects/{hello_project}/project/signal-tracking-on-ai-message", json={"value": True}
+        )
+        assert response.status_code == 200
+        assert response.json()["signal_tracking_on_ai_message"] is True
 
     def test_rejects_an_invalid_identifier(self, client, hello_project):
         response = client.put(f"/api/projects/{hello_project}/project/id", json={"value": "not a valid id"})

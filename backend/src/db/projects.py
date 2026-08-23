@@ -85,6 +85,10 @@ class ProjectMixin:
     def get_project_revision(self, project_name: str) -> int:
         return self._current_revision(project_name)
 
+    def get_project_draft_edit_count(self, project_name: str) -> int:
+        project = Project.get_or_none(Project.name == project_name)
+        return project.draft_edit_count if project is not None else 0
+
     def get_project_published_revision(self, project_name: str) -> int | None:
         project = Project.get_or_none(Project.name == project_name)
         return project.published_revision if project is not None else None
@@ -141,6 +145,7 @@ class ProjectMixin:
     def save_project_files(self, project_name: str, files: dict[str, bytes], content_types: dict[str, str]) -> None:
         self.ensure_project(project_name)
         revision = self._ensure_draft_revision(project_name)
+        Project.update(draft_edit_count=Project.draft_edit_count + 1).where(Project.name == project_name).execute()
         for archive_name, content in files.items():
             content_type = content_types[archive_name]
             existing = Archive.get_or_none(

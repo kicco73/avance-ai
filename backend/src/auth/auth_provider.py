@@ -18,6 +18,7 @@ class AuthenticatedUser:
     email: str
     name: str
     picture_url: str | None
+    role: str = "user"
 
 
 class AuthProvider(ABC):

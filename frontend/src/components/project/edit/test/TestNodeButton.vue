@@ -8,7 +8,8 @@ const props = defineProps({
     default: 'idle',
     validator: (value) => ['idle', 'running', 'ok', 'warning', 'fail'].includes(value)
   },
-  disabled: { type: Boolean, default: false }
+  disabled: { type: Boolean, default: false },
+  disabledReason: { type: String, default: 'No test for this node' }
 })
 
 const emit = defineEmits(['activate'])
@@ -27,7 +28,7 @@ function onClick() {
     class="test-node-btn"
     :class="[`test-node-btn-${status}`, { 'test-node-btn-disabled': disabled }]"
     :disabled="disabled || status === 'running'"
-    :title="disabled ? 'No test for this node' : (status === 'running' ? 'Running…' : 'Run test')"
+    :title="disabled ? disabledReason : (status === 'running' ? 'Running…' : 'Run test')"
     @click="onClick"
   >
     <svg v-if="status === 'idle'" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">

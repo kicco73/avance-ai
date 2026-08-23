@@ -6,8 +6,10 @@ from __future__ import annotations
 
 import json
 
+from auth.roles import role_satisfies
 from db import Db
 from db.utils import _utc_iso
+from session import Session
 
 
 class SessionExportManager:
@@ -20,8 +22,15 @@ class SessionExportManager:
         """`type` defaults to every real session. export_project_zip
         narrows this to 'imported' only: a live session only means
         something against the exact database it ran against, so re-importing it elsewhere would misrepresent it as a real conversation."""
-        sessions = self._db.list_chat_sessions(username, project_name, type=type)
+        sessions = self._db.list_chat_sessions(None, project_name, type=type)
+        sessions = [s for s in sessions if self._owns_session(username, s['username'])]
         return [self._export_session(session) for session in sessions]
+
+    @staticmethod
+    def _owns_session(username: str, session_username: str) -> bool:
+        if session_username == username:
+            return True
+        return session_username.startswith('Test user ') and role_satisfies(Session().role, 'supervisor')
 
     def _export_session(self, session: dict) -> dict:
         session_id = session['id']
@@ -32,6 +41,7 @@ class SessionExportManager:
         }
         return {
             'name': session['title'],
+            'username': session['username'],
             'timestamp': _utc_iso(session['datetime_start']),
             'datetime_end': _utc_iso(session['datetime_end']),
             'start_state': session['start_state'],

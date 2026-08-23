@@ -1,3 +1,5 @@
+avance-version: "1.7.0"
+
 init-action:
   target: Hall
 

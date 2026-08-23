@@ -33,11 +33,13 @@ class TrackingService(object):
 		ai_service: AiService,
 		project_service: ProjectService,
 		metrics_service: MetricService,
+		talk_enabled: bool = True,
 	) -> None:
 		self._db = db
 		self._ai_service = ai_service
 		self._project_service = project_service
 		self._metrics = metrics_service
+		self._talk_enabled = talk_enabled
 		self._session_import_manager = SessionImportManager(db)
 		self._session_export_manager = SessionExportManager(db)
 		# "Dev mode: freeze automatic state transitions" toggle — per
@@ -60,20 +62,14 @@ class TrackingService(object):
 		entry silently freezing an unrelated, newly-restored session."""
 		self._disabled_test_sessions.clear()
 
-	def import_session(self, username: str, project_name: str, text: str, title: str | None = None) -> int:
-		try:
-			return self._session_import_manager.import_transcript(username, project_name, text, title=title)
-		except ValueError as exc:
-			raise TrackingServiceError(str(exc), status_code=HTTPStatus.BAD_REQUEST) from exc
+	def import_sessions_batch(self, project_name: str, uploads: list[tuple[str, bytes]]) -> dict:
+		return self._session_import_manager.import_batch(project_name, uploads)
 
-	def import_session_json(self, username: str, project_name: str, session_data: dict) -> int:
-		"""The "Label sessions" view's own JSON upload. Same "malformed
-		input is a 400, never a 500" convention as import_session above,
-		just a wider exception set for a hand-edited/corrupted JSON file."""
-		try:
-			return self._session_import_manager.import_session_json(username, project_name, session_data)
-		except (ValueError, KeyError, TypeError) as exc:
-			raise TrackingServiceError(f"Invalid session data: {exc}", status_code=HTTPStatus.BAD_REQUEST) from exc
+	def reassign_sessions_to_test_user(self, session_ids: list[int], test_user_seq: int) -> None:
+		self._db.reassign_sessions_to_test_user(session_ids, test_user_seq)
+
+	def delete_sessions_by_username(self, username: str) -> None:
+		self._db.delete_sessions_by_username(username)
 
 	def export_sessions(self, username: str, project_name: str) -> list[dict]:
 		"""The "Label sessions" view's own "Download all" button — see
@@ -282,6 +278,7 @@ class TrackingService(object):
 			self._ai_service, scope_builder,
 			env, self._db, user_vars,
 			auto_tracking_enabled=self.is_auto_tracking_enabled(session_id) if is_test_session else True,
+			talk_enabled=self._talk_enabled,
 		)
 
 		return tracking_processor.process(text, on_metadata=on_metadata_sync_to_async, extra_prompt=extra_prompt)

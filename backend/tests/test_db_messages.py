@@ -23,7 +23,7 @@ def _make_session(db, *, username="user", project_name="proj", start=datetime(20
 
 def test_get_message_returns_the_full_row(db):
     session_id = _make_session(db)
-    message_id = db.save_message("user", "hello", session_id, audio_text="spoken")
+    message_id = db.save_message("user", "hello", session_id, audio_text="spoken", reaction="supportive")
 
     message = db.get_message(message_id)
 
@@ -31,8 +31,25 @@ def test_get_message_returns_the_full_row(db):
     assert message["role"] == "user"
     assert message["content"] == "hello"
     assert message["audio_text"] == "spoken"
+    assert message["reaction"] == "supportive"
     assert message["session_id"] == session_id
     assert isinstance(message["timestamp"], str)
+
+
+def test_get_message_reaction_defaults_to_none(db):
+    session_id = _make_session(db)
+    message_id = db.save_message("user", "hello", session_id)
+
+    assert db.get_message(message_id)["reaction"] is None
+
+
+def test_get_messages_includes_reaction(db):
+    session_id = _make_session(db)
+    db.save_message("assistant", "hi", session_id, reaction="supportive")
+
+    rows = db.get_messages(session_id)
+
+    assert rows[0]["reaction"] == "supportive"
 
 
 def test_get_message_returns_none_for_an_unknown_id(db):

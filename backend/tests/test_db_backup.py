@@ -68,10 +68,10 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
     ddl = [
         "CREATE TABLE project (name TEXT PRIMARY KEY, revision INTEGER, published_revision INTEGER, "
         "is_paused INTEGER, paused_reason TEXT, manually_paused INTEGER, project_id TEXT, "
-        "ui_label TEXT, ui_description TEXT)",
+        "ui_label TEXT, ui_description TEXT, draft_edit_count INTEGER)",
         "CREATE TABLE chatsession (id INTEGER PRIMARY KEY, username TEXT, project_name TEXT, type TEXT, "
         "title TEXT, project_revision INTEGER, datetime_start TEXT, datetime_end TEXT, start_state TEXT, "
-        "end_state TEXT, labeled INTEGER, comment TEXT)",
+        "end_state TEXT, labeled INTEGER, comment TEXT, labeling_revision INTEGER)",
         "CREATE TABLE message (id INTEGER PRIMARY KEY, role TEXT, content TEXT, timestamp TEXT, audio_text TEXT)",
         "CREATE TABLE user (id TEXT PRIMARY KEY, provider TEXT, provider_user_id TEXT, email TEXT, "
         "name TEXT, picture_url TEXT, created_at TEXT, last_login TEXT, active_project TEXT)",
@@ -85,7 +85,8 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
         "created_at TEXT, finished_at TEXT, error TEXT, result TEXT, progress_current INTEGER, "
         "progress_total INTEGER)",
         "CREATE TABLE benchmarkrun (id INTEGER PRIMARY KEY, username TEXT, project_name TEXT, session_id INTEGER, "
-        "strategy TEXT, project_revision INTEGER, batch_segments INTEGER, ai_model_snapshot TEXT, results TEXT)",
+        "strategy TEXT, project_draft_edit_count INTEGER, session_labeling_revision INTEGER, "
+        "batch_segments INTEGER, ai_model_snapshot TEXT, results TEXT)",
         "CREATE TABLE benchmarkrunobservation (id INTEGER PRIMARY KEY, run_id INTEGER, session_id INTEGER, "
         "message_id INTEGER, timestamp TEXT, \"values\" TEXT, old_state TEXT, action TEXT, new_state TEXT)",
         "CREATE TABLE sessionsummary (id INTEGER PRIMARY KEY, session_id INTEGER, content TEXT)",

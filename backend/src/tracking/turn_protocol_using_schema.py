@@ -44,6 +44,16 @@ Always fill in the 'env' field of your structured response:
 Current env memory:
 """
 
+EMBED_REACTION_TAG_PROMPT = """
+Definition of reaction metadata:
+	- the key of one reaction from the project's own declared reaction
+	  vocabulary, chosen to react to the user's last message.
+	- leave it empty when no declared reaction fits this turn.
+
+Always fill in the 'reaction' field of your structured response with the
+reaction key described above, or leave it empty.
+"""
+
 SCHEMA_ORDER_PROMPT = """"
 Respond with the structured JSON object described by the response 
 schema, filling in its fields in this order:
@@ -55,6 +65,7 @@ class TurnProtocolUsingSchema(TurnProtocol):
 		'env': EMBED_ENV_TAG_PROMPT,
 		'audio': EMBED_AUDIO_TAG_PROMPT,
 		'signals': EMBED_SIGNAL_TAG_PROMPT,
+		'reaction': EMBED_REACTION_TAG_PROMPT,
 		'text': ''
 	}
 
@@ -62,6 +73,7 @@ class TurnProtocolUsingSchema(TurnProtocol):
 		"audio": "Short textual version for text-to-speech.",
 		"env": "Updated memory state. Include all current context keys in the form key: value, one per line, rendered as text.",
 		"signals": "JSON dictionary containing required calculated signal values, rendered as text.",
+		"reaction": "The key of a declared reaction to react to the user's last message with, or empty if none fits, rendered as text.",
 		"text": "Normal textual response to the user, in markdown format, rendered as text.",
 	}
 

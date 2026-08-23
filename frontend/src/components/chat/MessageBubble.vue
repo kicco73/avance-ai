@@ -1,7 +1,13 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { renderMarkdown as renderMarkdownBase } from '../../markdown.js'
 import { useFloatingTooltip } from '../../useFloatingTooltip.js'
+import MessageReactionButton from './MessageReactionButton.vue'
+
+// How long a press on an assistant bubble must hold before the reaction
+// picker opens — kept in sync with .bubble-bulging's own transition
+// duration below, so the "inflate" finishes right as the picker appears.
+const LONG_PRESS_MS = 450
 
 const BARE_DATA_IMAGE_RE = /(?<!\]\()(data:image\/[a-zA-Z0-9+.-]+;base64,[A-Za-z0-9+/=]+)/g
 
@@ -26,10 +32,51 @@ const props = defineProps({
   // Whether this belongs to an imported session — there's no real
   // avance-computed value to compare an annotation against, so the
   // marker reads as a neutral "labelled" tick instead of amber "!".
-  imported: { type: Boolean, default: false }
+  imported: { type: Boolean, default: false },
+  // {key, ui_label}[] — the active project's whole reaction vocabulary
+  // (see chatStore.js's state.reactions). Empty disables long-press-to-react
+  // entirely (see onBubblePointerDown's own guard below).
+  reactions: { type: Array, default: () => [] }
 })
 
-const emit = defineEmits(['resend'])
+const emit = defineEmits(['resend', 'react'])
+
+function reactionLabelFor(key) {
+  return props.reactions.find((r) => r.key === key)?.ui_label ?? key
+}
+
+// Long-press-to-react on an assistant bubble — replaces a dedicated
+// trigger button entirely (see MessageReactionButton.vue's own docstring).
+const bubbleRef = ref(null)
+const reactionButtonRef = ref(null)
+const longPressActive = ref(false)
+let longPressTimer = null
+
+function clearLongPressTimer() {
+  if (longPressTimer != null) {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+  }
+}
+
+function onBubblePointerDown() {
+  if (props.message.role !== 'assistant' || !props.reactions.length) return
+  longPressActive.value = true
+  longPressTimer = setTimeout(() => {
+    longPressTimer = null
+    longPressActive.value = false
+    reactionButtonRef.value?.open(bubbleRef.value)
+  }, LONG_PRESS_MS)
+}
+
+// Shared by pointerup/pointercancel/pointerleave — any of them ends the
+// press early, same "didn't hold long enough" outcome either way.
+function onBubblePointerEnd() {
+  longPressActive.value = false
+  clearLongPressTimer()
+}
+
+onBeforeUnmount(clearLongPressTimer)
 
 // True while an assistant bubble's content is still empty (before the
 // first streamed chunk lands) — shows animated dots instead of the reply.
@@ -78,11 +125,20 @@ const {
 
     <div class="bubble-col">
       <div
+        ref="bubbleRef"
         class="bubble"
         :class="[
           message.role === 'user' ? 'bubble-user' : 'bubble-assistant',
-          message.failed ? 'bubble-failed' : ''
+          message.failed ? 'bubble-failed' : '',
+          {
+            'bubble-bulging': longPressActive,
+            'bubble-reactable': message.role === 'assistant' && reactions.length
+          }
         ]"
+        @pointerdown="onBubblePointerDown"
+        @pointerup="onBubblePointerEnd"
+        @pointercancel="onBubblePointerEnd"
+        @pointerleave="onBubblePointerEnd"
       >
         <span v-if="isAwaitingReply" class="typing-dots" aria-label="Waiting for reply">
           <span class="typing-dot"></span>
@@ -110,6 +166,25 @@ const {
             Signal labelled
           </span>
         </Teleport>
+
+        <!-- WhatsApp-style: a small badge hanging off the bubble's own
+             bottom-right corner, not a separate control beside it. -->
+        <Transition name="reaction-badge-pop">
+          <span
+            v-if="message.role === 'user' && message.reaction"
+            :key="message.reaction"
+            class="reaction-badge"
+            :title="reactionLabelFor(message.reaction)"
+          >{{ reactionLabelFor(message.reaction) }}</span>
+        </Transition>
+        <span v-if="message.role === 'assistant'" class="reaction-badge-slot">
+          <MessageReactionButton
+            ref="reactionButtonRef"
+            :reactions="reactions"
+            :reaction="message.reaction"
+            @save="emit('react', $event)"
+          />
+        </span>
       </div>
       <span v-if="showTimestamp" class="bubble-timestamp">{{ formatTimestamp(message.timestamp) }}</span>
     </div>
@@ -161,6 +236,21 @@ const {
   border-radius: 12px;
   line-height: 1.5;
   overflow-wrap: anywhere;
+  /* Matches LONG_PRESS_MS above, so the bulge finishes growing right as
+     the reaction picker opens. */
+  transition: transform 0.45s ease;
+}
+
+/* Visual feedback while holding down an assistant bubble, building up to
+   the reaction picker opening (see onBubblePointerDown). */
+.bubble-bulging {
+  transform: scale(1.035);
+}
+
+/* Hints this bubble is press-and-hold interactive — only when there's
+   actually a reaction vocabulary to react with. */
+.bubble-reactable {
+  cursor: pointer;
 }
 
 /* Amber = "pay attention, this differs from the live default". */
@@ -216,6 +306,9 @@ const {
   background: #eee;
   color: #222;
   border-bottom-left-radius: 2px;
+  /* Long-press-to-react only applies here — stops a touch scroll/zoom
+     gesture from hijacking a held-down finger before it registers. */
+  touch-action: none;
 }
 
 .bubble-failed {
@@ -276,6 +369,50 @@ const {
 
 .resend-icon:hover {
   background: #a02020;
+}
+
+/* WhatsApp-style: MessageReactionButton's own picker hangs off the
+   bubble's bottom-right corner — .bubble is already position: relative,
+   so this just needs its own absolute offset. */
+.reaction-badge-slot {
+  position: absolute;
+  bottom: -0.5rem;
+  right: -0.35rem;
+  z-index: 2;
+}
+
+/* The bot's own reaction to a user message — read-only, icon only, no
+   circle/background. Opposite corner from .reaction-badge-slot above, so
+   the two never visually collide when both are on screen at once. */
+.reaction-badge {
+  position: absolute;
+  bottom: -0.3rem;
+  left: -0.3rem;
+  z-index: 2;
+  background: transparent;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+/* Fade + bump on arrival — a brief overshoot past full size, then settle,
+   rather than a plain fade. Only on enter: a cleared reaction just vanishes. */
+.reaction-badge-pop-enter-active {
+  animation: reaction-badge-bump 0.4s ease-out;
+}
+
+@keyframes reaction-badge-bump {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.25);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .bubble :deep(p) {

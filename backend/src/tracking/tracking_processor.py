@@ -35,9 +35,13 @@ FIXED_MESSAGE_INSTRUCTIONS = (
 class Metadata:
 	on_metadata: MetadataCallback
 	env: dict[str, str]
-	signals: dict[str, float] 
-	audio: str
+	signals: dict[str, float]
+	audio: str | None = None
 	chunk: str | None = None
+	# The bot's own reaction to the user's message this turn — unlike
+	# audio/env/signals, this ends up persisted on the *user's* message
+	# (see process() below), not the assistant's own new one.
+	reaction: str | None = None
 
 @dataclass(frozen=True, slots=True)
 class UserVariables:
@@ -83,12 +87,14 @@ class TrackingProcessor(object):
 			  db: Db,
 			  user_variables: UserVariables,
 			  auto_tracking_enabled: bool = True,
+			  talk_enabled: bool = True,
 		):
 		self.ai_service = ai_service
 
 		self.env = env
 		self.db = db
 		self.user = user_variables
+		self.talk_enabled = talk_enabled
 		self._tracking_engine = TrackingEngine(DbTrackingSink(db), env, scope_builder, auto_tracking_enabled)
 		# Set per-turn by process() — appended to base_prompt after the
 		# state's own contextual_prompt (see __build_turn_prompt_parts).
@@ -121,7 +127,7 @@ class TrackingProcessor(object):
 		def dummy_on_metadata(key: str, value: str) -> None:
 			pass
 
-		self.metadata = Metadata(on_metadata or dummy_on_metadata, {}, {}, "", None)
+		self.metadata = Metadata(on_metadata or dummy_on_metadata, {}, {})
 
 		self.out = await self._get_ai_reply()
 
@@ -139,24 +145,31 @@ class TrackingProcessor(object):
 			self.db.delete_message(self.user.message_id)
 			user_message_id = None
 
+		# The bot's reaction is *to* the user's own message this turn, so it
+		# lands there, not on the assistant's new one — skipped for an
+		# AI-started turn, whose "user" message was just deleted above,
+		# same guard build_turn_response's own user_message_id uses.
+		if self.metadata.reaction and user_message_id is not None:
+			self.db.set_message_reaction(user_message_id, self.metadata.reaction)
+
 		return self._build_turn_response(user_message_id, assistant_id)
 
 
 	def generate_reply(self, state: State, on_metadata: MetadataCallback,
 	) -> AsyncIterator[str]:
-		base_prompt, signal_definition, turn_attachments = self.__build_turn_prompt_parts(self.user.automaton, state)
+		base_prompt, signal_definition, reaction_definition, turn_attachments = self.__build_turn_prompt_parts(self.user.automaton, state)
 		chat_history = self._build_chat_history(turn_attachments)
 
 		protocol = self.build_turn_protocol()
 		return protocol.generate_reply(
-			base_prompt, signal_definition, self.env, chat_history, on_metadata
+			base_prompt, signal_definition, self.env, chat_history, on_metadata, reaction_definition=reaction_definition
 		)
 
 	def _build_base_prompt_and_history(self, state: State) -> tuple[str, list[dict]]:
 		"""Same base_prompt/chat_history generate_reply itself builds for
 		`state` — exposed single-underscore (rather than name-mangled) so
 		a caller can get those two pieces without the full TurnProtocol.generate_reply machinery."""
-		base_prompt, _signal_definition, turn_attachments = self.__build_turn_prompt_parts(self.user.automaton, state)
+		base_prompt, _signal_definition, _reaction_definition, turn_attachments = self.__build_turn_prompt_parts(self.user.automaton, state)
 		return base_prompt, self._build_chat_history(turn_attachments)
 
 	def _build_chat_history(self, turn_attachments: list) -> list[dict]:
@@ -170,13 +183,17 @@ class TrackingProcessor(object):
 		supports_schema = self.ai_service.is_provider_with_schema()
 		has_to_evaluate_signals_before_ai_reply = not self.user.automaton.autotracking_on_ai_message
 		Protocol = TurnProtocolUsingSchema if supports_schema else TurnProcotolUsingTextExtraction
-		return Protocol(self.ai_service, has_to_evaluate_signals_before_ai_reply)    
+		return Protocol(
+			self.ai_service, has_to_evaluate_signals_before_ai_reply,
+			reactions_enabled=self.user.state.reactions_enabled,
+			talk_enabled=self.talk_enabled and self.user.automaton.talk_enabled,
+		)
 
-	def __build_turn_prompt_parts(self, automaton: Automaton, state: State) -> tuple[str, str | None, list]:
+	def __build_turn_prompt_parts(self, automaton: Automaton, state: State) -> tuple[str, str | None, str | None, list]:
 
 		if state.fixed_message:
 			logger.warning("Translating fixed_message for state '%s'.", state.key)
-			return FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message), None, []
+			return FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message), None, None, []
 
 		# which action fires from here.
 		# Pinned to THIS turn's own already-resolved automaton (never
@@ -185,10 +202,25 @@ class TrackingProcessor(object):
 		signals = Signals(FixedProjectContext(automaton), self.db)
 		signal_names = automaton.triggerable_signal_names(state.key)
 		signal_definition = signals.get_definition(signal_names)
+		# Unlike signal_definition, never filtered down to a subset — the
+		# bot's own reaction access is all-or-nothing per state (see
+		# State.reactions_enabled), never a partial vocabulary.
+		reaction_definition = self._build_reaction_definition(automaton) if state.reactions_enabled else None
 		base_prompt = f"{automaton.general_prompt}\n\n{state.contextual_prompt}"
 		if self.extra_prompt:
 			base_prompt = f"{base_prompt}\n\n{self.extra_prompt}"
-		return base_prompt, signal_definition, list(automaton.general_attachments.values()) + list(state.attachments.values())
+		return (
+			base_prompt, signal_definition, reaction_definition,
+			list(automaton.general_attachments.values()) + list(state.attachments.values()),
+		)
+
+	@staticmethod
+	def _build_reaction_definition(automaton: Automaton) -> str | None:
+		if not automaton.reactions:
+			return None
+		return "- Definition of reactions:\n" + "\n\n".join(
+			f'\t- Reaction "{r.name}":\n{r.definition}' for r in automaton.reactions
+		)
 
 
 	@staticmethod
@@ -205,6 +237,11 @@ class TrackingProcessor(object):
 			"reply": self.out.messages,
 			"user_message_id": user_message_id,
 			"assistant_message_id": assistant_message_id,
+			# The bot's own reaction to the user's message this turn (see
+			# process()'s own persistence above) — carried here too so the
+			# frontend can apply it live, without waiting for a full
+			# messages refetch to notice the DB write.
+			"user_message_reaction": self.metadata.reaction if user_message_id is not None else None,
 			"state": self._current_state_payload(self.user.automaton, self.out.state),
 			"state_changed": action is not None,
 			"new_state": action.target if action else None,

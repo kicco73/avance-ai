@@ -410,9 +410,9 @@ class ProjectManager:
         if not sessions:
             return
         self._db.publish_project(project_name)
-        username = Session().user
         for session_data in sessions:
             try:
+                username = session_data.get('username') or self._db.next_test_user_username(project_name)
                 self._session_import_manager.import_session_json(username, project_name, session_data)
             except (ValueError, KeyError, TypeError):
                 logger.exception(

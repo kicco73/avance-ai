@@ -26,6 +26,7 @@ function formatDate(iso) {
       <h3 class="user-info-name">{{ user.name ?? user.email }}</h3>
       <p class="user-info-email">{{ user.email }}</p>
       <p v-if="user.provider" class="user-info-provider">{{ user.provider }}</p>
+      <span class="user-info-role-badge" :class="`user-info-role-${user.role}`">{{ user.role }}</span>
 
       <div class="user-info-fields">
         <div class="user-info-field">
@@ -72,6 +73,20 @@ function formatDate(iso) {
 .user-info-name { margin: 0 0 0.15rem; font-size: 1.05rem; font-weight: 600; color: #222; }
 .user-info-email { margin: 0; font-size: 0.82rem; color: #777; word-break: break-all; }
 .user-info-provider { margin: 0.1rem 0 0; font-size: 0.75rem; color: #999; text-transform: capitalize; }
+
+.user-info-role-badge {
+  margin-top: 0.5rem;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.user-info-role-user { background: #eee; color: #777; }
+.user-info-role-supervisor { background: #e3edf7; color: #4a6fa5; }
+.user-info-role-admin { background: #f7e6d9; color: #a5674a; }
 
 .user-info-fields {
   display: flex;

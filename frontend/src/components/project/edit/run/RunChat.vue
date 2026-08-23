@@ -10,7 +10,8 @@ import SessionsPanel from '../../../chat/SessionsPanel.vue'
 import ModelMenu from '../../../ModelMenu.vue'
 import {
   autoTrackingEnabled, autoTrackingLoading, toggleAutoTracking, handleReset, spokenTextEnabled, applyAspect,
-  sessions, sessionsLoading, currentSessionId, loadSessions, selectSession, handleNewSession, handleDeleteSession
+  sessions, sessionsLoading, currentSessionId, loadSessions, selectSession, handleNewSession, handleDeleteSession,
+  state, handleReact
 } from '../../../../chatStore.js'
 
 defineProps({
@@ -141,8 +142,10 @@ onBeforeUnmount(() => {
             :spoken-text-enabled="spokenTextEnabled"
             :resolve-state-label="resolveStateLabel"
             :resolve-action-label="resolveActionLabel"
+            :reactions="state?.reactions || []"
             @select-message="emit('select-message', $event)"
             @select-transition="emit('select-transition', $event)"
+            @react="handleReact"
           >
             <template #message-actions="{ message }">
               <RestartFromHereButton

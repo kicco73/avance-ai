@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import logging
 
-from automaton.automaton import Automaton
 from chat.ws_adapter import WsAdapter
 from db.db import Db
 from events import EnvChanged, StateChanged, subscribe
@@ -102,7 +101,7 @@ class WakeupService:
                     await self._ws_adapter.push(username, {
                         "type": "notification",
                         "project_name": observer_project_name,
-                        "state": Automaton.get_state_payload(state),
+                        "state": automaton.get_state_payload(state),
                         "on-enter": action.on_enter,
                     })
 

@@ -166,6 +166,17 @@ export function putMessageComment(messageId, comment) {
   })
 }
 
+// Sets (reaction given) or clears (null) the user's own reaction to a bot
+// message — a key out of the active project's own `reactions` dict (see
+// chatStore.js's state.reactions).
+export function putMessageReaction(messageId, reaction) {
+  return apiFetch(`${API_URL}/chat/messages/${encodeURIComponent(messageId)}/reaction`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reaction })
+  })
+}
+
 // Sets/clears a session's persisted "reviewed by a domain expert" flag —
 // the source of truth for has_annotations. A toggle: calling with
 // `false` un-marks it again.
@@ -285,23 +296,17 @@ export function postListenTranscribe(audioBlob) {
   })
 }
 
-export function postImportSession(projectName, file) {
+// The "Label sessions" view's own Import button — every selected file in
+// one request, whichever mix of a .txt transcript and a "Download all"
+// .json export it contains. All per-file/per-session dispatch and error
+// handling happens server-side; returns {results: [{file, ok, session_id?,
+// error?}, ...], last_session_id}.
+export function postImportSessions(projectName, files) {
   const formData = new FormData()
-  formData.append('file', file)
+  for (const file of files) formData.append('files', file)
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/sessions/import`, {
     method: 'POST',
     body: formData
-  })
-}
-
-// One session object out of a "Download all" .json export — LabelProjectView.vue's
-// own handleImportSession calls this once per session found inside an
-// uploaded .json file, same per-item try/catch loop it uses per .txt file.
-export function postImportSessionJson(projectName, sessionData) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/sessions/import-json`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(sessionData)
   })
 }
 
@@ -310,6 +315,20 @@ export function postImportSessionJson(projectName, sessionData) {
 // so the caller can trigger a real file download.
 export function getExportSessions(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/sessions/export`, {}, { parse: 'blob' })
+}
+
+export function putSessionsTestUser(projectName, sessionIds, testUserSeq) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/sessions/test-user`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_ids: sessionIds, test_user_seq: testUserSeq })
+  })
+}
+
+export function deleteTestUser(projectName, testUserSeq) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/test-users/${encodeURIComponent(testUserSeq)}`, {
+    method: 'DELETE'
+  })
 }
 
 export function getSignals() {
@@ -415,14 +434,6 @@ export function postAutoTracking(sessionId, enabled) {
 
 export function messageAudioUrl(messageId) {
   return `${API_URL}/chat/messages/${messageId}/audio`
-}
-
-export function postTriggersPreview(signals) {
-  return apiFetch(`${API_URL}/triggers/preview`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ signals })
-  })
 }
 
 // "Restart from here": deletes every message (and its Signals rows) at

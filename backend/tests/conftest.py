@@ -36,6 +36,7 @@ def _reset_dispatcher():
 @pytest.fixture(autouse=True)
 def _default_session_user():
     Session().user = "user"
+    Session().role = "supervisor"
 
 
 @pytest.fixture

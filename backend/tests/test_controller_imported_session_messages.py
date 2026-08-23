@@ -45,10 +45,10 @@ def test_reading_an_imported_sessions_messages_survives_a_final_live_state(clien
     assert client.get(f"/api/chat/sessions/{native.json()['id']}/messages").status_code == 200
 
     imported = client.post(
-        "/api/projects/proj/sessions/import", files={"file": ("t.txt", "user: hi\nassistant: hello\n", "text/plain")}
+        "/api/projects/proj/sessions/import", files=[("files", ("t.txt", "user: hi\nassistant: hello\n", "text/plain"))]
     )
     assert imported.status_code == 200, imported.text
-    session_id = imported.json()["session_id"]
+    session_id = imported.json()["last_session_id"]
 
     resp = client.get(f"/api/chat/sessions/{session_id}/messages")
     assert resp.status_code == 200, resp.text

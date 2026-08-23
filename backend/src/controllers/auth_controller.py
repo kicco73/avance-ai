@@ -20,11 +20,11 @@ class AuthController(BaseController):
     def __init__(self, auth_service: AuthService) -> None:
         self.auth_service = auth_service
 
-    @get("/api/auth/providers")
+    @get("/api/auth/providers", role=None)
     def get_providers(self):
         return {"providers": self.auth_service.public_providers()}
 
-    @post("/api/auth/login")
+    @post("/api/auth/login", role=None)
     def post_login(self, req: LoginRequest, response: Response):
         try:
             token = self.auth_service.login(req.provider, req.credential)

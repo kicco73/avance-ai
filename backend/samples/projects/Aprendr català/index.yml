@@ -1,3 +1,5 @@
+avance-version: "1.7.0"
+
 init-action:
   target: welcome
   on-enter: celebrate()
@@ -21,7 +23,8 @@ attachments:
   - definitions.txt
   - exercise_template.txt
   
-signal-tracking-on-ai-message: true
+project:
+  signal-tracking-on-ai-message: true
 
 signals:
   progress:

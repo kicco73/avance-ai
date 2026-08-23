@@ -50,6 +50,7 @@ import {
   handleDeleteSession,
   handleSend,
   handleResend,
+  handleReact,
   handleVoiceMessage,
   handleAction,
   toggleAudio,
@@ -328,8 +329,10 @@ watch(
           :key="msg.messageId || msg.id || i"
           :message="msg"
           :spoken-text-enabled="spokenTextEnabled"
+          :reactions="state?.reactions || []"
           show-timestamp
           @resend="resend(i)"
+          @react="handleReact(msg.messageId, $event)"
         />
       </slot>
     </div>
@@ -515,6 +518,7 @@ watch(
    .chat-header/.chat-body/.chat-footer without reaching into internals. */
 .chat-header {
   flex-shrink: 0;
+  height: 70px;
 }
 
 .chat-footer {

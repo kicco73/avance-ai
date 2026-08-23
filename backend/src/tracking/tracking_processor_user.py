@@ -28,17 +28,24 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			rv = self.metadata.env = self.metadata_processor.parse_raw_env(value)
 		elif key == 'audio':
 			rv = self.metadata.audio = value
+		elif key == 'reaction':
+			rv = self.metadata.reaction = value.strip() or None
 		self.metadata.on_metadata(key, rv)
 
 	def on_receiving_metadata_when_repeating_the_call(self, key: str, value: str):
 		# 'signals' is never among tag_specs for this call — already known
 		# from the first call, re-requesting them would be wasted and must
-		# not trigger a second trigger evaluation.
+		# not trigger a second trigger evaluation. 'reaction' isn't among
+		# them either currently (see _get_ai_reply's own tag_specs) — kept
+		# here anyway so this handler stays a strict superset of what it's
+		# actually called with, same as 'env'/'audio' above.
 		rv = value
 		if key == 'env':
 			rv = self.metadata.env = self.metadata_processor.parse_raw_env(value)
 		elif key == 'audio':
 			rv = self.metadata.audio = value
+		elif key == 'reaction':
+			rv = self.metadata.reaction = value.strip() or None
 		self.metadata.on_metadata(key, rv)
 	
 	async def _get_ai_reply(self) -> OutVariables:
