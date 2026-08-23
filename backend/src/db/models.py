@@ -96,6 +96,7 @@ class User(BaseModel):
     # user's own active_project, unrelated to any Project FK since a
     # user with no projects yet still needs a row.
     active_project = CharField(null=True)
+    role = CharField(default='user')
 
     class Meta:
         indexes = ((('provider', 'provider_user_id'), True),)

@@ -47,6 +47,8 @@ def client(identity) -> TestClient:
     def login_stub():
         return {"allowlisted": True}
 
+    login_stub.__required_role__ = None
+
     @app.get("/api/protected")
     def protected():
         return {"user": Session().user}

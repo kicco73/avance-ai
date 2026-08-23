@@ -281,7 +281,7 @@ class ChatController(BaseController):
             raise HTTPException(status_code=HTTPStatus.SERVICE_UNAVAILABLE, detail=str(exc)) from exc
         return {"text": text}
 
-    @post("/api/triggers/preview")
+    @post("/api/triggers/preview", role="admin")
     def post_triggers_preview(self, req: TriggersPreviewRequest):
         return self.chat_service.preview_triggers(req.signals)
 

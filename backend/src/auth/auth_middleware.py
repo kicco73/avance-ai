@@ -23,15 +23,16 @@ from http import HTTPStatus
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
+from starlette.routing import Match
 
 from auth.auth_service import SESSION_COOKIE_NAME
+from auth.roles import role_satisfies
 from session import Session
 
-# Exact paths only — never a prefix match, so a future route nested under
-# /api/auth/ doesn't silently bypass the wall by sharing that prefix.
-# The three doc routes are FastAPI's own defaults (main.py never disables
-# them); there's no separate /health endpoint today.
-ALLOWED_PATHS = frozenset({"/api/auth/login", "/api/auth/providers", "/docs", "/redoc", "/openapi.json"})
+# FastAPI's own default doc routes (main.py never disables them) — they
+# never go through a controller's get/post decorators, so they can never
+# carry __required_role__ and must stay allowlisted here instead.
+ALLOWED_PATHS = frozenset({"/docs", "/redoc", "/openapi.json"})
 
 
 def _unauthenticated_response() -> JSONResponse:
@@ -41,9 +42,45 @@ def _unauthenticated_response() -> JSONResponse:
     )
 
 
+def _forbidden_response() -> JSONResponse:
+    return JSONResponse(
+        status_code=HTTPStatus.FORBIDDEN,
+        content={"error": {"message": "Not authorized for this action.", "detail": None}},
+    )
+
+
+def _flatten_routes(routes):
+    # FastAPI may wrap an included APIRouter's routes behind a private
+    # `_IncludedRouter` proxy (no `.endpoint`/no direct `.matches()`
+    # semantics of its own) rather than exposing them flat on
+    # request.app.routes — recurse through `.original_router.routes`
+    # (present on that proxy, absent on a plain Route) until only
+    # actual matchable routes are left, so this keeps working whether
+    # or not the installed Starlette/FastAPI wraps routes this way.
+    for candidate_route in routes:
+        original_router = getattr(candidate_route, "original_router", None)
+        if original_router is not None:
+            yield from _flatten_routes(original_router.routes)
+        else:
+            yield candidate_route
+
+
+def _matched_route_for(request: Request):
+    for candidate_route in _flatten_routes(request.app.routes):
+        match, _ = candidate_route.matches(request.scope)
+        if match == Match.FULL:
+            return candidate_route
+    return None
+
+
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if request.url.path in ALLOWED_PATHS:
+            return await call_next(request)
+
+        matched_route = _matched_route_for(request)
+        required_role = getattr(matched_route.endpoint, "__required_role__", "user") if matched_route else "user"
+        if required_role is None:
             return await call_next(request)
 
         auth_service = request.app.state.auth_service
@@ -51,6 +88,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         identity = auth_service.verify_token(token) if token else None
         if identity is None:
             return _unauthenticated_response()
+
+        if not role_satisfies(identity.role, required_role):
+            return _forbidden_response()
 
         Session().user = identity.email
         return await call_next(request)

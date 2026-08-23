@@ -6,6 +6,16 @@ from .models import User
 from .utils import _utc_iso
 
 
+def _initial_role(name: str | None) -> str:
+    first = (name or "").strip().split()
+    first_name = first[0].lower() if first else ""
+    if first_name == "ivan":
+        return "supervisor"
+    if first_name == "enrico":
+        return "admin"
+    return "user"
+
+
 class UserMixin:
 
     def list_users(self) -> list[dict]:
@@ -16,6 +26,7 @@ class UserMixin:
                 "email": user.email,
                 "name": user.name,
                 "picture_url": user.picture_url,
+                "role": user.role,
                 "created_at": _utc_iso(user.created_at),
                 "last_login": _utc_iso(user.last_login),
             }
@@ -25,7 +36,10 @@ class UserMixin:
     def get_or_create_user(self, provider: str, provider_user_id: str, email: str, name: str, picture_url: str | None) -> User:
         user, _ = User.get_or_create(
             id=email,
-            defaults={"provider": provider, "provider_user_id": provider_user_id, "email": email, "name": name, "picture_url": picture_url},
+            defaults={
+                "provider": provider, "provider_user_id": provider_user_id, "email": email, "name": name,
+                "picture_url": picture_url, "role": _initial_role(name),
+            },
         )
         user.name = name
         user.picture_url = picture_url
@@ -46,6 +60,7 @@ class UserMixin:
             "email": user.email,
             "name": user.name,
             "picture_url": user.picture_url,
+            "role": user.role,
             "last_login": user.last_login,
         }
 
@@ -60,6 +75,7 @@ class UserMixin:
             "name": user.name,
             "picture_url": user.picture_url,
             "provider": user.provider,
+            "role": user.role,
             "created_at": _utc_iso(user.created_at),
             "last_login": _utc_iso(user.last_login),
         }

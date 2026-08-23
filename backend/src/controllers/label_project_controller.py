@@ -44,14 +44,14 @@ class LabelProjectController(BaseController):
         self.tracking_service = tracking_service
         self.benchmark_run_service = benchmark_run_service
 
-    @get("/api/projects/{project_name}/benchmark-metrics")
+    @get("/api/projects/{project_name}/benchmark-metrics", role="supervisor")
     def get_benchmark_metrics(self, project_name: str, session_id: int | None = None):
         """Expert-annotation-vs-actual benchmark metrics for
         `project_name` — every annotated session, or (session_id given)
         just that one. The "Label sessions" view's Performance tab."""
         return self.chat_service.get_benchmark_metrics(project_name=project_name, session_id=session_id)
 
-    @post("/api/projects/{project_name}/sessions/import")
+    @post("/api/projects/{project_name}/sessions/import", role="supervisor")
     async def post_import_session(self, project_name: str, file: UploadFile):
         """Imports a chat session from a plain-text transcript — the
         "Label sessions" view's own upload button. A malformed transcript
@@ -61,7 +61,7 @@ class LabelProjectController(BaseController):
         session_id = self.tracking_service.import_session(Session().user, project_name, text, title=file.filename)
         return {"success": True, "session_id": session_id}
 
-    @post("/api/projects/{project_name}/sessions/import-json")
+    @post("/api/projects/{project_name}/sessions/import-json", role="supervisor")
     def post_import_session_json(self, project_name: str, req: SessionImportJsonRequest):
         """Imports one session from a "Download all" JSON export — called
         once per session object found inside an uploaded .json file (see
@@ -69,7 +69,7 @@ class LabelProjectController(BaseController):
         session_id = self.tracking_service.import_session_json(Session().user, project_name, req.model_dump())
         return {"success": True, "session_id": session_id}
 
-    @get("/api/projects/{project_name}/sessions/export")
+    @get("/api/projects/{project_name}/sessions/export", role="supervisor")
     def get_export_sessions(self, project_name: str):
         """The "Label sessions" view's own "Download all" button — every
         session (native and imported alike) of `project_name`, as one
@@ -93,31 +93,31 @@ class LabelProjectController(BaseController):
         self.chat_service.delete_session(session_id)
         return {"success": True}
 
-    @put("/api/chat/sessions/{session_id}/labeled")
+    @put("/api/chat/sessions/{session_id}/labeled", role="supervisor")
     def put_session_labeled(self, session_id: int, req: SetSessionLabeledRequest):
         """The "Label sessions" view's "Mark done" button. Raises
         ChatServiceError (404) for an unknown/not-yours session_id."""
         return self.chat_service.mark_session_labeled(session_id, req.labeled)
 
-    @put("/api/chat/sessions/{session_id}/title")
+    @put("/api/chat/sessions/{session_id}/title", role="supervisor")
     def put_session_title(self, session_id: int, req: SetSessionTitleRequest):
         """The "Label sessions" view's own Info tab — see ChatService.
         set_session_title. Same 404 convention as put_session_labeled."""
         return self.chat_service.set_session_title(session_id, req.title)
 
-    @put("/api/chat/sessions/{session_id}/comment")
+    @put("/api/chat/sessions/{session_id}/comment", role="supervisor")
     def put_session_comment(self, session_id: int, req: CommentRequest):
         """The "Label sessions" view's Info tab — a whole-session note,
         distinct from put_message_comment's per-message one below."""
         return self.chat_service.set_session_comment(session_id, req.comment)
 
-    @get("/api/chat/sessions/{session_id}/summary")
+    @get("/api/chat/sessions/{session_id}/summary", role="supervisor")
     def get_session_summary(self, session_id: int):
         """{content: str | None}. Auto-queued the moment this session was
         discovered closed — never triggered by this endpoint itself, which only reads."""
         return self.chat_service.get_session_summary(session_id)
 
-    @post("/api/chat/sessions/{session_id}/truncate")
+    @post("/api/chat/sessions/{session_id}/truncate", role="supervisor")
     async def post_truncate_session(self, session_id: int, req: TruncateSessionRequest):
         """"Restart from here": the live state may have moved backward,
         so the fresh payload is read back only once the mutation itself
@@ -128,35 +128,35 @@ class LabelProjectController(BaseController):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return self.project_service.get_active_state_payload()
 
-    @get("/api/chat/sessions/{session_id}/signals")
+    @get("/api/chat/sessions/{session_id}/signals", role="supervisor")
     def get_session_signals(self, session_id: int):
         """The full Tracking event log for `session_id` (snapshots and
         transitions, chronological) — the "Label sessions" view
         reconstructs the timeline entirely client-side from this call."""
         return self.chat_service.get_session_signals(session_id)
 
-    @put("/api/chat/messages/{message_id}/expected-state")
+    @put("/api/chat/messages/{message_id}/expected-state", role="supervisor")
     def put_message_expected_state(self, message_id: int, req: ExpectedStateRequest):
         """Sets or (expected_state: null) clears message_id's expert-
         annotated expected state — the "Label sessions" view's States
         tab. ChatServiceError (404/409/422) is handled globally."""
         return self.chat_service.set_message_expected_state(message_id, req.expected_state)
 
-    @put("/api/chat/messages/{message_id}/expected-signals")
+    @put("/api/chat/messages/{message_id}/expected-signals", role="supervisor")
     def put_message_expected_signals(self, message_id: int, req: ExpectedSignalsRequest):
         """Sets or clears message_id's expert-annotated expected signal
         values — the "Label sessions" view's Signals tab. Same error
         handling as put_message_expected_state."""
         return self.chat_service.set_message_expected_signals(message_id, req.expected_values)
 
-    @put("/api/chat/messages/{message_id}/comment")
+    @put("/api/chat/messages/{message_id}/comment", role="supervisor")
     def put_message_comment(self, message_id: int, req: CommentRequest):
         """Sets or (comment: null/empty) clears message_id's expert-left
         free-text comment. Unlike the expected-state/signals endpoints,
         every message is a legitimate target: no 409 here, only 404."""
         return self.chat_service.set_message_comment(message_id, req.comment)
 
-    @delete("/api/chat/sessions/{session_id}/annotations")
+    @delete("/api/chat/sessions/{session_id}/annotations", role="supervisor")
     def delete_session_annotations(self, session_id: int):
         """Clears every expert annotation across session_id's Tracking
         rows — the "Label sessions" view's "Unlabel all" action.
@@ -164,7 +164,7 @@ class LabelProjectController(BaseController):
         self.chat_service.clear_session_annotations(session_id)
         return {"success": True}
 
-    @post("/api/projects/{project_name}/benchmark-runs")
+    @post("/api/projects/{project_name}/benchmark-runs", role="supervisor")
     def post_benchmark_run(self, project_name: str, req: CreateBenchmarkRunRequest):
         """Creates a BenchmarkRun and submits its replay job, returning
         immediately with status='pending' — or, for a single-session run
@@ -179,14 +179,14 @@ class LabelProjectController(BaseController):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_name}/benchmark-runs/{run_id}")
+    @get("/api/projects/{project_name}/benchmark-runs/{run_id}", role="supervisor")
     def get_benchmark_run(self, project_name: str, run_id: int):
         """One BenchmarkRun, its domain data merged with its Job's
         lifecycle (status/progress/error/timestamps). BenchmarkServiceError
         (404 for an unknown run_id) is handled globally."""
         return self.benchmark_run_service.get_run(run_id)
 
-    @get("/api/projects/{project_name}/benchmark-runs")
+    @get("/api/projects/{project_name}/benchmark-runs", role="supervisor")
     def get_benchmark_runs(self, project_name: str, session_id: int | None = None, username: str | None = None):
         """Every BenchmarkRun for `project_name` with that exact
         session_id — None (the default) means every whole-project-scope
@@ -197,7 +197,7 @@ class LabelProjectController(BaseController):
             return self.benchmark_run_service.list_runs(project_name, session_id)
         return self.benchmark_run_service.list_runs(project_name, session_id, username)
 
-    @post("/api/projects/{project_name}/states/{state_key}/test")
+    @post("/api/projects/{project_name}/states/{state_key}/test", role="supervisor")
     def post_state_test(self, project_name: str, state_key: str, req: StateTestRequest):
         """Launches the "States" branch's aggregation job for one state.
         Returns immediately with the ephemeral job's id; poll GET
@@ -208,14 +208,14 @@ class LabelProjectController(BaseController):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"job_id": job_id}
 
-    @get("/api/projects/{project_name}/state-jobs/{job_id}")
+    @get("/api/projects/{project_name}/state-jobs/{job_id}", role="supervisor")
     def get_state_job(self, project_name: str, job_id: int):
         """One ephemeral 'state_aggregation' job's status/progress/
         result. None (never a 404) for an unknown job_id, e.g. after a
         backend restart — distinguishable from "in progress"/"completed"."""
         return self.benchmark_run_service.get_job_status(job_id)
 
-    @post("/api/projects/{project_name}/users/aggregation")
+    @post("/api/projects/{project_name}/users/aggregation", role="supervisor")
     def post_users_aggregation(self, project_name: str, req: StateTestRequest):
         """Launches the "Users" branch's aggregation job — a simple mean
         across one whole-project-scope run per distinct annotated user.

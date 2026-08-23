@@ -38,31 +38,31 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         self.chat_service = chat_service
         self.project_service = project_service
 
-    @post("/api/projects/{project_name}/test-sessions")
+    @post("/api/projects/{project_name}/test-sessions", role="admin")
     def post_create_test_session(self, project_name: str):
         """The embedded "Test" chat's explicit "start a new session"
         action — the one place a session may exist against an unpublished
         revision."""
         return self.chat_service.create_draft_session(project_name)
 
-    @get("/api/projects/{project_name}/test-sessions/current")
+    @get("/api/projects/{project_name}/test-sessions/current", role="admin")
     def get_current_test_session(self, project_name: str, session_id: int | None = None):
         """The embedded "Test" chat's bootstrap endpoint — the
         draft-session equivalent of GET /api/chat/session."""
         return self.chat_service.get_or_create_current_draft_session(session_id, project_name)
 
-    @get("/api/projects/{project_name}/test-sessions")
+    @get("/api/projects/{project_name}/test-sessions", role="admin")
     def get_test_sessions(self, project_name: str):
         """The embedded "Test" chat's own "Sessions" panel listing — the
         draft-session equivalent of GET .../sessions. The two pools never mix."""
         return self.chat_service.list_test_sessions(project_name)
 
-    @post("/api/projects/{project_name}/test-sessions/reset")
+    @post("/api/projects/{project_name}/test-sessions/reset", role="admin")
     async def post_reset_test_sessions(self, project_name: str):
         async with self.chat_service.acquire_write(project_name):
             return self.chat_service.reset_test_sessions(project_name)
 
-    @get("/api/projects/{project_name}/states")
+    @get("/api/projects/{project_name}/states", role="admin")
     def get_project_states(self, project_name: str):
         """Every real state key of `project_name`'s current draft
         automaton — the "States" branch's own node list (see
@@ -72,7 +72,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_name}/graph")
+    @get("/api/projects/{project_name}/graph", role="supervisor")
     def get_project_graph(self, project_name: str, session_id: int | None = None):
         """The project's state machine (states as nodes, actions as
         edges), for the Inspect panel graph. `session_id` omitted
@@ -84,7 +84,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_name}/signals")
+    @get("/api/projects/{project_name}/signals", role="supervisor")
     def get_project_signals(self, project_name: str, state_key: str | None = None, session_id: int | None = None):
         """Signal definitions for the Inspect panel. `state_key`, when
         given, scopes each signal's `relevant` field to that state's
@@ -96,7 +96,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_name}/env-keys")
+    @get("/api/projects/{project_name}/env-keys", role="admin")
     def get_project_env_keys(self, project_name: str, session_id: int | None = None):
         """Declared env-key definitions for the "Edit project" view's
         Inspect panel Env tab. `session_id`: see get_project_graph above."""
@@ -107,7 +107,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_name}/project")
+    @get("/api/projects/{project_name}/project", role="admin")
     def get_project_metadata(self, project_name: str):
         """The optional top-level `project:` section of `project_name`'s
         last saved index.yml, for the Inspect panel Info tab."""
@@ -118,7 +118,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_name}/files")
+    @get("/api/projects/{project_name}/files", role="admin")
     def get_project_files(self, project_name: str):
         """Text-editable files inside `project_name`'s directory (index.yml
         plus any text attachments), for the "Edit project" view's file
@@ -128,7 +128,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_name}/files/{file_name}")
+    @get("/api/projects/{project_name}/files/{file_name}", role="admin")
     def get_project_file(self, project_name: str, file_name: str):
         """{content, can_undo, can_redo} of `file_name`'s current
         content — can_undo/can_redo drive the Undo/Redo buttons. Missing
@@ -142,7 +142,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_name}/files/{file_name}/content")
+    @get("/api/projects/{project_name}/files/{file_name}/content", role="admin")
     def get_project_file_content(self, project_name: str, file_name: str, request: Request, session_id: int | None = None):
         """Raw bytes of `file_name`'s content, for callers that can't use
         the JSON GET above. ETag'd off the content itself, so an
@@ -160,7 +160,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             content=content, media_type=content_type, headers={"ETag": etag, "Cache-Control": "no-cache"}
         )
 
-    @post("/api/projects/{project_name}/files/{file_name}/undo")
+    @post("/api/projects/{project_name}/files/{file_name}/undo", role="admin")
     async def undo_project_file(self, project_name: str, file_name: str, request: Request):
         """Loads a step back into the current user's undo history for
         `file_name` — a pure editor preview: nothing is persisted, and
@@ -173,7 +173,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @post("/api/projects/{project_name}/files/{file_name}/redo")
+    @post("/api/projects/{project_name}/files/{file_name}/redo", role="admin")
     async def redo_project_file(self, project_name: str, file_name: str, request: Request):
         """Mirror of .../undo, replaying the current user's own redo
         history instead (see ProjectService.redo_project_file)."""
@@ -185,7 +185,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @delete("/api/projects/{project_name}/history")
+    @delete("/api/projects/{project_name}/history", role="admin")
     def clear_project_history(self, project_name: str):
         """Deletes the current user's undo/redo history for every file
         in `project_name` — called when the view opens, so a fresh
@@ -196,7 +196,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         return {"success": True}
 
-    @put("/api/projects/{project_name}/files/{file_name}")
+    @put("/api/projects/{project_name}/files/{file_name}", role="admin")
     async def put_project_file(self, project_name: str, file_name: str, request: Request):
         """Creates or edits one of `project_name`'s files in place —
         stages a copy of the whole project dir, validates, and only on
@@ -213,7 +213,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return result
 
-    @delete("/api/projects/{project_name}/files/{file_name}")
+    @delete("/api/projects/{project_name}/files/{file_name}", role="admin")
     async def delete_project_file(self, project_name: str, file_name: str):
         """Deletes one text attachment from `project_name`'s directory —
         index.yml itself is rejected (see ProjectService.delete_project_file)."""
@@ -231,7 +231,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
     # index.yml structural editing, reusing put_project_file's own path.
     # ------------------------------------------------------------------
 
-    @post("/api/projects/{project_name}/states")
+    @post("/api/projects/{project_name}/states", role="admin")
     async def add_state(self, project_name: str):
         try:
             return await self.project_service.add_state(project_name, self._activate_project)
@@ -240,7 +240,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @post("/api/projects/{project_name}/signals")
+    @post("/api/projects/{project_name}/signals", role="admin")
     async def add_signal(self, project_name: str):
         try:
             return await self.project_service.add_signal(project_name, self._activate_project)
@@ -249,7 +249,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @post("/api/projects/{project_name}/env-keys")
+    @post("/api/projects/{project_name}/env-keys", role="admin")
     async def add_env_key(self, project_name: str):
         try:
             return await self.project_service.add_env_key(project_name, self._activate_project)
@@ -258,7 +258,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @post("/api/projects/{project_name}/states/{state_name}/actions")
+    @post("/api/projects/{project_name}/states/{state_name}/actions", role="admin")
     async def add_action(self, project_name: str, state_name: str):
         try:
             return await self.project_service.add_action(project_name, state_name, self._activate_project)
@@ -267,7 +267,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @put("/api/projects/{project_name}/states/{state_name}/{field}")
+    @put("/api/projects/{project_name}/states/{state_name}/{field}", role="admin")
     async def put_state_field(self, project_name: str, state_name: str, field: str, req: SetProjectFieldRequest):
         if field not in STATE_EDITABLE_FIELDS:
             raise HTTPException(
@@ -283,7 +283,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @put("/api/projects/{project_name}/states/{state_name}/actions/{action_name}/{field}")
+    @put("/api/projects/{project_name}/states/{state_name}/actions/{action_name}/{field}", role="admin")
     async def put_action_field(
         self, project_name: str, state_name: str, action_name: str, field: str, req: SetProjectFieldRequest
     ):
@@ -301,7 +301,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @put("/api/projects/{project_name}/signals/{signal_name}/{field}")
+    @put("/api/projects/{project_name}/signals/{signal_name}/{field}", role="admin")
     async def put_signal_field(self, project_name: str, signal_name: str, field: str, req: SetProjectFieldRequest):
         if field not in SIGNAL_EDITABLE_FIELDS:
             raise HTTPException(
@@ -317,7 +317,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @put("/api/projects/{project_name}/env-keys/{env_key_name}/{field}")
+    @put("/api/projects/{project_name}/env-keys/{env_key_name}/{field}", role="admin")
     async def put_env_key_field(self, project_name: str, env_key_name: str, field: str, req: SetProjectFieldRequest):
         if field not in ENV_KEY_EDITABLE_FIELDS:
             raise HTTPException(
@@ -333,7 +333,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @put("/api/projects/{project_name}/init-action/{field}")
+    @put("/api/projects/{project_name}/init-action/{field}", role="admin")
     async def put_init_action_field(self, project_name: str, field: str, req: SetProjectFieldRequest):
         """Every editable field of the init-action itself. 'target'
         (moving the automaton's start state) is the one case with its
@@ -347,7 +347,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @put("/api/projects/{project_name}/project/{field}")
+    @put("/api/projects/{project_name}/project/{field}", role="admin")
     async def put_project_field(self, project_name: str, field: str, req: SetProjectFieldRequest):
         if field not in PROJECT_EDITABLE_FIELDS:
             raise HTTPException(
@@ -366,7 +366,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
     # Named to sort alphabetically before put_action_field: routes
     # register in alphabetical method-name order, and put_action_field's
     # {field} wildcard would otherwise swallow this literal "order" segment.
-    @put("/api/projects/{project_name}/states/{state_name}/actions/{action_name}/order")
+    @put("/api/projects/{project_name}/states/{state_name}/actions/{action_name}/order", role="admin")
     async def move_action(
         self, project_name: str, state_name: str, action_name: str, req: ReorderActionRequest
     ):
@@ -379,7 +379,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @delete("/api/projects/{project_name}/states/{state_name}")
+    @delete("/api/projects/{project_name}/states/{state_name}", role="admin")
     async def delete_state(self, project_name: str, state_name: str):
         try:
             await self.project_service.delete_state(project_name, state_name, self._activate_project)
@@ -391,7 +391,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return Response(status_code=HTTPStatus.NO_CONTENT)
 
-    @delete("/api/projects/{project_name}/states/{state_name}/actions/{action_name}")
+    @delete("/api/projects/{project_name}/states/{state_name}/actions/{action_name}", role="admin")
     async def delete_action(self, project_name: str, state_name: str, action_name: str):
         try:
             await self.project_service.delete_action(project_name, state_name, action_name, self._activate_project)
@@ -401,7 +401,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return Response(status_code=HTTPStatus.NO_CONTENT)
 
-    @delete("/api/projects/{project_name}/signals/{signal_name}")
+    @delete("/api/projects/{project_name}/signals/{signal_name}", role="admin")
     async def delete_signal(self, project_name: str, signal_name: str):
         try:
             await self.project_service.delete_signal(project_name, signal_name, self._activate_project)
@@ -411,7 +411,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return Response(status_code=HTTPStatus.NO_CONTENT)
 
-    @delete("/api/projects/{project_name}/env-keys/{env_key_name}")
+    @delete("/api/projects/{project_name}/env-keys/{env_key_name}", role="admin")
     async def delete_env_key(self, project_name: str, env_key_name: str):
         try:
             await self.project_service.delete_env_key(project_name, env_key_name, self._activate_project)
@@ -421,7 +421,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return Response(status_code=HTTPStatus.NO_CONTENT)
 
-    @get("/api/projects/{project_name}/revision")
+    @get("/api/projects/{project_name}/revision", role="admin")
     def get_project_revision(self, project_name: str):
         """{revision, published_revision} — the "Edit project" toolbar's
         own revision display."""
@@ -430,7 +430,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_name}/publish/preview")
+    @get("/api/projects/{project_name}/publish/preview", role="admin")
     def get_publish_preview(self, project_name: str):
         """Whether a Publish right now needs an explicit state remap
         first. The Publish button's confirm flow calls this before
@@ -440,7 +440,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
 
-    @post("/api/projects/{project_name}/publish")
+    @post("/api/projects/{project_name}/publish", role="admin")
     def post_publish_project(self, project_name: str, req: PublishProjectRequest):
         """Freezes the current draft as `project_name`'s published
         revision — see ProjectService.publish_project. `remap_to` is
@@ -452,7 +452,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @post("/api/projects/{project_name}/revert")
+    @post("/api/projects/{project_name}/revert", role="admin")
     async def post_revert_project(self, project_name: str):
         """Discards `project_name`'s entire in-progress draft revision,
         reverting to whatever was last published — see ProjectService.

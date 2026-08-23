@@ -89,7 +89,7 @@ class AuthService:
             return None
         return AuthenticatedUser(
             provider_user_id=user["provider_user_id"], email=user["email"], name=user["name"],
-            picture_url=user["picture_url"],
+            picture_url=user["picture_url"], role=user["role"],
         )
 
     def get_profile(self, email: str) -> dict | None:
