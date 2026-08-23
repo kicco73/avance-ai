@@ -13,6 +13,7 @@ import {
   getUsersAggregationJob, postBenchmarkRun, postStateTest, postUsersAggregation
 } from '../../../../api.js'
 import { loadSessions, sessions, sessionsLoading } from '../../../../chatStore.js'
+import { confirmDialog } from '../../../../dialogStore.js'
 
 const props = defineProps({
   projectName: {
@@ -561,7 +562,18 @@ function formatNumber(value) {
 
 const resettingCache = ref(false)
 
+const anyTestExecuted = computed(() => Object.values(nodeStatuses.value).some((status) => status !== 'idle'))
+
 async function onResetCache() {
+  if (strategy.value === 'turn_by_turn') {
+    const ok = await confirmDialog({
+      title: 'Reset test cache',
+      body: 'Turn-by-turn tests replay one AI call per message — resetting the cache forces every test to run again from scratch, which can be expensive. Continue?',
+      okLabel: 'Reset',
+      danger: true
+    })
+    if (!ok) return
+  }
   resettingCache.value = true
   try {
     await deleteBenchmarkRuns(props.projectName)
@@ -619,7 +631,7 @@ onBeforeUnmount(() => {
         <button
           class="tests-panel-reset-btn"
           title="Reset test cache"
-          :disabled="resettingCache"
+          :disabled="resettingCache || !anyTestExecuted"
           @click="onResetCache"
         >
           <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
