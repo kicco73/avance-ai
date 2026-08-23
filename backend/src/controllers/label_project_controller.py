@@ -166,6 +166,11 @@ class LabelProjectController(BaseController):
         self.chat_service.clear_session_annotations(session_id)
         return {"success": True}
 
+    @delete("/api/projects/{project_name}/benchmark-runs", role="supervisor")
+    def delete_benchmark_runs(self, project_name: str):
+        self.benchmark_run_service.reset_cache(project_name)
+        return {"success": True}
+
     @post("/api/projects/{project_name}/benchmark-runs", role="supervisor")
     def post_benchmark_run(self, project_name: str, req: CreateBenchmarkRunRequest):
         """Creates a BenchmarkRun and submits its replay job, returning

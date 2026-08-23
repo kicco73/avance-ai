@@ -3,13 +3,14 @@
 // Two columns: TestsTree on the left (Sessions/States), a node's results on
 // the right. Owns all data fetching/launching/polling — TestsTree itself
 // (alongside TestNodeButton, both in this same test/ folder) stays purely presentational.
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import TestsTree from './TestsTree.vue'
 import DocInfoButton from '../../../DocInfoButton.vue'
 import MetricDetail from '../../../inspector/MetricDetail.vue'
+import ModelMenu from '../../../ModelMenu.vue'
 import {
-  getBenchmarkMetrics, getBenchmarkRun, getBenchmarkRuns, getProjectStates, getStateJob, getUsersAggregationJob,
-  postBenchmarkRun, postStateTest, postUsersAggregation
+  deleteBenchmarkRuns, getBenchmarkMetrics, getBenchmarkRun, getBenchmarkRuns, getProjectStates, getStateJob,
+  getUsersAggregationJob, postBenchmarkRun, postStateTest, postUsersAggregation
 } from '../../../../api.js'
 import { loadSessions, sessions, sessionsLoading } from '../../../../chatStore.js'
 
@@ -27,6 +28,62 @@ const emit = defineEmits(['select'])
 
 // Applies to whichever node gets activated next — one shared control, not a per-node choice.
 const strategy = ref('batch')
+const strategyLabels = { batch: 'Batch', turn_by_turn: 'Turn-by-turn' }
+
+const strategyOpen = ref(false)
+const strategyBtnEl = ref(null)
+const strategyPanelEl = ref(null)
+const strategyPanelStyle = ref({})
+const strategyLabel = computed(() => strategyLabels[strategy.value])
+
+async function positionStrategyPanel() {
+  await nextTick()
+  const btn = strategyBtnEl.value
+  if (!btn) return
+  const btnRect = btn.getBoundingClientRect()
+  strategyPanelStyle.value = { left: `${btnRect.left}px`, top: `${btnRect.bottom + 4}px` }
+}
+
+async function toggleStrategyMenu() {
+  strategyOpen.value = !strategyOpen.value
+  if (strategyOpen.value) await positionStrategyPanel()
+}
+
+function closeStrategyMenu() {
+  strategyOpen.value = false
+}
+
+function selectStrategy(value) {
+  strategy.value = value
+  closeStrategyMenu()
+}
+
+function handleStrategyClickOutside(event) {
+  if (!strategyOpen.value) return
+  if (strategyBtnEl.value?.contains(event.target)) return
+  if (strategyPanelEl.value?.contains(event.target)) return
+  closeStrategyMenu()
+}
+document.addEventListener('click', handleStrategyClickOutside, true)
+window.addEventListener('resize', closeStrategyMenu)
+window.addEventListener('scroll', closeStrategyMenu, true)
+
+const treeWidth = ref(280)
+let draggingTree = false
+
+function startTreeDrag(event) {
+  draggingTree = true
+  event.preventDefault()
+}
+
+function onTreeDrag(event) {
+  if (!draggingTree) return
+  treeWidth.value = Math.min(480, Math.max(200, treeWidth.value + event.movementX))
+}
+
+function stopTreeDrag() {
+  draggingTree = false
+}
 
 const projectStates = ref([])
 const statesLoading = ref(false)
@@ -66,6 +123,7 @@ function cacheKey(strategyName, nodeId) {
 // { [cacheKey]: 'idle'|'running'|'ok'|'warning'|'fail' } — idle is TestsTree's
 // own implicit default for anything missing here.
 const nodeStatuses = ref({})
+const nodeProgress = ref({})
 // A state node's own most recent job result — Signal Accuracy only, kept
 // purely client-side (no server-side history for an ephemeral job, see
 // backend jobs/job_sink.py's InMemoryJobSink), lost on page refresh.
@@ -124,6 +182,15 @@ const currentStrategyStatuses = computed(() => {
   return result
 })
 
+const currentStrategyProgress = computed(() => {
+  const prefix = `${strategy.value}:`
+  const result = {}
+  for (const [key, progress] of Object.entries(nodeProgress.value)) {
+    if (key.startsWith(prefix)) result[key.slice(prefix.length)] = progress
+  }
+  return result
+})
+
 const selectedCacheKey = computed(() => (
   selectedNodeId.value ? cacheKey(strategy.value, selectedNodeId.value) : null
 ))
@@ -165,6 +232,16 @@ function setStatus(key, status) {
   nodeStatuses.value = { ...nodeStatuses.value, [key]: status }
 }
 
+function setProgress(key, current, total) {
+  nodeProgress.value = { ...nodeProgress.value, [key]: { current, total } }
+}
+
+function clearProgress(key) {
+  const next = { ...nodeProgress.value }
+  delete next[key]
+  nodeProgress.value = next
+}
+
 // completed with no error -> ok; completed but error carries text (one
 // or more sessions skipped, e.g. no known starting state) -> warning,
 // never a threshold on the metrics themselves. failed -> fail.
@@ -187,6 +264,8 @@ function pollSessionRun(nodeId, runStrategy, key, runId, mirrorLeafNodeIds = [])
       return
     }
     if (run.status === 'pending' || run.status === 'running') {
+      setProgress(key, run.processed_messages, run.total_messages)
+      mirrorLeafNodeIds.forEach((leafNodeId) => setProgress(cacheKey(runStrategy, leafNodeId), run.processed_messages, run.total_messages))
       pollTimers[key] = setTimeout(tick, 1000)
       return
     }
@@ -213,6 +292,7 @@ function pollStateJob(key, jobId, runStrategy, mirrorLeafNodeIds = []) {
       return
     }
     if (job == null || job.status === 'pending' || job.status === 'running') {
+      if (job != null) setProgress(key, job.progress_current, job.progress_total)
       pollTimers[key] = setTimeout(tick, 1000)
       return
     }
@@ -242,6 +322,7 @@ function pollUsersAggregationJob(key, jobId, runStrategy, mirrorLeafNodeIds = []
       return
     }
     if (job == null || job.status === 'pending' || job.status === 'running') {
+      if (job != null) setProgress(key, job.progress_current, job.progress_total)
       pollTimers[key] = setTimeout(tick, 1000)
       return
     }
@@ -264,9 +345,11 @@ function pollUsersAggregationJob(key, jobId, runStrategy, mirrorLeafNodeIds = []
 async function activateSessionLeaf(nodeId, activeStrategy) {
   const key = cacheKey(activeStrategy, nodeId)
   setStatus(key, 'running')
+  clearProgress(key)
   try {
     const sessionId = Number(nodeId.slice('session:'.length))
     const run = await postBenchmarkRun(props.projectName, sessionId, activeStrategy)
+    setProgress(key, run.processed_messages, run.total_messages)
     pollSessionRun(nodeId, activeStrategy, key, run.id)
   } catch {
     // already surfaced via apiFetch
@@ -283,6 +366,7 @@ function annotatedSessionNodeIds() {
 async function activateStateLeaf(nodeId, activeStrategy, mirrorLeafNodeIds = []) {
   const key = cacheKey(activeStrategy, nodeId)
   setStatus(key, 'running')
+  clearProgress(key)
   // A state test replays every annotated session under the hood (see
   // BenchmarkRunService.start_job) — mirrored here the same way
   // activateWholeProjectRun mirrors its own whole-project replay.
@@ -305,12 +389,18 @@ async function activateWholeProjectRun(activeStrategy) {
   const key = cacheKey(activeStrategy, 'sessions-branch')
   const leafNodeIds = annotatedSessionNodeIds()
   setStatus(key, 'running')
+  clearProgress(key)
   // Light up every session leaf right away — this one job replays all of
   // them at once, so from the tree's point of view every session under
   // it is "running" for as long as it is.
-  leafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(activeStrategy, leafNodeId), 'running'))
+  leafNodeIds.forEach((leafNodeId) => {
+    setStatus(cacheKey(activeStrategy, leafNodeId), 'running')
+    clearProgress(cacheKey(activeStrategy, leafNodeId))
+  })
   try {
     const run = await postBenchmarkRun(props.projectName, null, activeStrategy)
+    setProgress(key, run.processed_messages, run.total_messages)
+    leafNodeIds.forEach((leafNodeId) => setProgress(cacheKey(activeStrategy, leafNodeId), run.processed_messages, run.total_messages))
     pollSessionRun('sessions-branch', activeStrategy, key, run.id, leafNodeIds)
   } catch {
     // already surfaced via apiFetch
@@ -340,8 +430,10 @@ async function activateUserLeaf(nodeId, activeStrategy) {
   const key = cacheKey(activeStrategy, nodeId)
   const username = nodeId.slice('user:'.length)
   setStatus(key, 'running')
+  clearProgress(key)
   try {
     const run = await postBenchmarkRun(props.projectName, null, activeStrategy, username)
+    setProgress(key, run.processed_messages, run.total_messages)
     pollSessionRun(nodeId, activeStrategy, key, run.id)
   } catch {
     // already surfaced via apiFetch
@@ -357,6 +449,7 @@ async function activateUsersAggregation(activeStrategy) {
   const userLeafNodeIds = annotatedUsernames().map((username) => `user:${username}`)
   const sessionLeafNodeIds = annotatedSessionNodeIds()
   setStatus(key, 'running')
+  clearProgress(key)
   userLeafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(activeStrategy, leafNodeId), 'running'))
   sessionLeafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(activeStrategy, leafNodeId), 'running'))
   try {
@@ -466,6 +559,29 @@ function formatNumber(value) {
   return typeof value === 'number' ? value.toFixed(2) : '—'
 }
 
+const resettingCache = ref(false)
+
+async function onResetCache() {
+  resettingCache.value = true
+  try {
+    await deleteBenchmarkRuns(props.projectName)
+    Object.keys(pollTimers).forEach(clearPoll)
+    nodeStatuses.value = {}
+    nodeLastResult.value = {}
+    nodeError.value = {}
+    usersAggregateResults.value = {}
+    usersAggregateErrors.value = {}
+    selectedRun.value = null
+    if (selectedNodeId.value && isRunNode(selectedNodeId.value)) {
+      await loadSelectedRun(selectedNodeId.value)
+    }
+  } catch {
+    // already surfaced via apiFetch
+  } finally {
+    resettingCache.value = false
+  }
+}
+
 onMounted(() => {
   // selectedNodeId always starts null on a fresh mount (this tab isn't
   // kept alive while closed — see EditProjectView.vue's autoOpen v-if),
@@ -481,24 +597,35 @@ onMounted(() => {
   }).finally(() => {
     statesLoading.value = false
   })
+  window.addEventListener('mousemove', onTreeDrag)
+  window.addEventListener('mouseup', stopTreeDrag)
 })
 
 onBeforeUnmount(() => {
   Object.keys(pollTimers).forEach(clearPoll)
+  window.removeEventListener('mousemove', onTreeDrag)
+  window.removeEventListener('mouseup', stopTreeDrag)
+  document.removeEventListener('click', handleStrategyClickOutside, true)
+  window.removeEventListener('resize', closeStrategyMenu)
+  window.removeEventListener('scroll', closeStrategyMenu, true)
 })
 </script>
 
 <template>
   <div class="project-test-panel">
-    <div class="tests-panel-tree">
+    <div class="tests-panel-tree" :style="{ width: treeWidth + 'px' }">
       <div class="tests-panel-strategy">
-        <label class="tests-panel-strategy-label">
-          Strategy
-          <select v-model="strategy" class="tests-panel-strategy-select">
-            <option value="batch">Batch</option>
-            <option value="turn_by_turn">Turn-by-turn</option>
-          </select>
-        </label>
+        <span class="tests-panel-tree-header">Test explorer</span>
+        <button
+          class="tests-panel-reset-btn"
+          title="Reset test cache"
+          :disabled="resettingCache"
+          @click="onResetCache"
+        >
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+            <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" />
+          </svg>
+        </button>
       </div>
       <p v-if="sessionsLoading || statesLoading" class="tests-panel-tree-status">Loading…</p>
       <TestsTree
@@ -507,28 +634,52 @@ onBeforeUnmount(() => {
         :sessions="sessions"
         :states="projectStates"
         :statuses="currentStrategyStatuses"
+        :progresses="currentStrategyProgress"
         :selected-node-id="selectedNodeId"
         @select="onSelect"
         @activate="onActivate"
       />
     </div>
 
-    <div class="tests-panel-content">
-      <p v-if="!selectedNodeId" class="tests-panel-placeholder">Select a node to see its results.</p>
+    <div class="tests-panel-split-divider" @mousedown="startTreeDrag"></div>
 
-      <template v-else-if="selectedNodeId === 'root'">
-        <div class="tests-panel-title-row">
+    <div class="tests-panel-main">
+      <div class="tests-panel-toolbar">
+        <div v-if="selectedNodeId" class="tests-panel-toolbar-title">
           <h3 class="tests-panel-title">{{ selectedNodeLabel }}</h3>
           <DocInfoButton doc-name="benchmark" title="Benchmark" />
         </div>
+        <div v-else class="tests-panel-toolbar-title"></div>
+        <div class="tests-panel-toolbar-actions">
+          <div class="strategy-menu">
+            <button ref="strategyBtnEl" class="strategy-btn" :title="strategyLabel" @click="toggleStrategyMenu">
+              <span class="strategy-btn-label">{{ strategyLabel }}</span>
+              <span class="strategy-btn-caret">▾</span>
+            </button>
+            <Teleport to="body">
+              <div v-if="strategyOpen" ref="strategyPanelEl" class="model-panel" :style="strategyPanelStyle">
+                <ul class="model-list">
+                  <li v-for="(label, value) in strategyLabels" :key="value">
+                    <button class="model-item" @click="selectStrategy(value)">
+                      <span class="model-item-check">{{ strategy === value ? '✓' : '' }}</span>
+                      <span class="model-item-label">{{ label }}</span>
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            </Teleport>
+          </div>
+          <ModelMenu />
+        </div>
+      </div>
+      <div class="tests-panel-content">
+      <p v-if="!selectedNodeId" class="tests-panel-placeholder">Select a node to see its results.</p>
+
+      <template v-else-if="selectedNodeId === 'root'">
         <p class="tests-panel-placeholder">Aggregates not available at this time.<br />Please select Sessions or States to see results.</p>
       </template>
 
       <template v-else-if="selectedNodeId.startsWith('session:') || selectedNodeId === 'sessions-branch' || selectedNodeId.startsWith('user:')">
-        <div class="tests-panel-title-row">
-          <h3 class="tests-panel-title">{{ selectedNodeLabel }}</h3>
-          <DocInfoButton doc-name="benchmark" title="Benchmark" />
-        </div>
         <p v-if="selectedRunLoading" class="tests-panel-placeholder">Loading…</p>
         <p v-else-if="!selectedRun" class="tests-panel-placeholder">
           No test has been run for {{ selectedNodeId.startsWith('session:') ? 'this session' : selectedNodeId.startsWith('user:') ? 'this user' : 'the whole project' }} under this strategy yet.
@@ -560,10 +711,6 @@ onBeforeUnmount(() => {
       </template>
 
       <template v-else-if="selectedNodeId.startsWith('state:')">
-        <div class="tests-panel-title-row">
-          <h3 class="tests-panel-title">{{ selectedNodeLabel }}</h3>
-          <DocInfoButton doc-name="benchmark" title="Benchmark" />
-        </div>
         <p v-if="nodeError[selectedCacheKey]" class="tests-panel-error">{{ nodeError[selectedCacheKey] }}</p>
         <p v-else-if="!nodeLastResult[selectedCacheKey]" class="tests-panel-placeholder">
           No test has been run for this state under this strategy yet.
@@ -587,10 +734,6 @@ onBeforeUnmount(() => {
       </template>
 
       <template v-else-if="selectedNodeId === 'states-branch'">
-        <div class="tests-panel-title-row">
-          <h3 class="tests-panel-title">{{ selectedNodeLabel }}</h3>
-          <DocInfoButton doc-name="benchmark" title="Benchmark" />
-        </div>
         <div v-if="statesFailedEntries.length" class="tests-panel-error">
           <div v-for="entry in statesFailedEntries" :key="entry.name">{{ entry.name }}: {{ entry.error }}</div>
         </div>
@@ -621,10 +764,6 @@ onBeforeUnmount(() => {
       </template>
 
       <template v-else-if="selectedNodeId === 'users-branch'">
-        <div class="tests-panel-title-row">
-          <h3 class="tests-panel-title">{{ selectedNodeLabel }}</h3>
-          <DocInfoButton doc-name="benchmark" title="Benchmark" />
-        </div>
         <p v-if="usersAggregateErrors[selectedCacheKey]" class="tests-panel-error">{{ usersAggregateErrors[selectedCacheKey] }}</p>
         <p v-else-if="!usersAggregateResults[selectedCacheKey] || !usersAggregateResults[selectedCacheKey].length" class="tests-panel-placeholder">
           No users aggregation has been run under this strategy yet.
@@ -646,6 +785,7 @@ onBeforeUnmount(() => {
       </template>
 
       <p v-else class="tests-panel-placeholder">{{ selectedNodeLabel }}</p>
+      </div>
     </div>
   </div>
 </template>
@@ -663,7 +803,6 @@ onBeforeUnmount(() => {
 }
 
 .tests-panel-tree {
-  width: 280px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -672,16 +811,28 @@ onBeforeUnmount(() => {
   background: #f9fafb;
 }
 
+.tests-panel-split-divider {
+  flex-shrink: 0;
+  width: 6px;
+  border-radius: 3px;
+  background: transparent;
+  cursor: col-resize;
+}
+.tests-panel-split-divider:hover {
+  background: #dbe4f0;
+}
+
 .tests-panel-strategy {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
   padding: 0.6rem 0.75rem;
   border-bottom: 1px solid #ddd;
 }
 
-.tests-panel-strategy-label {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.tests-panel-tree-header {
   font-size: 0.8rem;
   font-weight: 600;
   color: #555;
@@ -689,15 +840,64 @@ onBeforeUnmount(() => {
   letter-spacing: 0.03em;
 }
 
-.tests-panel-strategy-select {
-  font-size: 0.8rem;
-  padding: 0.2rem 0.4rem;
+.tests-panel-reset-btn {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
   border-radius: 6px;
-  border: 1px solid #ccc;
-  text-transform: none;
-  letter-spacing: normal;
-  font-weight: 400;
-  color: #222;
+  border: 1px solid #4a6fa5;
+  background: white;
+  color: #4a6fa5;
+  cursor: pointer;
+  padding: 0;
+}
+
+.tests-panel-reset-btn:hover:not(:disabled) {
+  background: #4a6fa5;
+  color: white;
+}
+
+.tests-panel-reset-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.strategy-menu {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.strategy-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.4rem 1rem;
+  border-radius: 6px;
+  border: 1px solid #4a6fa5;
+  background: white;
+  color: #4a6fa5;
+  cursor: pointer;
+  max-width: 160px;
+}
+
+.strategy-btn-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.strategy-btn-caret {
+  flex: none;
+  font-size: 0.65rem;
+}
+
+.strategy-btn:hover {
+  background: #4a6fa5;
+  color: white;
 }
 
 .tests-panel-tree-status {
@@ -706,19 +906,43 @@ onBeforeUnmount(() => {
   color: #666;
 }
 
+.tests-panel-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tests-panel-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: #f5f5f7;
+  border-bottom: 1px solid #ddd;
+  flex-shrink: 0;
+}
+
+.tests-panel-toolbar-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.tests-panel-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .tests-panel-content {
   flex: 1;
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
   padding: 1rem;
-}
-
-.tests-panel-title-row {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin: 0 0 0.75rem;
 }
 
 .tests-panel-title {

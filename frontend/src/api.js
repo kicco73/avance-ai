@@ -778,6 +778,10 @@ export function getBenchmarkRuns(projectName, sessionId, username) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/benchmark-runs${query}`)
 }
 
+export function deleteBenchmarkRuns(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/benchmark-runs`, { method: 'DELETE' })
+}
+
 export function getBenchmarkMetrics(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/benchmark-metrics`)
 }

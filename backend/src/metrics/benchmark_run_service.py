@@ -97,6 +97,10 @@ class BenchmarkRunService:
 
         return self._merge_with_job(run)
 
+    def reset_cache(self, project_name: str) -> None:
+        run_ids = self._db.delete_benchmark_runs(project_name)
+        self._db.delete_jobs_by_reference_ids('benchmark_run', run_ids)
+
     def get_run(self, run_id: int) -> dict:
         run = self._db.get_benchmark_run(run_id)
         if run is None:

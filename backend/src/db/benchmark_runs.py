@@ -57,6 +57,14 @@ class BenchmarkRunMixin:
                 query = query.where(BenchmarkRun.username == username)
         return [self._benchmark_run_to_dict(row) for row in query]
 
+    def delete_benchmark_runs(self, project_name: str) -> list[int]:
+        run_ids = [
+            row.id for row in BenchmarkRun.select(BenchmarkRun.id).where(BenchmarkRun.project_name == project_name)
+        ]
+        if run_ids:
+            BenchmarkRun.delete().where(BenchmarkRun.id.in_(run_ids)).execute()
+        return run_ids
+
     def set_benchmark_run_results(self, run_id: int, results: str) -> None:
         BenchmarkRun.update(results=results).where(BenchmarkRun.id == run_id).execute()
 
