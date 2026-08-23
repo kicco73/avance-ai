@@ -9,7 +9,6 @@ const props = defineProps({
   actions: { type: Array, default: () => [] }, // [{ kind: 'action', data }]
   editableFiles: { type: Array, default: null },
   selectedElement: { type: Object, default: null },
-  nextActionEdge: { type: Object, default: null },
   firedActionEdge: { type: Object, default: null },
   highlightedStateKey: { type: String, default: null },
   // {key, uiLabel} for each real state; forwarded to each row's target <select>.
@@ -138,7 +137,6 @@ function handleDragEnd() {
         class="inspector-actions-tab-card"
         :selected-element="action"
         :editable-files="editableFiles"
-        :next-action-edge="nextActionEdge"
         :fired-action-edge="firedActionEdge"
         :highlighted-state-key="highlightedStateKey"
         :selectable="!isSelected(action)"

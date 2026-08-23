@@ -505,28 +505,6 @@ class Automaton(object):
                 return action
         return None
 
-    def preview_triggers(self, state_key: str, scope: dict[str, Any]) -> list:
-        """Every triggerable action in `state_key` with its expression and
-        evaluation result, in FIFO priority order — for UI display only,
-        never applies a transition."""
-        state = self.states[state_key]
-        results = []
-        winner_found = False
-        for action in state.actions:
-            if not action.trigger:
-                continue
-            result = self._eval_trigger(action.trigger, scope)
-            would_fire = result and not winner_found
-            winner_found = winner_found or result
-            results.append({
-                "action_name": action.name,
-                "target": action.target,
-                "trigger": action.trigger,
-                "result": result,
-                "would_fire": would_fire,
-            })
-        return results
-
     @staticmethod
     def eval_action_env(action: Action, scope: dict[str, Any]) -> dict[str, Any]:
         """`action`'s `env` expressions evaluated against `scope`. Unlike

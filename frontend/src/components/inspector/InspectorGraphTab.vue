@@ -10,7 +10,6 @@ const props = defineProps({
   projectName: { type: String, required: true },
   highlightedStateKey: { type: String, default: null },
   autoJumpOnHighlightChange: { type: Boolean, default: false },
-  nextActionEdge: { type: Object, default: null },
   firedActionEdge: { type: Object, default: null },
   editableFiles: { type: Array, default: null },
   annotatable: { type: Boolean, default: false },
@@ -57,7 +56,6 @@ defineExpose({ loadGraph, resize, fit, refresh, stateElementFor })
       :project-name="projectName"
       :highlighted-state-key="highlightedStateKey"
       :auto-jump-on-highlight-change="autoJumpOnHighlightChange"
-      :next-action-edge="nextActionEdge"
       :fired-action-edge="firedActionEdge"
       :annotatable="annotatable"
       :expected-state="expectedState"
@@ -71,7 +69,6 @@ defineExpose({ loadGraph, resize, fit, refresh, stateElementFor })
     <InspectorDetailCard
       :selected-element="selectedElement"
       :editable-files="editableFiles"
-      :next-action-edge="nextActionEdge"
       :fired-action-edge="firedActionEdge"
       :highlighted-state-key="highlightedStateKey"
       @select-attachment="emit('select-attachment', $event)"

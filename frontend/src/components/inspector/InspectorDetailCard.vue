@@ -12,7 +12,6 @@ import { handleEnterNext } from './enterToNextField.js'
 const props = defineProps({
   selectedElement: { type: Object, default: null }, // { kind: 'state' | 'action', data } | null
   editableFiles: { type: Array, default: null },
-  nextActionEdge: { type: Object, default: null },
   firedActionEdge: { type: Object, default: null },
   highlightedStateKey: { type: String, default: null },
   // Whether clicking the card body (not the × or an attachment button)
@@ -153,14 +152,6 @@ function stateLabelFor(key) {
   return props.availableStates.find((s) => s.key === key)?.uiLabel ?? key
 }
 
-const isSelectedActionNext = computed(() => {
-  if (props.selectedElement?.kind !== 'action' || !props.nextActionEdge) return false
-  return (
-    props.selectedElement.data.matchStateKey === props.nextActionEdge.stateKey &&
-    props.selectedElement.data.actionName === props.nextActionEdge.actionName
-  )
-})
-
 const isSelectedActionFired = computed(() => {
   if (props.selectedElement?.kind !== 'action' || !props.firedActionEdge) return false
   return (
@@ -188,7 +179,7 @@ const hasSelectedElementBadges = computed(() => {
   // non-editable.
   if (showEditForm.value) return false
   const d = props.selectedElement.data
-  return isSelectedActionNext.value || isSelectedActionFired.value || !d.hasTrigger || d.isInitEdge
+  return isSelectedActionFired.value || !d.hasTrigger || d.isInitEdge
 })
 
 // Only reachable while the edit form's attachment list is showing. A
@@ -270,7 +261,6 @@ function selectAttachment(fileName) {
         </template>
         <template v-else-if="!showEditForm">
           <span v-if="selectedElement.data.isInitEdge" class="inspector-detail-badge inspector-detail-badge-start">Start</span>
-          <span v-if="isSelectedActionNext" class="inspector-detail-badge inspector-detail-badge-next">Next</span>
           <span v-if="isSelectedActionFired" class="inspector-detail-badge inspector-detail-badge-fired">Fired</span>
           <span v-if="!selectedElement.data.hasTrigger" class="inspector-detail-badge inspector-detail-badge-manual">Manual</span>
         </template>
@@ -391,7 +381,7 @@ function selectAttachment(fileName) {
 .inspector-detail-badge-state { background: #4a6fa5; }
 .inspector-detail-badge-action { background: #8a6d3b; }
 .inspector-detail-badge-current { background: #f5a623; color: #3a2600; }
-.inspector-detail-badge-start, .inspector-detail-badge-next { background: #2e7d32; }
+.inspector-detail-badge-start { background: #2e7d32; }
 .inspector-detail-badge-fired { background: #ad1457; }
 .inspector-detail-badge-final { background: #c62828; }
 .inspector-detail-badge-manual { background: #00695c; }

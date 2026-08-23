@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useFloatingTooltip } from '../../useFloatingTooltip.js'
+import DocInfoButton from '../DocInfoButton.vue'
 
 // The sessions list content (header + rows), shared by every chat surface
 // that lets a user pick a past/present session. Layout (the sliding wrap,
@@ -153,9 +154,12 @@ const {
   <button v-if="allowCreate" class="sessions-panel-add-btn" :disabled="createDisabled" @click="emit('create')">
     New session
   </button>
-  <button v-if="allowDownloadAll" class="sessions-panel-download-btn" :disabled="downloadingAll" @click="emit('download-all')">
-    {{ downloadingAll ? 'Downloading…' : 'Download all' }}
-  </button>
+  <div v-if="allowDownloadAll" class="sessions-panel-download-row">
+    <button class="sessions-panel-download-btn" :disabled="downloadingAll" @click="emit('download-all')">
+      {{ downloadingAll ? 'Downloading…' : 'Download all' }}
+    </button>
+    <DocInfoButton doc-name="session-specs" title="Session export format" />
+  </div>
   </template>
 
   <Teleport to="body">
@@ -265,18 +269,24 @@ const {
   cursor: not-allowed;
 }
 
-.sessions-panel-download-btn {
+.sessions-panel-download-row {
   flex-shrink: 0;
-  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.5rem 0.9rem 0.9rem;
+}
+
+.sessions-panel-download-btn {
+  flex: 1;
+  min-width: 0;
   padding: 0.5rem;
-  border: none;
-  border-top: 1px solid #ddd;
-  border-radius: 0;
-  background: #f7f8fa;
+  border-radius: 6px;
+  border: 1px solid #4a6fa5;
+  background: white;
   color: #4a6fa5;
   cursor: pointer;
-  font-size: 0.8rem;
-  font-weight: 600;
+  font-size: 0.82rem;
 }
 
 .sessions-panel-download-btn:hover:not(:disabled) {
@@ -284,7 +294,7 @@ const {
 }
 
 .sessions-panel-download-btn:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 

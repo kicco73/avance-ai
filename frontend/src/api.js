@@ -428,14 +428,6 @@ export function messageAudioUrl(messageId) {
   return `${API_URL}/chat/messages/${messageId}/audio`
 }
 
-export function postTriggersPreview(stateKey, signals) {
-  return apiFetch(`${API_URL}/triggers/preview`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ state_key: stateKey, signals })
-  })
-}
-
 // "Restart from here": deletes every message (and its Signals rows) at
 // or after `timestamp` in `sessionId`, rolling state back to what it was
 // immediately before. `timestamp` must be a backend-issued ISO string.

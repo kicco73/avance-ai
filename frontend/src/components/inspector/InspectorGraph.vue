@@ -11,7 +11,6 @@ const props = defineProps({
   projectName: { type: String, required: true },
   highlightedStateKey: { type: String, default: null },
   autoJumpOnHighlightChange: { type: Boolean, default: false },
-  nextActionEdge: { type: Object, default: null },
   firedActionEdge: { type: Object, default: null },
   // The current selection ({kind, data} | null) — fed back in so a
   // selection made outside this graph (e.g. a row click elsewhere) still
@@ -181,7 +180,6 @@ function renderGraph(nodes, edges) {
       { selector: 'edge', style: { width: 1.5, 'line-color': '#9ab0cc', 'target-arrow-color': '#9ab0cc', 'target-arrow-shape': 'triangle', 'arrow-scale': 0.8, 'curve-style': 'bezier', label: 'data(uiLabel)', 'font-size': '7px', color: '#666', 'text-background-color': 'white', 'text-background-opacity': 0.85, 'text-background-padding': '2px', 'text-wrap': 'wrap', 'text-max-width': '70px' } },
       { selector: 'edge[!hasTrigger]', style: { 'line-style': 'dashed' } },
       { selector: 'edge[?isInitEdge]', style: { 'line-color': '#2e7d32', 'target-arrow-color': '#2e7d32' } },
-      { selector: 'edge.next-action', style: { 'line-color': '#2e7d32', 'target-arrow-color': '#2e7d32', width: 2.5 } },
       { selector: 'edge.fired-action', style: { 'line-color': '#ad1457', 'target-arrow-color': '#ad1457', width: 3 } },
       // Cytoscape applies style rules in array order — last match wins
       // per property, unlike CSS's specificity system. Must come after
@@ -208,7 +206,6 @@ function renderGraph(nodes, edges) {
   cyGraph.on('tap', (evt) => { if (evt.target === cyGraph) selectGraphElement(null, null) })
 
   applyCurrentStateHighlight()
-  applyNextActionHighlight()
   applyFiredActionHighlight()
   syncSelectionToSelection()
   applySelectedElementHighlight()
@@ -231,12 +228,6 @@ function applyCurrentStateHighlight() {
   if (!cyGraph) return
   cyGraph.nodes().removeClass('current-state')
   if (props.highlightedStateKey != null) cyGraph.nodes().filter(n => n.id() === props.highlightedStateKey).addClass('current-state')
-}
-
-function applyNextActionHighlight() {
-  if (!cyGraph) return
-  cyGraph.edges().removeClass('next-action')
-  if (props.nextActionEdge) cyGraph.edges().filter(e => e.data('matchStateKey') === props.nextActionEdge.stateKey && e.data('actionName') === props.nextActionEdge.actionName).addClass('next-action')
 }
 
 function applyFiredActionHighlight() {
@@ -286,7 +277,6 @@ async function refresh(active) {
 }
 
 watch(() => props.highlightedStateKey, () => { applyCurrentStateHighlight(); syncSelectionToSelection({ emitJump: props.autoJumpOnHighlightChange }) })
-watch(() => props.nextActionEdge, applyNextActionHighlight, { deep: true })
 watch(() => props.firedActionEdge, () => { applyFiredActionHighlight(); syncSelectionToSelection({ emitJump: props.autoJumpOnHighlightChange }) }, { deep: true })
 watch(() => props.selectedElement, applySelectedElementHighlight, { deep: true })
 

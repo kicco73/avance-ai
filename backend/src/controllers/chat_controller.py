@@ -23,7 +23,6 @@ from schemas import (
     ChatMessageRequest,
     ReactionRequest,
     SetEnvValueRequest,
-    TriggersPreviewRequest,
 )
 
 from .base_controller import BaseController, delete, get, post, put
@@ -36,6 +35,7 @@ DOC_FILES = {
     "metrics": "METRICS.md",
     "benchmark": "BENCHMARK.md",
     "markdown-guide": "MARKDOWN_GUIDE.md",
+    "session-specs": "SESSION_SPECS.md",
 }
 DOCS_DIR = Path(__file__).resolve().parent.parent / "docs"
 
@@ -280,8 +280,4 @@ class ChatController(BaseController):
         except ListenServiceError as exc:
             raise HTTPException(status_code=HTTPStatus.SERVICE_UNAVAILABLE, detail=str(exc)) from exc
         return {"text": text}
-
-    @post("/api/triggers/preview", role="admin")
-    def post_triggers_preview(self, req: TriggersPreviewRequest):
-        return self.chat_service.preview_triggers(req.state_key, req.signals)
 

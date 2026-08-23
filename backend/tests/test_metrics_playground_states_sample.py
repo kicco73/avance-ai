@@ -47,22 +47,3 @@ def test_firing_notice_mood_actually_moves_to_its_own_dedicated_state(client):
     assert response.json()["state"]["key"] == "mood_reached"
     # Unlike the self-looping variant, this is a genuine final state.
     assert response.json()["state"]["final"] is True
-
-
-@pytest.mark.contract
-def test_every_engaged_branch_targets_its_own_distinct_final_state(client):
-    _upload_and_activate(client)
-    session = client.get("/api/chat/session").json()
-    client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "warm_up"})
-
-    response = client.post("/api/triggers/preview", json={"state_key": "engaged", "signals": {"mood": 100}})
-
-    targets = {p["action_name"]: p["target"] for p in response.json()}
-    assert targets == {
-        "notice_mood": "mood_reached",
-        "notice_combo": "combo_reached",
-        "notice_engagement": "engagement_reached",
-        "notice_stability": "stability_reached",
-        "notice_signal_stability": "signal_stability_reached",
-    }
-    assert len(set(targets.values())) == len(targets)  # every branch's own, distinct state

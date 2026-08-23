@@ -19,7 +19,6 @@ const props = defineProps({
   attachmentFiles: { type: Array, default: () => [] },
   highlightedStateKey: { type: String, default: null },
   autoJumpOnHighlightChange: { type: Boolean, default: false },
-  nextActionEdge: { type: Object, default: null },
   firedActionEdge: { type: Object, default: null },
   // Forwarded to InspectorGraph so a selection made elsewhere (e.g. clicking
   // a row in the Inspector's Actions tab) shows up highlighted here too, not
@@ -128,7 +127,6 @@ defineExpose({
         :project-name="projectName"
         :highlighted-state-key="highlightedStateKey"
         :auto-jump-on-highlight-change="autoJumpOnHighlightChange"
-        :next-action-edge="nextActionEdge"
         :fired-action-edge="firedActionEdge"
         :selected-element="selectedElement"
         @jump-to-definition="emit('jump-to-definition', $event)"

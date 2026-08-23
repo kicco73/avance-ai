@@ -357,13 +357,6 @@ class ChatService(object):
 			until=until, project_name=project_name, include_all_scopes=full, username=username,
 		)
 
-	def preview_triggers(self, state_key: str, signals: dict) -> list:
-		automaton, _ = self._project_service.get_active_automaton_and_state()
-		if state_key not in automaton.states:
-			raise ChatServiceError("Unknown state.", status_code=HTTPStatus.NOT_FOUND)
-		scope = self._evaluation_scope_builder.build(automaton, state_key, signals)
-		return automaton.preview_triggers(state_key, scope)
-
 	def get_env(self, message_id: int | None = None) -> dict:
 		"""{"stored": ..., "action_set": ...}, reported separately so the
 		Inspector Env tab knows which section each value belongs in and

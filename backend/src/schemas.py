@@ -20,11 +20,6 @@ class AutoTrackingRequest(BaseModel):
     enabled: bool
 
 
-class TriggersPreviewRequest(BaseModel):
-    state_key: str
-    signals: dict[str, int | float | None]
-
-
 class ChatMessageRequest(BaseModel):
     message: str
 
