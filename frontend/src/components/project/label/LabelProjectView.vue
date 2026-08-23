@@ -3,11 +3,13 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ChatTimeline from '../../chat/ChatTimeline.vue'
 import SessionsPanel from '../../chat/SessionsPanel.vue'
 import MessageCommentButton from '../../chat/MessageCommentButton.vue'
+import ProjectsMenu from '../../ProjectsMenu.vue'
 import Inspector from '../../inspector/Inspector.vue'
 import InspectorGraphTab from '../../inspector/InspectorGraphTab.vue'
 import InspectorSignalsTab from '../../inspector/InspectorSignalsTab.vue'
 import InspectorMetricsTab from '../../inspector/InspectorMetricsTab.vue'
 import InspectorDetailCard from '../../inspector/InspectorDetailCard.vue'
+import InspectorUserInfoCard from '../../inspector/InspectorUserInfoCard.vue'
 import CardMenu from '../../inspector/CardMenu.vue'
 import { vAutosize } from '../../inspector/textareaAutosize.js'
 import { handleEnterNext } from '../../inspector/enterToNextField.js'
@@ -15,7 +17,7 @@ import ErrorBanner from '../../ErrorBanner.vue'
 import {
   getMessages, getSessionSignals, getSessions, getProjectGraph, postImportSession, postImportSessionJson,
   getExportSessions, putMessageExpectedState, putMessageExpectedSignals, putMessageComment, putSessionLabeled,
-  putSessionTitle, putSessionComment, deleteSessionAnnotations, deleteSession
+  putSessionTitle, putSessionComment, deleteSessionAnnotations, deleteSession, getUsers
 } from '../../../api.js'
 import { currentSessionId, sessions, sessionsLoading, loadSessions, refreshSessionsQuietly, selectSession } from '../../../chatStore.js'
 import {
@@ -32,7 +34,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['close'])
+const emit = defineEmits(['close', 'project-select'])
 
 const loading = ref(true)
 // Raw backend message rows, kept as-is rather than chatStore.js's live
@@ -290,6 +292,26 @@ const currentSession = computed(() => sessions.value.find((s) => s.id === curren
 // played live — the one case with no real Tracking rows for
 // annotatableSignalsRow below to consult.
 const currentSessionIsImported = computed(() => currentSession.value?.type === 'imported')
+
+// Every registered user, fetched once — same list ManageUsersView.vue
+// shows, reused here just to resolve a live session's `username` (the
+// user's own id/email) into a full profile for the Info tab's card below.
+const users = ref([])
+async function loadUsers() {
+  try {
+    const res = await getUsers()
+    users.value = res.users
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+// null for an imported session (no real user) or before the users list
+// or a match resolves — the Info tab only renders the card once this is set.
+const sessionUser = computed(() => {
+  if (currentSessionIsImported.value || !currentSession.value) return null
+  return users.value.find((u) => u.id === currentSession.value.username) ?? null
+})
 
 // The Info tab's read-only start/end state cards resolve through the
 // States tab's already-loaded graph rather than a second fetch.
@@ -549,6 +571,7 @@ watch(selected, () => {
 })
 
 onMounted(async () => {
+  loadUsers()
   // currentSessionId is a shared ref also driven by the main chat window,
   // so it may still point at another project's session on entry. Loading
   // the list first and checking membership avoids opening into it.
@@ -583,6 +606,7 @@ onBeforeUnmount(() => {
     <div class="benchmark-header">
       <h2>Label sessions — {{ projectName }}</h2>
       <div class="benchmark-header-actions">
+        <ProjectsMenu :selected-name="projectName" @select="(name) => emit('project-select', name)" />
         <button class="close-btn" @click="handleClose">Back</button>
       </div>
     </div>
@@ -707,6 +731,7 @@ onBeforeUnmount(() => {
           </template>
           <template #tab-info>
             <div v-if="currentSession" class="benchmark-session-info">
+              <InspectorUserInfoCard v-if="sessionUser" :user="sessionUser" />
               <div
                 class="inspector-signal-block inspector-signal-block-clickable"
                 title="Click to open"
@@ -807,6 +832,10 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+.benchmark-header-actions .projects-menu {
+  max-width: 220px;
 }
 
 .close-btn {

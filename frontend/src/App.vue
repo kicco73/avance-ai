@@ -37,7 +37,8 @@ import {
   loadMessages,
   loadAiModels,
   clearChatUi,
-  testModeProjectName
+  testModeProjectName,
+  currentProjectName
 } from './chatStore.js'
 
 const showEditProject = ref(false)
@@ -252,9 +253,9 @@ function handleManageProjectsChat(projectName) {
   handleProjectSwitch(projectName)
 }
 
-// Edit/Label are only ever opened from Manage projects now (ProjectsMenu.vue
-// no longer has its own entry points into either) — so "Back" out of them
-// returns there rather than to the main chat view.
+// Edit is only ever opened from Manage projects now (ProjectsMenu.vue no
+// longer has its own entry point into it) — so "Back" out of it returns
+// there rather than to the main chat view.
 function closeEditProject() {
   showEditProject.value = false
   showManageProjects.value = true
@@ -262,14 +263,28 @@ function closeEditProject() {
   loadMessages()
 }
 
+// Label, unlike Edit, also has a direct entry point (SettingsMenu's own
+// "Label sessions") that bypasses Manage projects entirely — so unlike
+// closeEditProject, "Back" must return wherever it was opened from rather
+// than assuming Manage projects.
+const benchmarkReturnsToManageProjects = ref(true)
+
 function closeBenchmarkProject() {
   showBenchmarkProject.value = false
-  showManageProjects.value = true
+  if (benchmarkReturnsToManageProjects.value) showManageProjects.value = true
 }
 
-function handleModelBenchmark(projectName) {
+function handleModelBenchmark(projectName, returnsToManageProjects = true) {
   benchmarkProjectName.value = projectName
+  benchmarkReturnsToManageProjects.value = returnsToManageProjects
   showBenchmarkProject.value = true
+}
+
+// SettingsMenu's own "Label sessions" entry — same view, opened straight
+// at whichever project is currently active rather than via Manage projects.
+function handleSettingsLabelSessions() {
+  if (!currentProjectName.value) return
+  handleModelBenchmark(currentProjectName.value, false)
 }
 
 async function handleModelEditSaved() {
@@ -292,6 +307,15 @@ async function handleProjectSwitch(projectName) {
   } catch {
     // already surfaced via apiFetch
   }
+}
+
+// LabelProjectView's own ProjectsMenu, for switching project without
+// leaving the label view. Reuses the same activation as a normal switch,
+// then repoints the view at the new project — its :key below remounts it,
+// same as opening it fresh from Manage projects.
+async function handleBenchmarkProjectSwitch(projectName) {
+  await handleProjectSwitch(projectName)
+  benchmarkProjectName.value = projectName
 }
 
 // Triggers a browser download from the zip blob — standard synthetic-<a>
@@ -430,6 +454,7 @@ onBeforeUnmount(() => {
         <SettingsMenu
           @manage-projects="showManageProjects = true"
           @manage-users="showManageUsers = true"
+          @label-sessions="handleSettingsLabelSessions"
           @about="handleShowAbout"
           @download-backup="handleDownloadBackup"
           @restore-backup="handleRestoreBackup"
@@ -454,8 +479,10 @@ onBeforeUnmount(() => {
 
     <LabelProjectView
       v-if="showBenchmarkProject"
+      :key="benchmarkProjectName"
       :project-name="benchmarkProjectName"
       @close="closeBenchmarkProject"
+      @project-select="handleBenchmarkProjectSwitch"
     />
 
     <ManageProjectsView
