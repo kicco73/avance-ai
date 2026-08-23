@@ -4,11 +4,6 @@ The JSON format produced by the "Label sessions" view's **Download all**
 button, and consumed back by its **Import** button. One file round-trips
 every session of a project.
 
-Import is entirely server-side: the frontend just uploads whichever files
-were selected as-is, in one request, and renders whatever comes back — see
-[Import endpoint](#import-endpoint) below for the exact request/response
-shape.
-
 ## Top level
 
 The exported file is a **JSON array of session objects** — not a single
