@@ -20,7 +20,6 @@ from schemas import (
     CreateBenchmarkRunRequest,
     ExpectedSignalsRequest,
     ExpectedStateRequest,
-    SessionImportJsonRequest,
     SetSessionLabeledRequest,
     SetSessionTitleRequest,
     StateTestRequest,
@@ -52,22 +51,14 @@ class LabelProjectController(BaseController):
         return self.chat_service.get_benchmark_metrics(project_name=project_name, session_id=session_id)
 
     @post("/api/projects/{project_name}/sessions/import", role="supervisor")
-    async def post_import_session(self, project_name: str, file: UploadFile):
-        """Imports a chat session from a plain-text transcript — the
-        "Label sessions" view's own upload button. A malformed transcript
-        raises TrackingServiceError, handled globally."""
-        content = await file.read()
-        text = content.decode("utf-8")
-        session_id = self.tracking_service.import_session(Session().user, project_name, text, title=file.filename)
-        return {"success": True, "session_id": session_id}
-
-    @post("/api/projects/{project_name}/sessions/import-json", role="supervisor")
-    def post_import_session_json(self, project_name: str, req: SessionImportJsonRequest):
-        """Imports one session from a "Download all" JSON export — called
-        once per session object found inside an uploaded .json file (see
-        LabelProjectView.vue's own handleImportSession)."""
-        session_id = self.tracking_service.import_session_json(Session().user, project_name, req.model_dump())
-        return {"success": True, "session_id": session_id}
+    async def post_import_sessions(self, project_name: str, files: list[UploadFile]):
+        """The "Label sessions" view's own upload button — every selected
+        file in one request, whichever mix of a .txt transcript and a
+        "Download all" .json export it contains. All per-file/per-session
+        dispatch and error handling happens server-side; the frontend
+        just uploads and renders the returned per-item results."""
+        uploads = [(file.filename or "", await file.read()) for file in files]
+        return self.tracking_service.import_sessions_batch(Session().user, project_name, uploads)
 
     @get("/api/projects/{project_name}/sessions/export", role="supervisor")
     def get_export_sessions(self, project_name: str):

@@ -48,7 +48,7 @@ def test_download_includes_only_imported_sessions_never_native_ones(client, hell
     assert native_session["type"] == "live"
     # An imported session.
     resp = client.post(
-        "/api/projects/hello/sessions/import", files={"file": ("t.txt", "user: hi\nassistant: yo\n", "text/plain")}
+        "/api/projects/hello/sessions/import", files=[("files", ("t.txt", "user: hi\nassistant: yo\n", "text/plain"))]
     )
     assert resp.status_code == 200, resp.text
 
@@ -61,7 +61,7 @@ def test_download_includes_only_imported_sessions_never_native_ones(client, hell
 
 
 def test_sessions_json_never_appears_among_the_projects_own_files(client, hello_project):
-    client.post("/api/projects/hello/sessions/import", files={"file": ("t.txt", "user: hi\nassistant: yo\n", "text/plain")})
+    client.post("/api/projects/hello/sessions/import", files=[("files", ("t.txt", "user: hi\nassistant: yo\n", "text/plain"))])
 
     file_list = client.get(f"/api/projects/{hello_project}/files").json()["files"]
 
@@ -103,7 +103,7 @@ def test_download_then_reupload_round_trips_the_imported_session(client):
     resp = client.post("/api/projects/roundtrip/publish", json={})
     assert resp.status_code == 200, resp.text
     resp = client.post(
-        "/api/projects/roundtrip/sessions/import", files={"file": ("t.txt", "user: hi\nassistant: yo\n", "text/plain")}
+        "/api/projects/roundtrip/sessions/import", files=[("files", ("t.txt", "user: hi\nassistant: yo\n", "text/plain"))]
     )
     assert resp.status_code == 200, resp.text
 

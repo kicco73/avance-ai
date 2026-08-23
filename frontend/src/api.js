@@ -296,23 +296,17 @@ export function postListenTranscribe(audioBlob) {
   })
 }
 
-export function postImportSession(projectName, file) {
+// The "Label sessions" view's own Import button — every selected file in
+// one request, whichever mix of a .txt transcript and a "Download all"
+// .json export it contains. All per-file/per-session dispatch and error
+// handling happens server-side; returns {results: [{file, ok, session_id?,
+// error?}, ...], last_session_id}.
+export function postImportSessions(projectName, files) {
   const formData = new FormData()
-  formData.append('file', file)
+  for (const file of files) formData.append('files', file)
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/sessions/import`, {
     method: 'POST',
     body: formData
-  })
-}
-
-// One session object out of a "Download all" .json export — LabelProjectView.vue's
-// own handleImportSession calls this once per session found inside an
-// uploaded .json file, same per-item try/catch loop it uses per .txt file.
-export function postImportSessionJson(projectName, sessionData) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/sessions/import-json`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(sessionData)
   })
 }
 

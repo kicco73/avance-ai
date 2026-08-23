@@ -15,7 +15,7 @@ import { vAutosize } from '../../inspector/textareaAutosize.js'
 import { handleEnterNext } from '../../inspector/enterToNextField.js'
 import ErrorBanner from '../../ErrorBanner.vue'
 import {
-  getMessages, getSessionSignals, getSessions, getProjectGraph, postImportSession, postImportSessionJson,
+  getMessages, getSessionSignals, getSessions, getProjectGraph, postImportSessions,
   getExportSessions, putMessageExpectedState, putMessageExpectedSignals, putMessageComment, putSessionLabeled,
   putSessionTitle, putSessionComment, deleteSessionAnnotations, deleteSession, getUsers
 } from '../../../api.js'
@@ -99,72 +99,28 @@ function toggleBenchmarkSessionsPanel() {
 // This view's Sessions panel reviews imported transcripts alongside live
 // ones, so every load/refresh below passes includeImported.
 
-// One .txt transcript, exactly one session — pushes its own {file, ok,
-// error?} onto the shared `results` accumulator and returns the new
-// session_id, or null on failure.
-async function importTranscriptFile(file, results) {
-  try {
-    const { session_id } = await postImportSession(props.projectName, file)
-    results.push({ file, ok: true })
-    return session_id
-  } catch (err) {
-    // apiFetch already wrote this failure to the error banner;
-    // summarizeImportFailures below builds the batch's own summary once
-    // every file is done, which is what should stay on screen.
-    results.push({ file, ok: false, error: err.message })
-    return null
-  }
-}
-
-// A "Download all" .json export is an *array* of sessions in one file,
-// unlike a .txt transcript — pushes one result per session found inside
-// it, each under a pseudo-file label since no real File object exists.
-async function importJsonFile(file, results) {
-  let sessionsData
-  try {
-    const parsed = JSON.parse(await file.text())
-    if (!Array.isArray(parsed)) throw new Error('Expected a JSON array of sessions.')
-    sessionsData = parsed
-  } catch (err) {
-    results.push({ file, ok: false, error: err.message })
-    return null
-  }
-  let lastId = null
-  for (const [index, sessionData] of sessionsData.entries()) {
-    const label = { name: sessionData?.name || `${file.name} #${index + 1}` }
-    try {
-      const { session_id } = await postImportSessionJson(props.projectName, sessionData)
-      results.push({ file: label, ok: true })
-      lastId = session_id
-    } catch (err) {
-      results.push({ file: label, ok: false, error: err.message })
-    }
-  }
-  return lastId
-}
-
-// One bad item must never abort the rest of the batch. The session list
-// is refreshed only once, after every file has settled — N sequential
-// refreshes would be wasted round trips for a list only needed at the end.
+// Every selected file (whichever mix of .txt transcripts and "Download
+// all" .json exports) uploaded in one request — all per-file/per-session
+// dispatch and error handling happens server-side; this just renders the
+// returned result.
 async function handleImportSession(files) {
-  const results = []
-  let lastImportedId = null
-  for (const file of files) {
-    const sessionId = file.name.toLowerCase().endsWith('.json')
-      ? await importJsonFile(file, results)
-      : await importTranscriptFile(file, results)
-    if (sessionId != null) lastImportedId = sessionId
+  let result
+  try {
+    result = await postImportSessions(props.projectName, files)
+  } catch {
+    // already surfaced via apiFetch
+    return
   }
 
-  if (lastImportedId != null) {
+  if (result.last_session_id != null) {
     // The list must contain the new session before it can be looked up
     // in it — refresh first, select second, not the other way around.
     await refreshSessionsQuietly(true, props.projectName)
-    const imported = sessions.value.find((s) => s.id === lastImportedId)
+    const imported = sessions.value.find((s) => s.id === result.last_session_id)
     if (imported) selectSession(imported)
   }
 
-  const failureSummary = summarizeImportFailures(results)
+  const failureSummary = summarizeImportFailures(result.results)
   if (failureSummary) setApiError(failureSummary.message, failureSummary.detail)
   else clearApiError()
 }

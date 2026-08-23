@@ -62,20 +62,14 @@ class TrackingService(object):
 		entry silently freezing an unrelated, newly-restored session."""
 		self._disabled_test_sessions.clear()
 
-	def import_session(self, username: str, project_name: str, text: str, title: str | None = None) -> int:
-		try:
-			return self._session_import_manager.import_transcript(username, project_name, text, title=title)
-		except ValueError as exc:
-			raise TrackingServiceError(str(exc), status_code=HTTPStatus.BAD_REQUEST) from exc
-
-	def import_session_json(self, username: str, project_name: str, session_data: dict) -> int:
-		"""The "Label sessions" view's own JSON upload. Same "malformed
-		input is a 400, never a 500" convention as import_session above,
-		just a wider exception set for a hand-edited/corrupted JSON file."""
-		try:
-			return self._session_import_manager.import_session_json(username, project_name, session_data)
-		except (ValueError, KeyError, TypeError) as exc:
-			raise TrackingServiceError(f"Invalid session data: {exc}", status_code=HTTPStatus.BAD_REQUEST) from exc
+	def import_sessions_batch(self, username: str, project_name: str, uploads: list[tuple[str, bytes]]) -> dict:
+		"""The "Label sessions" view's own Import button — every uploaded
+		file's per-file/per-session dispatch and error handling happens
+		here, so the frontend just uploads and renders the result. Never
+		raises: a bad file or session becomes a failed entry in the
+		returned results, not a request-level error (see
+		SessionImportManager.import_batch)."""
+		return self._session_import_manager.import_batch(username, project_name, uploads)
 
 	def export_sessions(self, username: str, project_name: str) -> list[dict]:
 		"""The "Label sessions" view's own "Download all" button — see

@@ -4,10 +4,14 @@ SessionExportManager produces (source 'imported' too, but with each
 message's linked Tracking row restored alongside it)."""
 from __future__ import annotations
 
+import json
 import re
+
+from pydantic import ValidationError
 
 from db import Db
 from db.utils import _parse_iso
+from schemas import SessionImportJsonRequest
 
 # A line opens a new message when it starts with "user:" or "assistant:"
 # (case-insensitive, leading whitespace ignored); at most one space
@@ -101,6 +105,63 @@ class SessionImportManager:
             self._db.delete_chat_session(session_id)
             raise
         return session_id
+
+    def import_batch(self, username: str, project_name: str, uploads: list[tuple[str, bytes]]) -> dict:
+        """The "Label sessions" view's own Import button, entirely
+        server-side — the frontend just uploads every selected file
+        as-is. Each upload is either a .txt transcript (one session)
+        or a "Download all" .json export (one session per array
+        entry); a bad file or a bad session within it is skipped
+        rather than aborting the rest of the batch. Returns
+        {"results": [{"file", "ok", "session_id"?, "error"?}, ...],
+        "last_session_id": int | None} — the last entry imported
+        across the whole batch, or None if nothing succeeded."""
+        results: list[dict] = []
+        last_session_id: int | None = None
+        for filename, content in uploads:
+            if (filename or '').lower().endswith('.json'):
+                session_id = self._import_json_upload(username, project_name, filename, content, results)
+            else:
+                session_id = self._import_transcript_upload(username, project_name, filename, content, results)
+            if session_id is not None:
+                last_session_id = session_id
+        return {'results': results, 'last_session_id': last_session_id}
+
+    def _import_transcript_upload(
+        self, username: str, project_name: str, filename: str, content: bytes, results: list[dict],
+    ) -> int | None:
+        try:
+            session_id = self.import_transcript(username, project_name, content.decode('utf-8'), title=filename)
+            results.append({'file': filename, 'ok': True, 'session_id': session_id})
+            return session_id
+        except (ValueError, UnicodeDecodeError) as exc:
+            results.append({'file': filename, 'ok': False, 'error': str(exc)})
+            return None
+
+    def _import_json_upload(
+        self, username: str, project_name: str, filename: str, content: bytes, results: list[dict],
+    ) -> int | None:
+        try:
+            parsed = json.loads(content.decode('utf-8'))
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            results.append({'file': filename, 'ok': False, 'error': f'Invalid JSON: {exc}'})
+            return None
+        if not isinstance(parsed, list):
+            results.append({'file': filename, 'ok': False, 'error': 'Expected a JSON array of sessions.'})
+            return None
+
+        last_session_id = None
+        for index, session_data in enumerate(parsed):
+            label = session_data.get('name') if isinstance(session_data, dict) else None
+            label = label or f'{filename} #{index + 1}'
+            try:
+                validated = SessionImportJsonRequest(**session_data)
+                session_id = self.import_session_json(username, project_name, validated.model_dump())
+                results.append({'file': label, 'ok': True, 'session_id': session_id})
+                last_session_id = session_id
+            except (ValidationError, ValueError, KeyError, TypeError) as exc:
+                results.append({'file': label, 'ok': False, 'error': str(exc)})
+        return last_session_id
 
     # Every one of these is optional on a message entry — a plain
     # `message.get(key)` for each, rather than requiring the caller's

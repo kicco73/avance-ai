@@ -1,8 +1,10 @@
-"""GET /api/projects/{project_name}/sessions/export and POST .../import-json
-— the "Label sessions" view's own "Download all"/JSON-upload pair (see
+"""GET /api/projects/{project_name}/sessions/export and POST .../import
+— the "Label sessions" view's own "Download all"/upload pair (see
 tracking/session_export.py's own module docstring for the exact shape).
 """
 from __future__ import annotations
+
+import json
 
 import pytest
 
@@ -11,10 +13,18 @@ pytestmark = pytest.mark.contract
 
 def _import_transcript(client, text="user: hi there\nassistant: hello, world!\n", title="transcript.txt"):
     response = client.post(
-        "/api/projects/hello/sessions/import", files={"file": (title, text, "text/plain")}
+        "/api/projects/hello/sessions/import", files=[("files", (title, text, "text/plain"))]
     )
     assert response.status_code == 200, response.text
-    return response.json()["session_id"]
+    return response.json()["last_session_id"]
+
+
+def _import_json(client, sessions: list[dict], filename="sessions.json"):
+    response = client.post(
+        "/api/projects/hello/sessions/import", files=[("files", (filename, json.dumps(sessions), "application/json"))]
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
 
 
 def _messages(client, session_id):
@@ -78,10 +88,9 @@ def test_import_json_round_trips_an_exported_session_exactly(client, hello_proje
     client.put(f"/api/chat/sessions/{session_id}/title", json={"title": "Original"})
     [exported] = client.get("/api/projects/hello/sessions/export").json()
 
-    response = client.post("/api/projects/hello/sessions/import-json", json=exported)
-    assert response.status_code == 200, response.text
-    new_session_id = response.json()["session_id"]
-    assert new_session_id != session_id
+    result = _import_json(client, [exported])
+    assert result["results"] == [{"file": "Original", "ok": True, "session_id": result["last_session_id"]}]
+    assert result["last_session_id"] != session_id
 
     [_, reimported] = client.get("/api/projects/hello/sessions/export").json()
     assert reimported["name"] == "Original"
@@ -108,9 +117,8 @@ def test_import_json_restores_a_native_looking_session_with_real_timestamps(clie
         ],
     }
 
-    response = client.post("/api/projects/hello/sessions/import-json", json=payload)
-    assert response.status_code == 200, response.text
-    session_id = response.json()["session_id"]
+    result = _import_json(client, [payload])
+    session_id = result["last_session_id"]
 
     [exported] = client.get("/api/projects/hello/sessions/export").json()
     assert exported["timestamp"] == "2026-01-01T10:00:00+00:00"
@@ -123,10 +131,37 @@ def test_import_json_restores_a_native_looking_session_with_real_timestamps(clie
     assert sessions[session_id]["type"] == "imported"
 
 
+@pytest.mark.regression
+def test_import_json_handles_a_mixed_batch_of_files(client, hello_project):
+    """One .txt transcript and one .json export (with a good and a bad
+    session) uploaded together in a single request — the bad session is
+    skipped without aborting either the rest of the array or the batch."""
+    response = client.post(
+        "/api/projects/hello/sessions/import",
+        files=[
+            ("files", ("t.txt", "user: hi\nassistant: yo\n", "text/plain")),
+            ("files", ("more.json", json.dumps([
+                {"messages": [{"role": "user"}]},  # missing required 'text' — malformed
+                {"name": "Good one", "messages": [{"role": "user", "text": "hi"}]},
+            ]), "application/json")),
+        ],
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+
+    by_ok = {r["ok"] for r in body["results"]}
+    assert by_ok == {True, False}
+    assert len(body["results"]) == 3
+
+    sessions = client.get("/api/projects/hello/sessions?include_imported=true").json()
+    titles = {s["title"] for s in sessions}
+    assert "t.txt" in titles
+    assert "Good one" in titles
+
+
 @pytest.mark.contract
 def test_import_json_rejects_a_malformed_message(client, hello_project):
-    response = client.post(
-        "/api/projects/hello/sessions/import-json",
-        json={"name": "bad", "messages": [{"role": "user"}]},  # missing required 'text'
-    )
-    assert response.status_code == 422  # Pydantic validation, not TrackingServiceError
+    result = _import_json(client, [{"name": "bad", "messages": [{"role": "user"}]}])  # missing required 'text'
+    assert result["results"] == [{"file": "bad", "ok": False, "error": result["results"][0]["error"]}]
+    assert "text" in result["results"][0]["error"]
+    assert result["last_session_id"] is None
