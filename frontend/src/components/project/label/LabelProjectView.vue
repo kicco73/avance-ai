@@ -293,6 +293,14 @@ const sessionUser = computed(() => {
   return users.value.find((u) => u.id === currentSession.value.username) ?? null
 })
 
+// The user whose branch (not a session within it) is selected in the
+// sessions tree — the Info tab shows their profile card in place of the
+// session card while this is set.
+const selectedUserProfile = computed(() => {
+  if (!selectedUserNode.value) return null
+  return users.value.find((u) => u.id === selectedUserNode.value) ?? null
+})
+
 // Same fallback convention as SessionsPanel.vue's own
 // formatSessionTimestamp, which isn't exported so is reimplemented here.
 function formatSessionTimestamp(iso) {
@@ -711,6 +719,9 @@ onBeforeUnmount(() => {
                   </div>
                 </Transition>
               </div>
+            </div>
+            <div v-else-if="selectedUserProfile" class="benchmark-session-info">
+              <InspectorUserInfoCard :user="selectedUserProfile" />
             </div>
             <p v-else class="benchmark-session-info-empty">Please select a session.</p>
           </template>
