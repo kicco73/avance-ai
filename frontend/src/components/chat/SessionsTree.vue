@@ -1,27 +1,12 @@
 <script setup>
-// Label project's own session picker: a two-level tree, top level = the
-// distinct users who own a session, second level = that user's own
-// sessions — same caret/collapse interaction as
-// project/edit/design/FileExplorer.vue, grouping modeled on
-// TestsTree.vue's own `usersByUsername` branch. Unlike SessionsPanel.vue
-// this is never a flat list and never offers create/delete — this view
-// only ever reviews existing sessions.
-//
-// Node identifiers are plain strings prefixed by kind — `user:<username>`,
-// `session:<id>` — the same convention TestsTree.vue uses.
 import { computed, ref, watch } from 'vue'
 import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 import DocInfoButton from '../DocInfoButton.vue'
 
 const props = defineProps({
   sessions: { type: Array, required: true },
-  // Every registered user (see api.js's getUsers) — resolves a session's
-  // `username` (a raw user id/email) into a display name when available;
-  // falls back to the raw value otherwise.
   users: { type: Array, default: () => [] },
   loading: { type: Boolean, default: false },
-  // Either `user:<username>` or `session:<id>`, or null before anything's
-  // been picked.
   selectedNodeId: { type: String, default: null },
   allowImport: { type: Boolean, default: false },
   allowDownloadAll: { type: Boolean, default: false },
@@ -30,7 +15,17 @@ const props = defineProps({
   hideCollapseToggle: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['select', 'import', 'download-all', 'update:collapsed'])
+const emit = defineEmits(['select', 'import', 'download-all', 'update:collapsed', 'move-sessions', 'delete-test-user'])
+
+const TEST_USER_PREFIX = 'Test user '
+
+function isTestUserBranch(username) {
+  return username.startsWith(TEST_USER_PREFIX)
+}
+
+function testUserSeqOf(username) {
+  return Number(username.slice(TEST_USER_PREFIX.length))
+}
 
 const importInput = ref(null)
 
@@ -51,24 +46,34 @@ function formatSessionTimestamp(iso) {
 }
 
 function displayNameFor(username) {
+  if (isTestUserBranch(username)) return `Test User ${testUserSeqOf(username)}`
   const user = props.users.find((u) => u.id === username)
   return user?.name || user?.email || username
 }
 
-// One entry per distinct username, in first-seen order (sessions already
-// arrive most-recent-first from the backend), each carrying its own
-// sessions.
+const branchOrder = ref([])
+watch(
+  () => props.sessions,
+  (list) => {
+    const current = new Set(list.map((s) => s.username))
+    const next = branchOrder.value.filter((username) => current.has(username))
+    for (const session of list) {
+      if (!next.includes(session.username)) next.push(session.username)
+    }
+    branchOrder.value = next
+  },
+  { immediate: true }
+)
+
 const usersByUsername = computed(() => {
-  const order = []
   const map = new Map()
   for (const session of props.sessions) {
-    if (!map.has(session.username)) {
-      map.set(session.username, [])
-      order.push(session.username)
-    }
+    if (!map.has(session.username)) map.set(session.username, [])
     map.get(session.username).push(session)
   }
-  return order.map((username) => ({ username, label: displayNameFor(username), sessions: map.get(username) }))
+  return branchOrder.value
+    .filter((username) => map.has(username))
+    .map((username) => ({ username, label: displayNameFor(username), sessions: map.get(username) }))
 })
 
 const expanded = ref(new Set())
@@ -84,13 +89,113 @@ function onUserClick(username) {
   emit('select', `user:${username}`)
 }
 
-function onSessionClick(session) {
+const selectedSessionIds = ref(new Set())
+const selectionAnchor = ref(null)
+
+function onSessionRowClick(session, user, event) {
+  if (!isTestUserBranch(user.username)) {
+    emit('select', `session:${session.id}`)
+    return
+  }
+  if (event.shiftKey && selectionAnchor.value != null) {
+    const ids = user.sessions.map((s) => s.id)
+    const anchorIndex = ids.indexOf(selectionAnchor.value)
+    const clickedIndex = ids.indexOf(session.id)
+    if (anchorIndex !== -1 && clickedIndex !== -1) {
+      const [start, end] = anchorIndex < clickedIndex ? [anchorIndex, clickedIndex] : [clickedIndex, anchorIndex]
+      selectedSessionIds.value = new Set(ids.slice(start, end + 1))
+    }
+    return
+  }
+  if (event.ctrlKey || event.metaKey) {
+    const next = new Set(selectedSessionIds.value)
+    if (next.has(session.id)) next.delete(session.id)
+    else next.add(session.id)
+    selectedSessionIds.value = next
+    selectionAnchor.value = session.id
+    return
+  }
+  selectedSessionIds.value = new Set([session.id])
+  selectionAnchor.value = session.id
   emit('select', `session:${session.id}`)
 }
 
-// Reveals whichever user branch owns the node a selection elsewhere (e.g.
-// picking the most recently active session on load) just landed on, even
-// if that branch is currently collapsed.
+const draggingFromUsername = ref(null)
+const dragOverCounts = ref(new Map())
+
+function isDragOver(username) {
+  return (dragOverCounts.value.get(username) || 0) > 0
+}
+
+function incDragOver(username) {
+  const next = new Map(dragOverCounts.value)
+  next.set(username, (next.get(username) || 0) + 1)
+  dragOverCounts.value = next
+}
+
+function decDragOver(username) {
+  const next = new Map(dragOverCounts.value)
+  const count = (next.get(username) || 0) - 1
+  if (count <= 0) next.delete(username)
+  else next.set(username, count)
+  dragOverCounts.value = next
+}
+
+function onSessionDragStart(session, user, event) {
+  draggingFromUsername.value = user.username
+  const ids = selectedSessionIds.value.has(session.id) ? [...selectedSessionIds.value] : [session.id]
+  event.dataTransfer.effectAllowed = 'move'
+  event.dataTransfer.setData('application/json', JSON.stringify({ sessionIds: ids, fromUsername: user.username }))
+}
+
+function onSessionDragEnd() {
+  draggingFromUsername.value = null
+  dragOverCounts.value = new Map()
+}
+
+function isValidDropTarget(username) {
+  return isTestUserBranch(username) && username !== draggingFromUsername.value
+}
+
+function onBranchDragEnter(user, event) {
+  if (!isValidDropTarget(user.username)) return
+  event.preventDefault()
+  incDragOver(user.username)
+}
+
+function onBranchDragLeave(user) {
+  if (!isValidDropTarget(user.username)) return
+  decDragOver(user.username)
+}
+
+function onBranchDragOver(user, event) {
+  if (!isValidDropTarget(user.username)) return
+  event.preventDefault()
+  event.dataTransfer.dropEffect = 'move'
+}
+
+function onBranchDrop(user, event) {
+  if (!isValidDropTarget(user.username)) return
+  event.preventDefault()
+  const raw = event.dataTransfer.getData('application/json')
+  dragOverCounts.value = new Map()
+  draggingFromUsername.value = null
+  if (!raw) return
+  let payload
+  try {
+    payload = JSON.parse(raw)
+  } catch {
+    return
+  }
+  if (!payload?.sessionIds?.length || payload.fromUsername === user.username) return
+  emit('move-sessions', { sessionIds: payload.sessionIds, testUserSeq: testUserSeqOf(user.username) })
+  selectedSessionIds.value = new Set()
+}
+
+function onDeleteTestUserClick(username) {
+  emit('delete-test-user', { testUserSeq: testUserSeqOf(username) })
+}
+
 watch(
   () => props.selectedNodeId,
   (nodeId) => {
@@ -110,8 +215,6 @@ watch(
   { immediate: true }
 )
 
-// The "has expert annotations" tag icon's tooltip — one shared instance
-// for the whole tree, since only one row can be hovered at a time.
 const {
   visible: annotationTooltipVisible,
   style: annotationTooltipStyle,
@@ -145,8 +248,17 @@ const {
     <p v-if="loading" class="sessions-tree-status">Loading…</p>
     <p v-else-if="!usersByUsername.length" class="sessions-tree-status">No sessions yet.</p>
 
-    <ul v-else class="sessions-tree">
-      <li v-for="user in usersByUsername" :key="user.username" class="sessions-tree-branch">
+    <TransitionGroup v-else tag="ul" name="branch-fade" class="sessions-tree">
+      <li
+        v-for="user in usersByUsername"
+        :key="user.username"
+        class="sessions-tree-branch"
+        :class="{ 'sessions-tree-branch-drag-over': isDragOver(user.username) }"
+        @dragenter="onBranchDragEnter(user, $event)"
+        @dragover="onBranchDragOver(user, $event)"
+        @dragleave="onBranchDragLeave(user)"
+        @drop="onBranchDrop(user, $event)"
+      >
         <div class="sessions-tree-node-row">
           <button
             class="sessions-tree-caret"
@@ -163,39 +275,64 @@ const {
           >
             {{ user.label }}
           </button>
+          <button
+            v-if="isTestUserBranch(user.username)"
+            type="button"
+            class="sessions-tree-delete-btn"
+            title="Delete this test user"
+            @click.stop="onDeleteTestUserClick(user.username)"
+          >&times;</button>
         </div>
 
         <div class="sessions-tree-children-wrap" :class="{ 'sessions-tree-children-wrap-open': expanded.has(user.username) }">
-          <ul class="sessions-tree-children">
+          <TransitionGroup tag="ul" name="session-move" class="sessions-tree-children">
             <li v-for="session in user.sessions" :key="session.id" class="sessions-tree-session-row">
               <button
                 type="button"
                 class="sessions-tree-session-item"
-                :class="{ 'sessions-tree-session-item-active': selectedNodeId === `session:${session.id}` }"
-                @click="onSessionClick(session)"
+                :class="{
+                  'sessions-tree-session-item-active': selectedNodeId === `session:${session.id}`,
+                  'sessions-tree-session-item-selected': isTestUserBranch(user.username) && selectedSessionIds.has(session.id)
+                }"
+                :draggable="isTestUserBranch(user.username)"
+                @click="onSessionRowClick(session, user, $event)"
+                @dragstart="onSessionDragStart(session, user, $event)"
+                @dragend="onSessionDragEnd"
               >
-                <span class="session-badge-row">
-                  <span class="session-badge" :class="{ 'session-badge-inactive': !session.active }">
-                    {{ session.title || session.end_state }}
+                <span class="sessions-tree-session-content">
+                  <span class="session-badge-row">
+                    <span class="session-badge" :class="{ 'session-badge-inactive': !session.active }">
+                      {{ session.title || session.end_state }}
+                    </span>
+                    <span
+                      v-if="session.has_annotations"
+                      class="session-annotation-icon"
+                      tabindex="0"
+                      @mouseenter="showAnnotationTooltip($event.currentTarget)"
+                      @mouseleave="hideAnnotationTooltip"
+                      @focus="showAnnotationTooltip($event.currentTarget)"
+                      @blur="hideAnnotationTooltip"
+                      @click.stop
+                    >🏷</span>
                   </span>
-                  <span
-                    v-if="session.has_annotations"
-                    class="session-annotation-icon"
-                    tabindex="0"
-                    @mouseenter="showAnnotationTooltip($event.currentTarget)"
-                    @mouseleave="hideAnnotationTooltip"
-                    @focus="showAnnotationTooltip($event.currentTarget)"
-                    @blur="hideAnnotationTooltip"
-                    @click.stop
-                  >🏷</span>
+                  <span class="session-timestamp">{{ formatSessionTimestamp(session.datetime_start) }}</span>
                 </span>
-                <span class="session-timestamp">{{ formatSessionTimestamp(session.datetime_start) }}</span>
+                <span v-if="isTestUserBranch(user.username)" class="sessions-tree-drag-handle" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
+                    <circle cx="8" cy="6" r="1.6" />
+                    <circle cx="8" cy="12" r="1.6" />
+                    <circle cx="8" cy="18" r="1.6" />
+                    <circle cx="16" cy="6" r="1.6" />
+                    <circle cx="16" cy="12" r="1.6" />
+                    <circle cx="16" cy="18" r="1.6" />
+                  </svg>
+                </span>
               </button>
             </li>
-          </ul>
+          </TransitionGroup>
         </div>
       </li>
-    </ul>
+    </TransitionGroup>
 
     <div v-if="allowDownloadAll" class="sessions-tree-download-row">
       <button class="sessions-tree-download-btn" :disabled="downloadingAll" @click="emit('download-all')">
@@ -283,6 +420,7 @@ const {
 }
 
 .sessions-tree {
+  position: relative;
   list-style: none;
   margin: 0;
   padding: 0.3rem;
@@ -293,6 +431,13 @@ const {
 
 .sessions-tree-branch + .sessions-tree-branch {
   margin-top: 0.2rem;
+}
+
+.sessions-tree-branch-drag-over {
+  outline: 2px dashed #4a6fa5;
+  outline-offset: 2px;
+  background: #eef2fb;
+  border-radius: 8px;
 }
 
 .sessions-tree-node-row {
@@ -349,6 +494,23 @@ const {
   font-weight: 600;
 }
 
+.sessions-tree-delete-btn {
+  flex-shrink: 0;
+  width: 1.4rem;
+  height: 1.4rem;
+  line-height: 1;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: #c62828;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.sessions-tree-delete-btn:hover {
+  background: #fdecea;
+}
+
 .sessions-tree-children-wrap {
   display: grid;
   grid-template-rows: 0fr;
@@ -360,6 +522,7 @@ const {
 }
 
 .sessions-tree-children {
+  position: relative;
   list-style: none;
   margin: 0;
   padding: 0 0 0 1.2rem;
@@ -376,9 +539,9 @@ const {
 
 .sessions-tree-session-item {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.3rem;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
   flex: 1;
   min-width: 0;
   text-align: left;
@@ -393,8 +556,71 @@ const {
   background: #eef2f8;
 }
 
+.sessions-tree-drag-handle {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  color: #aaa;
+  cursor: grab;
+}
+
+.sessions-tree-session-item:hover .sessions-tree-drag-handle {
+  color: #4a6fa5;
+}
+
+.sessions-tree-session-content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  flex: 1;
+  min-width: 0;
+}
+
 .sessions-tree-session-item-active {
   background: #e3ebf7;
+}
+
+.sessions-tree-session-item-selected {
+  box-shadow: inset 0 0 0 1px #4a6fa5;
+}
+
+.session-move-enter-active,
+.session-move-leave-active {
+  transition: opacity 0.22s ease;
+}
+
+.session-move-move {
+  transition: transform 0.22s ease;
+}
+
+.session-move-enter-from,
+.session-move-leave-to {
+  opacity: 0;
+}
+
+.session-move-leave-active {
+  position: absolute;
+  width: 100%;
+}
+
+.branch-fade-enter-active,
+.branch-fade-leave-active {
+  transition: opacity 0.22s ease;
+}
+
+.branch-fade-move {
+  transition: transform 0.22s ease;
+}
+
+.branch-fade-enter-from,
+.branch-fade-leave-to {
+  opacity: 0;
+}
+
+.branch-fade-leave-active {
+  position: absolute;
+  width: 100%;
 }
 
 .sessions-tree-download-row {
@@ -465,7 +691,6 @@ const {
   cursor: help;
 }
 
-/* Teleported to <body>, position: fixed — see useFloatingTooltip.js. */
 .session-annotation-tooltip-floating {
   position: fixed;
   width: max-content;

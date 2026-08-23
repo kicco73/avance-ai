@@ -16,7 +16,8 @@ import ErrorBanner from '../../ErrorBanner.vue'
 import {
   getMessages, getSessionSignals, getSessions, getProjectGraph, postImportSessions,
   getExportSessions, putMessageExpectedState, putMessageExpectedSignals, putMessageComment, putSessionLabeled,
-  putSessionTitle, putSessionComment, deleteSessionAnnotations, deleteSession, getUsers
+  putSessionTitle, putSessionComment, deleteSessionAnnotations, deleteSession, getUsers,
+  putSessionsTestUser, deleteTestUser
 } from '../../../api.js'
 import { currentSessionId, sessions, sessionsLoading, loadSessions, refreshSessionsQuietly, selectSession } from '../../../chatStore.js'
 import {
@@ -154,6 +155,31 @@ function onSelectTreeNode(nodeId) {
 watch(currentSessionId, (id) => {
   if (id != null) selectedUserNode.value = null
 })
+
+async function onMoveSessions({ sessionIds, testUserSeq }) {
+  try {
+    await putSessionsTestUser(props.projectName, sessionIds, testUserSeq)
+    await refreshSessionsQuietly(true, props.projectName)
+  } catch {
+  }
+}
+
+async function onDeleteTestUser({ testUserSeq }) {
+  const ok = await confirmDialog({
+    title: 'Delete test user',
+    body: `Delete Test User ${testUserSeq} and all of their sessions? This cannot be undone.`,
+    okLabel: 'Delete',
+    danger: true
+  })
+  if (!ok) return
+  const deletedUsername = `Test user ${testUserSeq}`
+  try {
+    await deleteTestUser(props.projectName, testUserSeq)
+    if (currentSession.value?.username === deletedUsername) currentSessionId.value = null
+    await refreshSessionsQuietly(true, props.projectName)
+  } catch {
+  }
+}
 
 // Only an imported session is ever deletable here — a live/native one
 // is the record of a real conversation, not this view's to discard.
@@ -595,6 +621,8 @@ onBeforeUnmount(() => {
               @select="onSelectTreeNode"
               @import="handleImportSession"
               @download-all="handleDownloadSessions"
+              @move-sessions="onMoveSessions"
+              @delete-test-user="onDeleteTestUser"
             />
           </div>
           <div v-if="benchmarkSessionsPanelOpen" class="split-divider" @mousedown="startSessionsDrag"></div>

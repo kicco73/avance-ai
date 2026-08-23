@@ -317,6 +317,20 @@ export function getExportSessions(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/sessions/export`, {}, { parse: 'blob' })
 }
 
+export function putSessionsTestUser(projectName, sessionIds, testUserSeq) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/sessions/test-user`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_ids: sessionIds, test_user_seq: testUserSeq })
+  })
+}
+
+export function deleteTestUser(projectName, testUserSeq) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/test-users/${encodeURIComponent(testUserSeq)}`, {
+    method: 'DELETE'
+  })
+}
+
 export function getSignals() {
   return apiFetch(`${API_URL}/chat/signals`)
 }
