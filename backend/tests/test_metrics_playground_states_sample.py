@@ -55,7 +55,7 @@ def test_every_engaged_branch_targets_its_own_distinct_final_state(client):
     session = client.get("/api/chat/session").json()
     client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "warm_up"})
 
-    response = client.post("/api/triggers/preview", json={"signals": {"mood": 100}})
+    response = client.post("/api/triggers/preview", json={"state_key": "engaged", "signals": {"mood": 100}})
 
     targets = {p["action_name"]: p["target"] for p in response.json()}
     assert targets == {

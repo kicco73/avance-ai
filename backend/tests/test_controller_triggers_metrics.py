@@ -72,7 +72,7 @@ def test_triggers_preview_merges_metric_values_when_referenced(client):
     # zero; the preview must reflect that even though only a signal is sent.
     client.get("/api/chat/session")
 
-    response = client.post("/api/triggers/preview", json={"signals": {"myOwnSignal": 10}})
+    response = client.post("/api/triggers/preview", json={"state_key": "a", "signals": {"myOwnSignal": 10}})
 
     assert response.status_code == 200
     body = response.json()
@@ -88,7 +88,7 @@ def test_triggers_preview_does_not_fire_when_the_metric_threshold_is_not_met(cli
     _upload_and_activate(client, "metric-trigger-high", high_threshold_project)
     client.get("/api/chat/session")
 
-    response = client.post("/api/triggers/preview", json={"signals": {"myOwnSignal": 10}})
+    response = client.post("/api/triggers/preview", json={"state_key": "a", "signals": {"myOwnSignal": 10}})
 
     assert response.status_code == 200
     body = response.json()
@@ -98,7 +98,7 @@ def test_triggers_preview_does_not_fire_when_the_metric_threshold_is_not_met(cli
 
 def test_triggers_preview_skips_metrics_entirely_when_nothing_references_one(client, hello_project):
     # "Hello world" has no actions/triggers at all in its only state.
-    response = client.post("/api/triggers/preview", json={"signals": {}})
+    response = client.post("/api/triggers/preview", json={"state_key": "Hello", "signals": {}})
 
     assert response.status_code == 200
     assert response.json() == []

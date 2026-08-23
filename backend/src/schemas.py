@@ -21,6 +21,7 @@ class AutoTrackingRequest(BaseModel):
 
 
 class TriggersPreviewRequest(BaseModel):
+    state_key: str
     signals: dict[str, int | float | None]
 
 

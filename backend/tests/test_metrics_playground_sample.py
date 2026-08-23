@@ -51,7 +51,7 @@ def test_warm_up_fires_on_engagement_alone_right_after_bootstrap(client):
     # points above zero, enough to clear "lobby"'s "engagement >= 4" trigger.
     client.get("/api/chat/session")
 
-    response = client.post("/api/triggers/preview", json={"signals": {}})
+    response = client.post("/api/triggers/preview", json={"state_key": "lobby", "signals": {}})
 
     assert response.status_code == 200
     body = {p["action_name"]: p for p in response.json()}
@@ -66,7 +66,7 @@ def test_every_engaged_branch_matches_its_own_live_metric_or_signal_value(client
     _enter_engaged(client, session)
     values = _metric_values(client)
 
-    response = client.post("/api/triggers/preview", json={"signals": {"mood": 100}})
+    response = client.post("/api/triggers/preview", json={"state_key": "engaged", "signals": {"mood": 100}})
 
     assert response.status_code == 200
     results = {p["action_name"]: p["result"] for p in response.json()}
@@ -100,7 +100,7 @@ def test_notice_combo_needs_both_the_signal_and_the_metric_side_true(client):
     # "notice_combo"'s higher one (>= 10).
     assert _metric_values(client)["engagement"] < 10
 
-    response = client.post("/api/triggers/preview", json={"signals": {"mood": 100}})
+    response = client.post("/api/triggers/preview", json={"state_key": "engaged", "signals": {"mood": 100}})
 
     results = {p["action_name"]: p["result"] for p in response.json()}
     assert results["notice_mood"] is True
@@ -131,7 +131,7 @@ def test_more_sessions_raise_cumulative_engagement_but_not_the_session_scoped_me
     values = _metric_values(client)
     assert values["engagement"] >= 20
 
-    response = client.post("/api/triggers/preview", json={"signals": {"mood": 100}})
+    response = client.post("/api/triggers/preview", json={"state_key": "engaged", "signals": {"mood": 100}})
     results = {p["action_name"]: p["result"] for p in response.json()}
     # Session count alone never crosses either threshold under
     # session.metric's own one-session scoping — both would need real

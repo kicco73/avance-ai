@@ -1327,7 +1327,7 @@ async function refreshNextAction() {
   try {
     const signalsList = await getSignals()
     const signalValues = Object.fromEntries(signalsList.map((s) => [s.name, s.error ? null : s.value]))
-    const previews = await postTriggersPreview(signalValues)
+    const previews = await postTriggersPreview(stateKeyAtFetch, signalValues)
     const winner = previews.find((p) => p.would_fire)
     nextAction.value = winner ? { stateKey: stateKeyAtFetch, actionName: winner.action_name } : null
   } catch {

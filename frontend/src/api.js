@@ -428,11 +428,11 @@ export function messageAudioUrl(messageId) {
   return `${API_URL}/chat/messages/${messageId}/audio`
 }
 
-export function postTriggersPreview(signals) {
+export function postTriggersPreview(stateKey, signals) {
   return apiFetch(`${API_URL}/triggers/preview`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ signals })
+    body: JSON.stringify({ state_key: stateKey, signals })
   })
 }
 
