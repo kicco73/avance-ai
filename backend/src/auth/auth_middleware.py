@@ -93,4 +93,5 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return _forbidden_response()
 
         Session().user = identity.email
+        Session().role = identity.role
         return await call_next(request)

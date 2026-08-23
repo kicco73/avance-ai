@@ -518,6 +518,7 @@ watch(
    .chat-header/.chat-body/.chat-footer without reaching into internals. */
 .chat-header {
   flex-shrink: 0;
+  height: 70px;
 }
 
 .chat-footer {

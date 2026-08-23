@@ -106,23 +106,17 @@ class SessionImportManager:
             raise
         return session_id
 
-    def import_batch(self, username: str, project_name: str, uploads: list[tuple[str, bytes]]) -> dict:
-        """The "Label sessions" view's own Import button, entirely
-        server-side — the frontend just uploads every selected file
-        as-is. Each upload is either a .txt transcript (one session)
-        or a "Download all" .json export (one session per array
-        entry); a bad file or a bad session within it is skipped
-        rather than aborting the rest of the batch. Returns
-        {"results": [{"file", "ok", "session_id"?, "error"?}, ...],
-        "last_session_id": int | None} — the last entry imported
-        across the whole batch, or None if nothing succeeded."""
+    def import_batch(self, project_name: str, uploads: list[tuple[str, bytes]]) -> dict:
         results: list[dict] = []
         last_session_id: int | None = None
+        transcript_test_user: str | None = None
         for filename, content in uploads:
             if (filename or '').lower().endswith('.json'):
-                session_id = self._import_json_upload(username, project_name, filename, content, results)
+                session_id = self._import_json_upload(project_name, filename, content, results)
             else:
-                session_id = self._import_transcript_upload(username, project_name, filename, content, results)
+                if transcript_test_user is None:
+                    transcript_test_user = self._db.next_test_user_username(project_name)
+                session_id = self._import_transcript_upload(transcript_test_user, project_name, filename, content, results)
             if session_id is not None:
                 last_session_id = session_id
         return {'results': results, 'last_session_id': last_session_id}
@@ -139,7 +133,7 @@ class SessionImportManager:
             return None
 
     def _import_json_upload(
-        self, username: str, project_name: str, filename: str, content: bytes, results: list[dict],
+        self, project_name: str, filename: str, content: bytes, results: list[dict],
     ) -> int | None:
         try:
             parsed = json.loads(content.decode('utf-8'))
@@ -156,6 +150,7 @@ class SessionImportManager:
             label = label or f'{filename} #{index + 1}'
             try:
                 validated = SessionImportJsonRequest(**session_data)
+                username = validated.username or self._db.next_test_user_username(project_name)
                 session_id = self.import_session_json(username, project_name, validated.model_dump())
                 results.append({'file': label, 'ok': True, 'session_id': session_id})
                 last_session_id = session_id

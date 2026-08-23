@@ -62,14 +62,14 @@ class TrackingService(object):
 		entry silently freezing an unrelated, newly-restored session."""
 		self._disabled_test_sessions.clear()
 
-	def import_sessions_batch(self, username: str, project_name: str, uploads: list[tuple[str, bytes]]) -> dict:
-		"""The "Label sessions" view's own Import button — every uploaded
-		file's per-file/per-session dispatch and error handling happens
-		here, so the frontend just uploads and renders the result. Never
-		raises: a bad file or session becomes a failed entry in the
-		returned results, not a request-level error (see
-		SessionImportManager.import_batch)."""
-		return self._session_import_manager.import_batch(username, project_name, uploads)
+	def import_sessions_batch(self, project_name: str, uploads: list[tuple[str, bytes]]) -> dict:
+		return self._session_import_manager.import_batch(project_name, uploads)
+
+	def reassign_sessions_to_test_user(self, session_ids: list[int], test_user_seq: int) -> None:
+		self._db.reassign_sessions_to_test_user(session_ids, test_user_seq)
+
+	def delete_sessions_by_username(self, username: str) -> None:
+		self._db.delete_sessions_by_username(username)
 
 	def export_sessions(self, username: str, project_name: str) -> list[dict]:
 		"""The "Label sessions" view's own "Download all" button — see

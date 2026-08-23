@@ -17,6 +17,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 
 _user: ContextVar[str] = ContextVar("session_user")
+_role: ContextVar[str] = ContextVar("session_role")
 
 
 class Session(object):
@@ -43,6 +44,17 @@ class Session(object):
     @user.setter
     def user(self, value: str) -> None:
         _user.set(value)
+
+    @property
+    def role(self) -> str:
+        try:
+            return _role.get()
+        except LookupError as exc:
+            raise RuntimeError("Session().role accessed outside an authenticated request context.") from exc
+
+    @role.setter
+    def role(self, value: str) -> None:
+        _role.set(value)
 
     @contextmanager
     def impersonate(self, username: str):

@@ -89,6 +89,7 @@ class SessionImportJsonRequest(BaseModel):
     # See tracking.session_export.SessionExportManager's own
     # _export_session — one entry of the array "Download all" produces.
     name: str | None = None
+    username: str | None = None
     timestamp: str | None = None
     datetime_end: str | None = None
     start_state: str | None = None
@@ -157,3 +158,8 @@ class StateTestRequest(BaseModel):
     # See BenchmarkRunService.start_job — same VALID_STRATEGIES as
     # CreateBenchmarkRunRequest.strategy.
     strategy: str
+
+
+class ReassignSessionsToTestUserRequest(BaseModel):
+    session_ids: list[int]
+    test_user_seq: int

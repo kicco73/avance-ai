@@ -8,6 +8,8 @@ import json
 
 import pytest
 
+from session import Session
+
 pytestmark = pytest.mark.contract
 
 
@@ -101,6 +103,7 @@ def test_import_json_round_trips_an_exported_session_exactly(client, hello_proje
 def test_import_json_restores_a_native_looking_session_with_real_timestamps(client, hello_project):
     payload = {
         "name": "Real session",
+        "username": "User 1",
         "timestamp": "2026-01-01T10:00:00+00:00",
         "datetime_end": "2026-01-01T10:05:00+00:00",
         "start_state": "Hello",
@@ -120,6 +123,7 @@ def test_import_json_restores_a_native_looking_session_with_real_timestamps(clie
     result = _import_json(client, [payload])
     session_id = result["last_session_id"]
 
+    Session().user = "User 1"
     [exported] = client.get("/api/projects/hello/sessions/export").json()
     assert exported["timestamp"] == "2026-01-01T10:00:00+00:00"
     assert exported["start_state"] == "Hello"
@@ -142,7 +146,7 @@ def test_import_json_handles_a_mixed_batch_of_files(client, hello_project):
             ("files", ("t.txt", "user: hi\nassistant: yo\n", "text/plain")),
             ("files", ("more.json", json.dumps([
                 {"messages": [{"role": "user"}]},  # missing required 'text' — malformed
-                {"name": "Good one", "messages": [{"role": "user", "text": "hi"}]},
+                {"name": "Good one", "username": "User 1", "messages": [{"role": "user", "text": "hi"}]},
             ]), "application/json")),
         ],
     )
@@ -153,6 +157,7 @@ def test_import_json_handles_a_mixed_batch_of_files(client, hello_project):
     assert by_ok == {True, False}
     assert len(body["results"]) == 3
 
+    Session().user = "User 1"
     sessions = client.get("/api/projects/hello/sessions?include_imported=true").json()
     titles = {s["title"] for s in sessions}
     assert "t.txt" in titles

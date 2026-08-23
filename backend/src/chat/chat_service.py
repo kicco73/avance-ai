@@ -23,6 +23,7 @@ from chat.errors import ChatServiceError
 from chat.session_manager import ChatSessionManager
 from chat.session_summary_manager import SessionSummaryManager
 from chat.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
+from auth.roles import role_satisfies
 from jobs import JobQueue
 from tracking.tracking_engine import DbTrackingSink, TrackingEngine
 from tracking.turn_callbacks import OnMetadata
@@ -73,6 +74,11 @@ class ChatService(object):
 	@property
 	def _username(self) -> str:
 		return Session().user
+
+	def _owns_session(self, session_username: str) -> bool:
+		if session_username == self._username:
+			return True
+		return session_username.startswith('Test user ') and role_satisfies(Session().role, 'supervisor')
 
 	def get_message_audio_text(self, message_id: int) -> str | None:
 		return self._db.get_message_audio_text(message_id)
@@ -210,7 +216,8 @@ class ChatService(object):
 		return fixed if fixed is not None else session["id"] == pool_active_id
 
 	def _list_sessions_by_type(self, project_name: str, type: str | tuple[str, ...], active_type: str) -> list[dict]:
-		sessions = self._db.list_chat_sessions(self._username, project_name, type=type)
+		sessions = self._db.list_chat_sessions(None, project_name, type=type)
+		sessions = [s for s in sessions if self._owns_session(s['username'])]
 		active = self._session_manager.get_active_session(self._username, project_name, type=active_type)
 		active_id = active["id"] if active is not None else None
 		return [self._session_payload(s, active=self._is_session_active(s, active_id)) for s in sessions]
@@ -233,7 +240,7 @@ class ChatService(object):
 		the current user — sessions can be deleted independently, so a
 		caller about to write to one can't just assume it's still there."""
 		session = self._db.get_chat_session(session_id)
-		if session is None or session["username"] != self._username:
+		if session is None or not self._owns_session(session["username"]):
 			raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
 
 	def delete_session(self, session_id: int) -> None:
@@ -327,7 +334,7 @@ class ChatService(object):
 		message = self._db.get_message(message_id)
 		if message is not None:
 			session = self._db.get_chat_session(message["session_id"])
-			if session is not None and session["username"] == self._username:
+			if session is not None and self._owns_session(session["username"]):
 				return message
 		raise ChatServiceError("Message not found.", status_code=HTTPStatus.NOT_FOUND)
 

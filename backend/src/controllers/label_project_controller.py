@@ -20,6 +20,7 @@ from schemas import (
     CreateBenchmarkRunRequest,
     ExpectedSignalsRequest,
     ExpectedStateRequest,
+    ReassignSessionsToTestUserRequest,
     SetSessionLabeledRequest,
     SetSessionTitleRequest,
     StateTestRequest,
@@ -58,7 +59,7 @@ class LabelProjectController(BaseController):
         dispatch and error handling happens server-side; the frontend
         just uploads and renders the returned per-item results."""
         uploads = [(file.filename or "", await file.read()) for file in files]
-        return self.tracking_service.import_sessions_batch(Session().user, project_name, uploads)
+        return self.tracking_service.import_sessions_batch(project_name, uploads)
 
     @get("/api/projects/{project_name}/sessions/export", role="supervisor")
     def get_export_sessions(self, project_name: str):
@@ -75,6 +76,16 @@ class LabelProjectController(BaseController):
                 "Content-Disposition": f"attachment; filename=\"sessions.json\"; filename*=UTF-8''{encoded_project_name}-sessions.json"
             },
         )
+
+    @put("/api/projects/{project_name}/sessions/test-user", role="supervisor")
+    def put_sessions_test_user(self, project_name: str, req: ReassignSessionsToTestUserRequest):
+        self.tracking_service.reassign_sessions_to_test_user(req.session_ids, req.test_user_seq)
+        return {"success": True}
+
+    @delete("/api/projects/{project_name}/test-users/{test_user_seq}", role="supervisor")
+    def delete_test_user(self, project_name: str, test_user_seq: int):
+        self.tracking_service.delete_sessions_by_username(f"Test user {test_user_seq}")
+        return {"success": True}
 
     @delete("/api/chat/sessions/{session_id}")
     def delete_session(self, session_id: int):
