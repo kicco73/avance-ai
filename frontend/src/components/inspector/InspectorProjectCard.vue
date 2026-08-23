@@ -7,7 +7,7 @@ import { vAutosize } from './textareaAutosize.js'
 import { handleEnterNext } from './enterToNextField.js'
 
 const props = defineProps({
-  project: { type: Object, default: null }, // { id, ui_label, ui_description } | null, from getProjectMetadata
+  project: { type: Object, default: null }, // { id, ui_label, ui_description, talk_enabled, signal_tracking_on_ai_message } | null, from getProjectMetadata
   editable: { type: Boolean, default: false }
 })
 
@@ -54,6 +54,10 @@ function commitUiDescription() {
 function commitId() {
   commitTextField('id', editId.value, props.project?.id ?? '')
 }
+
+function commitBoolField(field, value) {
+  emit('set-field', field, value)
+}
 </script>
 
 <template>
@@ -75,6 +79,20 @@ function commitId() {
           @keydown.enter.prevent="handleEnterNext"
         />
         <span v-else class="inspector-detail-title">{{ project?.ui_label || 'Untitled project' }}</span>
+      </div>
+      <div v-if="showEditForm" class="inspector-detail-badges">
+        <span
+          class="inspector-detail-badge inspector-detail-badge-toggle"
+          :class="(project?.talk_enabled ?? true) ? 'inspector-detail-badge-toggle-on' : 'inspector-detail-badge-toggle-off'"
+          title="Click to toggle"
+          @click.stop="commitBoolField('talk-enabled', !(project?.talk_enabled ?? true))"
+        >Talk enabled</span>
+        <span
+          class="inspector-detail-badge inspector-detail-badge-toggle"
+          :class="project?.signal_tracking_on_ai_message ? 'inspector-detail-badge-toggle-on' : 'inspector-detail-badge-toggle-off'"
+          title="Click to toggle"
+          @click.stop="commitBoolField('signal-tracking-on-ai-message', !project?.signal_tracking_on_ai_message)"
+        >Track on AI</span>
       </div>
     </div>
     <div class="inspector-detail-body">
@@ -122,6 +140,10 @@ function commitId() {
 .inspector-detail-header-top { display: flex; align-items: center; gap: 0.5rem; }
 .inspector-detail-badge { flex-shrink: 0; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.15rem 0.5rem; border-radius: 999px; color: white; }
 .inspector-detail-badge-project { background: #6a1b9a; }
+.inspector-detail-badges { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.inspector-detail-badge-toggle { cursor: pointer; }
+.inspector-detail-badge-toggle-off { background: #ccc; color: #555; }
+.inspector-detail-badge-toggle-on { background: #4a6fa5; }
 .inspector-detail-title { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .inspector-detail-title-input { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; border: 1px solid transparent; border-radius: 4px; padding: 0.1rem 0.3rem; background: transparent; }
 .inspector-detail-title-input:hover, .inspector-detail-title-input:focus { border-color: #ccc; background: white; }

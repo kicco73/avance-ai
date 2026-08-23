@@ -29,7 +29,7 @@ SIGNAL_EDITABLE_FIELDS = {"ui-label", "ui-description", "definition"}
 ENV_KEY_EDITABLE_FIELDS = {"name", "ui-description", "value"}
 # The optional top-level `project:` section — 'id' is what other
 # projects reach this one as through automaton.<id>.
-PROJECT_EDITABLE_FIELDS = {"id", "ui-label", "ui-description"}
+PROJECT_EDITABLE_FIELDS = {"id", "ui-label", "ui-description", "talk-enabled", "signal-tracking-on-ai-message"}
 
 
 class EditProjectController(BaseController, ProjectCommitMixin):

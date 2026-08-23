@@ -153,6 +153,8 @@ class ProjectPayload(TypedDict):
     id: str | None
     ui_label: str | None
     ui_description: str | None
+    talk_enabled: bool
+    signal_tracking_on_ai_message: bool
 
 # Reserved namespaces a trigger/env expression resolves against. `automaton`
 # has no entry in _NAMESPACE_PATHS below since automaton.<project>.state/

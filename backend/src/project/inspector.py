@@ -184,6 +184,8 @@ class ProjectInspector:
             "id": automaton.project_id,
             "ui_label": automaton.project_ui_label,
             "ui_description": automaton.project_ui_description,
+            "talk_enabled": automaton.talk_enabled,
+            "signal_tracking_on_ai_message": automaton.autotracking_on_ai_message,
         }
 
     def get_identifier_registry(self, project_name: str) -> dict[str, dict[str, str]]:
