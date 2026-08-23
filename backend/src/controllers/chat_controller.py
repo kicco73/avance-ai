@@ -139,6 +139,23 @@ class ChatController(BaseController):
             project_name=project_name, message_id=message_id, full=full, username=username,
         )
 
+    @get("/api/projects/{project_name}/users/{username}/latest-signals")
+    def get_user_latest_signals(self, project_name: str, username: str):
+        """The most recent live session's own latest signal snapshot for
+        `username` in `project_name` — Manage Users' Signals tab."""
+        return self.chat_service.get_latest_signal_values(project_name, username)
+
+    @get("/api/projects/{project_name}/users/{username}/signal-history")
+    def get_user_signal_history(self, project_name: str, username: str):
+        """Every real signal snapshot for `username` in `project_name`,
+        chronological, across their whole session history — Manage
+        Users' Trends tab."""
+        return self.chat_service.get_signal_history(project_name, username)
+
+    @get("/api/projects/{project_name}/users/{username}/metrics-history")
+    def get_user_metrics_history(self, project_name: str, username: str):
+        return self.chat_service.get_metrics_history(project_name, username)
+
     @get("/api/state")
     def get_state(self):
         """Also the frontend's boot/readiness ping — piggybacks

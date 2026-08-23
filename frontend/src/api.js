@@ -398,6 +398,18 @@ export function getMetrics(projectName, messageId, full, username) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/metrics${query}`)
 }
 
+export function getUserLatestSignals(projectName, username) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/users/${encodeURIComponent(username)}/latest-signals`)
+}
+
+export function getSignalHistory(projectName, username) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/users/${encodeURIComponent(username)}/signal-history`)
+}
+
+export function getMetricsHistory(projectName, username) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/users/${encodeURIComponent(username)}/metrics-history`)
+}
+
 export function postAction(actionName, sessionId) {
   return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/action`, {
     method: 'POST',

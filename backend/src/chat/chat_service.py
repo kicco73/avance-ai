@@ -354,6 +354,39 @@ class ChatService(object):
 			until=until, project_name=project_name, include_all_scopes=full, username=username,
 		)
 
+	def get_metrics_history(self, project_name: str, username: str) -> list[dict]:
+		sessions = sorted(
+			self._db.list_chat_sessions(username, project_name, type=None),
+			key=lambda session: session['datetime_start'],
+		)
+		history = []
+		for session in sessions:
+			until = session['datetime_end'] or session['datetime_start']
+			results = self.metric_service.calculate_all(
+				until=until, project_name=project_name, include_all_scopes=True, username=username,
+			)
+			values = {result['name']: result['value'] for result in results if result['value'] is not None}
+			if values:
+				history.append({'timestamp': _utc_iso(until), 'values': values})
+		return history
+
+	def get_latest_signal_values(self, project_name: str, username: str) -> dict:
+		sessions = self._db.list_chat_sessions(username, project_name, type='live')
+		if not sessions:
+			return {'last_session': None, 'session_id': None, 'values': None}
+		last_session = sessions[0]
+		last_session_payload = {
+			'id': last_session['id'], 'start_state': last_session['start_state'], 'end_state': last_session['end_state'],
+		}
+		for session in sessions:
+			for row in reversed(self._db.get_signals(session['id'])):
+				if row['values'] is not None:
+					return {'last_session': last_session_payload, 'session_id': session['id'], 'values': row['values']}
+		return {'last_session': last_session_payload, 'session_id': last_session['id'], 'values': None}
+
+	def get_signal_history(self, project_name: str, username: str) -> list[dict]:
+		return self._db.get_signal_history(project_name, username)
+
 	def get_env(self, message_id: int | None = None) -> dict:
 		"""{"stored": ..., "action_set": ...}, reported separately so the
 		Inspector Env tab knows which section each value belongs in and

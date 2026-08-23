@@ -28,6 +28,19 @@ class TrackingMixin:
         rows = Tracking.select().where((Tracking.session == session_id) & Tracking.env.is_null(True) & Tracking.action_env.is_null(True)).order_by(Tracking.timestamp.asc(), Tracking.id.asc())
         return [{'id': row.id, 'timestamp': _utc_iso(row.timestamp), 'values': row.values, 'expected_values': row.expected_values, 'expected_state': row.expected_state, 'comment': row.comment, 'old_state': row.old_state, 'action': row.action, 'new_state': row.new_state, 'message_id': row.message_id} for row in rows]
 
+    def get_signal_history(self, project_name: str, username: str) -> list[dict]:
+        rows = (
+            Tracking
+            .select()
+            .join(ChatSession, on=Tracking.session == ChatSession.id)
+            .where(
+                (ChatSession.project_name == project_name) & (ChatSession.username == username)
+                & Tracking.values.is_null(False)
+            )
+            .order_by(Tracking.timestamp.asc(), Tracking.id.asc())
+        )
+        return [{'timestamp': _utc_iso(row.timestamp), 'values': json.loads(row.values)} for row in rows]
+
     def import_tracking_row(
         self, session_id: int, *, old_state: str | None, action: str | None, new_state: str | None,
         values: dict | None, expected_state: str | None, expected_values: dict | None, comment: str | None,

@@ -1,12 +1,16 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { getMetrics, getProjects, getUsers } from '../../api.js'
+import { getMetrics, getProjectGraph, getProjects, getUserLatestSignals, getUsers } from '../../api.js'
+import { valuesToSignalValues } from '../../benchmarkTimeline.js'
 import DocInfoButton from '../DocInfoButton.vue'
 import ErrorBanner from '../ErrorBanner.vue'
 import ProjectsMenu from '../ProjectsMenu.vue'
 import Inspector from '../inspector/Inspector.vue'
+import InspectorSignalsTab from '../inspector/InspectorSignalsTab.vue'
 import InspectorUserInfoCard from '../inspector/InspectorUserInfoCard.vue'
 import MetricDetail from '../inspector/MetricDetail.vue'
+import MetricsTrendsChart from './MetricsTrendsChart.vue'
+import SignalTrendsChart from './SignalTrendsChart.vue'
 
 const emit = defineEmits(['close'])
 
@@ -89,9 +93,52 @@ async function loadStats(projectName, user) {
   }
 }
 
+const mainTabs = [{ id: 'signals', label: 'Signals' }, { id: 'metrics', label: 'Metrics' }]
+const activeMainTab = ref('signals')
+
+const signalColorMap = ref(null)
+const metricColorMap = ref(null)
+
+function metricBadgeColor(name) {
+  if (metricColorMap.value == null) return null
+  return metricColorMap.value[name] ?? '#9e9e9e'
+}
+
+const latestSignals = ref({ last_session: null, session_id: null, values: null })
+const latestSignalsLoading = ref(false)
+const latestSignalValues = computed(() => valuesToSignalValues(latestSignals.value.values))
+
+const projectGraphNodes = ref([])
+const lastSessionStateNode = computed(() => {
+  const key = latestSignals.value.last_session?.end_state
+  if (key == null) return null
+  return projectGraphNodes.value.find((node) => node.state.key === key) ?? null
+})
+
+async function loadLatestSignals(projectName, user) {
+  if (!projectName || !user) {
+    latestSignals.value = { last_session: null, session_id: null, values: null }
+    projectGraphNodes.value = []
+    return
+  }
+  latestSignalsLoading.value = true
+  try {
+    latestSignals.value = await getUserLatestSignals(projectName, user.email ?? user.id)
+    projectGraphNodes.value = (await getProjectGraph(projectName, latestSignals.value.last_session?.id)).nodes
+  } catch {
+    latestSignals.value = { last_session: null, session_id: null, values: null }
+    projectGraphNodes.value = []
+  } finally {
+    latestSignalsLoading.value = false
+  }
+}
+
 // Re-runs whenever either the toolbar's project or the Explorer's selected
 // user changes — the statistics are that user's own sessions of that project.
-watch([statsProjectName, selectedUser], ([projectName, user]) => loadStats(projectName, user))
+watch([statsProjectName, selectedUser], ([projectName, user]) => {
+  loadStats(projectName, user)
+  loadLatestSignals(projectName, user)
+})
 
 // Seeds the picker with the app's current active project — a read-only
 // lookup (never activateProject), just so the panel isn't stuck on "Select
@@ -127,6 +174,7 @@ defineExpose({ refresh: load })
     <div class="manage-users-header">
       <h2>Users</h2>
       <div class="manage-users-header-actions">
+        <ProjectsMenu :selected-name="statsProjectName" @select="statsProjectName = $event" />
         <button class="close-btn" @click="emit('close')">Back</button>
       </div>
     </div>
@@ -171,17 +219,54 @@ defineExpose({ refresh: load })
       <div v-if="!explorerCollapsed" class="split-divider" @mousedown="startExplorerDrag"></div>
 
       <div class="manage-users-main">
-        <div class="manage-users-main-toolbar">
-          <span class="manage-users-main-toolbar-label">Statistics for</span>
-          <ProjectsMenu :selected-name="statsProjectName" @select="statsProjectName = $event" />
+        <div class="manage-users-main-tabbar">
+          <button
+            v-for="tab in mainTabs"
+            :key="tab.id"
+            type="button"
+            class="manage-users-main-tab"
+            :class="{ 'manage-users-main-tab-active': activeMainTab === tab.id }"
+            @click="activeMainTab = tab.id"
+          >{{ tab.label }}</button>
         </div>
 
-        <div class="manage-users-stats">
+        <div v-if="activeMainTab === 'signals'" class="manage-users-stats">
+          <p v-if="!statsProjectName" class="manage-users-stats-status">Select a project to see its signals.</p>
+          <p v-else-if="!selectedUser" class="manage-users-stats-status">Select a user to see their signals.</p>
+          <template v-else>
+            <div class="manage-users-trends-block">
+              <SignalTrendsChart
+                :project-name="statsProjectName"
+                :username="selectedUser.email ?? selectedUser.id"
+                @colors="signalColorMap = $event"
+              />
+            </div>
+            <p v-if="latestSignalsLoading" class="manage-users-stats-status">Loading…</p>
+            <p v-else-if="!latestSignals.last_session" class="manage-users-stats-status">
+              This user has no live sessions in this project yet.
+            </p>
+            <InspectorSignalsTab
+              v-else
+              :project-name="statsProjectName"
+              :signal-values="latestSignalValues"
+              :session-id="latestSignals.session_id"
+              :signal-colors="signalColorMap"
+            />
+          </template>
+        </div>
+
+        <div v-else class="manage-users-stats">
           <p v-if="!statsProjectName" class="manage-users-stats-status">Select a project to see its statistics.</p>
           <p v-else-if="!selectedUser" class="manage-users-stats-status">Select a user to see their statistics.</p>
           <template v-else>
+            <div class="manage-users-trends-block">
+              <MetricsTrendsChart
+                :project-name="statsProjectName"
+                :username="selectedUser.email ?? selectedUser.id"
+                @colors="metricColorMap = $event"
+              />
+            </div>
             <div class="manage-users-stats-header">
-              <h3 class="manage-users-stats-title">Statistics</h3>
               <DocInfoButton doc-name="metrics" title="Core metrics" />
             </div>
             <p v-if="statsLoading" class="manage-users-stats-status">Loading…</p>
@@ -193,6 +278,7 @@ defineExpose({ refresh: load })
                 :label="metric.ui_label || metric.name"
                 :value="metric.value"
                 :description="metric.ui_description"
+                :color="metricBadgeColor(metric.name)"
               />
             </div>
           </template>
@@ -209,6 +295,15 @@ defineExpose({ refresh: load })
         <Inspector :tabs="inspectorTabs" v-model:active-tab="inspectorActiveTab" v-model:collapsed="inspectorCollapsed">
           <template #tab-info>
             <InspectorUserInfoCard :user="selectedUser" />
+            <div v-if="lastSessionStateNode" class="inspector-signal-block manage-users-state-card">
+              <div class="inspector-signal-readonly">
+                <div class="inspector-signal-header">
+                  <span class="inspector-detail-badge inspector-detail-badge-state">State</span>
+                  <span class="inspector-signal-name">{{ lastSessionStateNode.state.ui_label || lastSessionStateNode.state.key }}</span>
+                </div>
+                <span v-if="lastSessionStateNode.state.ui_description" class="inspector-signal-ui_description">{{ lastSessionStateNode.state.ui_description }}</span>
+              </div>
+            </div>
           </template>
         </Inspector>
       </div>
@@ -399,22 +494,33 @@ defineExpose({ refresh: load })
   overflow: hidden;
 }
 
-.manage-users-main-toolbar {
+.manage-users-main-tabbar {
   display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.5rem 0.75rem;
+  gap: 0.25rem;
+  padding: 0.5rem 1rem 0;
   border-bottom: 1px solid #ddd;
-  background: #f7f8fa;
   flex-shrink: 0;
 }
 
-.manage-users-main-toolbar-label {
-  font-size: 0.8rem;
+.manage-users-main-tab {
+  padding: 0.45rem 0.9rem;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: #666;
+}
+
+.manage-users-main-tab:hover {
+  color: #333;
+}
+
+.manage-users-main-tab-active {
+  color: #2c4d7a;
   font-weight: 600;
-  color: #555;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  border-bottom-color: #4a6fa5;
 }
 
 .manage-users-stats {
@@ -429,17 +535,10 @@ defineExpose({ refresh: load })
 .manage-users-stats-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 0.4rem;
   margin-bottom: 0.75rem;
   flex-shrink: 0;
-}
-
-.manage-users-stats-title {
-  margin: 0;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: #333;
 }
 
 .manage-users-stats-status {
@@ -450,10 +549,36 @@ defineExpose({ refresh: load })
 }
 
 .manage-users-stats-list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  align-items: start;
   gap: 0.6rem;
 }
+
+.manage-users-state-card {
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.manage-users-trends-block {
+  width: 100%;
+  height: 200px;
+  max-height: 200px;
+  flex-shrink: 0;
+  margin-bottom: 1rem;
+}
+
+.manage-users-stats :deep(.inspector-signals-section) {
+  flex: none;
+  overflow: visible;
+}
+
+.inspector-signal-block { display: flex; flex-direction: column; gap: 0.2rem; padding: 0.6rem 0.75rem; border-radius: 8px; border: 1px solid #eee; background: #fafafa; }
+.inspector-signal-header { display: flex; align-items: center; gap: 0.4rem; }
+.inspector-detail-badge { flex-shrink: 0; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.15rem 0.5rem; border-radius: 999px; color: white; }
+.inspector-detail-badge-state { background: #4a6fa5; }
+.inspector-signal-name { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; }
+.inspector-signal-ui_description { font-size: 0.78rem; color: #666; line-height: 1.4; }
 
 .manage-users-inspector {
   flex-shrink: 0;

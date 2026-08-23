@@ -9,6 +9,7 @@ from http import HTTPStatus
 from statistics import mean, median, pstdev
 
 import pandas as pd
+from peewee import IntegrityError
 
 from automaton.automaton import Automaton
 from automaton.automaton_builder import AutomatonBuilder
@@ -231,7 +232,14 @@ class BenchmarkRunService:
             return fresh['id']
         session = self._db.get_chat_session(session_id)
         assert session is not None
-        new_run = self.create_run(session['username'], project_name, session_id, strategy)
+        try:
+            new_run = self.create_run(session['username'], project_name, session_id, strategy)
+        except IntegrityError:
+            candidates = [run for run in self.list_runs(project_name, session_id) if run['strategy'] == strategy]
+            fresh = candidates[0] if candidates and not candidates[0]['stale'] else None
+            if fresh is None:
+                raise
+            return fresh['id']
         return new_run['id']
 
     def _pooled_sub_runs_work(self, sub_run_ids: list[int], project_name: str, label: str) -> JobWork:
