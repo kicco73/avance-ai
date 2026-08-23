@@ -9,8 +9,9 @@ import DocInfoButton from '../../../DocInfoButton.vue'
 import MetricDetail from '../../../inspector/MetricDetail.vue'
 import ModelMenu from '../../../ModelMenu.vue'
 import {
-  deleteBenchmarkRuns, getBenchmarkMetrics, getBenchmarkRun, getBenchmarkRuns, getProjectStates, getStateJob,
-  postBenchmarkRun, postSessionsRun, postStateTest, postUserSessionsRun, postUsersAggregation
+  deleteBenchmarkRuns, getBenchmarkMetrics, getBenchmarkRun, getBenchmarkRuns, getProjectSignals, getProjectStates,
+  getStateJob, postBenchmarkRun, postSessionsRun, postSignalTest, postStateTest, postUserSessionsRun,
+  postUsersAggregation
 } from '../../../../api.js'
 import { loadSessions, sessions, sessionsLoading } from '../../../../chatStore.js'
 import { confirmDialog } from '../../../../dialogStore.js'
@@ -89,6 +90,9 @@ function stopTreeDrag() {
 const projectStates = ref([])
 const statesLoading = ref(false)
 
+const projectSignals = ref([])
+const signalsLoading = ref(false)
+
 // name -> {ui_label, ui_description} for the fixed core-benchmark-metric
 // registry (state_accuracy, signal_accuracy, ...) — every result row's own
 // `name` below is one of these, resolved for display instead of the raw
@@ -166,6 +170,14 @@ const statesBranchStatus = computed(() => {
   return aggregateStatus(statuses)
 })
 
+const signalsBranchStatus = computed(() => {
+  const prefix = `${strategy.value}:signal:`
+  const statuses = Object.entries(nodeStatuses.value)
+    .filter(([key]) => key.startsWith(prefix))
+    .map(([, status]) => status)
+  return aggregateStatus(statuses)
+})
+
 // TestsTree only ever sees the active strategy's own statuses — a node
 // with no entry here falls back to its own 'idle' default. states-branch
 // and root are derived (not launched jobs in their own right), so they're
@@ -177,8 +189,10 @@ const currentStrategyStatuses = computed(() => {
     if (key.startsWith(prefix)) result[key.slice(prefix.length)] = status
   }
   result['states-branch'] = statesBranchStatus.value
+  result['signals-branch'] = signalsBranchStatus.value
   result['root'] = aggregateStatus([
-    result['sessions-branch'] ?? 'idle', statesBranchStatus.value, result['users-branch'] ?? 'idle'
+    result['sessions-branch'] ?? 'idle', statesBranchStatus.value, result['users-branch'] ?? 'idle',
+    signalsBranchStatus.value
   ])
   return result
 })
@@ -217,6 +231,28 @@ const statesOverall = computed(() => {
 
 const statesFailedEntries = computed(() => {
   const prefix = `${strategy.value}:state:`
+  return Object.entries(nodeError.value)
+    .filter(([key, error]) => key.startsWith(prefix) && error)
+    .map(([key, error]) => ({ name: key.slice(prefix.length), error }))
+})
+
+const signalsAggregateRows = computed(() => {
+  const prefix = `${strategy.value}:signal:`
+  return Object.entries(nodeLastResult.value)
+    .filter(([key, result]) => key.startsWith(prefix) && result)
+    .map(([key, result]) => ({ ...result, name: key.slice(prefix.length) }))
+})
+
+const signalsOverall = computed(() => {
+  const rows = signalsAggregateRows.value
+  const totalSamples = rows.reduce((sum, row) => sum + (row.sample_count || 0), 0)
+  if (totalSamples === 0) return null
+  const weightedSum = rows.reduce((sum, row) => sum + (row.value || 0) * (row.sample_count || 0), 0)
+  return { value: weightedSum / totalSamples, sample_count: totalSamples }
+})
+
+const signalsFailedEntries = computed(() => {
+  const prefix = `${strategy.value}:signal:`
   return Object.entries(nodeError.value)
     .filter(([key, error]) => key.startsWith(prefix) && error)
     .map(([key, error]) => ({ name: key.slice(prefix.length), error }))
@@ -402,6 +438,33 @@ async function activateAllStates(activeStrategy) {
   )
 }
 
+async function activateSignalLeaf(nodeId, activeStrategy, mirrorLeafNodeIds = []) {
+  const key = cacheKey(activeStrategy, nodeId)
+  setStatus(key, 'running')
+  clearProgress(key)
+  mirrorLeafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(activeStrategy, leafNodeId), 'running'))
+  try {
+    const signalName = nodeId.slice('signal:'.length)
+    const { job_id } = await postSignalTest(props.projectName, signalName, activeStrategy)
+    pollStateJob(key, job_id, activeStrategy, mirrorLeafNodeIds)
+  } catch {
+    // already surfaced via apiFetch
+    setStatus(key, 'fail')
+    mirrorLeafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(activeStrategy, leafNodeId), 'fail'))
+  }
+}
+
+async function activateAllSignals(activeStrategy) {
+  const leafNodeIds = annotatedSessionNodeIds()
+  await Promise.all(
+    projectSignals.value.map((signal) => activateSignalLeaf(`signal:${signal.name}`, activeStrategy, leafNodeIds))
+  )
+}
+
+function signalLabel(name) {
+  return projectSignals.value.find((signal) => signal.name === name)?.ui_label || name
+}
+
 // Every user-leaf nodeId the "Users" branch shows — one per distinct
 // username among annotated sessions, same source annotatedSessionNodeIds
 // uses for its own leaves.
@@ -468,17 +531,22 @@ async function onActivate(nodeId) {
     await activateStateLeaf(nodeId, activeStrategy, annotatedSessionNodeIds())
   } else if (nodeId.startsWith('user:')) {
     await activateUserLeaf(nodeId, activeStrategy)
+  } else if (nodeId.startsWith('signal:')) {
+    await activateSignalLeaf(nodeId, activeStrategy, annotatedSessionNodeIds())
   } else if (nodeId === 'sessions-branch') {
     await activateSessionsRun(activeStrategy)
   } else if (nodeId === 'states-branch') {
     await activateAllStates(activeStrategy)
   } else if (nodeId === 'users-branch') {
     await activateUsersAggregation(activeStrategy)
+  } else if (nodeId === 'signals-branch') {
+    await activateAllSignals(activeStrategy)
   } else if (nodeId === 'root') {
     // Every sub-test at once: the whole-project replay, every state's own
-    // test, and the users aggregation.
+    // test, the users aggregation, and every signal's own accuracy.
     await Promise.all([
-      activateSessionsRun(activeStrategy), activateAllStates(activeStrategy), activateUsersAggregation(activeStrategy)
+      activateSessionsRun(activeStrategy), activateAllStates(activeStrategy), activateUsersAggregation(activeStrategy),
+      activateAllSignals(activeStrategy)
     ])
   }
 }
@@ -531,6 +599,7 @@ const selectedNodeLabel = computed(() => {
   if (nodeId === 'sessions-branch') return 'Sessions'
   if (nodeId === 'states-branch') return 'Stats'
   if (nodeId === 'users-branch') return 'Users'
+  if (nodeId === 'signals-branch') return 'Signals'
   if (nodeId.startsWith('session:')) {
     const id = Number(nodeId.slice('session:'.length))
     const session = sessions.value.find((s) => s.id === id)
@@ -538,6 +607,7 @@ const selectedNodeLabel = computed(() => {
   }
   if (nodeId.startsWith('state:')) return nodeId.slice('state:'.length)
   if (nodeId.startsWith('user:')) return nodeId.slice('user:'.length)
+  if (nodeId.startsWith('signal:')) return signalLabel(nodeId.slice('signal:'.length))
   return nodeId
 })
 
@@ -594,6 +664,14 @@ onMounted(() => {
   }).finally(() => {
     statesLoading.value = false
   })
+  signalsLoading.value = true
+  getProjectSignals(props.projectName).then(({ signals }) => {
+    projectSignals.value = signals.map((entry) => entry.signal)
+  }).catch(() => {
+    // already surfaced via apiFetch
+  }).finally(() => {
+    signalsLoading.value = false
+  })
   window.addEventListener('mousemove', onTreeDrag)
   window.addEventListener('mouseup', stopTreeDrag)
 })
@@ -624,12 +702,13 @@ onBeforeUnmount(() => {
           </svg>
         </button>
       </div>
-      <p v-if="sessionsLoading || statesLoading" class="tests-panel-tree-status">Loading…</p>
+      <p v-if="sessionsLoading || statesLoading || signalsLoading" class="tests-panel-tree-status">Loading…</p>
       <TestsTree
         v-else
         :project-name="projectName"
         :sessions="sessions"
         :states="projectStates"
+        :signals="projectSignals"
         :statuses="currentStrategyStatuses"
         :progresses="currentStrategyProgress"
         :selected-node-id="selectedNodeId"
@@ -673,7 +752,7 @@ onBeforeUnmount(() => {
       <p v-if="!selectedNodeId" class="tests-panel-placeholder">Select a node to see its results.</p>
 
       <template v-else-if="selectedNodeId === 'root'">
-        <p class="tests-panel-placeholder">Aggregates not available at this time.<br />Please select Sessions or States to see results.</p>
+        <p class="tests-panel-placeholder">Aggregates not available at this time.<br />Please select Sessions, States, Users, or Signals to see results.</p>
       </template>
 
       <template v-else-if="selectedNodeId.startsWith('session:')">
@@ -751,6 +830,54 @@ onBeforeUnmount(() => {
               <td>{{ formatNumber(nodeLastResult[selectedCacheKey].median) }}</td>
               <td>{{ formatNumber(nodeLastResult[selectedCacheKey].standard_deviation) }}</td>
               <td>{{ nodeLastResult[selectedCacheKey].sample_count }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </template>
+
+      <template v-else-if="selectedNodeId.startsWith('signal:')">
+        <p v-if="nodeError[selectedCacheKey]" class="tests-panel-error">{{ nodeError[selectedCacheKey] }}</p>
+        <p v-else-if="!nodeLastResult[selectedCacheKey]" class="tests-panel-placeholder">
+          No test has been run for this signal under this strategy yet.
+        </p>
+        <table v-else class="tests-panel-metrics-table">
+          <thead>
+            <tr>
+              <th>Metric</th><th>Mean</th><th>Median</th><th>Std dev</th><th>Samples</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :class="{ 'tests-panel-row-empty': !nodeLastResult[selectedCacheKey].sample_count }">
+              <td>
+                <MetricDetail
+                  :label="metricLabel('signal_accuracy')" :description="metricDescription('signal_accuracy')"
+                  :value="nodeLastResult[selectedCacheKey].value"
+                />
+              </td>
+              <td>{{ formatNumber(nodeLastResult[selectedCacheKey].mean) }}</td>
+              <td>{{ formatNumber(nodeLastResult[selectedCacheKey].median) }}</td>
+              <td>{{ formatNumber(nodeLastResult[selectedCacheKey].standard_deviation) }}</td>
+              <td>{{ nodeLastResult[selectedCacheKey].sample_count }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </template>
+
+      <template v-else-if="selectedNodeId === 'signals-branch'">
+        <div v-if="signalsFailedEntries.length" class="tests-panel-error">
+          <div v-for="entry in signalsFailedEntries" :key="entry.name">{{ entry.name }}: {{ entry.error }}</div>
+        </div>
+        <p v-if="!signalsOverall" class="tests-panel-placeholder">
+          No signal test has been run under this strategy yet.
+        </p>
+        <table v-else class="tests-panel-metrics-table">
+          <thead>
+            <tr><th>Metric</th><th>Samples</th></tr>
+          </thead>
+          <tbody>
+            <tr :class="{ 'tests-panel-row-empty': !signalsOverall.sample_count }">
+              <td><MetricDetail :label="metricLabel('signal_accuracy')" :description="metricDescription('signal_accuracy')" :value="signalsOverall.value" /></td>
+              <td>{{ signalsOverall.sample_count }}</td>
             </tr>
           </tbody>
         </table>

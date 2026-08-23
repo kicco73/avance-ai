@@ -215,6 +215,14 @@ class LabelProjectController(BaseController):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"job_id": job_id}
 
+    @post("/api/projects/{project_name}/signals/{signal_name}/test", role="supervisor")
+    def post_signal_test(self, project_name: str, signal_name: str, req: StateTestRequest):
+        try:
+            job_id = self.benchmark_run_service.start_signal_job(project_name, signal_name, req.strategy)
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return {"job_id": job_id}
+
     @get("/api/projects/{project_name}/state-jobs/{job_id}", role="supervisor")
     def get_state_job(self, project_name: str, job_id: int):
         """One ephemeral 'state_aggregation' job's status/progress/

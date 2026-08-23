@@ -5,6 +5,7 @@ sub-runs and aggregating Signal Accuracy.
 """
 from __future__ import annotations
 
+import json
 import time
 
 import pytest
@@ -22,17 +23,19 @@ def _wait_for_terminal_state_job(client, project_name, job_id, timeout=5.0, inte
     return client.get(f"/api/projects/{project_name}/state-jobs/{job_id}").json()
 
 
-def _make_session_annotated_at_hello(client):
+def _make_session_annotated_at_hello(client, *, labeled=False):
     session = client.get("/api/chat/session").json()
     turn = client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}).json()
     client.put(
         f"/api/chat/messages/{turn['assistant_message_id']}/expected-state", json={"expected_state": "Hello"},
     )
+    if labeled:
+        client.put(f"/api/chat/sessions/{session['id']}/labeled", json={"labeled": True})
     return session["id"]
 
 
 def test_state_test_aggregates_signal_accuracy_across_sessions(client, hello_project):
-    _make_session_annotated_at_hello(client)
+    _make_session_annotated_at_hello(client, labeled=True)
 
     response = client.post(
         f"/api/projects/{hello_project}/states/Hello/test", json={"strategy": "turn_by_turn"},
@@ -44,10 +47,21 @@ def test_state_test_aggregates_signal_accuracy_across_sessions(client, hello_pro
 
     assert job["status"] == "completed", job
     assert job["result"] is not None
-    import json
     result = json.loads(job["result"])
-    print("DEBUG RESULT:", result)
     assert result["name"] == "signal_accuracy"
+
+
+def test_state_test_ignores_an_unlabeled_sessions_leftover_annotation(client, hello_project):
+    session_id = _make_session_annotated_at_hello(client)
+
+    response = client.post(
+        f"/api/projects/{hello_project}/states/Hello/test", json={"strategy": "turn_by_turn"},
+    )
+    job = _wait_for_terminal_state_job(client, hello_project, response.json()["job_id"])
+
+    assert job["status"] == "completed", job
+    assert job["progress_total"] == 0
+    assert client.get(f"/api/projects/{hello_project}/benchmark-runs?session_id={session_id}").json() == []
 
 
 def test_state_test_with_no_touching_sessions_still_completes(client, hello_project):

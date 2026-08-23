@@ -274,6 +274,30 @@ class BenchmarkRunService:
             kind='state_aggregation', reference_id=None, total=len(sub_run_ids), work=work,
         )
 
+    def start_signal_job(self, project_name: str, signal_name: str, strategy: str) -> int:
+        if strategy not in VALID_STRATEGIES:
+            raise ValueError(f"Unknown benchmark run strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
+
+        sessions = self._db.list_chat_sessions(None, project_name, type=None)
+        session_ids = sorted(int(row['id']) for row in sessions if row['labeled'])
+        sub_run_ids = [self._resolve_or_create_session_run(sid, project_name, strategy) for sid in session_ids]
+
+        async def work(on_progress: OnProgress) -> tuple[str | None, str | None]:
+            completed = 0
+            for run_id in sub_run_ids:
+                final_run = await self._wait_for_run(run_id)
+                if final_run['status'] != 'completed':
+                    raise RuntimeError(f"Sub-run {run_id} for signal {signal_name!r} failed: {final_run['error']}")
+                completed += 1
+                on_progress(completed)
+
+            result = self._aggregate_signal_name_accuracy(sub_run_ids, signal_name)
+            return None, json.dumps(result)
+
+        return self._ephemeral_jobs.submit(
+            kind='signal_aggregation', reference_id=None, total=len(sub_run_ids), work=work,
+        )
+
     def start_sessions_run_job(self, project_name: str, strategy: str) -> int:
         if strategy not in VALID_STRATEGIES:
             raise ValueError(f"Unknown benchmark run strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
@@ -354,6 +378,32 @@ class BenchmarkRunService:
 
         filtered = tuple(o for o in observations if o.expected_state == state_key)
         return _serialize_metric_result(SignalAccuracyMetric().calculate(filtered))
+
+    def _aggregate_signal_name_accuracy(self, sub_run_ids: list[int], signal_name: str) -> dict:
+        observations: list = []
+        for run_id in sub_run_ids:
+            run = self._db.get_benchmark_run(run_id)
+            data = build_benchmark_run_data(self._db, run)
+            observations.extend(BenchmarkObservationBuilder(BenchmarkConfiguration()).build(data))
+
+        values = [o.signal_agreements[signal_name] for o in observations if signal_name in o.signal_agreements]
+        if not values:
+            return {
+                'name': signal_name, 'value': 0.0, 'mean': None, 'median': None,
+                'standard_deviation': None, 'minimum': None, 'maximum': None,
+                'sample_count': 0, 'components': {},
+            }
+        return {
+            'name': signal_name,
+            'value': mean(values),
+            'mean': mean(values),
+            'median': median(values),
+            'standard_deviation': pstdev(values) if len(values) > 1 else 0.0,
+            'minimum': min(values),
+            'maximum': max(values),
+            'sample_count': len(values),
+            'components': {},
+        }
 
     def _aggregate_pooled_runs(self, sub_run_ids: list[int], project_name: str) -> list[dict]:
         if not sub_run_ids:

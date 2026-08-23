@@ -21,6 +21,7 @@ const props = defineProps({
   // Every real state key of the project's current draft automaton (see
   // api.js's getProjectStates).
   states: { type: Array, required: true },
+  signals: { type: Array, required: true },
   // { [nodeId]: 'idle'|'running'|'ok'|'warning'|'fail' } — idle is the
   // implicit default for any id missing from this map.
   statuses: { type: Object, default: () => ({}) },
@@ -30,7 +31,7 @@ const props = defineProps({
 
 const emit = defineEmits(['select', 'activate'])
 
-const expanded = ref({ root: true, sessions: true, states: true, users: true })
+const expanded = ref({ root: true, sessions: true, states: true, users: true, signals: true })
 const expandedUsers = ref({})
 
 function isExpanded(key) {
@@ -97,6 +98,8 @@ const flatNodeIds = computed(() => {
       if (isUserExpanded(user.username)) ids.push(...user.sessions.map((s) => `session:${s.id}`))
     }
   }
+  ids.push('signals-branch')
+  if (isExpanded('signals')) ids.push(...props.signals.map((signal) => `signal:${signal.name}`))
   return ids
 })
 
@@ -295,6 +298,48 @@ function moveSelection(delta) {
                   </div>
                 </li>
               </ul>
+              </div>
+            </li>
+          </ul>
+          </div>
+        </li>
+
+        <li class="tests-tree-node">
+          <div class="tests-tree-node-row">
+            <button class="tests-tree-caret" :class="{ 'tests-tree-caret-open': isExpanded('signals') }" title="Toggle" @click="toggleExpanded('signals')">▸</button>
+            <div class="tests-tree-item">
+              <TestNodeButton :status="statusFor('signals-branch')" :progress="progressFor('signals-branch')" @activate="emit('activate', 'signals-branch')" />
+              <button
+                type="button"
+                class="tests-tree-row"
+                data-node-id="signals-branch"
+                :class="{ 'tests-tree-row-selected': selectedNodeId === 'signals-branch' }"
+                @click="emit('select', 'signals-branch')"
+              >
+                <span class="tests-tree-label">Signals</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="tests-tree-children-wrap" :class="{ 'tests-tree-children-wrap-open': isExpanded('signals') }">
+          <ul class="tests-tree-children tests-tree-children-leaf">
+            <li v-if="!signals.length" class="tests-tree-empty">No signals yet.</li>
+            <li v-for="signal in signals" :key="signal.name" class="tests-tree-node">
+              <div class="tests-tree-item">
+                <TestNodeButton
+                  :status="statusFor(`signal:${signal.name}`)"
+                  :progress="progressFor(`signal:${signal.name}`)"
+                  @activate="emit('activate', `signal:${signal.name}`)"
+                />
+                <button
+                  type="button"
+                  class="tests-tree-row"
+                  :data-node-id="`signal:${signal.name}`"
+                  :class="{ 'tests-tree-row-selected': selectedNodeId === `signal:${signal.name}` }"
+                  @click="emit('select', `signal:${signal.name}`)"
+                >
+                  <span class="tests-tree-label">{{ signal.ui_label || signal.name }}</span>
+                </button>
               </div>
             </li>
           </ul>

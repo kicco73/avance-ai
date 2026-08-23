@@ -826,3 +826,11 @@ export function postUserSessionsRun(projectName, username, strategy) {
     body: JSON.stringify({ strategy })
   })
 }
+
+export function postSignalTest(projectName, signalName, strategy) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/signals/${encodeURIComponent(signalName)}/test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ strategy })
+  })
+}
