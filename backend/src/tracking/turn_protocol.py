@@ -11,16 +11,19 @@ class TurnProtocol(ABC):
 
 	prompt_preambles: dict[str,str] = {}
 
-	def __init__(self, ai_service: AiService, evaluate_signals_first, reactions_enabled: bool = False) -> None:
+	def __init__(
+		self, ai_service: AiService, evaluate_signals_first, reactions_enabled: bool = False, talk_enabled: bool = True,
+	) -> None:
 		self._ai_service = ai_service
 		# 'reaction' is the one conditional tag here — every other one is
 		# always present. Its presence, not a separate check afterward, is
 		# what enforces State.reactions_enabled (see automaton.State).
 		reaction_tags = ('reaction',) if reactions_enabled else ()
+		audio_tags = ('audio',) if talk_enabled else ()
 		if evaluate_signals_first:
-			self.include_tags = ('signals', *reaction_tags, 'audio', 'text', 'env')
+			self.include_tags = ('signals', *reaction_tags, *audio_tags, 'text', 'env')
 		else:
-			self.include_tags = ('audio', 'text', 'signals', *reaction_tags, 'env')
+			self.include_tags = (*audio_tags, 'text', 'signals', *reaction_tags, 'env')
 
 	def generate_reply(
 		self,

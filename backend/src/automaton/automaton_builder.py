@@ -308,17 +308,18 @@ class AutomatonBuilder(object):
 
 
     @staticmethod
-    def _build_project_metadata(raw: dict) -> tuple[str | None, str | None, str | None]:
+    def _build_project_metadata(raw: dict) -> tuple[str | None, str | None, str | None, bool, bool]:
         """The optional top-level `project:` section — id/ui-label/
-        ui-description. `id` is what *other* projects reach this one as
-        through automaton.*; global uniqueness is ProjectService's concern."""
+        ui-description/signal-tracking-on-ai-message/talk-enabled. `id` is
+        what *other* projects reach this one as through automaton.*;
+        global uniqueness is ProjectService's concern."""
         raw_project = raw.get("project")
         if raw_project is None:
-            return None, None, None
+            return None, None, None, False, True
         if not isinstance(raw_project, dict):
             raise ValueError(
-                f"'project' must be a mapping of fields (id, ui-label, ui-description), "
-                f"got {type(raw_project).__name__}."
+                f"'project' must be a mapping of fields (id, ui-label, ui-description, "
+                f"signal-tracking-on-ai-message, talk-enabled), got {type(raw_project).__name__}."
             )
         project_id = raw_project.get("id")
         if project_id is not None and (not isinstance(project_id, str) or not project_id.isidentifier()):
@@ -326,7 +327,11 @@ class AutomatonBuilder(object):
                 f"project.id {project_id!r} is not a valid identifier — letters, digits, and "
                 "underscores only, and it can't start with a digit."
             )
-        return project_id, raw_project.get("ui-label"), raw_project.get("ui-description")
+        return (
+            project_id, raw_project.get("ui-label"), raw_project.get("ui-description"),
+            raw_project.get("signal-tracking-on-ai-message", False),
+            raw_project.get("talk-enabled", True),
+        )
 
     @staticmethod
     def read_declared_env_keys(index_yml_text: str) -> tuple[str | None, frozenset[str]]:
@@ -350,7 +355,9 @@ class AutomatonBuilder(object):
 
         raw = _yaml.load(contents['index.yml'])
 
-        project_id, project_ui_label, project_ui_description = self._build_project_metadata(raw)
+        project_id, project_ui_label, project_ui_description, autotracking_on_ai_message, talk_enabled = (
+            self._build_project_metadata(raw)
+        )
 
         raw_signals = raw.get("signals", {})
         if not isinstance(raw_signals, dict):
@@ -454,7 +461,6 @@ class AutomatonBuilder(object):
                 )
 
         general_attachments = self._extract_required_archives(raw.get('attachments', []), all_archives, for_field="global")
-        autotracking_on_ai_message = raw.get("signal-tracking-on-ai-message", False)
 
         return Automaton(
             init_action=init_action,
@@ -469,4 +475,5 @@ class AutomatonBuilder(object):
             project_id=project_id,
             project_ui_label=project_ui_label,
             project_ui_description=project_ui_description,
+            talk_enabled=talk_enabled,
         )

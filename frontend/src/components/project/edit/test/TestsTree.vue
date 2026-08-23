@@ -46,6 +46,12 @@ function statusFor(nodeId) {
   return props.statuses[nodeId] ?? 'idle'
 }
 
+const FINAL_SESSION_REASON = 'Result is final for the current project and annotation state'
+function sessionButtonDisabled(session) {
+  const status = statusFor(`session:${session.id}`)
+  return status === 'ok' || status === 'warning'
+}
+
 function sessionLabel(session) {
   return session.title || session.end_state || `Session ${session.id}`
 }
@@ -140,6 +146,8 @@ function moveSelection(delta) {
                 </button>
                 <TestNodeButton
                   :status="statusFor(`session:${session.id}`)"
+                  :disabled="sessionButtonDisabled(session)"
+                  :disabled-reason="FINAL_SESSION_REASON"
                   @activate="emit('activate', `session:${session.id}`)"
                 />
               </div>
@@ -231,6 +239,8 @@ function moveSelection(delta) {
                     </button>
                     <TestNodeButton
                       :status="statusFor(`session:${session.id}`)"
+                      :disabled="sessionButtonDisabled(session)"
+                      :disabled-reason="FINAL_SESSION_REASON"
                       @activate="emit('activate', `session:${session.id}`)"
                     />
                   </div>

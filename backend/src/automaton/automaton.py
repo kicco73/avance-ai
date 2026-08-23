@@ -366,6 +366,7 @@ class Automaton(object):
         project_id: str | None = None,
         project_ui_label: str | None = None,
         project_ui_description: str | None = None,
+        talk_enabled: bool = True,
     ):
         # A real Action (not just a target state string) so it can also
         # carry an action_prompt — see ChatService.open_if_needed.
@@ -383,6 +384,7 @@ class Automaton(object):
         # The two auto-tracking modes (before/after the AI reply) are
         # mutually exclusive — this flag selects between them.
         self.autotracking_on_ai_message = autotracking_on_ai_message
+        self.talk_enabled = talk_enabled
 
     def get_state(self, state_key: str) -> State:
         return self.states[state_key]

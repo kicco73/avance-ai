@@ -45,14 +45,34 @@ the file format.
 
 | Field | Required | Type | Default | Meaning |
 | --- | --- | --- | --- | --- |
+| `avance-version` | no | string | — | The Avance version this file was last saved with. Purely informational — the engine never reads or validates it. Should be the first line of the file by convention. |
 | `init-action` | **yes** | mapping | — | Where the conversation starts. See §6. |
 | `states` | **yes** | mapping (name → state) | — | Every state in the automaton. See §5. Must contain the state named by `init-action.target`. |
 | `signals` | no | mapping (name → signal) | `{}` | Numeric values the model estimates from the conversation each turn. See §4. |
 | `general-prompt` | no | string | `""` | Appended to every state's `contextual-prompt` when building the system prompt for a normal chat reply (never for a `fixed-message` state, and used *alone*, without the state's own prompt, when generating an `action-prompt` reply — see §6.3). |
 | `attachments` | no | list of filenames | `[]` | Global attachments, sent with **every** model call that also sends `general-prompt` (i.e. every normal chat turn and every `action-prompt`). See §7. |
-| `signal-tracking-on-ai-message` | no | boolean | `false` | Selects one of two mutually exclusive auto-tracking modes: `false` (default) runs auto-tracking (signal computation + trigger evaluation) right after the user's message, before the model replies; `true` runs it instead after the model's reply (using signal values the model itself may have reported inline — see §4.3). |
+| `project` | no | mapping | — | Project identity/display metadata, and the auto-tracking mode toggle. See §2.1. |
 
 Any other top-level key is ignored (not an error).
+
+### 2.1 `project:`
+
+```yaml
+project:
+  id: my_project
+  ui-label: My Project
+  ui-description: A friendly description.
+  signal-tracking-on-ai-message: false
+  talk-enabled: true
+```
+
+| Field | Required | Type | Default | Meaning |
+| --- | --- | --- | --- | --- |
+| `id` | no | string (valid identifier) | — | What *other* projects reach this one as, through `automaton.<id>.*` (§6.2). Global uniqueness across projects is enforced separately, not here. |
+| `ui-label` | no | string | — | Shown in the frontend (Projects list, session header). |
+| `ui-description` | no | string | — | Shown in the frontend. |
+| `signal-tracking-on-ai-message` | no | boolean | `false` | Selects one of two mutually exclusive auto-tracking modes: `false` (default) runs auto-tracking (signal computation + trigger evaluation) right after the user's message, before the model replies; `true` runs it instead after the model's reply (using signal values the model itself may have reported inline — see §4.3). |
+| `talk-enabled` | no | boolean | `true` | Whether this project asks the model for `audio` metadata at all. `false` only narrows the server's own talk-service switch further — it can't turn audio on when the server has no talk service configured. |
 
 ## 3. Names, identifiers, and reserved words
 
@@ -118,7 +138,7 @@ Each entry (keyed by the signal's name — see naming rules above):
 ### 4.1 How signals are computed
 
 Signals are **not** computed on every field access — only during
-"auto-tracking" (gated by `signal-tracking-on-ai-message`, §2). When it runs, every declared
+"auto-tracking" (gated by `project.signal-tracking-on-ai-message`, §2.1). When it runs, every declared
 signal is evaluated **in one single model call**: the system prompt lists
 every signal's `name` and `definition`, the user turn is a transcript of
 the recent conversation (plus whatever attachments that turn's signals

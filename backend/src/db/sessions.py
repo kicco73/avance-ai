@@ -118,6 +118,13 @@ class SessionMixin:
         been reviewed."""
         ChatSession.update(labeled=labeled).where(ChatSession.id == session_id).execute()
 
+    def get_session_labeling_revision(self, session_id: int) -> int:
+        session = ChatSession.get_or_none(ChatSession.id == session_id)
+        return session.labeling_revision if session is not None else 0
+
+    def bump_session_labeling_revision(self, session_id: int) -> None:
+        ChatSession.update(labeling_revision=ChatSession.labeling_revision + 1).where(ChatSession.id == session_id).execute()
+
     def touch_chat_session(self, session_id: int, datetime_end: datetime, end_state: str) -> None:
         ChatSession.update(datetime_end=datetime_end, end_state=end_state).where(ChatSession.id == session_id).execute()
 

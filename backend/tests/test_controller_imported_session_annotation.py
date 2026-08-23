@@ -40,7 +40,8 @@ states:
     actions:
       - name: stay
         target: a
-signal-tracking-on-ai-message: {str(autotracking_on_ai_message).lower()}
+project:
+  signal-tracking-on-ai-message: {str(autotracking_on_ai_message).lower()}
 """
 
 

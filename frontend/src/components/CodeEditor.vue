@@ -13,6 +13,7 @@ import { markdown } from '@codemirror/lang-markdown'
 import { cssColorPicker } from './cssColorPicker.js'
 import { cssUrlCompletionSource } from './cssUrlCompletion.js'
 import { yamlAttachmentCompletionSource } from './yamlAttachmentCompletion.js'
+import { yamlStructureCompletionSource } from './yamlStructureCompletion.js'
 import { getProjectFile, putProjectFile, undoProjectFile, redoProjectFile } from '../api.js'
 
 const props = defineProps({
@@ -82,7 +83,8 @@ function createEditor(doc) {
     extensions.splice(
       1, 0,
       yaml(),
-      yamlLanguage.data.of({ autocomplete: yamlAttachmentCompletionSource(() => props.yamlAttachmentFiles) })
+      yamlLanguage.data.of({ autocomplete: yamlAttachmentCompletionSource(() => props.yamlAttachmentFiles) }),
+      yamlLanguage.data.of({ autocomplete: yamlStructureCompletionSource() })
     )
   }
   else if (contentType.value === 'text/css') {

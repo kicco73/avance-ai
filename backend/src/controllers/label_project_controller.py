@@ -166,9 +166,11 @@ class LabelProjectController(BaseController):
 
     @post("/api/projects/{project_name}/benchmark-runs")
     def post_benchmark_run(self, project_name: str, req: CreateBenchmarkRunRequest):
-        """Creates a BenchmarkRun and submits its replay job — returns
-        immediately with status='pending', before the job's worker
-        thread has actually started it. BenchmarkServiceError is handled globally."""
+        """Creates a BenchmarkRun and submits its replay job, returning
+        immediately with status='pending' — or, for a single-session run
+        whose exact (project/annotation state, strategy) was already
+        replayed to completion, that cached run directly, with no new
+        job submitted. BenchmarkServiceError is handled globally."""
         username = req.username if req.username is not None else Session().user
         try:
             return self.benchmark_run_service.create_run(

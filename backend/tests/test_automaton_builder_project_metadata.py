@@ -1,6 +1,7 @@
-"""The top-level `project:` section (id/ui-label/ui-description, see
-AutomatonBuilder._build_project_metadata). `id` must be a valid Python
-identifier; cross-project uniqueness is ProjectService's concern.
+"""The top-level `project:` section (id/ui-label/ui-description/
+signal-tracking-on-ai-message, see AutomatonBuilder._build_project_metadata).
+`id` must be a valid Python identifier; cross-project uniqueness is
+ProjectService's concern.
 """
 from __future__ import annotations
 
@@ -22,6 +23,12 @@ def test_project_section_is_entirely_optional():
     assert automaton.project_id is None
     assert automaton.project_ui_label is None
     assert automaton.project_ui_description is None
+    assert automaton.autotracking_on_ai_message is False
+
+
+def test_signal_tracking_on_ai_message_is_parsed_from_project():
+    automaton = _build("project:\n  signal-tracking-on-ai-message: true\n")
+    assert automaton.autotracking_on_ai_message is True
 
 
 def test_project_id_ui_label_ui_description_are_parsed():

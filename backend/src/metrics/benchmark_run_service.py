@@ -66,12 +66,26 @@ class BenchmarkRunService:
             raise ValueError(f"Unknown benchmark run strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
 
         automaton = self._load_automaton(project_name)
-        project_revision = self._db.get_project_revision(project_name)
+        project_draft_edit_count = self._db.get_project_draft_edit_count(project_name)
+        session_labeling_revision = self._db.get_session_labeling_revision(session_id) if session_id is not None else None
         ai_model_snapshot = self._ai_service.get_models_info()
 
-        run = self._db.create_benchmark_run(
-            username, project_name, session_id, strategy, project_revision, ai_model_snapshot,
-        )
+        run = None
+        if session_id is not None:
+            cached = self._db.find_benchmark_run_by_cache_key(
+                session_id, strategy, project_draft_edit_count, session_labeling_revision,
+            )
+            if cached is not None:
+                job = self._db.get_job_by_reference('benchmark_run', cached['id'])
+                if job is not None and job['status'] == 'completed':
+                    return self._merge_with_job(cached)
+                run = cached
+
+        if run is None:
+            run = self._db.create_benchmark_run(
+                username, project_name, session_id, strategy,
+                project_draft_edit_count, session_labeling_revision, ai_model_snapshot,
+            )
 
         scope_session_ids = self._resolve_scope(username, project_name, session_id)
         total = self._count_user_messages(scope_session_ids)
@@ -120,10 +134,7 @@ class BenchmarkRunService:
 
     def _merge_with_job(self, run: dict) -> dict:
         job = self._db.get_job_by_reference('benchmark_run', run['id'])
-        # Revision comparison, not a timestamp: Project.revision only bumps
-        # on publish, so a run stays "fresh" across further unpublished
-        # edits to the same draft — a known, accepted imprecision.
-        current_revision = self._db.get_project_revision(run['project_name'])
+        current_draft_edit_count = self._db.get_project_draft_edit_count(run['project_name'])
         return {
             **run,
             'status': job['status'],
@@ -132,7 +143,7 @@ class BenchmarkRunService:
             'error': job['error'],
             'processed_messages': job['progress_current'],
             'total_messages': job['progress_total'],
-            'stale': current_revision != run['project_revision'],
+            'stale': current_draft_edit_count != run['project_draft_edit_count'],
         }
 
     def _build_seed_env(self, session: dict) -> Env:

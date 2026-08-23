@@ -33,11 +33,13 @@ class TrackingService(object):
 		ai_service: AiService,
 		project_service: ProjectService,
 		metrics_service: MetricService,
+		talk_enabled: bool = True,
 	) -> None:
 		self._db = db
 		self._ai_service = ai_service
 		self._project_service = project_service
 		self._metrics = metrics_service
+		self._talk_enabled = talk_enabled
 		self._session_import_manager = SessionImportManager(db)
 		self._session_export_manager = SessionExportManager(db)
 		# "Dev mode: freeze automatic state transitions" toggle — per
@@ -282,6 +284,7 @@ class TrackingService(object):
 			self._ai_service, scope_builder,
 			env, self._db, user_vars,
 			auto_tracking_enabled=self.is_auto_tracking_enabled(session_id) if is_test_session else True,
+			talk_enabled=self._talk_enabled,
 		)
 
 		return tracking_processor.process(text, on_metadata=on_metadata_sync_to_async, extra_prompt=extra_prompt)

@@ -108,7 +108,15 @@ def test_notice_combo_needs_both_the_signal_and_the_metric_side_true(client):
 
 
 @pytest.mark.regression
-def test_more_sessions_raise_engagement_without_any_ai_call(client):
+def test_more_sessions_raise_cumulative_engagement_but_not_the_session_scoped_metric(client):
+    """`GET .../metrics` (and any bare `engagement` reference) uses
+    MetricService.calculate_values — no `since`, i.e. the user's whole
+    history — so it keeps climbing with every session. A trigger's
+    `session.metric.engagement()` (SessionFacts.metric, see
+    tracking/session_facts.py) is scoped `since=<the latest session's own
+    start>`, so it only ever sees that one session — session count alone
+    can never cross this sample's `notice_engagement`/`notice_combo`
+    thresholds, however many sessions came before it."""
     _upload_and_activate(client)
     session = client.get("/api/chat/session").json()
     _enter_engaged(client, session)
@@ -125,7 +133,11 @@ def test_more_sessions_raise_engagement_without_any_ai_call(client):
 
     response = client.post("/api/triggers/preview", json={"signals": {"mood": 100}})
     results = {p["action_name"]: p["result"] for p in response.json()}
-    assert results["notice_engagement"] is True
+    # Session count alone never crosses either threshold under
+    # session.metric's own one-session scoping — both would need real
+    # message volume within the current session instead.
+    assert results["notice_engagement"] is False
+    assert results["notice_combo"] is False
     # Untouched by session count alone: needs real signal history (see
     # the sample's own file-level comment).
     assert results["notice_signal_stability"] is False

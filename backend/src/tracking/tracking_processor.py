@@ -36,7 +36,7 @@ class Metadata:
 	on_metadata: MetadataCallback
 	env: dict[str, str]
 	signals: dict[str, float]
-	audio: str
+	audio: str | None = None
 	chunk: str | None = None
 	# The bot's own reaction to the user's message this turn — unlike
 	# audio/env/signals, this ends up persisted on the *user's* message
@@ -87,12 +87,14 @@ class TrackingProcessor(object):
 			  db: Db,
 			  user_variables: UserVariables,
 			  auto_tracking_enabled: bool = True,
+			  talk_enabled: bool = True,
 		):
 		self.ai_service = ai_service
 
 		self.env = env
 		self.db = db
 		self.user = user_variables
+		self.talk_enabled = talk_enabled
 		self._tracking_engine = TrackingEngine(DbTrackingSink(db), env, scope_builder, auto_tracking_enabled)
 		# Set per-turn by process() — appended to base_prompt after the
 		# state's own contextual_prompt (see __build_turn_prompt_parts).
@@ -125,7 +127,7 @@ class TrackingProcessor(object):
 		def dummy_on_metadata(key: str, value: str) -> None:
 			pass
 
-		self.metadata = Metadata(on_metadata or dummy_on_metadata, {}, {}, "", None)
+		self.metadata = Metadata(on_metadata or dummy_on_metadata, {}, {})
 
 		self.out = await self._get_ai_reply()
 
@@ -181,7 +183,11 @@ class TrackingProcessor(object):
 		supports_schema = self.ai_service.is_provider_with_schema()
 		has_to_evaluate_signals_before_ai_reply = not self.user.automaton.autotracking_on_ai_message
 		Protocol = TurnProtocolUsingSchema if supports_schema else TurnProcotolUsingTextExtraction
-		return Protocol(self.ai_service, has_to_evaluate_signals_before_ai_reply, self.user.state.reactions_enabled)
+		return Protocol(
+			self.ai_service, has_to_evaluate_signals_before_ai_reply,
+			reactions_enabled=self.user.state.reactions_enabled,
+			talk_enabled=self.talk_enabled and self.user.automaton.talk_enabled,
+		)
 
 	def __build_turn_prompt_parts(self, automaton: Automaton, state: State) -> tuple[str, str | None, str | None, list]:
 

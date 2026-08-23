@@ -1,3 +1,5 @@
+avance-version: "1.7.0"
+
 # Metrics Playground (states)
 #
 # A state-based variant of "Metrics Playground": instead of every trigger
@@ -33,10 +35,12 @@
 # - notice_mood: send a message with a clearly positive tone — "mood" is
 #   re-estimated by the AI every user turn.
 # - notice_engagement / notice_combo: need more engagement than the
-#   bootstrap baseline gives (>= 20, and >= 10 respectively) — a handful
-#   of extra sessions (New Session) is enough on its own, no messages
-#   required, since engagement also scores session volume; notice_combo
-#   additionally needs mood >= 40.
+#   bootstrap baseline gives (>= 20, and >= 10 respectively) — but
+#   session.metric.engagement() is scoped to just the current session (see
+#   above), so extra sessions (New Session) alone never move it past its
+#   own ~4-point baseline; real user messages in the current session do
+#   (roughly 10 of them for notice_combo, 27 for notice_engagement).
+#   notice_combo additionally needs mood >= 40.
 # - notice_stability: state_stability starts at 100 before any
 #   transition, but the very first move (even "lobby"'s own warm_up) is
 #   itself a real transition landing in an almost-zero-elapsed window,

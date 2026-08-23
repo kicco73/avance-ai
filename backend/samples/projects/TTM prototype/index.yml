@@ -1,3 +1,5 @@
+avance-version: "1.7.0"
+
 project:
   id: ttm_prototype
   ui-label: TTM prototype

@@ -17,13 +17,24 @@ class BenchmarkRunMixin:
 
     def create_benchmark_run(
         self, username: str | None, project_name: str, session_id: int | None, strategy: str,
-        project_revision: int, ai_model_snapshot: dict,
+        project_draft_edit_count: int, session_labeling_revision: int | None, ai_model_snapshot: dict,
     ) -> dict:
         row = BenchmarkRun.create(
             username=username, project_name=project_name, session=session_id, strategy=strategy,
-            project_revision=project_revision, ai_model_snapshot=json.dumps(ai_model_snapshot),
+            project_draft_edit_count=project_draft_edit_count, session_labeling_revision=session_labeling_revision,
+            ai_model_snapshot=json.dumps(ai_model_snapshot),
         )
         return self._benchmark_run_to_dict(row)
+
+    def find_benchmark_run_by_cache_key(
+        self, session_id: int, strategy: str, project_draft_edit_count: int, session_labeling_revision: int,
+    ) -> dict | None:
+        row = BenchmarkRun.get_or_none(
+            (BenchmarkRun.session == session_id) & (BenchmarkRun.strategy == strategy)
+            & (BenchmarkRun.project_draft_edit_count == project_draft_edit_count)
+            & (BenchmarkRun.session_labeling_revision == session_labeling_revision)
+        )
+        return self._benchmark_run_to_dict(row) if row is not None else None
 
     def get_benchmark_run(self, run_id: int) -> dict | None:
         row = BenchmarkRun.get_or_none(BenchmarkRun.id == run_id)
@@ -81,7 +92,8 @@ class BenchmarkRunMixin:
             'project_name': row.project_name,
             'session_id': row.session_id,
             'strategy': row.strategy,
-            'project_revision': row.project_revision,
+            'project_draft_edit_count': row.project_draft_edit_count,
+            'session_labeling_revision': row.session_labeling_revision,
             'batch_segments': row.batch_segments,
             'ai_model_snapshot': json.loads(row.ai_model_snapshot) if row.ai_model_snapshot else None,
             'results': json.loads(row.results) if row.results else None,
