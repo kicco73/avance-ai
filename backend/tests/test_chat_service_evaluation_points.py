@@ -49,11 +49,14 @@ class FakeProjectService:
         self._automaton = automaton
         self._state_key = state_key
 
-    def get_active_automaton_and_state(self):
+    def get_active_automaton_and_state(self, username: str | None = None):
         return self._automaton, self._automaton.states[self._state_key]
 
-    def get_automaton_and_state(self, project_name: str, type: str = 'live'):
+    def get_automaton_and_state(self, project_name: str, type: str = 'live', username: str | None = None):
         return self._automaton, self._automaton.states[self._state_key]
+
+    def get_automaton_for_session(self, session_id: int):
+        return self._automaton
 
     def get_automaton_and_state_for_session(self, session_id: int):
         return self._automaton, self._automaton.states[self._state_key]

@@ -15,16 +15,18 @@ class ProjectInspector:
         self._automaton_loader = automaton_loader
 
     def _resolve_state(
-        self, project_name: str, automaton: Automaton, *, session_id: int | None = None, type: str | None = None
+        self, project_name: str, automaton: Automaton, *, session_id: int | None = None, type: str | None = None,
+        username: str | None = None,
     ) -> State:
         """No persisted state yet falls back to init_action.target. A
         persisted state that no longer exists means a publish renamed or
         removed it — only StateRemap (written at that publish) may resolve it."""
-        state_key = (
-            self._db.get_current_state_for_session(session_id)
-            if session_id is not None
-            else self._db.get_current_state(project_name, type=type)
-        )
+        if session_id is not None:
+            state_key = self._db.get_current_state_for_session(session_id)
+        elif username is not None:
+            state_key = self._db.get_current_state_for_user(project_name, username, type=type)
+        else:
+            state_key = self._db.get_current_state(project_name, type=type)
         if state_key is None:
             state_key = automaton.init_action.target
         elif state_key not in automaton.states:
@@ -46,27 +48,32 @@ class ProjectInspector:
     def get_draft_revision(self, project_name: str) -> int:
         return self._db.get_project_revision(project_name)
 
-    def get_automaton_and_state(self, project_name: str, type: str = 'live') -> tuple[Automaton, State]:
-        """`project_name`'s own Automaton paired with its current State —
-        `type='live'` (default) resolves the *published* revision, raising
-        ValueError when `project_name` has no published revision yet;
-        `type='test'` resolves the in-progress draft instead, published or
-        not — needed so a "Test" session stays creatable against a project
-        that's never been published yet."""
-        revision = self.get_published_revision(project_name) if type == 'live' else self.get_draft_revision(project_name)
-        automaton = self._automaton_loader.load_at_revision(project_name, revision)
-        return automaton, self._resolve_state(project_name, automaton, type=type)
+    def get_automaton(self, project_name: str, revision: int) -> Automaton:
+        return self._automaton_loader.load_at_revision(project_name, revision)
 
-    def get_active_automaton_and_state(self) -> tuple[Automaton, State]:
+    def get_automaton_and_state(
+        self, project_name: str, type: str = 'live', username: str | None = None
+    ) -> tuple[Automaton, State]:
+        revision = self.get_published_revision(project_name) if type == 'live' else self.get_draft_revision(project_name)
+        automaton = self.get_automaton(project_name, revision)
+        return automaton, self._resolve_state(project_name, automaton, type=type, username=username)
+
+    def get_active_automaton(self) -> Automaton:
+        project_name = self.get_active_project_name()
+        if project_name is None:
+            raise FileNotFoundError("No project is currently active.")
+        return self.get_automaton(project_name, self.get_published_revision(project_name))
+
+    def get_active_automaton_and_state(self, username: str | None = None) -> tuple[Automaton, State]:
         """The active project's published automaton and state — never the
         in-progress draft. A caller with a concrete session_id uses
         get_automaton_and_state_for_session instead."""
         project_name = self.get_active_project_name()
         if project_name is None:
             raise FileNotFoundError("No project is currently active.")
-        return self.get_automaton_and_state(project_name)
+        return self.get_automaton_and_state(project_name, username=username)
 
-    def get_automaton_and_state_for_session(self, session_id: int) -> tuple[Automaton, State]:
+    def get_automaton_for_session(self, session_id: int) -> Automaton:
         """The Automaton `session_id`'s turns must run against. A native
         session is pinned to the revision published when it was created;
         a 'test' session always re-resolves against the live draft."""
@@ -75,10 +82,15 @@ class ProjectInspector:
             raise FileNotFoundError(f"Session {session_id} does not exist.")
         project_name = session["project_name"]
         if session["type"] == "test":
-            automaton = self._automaton_loader.load(project_name)
-        else:
-            automaton = self._automaton_loader.load_at_revision(project_name, session["project_revision"])
-        return automaton, self._resolve_state(project_name, automaton, session_id=session_id)
+            return self._automaton_loader.load(project_name)
+        return self.get_automaton(project_name, session["project_revision"])
+
+    def get_automaton_and_state_for_session(self, session_id: int) -> tuple[Automaton, State]:
+        session = self._db.get_chat_session(session_id)
+        if session is None:
+            raise FileNotFoundError(f"Session {session_id} does not exist.")
+        automaton = self.get_automaton_for_session(session_id)
+        return automaton, self._resolve_state(session["project_name"], automaton, session_id=session_id)
 
     def get_automaton_and_state_for_observer(
         self, project_name: str, username: str
@@ -192,7 +204,7 @@ class ProjectInspector:
         """Every identifier `project_name`'s trigger/`env:` expressions can
         reference, plus an "automaton.<id>"/"automaton.<id>.env" entry per
         *other* project with a project.id."""
-        automaton, _ = self.get_automaton_and_state(project_name)
+        automaton = self.get_automaton(project_name, self.get_published_revision(project_name))
         registry = build_registry(automaton.signals, automaton.env_keys)
         registry["automaton"] = {}
         for name in self._db.list_projects():

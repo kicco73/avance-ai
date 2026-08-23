@@ -45,11 +45,22 @@ class ProjectService(object):
     def get_draft_revision(self, project_name: str) -> int:
         return self._inspector.get_draft_revision(project_name)
 
-    def get_automaton_and_state(self, project_name: str, type: str = 'live') -> tuple[Automaton, State]:
-        return self._inspector.get_automaton_and_state(project_name, type)
+    def get_automaton(self, project_name: str, revision: int) -> Automaton:
+        return self._inspector.get_automaton(project_name, revision)
 
-    def get_active_automaton_and_state(self) -> tuple[Automaton, State]:
-        return self._inspector.get_active_automaton_and_state()
+    def get_active_automaton(self) -> Automaton:
+        return self._inspector.get_active_automaton()
+
+    def get_automaton_and_state(
+        self, project_name: str, type: str = 'live', username: str | None = None
+    ) -> tuple[Automaton, State]:
+        return self._inspector.get_automaton_and_state(project_name, type, username)
+
+    def get_active_automaton_and_state(self, username: str | None = None) -> tuple[Automaton, State]:
+        return self._inspector.get_active_automaton_and_state(username)
+
+    def get_automaton_for_session(self, session_id: int) -> Automaton:
+        return self._inspector.get_automaton_for_session(session_id)
 
     def get_automaton_and_state_for_session(self, session_id: int) -> tuple[Automaton, State]:
         return self._inspector.get_automaton_and_state_for_session(session_id)

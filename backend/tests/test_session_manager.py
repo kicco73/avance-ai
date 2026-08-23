@@ -6,14 +6,45 @@ import pytest
 
 from chat.session_manager import ChatSessionManager
 from chat.session_type_strategy import get_session_type_strategy
-from project.project_service import ProjectService
 
 LIVE = get_session_type_strategy('live')
 
 
+class _FakeInitAction:
+    def __init__(self, target):
+        self.target = target
+
+
+class _FakeAutomaton:
+    def __init__(self, target):
+        self.init_action = _FakeInitAction(target)
+
+
+class _FakeState:
+    def __init__(self, key):
+        self.key = key
+
+
+class _FakeProjectService:
+    def __init__(self):
+        self.state_key = "start"
+
+    def get_active_automaton_and_state(self, username=None):
+        return _FakeAutomaton(self.state_key), _FakeState(self.state_key)
+
+    def get_automaton_and_state(self, project_name, type='live', username=None):
+        return _FakeAutomaton(self.state_key), _FakeState(self.state_key)
+
+    def get_published_revision(self, project_name):
+        return 1
+
+    def get_draft_revision(self, project_name):
+        return 1
+
+
 @pytest.fixture
-def project_service(db) -> ProjectService:
-    return ProjectService(db)
+def project_service() -> _FakeProjectService:
+    return _FakeProjectService()
 
 
 @pytest.fixture
@@ -28,11 +59,15 @@ def manager(db) -> ChatSessionManager:
 
 
 def _create(manager, project_service, username, project_name, current_state):
-    return manager.create_session(LIVE, project_service, username, project_name, None, current_state)
+    project_service.state_key = current_state
+    return manager.create_session(LIVE, project_service, username, project_name)
 
 
 def _resolve_or_create(manager, project_service, username, project_name, session_id, current_state):
-    return manager.resolve_or_create_session(LIVE, project_service, username, project_name, session_id, None, current_state)
+    project_service.state_key = current_state
+    return manager.resolve_or_create_session(
+        LIVE, project_service, username, project_name, session_id, current_state
+    )
 
 
 @pytest.mark.contract
@@ -48,8 +83,6 @@ def test_open_window_is_configurable(db):
 
 @pytest.mark.regression
 def test_is_open_is_false_never_a_crash_for_a_session_with_no_datetime_end(manager):
-    """Regression: an imported session always has datetime_end=None,
-    which must not crash the is_open comparison."""
     session = {"datetime_end": None}
     assert manager.is_open(session) is False
 
@@ -59,6 +92,12 @@ def test_is_open_never_expires_for_a_test_session(manager):
     long_ago = datetime.utcnow() - timedelta(days=365)
     session = {"type": "test", "datetime_end": long_ago}
     assert manager.is_open(session) is True
+
+
+@pytest.mark.regression
+def test_is_open_is_always_false_for_an_imported_session_with_a_real_datetime_end(manager):
+    session = {"type": "imported", "datetime_end": datetime.utcnow()}
+    assert manager.is_open(session) is False
 
 
 @pytest.mark.contract
@@ -174,6 +213,17 @@ def test_require_active_session_rejects_someone_elses_session(manager, project_s
 
     with pytest.raises(ValueError):
         manager.require_active_session("user", "proj", theirs["id"], "start")
+
+
+@pytest.mark.regression
+def test_require_active_session_rejects_an_imported_session(manager, db):
+    session_id = db.create_chat_session(
+        "user", "proj", 1, datetime_start=datetime.utcnow(), datetime_end=datetime.utcnow(),
+        start_state="start", end_state="start", type="imported",
+    )
+
+    with pytest.raises(ValueError):
+        manager.require_active_session("user", "proj", session_id, "next")
 
 
 @pytest.mark.contract

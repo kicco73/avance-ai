@@ -89,7 +89,7 @@ class SessionMixin:
         if until is not None:
             query = query.where(ChatSession.datetime_start <= until)
         query = self._filter_by_type(query, type)
-        session = query.order_by(ChatSession.datetime_start.desc()).first()
+        session = query.order_by(ChatSession.datetime_start.desc(), ChatSession.id.desc()).first()
         return self._chat_session_to_dict(session) if session is not None else None
 
     def list_chat_sessions(
@@ -142,7 +142,7 @@ class SessionMixin:
     def bump_session_labeling_revision(self, session_id: int) -> None:
         ChatSession.update(labeling_revision=ChatSession.labeling_revision + 1).where(ChatSession.id == session_id).execute()
 
-    def touch_chat_session(self, session_id: int, datetime_end: datetime, end_state: str) -> None:
+    def touch_chat_session(self, session_id: int, datetime_end: datetime, end_state: str | None) -> None:
         ChatSession.update(datetime_end=datetime_end, end_state=end_state).where(ChatSession.id == session_id).execute()
 
     def delete_chat_session(self, session_id: int) -> None:

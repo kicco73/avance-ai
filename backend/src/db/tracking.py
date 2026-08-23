@@ -118,10 +118,15 @@ class TrackingMixin:
         Tracking.delete().where((Tracking.session == session_id) & (Tracking.old_state == '')).execute()
         self.bump_session_labeling_revision(session_id)
 
-    def _latest_transition(self, project_name: str, *, type: str | None=None, real_only: bool=False, until: datetime | None=None) -> Tracking | None:
+    def _latest_transition(
+        self, project_name: str, *, type: str | None=None, real_only: bool=False, until: datetime | None=None,
+        username: str | None=None,
+    ) -> Tracking | None:
         query = Tracking.select().join(ChatSession, on=Tracking.session == ChatSession.id).where((ChatSession.project_name == project_name) & Tracking.new_state.is_null(False))
         if type is not None:
             query = query.where(ChatSession.type == type)
+        if username is not None:
+            query = query.where(ChatSession.username == username)
         if real_only:
             query = query.where(Tracking.old_state != Tracking.new_state)
         if until is not None:
@@ -130,6 +135,10 @@ class TrackingMixin:
 
     def get_current_state(self, project_name: str, *, type: str | None=None) -> str | None:
         transition = self._latest_transition(project_name, type=type)
+        return transition.new_state if transition else None
+
+    def get_current_state_for_user(self, project_name: str, username: str, *, type: str | None=None) -> str | None:
+        transition = self._latest_transition(project_name, type=type, username=username)
         return transition.new_state if transition else None
 
     def get_current_state_for_session(self, session_id: int) -> str | None:

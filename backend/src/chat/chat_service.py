@@ -118,8 +118,7 @@ class ChatService(object):
 			"datetime_end": _utc_iso(session["datetime_end"]),
 			"start_state": session["start_state"],
 			"end_state": session["end_state"],
-			# An imported session has no datetime_end — never a live
-			# conversation window, so it's never "open".
+			# An imported session is always expired — never "open".
 			"open": self._session_manager.is_open(session),
 			# Distinct from "open": the single open session with the most
 			# recent datetime_start for this project — whether it still
@@ -152,9 +151,11 @@ class ChatService(object):
 			# the moment the previously active one (if any) is discovered closed.
 			if strategy.type_name == 'live' and self._session_manager.get_active_session(self._username, project_name) is None:
 				self._session_summary_manager.check_for_closed_sessions(self._username, project_name)
-			automaton, state = self._project_service.get_automaton_and_state(project_name, type=strategy.type_name)
+			_, state = self._project_service.get_automaton_and_state(
+				project_name, type=strategy.type_name, username=self._username
+			)
 			session = self._session_manager.resolve_or_create_session(
-				strategy, self._project_service, self._username, project_name, session_id, automaton, state.key
+				strategy, self._project_service, self._username, project_name, session_id, state.key
 			)
 		except ValueError as exc:
 			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
@@ -180,23 +181,18 @@ class ChatService(object):
 
 	def _create_session_of_type(self, strategy: SessionTypeStrategy, project_name: str) -> dict:
 		try:
-			automaton, state = self._project_service.get_automaton_and_state(project_name, type=strategy.type_name)
-			current_state = state.key if strategy.type_name == 'live' else None
 			session = self._session_manager.create_session(
-				strategy, self._project_service, self._username, project_name, automaton, current_state
+				strategy, self._project_service, self._username, project_name
 			)
 		except ValueError as exc:
 			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
+		automaton = self._project_service.get_automaton_for_session(session["id"])
 		# "on-enter": a new session enters its starting state *through*
 		# init_action itself — the same wire key every other real
 		# transition reports, just for init_action instead of a regular Action.
 		return {**self._session_payload(session, active=True), "on-enter": automaton.init_action.on_enter}
 
 	def create_session(self) -> dict:
-		"""Explicit "new session" action: starts a fresh session, which
-		immediately becomes the active project's writable one, recorded as
-		starting at the automaton's current state — wherever the shared
-		position sits right now, not necessarily the initial one."""
 		return self._create_session_of_type(get_session_type_strategy('live'), self._active_project_name)
 
 	def create_draft_session(self, project_name: str) -> dict:
@@ -211,16 +207,14 @@ class ChatService(object):
 		automaton, state = self._project_service.get_automaton_and_state(project_name, type='test')
 		return {**automaton.get_state_payload(state), "on-enter": automaton.init_action.on_enter}
 
-	def _is_session_active(self, session: dict, pool_active_id: int | None) -> bool:
-		fixed = get_session_type_strategy(session["type"]).default_active()
-		return fixed if fixed is not None else session["id"] == pool_active_id
-
 	def _list_sessions_by_type(self, project_name: str, type: str | tuple[str, ...], active_type: str) -> list[dict]:
 		sessions = self._db.list_chat_sessions(None, project_name, type=type)
 		sessions = [s for s in sessions if self._owns_session(s['username'])]
 		active = self._session_manager.get_active_session(self._username, project_name, type=active_type)
-		active_id = active["id"] if active is not None else None
-		return [self._session_payload(s, active=self._is_session_active(s, active_id)) for s in sessions]
+		return [
+			self._session_payload(s, active=get_session_type_strategy(s["type"]).is_valid_write_target(s, active))
+			for s in sessions
+		]
 
 	def list_sessions(self, project_name: str, include_imported: bool = False) -> list[dict]:
 		"""Every real (live, and optionally imported) session for
@@ -255,13 +249,9 @@ class ChatService(object):
 		payload" mutation below."""
 		session = self._db.get_chat_session(session_id)
 		assert session is not None
-		fixed = get_session_type_strategy(session["type"]).default_active()
-		if fixed is not None:
-			active = fixed
-		else:
-			resolved = self._session_manager.get_active_session(self._username, session["project_name"], type=session["type"])
-			active = resolved is not None and resolved["id"] == session_id
-		return self._session_payload(session, active=active)
+		strategy = get_session_type_strategy(session["type"])
+		active_session = self._session_manager.get_active_session(self._username, session["project_name"], type=session["type"])
+		return self._session_payload(session, active=strategy.is_valid_write_target(session, active_session))
 
 	def set_session_title(self, session_id: int, title: str | None) -> dict:
 		"""The "Label sessions" view's Info tab — a domain expert's rename

@@ -78,8 +78,7 @@ class TrackingService(object):
 
 	@property
 	def automaton(self) -> Automaton:
-		automaton, _ = self._project_service.get_active_automaton_and_state()
-		return automaton
+		return self._project_service.get_active_automaton()
 
 	def get_definition(self, names: set[str] | None = None) -> str:
 		signals = Signals(self._project_service, self._db)
@@ -168,8 +167,7 @@ class TrackingService(object):
 		validate against the wrong project whenever message_id belongs to a project that isn't the one currently active."""
 		message = self._db.get_message(message_id)
 		assert message is not None  # _require_annotatable_message already confirmed this above
-		automaton, _ = self._project_service.get_automaton_and_state_for_session(message["session_id"])
-		return automaton
+		return self._project_service.get_automaton_for_session(message["session_id"])
 
 	def set_message_expected_state(self, message_id: int, expected_state: str | None) -> dict | None:
 		"""Sets or clears the expert-annotated expected state for

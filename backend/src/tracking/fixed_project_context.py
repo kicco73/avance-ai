@@ -1,5 +1,5 @@
 """Duck-types just enough of ProjectService's interface
-(get_active_automaton_and_state/get_active_project_name) for Signals/
+(get_active_automaton/get_active_automaton_and_state/get_active_project_name) for Signals/
 PersistedEnv/SessionFacts/MetricService/AutomatonNamespace to resolve a
 FIXED automaton/project pair instead of whatever's live right now.
 
@@ -26,6 +26,9 @@ class FixedProjectContext:
     def __init__(self, automaton: Automaton | None = None, project_name: str | None = None) -> None:
         self._automaton = automaton
         self._project_name = project_name
+
+    def get_active_automaton(self):
+        return self._automaton
 
     def get_active_automaton_and_state(self):
         return self._automaton, None
