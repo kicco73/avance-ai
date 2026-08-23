@@ -10,7 +10,7 @@ import MetricDetail from '../../../inspector/MetricDetail.vue'
 import ModelMenu from '../../../ModelMenu.vue'
 import {
   deleteBenchmarkRuns, getBenchmarkMetrics, getBenchmarkRun, getBenchmarkRuns, getProjectStates, getStateJob,
-  getUsersAggregationJob, postBenchmarkRun, postStateTest, postUsersAggregation
+  postBenchmarkRun, postSessionsRun, postStateTest, postUserSessionsRun, postUsersAggregation
 } from '../../../../api.js'
 import { loadSessions, sessions, sessionsLoading } from '../../../../chatStore.js'
 import { confirmDialog } from '../../../../dialogStore.js'
@@ -133,11 +133,11 @@ const nodeLastResult = ref({})
 // nodeLastResult above (null result on failure must stay distinguishable
 // from "never run").
 const nodeError = ref({})
-// users-branch's own most recent aggregation job result — already the
-// per-metric mean-across-users list (see backend _aggregate_users_mean),
-// kept client-side only, same as nodeLastResult/nodeError above.
-const usersAggregateResults = ref({})
-const usersAggregateErrors = ref({})
+// sessions-branch/a user node/users-branch's own most recent aggregation
+// job result — already the per-metric list, kept client-side only, same
+// as nodeLastResult/nodeError above.
+const aggregateResults = ref({})
+const aggregateErrors = ref({})
 // cacheKey -> pending setTimeout id, plain bookkeeping (never rendered).
 const pollTimers = {}
 
@@ -252,7 +252,7 @@ function statusFromOutcome(status, error) {
   return 'running'
 }
 
-function pollSessionRun(nodeId, runStrategy, key, runId, mirrorLeafNodeIds = []) {
+function pollSessionRun(nodeId, runStrategy, key, runId) {
   clearPoll(key)
   const tick = async () => {
     let run = null
@@ -266,17 +266,11 @@ function pollSessionRun(nodeId, runStrategy, key, runId, mirrorLeafNodeIds = [])
     }
     if (run.status === 'pending' || run.status === 'running') {
       setProgress(key, run.processed_messages, run.total_messages)
-      mirrorLeafNodeIds.forEach((leafNodeId) => setProgress(cacheKey(runStrategy, leafNodeId), run.processed_messages, run.total_messages))
       pollTimers[key] = setTimeout(tick, 1000)
       return
     }
     const outcome = statusFromOutcome(run.status, run.error)
     setStatus(key, outcome)
-    // The whole-project replay is one job with no per-session status of
-    // its own — every session leaf lit up together at launch mirrors
-    // this same run's outcome now that it's done, the closest we can get
-    // to "that session's own test" without one job per session.
-    mirrorLeafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(runStrategy, leafNodeId), outcome))
     if (selectedNodeId.value === nodeId && strategy.value === runStrategy) selectedRun.value = run
   }
   tick()
@@ -301,7 +295,7 @@ function pollStateJob(key, jobId, runStrategy, mirrorLeafNodeIds = []) {
     setStatus(key, outcome)
     // A state test replays every session annotated with this state under
     // the hood (see BenchmarkRunService.start_job) — mirroring its outcome
-    // onto those session leaves the same way activateWholeProjectRun does.
+    // onto those session leaves the same way activateSessionsRun does.
     mirrorLeafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(runStrategy, leafNodeId), outcome))
     nodeError.value = { ...nodeError.value, [key]: job.status === 'failed' ? job.error : null }
     nodeLastResult.value = {
@@ -312,12 +306,12 @@ function pollStateJob(key, jobId, runStrategy, mirrorLeafNodeIds = []) {
   tick()
 }
 
-function pollUsersAggregationJob(key, jobId, runStrategy, mirrorLeafNodeIds = []) {
+function pollAggregationJob(key, jobId, runStrategy, mirrorLeafNodeIds = []) {
   clearPoll(key)
   const tick = async () => {
     let job = null
     try {
-      job = await getUsersAggregationJob(props.projectName, jobId)
+      job = await getStateJob(props.projectName, jobId)
     } catch {
       pollTimers[key] = setTimeout(tick, 1000)
       return
@@ -329,14 +323,10 @@ function pollUsersAggregationJob(key, jobId, runStrategy, mirrorLeafNodeIds = []
     }
     const outcome = statusFromOutcome(job.status, job.error)
     setStatus(key, outcome)
-    // Same mirroring idea as activateWholeProjectRun/pollStateJob: one job
-    // covers every user (and, through them, every annotated session) at
-    // once, so its outcome is the closest thing each of those has to its
-    // own status.
     mirrorLeafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(runStrategy, leafNodeId), outcome))
-    usersAggregateErrors.value = { ...usersAggregateErrors.value, [key]: job.status === 'failed' ? job.error : null }
-    usersAggregateResults.value = {
-      ...usersAggregateResults.value,
+    aggregateErrors.value = { ...aggregateErrors.value, [key]: job.status === 'failed' ? job.error : null }
+    aggregateResults.value = {
+      ...aggregateResults.value,
       [key]: job.result ? JSON.parse(job.result) : null
     }
   }
@@ -370,7 +360,7 @@ async function activateStateLeaf(nodeId, activeStrategy, mirrorLeafNodeIds = [])
   clearProgress(key)
   // A state test replays every annotated session under the hood (see
   // BenchmarkRunService.start_job) — mirrored here the same way
-  // activateWholeProjectRun mirrors its own whole-project replay.
+  // activateSessionsRun mirrors its own whole-project replay.
   mirrorLeafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(activeStrategy, leafNodeId), 'running'))
   try {
     const stateKey = nodeId.slice('state:'.length)
@@ -386,23 +376,18 @@ async function activateStateLeaf(nodeId, activeStrategy, mirrorLeafNodeIds = [])
 // The whole-project replay (session_id: null) — same backend run kind as
 // a single session's, just scoped to every labeled session at once (see
 // BenchmarkRunService.create_run). Both sessions-branch and root show it.
-async function activateWholeProjectRun(activeStrategy) {
+async function activateSessionsRun(activeStrategy) {
   const key = cacheKey(activeStrategy, 'sessions-branch')
   const leafNodeIds = annotatedSessionNodeIds()
   setStatus(key, 'running')
   clearProgress(key)
-  // Light up every session leaf right away — this one job replays all of
-  // them at once, so from the tree's point of view every session under
-  // it is "running" for as long as it is.
   leafNodeIds.forEach((leafNodeId) => {
     setStatus(cacheKey(activeStrategy, leafNodeId), 'running')
     clearProgress(cacheKey(activeStrategy, leafNodeId))
   })
   try {
-    const run = await postBenchmarkRun(props.projectName, null, activeStrategy)
-    setProgress(key, run.processed_messages, run.total_messages)
-    leafNodeIds.forEach((leafNodeId) => setProgress(cacheKey(activeStrategy, leafNodeId), run.processed_messages, run.total_messages))
-    pollSessionRun('sessions-branch', activeStrategy, key, run.id, leafNodeIds)
+    const { job_id } = await postSessionsRun(props.projectName, activeStrategy)
+    pollAggregationJob(key, job_id, activeStrategy, leafNodeIds)
   } catch {
     // already surfaced via apiFetch
     setStatus(key, 'fail')
@@ -424,21 +409,27 @@ function annotatedUsernames() {
   return [...new Set(sessions.value.filter((s) => s.has_annotations).map((s) => s.username))]
 }
 
-// One user's own whole-project-scope run (session_id: null, username
-// given) — independent of the "Users" branch's own aggregation job, same
-// relationship activateSessionLeaf has to activateWholeProjectRun.
+function annotatedSessionNodeIdsFor(username) {
+  return sessions.value.filter((s) => s.has_annotations && s.username === username).map((s) => `session:${s.id}`)
+}
+
 async function activateUserLeaf(nodeId, activeStrategy) {
   const key = cacheKey(activeStrategy, nodeId)
   const username = nodeId.slice('user:'.length)
+  const leafNodeIds = annotatedSessionNodeIdsFor(username)
   setStatus(key, 'running')
   clearProgress(key)
+  leafNodeIds.forEach((leafNodeId) => {
+    setStatus(cacheKey(activeStrategy, leafNodeId), 'running')
+    clearProgress(cacheKey(activeStrategy, leafNodeId))
+  })
   try {
-    const run = await postBenchmarkRun(props.projectName, null, activeStrategy, username)
-    setProgress(key, run.processed_messages, run.total_messages)
-    pollSessionRun(nodeId, activeStrategy, key, run.id)
+    const { job_id } = await postUserSessionsRun(props.projectName, username, activeStrategy)
+    pollAggregationJob(key, job_id, activeStrategy, leafNodeIds)
   } catch {
     // already surfaced via apiFetch
     setStatus(key, 'fail')
+    leafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(activeStrategy, leafNodeId), 'fail'))
   }
 }
 
@@ -455,7 +446,7 @@ async function activateUsersAggregation(activeStrategy) {
   sessionLeafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(activeStrategy, leafNodeId), 'running'))
   try {
     const { job_id } = await postUsersAggregation(props.projectName, activeStrategy)
-    pollUsersAggregationJob(key, job_id, activeStrategy, [...userLeafNodeIds, ...sessionLeafNodeIds])
+    pollAggregationJob(key, job_id, activeStrategy, [...userLeafNodeIds, ...sessionLeafNodeIds])
   } catch {
     // already surfaced via apiFetch
     setStatus(key, 'fail')
@@ -478,7 +469,7 @@ async function onActivate(nodeId) {
   } else if (nodeId.startsWith('user:')) {
     await activateUserLeaf(nodeId, activeStrategy)
   } else if (nodeId === 'sessions-branch') {
-    await activateWholeProjectRun(activeStrategy)
+    await activateSessionsRun(activeStrategy)
   } else if (nodeId === 'states-branch') {
     await activateAllStates(activeStrategy)
   } else if (nodeId === 'users-branch') {
@@ -487,24 +478,24 @@ async function onActivate(nodeId) {
     // Every sub-test at once: the whole-project replay, every state's own
     // test, and the users aggregation.
     await Promise.all([
-      activateWholeProjectRun(activeStrategy), activateAllStates(activeStrategy), activateUsersAggregation(activeStrategy)
+      activateSessionsRun(activeStrategy), activateAllStates(activeStrategy), activateUsersAggregation(activeStrategy)
     ])
   }
 }
 
 async function loadSelectedRun(nodeId) {
-  // null for sessions-branch/a user leaf: the whole-project run, not a
-  // filter (see backend BenchmarkRunService.list_runs' own session_id
-  // docstring).
-  const sessionId = nodeId.startsWith('session:') ? Number(nodeId.slice('session:'.length)) : null
-  const username = nodeId.startsWith('user:') ? nodeId.slice('user:'.length) : null
+  const sessionId = Number(nodeId.slice('session:'.length))
   selectedRunLoading.value = true
   try {
-    const runs = await getBenchmarkRuns(props.projectName, sessionId, username)
+    const runs = await getBenchmarkRuns(props.projectName, sessionId)
     // Already most-recent-first (see backend BenchmarkRunService.list_runs)
     // — filtered to the active strategy, since turn_by_turn and batch
     // runs aren't comparable and must never be shown as if they were.
-    selectedRun.value = runs.find((run) => run.strategy === strategy.value) ?? null
+    const run = runs.find((run) => run.strategy === strategy.value) ?? null
+    selectedRun.value = run
+    if (run != null && run.status !== 'pending' && run.status !== 'running') {
+      setStatus(cacheKey(strategy.value, nodeId), statusFromOutcome(run.status, run.error))
+    }
   } catch {
     selectedRun.value = null
   } finally {
@@ -512,14 +503,8 @@ async function loadSelectedRun(nodeId) {
   }
 }
 
-// root deliberately isn't one of these: sessions-branch/states-branch/
-// users-branch each have a real result of their own (a whole-project run,
-// a weighted state average, a mean-across-users), but there's no sound
-// way to combine those into one number — root shows a plain "go pick a
-// branch" message instead (see the template). A user leaf does have a
-// real run of its own, same as a session leaf.
 function isRunNode(nodeId) {
-  return nodeId.startsWith('session:') || nodeId === 'sessions-branch' || nodeId.startsWith('user:')
+  return nodeId.startsWith('session:')
 }
 
 async function onSelect(nodeId) {
@@ -581,8 +566,8 @@ async function onResetCache() {
     nodeStatuses.value = {}
     nodeLastResult.value = {}
     nodeError.value = {}
-    usersAggregateResults.value = {}
-    usersAggregateErrors.value = {}
+    aggregateResults.value = {}
+    aggregateErrors.value = {}
     selectedRun.value = null
     if (selectedNodeId.value && isRunNode(selectedNodeId.value)) {
       await loadSelectedRun(selectedNodeId.value)
@@ -691,10 +676,10 @@ onBeforeUnmount(() => {
         <p class="tests-panel-placeholder">Aggregates not available at this time.<br />Please select Sessions or States to see results.</p>
       </template>
 
-      <template v-else-if="selectedNodeId.startsWith('session:') || selectedNodeId === 'sessions-branch' || selectedNodeId.startsWith('user:')">
+      <template v-else-if="selectedNodeId.startsWith('session:')">
         <p v-if="selectedRunLoading" class="tests-panel-placeholder">Loading…</p>
         <p v-else-if="!selectedRun" class="tests-panel-placeholder">
-          No test has been run for {{ selectedNodeId.startsWith('session:') ? 'this session' : selectedNodeId.startsWith('user:') ? 'this user' : 'the whole project' }} under this strategy yet.
+          No test has been run for this session under this strategy yet.
         </p>
         <p v-else-if="selectedRun.status === 'failed'" class="tests-panel-error">{{ selectedRun.error || 'Test failed.' }}</p>
         <p v-else-if="selectedRun.status !== 'completed'" class="tests-panel-placeholder">Test {{ selectedRun.status }}…</p>
@@ -720,6 +705,32 @@ onBeforeUnmount(() => {
             </tbody>
           </table>
         </template>
+      </template>
+
+      <template v-else-if="selectedNodeId === 'sessions-branch' || selectedNodeId.startsWith('user:') || selectedNodeId === 'users-branch'">
+        <p v-if="aggregateErrors[selectedCacheKey]" class="tests-panel-error">{{ aggregateErrors[selectedCacheKey] }}</p>
+        <p v-else-if="!aggregateResults[selectedCacheKey] || !aggregateResults[selectedCacheKey].length" class="tests-panel-placeholder">
+          No test has been run for {{ selectedNodeId.startsWith('user:') ? 'this user' : selectedNodeId === 'users-branch' ? 'the users aggregation' : 'the whole project' }} under this strategy yet.
+        </p>
+        <table v-else class="tests-panel-metrics-table">
+          <thead>
+            <tr>
+              <th>Metric</th><th>Mean</th><th>Median</th><th>Std dev</th><th>Samples</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="metric in aggregateResults[selectedCacheKey]" :key="metric.name"
+              :class="{ 'tests-panel-row-empty': !metric.sample_count }"
+            >
+              <td><MetricDetail :label="metricLabel(metric.name)" :description="metricDescription(metric.name)" :value="metric.value" /></td>
+              <td>{{ formatNumber(metric.mean) }}</td>
+              <td>{{ formatNumber(metric.median) }}</td>
+              <td>{{ formatNumber(metric.standard_deviation) }}</td>
+              <td>{{ metric.sample_count }}</td>
+            </tr>
+          </tbody>
+        </table>
       </template>
 
       <template v-else-if="selectedNodeId.startsWith('state:')">
@@ -770,27 +781,6 @@ onBeforeUnmount(() => {
               <td><MetricDetail label="Overall" :value="statesOverall.value" /></td>
               <td colspan="3"></td>
               <td>{{ statesOverall.sample_count }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </template>
-
-      <template v-else-if="selectedNodeId === 'users-branch'">
-        <p v-if="usersAggregateErrors[selectedCacheKey]" class="tests-panel-error">{{ usersAggregateErrors[selectedCacheKey] }}</p>
-        <p v-else-if="!usersAggregateResults[selectedCacheKey] || !usersAggregateResults[selectedCacheKey].length" class="tests-panel-placeholder">
-          No users aggregation has been run under this strategy yet.
-        </p>
-        <table v-else class="tests-panel-metrics-table">
-          <thead>
-            <tr><th>Metric</th><th>Samples</th></tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="metric in usersAggregateResults[selectedCacheKey]" :key="metric.name"
-              :class="{ 'tests-panel-row-empty': !metric.sample_count }"
-            >
-              <td><MetricDetail :label="metricLabel(metric.name)" :description="metricDescription(metric.name)" :value="metric.value" /></td>
-              <td>{{ metric.sample_count }}</td>
             </tr>
           </tbody>
         </table>

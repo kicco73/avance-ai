@@ -380,6 +380,8 @@ function moveSelection(delta) {
   display: flex;
   align-items: center;
   gap: 0.3rem;
+  flex: 1;
+  min-width: 0;
 }
 
 .tests-tree-row {

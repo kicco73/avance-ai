@@ -46,6 +46,7 @@ def test_state_test_aggregates_signal_accuracy_across_sessions(client, hello_pro
     assert job["result"] is not None
     import json
     result = json.loads(job["result"])
+    print("DEBUG RESULT:", result)
     assert result["name"] == "signal_accuracy"
 
 

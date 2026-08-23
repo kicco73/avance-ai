@@ -121,7 +121,8 @@ class BenchmarkCalculator(object):
         # replayed behaviour regardless of a session's origin — list_chat_sessions'
         # own default (type='live') would silently drop every imported session,
         # which is exactly where annotations usually live.
-        sessions = self._db.list_chat_sessions(self._username, self._project_name, type=None)
+        username = self._username if self._session_id is None else None
+        sessions = self._db.list_chat_sessions(username, self._project_name, type=None)
         if self._session_id is None:
             return sessions
         return [row for row in sessions if int(row["id"]) == self._session_id]

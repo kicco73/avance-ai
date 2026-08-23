@@ -210,7 +210,7 @@ class LabelProjectController(BaseController):
         Returns immediately with the ephemeral job's id; poll GET
         .../state-jobs/{job_id} for its outcome."""
         try:
-            job_id = self.benchmark_run_service.start_job(Session().user, project_name, state_key, req.strategy)
+            job_id = self.benchmark_run_service.start_job(project_name, state_key, req.strategy)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"job_id": job_id}
@@ -224,12 +224,28 @@ class LabelProjectController(BaseController):
 
     @post("/api/projects/{project_name}/users/aggregation", role="supervisor")
     def post_users_aggregation(self, project_name: str, req: StateTestRequest):
-        """Launches the "Users" branch's aggregation job — a simple mean
-        across one whole-project-scope run per distinct annotated user.
-        Returns immediately with the ephemeral job's id; poll GET
-        .../state-jobs/{job_id} (the job is generic, same as start_job's) for its outcome."""
+        """Launches the "Users" branch's aggregation job — each user's own
+        pooled result (composed from that user's own leaf sub-runs) becomes
+        one data point. Returns immediately with the ephemeral job's id;
+        poll GET .../state-jobs/{job_id} (the job is generic, same as start_job's) for its outcome."""
         try:
             job_id = self.benchmark_run_service.start_users_aggregation_job(project_name, req.strategy)
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return {"job_id": job_id}
+
+    @post("/api/projects/{project_name}/sessions/test", role="supervisor")
+    def post_sessions_run(self, project_name: str, req: StateTestRequest):
+        try:
+            job_id = self.benchmark_run_service.start_sessions_run_job(project_name, req.strategy)
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return {"job_id": job_id}
+
+    @post("/api/projects/{project_name}/users/{username}/test", role="supervisor")
+    def post_user_sessions_run(self, project_name: str, username: str, req: StateTestRequest):
+        try:
+            job_id = self.benchmark_run_service.start_user_sessions_run_job(username, project_name, req.strategy)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"job_id": job_id}
