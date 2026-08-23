@@ -6,6 +6,9 @@ from __future__ import annotations
 import asyncio
 import json
 from http import HTTPStatus
+from statistics import mean, median, pstdev
+
+import pandas as pd
 
 from automaton.automaton import Automaton
 from automaton.automaton_builder import AutomatonBuilder
@@ -21,7 +24,7 @@ from metrics.metric_service import BenchmarkMetricsProvider
 from metrics.metrics_framework.benchmark_metrics.calculator import BenchmarkCalculator
 from metrics.metrics_framework.benchmark_metrics.dto import BenchmarkConfiguration, BenchmarkMetricResult
 from metrics.metrics_framework.benchmark_metrics.metrics import SignalAccuracyMetric
-from metrics.metrics_framework.benchmark_metrics.observations import BenchmarkObservationBuilder
+from metrics.metrics_framework.benchmark_metrics.observations import BenchmarkData, BenchmarkObservationBuilder
 from project.parsers import decode_text_archives
 from session import Session
 from tracking.env import Env, PersistedEnv
@@ -221,23 +224,39 @@ class BenchmarkRunService:
         results = [_serialize_metric_result(result) for result in calculator.calculate_all()]
         self._db.set_benchmark_run_results(run['id'], json.dumps(results))
 
-    def start_job(self, username: str, project_name: str, state_key: str, strategy: str) -> int:
+    def _resolve_or_create_session_run(self, session_id: int, project_name: str, strategy: str) -> int:
+        candidates = [run for run in self.list_runs(project_name, session_id) if run['strategy'] == strategy]
+        fresh = candidates[0] if candidates and not candidates[0]['stale'] else None
+        if fresh is not None:
+            return fresh['id']
+        session = self._db.get_chat_session(session_id)
+        assert session is not None
+        new_run = self.create_run(session['username'], project_name, session_id, strategy)
+        return new_run['id']
+
+    def _pooled_sub_runs_work(self, sub_run_ids: list[int], project_name: str, label: str) -> JobWork:
+        async def work(on_progress: OnProgress) -> tuple[str | None, str | None]:
+            completed = 0
+            for run_id in sub_run_ids:
+                final_run = await self._wait_for_run(run_id)
+                if final_run['status'] != 'completed':
+                    raise RuntimeError(f"Sub-run {run_id} for {label} failed: {final_run['error']}")
+                completed += 1
+                on_progress(completed)
+
+            result = self._aggregate_pooled_runs(sub_run_ids, project_name)
+            return None, json.dumps(result)
+        return work
+
+    def start_job(self, project_name: str, state_key: str, strategy: str) -> int:
         """Pure aggregation over per-session BenchmarkRuns; ephemeral since
         nothing here needs persisting. Sub-runs are found/launched via the
         *persisted* queue, never this one, to avoid a job waiting on its own queue."""
         if strategy not in VALID_STRATEGIES:
             raise ValueError(f"Unknown benchmark run strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
 
-        session_ids = sorted(self._db.get_session_ids_with_expected_state(username, project_name, state_key))
-        sub_run_ids: list[int] = []
-        for session_id in session_ids:
-            candidates = [run for run in self.list_runs(project_name, session_id) if run['strategy'] == strategy]
-            fresh = candidates[0] if candidates and not candidates[0]['stale'] else None
-            if fresh is not None:
-                sub_run_ids.append(fresh['id'])
-            else:
-                new_run = self.create_run(username, project_name, session_id, strategy)
-                sub_run_ids.append(new_run['id'])
+        session_ids = sorted(self._db.get_session_ids_with_expected_state(project_name, state_key))
+        sub_run_ids = [self._resolve_or_create_session_run(sid, project_name, strategy) for sid in session_ids]
 
         async def work(on_progress: OnProgress) -> tuple[str | None, str | None]:
             completed = 0
@@ -255,42 +274,89 @@ class BenchmarkRunService:
             kind='state_aggregation', reference_id=None, total=len(sub_run_ids), work=work,
         )
 
-    def start_users_aggregation_job(self, project_name: str, strategy: str) -> int:
-        """The "Users" branch's root aggregation — a simple mean across
-        one whole-project-scope run per user, same ephemeral-job pattern
-        as start_job/_aggregate_signal_accuracy above."""
+    def start_signal_job(self, project_name: str, signal_name: str, strategy: str) -> int:
         if strategy not in VALID_STRATEGIES:
             raise ValueError(f"Unknown benchmark run strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
 
         sessions = self._db.list_chat_sessions(None, project_name, type=None)
-        usernames = sorted({row['username'] for row in sessions if row['labeled']})
-
-        sub_run_ids: list[int] = []
-        for username in usernames:
-            candidates = [
-                run for run in self.list_runs(project_name, None, username) if run['strategy'] == strategy
-            ]
-            fresh = candidates[0] if candidates and not candidates[0]['stale'] else None
-            if fresh is not None:
-                sub_run_ids.append(fresh['id'])
-            else:
-                new_run = self.create_run(username, project_name, None, strategy)
-                sub_run_ids.append(new_run['id'])
+        session_ids = sorted(int(row['id']) for row in sessions if row['labeled'])
+        sub_run_ids = [self._resolve_or_create_session_run(sid, project_name, strategy) for sid in session_ids]
 
         async def work(on_progress: OnProgress) -> tuple[str | None, str | None]:
             completed = 0
             for run_id in sub_run_ids:
                 final_run = await self._wait_for_run(run_id)
                 if final_run['status'] != 'completed':
+                    raise RuntimeError(f"Sub-run {run_id} for signal {signal_name!r} failed: {final_run['error']}")
+                completed += 1
+                on_progress(completed)
+
+            result = self._aggregate_signal_name_accuracy(sub_run_ids, signal_name)
+            return None, json.dumps(result)
+
+        return self._ephemeral_jobs.submit(
+            kind='signal_aggregation', reference_id=None, total=len(sub_run_ids), work=work,
+        )
+
+    def start_sessions_run_job(self, project_name: str, strategy: str) -> int:
+        if strategy not in VALID_STRATEGIES:
+            raise ValueError(f"Unknown benchmark run strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
+
+        sessions = self._db.list_chat_sessions(None, project_name, type=None)
+        session_ids = sorted(int(row['id']) for row in sessions if row['labeled'])
+        sub_run_ids = [self._resolve_or_create_session_run(sid, project_name, strategy) for sid in session_ids]
+
+        return self._ephemeral_jobs.submit(
+            kind='sessions_aggregation', reference_id=None, total=len(sub_run_ids),
+            work=self._pooled_sub_runs_work(sub_run_ids, project_name, 'sessions aggregation'),
+        )
+
+    def start_user_sessions_run_job(self, username: str, project_name: str, strategy: str) -> int:
+        if strategy not in VALID_STRATEGIES:
+            raise ValueError(f"Unknown benchmark run strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
+
+        sessions = self._db.list_chat_sessions(username, project_name, type=None)
+        session_ids = sorted(int(row['id']) for row in sessions if row['labeled'])
+        sub_run_ids = [self._resolve_or_create_session_run(sid, project_name, strategy) for sid in session_ids]
+
+        return self._ephemeral_jobs.submit(
+            kind='user_sessions_aggregation', reference_id=None, total=len(sub_run_ids),
+            work=self._pooled_sub_runs_work(sub_run_ids, project_name, f'user {username!r} sessions aggregation'),
+        )
+
+    def start_users_aggregation_job(self, project_name: str, strategy: str) -> int:
+        if strategy not in VALID_STRATEGIES:
+            raise ValueError(f"Unknown benchmark run strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
+
+        sessions = self._db.list_chat_sessions(None, project_name, type=None)
+        usernames = sorted({row['username'] for row in sessions if row['labeled']})
+        session_ids_by_user = {
+            username: sorted(int(row['id']) for row in sessions if row['labeled'] and row['username'] == username)
+            for username in usernames
+        }
+        sub_run_ids_by_user = {
+            username: [self._resolve_or_create_session_run(sid, project_name, strategy) for sid in ids]
+            for username, ids in session_ids_by_user.items()
+        }
+        all_sub_run_ids = [run_id for ids in sub_run_ids_by_user.values() for run_id in ids]
+
+        async def work(on_progress: OnProgress) -> tuple[str | None, str | None]:
+            completed = 0
+            for run_id in all_sub_run_ids:
+                final_run = await self._wait_for_run(run_id)
+                if final_run['status'] != 'completed':
                     raise RuntimeError(f"Sub-run {run_id} for users aggregation failed: {final_run['error']}")
                 completed += 1
                 on_progress(completed)
 
-            result = self._aggregate_users_mean(sub_run_ids)
+            per_user_results = [
+                self._aggregate_pooled_runs(ids, project_name) for ids in sub_run_ids_by_user.values()
+            ]
+            result = self._aggregate_across_results(per_user_results)
             return None, json.dumps(result)
 
         return self._ephemeral_jobs.submit(
-            kind='users_aggregation', reference_id=None, total=len(sub_run_ids), work=work,
+            kind='users_aggregation', reference_id=None, total=len(all_sub_run_ids), work=work,
         )
 
     def get_job_status(self, job_id: int) -> dict | None:
@@ -313,24 +379,74 @@ class BenchmarkRunService:
         filtered = tuple(o for o in observations if o.expected_state == state_key)
         return _serialize_metric_result(SignalAccuracyMetric().calculate(filtered))
 
-    def _aggregate_users_mean(self, sub_run_ids: list[int]) -> list[dict]:
-        results_by_name: dict[str, list[dict]] = {}
+    def _aggregate_signal_name_accuracy(self, sub_run_ids: list[int], signal_name: str) -> dict:
+        observations: list = []
         for run_id in sub_run_ids:
             run = self._db.get_benchmark_run(run_id)
-            for result in run['results'] or []:
+            data = build_benchmark_run_data(self._db, run)
+            observations.extend(BenchmarkObservationBuilder(BenchmarkConfiguration()).build(data))
+
+        values = [o.signal_agreements[signal_name] for o in observations if signal_name in o.signal_agreements]
+        if not values:
+            return {
+                'name': signal_name, 'value': 0.0, 'mean': None, 'median': None,
+                'standard_deviation': None, 'minimum': None, 'maximum': None,
+                'sample_count': 0, 'components': {},
+            }
+        return {
+            'name': signal_name,
+            'value': mean(values),
+            'mean': mean(values),
+            'median': median(values),
+            'standard_deviation': pstdev(values) if len(values) > 1 else 0.0,
+            'minimum': min(values),
+            'maximum': max(values),
+            'sample_count': len(values),
+            'components': {},
+        }
+
+    def _aggregate_pooled_runs(self, sub_run_ids: list[int], project_name: str) -> list[dict]:
+        if not sub_run_ids:
+            return []
+        runs = [self._db.get_benchmark_run(run_id) for run_id in sub_run_ids]
+        frames = [build_benchmark_run_data(self._db, run) for run in runs]
+        pooled = BenchmarkData(
+            messages=pd.concat([f.messages for f in frames], ignore_index=True),
+            sessions=pd.concat([f.sessions for f in frames], ignore_index=True),
+            signals=pd.concat([f.signals for f in frames], ignore_index=True),
+            transitions=pd.concat([f.transitions for f in frames], ignore_index=True),
+        )
+        unfiltered_metrics = BenchmarkCalculator(self._db, None, project_name).default_metrics()
+        calculator = BenchmarkCalculator.from_data(pooled, metrics=unfiltered_metrics)
+        return [_serialize_metric_result(result) for result in calculator.calculate_all()]
+
+    def _aggregate_across_results(self, per_group_results: list[list[dict]]) -> list[dict]:
+        results_by_name: dict[str, list[dict]] = {}
+        for results in per_group_results:
+            for result in results:
                 results_by_name.setdefault(result['name'], []).append(result)
 
-        return [
-            {
+        aggregated = []
+        for name, results in results_by_name.items():
+            total_sample_count = sum(result['sample_count'] for result in results)
+            with_samples = [result for result in results if result['sample_count']]
+            values = [result['value'] for result in with_samples]
+            if not values:
+                aggregated.append({
+                    'name': name, 'value': 0.0, 'mean': None, 'median': None,
+                    'standard_deviation': None, 'minimum': None, 'maximum': None,
+                    'sample_count': total_sample_count, 'components': {},
+                })
+                continue
+            aggregated.append({
                 'name': name,
-                'value': sum(result['value'] for result in results) / len(results),
-                'mean': None,
-                'median': None,
-                'standard_deviation': None,
-                'minimum': None,
-                'maximum': None,
-                'sample_count': sum(result['sample_count'] for result in results),
-                'components': {},
-            }
-            for name, results in results_by_name.items()
-        ]
+                'value': mean(values),
+                'mean': mean(values),
+                'median': median(values),
+                'standard_deviation': pstdev(values) if len(values) > 1 else 0.0,
+                'minimum': min(values),
+                'maximum': max(values),
+                'sample_count': total_sample_count,
+                'components': with_samples[0]['components'] if len(with_samples) == 1 else {},
+            })
+        return aggregated

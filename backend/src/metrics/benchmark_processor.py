@@ -81,9 +81,13 @@ class BenchmarkProcessor:
             if action is not None:
                 self._session_facts.set_last_transition_instant(real_timestamp)
 
+            observation_message_id = (
+                self._next_assistant_message_id(ordered_ids, by_id, message_id)
+                if self._automaton.autotracking_on_ai_message else message_id
+            )
             self._tracking_engine.apply_transition(
                 self._automaton, state, action, signal_values, session_id,
-                message_id=self._next_assistant_message_id(ordered_ids, by_id, message_id),
+                message_id=observation_message_id,
             )
 
             if action is not None:

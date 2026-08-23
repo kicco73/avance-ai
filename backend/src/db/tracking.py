@@ -65,16 +65,13 @@ class TrackingMixin:
             return None
         return {'id': row.id, 'timestamp': _utc_iso(row.timestamp), 'values': row.values, 'expected_values': row.expected_values, 'expected_state': row.expected_state, 'comment': row.comment, 'old_state': row.old_state, 'action': row.action, 'new_state': row.new_state, 'message_id': row.message_id}
 
-    def get_session_ids_with_expected_state(self, username: str, project_name: str, state_key: str) -> set[int]:
-        """Every session (of this user+project) with at least one real
-        Tracking row annotated expected_state == state_key — the "Stati"
-        branch's definition of "touches this state"."""
+    def get_session_ids_with_expected_state(self, project_name: str, state_key: str) -> set[int]:
         rows = (
             Tracking
             .select(Tracking.session)
             .join(ChatSession, on=Tracking.session == ChatSession.id)
             .where(
-                (ChatSession.username == username) & (ChatSession.project_name == project_name)
+                (ChatSession.project_name == project_name) & (ChatSession.labeled == True)
                 & (Tracking.expected_state == state_key)
             )
             .distinct()

@@ -811,8 +811,26 @@ export function postUsersAggregation(projectName, strategy) {
   })
 }
 
-// The job is the same generic 'state-jobs' resource start_job's own jobs
-// use — no dedicated read route for 'users_aggregation' jobs.
-export function getUsersAggregationJob(projectName, jobId) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/state-jobs/${encodeURIComponent(jobId)}`)
+export function postSessionsRun(projectName, strategy) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/sessions/test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ strategy })
+  })
+}
+
+export function postUserSessionsRun(projectName, username, strategy) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/users/${encodeURIComponent(username)}/test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ strategy })
+  })
+}
+
+export function postSignalTest(projectName, signalName, strategy) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/signals/${encodeURIComponent(signalName)}/test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ strategy })
+  })
 }
