@@ -100,6 +100,31 @@ def test_import_json_round_trips_an_exported_session_exactly(client, hello_proje
 
 
 @pytest.mark.regression
+def test_reimporting_the_same_export_twice_for_the_same_user_is_a_no_op_the_second_time(client, hello_project):
+    payload = {
+        "name": "Real session",
+        "username": "User 1",
+        "timestamp": "2026-01-01T10:00:00+00:00",
+        "datetime_end": "2026-01-01T10:05:00+00:00",
+        "start_state": "Hello",
+        "end_state": "Hello",
+        "labeled": False,
+        "comment": None,
+        "messages": [{"role": "user", "text": "hi", "timestamp": "2026-01-01T10:00:00+00:00"}],
+    }
+    first = _import_json(client, [payload])
+    assert first["results"] == [{"file": "Real session", "ok": True, "session_id": first["last_session_id"]}]
+
+    second = _import_json(client, [payload])
+    assert second["results"][0]["ok"] is False
+    assert second["last_session_id"] is None
+
+    Session().user = "User 1"
+    sessions = client.get("/api/projects/hello/sessions?include_imported=true").json()
+    assert len(sessions) == 1
+
+
+@pytest.mark.regression
 def test_import_json_restores_a_native_looking_session_with_real_timestamps(client, hello_project):
     payload = {
         "name": "Real session",

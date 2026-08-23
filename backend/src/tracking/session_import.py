@@ -82,11 +82,17 @@ class SessionImportManager:
         """Restores one session_export.py-produced session exactly. Always
         `type='imported'`, since a round-tripped session never ran
         against *this* automaton/revision. Raises KeyError/TypeError on malformed input."""
+        datetime_start = _parse_iso(session_data.get('timestamp'))
+        datetime_end = _parse_iso(session_data.get('datetime_end'))
+        if datetime_start is not None and datetime_end is not None and self._db.chat_session_exists(
+            username, project_name, datetime_start, datetime_end
+        ):
+            raise ValueError('A session with the same start and end time already exists for this user.')
         messages = session_data.get('messages', [])
         session_id = self._db.create_chat_session(
             username, project_name, self._published_revision(project_name),
-            datetime_start=_parse_iso(session_data.get('timestamp')),
-            datetime_end=_parse_iso(session_data.get('datetime_end')),
+            datetime_start=datetime_start,
+            datetime_end=datetime_end,
             start_state=session_data.get('start_state'),
             end_state=session_data.get('end_state'),
             type='imported', title=session_data.get('name'),

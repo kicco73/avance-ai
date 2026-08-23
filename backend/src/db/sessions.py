@@ -17,6 +17,12 @@ _DEFAULT_OPEN_WINDOW_MINUTES = 60.0
 
 class SessionMixin:
 
+    def chat_session_exists(self, username: str, project_name: str, datetime_start: datetime, datetime_end: datetime) -> bool:
+        return ChatSession.select().where(
+            (ChatSession.username == username) & (ChatSession.project_name == project_name)
+            & (ChatSession.datetime_start == datetime_start) & (ChatSession.datetime_end == datetime_end)
+        ).exists()
+
     def count_chat_sessions(self, username: str, type: str) -> int:
         return ChatSession.select().where((ChatSession.username == username) & (ChatSession.type == type)).count()
 
