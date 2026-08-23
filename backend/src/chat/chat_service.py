@@ -203,7 +203,7 @@ class ChatService(object):
 	def reset_test_sessions(self, project_name: str) -> dict:
 		self._project_service.reset_test_sessions(project_name)
 		automaton, state = self._project_service.get_automaton_and_state(project_name, type='test')
-		return {**Automaton.get_state_payload(state), "on-enter": automaton.init_action.on_enter}
+		return {**automaton.get_state_payload(state), "on-enter": automaton.init_action.on_enter}
 
 	def _is_session_active(self, session: dict, pool_active_id: int | None) -> bool:
 		fixed = get_session_type_strategy(session["type"]).default_active()
@@ -430,6 +430,13 @@ class ChatService(object):
 		target, so there's no 409 here, only the usual 404 for an unowned message_id."""
 		self._require_own_message(message_id)
 		return self._tracking_service.set_message_comment(message_id, comment)
+
+	def set_message_reaction(self, message_id: int, reaction: str | None) -> dict | None:
+		"""Sets or clears the reaction message_id received from the other
+		party — the user's own choice on a bot message. Every message is a
+		legitimate target, same as set_message_comment above."""
+		self._require_own_message(message_id)
+		return self._db.set_message_reaction(message_id, reaction)
 
 	def clear_session_annotations(self, session_id: int) -> None:
 		"""Clears every expert annotation (expected_state and

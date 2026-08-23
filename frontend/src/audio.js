@@ -18,6 +18,35 @@ export function playMessageChime() {
   }
 }
 
+// A soft, low-pitched notification for a reaction landing on a message —
+// deliberately quieter and lower than playMessageChime's own bright "new
+// reply" ping, so it reads as a discreet aside, not another alert. Two
+// short notes, root then a major third above (e.g. C -> E), not a single
+// held tone.
+export function playReactionChime() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)()
+    const noteDuration = 0.12
+    const notes = [261.63, 329.63] // C4, then E4 (major third above)
+    notes.forEach((frequency, i) => {
+      const start = ctx.currentTime + i * noteDuration
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.value = frequency
+      gain.gain.setValueAtTime(0.001, start)
+      gain.gain.exponentialRampToValueAtTime(0.06, start + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.001, start + noteDuration)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(start)
+      osc.stop(start + noteDuration)
+    })
+  } catch {
+    // Same tolerance as playMessageChime above.
+  }
+}
+
 // Tracks the currently playing narration, if any, so a new one never
 // overlaps a still-running previous one.
 let currentAudio = null

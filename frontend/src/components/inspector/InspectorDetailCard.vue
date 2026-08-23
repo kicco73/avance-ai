@@ -181,7 +181,7 @@ const hasSelectedElementBadges = computed(() => {
     // this card falls back to the same read-only badge set as non-editable.
     if (showEditForm.value) return true
     const d = props.selectedElement.data
-    return !!props.roleBadge || isSelectedStateCurrent.value || d.isStart || d.final || !d.chat || d.historyCutoff
+    return !!props.roleBadge || isSelectedStateCurrent.value || d.isStart || d.final || !d.chat || d.historyCutoff || d.reactionsEnabled
   }
   // An open action's badges are suppressed entirely — only the "Action"
   // kind-badge in the header stays. Closed, same read-only set as
@@ -255,10 +255,17 @@ function selectAttachment(fileName) {
               title="Click to toggle"
               @click.stop="commitBoolField('history-cutoff', !selectedElement.data.historyCutoff)"
             >History cutoff</span>
+            <span
+              class="inspector-detail-badge inspector-detail-badge-toggle"
+              :class="selectedElement.data.reactionsEnabled ? 'inspector-detail-badge-toggle-on' : 'inspector-detail-badge-toggle-off'"
+              title="Click to toggle"
+              @click.stop="commitBoolField('reactions-enabled', !selectedElement.data.reactionsEnabled)"
+            >Reactions</span>
           </template>
           <template v-else>
             <span v-if="!selectedElement.data.chat" class="inspector-detail-badge inspector-detail-badge-neutral">No chat</span>
             <span v-if="selectedElement.data.historyCutoff" class="inspector-detail-badge inspector-detail-badge-neutral">History cutoff</span>
+            <span v-if="selectedElement.data.reactionsEnabled" class="inspector-detail-badge inspector-detail-badge-neutral">Reactions</span>
           </template>
         </template>
         <template v-else-if="!showEditForm">

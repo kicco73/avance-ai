@@ -18,10 +18,11 @@ import {
   postListenTranscribe,
   postResetTestSessions,
   postTruncateSession,
-  projectFileContentUrl
+  projectFileContentUrl,
+  putMessageReaction
 } from './api.js'
 import { sendMessage as sendChatMessage, onNotification } from './chatClient.js'
-import { playMessageChime, playMessageAudio } from './audio.js'
+import { playMessageChime, playMessageAudio, playReactionChime } from './audio.js'
 import { runOnEnterScript } from './onEnterActions.js'
 import { clearApiError } from './errorStore.js'
 import { confirmDialog } from './dialogStore.js'
@@ -220,7 +221,10 @@ onNotification(handleNotification)
 // Shapes a backend message row into what the chat UI renders — shared by
 // every place that (re)loads a session's full history from scratch.
 function toStoreMessage(m) {
-  return { role: m.role, content: m.content, audioText: m.audio_text, timestamp: m.timestamp, failed: false, messageId: m.id }
+  return {
+    role: m.role, content: m.content, audioText: m.audio_text, reaction: m.reaction,
+    timestamp: m.timestamp, failed: false, messageId: m.id
+  }
 }
 
 // testModeProjectName set: EditProjectView's embedded "Test" chat,
@@ -482,7 +486,22 @@ async function submitMessage(message) {
     // transition exactly on this message rather than a raw server
     // timestamp. Read directly from assistant_message_id/user_message_id,
     // never from result.reply (always empty for a live turn).
-    if (result.user_message_id != null) message.messageId = result.user_message_id
+    // Same "replace, don't mutate in place" rule as onChunk above — `message`
+    // is the raw object this closure was handed, not the reactive proxy
+    // Vue wraps around whatever's actually sitting in messages.value, so
+    // mutating it directly here would silently never re-render.
+    const userIdx = messages.value.findIndex((m) => m.id === message.id)
+    if (userIdx !== -1) {
+      messages.value[userIdx] = {
+        ...messages.value[userIdx],
+        messageId: result.user_message_id ?? messages.value[userIdx].messageId,
+        // The bot's own reaction to this user message, if any — applied
+        // live here so the UI doesn't need a full messages refetch to show
+        // it (see TrackingProcessor._build_turn_response's own user_message_reaction).
+        reaction: result.user_message_reaction ?? null
+      }
+      if (result.user_message_reaction) playReactionChime()
+    }
 
     const idx = messages.value.findIndex((m) => m.id === assistantMsgId)
     if (idx !== -1) {
@@ -576,6 +595,22 @@ export async function handleResend(index) {
   const message = messages.value[index]
   if (!message || message.role !== 'user') return
   await submitMessage(message)
+}
+
+// The user's own reaction to a bot message — keyed by messageId, not
+// position, so both ChatWindow.vue's own default timeline and
+// ChatTimeline.vue's message+transition one (RunChat.vue/LabelProjectView.vue)
+// can call this the same way despite indexing messages differently.
+export async function handleReact(messageId, reaction) {
+  const message = messages.value.find((m) => m.messageId === messageId)
+  if (!message || message.role !== 'assistant') return
+  try {
+    await putMessageReaction(messageId, reaction)
+    message.reaction = reaction
+    if (reaction) playReactionChime()
+  } catch {
+    // already surfaced via apiFetch
+  }
 }
 
 export async function handleAction(actionName) {

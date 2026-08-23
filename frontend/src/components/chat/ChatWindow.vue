@@ -50,6 +50,7 @@ import {
   handleDeleteSession,
   handleSend,
   handleResend,
+  handleReact,
   handleVoiceMessage,
   handleAction,
   toggleAudio,
@@ -328,8 +329,10 @@ watch(
           :key="msg.messageId || msg.id || i"
           :message="msg"
           :spoken-text-enabled="spokenTextEnabled"
+          :reactions="state?.reactions || []"
           show-timestamp
           @resend="resend(i)"
+          @react="handleReact(msg.messageId, $event)"
         />
       </slot>
     </div>

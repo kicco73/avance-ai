@@ -166,6 +166,17 @@ export function putMessageComment(messageId, comment) {
   })
 }
 
+// Sets (reaction given) or clears (null) the user's own reaction to a bot
+// message — a key out of the active project's own `reactions` dict (see
+// chatStore.js's state.reactions).
+export function putMessageReaction(messageId, reaction) {
+  return apiFetch(`${API_URL}/chat/messages/${encodeURIComponent(messageId)}/reaction`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reaction })
+  })
+}
+
 // Sets/clears a session's persisted "reviewed by a domain expert" flag —
 // the source of truth for has_annotations. A toggle: calling with
 // `false` un-marks it again.

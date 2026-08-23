@@ -66,6 +66,10 @@ class State:
     # (see chat.turn_processor.TurnProcessor._begin_turn) — independent of
     # fixed_message/history_cutoff: neither implies this.
     chat: bool = True
+    # If true, the bot may react to the user's message this turn, choosing
+    # from the project's whole `reactions` dict — never a per-state subset
+    # (see TurnProtocol's own conditional inclusion of the 'reaction' tag).
+    reactions_enabled: bool = False
 
     @property
     def has_triggerable_actions(self) -> bool:
@@ -80,6 +84,17 @@ class Signal:
     # Attachments for this signal's definition, sent only with the signals
     # computation call (never with normal chat turns).
     attachments: dict[str, MemoryArchive] = field(default_factory=dict[str, MemoryArchive])
+    ui_description: str | None = None
+
+
+@dataclass
+class Reaction:
+    """One project-declared reaction a user or the bot can attach to a
+    message — same shape as Signal, same reasoning: `ui_description`
+    falls back to `definition` when absent (see AutomatonBuilder._build_reaction)."""
+    name: str
+    ui_label: str
+    definition: str
     ui_description: str | None = None
 
 
@@ -104,12 +119,21 @@ ActionPayload = TypedDict("ActionPayload", {
     "on-enter": str | None,
 })
 
+class ReactionOptionPayload(TypedDict):
+    key: str
+    ui_label: str
+
 class StatePayload(TypedDict):
     key: str
     ui_label: str
     ui_description: str | None
     final: bool
     chat: bool
+    # The project's whole reaction vocabulary, independent of `key` — a
+    # user can react with any of these on any bot message, regardless of
+    # which state produced it. See State.reactions_enabled for the bot's
+    # own, per-state gated side of this.
+    reactions: list[ReactionOptionPayload]
     actions: list[ActionPayload]
 
 class SignalPayload(TypedDict):
@@ -333,6 +357,9 @@ class Automaton(object):
         # Only AutomatonBuilder.build parses a project's declared env:
         # section and passes a real list; other construction sites have none.
         env_keys: list[EnvKey] | None = None,
+        # Same reasoning as env_keys above — only AutomatonBuilder.build
+        # parses a project's declared reactions: section.
+        reactions: list[Reaction] | None = None,
         # The optional top-level `project:` section. `project_id` is the
         # identifier this project is reachable as from other projects'
         # automaton.* references, globally unique (enforced by ProjectService).
@@ -346,6 +373,7 @@ class Automaton(object):
         self.states = states
         self.general_prompt = general_prompt
         self.signals = signals
+        self.reactions = reactions or []
         self.env_keys = env_keys or []
         self.project_id = project_id
         self.project_ui_label = project_ui_label
@@ -399,10 +427,19 @@ class Automaton(object):
         }
 
     @staticmethod
-    def get_state_payload(state: State) -> StatePayload:
+    def get_reaction_option_payload(reaction: Reaction) -> ReactionOptionPayload:
+        """Serializes `reaction` for the frontend's reaction picker —
+        deliberately omits definition/ui_description, the AI-facing
+        fields that decide when the bot itself would use it, same
+        reasoning as get_action_payload's own omission of `trigger`."""
+        return {"key": reaction.name, "ui_label": reaction.ui_label}
+
+    def get_state_payload(self, state: State) -> StatePayload:
         """Serializes `state` for the frontend. Safety barrier: the
         reserved implicit state ("") must never reach a caller outside
-        ChatService.open_if_needed."""
+        ChatService.open_if_needed. Not static, unlike its siblings above:
+        `reactions` is this automaton's own whole vocabulary, not
+        something `state` itself carries."""
         if state.key == "":
             raise RuntimeError("Refusing to serialize the implicit initial state ('').")
         return {
@@ -411,6 +448,7 @@ class Automaton(object):
             "ui_description": state.ui_description,
             "final": state.final,
             "chat": state.chat,
+            "reactions": [self.get_reaction_option_payload(r) for r in self.reactions],
             "actions": [Automaton.get_action_payload(a) for a in state.actions],
         }
 

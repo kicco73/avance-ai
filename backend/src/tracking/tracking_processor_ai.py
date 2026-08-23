@@ -21,6 +21,8 @@ class TrackingProcessorAfterAiMessage(TrackingProcessor):
 			rv = self.metadata.env = self.metadata_processor.parse_raw_env(value)
 		elif key == 'audio':
 			rv = self.metadata.audio = value
+		elif key == 'reaction':
+			rv = self.metadata.reaction = value.strip() or None
 		self.metadata.on_metadata(key, rv)
 	
 	async def _get_ai_reply(self) -> OutVariables:

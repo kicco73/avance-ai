@@ -458,7 +458,8 @@ const rawLiveMessages = computed(() =>
     timestamp: m.timestamp,
     role: m.role,
     content: m.content,
-    audio_text: m.audioText
+    audio_text: m.audioText,
+    reaction: m.reaction
   }))
 )
 

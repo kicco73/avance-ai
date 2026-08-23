@@ -105,6 +105,52 @@ signals:
     attachments:
       - acute_risk_detection_instructions.txt
 
+# Bidirectional message reactions — the user can react to any bot message
+# with these at any time; the bot may react to the user's message only in
+# a state with reactions-enabled: true (see below), never a subset of this
+# vocabulary.
+reactions:
+
+  supportive:
+    ui-label: "🙏"
+    ui-description: >
+      Silent acknowledgment, without minimizing or correcting.
+    definition: |
+      Use when the user has shared something vulnerable — shame, fear,
+      a difficult admission — and a verbal response would feel like
+      over-explaining or clinical. Never use on a message describing an
+      acute risk event; that always gets a full response, not a reaction.
+
+  encouraging:
+    ui-label: "💪"
+    ui-description: >
+      Light affirmation of effort, not a full congratulation.
+    definition: |
+      Use when the user reports a small, concrete step taken toward
+      change — resisting an urge, showing up to a hard conversation,
+      sticking to a plan for one more day — that doesn't yet warrant the
+      fuller acknowledgment a genuine milestone gets.
+
+  celebrating:
+    ui-label: "🎉"
+    ui-description: >
+      Marks a genuine milestone, alongside the fuller reply it deserves.
+    definition: |
+      Use only alongside a real milestone: committing to a concrete plan,
+      reaching a sustained-behavior threshold, or another moment that
+      already triggers celebrate() on-enter. Never use it as a
+      substitute for actually acknowledging the milestone in the reply.
+
+  listening:
+    ui-label: "🤍"
+    ui-description: >
+      Acknowledges being heard, without judgment or a next step.
+    definition: |
+      Use when the user is venting, disclosing a relapse, or simply
+      talking through something without asking for advice or a plan —
+      especially right after a lapse, when the goal is re-engagement,
+      not analysis.
+
 states:
 
   Precontemplation:
@@ -116,6 +162,7 @@ states:
       Read attachment.
     attachments:
       - precontemplation_instructions.txt
+    reactions-enabled: true
     actions:
       - name: raise awareness
         ui-label: "User acknowledges a possible problem"
@@ -133,6 +180,7 @@ states:
       may be wrong but not committed to acting. Use motivational-interviewing style:
       explore the decisional balance (what they'd gain vs. lose by changing), elicit
       "change talk" without arguing for change yourself. Never rush them toward a plan.
+    reactions-enabled: true
     actions:
       - name: resolve ambivalence
         ui-label: "Decisional balance shifts toward change"
@@ -149,6 +197,7 @@ states:
       plan concretely — anticipate obstacles, identify triggers, define a realistic
       first step and a target date. Keep it collaborative, not prescriptive: ask what
       they think would work, don't hand them a plan.
+    reactions-enabled: true
     actions:
       - name: commit to plan
         ui-label: "User sets a concrete date/step and reduces baseline consumption"
@@ -168,6 +217,7 @@ states:
       for high-risk situations. Watch for signs of an unfolding high-risk situation
       or an acute risk signal in what they write.
 
+    reactions-enabled: true
     actions:
       # order matters: safety-critical actions are evaluated first (FIFO priority)
       - name: detect risk
@@ -197,6 +247,7 @@ states:
       difficulty without alarmism. Do not treat this as "finished" — stay alert for
       early signs of a high-risk situation.
     transition-log-level: WARNING
+    reactions-enabled: true
     actions:
       - name: detect risk
         ui-label: "Acute risk signal detected (e.g. self-harm ideation)"
@@ -220,6 +271,7 @@ states:
       happened without dwelling on it, reopen the door without demanding disclosure.
       The goal of this stage is simply to keep them engaged, not to analyze the lapse
       in depth yet.
+    reactions-enabled: true
     actions:
       - name: resume path
         ui-label: "Contact re-established after relapse, user re-engages"
@@ -248,3 +300,4 @@ states:
 
     actions: []
     history-cutoff: true
+    reactions-enabled: false

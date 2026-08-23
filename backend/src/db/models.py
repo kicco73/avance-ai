@@ -66,6 +66,10 @@ class Message(BaseModel):
     content = TextField()
     timestamp = DateTimeField(index=True, default=datetime.utcnow, null=True)
     audio_text = TextField(null=True)
+    # The key of the reaction this message received from the other party —
+    # the user's own choice on a bot message, or the bot's own choice on a
+    # user message (see automaton.Reaction/State.reactions_enabled).
+    reaction = TextField(null=True)
     session = ForeignKeyField(ChatSession, null=False, backref='messages', on_delete='CASCADE')
 
 class User(BaseModel):

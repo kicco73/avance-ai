@@ -21,6 +21,7 @@ function normalizeResult(data) {
   return {
     reply: data.reply || [],
     user_message_id: data.user_message_id,
+    user_message_reaction: data.user_message_reaction,
     assistant_message_id: data.assistant_message_id,
     state: data.state,
     state_changed: data.state_changed,

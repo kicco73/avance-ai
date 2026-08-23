@@ -11,12 +11,16 @@ class TurnProtocol(ABC):
 
 	prompt_preambles: dict[str,str] = {}
 
-	def __init__(self, ai_service: AiService, evaluate_signals_first) -> None:
+	def __init__(self, ai_service: AiService, evaluate_signals_first, reactions_enabled: bool = False) -> None:
 		self._ai_service = ai_service
+		# 'reaction' is the one conditional tag here — every other one is
+		# always present. Its presence, not a separate check afterward, is
+		# what enforces State.reactions_enabled (see automaton.State).
+		reaction_tags = ('reaction',) if reactions_enabled else ()
 		if evaluate_signals_first:
-			self.include_tags = 'signals', 'audio', 'text', 'env'
+			self.include_tags = ('signals', *reaction_tags, 'audio', 'text', 'env')
 		else:
-			self.include_tags = 'audio', 'text', 'signals', 'env'
+			self.include_tags = ('audio', 'text', 'signals', *reaction_tags, 'env')
 
 	def generate_reply(
 		self,
@@ -25,11 +29,20 @@ class TurnProtocol(ABC):
 		env: Env,
 		chat_history: list[dict],
 		on_metadata: MetadataCallback,
+		# Same role as signal_definition — the project's own reaction
+		# vocabulary (name + definition), so the model actually knows what
+		# a 'reaction' value could be, not just that the field exists.
+		# Default None: every caller that never enables reactions (the
+		# common case for most existing tests) is unaffected.
+		reaction_definition: str | None = None,
 	) -> AsyncIterator[str]:
 		"""Returns chunks of text coming from the response streaming and
 		calls metadata callback to handle tags in a compatible way for V1 and V2.
 		"""
-		final_prompt = self.__build_prompt(text=base_prompt, env=env.serialise_as_text(), signals=signal_definition, audio=None)
+		final_prompt = self.__build_prompt(
+			text=base_prompt, env=env.serialise_as_text(), signals=signal_definition,
+			reaction=reaction_definition, audio=None,
+		)
 		return self._generate_reply(final_prompt, chat_history, on_metadata)
 
 	@abstractmethod

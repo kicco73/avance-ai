@@ -29,7 +29,10 @@ const props = defineProps({
   // Whether a `timeline` prop change should snap the view to the bottom.
   // Turn off when a change can mean an annotation/comment mid-review
   // rather than a new message, so users aren't scrolled away mid-edit.
-  autoScroll: { type: Boolean, default: true }
+  autoScroll: { type: Boolean, default: true },
+  // Forwarded to MessageBubble.vue, same as spokenTextEnabled — this
+  // component has no opinion of its own on what's available to react with.
+  reactions: { type: Array, default: () => [] }
 })
 
 function stateLabel(stateKey) {
@@ -42,7 +45,7 @@ function actionLabel(transition) {
   return props.resolveActionLabel ? props.resolveActionLabel(transition.old_state, transition.action) : null
 }
 
-const emit = defineEmits(['select-message', 'select-transition'])
+const emit = defineEmits(['select-message', 'select-transition', 'react'])
 
 const rootEl = ref(null)
 
@@ -58,7 +61,7 @@ function scrollToBottom() {
 watch(() => props.timeline, () => { if (props.autoScroll) scrollToBottom() })
 
 function toBubbleMessage(m) {
-  return { role: m.role, content: m.content, audioText: m.audio_text, timestamp: m.timestamp }
+  return { role: m.role, content: m.content, audioText: m.audio_text, reaction: m.reaction, timestamp: m.timestamp }
 }
 
 function isMessageSelected(message) {
@@ -100,6 +103,8 @@ function isSelfLoop(transition) {
           :spoken-text-enabled="spokenTextEnabled"
           :signals-annotated="messageHasAnnotatedSignals(entry.message, signalsLog)"
           :imported="imported"
+          :reactions="reactions"
+          @react="emit('react', entry.message.id, $event)"
         />
       </div>
 

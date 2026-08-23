@@ -54,6 +54,11 @@ class CommentRequest(BaseModel):
     comment: str | None = None
 
 
+class ReactionRequest(BaseModel):
+    # None clears the reaction — see ChatService.set_message_reaction.
+    reaction: str | None = None
+
+
 class SetSessionLabeledRequest(BaseModel):
     # See ChatService.mark_session_labeled — the "Label sessions" view's
     # own "Mark done" button, a domain expert's explicit, toggleable

@@ -166,3 +166,45 @@ async def test_v2_after_mode_orders_audio_text_signals_env():
     ]
     events = await _run_v2(False, scripted)
     assert _first_occurrence_order(events) == ["audio", "text", "signals", "env"]
+
+
+# --- 'reaction' tag: excluded by default, inserted right after 'signals' ---
+
+def test_reaction_tag_excluded_by_default():
+    assert "reaction" not in TurnProtocolUsingSchema(FakeAiServiceV2([]), True).include_tags
+    assert "reaction" not in TurnProcotolUsingTextExtraction(FakeAiServiceV1([]), False).include_tags
+
+
+def test_reaction_tag_included_right_after_signals_when_enabled():
+    before = TurnProtocolUsingSchema(FakeAiServiceV2([]), True, reactions_enabled=True)
+    assert before.include_tags == ("signals", "reaction", "audio", "text", "env")
+
+    after = TurnProcotolUsingTextExtraction(FakeAiServiceV1([]), False, reactions_enabled=True)
+    assert after.include_tags == ("audio", "text", "signals", "reaction", "env")
+
+
+async def test_reaction_definition_text_reaches_the_built_prompt():
+    """Regression: the 'reaction' tag's own preamble alone never tells the
+    model which reaction keys actually exist for this project — same role
+    signal_definition plays for the 'signals' tag (see
+    TrackingProcessor._build_reaction_definition, the only real caller)."""
+    captured = {}
+
+    class CapturingAiService:
+        def is_provider_with_schema(self) -> bool:
+            return False
+
+        async def generate_stream(self, system_prompt, history):
+            captured["prompt"] = system_prompt
+            return
+            yield  # pragma: no cover - never reached, makes this an async generator
+
+    protocol = TurnProcotolUsingTextExtraction(CapturingAiService(), True, reactions_enabled=True)
+    reaction_definition = '- Definition of reactions:\n\t- Reaction "supportive":\nUse when vulnerable.'
+
+    async for _ in protocol.generate_reply(
+        BASE_PROMPT, None, _StubEnv(), HISTORY, lambda k, v: None, reaction_definition=reaction_definition,
+    ):
+        pass
+
+    assert reaction_definition in captured["prompt"]

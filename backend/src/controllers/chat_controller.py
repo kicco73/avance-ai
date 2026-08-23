@@ -21,6 +21,7 @@ from schemas import (
     AiModelSelectionRequest,
     AutoTrackingRequest,
     ChatMessageRequest,
+    ReactionRequest,
     SetEnvValueRequest,
     TriggersPreviewRequest,
 )
@@ -223,6 +224,13 @@ class ChatController(BaseController):
     def post_autotracking(self, session_id: int, req: AutoTrackingRequest):
         self.chat_service.set_auto_tracking_enabled(session_id, req.enabled)
         return {"enabled": self.chat_service.is_auto_tracking_enabled(session_id)}
+
+    @put("/api/chat/messages/{message_id}/reaction")
+    def put_message_reaction(self, message_id: int, req: ReactionRequest):
+        """Sets or (reaction: null) clears the user's own reaction to
+        message_id — a bot message, chosen from the active project's
+        `reactions` dict. ChatServiceError (404) is handled globally."""
+        return self.chat_service.set_message_reaction(message_id, req.reaction)
 
     @get("/api/chat/messages/{message_id}/audio")
     def get_message_audio(self, message_id: int, request: Request):

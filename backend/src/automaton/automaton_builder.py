@@ -1,5 +1,5 @@
 from automaton.automaton import (
-    Action, EnvKey, MemoryArchive, Automaton, Signal, SourceDict, State,
+    Action, EnvKey, MemoryArchive, Automaton, Reaction, Signal, SourceDict, State,
     trigger_automaton_env_refs, trigger_automaton_project_refs, trigger_bare_names, trigger_namespace_refs,
     trigger_type_violations,
 )
@@ -77,6 +77,15 @@ class AutomatonBuilder(object):
             attachments=self._extract_required_archives(
                 raw_signal.get("attachments", []), all_archives, f"signal '{name}'"
             )
+        )
+
+    @staticmethod
+    def _build_reaction(name: str, raw_reaction: dict) -> Reaction:
+        return Reaction(
+            name=name,
+            ui_label=raw_reaction.get("ui-label", name),
+            ui_description=raw_reaction["ui-description"].strip() if raw_reaction.get("ui-description") else raw_reaction["definition"].strip(),
+            definition=raw_reaction["definition"].strip(),
         )
 
     @staticmethod
@@ -180,6 +189,7 @@ class AutomatonBuilder(object):
             attachments=self._extract_required_archives(raw_state.get("attachments", []), all_archives, f"state '{key}'"),
             history_cutoff=raw_state.get("history-cutoff", False),
             chat=raw_state.get("chat", True),
+            reactions_enabled=raw_state.get("reactions-enabled", False),
         )
 
     @staticmethod
@@ -366,6 +376,23 @@ class AutomatonBuilder(object):
                 f"reused as signal names: {', '.join(sorted(reserved_names))}"
             )
 
+        raw_reactions = raw.get("reactions", {})
+        if not isinstance(raw_reactions, dict):
+            raise ValueError(f"'reactions' must be a mapping of reaction name -> fields, got {type(raw_reactions).__name__}.")
+
+        reactions: dict[str, Reaction] = {}
+        reaction_names_by_ui_label: dict[str, str] = {}
+        for name, raw_reaction in raw_reactions.items():
+            reaction = self._build_reaction(name, raw_reaction)
+            existing_name = reaction_names_by_ui_label.get(reaction.ui_label)
+            if existing_name is not None:
+                raise ValueError(
+                    f"Reactions '{existing_name}' and '{name}' both use ui-label "
+                    f"'{reaction.ui_label}' — ui-label must be unique across all reactions."
+                )
+            reaction_names_by_ui_label[reaction.ui_label] = name
+            reactions[name] = reaction
+
         raw_env_keys = raw.get("env", {})
         if not isinstance(raw_env_keys, dict):
             raise ValueError(f"'env' must be a mapping of env key -> fields, got {type(raw_env_keys).__name__}.")
@@ -434,6 +461,7 @@ class AutomatonBuilder(object):
             states=states,
             general_prompt=raw.get("general-prompt", ""),
             signals=list(signals.values()),
+            reactions=list(reactions.values()),
             env_keys=list(env_keys.values()),
             general_attachments=general_attachments,
             attachments=all_archives,
