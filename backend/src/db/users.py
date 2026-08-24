@@ -82,6 +82,9 @@ class UserMixin:
             "last_login": _utc_iso(user.last_login),
         }
 
+    def set_user_role(self, user_id: str, role: str) -> None:
+        User.update(role=role).where(User.id == user_id).execute()
+
     def update_last_login(self, user_id) -> None:
         User.update(last_login=datetime.utcnow()).where(User.id == user_id).execute()
 

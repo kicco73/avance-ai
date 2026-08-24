@@ -36,7 +36,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
-  'start-explorer-drag', 'new-file', 'select-file', 'upload-file',
+  'start-explorer-drag', 'new-attachment', 'new-aspect', 'select-file', 'upload-file',
   'jump-to-definition', 'select', 'saved'
 ])
 
@@ -65,7 +65,8 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef 
       :uploading="uploading"
       :creating-file="creatingFile"
       :explorer-width="explorerWidth"
-      @new-file="emit('new-file')"
+      @new-attachment="emit('new-attachment')"
+      @new-aspect="emit('new-aspect')"
       @select-file="emit('select-file', $event)"
       @upload-file="emit('upload-file', $event)"
     />

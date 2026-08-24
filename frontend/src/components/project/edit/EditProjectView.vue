@@ -81,9 +81,6 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'saved'])
 
-// "New file" (handleNewFile below) only ever makes sense for a blank text
-// file — an image has to come from an actual upload.
-const TEXT_CREATABLE_PATTERN = /\.(txt|ya?ml|css)$/i
 // Upload (handleUploadFile below, and the file explorer's own hidden
 // <input accept>) additionally allows every image extension the backend
 // whitelists (see project_service.py's IMAGE_EXTENSIONS).
@@ -93,6 +90,18 @@ const UPLOADABLE_PATTERN = /\.(txt|ya?ml|css|png|jpe?g|gif|webp|svg)$/i
 // purely for immediate feedback; the backend enforces this authoritatively
 // regardless.
 const MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024
+
+// "New aspect" seeds index.css with its three customizable regions,
+// left empty — matches what both sample projects' own index.css style.
+const INDEX_CSS_SKELETON = `.chat-header {
+}
+
+.chat-body {
+}
+
+.chat-footer {
+}
+`
 
 function lineIndent(line) {
   const m = line.match(/^[ \t]*/)
@@ -1198,31 +1207,15 @@ async function handleUploadFile(event) {
   }
 }
 
-async function handleNewFile() {
-  // .yml/.yaml is technically accepted (see TEXT_CREATABLE_PATTERN) but
-  // never a sensible choice — index.yml is the only YAML file the
-  // automaton reads, so a second one could only be an inert attachment.
-  // validate runs inline as the user types, so pattern/existence errors
-  // show right under the field instead of bouncing off setApiError after
-  // the prompt's already closed.
-  const rawName = await promptDialog({
-    title: 'New file',
-    body: 'New file name (e.g. notes.txt):',
-    placeholder: 'notes.txt',
-    validate(value) {
-      const trimmed = value.trim()
-      if (!trimmed) return 'Enter a file name.'
-      if (!TEXT_CREATABLE_PATTERN.test(trimmed)) return 'Only .txt, .yml/.yaml, or .css files can be created.'
-      if (files.value.includes(trimmed)) return `A file named "${trimmed}" already exists.`
-      return null
-    }
-  })
-  if (rawName === null) return // cancelled
-  const name = rawName.trim()
+function toMdFileName(base) {
+  return `${base.replace(/\.md$/i, '')}.md`
+}
+
+async function createProjectFile(name, content) {
   creatingFile.value = true
   clearApiError()
   try {
-    await putProjectFile(props.projectName, name, '')
+    await putProjectFile(props.projectName, name, content)
     await loadFiles()
     await selectFile(name)
   } catch {
@@ -1230,6 +1223,30 @@ async function handleNewFile() {
   } finally {
     creatingFile.value = false
   }
+}
+
+// validate runs inline as the user types, so the existence error shows
+// right under the field instead of bouncing off setApiError after the
+// prompt's already closed.
+async function handleNewAttachment() {
+  const rawName = await promptDialog({
+    title: 'New attachment',
+    body: 'Attachment name (always saved as .md):',
+    placeholder: 'notes',
+    validate(value) {
+      const trimmed = value.trim()
+      if (!trimmed) return 'Enter a file name.'
+      if (files.value.includes(toMdFileName(trimmed))) return `A file named "${toMdFileName(trimmed)}" already exists.`
+      return null
+    }
+  })
+  if (rawName === null) return // cancelled
+  await createProjectFile(toMdFileName(rawName.trim()), '')
+}
+
+async function handleNewAspect() {
+  if (files.value.includes('index.css')) return
+  await createProjectFile('index.css', INDEX_CSS_SKELETON)
 }
 
 // index.yml is protected server-side too (delete_project_file rejects it) —
@@ -1498,7 +1515,8 @@ onBeforeUnmount(() => {
           :fired-action-edge="firedActionEdge"
           :selected-element="selectedGraphElement"
           @start-explorer-drag="startExplorerDrag"
-          @new-file="handleNewFile"
+          @new-attachment="handleNewAttachment"
+          @new-aspect="handleNewAspect"
           @select-file="selectFile"
           @upload-file="handleUploadFile"
           @jump-to-definition="(target) => jumpToDefinition(target, { silent: true })"

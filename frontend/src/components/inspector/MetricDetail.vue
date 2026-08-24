@@ -7,7 +7,8 @@ const props = defineProps({
   value: { type: Number, default: null },
   description: { type: String, default: null },
   badgeLabel: { type: String, default: 'Metric' },
-  highlighted: { type: Boolean, default: false }
+  highlighted: { type: Boolean, default: false },
+  color: { type: String, default: null }
 })
 
 const { visible: tooltipVisible, style: tooltipStyle, show: showTooltip, hide: hideTooltip } = useFloatingTooltip()
@@ -18,7 +19,7 @@ const formattedValue = computed(() => (typeof props.value === 'number' ? `${prop
 <template>
   <div class="metric-detail-block">
     <div class="metric-detail-header">
-      <span class="metric-detail-badge">{{ badgeLabel }}</span>
+      <span class="metric-detail-badge" :style="color ? { background: color } : null">{{ badgeLabel }}</span>
       <span class="metric-detail-name">{{ label }}</span>
     </div>
     <span v-if="description" class="metric-detail-description">{{ description }}</span>

@@ -25,8 +25,14 @@ const props = defineProps({
   imported: { type: Boolean, default: false },
   // Pins signal definitions to the exact project revision the session
   // under review ran against, rather than the current draft.
-  sessionId: { type: [Number, String], default: null }
+  sessionId: { type: [Number, String], default: null },
+  signalColors: { type: Object, default: null }
 })
+
+function badgeStyle(name) {
+  if (props.signalColors == null) return null
+  return { background: props.signalColors[name] ?? '#9e9e9e' }
+}
 
 const emit = defineEmits(['jump-to-definition', 'select-attachment', 'update-expected-signals', 'set-field', 'add-signal', 'delete'])
 
@@ -208,7 +214,7 @@ onMounted(loadSignals)
         <Transition name="crossfade" mode="out-in">
           <div v-if="editableFiles && expandedSignalName === entry.signal.name" key="edit" class="inspector-signal-form">
             <div class="inspector-signal-header">
-              <span class="inspector-detail-badge inspector-detail-badge-signal">Signal</span>
+              <span class="inspector-detail-badge inspector-detail-badge-signal" :style="badgeStyle(entry.signal.name)">Signal</span>
               <input
                 :ref="setLabelInputRef"
                 v-model="editUiLabel"
@@ -251,7 +257,7 @@ onMounted(loadSignals)
           </div>
           <div v-else key="readonly" class="inspector-signal-readonly">
             <div class="inspector-signal-header">
-              <span class="inspector-detail-badge inspector-detail-badge-signal">Signal</span>
+              <span class="inspector-detail-badge inspector-detail-badge-signal" :style="badgeStyle(entry.signal.name)">Signal</span>
               <span class="inspector-signal-name">{{ entry.signal.ui_label || entry.signal.name }}</span>
               <CardMenu v-if="editableFiles">
                 <button type="button" class="card-menu-item-danger" @click="handleDeleteSignal(entry.signal.name)">Delete</button>
@@ -288,7 +294,7 @@ onMounted(loadSignals)
 .inspector-signals-relevant-toggle { display: flex; align-items: center; gap: 0.35rem; margin-bottom: 0.6rem; font-size: 0.78rem; color: #555; cursor: pointer; user-select: none; flex-shrink: 0; }
 .inspector-signals-relevant-toggle input { cursor: pointer; }
 .signals-status { margin: 0; color: #444; font-size: 0.9rem; }
-.inspector-signal-list { display: flex; flex-direction: column; gap: 0.6rem; }
+.inspector-signal-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); align-items: start; gap: 0.6rem; }
 .inspector-signal-block { display: flex; flex-direction: column; gap: 0.2rem; padding: 0.6rem 0.75rem; border-radius: 8px; border: 1px solid #eee; background: #fafafa; }
 @keyframes inspector-signal-block-flash { from { background-color: #fff3b0; } to { background-color: #fafafa; } }
 .inspector-signal-block-flash { animation: inspector-signal-block-flash 1.5s ease-out; }

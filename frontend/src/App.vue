@@ -30,6 +30,7 @@ import {
 import { disconnect as disconnectChat } from './chatClient.js'
 import { clearApiError } from './errorStore.js'
 import { needsLogin, requireLogin } from './authStore.js'
+import { roleSatisfies } from './roles.js'
 import { confirmDialog, infoDialog } from './dialogStore.js'
 import {
   setCapabilities,
@@ -51,6 +52,13 @@ const showProfile = ref(false)
 const modelUploadInput = ref(null)
 const chatWindowRef = ref(null)
 const manageProjectsView = ref(null)
+// Set from ProfileMenu's own 'loaded' — it already fetches the current
+// user's full profile (getMe(), which includes role) for its avatar, so
+// this reuses that instead of a second, redundant /api/auth/me call.
+const currentUserRole = ref(null)
+function handleProfileLoaded(profile) {
+  currentUserRole.value = profile?.role ?? null
+}
 
 // Initial-boot backend readiness gate — entirely separate from the shared
 // error store (which is for runtime errors on an already-running app). 'checking': the
@@ -447,11 +455,12 @@ onBeforeUnmount(() => {
       />
 
       <div class="profile-menu-overlay">
-        <ProfileMenu @profile="showProfile = true" @logout="handleLogout" />
+        <ProfileMenu @profile="showProfile = true" @logout="handleLogout" @loaded="handleProfileLoaded" />
       </div>
 
-      <div class="settings-menu-overlay">
+      <div v-if="roleSatisfies(currentUserRole, 'supervisor')" class="settings-menu-overlay">
         <SettingsMenu
+          :role="currentUserRole"
           @manage-projects="showManageProjects = true"
           @manage-users="showManageUsers = true"
           @label-sessions="handleSettingsLabelSessions"
@@ -501,6 +510,7 @@ onBeforeUnmount(() => {
 
     <ManageUsersView
       v-if="showManageUsers"
+      :current-user-role="currentUserRole"
       @close="showManageUsers = false"
     />
 

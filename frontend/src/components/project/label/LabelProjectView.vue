@@ -302,6 +302,9 @@ const currentSessionIsImported = computed(() => currentSession.value?.type === '
 // Every registered user, fetched once — same list ManageUsersView.vue
 // shows, reused here just to resolve a live session's `username` (the
 // user's own id/email) into a full profile for the Info tab's card below.
+// GET /api/users is supervisor-and-up, and every entry point into this
+// view already requires at least supervisor (see App.vue), so this is
+// always reachable here.
 const users = ref([])
 async function loadUsers() {
   try {
