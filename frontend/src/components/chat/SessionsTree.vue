@@ -9,6 +9,7 @@ const props = defineProps({
   loading: { type: Boolean, default: false },
   selectedNodeId: { type: String, default: null },
   allowImport: { type: Boolean, default: false },
+  importing: { type: Boolean, default: false },
   allowDownloadAll: { type: Boolean, default: false },
   downloadingAll: { type: Boolean, default: false },
   collapsed: { type: Boolean, default: false },
@@ -228,9 +229,19 @@ const {
     <span v-if="!collapsed" class="sessions-tree-title">Sessions</span>
     <div style="display: flex">
       <div v-if="!collapsed && allowImport" class="sessions-tree-header-actions">
-        <button type="button" class="sessions-tree-icon-btn" title="Import transcript(s) — .txt or a 'Download all' .json export" @click="triggerImport">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+        <button
+          type="button"
+          class="sessions-tree-icon-btn"
+          :class="{ 'sessions-tree-icon-btn-busy': importing }"
+          :disabled="importing"
+          :title="importing ? 'Importing…' : `Import transcript(s) — .txt or a 'Download all' .json export`"
+          @click="triggerImport"
+        >
+          <svg v-if="!importing" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
             <path d="M12 3l4 4h-3v6h-2V7H8l4-4zM5 19v-6h2v6h10v-6h2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z" />
+          </svg>
+          <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" class="sessions-tree-spinner">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="42 14" />
           </svg>
         </button>
         <input ref="importInput" type="file" accept=".txt,text/plain,.json,application/json" multiple class="sessions-tree-import-input" @change="onImportFileChosen" />
@@ -389,6 +400,23 @@ const {
 .sessions-tree-icon-btn:hover {
   background: #4a6fa5;
   color: white;
+}
+
+.sessions-tree-icon-btn-busy,
+.sessions-tree-icon-btn-busy:hover {
+  cursor: default;
+  background: white;
+  color: #4a6fa5;
+}
+
+.sessions-tree-spinner {
+  animation: sessions-tree-spin 0.8s linear infinite;
+}
+
+@keyframes sessions-tree-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .collapse-toggle-btn {

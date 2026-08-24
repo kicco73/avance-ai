@@ -103,13 +103,18 @@ function toggleBenchmarkSessionsPanel() {
 // all" .json exports) uploaded in one request — all per-file/per-session
 // dispatch and error handling happens server-side; this just renders the
 // returned result.
+const importingSessions = ref(false)
+
 async function handleImportSession(files) {
+  importingSessions.value = true
   let result
   try {
     result = await postImportSessions(props.projectName, files)
   } catch {
     // already surfaced via apiFetch
     return
+  } finally {
+    importingSessions.value = false
   }
 
   if (result.last_session_id != null) {
@@ -617,6 +622,7 @@ onBeforeUnmount(() => {
               :loading="sessionsLoading"
               :selected-node-id="treeSelectedNodeId"
               :allow-import="true"
+              :importing="importingSessions"
               :allow-download-all="true"
               :downloading-all="downloadingSessions"
               :collapsed="!benchmarkSessionsPanelOpen"

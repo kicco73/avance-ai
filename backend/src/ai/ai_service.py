@@ -97,13 +97,21 @@ class AiService(object):
 		system_prompt: str,
 		history: list[dict]
 	) -> str:
-		return await self._active_provider.generate(system_prompt, history)
+		chunks: list[str] = []
+		async for chunk in self.generate_stream(system_prompt, history):
+			chunks.append(chunk)
+		return "".join(chunks)
 
 	def generate_stream(
 		self,
 		system_prompt: str,
 		history: list[dict],
 	) -> AsyncIterator[str]:
+		if self.is_provider_with_schema():
+			return self.generate_stream_with_metadata(
+				system_prompt, history, on_metadata=lambda name, value: None,
+				schema={"text": "Normal textual response, in markdown format, rendered as text."},
+			)
 		return self._active_provider.generate_stream(system_prompt, history)
 
 	def is_provider_with_schema(self) -> bool:

@@ -186,6 +186,19 @@ class LabelProjectController(BaseController):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
+    @get("/api/projects/{project_name}/benchmark-runs/export", role="supervisor")
+    def get_benchmark_export(self, project_name: str):
+        payload = self.benchmark_run_service.export_results(project_name)
+        content = json.dumps(payload, indent=2).encode("utf-8")
+        encoded_project_name = quote(project_name)
+        return Response(
+            content=content,
+            media_type="application/json",
+            headers={
+                "Content-Disposition": f"attachment; filename=\"benchmark.json\"; filename*=UTF-8''{encoded_project_name}-benchmark.json"
+            },
+        )
+
     @get("/api/projects/{project_name}/benchmark-runs/{run_id}", role="supervisor")
     def get_benchmark_run(self, project_name: str, run_id: int):
         """One BenchmarkRun, its domain data merged with its Job's

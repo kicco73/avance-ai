@@ -78,7 +78,7 @@ class ChatService(object):
 	def _owns_session(self, session_username: str) -> bool:
 		if session_username == self._username:
 			return True
-		return session_username.startswith('Test user ') and role_satisfies(Session().role, 'supervisor')
+		return role_satisfies(Session().role, 'supervisor')
 
 	def get_message_audio_text(self, message_id: int) -> str | None:
 		return self._db.get_message_audio_text(message_id)

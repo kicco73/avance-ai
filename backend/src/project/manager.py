@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 # session_export.py-shaped JSON array, imported-only, never a project file
 # (excluded before AutomatonBuilder sees `files`, never persisted as Archive).
 SESSIONS_EXPORT_FILENAME = "sessions.json"
+BENCHMARK_EXPORT_FILENAME = "benchmark.json"
 
 # "New project" starts from this sample zip, resolved off this module's own
 # location, not the cwd.
@@ -363,6 +364,9 @@ class ProjectManager:
             raw_sessions = files.pop(SESSIONS_EXPORT_FILENAME, None)
             assert not isinstance(raw_sessions, bytes)  # .json is never in IMAGE_EXTENSIONS, always read as text above
             sessions_to_import = self._parse_sessions_export(raw_sessions)
+            raw_benchmark = files.pop(BENCHMARK_EXPORT_FILENAME, None)
+            assert not isinstance(raw_benchmark, bytes)
+            benchmark_to_import = self._parse_benchmark_export(raw_benchmark)
             new_automaton, to_persist = self.prepare_update(project_name, files)
         except (zipfile.BadZipFile, ValueError) as exc:
             raise ValueError(str(exc)) from exc
@@ -386,6 +390,7 @@ class ProjectManager:
             self._db.save_project_files(project_name, to_persist_bytes, content_types)
         await self.finalize_update(project_name, new_automaton, commit)
         self._import_sessions_export(project_name, sessions_to_import)
+        self._import_benchmark_export(project_name, benchmark_to_import)
 
         return {"success": True, "project_name": project_name}
 
@@ -418,6 +423,35 @@ class ProjectManager:
                 logger.exception(
                     "Skipped a malformed session while importing '%s' from '%s'.",
                     project_name, SESSIONS_EXPORT_FILENAME,
+                )
+
+    @staticmethod
+    def _parse_benchmark_export(raw_benchmark: str | None) -> list[dict]:
+        if raw_benchmark is None:
+            return []
+        try:
+            parsed = json.loads(raw_benchmark)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"'{BENCHMARK_EXPORT_FILENAME}' is not valid JSON: {exc}") from exc
+        if not isinstance(parsed, list):
+            raise ValueError(f"'{BENCHMARK_EXPORT_FILENAME}' must be a JSON array of benchmark results.")
+        return parsed
+
+    def _import_benchmark_export(self, project_name: str, entries: list[dict]) -> None:
+        if not entries:
+            return
+        revision = self._db.get_project_revision(project_name)
+        edit_count = self._db.get_project_draft_edit_count(project_name)
+        for entry in entries:
+            try:
+                self._db.upsert_benchmark_aggregate_result(
+                    project_name, revision, edit_count,
+                    entry['kind'], entry.get('target'), entry['strategy'], json.dumps(entry['results']),
+                )
+            except (KeyError, TypeError):
+                logger.exception(
+                    "Skipped a malformed benchmark result while importing '%s' from '%s'.",
+                    project_name, BENCHMARK_EXPORT_FILENAME,
                 )
 
     def _unique_project_name(self, base: str) -> str:
@@ -456,6 +490,9 @@ class ProjectManager:
             )
             if imported_sessions:
                 zf.writestr(SESSIONS_EXPORT_FILENAME, json.dumps(imported_sessions, indent=2))
+            benchmark_results = self._db.list_benchmark_aggregate_results(project_name)
+            if benchmark_results:
+                zf.writestr(BENCHMARK_EXPORT_FILENAME, json.dumps(benchmark_results, indent=2))
 
         return buffer.getvalue()
 

@@ -207,6 +207,23 @@ class BenchmarkRunObservation(BaseModel):
     class Meta:
         indexes = ((('run', 'session'), False),)
 
+class BenchmarkAggregateResult(BaseModel):
+    id = AutoField()
+    project_name = CharField(index=True)
+    revision = IntegerField(null=False)
+    project_draft_edit_count = IntegerField(null=False)
+    kind = CharField()
+    target = CharField(default='')
+    strategy = CharField()
+    results = TextField(null=False)
+    created_at = DateTimeField(default=datetime.utcnow)
+
+    class Meta:
+        indexes = (
+            (('project_name', 'revision'), False),
+            (('project_name', 'revision', 'kind', 'target', 'strategy'), True),
+        )
+
 class SystemWarning(BaseModel):
     """A cross-project reference (automaton.<project>.state/env.<key>)
     that resolved to None at runtime instead of raising — one of three

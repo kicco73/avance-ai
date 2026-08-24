@@ -8,6 +8,7 @@ from chat.chat_service import ChatService, ChatServiceError
 from chat.session_manager import ChatSessionManager
 from jobs import JobQueue, PersistedJobSink
 from metrics.metric_service import MetricService
+from session import Session
 from tracking.tracking_service import TrackingService
 
 
@@ -60,6 +61,9 @@ async def test_get_messages_raises_for_a_deleted_session(chat_service, db):
 
 
 async def test_get_messages_raises_for_someone_elses_session(chat_service, db):
+    # Only a plain "user" is denied — a supervisor owns every session (see
+    # ChatService._owns_session), so this must downgrade the default fixture role.
+    Session().role = "user"
     db.ensure_project("proj")
     db.publish_project("proj")
     session_id = db.create_chat_session(
@@ -82,6 +86,9 @@ def test_delete_session_raises_for_unknown_session(chat_service):
 
 
 def test_delete_session_raises_for_someone_elses_session(chat_service, db):
+    # Only a plain "user" is denied — a supervisor owns every session (see
+    # ChatService._owns_session), so this must downgrade the default fixture role.
+    Session().role = "user"
     db.ensure_project("proj")
     db.publish_project("proj")
     session_id = db.create_chat_session(

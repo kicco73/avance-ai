@@ -104,6 +104,10 @@ class BenchmarkRunService:
     def reset_cache(self, project_name: str) -> None:
         run_ids = self._db.delete_benchmark_runs(project_name)
         self._db.delete_jobs_by_reference_ids('benchmark_run', run_ids)
+        self._db.delete_benchmark_aggregate_results(project_name)
+
+    def export_results(self, project_name: str) -> list[dict]:
+        return self._db.list_benchmark_aggregate_results(project_name)
 
     def get_run(self, run_id: int) -> dict:
         run = self._db.get_benchmark_run(run_id)
@@ -242,7 +246,18 @@ class BenchmarkRunService:
             return fresh['id']
         return new_run['id']
 
-    def _pooled_sub_runs_work(self, sub_run_ids: list[int], project_name: str, label: str) -> JobWork:
+    def _persist_aggregate_result(
+        self, project_name: str, kind: str, target: str | None, strategy: str, result: dict | list[dict],
+    ) -> None:
+        revision = self._db.get_project_revision(project_name)
+        edit_count = self._db.get_project_draft_edit_count(project_name)
+        self._db.upsert_benchmark_aggregate_result(
+            project_name, revision, edit_count, kind, target, strategy, json.dumps(result),
+        )
+
+    def _pooled_sub_runs_work(
+        self, sub_run_ids: list[int], project_name: str, label: str, kind: str, target: str | None, strategy: str,
+    ) -> JobWork:
         async def work(on_progress: OnProgress) -> tuple[str | None, str | None]:
             completed = 0
             for run_id in sub_run_ids:
@@ -253,6 +268,7 @@ class BenchmarkRunService:
                 on_progress(completed)
 
             result = self._aggregate_pooled_runs(sub_run_ids, project_name)
+            self._persist_aggregate_result(project_name, kind, target, strategy, result)
             return None, json.dumps(result)
         return work
 
@@ -276,6 +292,7 @@ class BenchmarkRunService:
                 on_progress(completed)
 
             result = self._aggregate_signal_accuracy(sub_run_ids, state_key)
+            self._persist_aggregate_result(project_name, 'state', state_key, strategy, result)
             return None, json.dumps(result)
 
         return self._ephemeral_jobs.submit(
@@ -300,6 +317,7 @@ class BenchmarkRunService:
                 on_progress(completed)
 
             result = self._aggregate_signal_name_accuracy(sub_run_ids, signal_name)
+            self._persist_aggregate_result(project_name, 'signal', signal_name, strategy, result)
             return None, json.dumps(result)
 
         return self._ephemeral_jobs.submit(
@@ -316,7 +334,7 @@ class BenchmarkRunService:
 
         return self._ephemeral_jobs.submit(
             kind='sessions_aggregation', reference_id=None, total=len(sub_run_ids),
-            work=self._pooled_sub_runs_work(sub_run_ids, project_name, 'sessions aggregation'),
+            work=self._pooled_sub_runs_work(sub_run_ids, project_name, 'sessions aggregation', 'sessions', None, strategy),
         )
 
     def start_user_sessions_run_job(self, username: str, project_name: str, strategy: str) -> int:
@@ -329,7 +347,9 @@ class BenchmarkRunService:
 
         return self._ephemeral_jobs.submit(
             kind='user_sessions_aggregation', reference_id=None, total=len(sub_run_ids),
-            work=self._pooled_sub_runs_work(sub_run_ids, project_name, f'user {username!r} sessions aggregation'),
+            work=self._pooled_sub_runs_work(
+                sub_run_ids, project_name, f'user {username!r} sessions aggregation', 'user_sessions', username, strategy,
+            ),
         )
 
     def start_users_aggregation_job(self, project_name: str, strategy: str) -> int:
@@ -361,6 +381,7 @@ class BenchmarkRunService:
                 self._aggregate_pooled_runs(ids, project_name) for ids in sub_run_ids_by_user.values()
             ]
             result = self._aggregate_across_results(per_user_results)
+            self._persist_aggregate_result(project_name, 'users', None, strategy, result)
             return None, json.dumps(result)
 
         return self._ephemeral_jobs.submit(
