@@ -1,10 +1,11 @@
 <script setup>
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Chart, LineController, LineElement, PointElement, LinearScale, TimeScale, Tooltip } from 'chart.js'
+import zoomPlugin from 'chartjs-plugin-zoom'
 import 'chartjs-adapter-date-fns'
 import { getMetrics, getMetricsHistory } from '../../api.js'
 
-Chart.register(LineController, LineElement, PointElement, LinearScale, TimeScale, Tooltip)
+Chart.register(LineController, LineElement, PointElement, LinearScale, TimeScale, Tooltip, zoomPlugin)
 
 const props = defineProps({
   projectName: { type: String, required: true },
@@ -22,6 +23,7 @@ const PALETTE = [
 const SMOOTHING_WINDOW = 3
 const SESSION_START_COLOR = '#9e9e9e'
 const LINE_HIT_TOLERANCE_PX = 5
+const POINT_HIT_TOLERANCE_PX = 20
 // A line whose timestamp is the domain's own min/max lands exactly on
 // the axis border and blends into it — nudged inward so it stays
 // visually distinct from the axis rather than looking absent.
@@ -57,14 +59,28 @@ const metricLabels = ref({})
 const canvasEl = ref(null)
 const lineTooltip = ref(null)
 const lineTooltipStyle = ref({})
+const isZoomed = ref(false)
 let chart = null
+
+function refreshZoomedState() {
+  isZoomed.value = chart?.isZoomedOrPanned() ?? false
+}
+
+function resetZoom() {
+  chart?.resetZoom()
+  isZoomed.value = false
+}
 
 function metricLabel(name) {
   return metricLabels.value[name] ?? name
 }
 
 function formatTimestamp(timestamp) {
-  return new Date(timestamp).toLocaleString()
+  return new Date(timestamp).toLocaleString([], { hour12: false })
+}
+
+function formatValue(value) {
+  return `${value.toFixed(1)}%`
 }
 
 function tooltipPositionStyle(event) {
@@ -74,13 +90,21 @@ function tooltipPositionStyle(event) {
     : { left: `${event.clientX + TOOLTIP_MARGIN}px`, top: `${event.clientY + TOOLTIP_MARGIN}px` }
 }
 
-// Chart.js's own point tooltip fights our line tooltip for the same
-// screen space when both would be visible at once — suppressed while
-// hovering a line, restored as soon as the cursor leaves it.
-function setPointTooltipEnabled(enabled) {
-  if (!chart || chart.options.plugins.tooltip.enabled === enabled) return
-  chart.options.plugins.tooltip.enabled = enabled
-  chart.update('none')
+// Chart.js's own tooltip can't put a color swatch on its title line (only
+// body/label rows support labelColor) — replaced outright by this same
+// floating tooltip the dashed lines already use, so every hover state
+// (line or point) shares one look.
+function findNearestPoint(event) {
+  if (!chart) return null
+  const [match] = chart.getElementsAtEventForMode(event, 'nearest', { intersect: false }, false)
+  if (!match) return null
+  const rect = canvasEl.value.getBoundingClientRect()
+  const el = chart.getDatasetMeta(match.datasetIndex).data[match.index]
+  const dx = el.x - (event.clientX - rect.left)
+  const dy = el.y - (event.clientY - rect.top)
+  if (Math.sqrt(dx * dx + dy * dy) > POINT_HIT_TOLERANCE_PX) return null
+  const dataset = chart.data.datasets[match.datasetIndex]
+  return { color: dataset.borderColor, name: dataset.label, point: dataset.data[match.index] }
 }
 
 function onCanvasMouseMove(event) {
@@ -89,23 +113,31 @@ function onCanvasMouseMove(event) {
   const rect = canvasEl.value.getBoundingClientRect()
   const x = event.clientX - rect.left
   const y = event.clientY - rect.top
-  const match = y >= chartArea.top && y <= chartArea.bottom
+  const lineMatch = y >= chartArea.top && y <= chartArea.bottom
     ? sessionStarts.value.find(
       (entry) => Math.abs(scales.x.getPixelForValue(new Date(entry.timestamp).getTime()) - x) <= LINE_HIT_TOLERANCE_PX,
     )
     : null
-  setPointTooltipEnabled(!match)
-  if (!match) {
-    lineTooltip.value = null
+  if (lineMatch) {
+    lineTooltip.value = { color: null, title: lineMatch.title, subtitle: `Ended: ${formatTimestamp(lineMatch.end_timestamp)}` }
+    lineTooltipStyle.value = tooltipPositionStyle(event)
     return
   }
-  lineTooltip.value = { title: match.title, subtitle: `Ended: ${formatTimestamp(match.end_timestamp)}` }
-  lineTooltipStyle.value = tooltipPositionStyle(event)
+  const pointMatch = findNearestPoint(event)
+  if (pointMatch) {
+    lineTooltip.value = {
+      color: pointMatch.color,
+      title: `${pointMatch.name}: ${formatValue(pointMatch.point.y)}`,
+      subtitle: formatTimestamp(pointMatch.point.x),
+    }
+    lineTooltipStyle.value = tooltipPositionStyle(event)
+    return
+  }
+  lineTooltip.value = null
 }
 
 function onCanvasMouseLeave() {
   lineTooltip.value = null
-  setPointTooltipEnabled(true)
 }
 
 function movingAverage(values) {
@@ -133,11 +165,23 @@ function buildDatasets(entries) {
       data: points.map((point, i) => ({ x: point.x, y: smoothedY[i] })),
       borderColor: PALETTE[index % PALETTE.length],
       backgroundColor: PALETTE[index % PALETTE.length],
-      tension: 0.35,
+      // 'monotone', not a `tension` value: a plain cubic bezier can
+      // overshoot past a sharp, isolated spike and loop back on itself
+      // (visibly crossing the line) — monotone interpolation stays
+      // smooth without ever overshooting a point's own value.
+      cubicInterpolationMode: 'monotone',
       pointRadius: 2.5,
       fill: false,
     }
   })
+}
+
+// The axis always starts at 0, but its ceiling tracks the data instead
+// of always reserving headroom up to 100 — 10% slack above the highest
+// point, capped at 100.
+function computeYMax(datasets) {
+  const values = datasets.flatMap((dataset) => dataset.data.map((point) => point.y))
+  return values.length ? Math.min(Math.ceil(Math.max(...values) * 1.1), 100) : 100
 }
 
 function renderChart() {
@@ -149,8 +193,15 @@ function renderChart() {
     return
   }
   const datasets = buildDatasets(history.value)
+  const yMax = computeYMax(datasets)
   if (chart) {
+    // A fresh load (new user/project, or the same one's data changed) —
+    // an old zoom window pinned to different timestamps would otherwise
+    // carry over onto data it no longer matches.
+    chart.resetZoom('none')
+    isZoomed.value = false
     chart.data.datasets = datasets
+    chart.options.scales.y.max = yMax
     chart.update()
     return
   }
@@ -163,11 +214,26 @@ function renderChart() {
       maintainAspectRatio: false,
       scales: {
         x: { type: 'time', time: { unit: 'day' } },
-        y: { min: 0, max: 100, ticks: { stepSize: 50 } },
+        y: { min: 0, max: yMax, ticks: { stepSize: 50, callback: (value) => `${value}%`, font: { size: 10.2 } } },
       },
+      interaction: { mode: 'nearest', intersect: false },
       plugins: {
         legend: { display: false },
-        tooltip: { mode: 'nearest', intersect: false },
+        // Replaced by our own floating tooltip (onCanvasMouseMove) — the
+        // color swatch it needs on the title line isn't something
+        // Chart.js's own tooltip callbacks can do.
+        tooltip: { enabled: false },
+        // x-only: panning/zooming the y-axis would misrepresent the
+        // fixed 0-100% scale every value on this chart is measured against.
+        zoom: {
+          pan: { enabled: true, mode: 'x', onPanComplete: refreshZoomedState },
+          zoom: {
+            wheel: { enabled: true },
+            pinch: { enabled: true },
+            mode: 'x',
+            onZoomComplete: refreshZoomedState,
+          },
+        },
       },
     },
     plugins: [sessionStartPlugin],
@@ -222,12 +288,16 @@ onBeforeUnmount(() => {
   <div class="metrics-trends">
     <p v-if="loading" class="metrics-trends-status">Loading…</p>
     <div v-else-if="history.length >= 2" class="metrics-trends-canvas-wrap">
+      <button v-if="isZoomed" class="trend-reset-zoom-btn" @click="resetZoom">Reset zoom</button>
       <canvas ref="canvasEl" @mousemove="onCanvasMouseMove" @mouseleave="onCanvasMouseLeave"></canvas>
     </div>
   </div>
   <Teleport to="body">
     <div v-if="lineTooltip" class="trend-line-tooltip-floating" :style="lineTooltipStyle">
-      <div class="trend-line-tooltip-title">{{ lineTooltip.title }}</div>
+      <div class="trend-line-tooltip-title">
+        <span v-if="lineTooltip.color" class="trend-line-tooltip-swatch" :style="{ background: lineTooltip.color }"></span>
+        {{ lineTooltip.title }}
+      </div>
       <div class="trend-line-tooltip-subtitle">{{ lineTooltip.subtitle }}</div>
     </div>
   </Teleport>
@@ -247,6 +317,25 @@ onBeforeUnmount(() => {
   color: #666;
 }
 
+.trend-reset-zoom-btn {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.25rem;
+  z-index: 10;
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid #4a6fa5;
+  background: white;
+  color: #4a6fa5;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.trend-reset-zoom-btn:hover {
+  background: #4a6fa5;
+  color: white;
+}
+
 .metrics-trends-canvas-wrap {
   flex: 1;
   min-height: 0;
@@ -263,6 +352,7 @@ onBeforeUnmount(() => {
   border-radius: 6px;
   background: #333;
   color: white;
+  font-family: system-ui, -apple-system, sans-serif;
   font-size: 0.72rem;
   line-height: 1.3;
   text-align: left;
@@ -271,7 +361,17 @@ onBeforeUnmount(() => {
 }
 
 .trend-line-tooltip-title {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
   font-weight: 600;
+}
+
+.trend-line-tooltip-swatch {
+  flex-shrink: 0;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 2px;
 }
 
 .trend-line-tooltip-subtitle {

@@ -62,7 +62,7 @@ class ChatController(BaseController):
         filename = DOC_FILES.get(name)
         if filename is None:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=f"Unknown doc '{name}'.")
-        return {"content": (DOCS_DIR / filename).read_text()}
+        return {"content": (DOCS_DIR / filename).read_text(encoding="utf-8")}
 
     @get("/api/chat/signals")
     def get_signals(self):
