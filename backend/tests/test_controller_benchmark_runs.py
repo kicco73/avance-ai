@@ -133,6 +133,39 @@ def test_create_run_rejects_unknown_strategy(client, hello_project):
     assert response.status_code == 400
 
 
+def test_sessions_aggregation_pools_both_live_and_imported_sessions(client, hello_project):
+    live_id = _make_labeled_session(client)
+    resp = client.post(
+        f"/api/projects/{hello_project}/sessions/import",
+        files=[("files", ("t.txt", "user: hi\nassistant: yo\n", "text/plain"))],
+    )
+    imported_id = resp.json()["last_session_id"]
+    client.put(f"/api/chat/sessions/{imported_id}/labeled", json={"labeled": True})
+
+    job = client.post(f"/api/projects/{hello_project}/sessions/test", json={"strategy": "turn_by_turn"}).json()
+    job_id = job["job_id"]
+
+    deadline = time.monotonic() + 5.0
+    status = client.get(f"/api/projects/{hello_project}/state-jobs/{job_id}").json()
+    while status["status"] not in ("completed", "failed") and time.monotonic() < deadline:
+        time.sleep(0.05)
+        status = client.get(f"/api/projects/{hello_project}/state-jobs/{job_id}").json()
+
+    assert status["status"] == "completed", status
+    assert status["progress_total"] == 2
+
+    export = client.get(f"/api/projects/{hello_project}/benchmark-runs/export").json()
+    sessions_entry = next(entry for entry in export if entry["kind"] == "sessions")
+    assert sessions_entry["strategy"] == "turn_by_turn"
+    assert sessions_entry["results"]
+
+    for sid in (live_id, imported_id):
+        _wait_for_terminal_status(
+            client, hello_project,
+            next(r["id"] for r in client.get(f"/api/projects/{hello_project}/benchmark-runs?session_id={sid}").json()),
+        )
+
+
 def test_delete_benchmark_runs_forces_a_fresh_run_instead_of_a_cache_hit(client, hello_project):
     session_id = _make_labeled_session(client)
     first = client.post(

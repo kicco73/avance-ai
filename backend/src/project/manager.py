@@ -485,11 +485,13 @@ class ProjectManager:
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
             for archive_name, archive_content in archives.items():
                 zf.writestr(archive_name, archive_content)
-            imported_sessions = self._session_export_manager.export_sessions(
-                Session().user, project_name, type='imported',
+            exported_sessions = self._session_export_manager.export_sessions(
+                None, project_name, type=('live', 'imported'),
             )
-            if imported_sessions:
-                zf.writestr(SESSIONS_EXPORT_FILENAME, json.dumps(imported_sessions, indent=2))
+            for session in exported_sessions:
+                session['type'] = 'imported'
+            if exported_sessions:
+                zf.writestr(SESSIONS_EXPORT_FILENAME, json.dumps(exported_sessions, indent=2))
             benchmark_results = self._db.list_benchmark_aggregate_results(project_name)
             if benchmark_results:
                 zf.writestr(BENCHMARK_EXPORT_FILENAME, json.dumps(benchmark_results, indent=2))

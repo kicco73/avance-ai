@@ -44,11 +44,11 @@ def test_download_has_no_sessions_json_when_there_are_no_imported_sessions(clien
     assert "sessions.json" not in files
 
 
-def test_download_includes_only_imported_sessions_never_native_ones(client, hello_project):
-    # A live session (just bootstrapping the chat).
-    native_session = client.get("/api/chat/session").json()
+def test_download_includes_both_live_and_imported_sessions_relabeled_as_imported(client, app_db, hello_project):
+    app_db.set_active_project_name(hello_project, "alice")
+    with Session().impersonate("alice"):
+        native_session = client.get("/api/chat/session").json()
     assert native_session["type"] == "live"
-    # An imported session.
     resp = client.post(
         "/api/projects/hello/sessions/import", files=[("files", ("t.txt", "user: hi\nassistant: yo\n", "text/plain"))]
     )
@@ -58,8 +58,10 @@ def test_download_includes_only_imported_sessions_never_native_ones(client, hell
 
     assert "sessions.json" in files
     sessions = json.loads(files["sessions.json"])
-    assert len(sessions) == 1
-    assert sessions[0]["name"] == "t.txt"
+    assert len(sessions) == 2
+    assert {s["type"] for s in sessions} == {"imported"}
+    assert {s["name"] for s in sessions} == {native_session["title"], "t.txt"}
+    assert "alice" in {s["username"] for s in sessions}
 
 
 def test_sessions_json_never_appears_among_the_projects_own_files(client, hello_project):
@@ -123,6 +125,31 @@ def test_download_then_reupload_round_trips_the_imported_session(client):
     sessions = client.get("/api/projects/roundtrip-copy/sessions?include_imported=true").json()
     assert len(sessions) == 1
     assert sessions[0]["title"] == "t.txt"
+
+
+def test_download_then_reupload_round_trips_a_live_session_from_another_user(client, app_db):
+    resp = client.put(
+        "/api/projects/roundtrip2", content=MINIMAL_YML.encode(), headers={"Content-Type": "application/x-yaml"}
+    )
+    assert resp.status_code == 200, resp.text
+    resp = client.post("/api/projects/roundtrip2/publish", json={})
+    assert resp.status_code == 200, resp.text
+    app_db.set_active_project_name("roundtrip2", "alice")
+    with Session().impersonate("alice"):
+        live_session = client.get("/api/chat/session").json()
+        client.post(f"/api/chat/sessions/{live_session['id']}/messages", json={"message": "hi"})
+
+    zip_bytes = client.get("/api/projects/roundtrip2").content
+
+    resp = client.put(
+        "/api/projects/roundtrip2-copy", content=zip_bytes, headers={"Content-Type": "application/zip"}
+    )
+    assert resp.status_code == 200, resp.text
+
+    sessions = app_db.list_chat_sessions(None, "roundtrip2-copy", type=None)
+    assert len(sessions) == 1
+    assert sessions[0]["type"] == "imported"
+    assert sessions[0]["username"] == "alice"
 
 
 def test_upload_rejects_the_whole_project_when_sessions_json_is_not_valid_json(client):
