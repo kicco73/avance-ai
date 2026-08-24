@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from session import Session
+
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
 
 
@@ -26,6 +28,9 @@ def test_truncate_rejects_someone_elses_session(client, hello_project):
 
     ChatSession.update(username="someone-else").where(ChatSession.id == session["id"]).execute()
 
+    # Only a plain "user" is denied — a supervisor owns every session (see
+    # ChatService._owns_session), so this must downgrade the default fixture role.
+    Session().role = "user"
     response = client.post(f"/api/chat/sessions/{session['id']}/truncate", json={"timestamp": "2026-01-01T00:00:00+00:00"})
     assert response.status_code == 404
 

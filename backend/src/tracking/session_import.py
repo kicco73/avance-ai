@@ -168,8 +168,11 @@ class SessionImportManager:
     _TRACKING_FIELDS = ('old_state', 'action', 'new_state', 'values', 'expected_state', 'expected_values', 'comment')
 
     def _import_message(self, session_id: int, message: dict) -> None:
+        text = message['text']
+        if message['role'] == 'assistant' and not text:
+            text = '…'
         message_id = self._db.save_message(
-            message['role'], message['text'], session_id,
+            message['role'], text, session_id,
             audio_text=message.get('audio_text'),
             timestamp=_parse_iso(message.get('timestamp')),
         )

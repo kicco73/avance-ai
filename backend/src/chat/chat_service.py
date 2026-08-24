@@ -78,7 +78,7 @@ class ChatService(object):
 	def _owns_session(self, session_username: str) -> bool:
 		if session_username == self._username:
 			return True
-		return session_username.startswith('Test user ') and role_satisfies(Session().role, 'supervisor')
+		return role_satisfies(Session().role, 'supervisor')
 
 	def get_message_audio_text(self, message_id: int) -> str | None:
 		return self._db.get_message_audio_text(message_id)
@@ -361,9 +361,15 @@ class ChatService(object):
 		return messages[0]['timestamp'] if messages else None
 
 	def get_metrics_history(self, project_name: str, username: str) -> dict:
+		# Sorted by the same value each point is actually plotted at
+		# (`until` below) — sorting by datetime_start instead let an
+		# overlapping session (e.g. a longer-running one whose datetime_end
+		# lands after a later-started, shorter one's) put a later point
+		# before an earlier one, which Chart.js then draws as the line
+		# jumping backward in time instead of connecting points left to right.
 		sessions = sorted(
 			self._db.list_chat_sessions(username, project_name, type=None),
-			key=lambda session: session['datetime_start'],
+			key=lambda session: session['datetime_end'] or session['datetime_start'],
 		)
 		history = []
 		session_starts = []

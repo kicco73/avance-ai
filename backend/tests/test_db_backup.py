@@ -89,6 +89,8 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
         "batch_segments INTEGER, ai_model_snapshot TEXT, results TEXT)",
         "CREATE TABLE benchmarkrunobservation (id INTEGER PRIMARY KEY, run_id INTEGER, session_id INTEGER, "
         "message_id INTEGER, timestamp TEXT, \"values\" TEXT, old_state TEXT, action TEXT, new_state TEXT)",
+        "CREATE TABLE benchmarkaggregateresult (id INTEGER PRIMARY KEY, project_name TEXT, revision INTEGER, "
+        "project_draft_edit_count INTEGER, kind TEXT, target TEXT, strategy TEXT, results TEXT, created_at TEXT)",
         "CREATE TABLE sessionsummary (id INTEGER PRIMARY KEY, session_id INTEGER, content TEXT)",
         "CREATE TABLE systemwarning (id INTEGER PRIMARY KEY, username TEXT, project_name TEXT, kind TEXT, "
         "message TEXT, timestamp TEXT)",

@@ -11,7 +11,7 @@ import InspectorSignalsTab from '../inspector/InspectorSignalsTab.vue'
 import InspectorUserInfoCard from '../inspector/InspectorUserInfoCard.vue'
 import MetricDetail from '../inspector/MetricDetail.vue'
 import MetricsTrendsChart from './MetricsTrendsChart.vue'
-import SignalTrendsChart from './SignalTrendsChart.vue'
+import TimelineChart from './TimelineChart.vue'
 
 const props = defineProps({
   currentUserRole: { type: String, default: null }
@@ -258,7 +258,7 @@ defineExpose({ refresh: load })
           <p v-else-if="!selectedUser" class="manage-users-stats-status">Select a user to see their timeline.</p>
           <template v-else>
             <div class="manage-users-trends-block">
-              <SignalTrendsChart
+              <TimelineChart
                 :project-name="statsProjectName"
                 :username="selectedUser.email ?? selectedUser.id"
                 @colors="signalColorMap = $event"
