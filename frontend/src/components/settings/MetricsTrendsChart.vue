@@ -20,15 +20,92 @@ const PALETTE = [
   '#399250', '#b33c92', '#797f47', '#c25ba7', '#5ec97c', '#726bae', '#3b8d35', '#a539ac',
 ]
 const SMOOTHING_WINDOW = 3
+const SESSION_START_COLOR = '#9e9e9e'
+const LINE_HIT_TOLERANCE_PX = 5
+// A line whose timestamp is the domain's own min/max lands exactly on
+// the axis border and blends into it — nudged inward so it stays
+// visually distinct from the axis rather than looking absent.
+const LINE_EDGE_INSET_PX = 2
+const TOOLTIP_MAX_WIDTH = 220
+const TOOLTIP_MARGIN = 12
+
+const sessionStartPlugin = {
+  id: 'sessionStartLines',
+  afterDraw(chart) {
+    const { ctx, chartArea, scales } = chart
+    ctx.save()
+    ctx.strokeStyle = SESSION_START_COLOR
+    ctx.setLineDash([4, 3])
+    ctx.lineWidth = 1
+    sessionStarts.value.forEach((sessionStart) => {
+      const rawX = scales.x.getPixelForValue(new Date(sessionStart.timestamp).getTime())
+      if (rawX < chartArea.left - LINE_HIT_TOLERANCE_PX || rawX > chartArea.right + LINE_HIT_TOLERANCE_PX) return
+      const x = Math.min(Math.max(rawX, chartArea.left + LINE_EDGE_INSET_PX), chartArea.right - LINE_EDGE_INSET_PX)
+      ctx.beginPath()
+      ctx.moveTo(x, chartArea.top)
+      ctx.lineTo(x, chartArea.bottom)
+      ctx.stroke()
+    })
+    ctx.restore()
+  },
+}
 
 const loading = ref(true)
 const history = ref([])
+const sessionStarts = ref([])
 const metricLabels = ref({})
 const canvasEl = ref(null)
+const lineTooltip = ref(null)
+const lineTooltipStyle = ref({})
 let chart = null
 
 function metricLabel(name) {
   return metricLabels.value[name] ?? name
+}
+
+function formatTimestamp(timestamp) {
+  return new Date(timestamp).toLocaleString()
+}
+
+function tooltipPositionStyle(event) {
+  const overflowsRight = event.clientX + TOOLTIP_MARGIN + TOOLTIP_MAX_WIDTH > window.innerWidth
+  return overflowsRight
+    ? { right: `${window.innerWidth - event.clientX + TOOLTIP_MARGIN}px`, top: `${event.clientY + TOOLTIP_MARGIN}px` }
+    : { left: `${event.clientX + TOOLTIP_MARGIN}px`, top: `${event.clientY + TOOLTIP_MARGIN}px` }
+}
+
+// Chart.js's own point tooltip fights our line tooltip for the same
+// screen space when both would be visible at once — suppressed while
+// hovering a line, restored as soon as the cursor leaves it.
+function setPointTooltipEnabled(enabled) {
+  if (!chart || chart.options.plugins.tooltip.enabled === enabled) return
+  chart.options.plugins.tooltip.enabled = enabled
+  chart.update('none')
+}
+
+function onCanvasMouseMove(event) {
+  if (!chart) return
+  const { chartArea, scales } = chart
+  const rect = canvasEl.value.getBoundingClientRect()
+  const x = event.clientX - rect.left
+  const y = event.clientY - rect.top
+  const match = y >= chartArea.top && y <= chartArea.bottom
+    ? sessionStarts.value.find(
+      (entry) => Math.abs(scales.x.getPixelForValue(new Date(entry.timestamp).getTime()) - x) <= LINE_HIT_TOLERANCE_PX,
+    )
+    : null
+  setPointTooltipEnabled(!match)
+  if (!match) {
+    lineTooltip.value = null
+    return
+  }
+  lineTooltip.value = { title: match.title, subtitle: `Ended: ${formatTimestamp(match.end_timestamp)}` }
+  lineTooltipStyle.value = tooltipPositionStyle(event)
+}
+
+function onCanvasMouseLeave() {
+  lineTooltip.value = null
+  setPointTooltipEnabled(true)
 }
 
 function movingAverage(values) {
@@ -64,7 +141,7 @@ function buildDatasets(entries) {
 }
 
 function renderChart() {
-  if (!history.value.length) {
+  if (history.value.length < 2) {
     if (chart) {
       chart.destroy()
       chart = null
@@ -93,6 +170,7 @@ function renderChart() {
         tooltip: { mode: 'nearest', intersect: false },
       },
     },
+    plugins: [sessionStartPlugin],
   })
 }
 
@@ -108,14 +186,18 @@ async function loadMetricLabels() {
 async function load() {
   if (!props.projectName || !props.username) {
     history.value = []
+    sessionStarts.value = []
     return
   }
   loading.value = true
   try {
     await loadMetricLabels()
-    history.value = await getMetricsHistory(props.projectName, props.username)
+    const data = await getMetricsHistory(props.projectName, props.username)
+    history.value = data.metrics
+    sessionStarts.value = data.session_starts
   } catch {
     history.value = []
+    sessionStarts.value = []
   } finally {
     loading.value = false
   }
@@ -139,11 +221,16 @@ onBeforeUnmount(() => {
 <template>
   <div class="metrics-trends">
     <p v-if="loading" class="metrics-trends-status">Loading…</p>
-    <p v-else-if="!history.length" class="metrics-trends-status">No metrics recorded yet for this user in this project.</p>
-    <div v-else class="metrics-trends-canvas-wrap">
-      <canvas ref="canvasEl"></canvas>
+    <div v-else-if="history.length >= 2" class="metrics-trends-canvas-wrap">
+      <canvas ref="canvasEl" @mousemove="onCanvasMouseMove" @mouseleave="onCanvasMouseLeave"></canvas>
     </div>
   </div>
+  <Teleport to="body">
+    <div v-if="lineTooltip" class="trend-line-tooltip-floating" :style="lineTooltipStyle">
+      <div class="trend-line-tooltip-title">{{ lineTooltip.title }}</div>
+      <div class="trend-line-tooltip-subtitle">{{ lineTooltip.subtitle }}</div>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -164,5 +251,31 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   position: relative;
+}
+
+/* Teleported to <body>, positioned in viewport coordinates — fixed, not
+   absolute, since a narrow settings panel would otherwise clip it. */
+.trend-line-tooltip-floating {
+  position: fixed;
+  width: max-content;
+  max-width: 220px;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  background: #333;
+  color: white;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  text-align: left;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.trend-line-tooltip-title {
+  font-weight: 600;
+}
+
+.trend-line-tooltip-subtitle {
+  opacity: 0.8;
+  margin-top: 0.15rem;
 }
 </style>

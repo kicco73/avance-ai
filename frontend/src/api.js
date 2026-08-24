@@ -402,8 +402,8 @@ export function getUserLatestSignals(projectName, username) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/users/${encodeURIComponent(username)}/latest-signals`)
 }
 
-export function getSignalHistory(projectName, username) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/users/${encodeURIComponent(username)}/signal-history`)
+export function getTimeline(projectName, username) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/users/${encodeURIComponent(username)}/timeline`)
 }
 
 export function getMetricsHistory(projectName, username) {
@@ -471,6 +471,14 @@ export function getProjectsRuntimeStatus() {
 
 export function getUsers() {
   return apiFetch(`${API_URL}/users`)
+}
+
+export function putUserRole(userId, role) {
+  return apiFetch(`${API_URL}/users/${encodeURIComponent(userId)}/role`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role })
+  })
 }
 
 // Manual pause/resume — only valid from 'running'/'manually_paused'

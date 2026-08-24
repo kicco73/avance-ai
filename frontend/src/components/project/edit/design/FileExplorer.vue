@@ -1,15 +1,16 @@
 <script setup>
-// Design mode's file tree — upload/new/select. Purely presentational: state
-// comes in as props, user actions are emitted back up to the parent's own handlers
-// (handleUploadFile, handleNewFile, selectFile). Deleting a file lives in the
-// Inspector's Info tab now (InspectorFileCard.vue), against whichever file is
-// currently open — not here.
+// Design mode's file tree — upload/new/select. Mostly presentational: file
+// state comes in as props, and the actual file creation is emitted back up
+// to the parent's own handlers (handleUploadFile, handleNewAttachment,
+// handleNewAspect, selectFile) — only the "+" menu's own open/closed state
+// lives here. Deleting a file lives in the Inspector's Info tab now
+// (InspectorFileCard.vue), against whichever file is currently open — not here.
 //
 // The flat `files` list is grouped into two branches, root itself never shown:
 // - "Behavior" (index.yml) — its text attachments (txt, md, csv, extra yml/yaml...)
 // - "Theme" (index.css) — the image assets its url(...) rules can reference
 // Theme is omitted entirely when there's neither an index.css nor any image asset yet.
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 
 const props = defineProps({
   files: { type: Array, default: () => [] },
@@ -20,13 +21,43 @@ const props = defineProps({
   explorerWidth: { type: Number, required: true }
 })
 
-const emit = defineEmits(['new-file', 'select-file', 'upload-file'])
+const emit = defineEmits(['new-attachment', 'new-aspect', 'select-file', 'upload-file'])
 
 const fileInputRef = ref(null)
 
 function triggerUpload() {
   fileInputRef.value?.click()
 }
+
+// "+" menu — same toggle/click-outside pattern as SettingsMenu.vue.
+const newFileMenuOpen = ref(false)
+const newFileMenuRootEl = ref(null)
+
+function toggleNewFileMenu() {
+  newFileMenuOpen.value = !newFileMenuOpen.value
+}
+
+function selectNewAttachment() {
+  newFileMenuOpen.value = false
+  emit('new-attachment')
+}
+
+function selectNewAspect() {
+  newFileMenuOpen.value = false
+  emit('new-aspect')
+}
+
+function handleClickOutsideNewFileMenu(event) {
+  if (newFileMenuOpen.value && newFileMenuRootEl.value && !newFileMenuRootEl.value.contains(event.target)) {
+    newFileMenuOpen.value = false
+  }
+}
+
+document.addEventListener('click', handleClickOutsideNewFileMenu, true)
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleClickOutsideNewFileMenu, true)
+})
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'])
 
@@ -71,7 +102,13 @@ watch(
             <path d="M12 3l4 4h-3v6h-2V7H8l4-4zM5 19v-6h2v6h10v-6h2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z" />
           </svg>
         </button>
-        <button class="file-explorer-icon-btn" :disabled="creatingFile" title="New file" @click="emit('new-file')">+</button>
+        <div class="file-explorer-new-menu" ref="newFileMenuRootEl">
+          <button class="file-explorer-icon-btn" :disabled="creatingFile" title="New file" @click="toggleNewFileMenu">+</button>
+          <ul v-if="newFileMenuOpen" class="file-explorer-new-menu-list">
+            <li><button class="file-explorer-new-menu-item" @click="selectNewAttachment">New attachment</button></li>
+            <li><button class="file-explorer-new-menu-item" :disabled="hasIndexCss" :title="hasIndexCss ? 'index.css already exists' : ''" @click="selectNewAspect">New aspect</button></li>
+          </ul>
+        </div>
       </div>
       <input
         ref="fileInputRef"
@@ -157,6 +194,24 @@ watch(
 .file-explorer-icon-btn:hover:not(:disabled) { background: #4a6fa5; color: white; }
 .file-explorer-icon-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .file-explorer-upload-input { display: none; }
+.file-explorer-new-menu { position: relative; }
+.file-explorer-new-menu-list {
+  position: absolute;
+  top: calc(100% + 0.3rem);
+  right: 0;
+  min-width: 160px;
+  list-style: none;
+  margin: 0;
+  padding: 0.3rem 0;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  z-index: 100;
+}
+.file-explorer-new-menu-item { display: block; width: 100%; text-align: left; padding: 0.5rem 0.9rem; border: none; background: none; cursor: pointer; font-size: 0.85rem; color: #4a6fa5; }
+.file-explorer-new-menu-item:hover:not(:disabled) { background: #f0f4fa; }
+.file-explorer-new-menu-item:disabled { color: #999; cursor: not-allowed; }
 .file-explorer-status { margin: 0; padding: 0.6rem; font-size: 0.85rem; color: #444; }
 .file-explorer-tree { list-style: none; margin: 0; padding: 0.3rem; overflow-y: auto; flex: 1; }
 .file-explorer-branch + .file-explorer-branch { margin-top: 0.2rem; }

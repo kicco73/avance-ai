@@ -1,6 +1,8 @@
 """Pydantic request bodies for the REST endpoints — see controller.py."""
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, field_validator
 
 
@@ -105,6 +107,12 @@ class TruncateSessionRequest(BaseModel):
     # backend already handed back (see db._utc_iso). Every Message/
     # Tracking row at or after this instant is deleted.
     timestamp: str
+
+
+class SetUserRoleRequest(BaseModel):
+    # See AuthService.set_user_role — UserController's own admin-only
+    # role-change endpoint (Manage Users' role badge).
+    role: Literal["user", "supervisor", "admin"]
 
 
 class SetEnvValueRequest(BaseModel):

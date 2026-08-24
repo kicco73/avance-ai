@@ -2,7 +2,7 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Chart, LineController, LineElement, PointElement, LinearScale, TimeScale, Tooltip } from 'chart.js'
 import 'chartjs-adapter-date-fns'
-import { getProjectSignals, getSignalHistory } from '../../api.js'
+import { getProjectGraph, getProjectSignals, getTimeline } from '../../api.js'
 
 Chart.register(LineController, LineElement, PointElement, LinearScale, TimeScale, Tooltip)
 
@@ -20,15 +20,102 @@ const PALETTE = [
   '#399250', '#b33c92', '#797f47', '#c25ba7', '#5ec97c', '#726bae', '#3b8d35', '#a539ac',
 ]
 const SMOOTHING_WINDOW = 3
+const STATE_CHANGE_COLOR = '#9e9e9e'
+const LINE_HIT_TOLERANCE_PX = 5
+// A line whose timestamp is the domain's own min/max lands exactly on
+// the axis border and blends into it — nudged inward so it stays
+// visually distinct from the axis rather than looking absent.
+const LINE_EDGE_INSET_PX = 2
+const TOOLTIP_MAX_WIDTH = 220
+const TOOLTIP_MARGIN = 12
+
+const stateChangePlugin = {
+  id: 'stateChangeLines',
+  afterDraw(chart) {
+    const { ctx, chartArea, scales } = chart
+    ctx.save()
+    ctx.strokeStyle = STATE_CHANGE_COLOR
+    ctx.fillStyle = STATE_CHANGE_COLOR
+    ctx.setLineDash([4, 3])
+    ctx.lineWidth = 1
+    ctx.font = '10px system-ui, -apple-system, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'bottom'
+    transitions.value.forEach((transition) => {
+      const rawX = scales.x.getPixelForValue(new Date(transition.timestamp).getTime())
+      if (rawX < chartArea.left - LINE_HIT_TOLERANCE_PX || rawX > chartArea.right + LINE_HIT_TOLERANCE_PX) return
+      const x = Math.min(Math.max(rawX, chartArea.left + LINE_EDGE_INSET_PX), chartArea.right - LINE_EDGE_INSET_PX)
+      ctx.beginPath()
+      ctx.moveTo(x, chartArea.top)
+      ctx.lineTo(x, chartArea.bottom)
+      ctx.stroke()
+      ctx.fillText(stateLabel(transition.new_state), x, chartArea.top - 2)
+    })
+    ctx.restore()
+  },
+}
 
 const loading = ref(true)
 const history = ref([])
+const transitions = ref([])
 const signalLabels = ref({})
+const stateLabels = ref({})
 const canvasEl = ref(null)
+const lineTooltip = ref(null)
+const lineTooltipStyle = ref({})
 let chart = null
 
 function signalLabel(name) {
   return signalLabels.value[name] ?? name
+}
+
+function stateLabel(key) {
+  return stateLabels.value[key] ?? key
+}
+
+function formatTimestamp(timestamp) {
+  return new Date(timestamp).toLocaleString()
+}
+
+function tooltipPositionStyle(event) {
+  const overflowsRight = event.clientX + TOOLTIP_MARGIN + TOOLTIP_MAX_WIDTH > window.innerWidth
+  return overflowsRight
+    ? { right: `${window.innerWidth - event.clientX + TOOLTIP_MARGIN}px`, top: `${event.clientY + TOOLTIP_MARGIN}px` }
+    : { left: `${event.clientX + TOOLTIP_MARGIN}px`, top: `${event.clientY + TOOLTIP_MARGIN}px` }
+}
+
+// Chart.js's own point tooltip fights our line tooltip for the same
+// screen space when both would be visible at once — suppressed while
+// hovering a line, restored as soon as the cursor leaves it.
+function setPointTooltipEnabled(enabled) {
+  if (!chart || chart.options.plugins.tooltip.enabled === enabled) return
+  chart.options.plugins.tooltip.enabled = enabled
+  chart.update('none')
+}
+
+function onCanvasMouseMove(event) {
+  if (!chart) return
+  const { chartArea, scales } = chart
+  const rect = canvasEl.value.getBoundingClientRect()
+  const x = event.clientX - rect.left
+  const y = event.clientY - rect.top
+  const match = y >= chartArea.top && y <= chartArea.bottom
+    ? transitions.value.find(
+      (entry) => Math.abs(scales.x.getPixelForValue(new Date(entry.timestamp).getTime()) - x) <= LINE_HIT_TOLERANCE_PX,
+    )
+    : null
+  setPointTooltipEnabled(!match)
+  if (!match) {
+    lineTooltip.value = null
+    return
+  }
+  lineTooltip.value = { title: stateLabel(match.new_state), subtitle: formatTimestamp(match.timestamp) }
+  lineTooltipStyle.value = tooltipPositionStyle(event)
+}
+
+function onCanvasMouseLeave() {
+  lineTooltip.value = null
+  setPointTooltipEnabled(true)
 }
 
 function movingAverage(values) {
@@ -84,6 +171,7 @@ function renderChart() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      layout: { padding: { top: 14 } },
       scales: {
         x: { type: 'time', time: { unit: 'day' } },
         y: { min: 0, max: 100, ticks: { stepSize: 50 } },
@@ -93,6 +181,7 @@ function renderChart() {
         tooltip: { mode: 'nearest', intersect: false },
       },
     },
+    plugins: [stateChangePlugin],
   })
 }
 
@@ -105,17 +194,30 @@ async function loadSignalLabels() {
   }
 }
 
+async function loadStateLabels() {
+  try {
+    const { nodes } = await getProjectGraph(props.projectName)
+    stateLabels.value = Object.fromEntries(nodes.map((node) => [node.state.key, node.state.ui_label || node.state.key]))
+  } catch {
+    stateLabels.value = {}
+  }
+}
+
 async function load() {
   if (!props.projectName || !props.username) {
     history.value = []
+    transitions.value = []
     return
   }
   loading.value = true
   try {
-    await loadSignalLabels()
-    history.value = await getSignalHistory(props.projectName, props.username)
+    await Promise.all([loadSignalLabels(), loadStateLabels()])
+    const timeline = await getTimeline(props.projectName, props.username)
+    history.value = timeline.signals
+    transitions.value = timeline.transitions
   } catch {
     history.value = []
+    transitions.value = []
   } finally {
     loading.value = false
   }
@@ -139,11 +241,17 @@ onBeforeUnmount(() => {
 <template>
   <div class="signal-trends">
     <p v-if="loading" class="signal-trends-status">Loading…</p>
-    <p v-else-if="!history.length" class="signal-trends-status">No signals recorded yet for this user in this project.</p>
+    <p v-else-if="!history.length" class="signal-trends-status">No timeline recorded yet for this user in this project.</p>
     <div v-else class="signal-trends-canvas-wrap">
-      <canvas ref="canvasEl"></canvas>
+      <canvas ref="canvasEl" @mousemove="onCanvasMouseMove" @mouseleave="onCanvasMouseLeave"></canvas>
     </div>
   </div>
+  <Teleport to="body">
+    <div v-if="lineTooltip" class="trend-line-tooltip-floating" :style="lineTooltipStyle">
+      <div class="trend-line-tooltip-title">{{ lineTooltip.title }}</div>
+      <div class="trend-line-tooltip-subtitle">{{ lineTooltip.subtitle }}</div>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -164,5 +272,31 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   position: relative;
+}
+
+/* Teleported to <body>, positioned in viewport coordinates — fixed, not
+   absolute, since a narrow settings panel would otherwise clip it. */
+.trend-line-tooltip-floating {
+  position: fixed;
+  width: max-content;
+  max-width: 220px;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  background: #333;
+  color: white;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  text-align: left;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.trend-line-tooltip-title {
+  font-weight: 600;
+}
+
+.trend-line-tooltip-subtitle {
+  opacity: 0.8;
+  margin-top: 0.15rem;
 }
 </style>

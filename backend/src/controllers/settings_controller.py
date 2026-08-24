@@ -106,7 +106,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
         name first (see ProjectService.create_new_project)."""
         return await self.project_service.create_new_project(self._activate_project)
 
-    @put("/api/projects/{project_name}/activate", role="admin")
+    @put("/api/projects/{project_name}/activate")
     async def activate_project(self, project_name: str):
         try:
             await self.project_service.activate_project_idempotent(project_name, self._activate_project)

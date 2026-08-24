@@ -145,12 +145,9 @@ class ChatController(BaseController):
         `username` in `project_name` — Manage Users' Signals tab."""
         return self.chat_service.get_latest_signal_values(project_name, username)
 
-    @get("/api/projects/{project_name}/users/{username}/signal-history")
-    def get_user_signal_history(self, project_name: str, username: str):
-        """Every real signal snapshot for `username` in `project_name`,
-        chronological, across their whole session history — Manage
-        Users' Trends tab."""
-        return self.chat_service.get_signal_history(project_name, username)
+    @get("/api/projects/{project_name}/users/{username}/timeline")
+    def get_user_timeline(self, project_name: str, username: str):
+        return self.chat_service.get_timeline(project_name, username)
 
     @get("/api/projects/{project_name}/users/{username}/metrics-history")
     def get_user_metrics_history(self, project_name: str, username: str):

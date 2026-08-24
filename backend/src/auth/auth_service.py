@@ -97,3 +97,9 @@ class AuthService:
 
     def list_users(self) -> list[dict]:
         return self._db.list_users()
+
+    def set_user_role(self, user_id: str, role: str) -> dict | None:
+        """user_id is the user's own email (see db/users.py's own id=email
+        convention), so get_user_by_email returns the same row just updated."""
+        self._db.set_user_role(user_id, role)
+        return self._db.get_user_by_email(user_id)

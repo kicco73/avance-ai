@@ -118,10 +118,11 @@ reactions:
     ui-description: >
       Silent acknowledgment, without minimizing or correcting.
     definition: |
-      Use when the user has shared something vulnerable — shame, fear,
-      a difficult admission — and a verbal response would feel like
-      over-explaining or clinical. Never use on a message describing an
-      acute risk event; that always gets a full response, not a reaction.
+      Use rarely when the user has shared something vulnerable —
+      shame, fear, a difficult admission — and a verbal response
+      would feel like over-explaining or clinical. 
+      Never use on a message describing an acute risk event; 
+      that always gets a full response, not a reaction.
 
   encouraging:
     ui-label: "💪"
@@ -148,10 +149,10 @@ reactions:
     ui-description: >
       Acknowledges being heard, without judgment or a next step.
     definition: |
-      Use when the user is venting, disclosing a relapse, or simply
-      talking through something without asking for advice or a plan —
-      especially right after a lapse, when the goal is re-engagement,
-      not analysis.
+      Use seldom when the user is venting, disclosing a relapse, 
+      or simply talking through something without asking for advice 
+      or a plan — especially right after a lapse, when the goal is 
+      re-engagement, not analysis.
 
 states:
 

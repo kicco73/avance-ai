@@ -6,7 +6,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { getMe } from '../api.js'
 
-const emit = defineEmits(['profile', 'logout'])
+const emit = defineEmits(['profile', 'logout', 'loaded'])
 
 const open = ref(false)
 const rootEl = ref(null)
@@ -20,6 +20,7 @@ const initial = computed(() => {
 async function loadProfile() {
   try {
     profile.value = await getMe()
+    emit('loaded', profile.value)
   } catch {
     // already surfaced via apiFetch
   }

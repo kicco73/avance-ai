@@ -1,13 +1,27 @@
 <script setup>
 // Topbar "⚙" menu: dropdown with toggle / click-outside-to-close,
 // offering Manage projects and backup download/restore actions.
-import { onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
+import { roleSatisfies } from '../../roles.js'
+
+const props = defineProps({
+  // App.vue only renders this component once the current user is at
+  // least 'supervisor' — this further disables the 'admin'-only items
+  // for a plain supervisor, per each action's own backend role gate.
+  role: { type: String, default: null }
+})
 
 const emit = defineEmits(['manage-projects', 'manage-users', 'label-sessions', 'download-backup', 'restore-backup', 'about'])
 
 const open = ref(false)
 const rootEl = ref(null)
 const restoreInput = ref(null)
+
+const canManageProjects = computed(() => roleSatisfies(props.role, 'admin'))
+const canManageUsers = computed(() => roleSatisfies(props.role, 'admin'))
+const canLabelSessions = computed(() => roleSatisfies(props.role, 'supervisor'))
+const canBackup = computed(() => roleSatisfies(props.role, 'admin'))
+const canViewAbout = computed(() => roleSatisfies(props.role, 'supervisor'))
 
 function toggle() {
   open.value = !open.value
@@ -74,24 +88,24 @@ onBeforeUnmount(() => {
     <div v-if="open" class="settings-panel">
       <ul class="settings-list">
         <li>
-          <button class="settings-item" @click="selectManageProjects">Manage projects</button>
+          <button class="settings-item" :disabled="!canManageProjects" :title="canManageProjects ? '' : 'Requires admin access'" @click="selectManageProjects">Manage projects</button>
         </li>
         <li>
-          <button class="settings-item" @click="selectManageUsers">Manage users</button>
+          <button class="settings-item" :disabled="!canManageUsers" :title="canManageUsers ? '' : 'Requires admin access'" @click="selectManageUsers">Manage users</button>
         </li>
         <li>
-          <button class="settings-item" @click="selectLabelSessions">Label sessions</button>
-        </li>
-        <li class="settings-separator" role="separator"></li>
-        <li>
-          <button class="settings-item" @click="selectDownloadBackup">Download backup</button>
-        </li>
-        <li>
-          <button class="settings-item" @click="selectRestoreBackup">Restore backup...</button>
+          <button class="settings-item" :disabled="!canLabelSessions" :title="canLabelSessions ? '' : 'Requires supervisor access'" @click="selectLabelSessions">Label sessions</button>
         </li>
         <li class="settings-separator" role="separator"></li>
         <li>
-          <button class="settings-item" @click="selectAbout">About Avance...</button>
+          <button class="settings-item" :disabled="!canBackup" :title="canBackup ? '' : 'Requires admin access'" @click="selectDownloadBackup">Download backup</button>
+        </li>
+        <li>
+          <button class="settings-item" :disabled="!canBackup" :title="canBackup ? '' : 'Requires admin access'" @click="selectRestoreBackup">Restore backup...</button>
+        </li>
+        <li class="settings-separator" role="separator"></li>
+        <li>
+          <button class="settings-item" :disabled="!canViewAbout" @click="selectAbout">About Avance...</button>
         </li>
       </ul>
     </div>
@@ -164,8 +178,13 @@ onBeforeUnmount(() => {
   color: #4a6fa5;
 }
 
-.settings-item:hover {
+.settings-item:hover:not(:disabled) {
   background: #f0f4fa;
+}
+
+.settings-item:disabled {
+  color: #999;
+  cursor: not-allowed;
 }
 
 .settings-separator {

@@ -142,11 +142,14 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_name}/files/{file_name}/content", role="admin")
+    @get("/api/projects/{project_name}/files/{file_name}/content")
     def get_project_file_content(self, project_name: str, file_name: str, request: Request, session_id: int | None = None):
         """Raw bytes of `file_name`'s content, for callers that can't use
         the JSON GET above. ETag'd off the content itself, so an
-        unchanged file 304s on a matching If-None-Match."""
+        unchanged file 304s on a matching If-None-Match. No elevated role:
+        chatStore.js's own loadSkin (index.css + any image it references,
+        via cssAssetUrls.js) hits this for every live chat session,
+        regardless of the viewer's role."""
         try:
             content, content_type = self.project_service.get_project_file_content(project_name, file_name, session_id)
         except FileNotFoundError as exc:

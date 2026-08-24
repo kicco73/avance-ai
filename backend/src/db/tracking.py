@@ -28,18 +28,42 @@ class TrackingMixin:
         rows = Tracking.select().where((Tracking.session == session_id) & Tracking.env.is_null(True) & Tracking.action_env.is_null(True)).order_by(Tracking.timestamp.asc(), Tracking.id.asc())
         return [{'id': row.id, 'timestamp': _utc_iso(row.timestamp), 'values': row.values, 'expected_values': row.expected_values, 'expected_state': row.expected_state, 'comment': row.comment, 'old_state': row.old_state, 'action': row.action, 'new_state': row.new_state, 'message_id': row.message_id} for row in rows]
 
-    def get_signal_history(self, project_name: str, username: str) -> list[dict]:
+    def get_timeline(self, project_name: str, username: str) -> dict:
         rows = (
             Tracking
             .select()
             .join(ChatSession, on=Tracking.session == ChatSession.id)
             .where(
                 (ChatSession.project_name == project_name) & (ChatSession.username == username)
-                & Tracking.values.is_null(False)
+                & Tracking.env.is_null(True) & Tracking.action_env.is_null(True)
             )
             .order_by(Tracking.timestamp.asc(), Tracking.id.asc())
         )
-        return [{'timestamp': _utc_iso(row.timestamp), 'values': json.loads(row.values)} for row in rows]
+        signals = []
+        transitions = []
+        for row in rows:
+            if row.values is not None:
+                signals.append({'timestamp': _utc_iso(row.timestamp), 'values': json.loads(row.values)})
+            if row.new_state is not None:
+                transitions.append({'timestamp': _utc_iso(row.timestamp), 'new_state': row.new_state})
+        return {'signals': signals, 'transitions': transitions}
+
+    def get_project_init_transition(self, project_name: str) -> dict | None:
+        """The one Tracking row (old_state "") recording when `project_name`'s
+        automaton first entered its initial state — project-wide and at most
+        one per project, since the automaton's current state is shared
+        across every user, not tracked per-user (see open_if_needed)."""
+        row = (
+            Tracking
+            .select()
+            .join(ChatSession, on=Tracking.session == ChatSession.id)
+            .where((ChatSession.project_name == project_name) & (Tracking.old_state == ''))
+            .order_by(Tracking.timestamp.asc())
+            .first()
+        )
+        if row is None:
+            return None
+        return {'timestamp': _utc_iso(row.timestamp), 'new_state': row.new_state}
 
     def import_tracking_row(
         self, session_id: int, *, old_state: str | None, action: str | None, new_state: str | None,

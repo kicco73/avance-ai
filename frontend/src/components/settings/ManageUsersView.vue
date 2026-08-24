@@ -1,18 +1,25 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { getMetrics, getProjectGraph, getProjects, getUserLatestSignals, getUsers } from '../../api.js'
+import { getMetrics, getProjectGraph, getProjects, getUserLatestSignals, getUsers, putUserRole } from '../../api.js'
 import { valuesToSignalValues } from '../../benchmarkTimeline.js'
+import { confirmDialog } from '../../dialogStore.js'
+import { roleSatisfies } from '../../roles.js'
 import DocInfoButton from '../DocInfoButton.vue'
 import ErrorBanner from '../ErrorBanner.vue'
 import ProjectsMenu from '../ProjectsMenu.vue'
-import Inspector from '../inspector/Inspector.vue'
 import InspectorSignalsTab from '../inspector/InspectorSignalsTab.vue'
 import InspectorUserInfoCard from '../inspector/InspectorUserInfoCard.vue'
 import MetricDetail from '../inspector/MetricDetail.vue'
 import MetricsTrendsChart from './MetricsTrendsChart.vue'
 import SignalTrendsChart from './SignalTrendsChart.vue'
 
+const props = defineProps({
+  currentUserRole: { type: String, default: null }
+})
+
 const emit = defineEmits(['close'])
+
+const canEditRole = computed(() => roleSatisfies(props.currentUserRole, 'admin'))
 
 const rows = ref([])
 const loading = ref(true)
@@ -20,41 +27,23 @@ const selectedUserId = ref(null)
 
 const selectedUser = computed(() => rows.value.find((row) => row.id === selectedUserId.value) ?? null)
 
-const inspectorTabs = [{ id: 'info', label: 'Info' }]
-const inspectorActiveTab = ref('info')
-
-// Left/right panel widths in px, adjusted by dragging their split dividers.
 const explorerWidth = ref(260)
-const inspectorWidth = ref(300)
 const explorerCollapsed = ref(false)
-const inspectorCollapsed = ref(false)
 
-// Which divider (if any) is currently being dragged — 'explorer' or
-// 'inspector' — read by the single shared onDrag/stopDrag pair below.
-let dragTarget = null
+let dragging = false
 
 function startExplorerDrag(event) {
-  dragTarget = 'explorer'
-  event.preventDefault()
-}
-
-function startInspectorDrag(event) {
-  dragTarget = 'inspector'
+  dragging = true
   event.preventDefault()
 }
 
 function onDrag(event) {
-  if (dragTarget === 'explorer') {
-    explorerWidth.value = Math.min(420, Math.max(160, explorerWidth.value + event.movementX))
-  } else if (dragTarget === 'inspector') {
-    // The inspector's divider sits on its left edge, so dragging it left
-    // (negative movementX) needs to grow the panel, not shrink it.
-    inspectorWidth.value = Math.min(560, Math.max(240, inspectorWidth.value - event.movementX))
-  }
+  if (!dragging) return
+  explorerWidth.value = Math.min(420, Math.max(160, explorerWidth.value + event.movementX))
 }
 
 function stopDrag() {
-  dragTarget = null
+  dragging = false
 }
 
 async function load() {
@@ -70,6 +59,24 @@ async function load() {
 
 function selectUser(id) {
   selectedUserId.value = id
+}
+
+async function handleChangeRole(role) {
+  const user = selectedUser.value
+  if (!user) return
+  const ok = await confirmDialog({
+    title: 'Change role',
+    body: `Change ${user.name ?? user.email}'s role from "${user.role}" to "${role}"?`,
+    okLabel: 'Change role'
+  })
+  if (!ok) return
+  try {
+    const updated = await putUserRole(user.id, role)
+    const index = rows.value.findIndex((row) => row.id === user.id)
+    if (index !== -1) rows.value[index] = updated
+  } catch {
+    // already surfaced via apiFetch
+  }
 }
 
 // The central panel's own project picker — deliberately independent of the
@@ -93,8 +100,8 @@ async function loadStats(projectName, user) {
   }
 }
 
-const mainTabs = [{ id: 'signals', label: 'Signals' }, { id: 'metrics', label: 'Metrics' }]
-const activeMainTab = ref('signals')
+const mainTabs = [{ id: 'info', label: 'Info' }, { id: 'signals', label: 'Timeline' }, { id: 'metrics', label: 'Metrics' }]
+const activeMainTab = ref('info')
 
 const signalColorMap = ref(null)
 const metricColorMap = ref(null)
@@ -230,9 +237,25 @@ defineExpose({ refresh: load })
           >{{ tab.label }}</button>
         </div>
 
-        <div v-if="activeMainTab === 'signals'" class="manage-users-stats">
-          <p v-if="!statsProjectName" class="manage-users-stats-status">Select a project to see its signals.</p>
-          <p v-else-if="!selectedUser" class="manage-users-stats-status">Select a user to see their signals.</p>
+        <div v-if="activeMainTab === 'info'" class="manage-users-stats">
+          <p v-if="!selectedUser" class="manage-users-stats-status">Select a user to see their info.</p>
+          <template v-else>
+            <InspectorUserInfoCard :user="selectedUser" large :can-edit-role="canEditRole" @change-role="handleChangeRole" />
+            <div v-if="lastSessionStateNode" class="inspector-signal-block manage-users-state-card">
+              <div class="inspector-signal-readonly">
+                <div class="inspector-signal-header">
+                  <span class="inspector-detail-badge inspector-detail-badge-state">State</span>
+                  <span class="inspector-signal-name">{{ lastSessionStateNode.state.ui_label || lastSessionStateNode.state.key }}</span>
+                </div>
+                <span v-if="lastSessionStateNode.state.ui_description" class="inspector-signal-ui_description">{{ lastSessionStateNode.state.ui_description }}</span>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <div v-else-if="activeMainTab === 'signals'" class="manage-users-stats">
+          <p v-if="!statsProjectName" class="manage-users-stats-status">Select a project to see timelines.</p>
+          <p v-else-if="!selectedUser" class="manage-users-stats-status">Select a user to see their timeline.</p>
           <template v-else>
             <div class="manage-users-trends-block">
               <SignalTrendsChart
@@ -283,29 +306,6 @@ defineExpose({ refresh: load })
             </div>
           </template>
         </div>
-      </div>
-
-      <div v-if="!inspectorCollapsed" class="split-divider" @mousedown="startInspectorDrag"></div>
-
-      <div
-        class="manage-users-inspector"
-        :class="{ 'manage-users-inspector-collapsed': inspectorCollapsed }"
-        :style="!inspectorCollapsed ? { width: inspectorWidth + 'px' } : null"
-      >
-        <Inspector :tabs="inspectorTabs" v-model:active-tab="inspectorActiveTab" v-model:collapsed="inspectorCollapsed">
-          <template #tab-info>
-            <InspectorUserInfoCard :user="selectedUser" />
-            <div v-if="lastSessionStateNode" class="inspector-signal-block manage-users-state-card">
-              <div class="inspector-signal-readonly">
-                <div class="inspector-signal-header">
-                  <span class="inspector-detail-badge inspector-detail-badge-state">State</span>
-                  <span class="inspector-signal-name">{{ lastSessionStateNode.state.ui_label || lastSessionStateNode.state.key }}</span>
-                </div>
-                <span v-if="lastSessionStateNode.state.ui_description" class="inspector-signal-ui_description">{{ lastSessionStateNode.state.ui_description }}</span>
-              </div>
-            </div>
-          </template>
-        </Inspector>
       </div>
     </div>
   </div>
@@ -579,19 +579,4 @@ defineExpose({ refresh: load })
 .inspector-detail-badge-state { background: #4a6fa5; }
 .inspector-signal-name { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; }
 .inspector-signal-ui_description { font-size: 0.78rem; color: #666; line-height: 1.4; }
-
-.manage-users-inspector {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  overflow: hidden;
-  transition: width 0.15s ease;
-}
-
-.manage-users-inspector-collapsed {
-  width: 2.4rem !important;
-}
 </style>
