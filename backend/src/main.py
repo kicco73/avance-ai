@@ -6,6 +6,7 @@ import inspect
 import logging
 from contextlib import asynccontextmanager
 from http import HTTPStatus
+from pathlib import Path
 
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,15 +26,31 @@ from metrics.benchmark_run_service import BenchmarkRunService
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
 from ai.ai_service import AiService
+from session import Session
 from tracking.tracking_service import TrackingService
 from tracking.wakeup_service import WakeupService
 from talk.talk_service import TalkService
 from listen.listen_service import ListenService
 
-__version__ = "1.10.0"
+__version__ = "1.10.1"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
+
+DEFAULT_SEED_PROJECT_ZIP = Path(__file__).resolve().parents[1] / "samples" / "projects" / "Lluna.zip"
+DEFAULT_SEED_PROJECT_NAME = "Drogodependencia"
+
+
+async def _seed_default_project_if_empty(db: Db, project_service: ProjectService, controller: AvanceController) -> None:
+    if db.list_projects():
+        return
+    Session().user = "system"
+    Session().role = "supervisor"
+    content = DEFAULT_SEED_PROJECT_ZIP.read_bytes()
+    await project_service.put_project(
+        DEFAULT_SEED_PROJECT_NAME, content, "application/zip", controller.settings._activate_project,
+    )
+    project_service.publish_project(DEFAULT_SEED_PROJECT_NAME)
 
 
 def _build_fallback_app(error: Exception) -> FastAPI:
@@ -134,6 +151,8 @@ def create_app() -> FastAPI:
             auth_service, __version__,
         )
         app.include_router(controller.router)
+
+        await _seed_default_project_if_empty(db, project_service, controller)
 
         if chat_ws_adapter is not None:
             adapter = chat_ws_adapter

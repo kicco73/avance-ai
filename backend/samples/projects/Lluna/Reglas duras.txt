@@ -1,0 +1,244 @@
+REGLAS DURAS — v2.0
+R0..R10. Única parte del motor con efectos secundarios.
+Se ejecutan en fase 4, en el orden de precedencia de §1.
+
+═══════════════════════════════════════════════════════════════════
+1. PRECEDENCIA  [D-09 — RESUELTO POR PROPUESTA, PENDIENTE DE RATIFICACIÓN]
+═══════════════════════════════════════════════════════════════════
+
+Orden de ejecución: R0 → R1 → R9 → R8 → R4 → R6 → R2 → R3 → R11 → R5 → R7 → R10
+
+Criterio del orden, en tres estratos:
+  (a) Seguridad primero: R0, R1.
+  (b) Integridad de la medida antes que uso de la medida: R9, R8, R4.
+  (c) Vetos clínicos después, del más específico al más general.
+
+Una regla posterior NO puede levantar un flag puesto por una anterior.
+Los flags se limpian al inicio de la fase 4 y se recomponen enteros cada turno,
+salvo los persistentes marcados [P], que llevan su propia condición de baja.
+
+═══════════════════════════════════════════════════════════════════
+2. CATÁLOGO
+═══════════════════════════════════════════════════════════════════
+
+───────────────────────────────────────────────────────────────────
+R0 — DERIVACIÓN
+───────────────────────────────────────────────────────────────────
+Dispara si aparece cualquiera de: intoxicación aguda descrita en presente ·
+consumo por vía inyectada sin material estéril · policonsumo con depresores ·
+sintomatología de abstinencia grave · embarazo con consumo activo · petición
+explícita de recurso presencial · signos de descompensación psiquiátrica.
+
+Efecto: pone flag_derivacion_activa [P] y ofrece vía de acceso concreta.
+
+R0 ES ADITIVA. No suspende la modalidad, no cierra la conversación, no cambia
+S_nom, no cambia Ê, no bloquea ninguna transición y no condiciona la entrega
+de información de reducción de daños. La derivación es continuidad de cuidados,
+no traspaso. Quien deriva sigue acompañando.
+flag_derivacion_activa NO APARECE EN NINGÚN TRIGGER. Deliberadamente.
+Baja: cuando la persona confirma contacto con el recurso, o a los 30 días.
+
+───────────────────────────────────────────────────────────────────
+R1 — CRISIS
+───────────────────────────────────────────────────────────────────
+Dispara si aparece: ideación autolítica · riesgo inminente para la persona o
+para terceros · emergencia médica en curso.
+
+Efecto: pone flag_crisis_activa. Suspende TODA administración de ítems.
+Suspende toda transición ascendente. El turno se dedica íntegro a vía de
+acceso a recurso humano y a permanencia.
+Baja: dos sesiones consecutivas sin indicador, y sólo entonces.
+
+flag_crisis_activa aparece negado en los triggers T1, T2 y T7.
+No aparece en T3, T4, T5 porque R1 ya suspende toda ascendente por sí misma;
+en T1, T2 y T7 se explicita por redundancia defensiva, porque son las
+transiciones que devuelven al sistema a modo operativo.
+
+───────────────────────────────────────────────────────────────────
+R2 — PRESIÓN EXTERNA
+───────────────────────────────────────────────────────────────────
+Dispara si intención_comprometida_locus < 30 con n_intención_comprometida ≥ 2.
+Efecto: pone flag_presion_externa.
+Fundamento: la motivación controlada por presión externa predice peor
+adherencia y más abandono que la autónoma. Un horizonte de treinta días
+sostenido por un juzgado, una pareja o una empresa no es preparación: es
+cumplimiento. Tratarlo como preparación produce un plan que nadie sostiene y
+una caída de autoeficacia atribuida a la persona.
+Veta: T3 (→Preparación).
+
+───────────────────────────────────────────────────────────────────
+R3 — AMBIVALENCIA NO RESUELTA
+───────────────────────────────────────────────────────────────────
+Dispara si |balance_decisional − 50| < 5 con n_balance_decisional ≥ 3, sostenido en 2 evaluaciones.
+Efecto: pone flag_ambivalencia_no_resuelta.
+Fundamento: balance clavado en el punto de cruce. El trabajo pendiente es
+experiencial, no conductual. Empujar aquí es la vía documentada al
+estancamiento.
+Veta: T3 (→Preparación).
+
+───────────────────────────────────────────────────────────────────
+R4 — LAPSO RECIENTE   [con histéresis — corrige defecto ratificado]
+───────────────────────────────────────────────────────────────────
+Dispara ON si se registra ≥1 episodio de consumo por encima del patrón objetivo
+en los últimos 14 días.
+Sale OFF sólo tras 21 días consecutivos sin episodio.  [H0]
+Efecto: pone flag_lapso_reciente.
+
+LA ASIMETRÍA 14/21 ES DELIBERADA Y ES LA CORRECCIÓN DEL DEFECTO. La versión
+sin histéresis conmutaba con cada episodio aislado y producía un patrón de
+avance-retroceso nominal que la persona percibe como que el sistema "le retira
+la confianza" tras cada tropiezo. Es exactamente lo contrario del encuadre.
+Veta: T4 (→Acción).
+NO veta T5 ni T6, y NO reinicia acción_efectiva_magnitud_y_duración_diasConsolidados. Un lapso no es una recaída.
+
+───────────────────────────────────────────────────────────────────
+R5 — CRAVING INESTABLE   [con histéresis — corrige defecto ratificado]
+───────────────────────────────────────────────────────────────────
+Dispara ON si craving_nivel_e_inestabilidad_nivel ≥ 70 Y craving_nivel_e_inestabilidad_mssd ≥ 60.
+Sale OFF si craving_nivel_e_inestabilidad_nivel < 60 O craving_nivel_e_inestabilidad_mssd < 50, en 2 evaluaciones consecutivas.
+Efecto: pone flag_craving_inestable.
+Fundamento: nivel alto y estable es tolerable; nivel alto y volátil predice
+episodio. Es el perfil en el que un plan conductual ambicioso se rompe.
+Veta: T4 (→Acción).
+
+───────────────────────────────────────────────────────────────────
+R6 — ACCIÓN SIN RECONOCIMIENTO   [alcance corregido]
+───────────────────────────────────────────────────────────────────
+Dispara si acción_efectiva_magnitud_y_duración_magnitud ≥ 50 Y reconocimiento_del_problema ≤ 30 Y n_reconocimiento_del_problema ≥ 2.
+Efecto: pone flag_accion_sin_reconocimiento.
+
+ALCANCE: veta ÚNICAMENTE T4 (→Acción) y T5 (→Mantenimiento).
+No veta T1, T2 ni T3. La versión anterior lo aplicaba globalmente, lo que
+bloqueaba a personas que reducen consumo sin discurso de problema — un perfil
+frecuente y perfectamente legítimo en reducción de daños. El patrón sólo es
+problemático cuando el sistema va a consolidarlo como identidad de cambio:
+ahí sí hay que verificar que la atribución exista, o el cambio no tiene sobre
+qué apoyarse cuando aparezca la primera situación de riesgo.
+
+───────────────────────────────────────────────────────────────────
+R7 — HORIZONTE SIN PASO
+───────────────────────────────────────────────────────────────────
+Dispara si intención_comprometida_horizonte == en_30d Y acción_efectiva_magnitud_y_duración_magnitud < 15.
+Efecto: pone flag_horizonte_sin_paso.
+Fundamento: los dos criterios de preparación son necesarios; ninguno basta.
+Declarar treinta días sin haber dado un paso es contemplación tardía con
+lenguaje de preparación.
+Veta: T3. (En la práctica T3 ya lo exige positivamente; R7 existe para que el
+motivo del no-avance quede registrado y para modular el repertorio hacia
+auto-reevaluación en lugar de hacia planificación.)
+
+NOTA: R7 y R10 son mutuamente excluyentes por construcción — R7 exige
+acción_efectiva_magnitud_y_duración_magnitud < 15 y R10 exige acción_efectiva_magnitud_y_duración_magnitud ≥ 50. El conflicto C3 detectado
+entre ambas es INALCANZABLE. Se documenta para que nadie vuelva a implementarlo.
+
+───────────────────────────────────────────────────────────────────
+R8 — RECAÍDA CONFIRMADA   [corrige el riesgo de disparo por lapso aislado]
+───────────────────────────────────────────────────────────────────
+Dispara SÓLO si acción_efectiva_magnitud_y_duración_magnitud cae por debajo de 50 (umbral_cambio) Y ese
+descenso se sostiene durante ≥ 21 días consecutivos O ≥ 2 ventanas de
+observación consecutivas, lo que ocurra primero.  [D-05]
+Efecto: pone flag_recaida_confirmada. Reinicia acción_efectiva_magnitud_y_duración_diasConsolidados a 0.
+Registra el evento con marca temporal, que es lo que lee
+reobservados_desde_evento().
+
+UN EPISODIO AISLADO NO DISPARA R8. Nunca. El retorno al patrón previo es una
+propiedad del patrón, no de un día. Confundirlos convierte cada tropiezo en un
+evento de recaída nominal, con todo lo que eso arrastra.
+
+Vocabulario: el flag se llama recaída porque el estado del YAML se llama así.
+Hacia la persona NO se usa nunca ese vocabulario. Ver "deontologia.txt".
+
+───────────────────────────────────────────────────────────────────
+R9 — INCOHERENCIA INTERNA   [regla nueva — corrige defecto ratificado]
+───────────────────────────────────────────────────────────────────
+Dispara si se cumple cualquiera de estos patrones:
+  (a) autoeficacia_situacional_media ≥ 70  Y  craving_nivel_e_inestabilidad_mssd ≥ 60
+      Autoeficacia declarada alta con craving volátil. Uno de los dos está mal
+      medido. Típicamente es autoeficacia por deseabilidad.
+  (b) intención_comprometida_horizonte == en_30d  Y  intención_comprometida_fuerza ≤ 35
+      Horizonte cercano con lenguaje de deseo, no de compromiso.
+  (c) reconocimiento_del_problema ≥ 70  Y  balance_decisional ≤ 30
+      Reconocimiento alto con balance claramente contrario al cambio.
+  (d) autoeficacia_situacional_media − autoeficacia_situacional_min ≥ 55
+      Perfil de autoeficacia con un dominio hundido y el resto alto.
+
+Efecto: pone flag_incoherencia_interna. Eleva la incertidumbre declarada
+(reduce Confianza en un 25%). Prioriza en fase 8d el ítem que desempate.
+NO reclasifica y NO desciende el repertorio.
+Veta: todas las ascendentes, mientras persista.
+
+Sin R9 el sistema no tenía forma de saber que su propio vector era incoherente:
+promediaba y avanzaba. R9 es el mecanismo por el que el motor duda de sí mismo.
+
+───────────────────────────────────────────────────────────────────
+R10 — REGRESIÓN DE MAGNITUD
+───────────────────────────────────────────────────────────────────
+Dispara si acción_efectiva_magnitud_y_duración_magnitud ≥ 50 y desciende ≥ 25 respecto a la ventana anterior,
+SIN cumplir todavía criterio de R8.
+Efecto: pone flag_regresion_magnitud. Desciende el repertorio activo un escalón
+(vía Ê) y prioriza prevención de recaída y relaciones de ayuda.
+NO reinicia acción_efectiva_magnitud_y_duración_diasConsolidados. NO dispara transición nominal.
+Es el aviso previo a R8, y existe para que el sistema reaccione ANTES de que
+el patrón se restablezca.
+
+───────────────────────────────────────────────────────────────────
+R11 — TRABAJO EXPERIENCIAL AÚN DOMINANTE   [regla nueva]
+───────────────────────────────────────────────────────────────────
+Dispara si se cumple cualquiera de:
+  (a) perfil_de_procesos_de_cambio_contraste <= 25
+      El perfil de procesos sigue claramente del lado experiencial.
+  (b) perfil_de_procesos_de_cambio_contraste es null Y n_perfil_de_procesos_de_cambio < 2
+      NO HAY EVIDENCIA sobre el perfil de procesos.
+
+Efecto: pone flag_experiencial_dominante.
+Veta: T3 (→Preparación). Sólo T3.
+
+POR QUÉ EXISTE ESTA REGLA Y NO UNA COMPARACIÓN EN EL TRIGGER.
+El veto de perfil_de_procesos_de_cambio era, en la versión anterior, `not (perfil_de_procesos_de_cambio_contraste <= 25)` escrito
+dentro del trigger. Con perfil_de_procesos_de_cambio en null eso o bien revienta el evaluador o bien deja
+el veto ABIERTO — es decir, permite el paso a planificación precisamente cuando
+el sistema no sabe nada del perfil de procesos. Es el peor momento posible para
+dejarlo pasar, porque inducir procesos conductuales a quien todavía está en
+trabajo experiencial es la vía documentada del estancamiento en contemplación.
+
+La rama (b) es la corrección: ausencia de evidencia CIERRA el veto, no lo abre.
+Es la misma doctrina que el resto del sistema — sin evidencia no se avanza —
+aplicada al único punto donde un modulador tiene poder de detención real.
+
+Esto sólo se puede decidir en la capa de reglas, que es código y ve el null.
+Una expresión evaluada no puede. De ahí que NINGÚN veto se escriba como
+comparación en los triggers: todos pasan por flag.
+
+═══════════════════════════════════════════════════════════════════
+3. TABLA FLAG → TRIGGER VETADO
+═══════════════════════════════════════════════════════════════════
+
+  flag_crisis_activa .................. T1 T2 T3 T4 T5 T7  (todas las ascendentes)
+  flag_incoherencia_interna ........... T1 T2 T3 T4 T5 T7
+  flag_presion_externa ................ T3
+  flag_ambivalencia_no_resuelta ....... T3
+  flag_horizonte_sin_paso ............. T3
+  flag_experiencial_dominante ......... T3
+  flag_lapso_reciente ................. T4
+  flag_craving_inestable .............. T4
+  flag_accion_sin_reconocimiento ...... T4 T5
+  flag_regresion_magnitud ............. T5
+  flag_recaida_confirmada ............. DISPARA T6. No veta nada.
+  flag_derivacion_activa .............. NO VETA NADA. Por diseño.
+
+TODO VETO DEL SISTEMA ESTÁ EN ESTA TABLA. No hay ni un solo veto escrito como
+comparación dentro de un trigger, y no debe haberlo: los vetos tienen que poder
+razonar sobre la ausencia de evidencia, y una expresión evaluada no puede.
+Los triggers contienen condiciones positivas de clasificador, la puerta, y
+negaciones de flag. Nada más.
+
+═══════════════════════════════════════════════════════════════════
+4. LO QUE NINGUNA REGLA PUEDE HACER
+═══════════════════════════════════════════════════════════════════
+
+  · Bloquear información de reducción de daños. Ninguna. Nunca. Por nada.
+  · Bloquear el acceso a recursos de emergencia.
+  · Cerrar la conversación.
+  · Emitir una etiqueta diagnóstica o una cifra hacia la persona.
+  · Reclasificar Ê. Sólo la fase 6 fija Ê; las reglas vetan y modulan.
+  · Condicionar nada al pago.

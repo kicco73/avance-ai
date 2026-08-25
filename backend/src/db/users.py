@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from .models import User
+from peewee import SQL
+
+from .models import Project, User
 from .utils import _utc_iso
 
 #FIXME temporary for prototype
@@ -90,7 +92,15 @@ class UserMixin:
 
     def get_active_project_name(self, user: str) -> str | None:
         row = User.get_or_none(User.email == user)
-        return row.active_project if row is not None else None
+        if row is None:
+            return None
+        if row.active_project is None:
+            first_project = Project.select(Project.name).order_by(SQL('rowid')).first()
+            if first_project is None:
+                return None
+            row.active_project = first_project.name
+            row.save()
+        return row.active_project
 
     def set_active_project_name(self, project_name: str, user: str) -> None:
         row = User.get_or_none(User.email == user)
