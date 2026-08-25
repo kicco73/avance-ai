@@ -38,19 +38,14 @@ __version__ = "1.11.0"
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-<<<<<<< HEAD
-# Resolved off this module's own location, not the cwd — same convention
-# as project/manager.py's own NEW_PROJECT_TEMPLATE.
-DEFAULT_SEED_PROJECT_ZIP = Path(__file__).resolve().parents[1] / "samples" / "projects" / "Drogodependencia.zip"
-=======
-DEFAULT_SEED_PROJECT_ZIP = Path(__file__).resolve().parents[1] / "samples" / "projects" / "Lluna.zip"
->>>>>>> master
-DEFAULT_SEED_PROJECT_NAME = "Drogodependencia"
-
 
 async def _seed_default_project_if_empty(db: Db, project_service: ProjectService, controller: AvanceController) -> None:
     if db.list_projects():
         return
+
+    DEFAULT_SEED_PROJECT_ZIP = Path(__file__).resolve().parents[1] / "samples" / "projects" / "Lluna.zip"
+    DEFAULT_SEED_PROJECT_NAME = "Lluna"
+
     Session().user = "system"
     Session().role = "supervisor"
     content = DEFAULT_SEED_PROJECT_ZIP.read_bytes()
@@ -58,7 +53,6 @@ async def _seed_default_project_if_empty(db: Db, project_service: ProjectService
         DEFAULT_SEED_PROJECT_NAME, content, "application/zip", controller.settings._activate_project,
     )
     project_service.publish_project(DEFAULT_SEED_PROJECT_NAME)
-
 
 def _build_fallback_app(error: Exception) -> FastAPI:
     """Used only when essential startup wiring fails: every request gets
