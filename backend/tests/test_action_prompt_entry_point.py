@@ -12,7 +12,8 @@ from automaton.automaton import Action, Automaton, State
 from chat.chat_service import ChatService
 from chat.session_manager import ChatSessionManager
 from conftest import FakeAiService
-from jobs import JobQueue, PersistedJobSink
+from conftest import NullBroadcaster
+from jobs import JobQueue
 from metrics.metric_service import MetricService
 from tracking.tracking_processor import TrackingProcessor
 from tracking.tracking_service import TrackingService
@@ -84,7 +85,7 @@ def _chat_service(db, automaton: Automaton) -> tuple[ChatService, FakeAiService]
     chat_service = ChatService(
         db=db, ai_service=ai_service, project_service=project_service,
         session_manager=ChatSessionManager(db), tracking_service=tracking_service, metric_service=metric_service,
-        persisted_jobs=JobQueue(PersistedJobSink(db), max_concurrent=1),
+        job_queue=JobQueue(max_concurrent=1, broadcaster=NullBroadcaster()),
     )
     return chat_service, ai_service
 

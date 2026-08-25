@@ -1,11 +1,7 @@
-from .job_queue import JobQueue, JobWork, OnProgress
-from .job_sink import InMemoryJobSink, JobSink, PersistedJobSink
+from .job import Job
+from .job_queue import JobQueue
 
 __all__ = [
-    "InMemoryJobSink",
+    "Job",
     "JobQueue",
-    "JobSink",
-    "JobWork",
-    "OnProgress",
-    "PersistedJobSink",
 ]

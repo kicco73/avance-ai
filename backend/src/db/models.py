@@ -144,18 +144,6 @@ class StateRemap(BaseModel):
     class Meta:
         primary_key = CompositeKey('project_name', 'old_key')
 
-class Job(BaseModel):
-    id = AutoField()
-    kind = CharField()
-    reference_id = IntegerField(null=True)
-    status = CharField()
-    created_at = DateTimeField(index=True, default=datetime.utcnow)
-    finished_at = DateTimeField(null=True)
-    error = TextField(null=True)
-    result = TextField(null=True)
-    progress_current = IntegerField(default=0)
-    progress_total = IntegerField(default=0)
-
 class SessionSummary(BaseModel):
     id = AutoField()
     # unique=True: at most one summary per session, ever — its own
@@ -221,7 +209,7 @@ class BenchmarkAggregateResult(BaseModel):
     class Meta:
         indexes = (
             (('project_name', 'revision'), False),
-            (('project_name', 'revision', 'kind', 'target', 'strategy'), True),
+            (('project_name', 'revision', 'project_draft_edit_count', 'kind', 'target', 'strategy'), True),
         )
 
 class SystemWarning(BaseModel):

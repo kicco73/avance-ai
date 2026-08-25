@@ -2,6 +2,7 @@
 only. Every endpoint lives on AvanceController (see controller.py)."""
 
 from __future__ import annotations
+import asyncio
 import inspect
 import logging
 from contextlib import asynccontextmanager
@@ -20,9 +21,10 @@ from config import AppConfig
 from controller import AvanceController
 from db import Db
 from error_handlers import register_error_handlers
-from jobs import InMemoryJobSink, JobQueue, PersistedJobSink
+from jobs import JobQueue
 from metrics.benchmark_run_service import BenchmarkRunService
 from metrics.metric_service import MetricService
+from metrics.queue_progress_broadcaster import QueueProgressBroadcaster
 from project.project_service import ProjectService
 from ai.ai_service import AiService
 from tracking.tracking_service import TrackingService
@@ -84,11 +86,8 @@ def create_app() -> FastAPI:
         auth_service = AuthService(db, config.auth_providers, config.auth_token_ttl_in_hours)
         app.state.auth_service = auth_service
 
-        # Two independent worker pools, never shared — see jobs/job_queue.py's
-        # JobQueue for why a job must never wait on another job from its own
-        # queue.
-        persisted_job_queue = JobQueue(PersistedJobSink(db), max_concurrent=config.jobs_max_concurrent_persisted)
-        ephemeral_job_queue = JobQueue(InMemoryJobSink(), max_concurrent=config.jobs_max_concurrent_ephemeral)
+        test_event_broadcaster = QueueProgressBroadcaster(asyncio.get_running_loop())
+        job_queue = JobQueue(max_concurrent=config.jobs_max_concurrent, broadcaster=test_event_broadcaster)
 
         project_service = ProjectService(db)
         session_manager = ChatSessionManager(db, open_window_minutes=config.max_session_duration_in_minutes)
@@ -106,14 +105,14 @@ def create_app() -> FastAPI:
         # ChatService depend on ai_service/metric_service directly, never each other.
         tracking_service = TrackingService(db, ai_service, project_service, metric_service, talk_enabled=talk_service is not None)
         chat_service = ChatService(
-            db, ai_service, project_service, session_manager, tracking_service, metric_service, persisted_job_queue,
+            db, ai_service, project_service, session_manager, tracking_service, metric_service, job_queue,
         )
 
-        # Shares persisted_job_queue/ephemeral_job_queue with anything else
-        # that submits a job of either kind (see jobs/job_queue.py's own
-        # module docstring) — never its own private queue.
+        # Shares job_queue with anything else that submits a job (see
+        # jobs/job_queue.py's own module docstring) — never its own
+        # private queue.
         benchmark_run_service = BenchmarkRunService(
-            db, ai_service, tracking_service, persisted_job_queue, ephemeral_job_queue,
+            db, ai_service, tracking_service, job_queue,
         )
 
         # Availability cascade (see ProjectService.recompute_availability/
@@ -127,11 +126,11 @@ def create_app() -> FastAPI:
         # subscribes once for the process lifetime. Built after
         # chat_ws_adapter: a self-loop wake-up needs it to push the
         # transition to an already-open connection.
-        WakeupService(db, project_service, ephemeral_job_queue, chat_ws_adapter).register()
+        WakeupService(db, project_service, job_queue, chat_ws_adapter).register()
 
         controller = AvanceController(
             chat_service, project_service, talk_service, listen_service, db, tracking_service, benchmark_run_service,
-            auth_service, __version__,
+            auth_service, test_event_broadcaster, __version__,
         )
         app.include_router(controller.router)
 

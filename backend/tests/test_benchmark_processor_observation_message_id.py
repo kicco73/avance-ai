@@ -81,7 +81,10 @@ async def test_observation_message_id_is_the_user_message_when_autotracking_on_a
     engine = _FakeTrackingEngine()
     processor = _processor(False, engine)
 
-    await processor.run_session(1, {"id": 1}, report_progress=lambda: None)
+    user_message_ids, warning = processor.prepare(1)
+    assert warning is None
+    for message_id in user_message_ids:
+        await processor.process_message(1, message_id)
 
     assert engine.apply_transition_message_ids == [1]
 
@@ -90,6 +93,9 @@ async def test_observation_message_id_is_the_next_assistant_message_when_autotra
     engine = _FakeTrackingEngine()
     processor = _processor(True, engine)
 
-    await processor.run_session(1, {"id": 1}, report_progress=lambda: None)
+    user_message_ids, warning = processor.prepare(1)
+    assert warning is None
+    for message_id in user_message_ids:
+        await processor.process_message(1, message_id)
 
     assert engine.apply_transition_message_ids == [2]

@@ -11,6 +11,7 @@ from chat.chat_service import ChatService
 from db import Db
 from listen.listen_service import ListenService
 from metrics.benchmark_run_service import BenchmarkRunService
+from metrics.queue_progress_broadcaster import QueueProgressBroadcaster
 from project.project_service import ProjectService
 from talk.talk_service import TalkService
 from tracking.tracking_service import TrackingService
@@ -34,6 +35,7 @@ class AvanceController(object):
         tracking_service: TrackingService,
         benchmark_run_service: BenchmarkRunService,
         auth_service: AuthService,
+        test_event_broadcaster: QueueProgressBroadcaster,
         version: str,
     ) -> None:
         self.chat_service = chat_service
@@ -44,12 +46,13 @@ class AvanceController(object):
         self.benchmark_run_service = benchmark_run_service
         self.tracking_service = tracking_service
         self.auth_service = auth_service
+        self.test_event_broadcaster = test_event_broadcaster
         self.version = version
 
         self.chat = ChatController(chat_service, project_service, talk_service, listen_service)
         self.edit_project = EditProjectController(chat_service, project_service)
         self.label_project = LabelProjectController(
-            chat_service, project_service, tracking_service, benchmark_run_service
+            chat_service, project_service, tracking_service, benchmark_run_service, test_event_broadcaster,
         )
         self.settings = SettingsController(chat_service, project_service, db, version)
         self.auth = AuthController(auth_service)

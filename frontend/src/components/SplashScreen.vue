@@ -59,8 +59,6 @@ const emit = defineEmits(['retry'])
 </template>
 
 <style scoped>
-/* Calm, clinical waiting state — a slow breathing pulse, not a spinner or
-   anything that reads as playful/notification-like. */
 .splash {
   position: fixed;
   inset: 0;

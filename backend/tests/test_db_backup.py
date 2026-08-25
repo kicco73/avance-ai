@@ -81,9 +81,6 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
         "CREATE TABLE history (id INTEGER PRIMARY KEY, user_id TEXT, project_name TEXT, "
         "archive_name TEXT, kind TEXT, seq INTEGER, content TEXT)",
         "CREATE TABLE stateremap (project_name TEXT, old_key TEXT, new_key TEXT)",
-        "CREATE TABLE job (id INTEGER PRIMARY KEY, kind TEXT, reference_id INTEGER, status TEXT, "
-        "created_at TEXT, finished_at TEXT, error TEXT, result TEXT, progress_current INTEGER, "
-        "progress_total INTEGER)",
         "CREATE TABLE benchmarkrun (id INTEGER PRIMARY KEY, username TEXT, project_name TEXT, session_id INTEGER, "
         "strategy TEXT, project_draft_edit_count INTEGER, session_labeling_revision INTEGER, "
         "batch_segments INTEGER, ai_model_snapshot TEXT, results TEXT)",

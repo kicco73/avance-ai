@@ -12,7 +12,8 @@ from tracking.fixed_project_context import FixedProjectContext
 from tracking.env import PersistedEnv
 from chat.session_manager import ChatSessionManager
 from conftest import FakeAiService
-from jobs import JobQueue, PersistedJobSink
+from conftest import NullBroadcaster
+from jobs import JobQueue
 from metrics.metric_service import MetricService
 from tracking.tracking_service import TrackingService
 
@@ -86,7 +87,7 @@ def _chat_service(db, automaton: Automaton) -> ChatService:
         session_manager=ChatSessionManager(db),
         tracking_service=tracking_service,
         metric_service=metric_service,
-        persisted_jobs=JobQueue(PersistedJobSink(db), max_concurrent=1),
+        job_queue=JobQueue(max_concurrent=1, broadcaster=NullBroadcaster()),
     )
 
 

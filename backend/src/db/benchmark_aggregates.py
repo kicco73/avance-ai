@@ -14,6 +14,7 @@ class BenchmarkAggregateMixin:
         target = target or ''
         row = BenchmarkAggregateResult.get_or_none(
             (BenchmarkAggregateResult.project_name == project_name) & (BenchmarkAggregateResult.revision == revision)
+            & (BenchmarkAggregateResult.project_draft_edit_count == project_draft_edit_count)
             & (BenchmarkAggregateResult.kind == kind) & (BenchmarkAggregateResult.target == target)
             & (BenchmarkAggregateResult.strategy == strategy)
         )
@@ -23,9 +24,20 @@ class BenchmarkAggregateMixin:
                 kind=kind, target=target, strategy=strategy, results=results,
             )
         else:
-            row.project_draft_edit_count = project_draft_edit_count
             row.results = results
             row.save()
+
+    def find_benchmark_aggregate_result(
+        self, project_name: str, kind: str, target: str | None, strategy: str, project_draft_edit_count: int,
+    ) -> dict | None:
+        revision = self._current_revision(project_name)
+        row = BenchmarkAggregateResult.get_or_none(
+            (BenchmarkAggregateResult.project_name == project_name) & (BenchmarkAggregateResult.revision == revision)
+            & (BenchmarkAggregateResult.project_draft_edit_count == project_draft_edit_count)
+            & (BenchmarkAggregateResult.kind == kind) & (BenchmarkAggregateResult.target == (target or ''))
+            & (BenchmarkAggregateResult.strategy == strategy)
+        )
+        return json.loads(row.results) if row is not None else None
 
     def list_benchmark_aggregate_results(self, project_name: str, revision: int | None = None) -> list[dict]:
         if revision is None:

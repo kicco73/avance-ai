@@ -6,7 +6,8 @@ import pytest
 
 from chat.chat_service import ChatService, ChatServiceError
 from chat.session_manager import ChatSessionManager
-from jobs import JobQueue, PersistedJobSink
+from conftest import NullBroadcaster
+from jobs import JobQueue
 from metrics.metric_service import MetricService
 from session import Session
 from tracking.tracking_service import TrackingService
@@ -30,7 +31,7 @@ def chat_service(db):
     return ChatService(
         ai_service=None, project_service=None, db=db, session_manager=ChatSessionManager(db),
         tracking_service=tracking_service, metric_service=metric_service,
-        persisted_jobs=JobQueue(PersistedJobSink(db), max_concurrent=1),
+        job_queue=JobQueue(max_concurrent=1, broadcaster=NullBroadcaster()),
     )
 
 

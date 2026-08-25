@@ -221,6 +221,12 @@ export function createChatSocket() {
   return new WebSocket(WS_URL)
 }
 
+export function createTestEventsSource(projectName) {
+  return new EventSource(
+    `${API_URL}/projects/${encodeURIComponent(projectName)}/test-events`, { withCredentials: true }
+  )
+}
+
 export function sendWebSocketMessage(payload, { onChunk, onStatus, onDone, onError } = {}) {
   return new Promise((resolve, reject) => {
     let ws
@@ -819,8 +825,38 @@ export function postStateTest(projectName, stateKey, strategy) {
   })
 }
 
-export function getStateJob(projectName, jobId) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/state-jobs/${encodeURIComponent(jobId)}`)
+export function getJobsStatus(projectName, strategy) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/jobs-status?strategy=${encodeURIComponent(strategy)}`)
+}
+
+export function getAggregateResult(projectName, kind, target, strategy) {
+  const params = new URLSearchParams({ kind, strategy })
+  if (target != null) params.set('target', target)
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/aggregate-result?${params}`)
+}
+
+export function postStatesAggregation(projectName, strategy) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/states/aggregation`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ strategy })
+  })
+}
+
+export function postSignalsAggregation(projectName, strategy) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/signals/aggregation`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ strategy })
+  })
+}
+
+export function postRootAggregation(projectName, strategy) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/root/aggregation`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ strategy })
+  })
 }
 
 export function postUsersAggregation(projectName, strategy) {

@@ -63,7 +63,6 @@ def test_turn_by_turn_run_completes_and_produces_results(client, hello_project):
     # session_id given -> only the "one_session"-scoped metrics (see
     # BenchmarkCalculator.default_metrics/from_data) — 6, not the full 8.
     assert len(finished["results"]) == 6
-    assert finished["total_messages"] == finished["processed_messages"]
 
 
 def test_batch_run_completes_and_tracks_batch_segments(client, hello_project):
@@ -81,7 +80,7 @@ def test_batch_run_completes_and_tracks_batch_segments(client, hello_project):
 
 
 def test_whole_project_run_scopes_to_labeled_sessions_only(client, hello_project):
-    labeled_id = _make_labeled_session(client)
+    _make_labeled_session(client)
     # An unlabeled session must never be pulled into a whole-project run.
     unlabeled = client.get("/api/chat/session").json()
     client.post(f"/api/chat/sessions/{unlabeled['id']}/messages", json={"message": "hi"})
@@ -142,17 +141,21 @@ def test_sessions_aggregation_pools_both_live_and_imported_sessions(client, hell
     imported_id = resp.json()["last_session_id"]
     client.put(f"/api/chat/sessions/{imported_id}/labeled", json={"labeled": True})
 
-    job = client.post(f"/api/projects/{hello_project}/sessions/test", json={"strategy": "turn_by_turn"}).json()
-    job_id = job["job_id"]
+    response = client.post(f"/api/projects/{hello_project}/sessions/test", json={"strategy": "turn_by_turn"})
+    assert response.status_code == 200, response.text
 
     deadline = time.monotonic() + 5.0
-    status = client.get(f"/api/projects/{hello_project}/state-jobs/{job_id}").json()
-    while status["status"] not in ("completed", "failed") and time.monotonic() < deadline:
+    result = client.get(
+        f"/api/projects/{hello_project}/aggregate-result",
+        params={"kind": "sessions", "strategy": "turn_by_turn"},
+    )
+    while result.status_code != 200 and time.monotonic() < deadline:
         time.sleep(0.05)
-        status = client.get(f"/api/projects/{hello_project}/state-jobs/{job_id}").json()
-
-    assert status["status"] == "completed", status
-    assert status["progress_total"] == 2
+        result = client.get(
+            f"/api/projects/{hello_project}/aggregate-result",
+            params={"kind": "sessions", "strategy": "turn_by_turn"},
+        )
+    assert result.status_code == 200, result.text
 
     export = client.get(f"/api/projects/{hello_project}/benchmark-runs/export").json()
     sessions_entry = next(entry for entry in export if entry["kind"] == "sessions")

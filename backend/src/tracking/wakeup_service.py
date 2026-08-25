@@ -9,7 +9,7 @@ import logging
 from chat.ws_adapter import WsAdapter
 from db.db import Db
 from events import EnvChanged, StateChanged, subscribe
-from jobs import JobQueue, OnProgress
+from jobs import Job, JobQueue
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
 from session import Session
@@ -24,13 +24,36 @@ from tracking.tracking_engine import DbTrackingSink, TrackingEngine
 logger = logging.getLogger(__name__)
 
 
+class WakeupJob(Job):
+
+    def __init__(self, service: "WakeupService", username: str, observer_project_name: str) -> None:
+        super().__init__()
+        self._service = service
+        self._username = username
+        self._observer_project_name = observer_project_name
+
+    def _prepare(self) -> tuple[int, list[Job]]:
+        return 1, []
+
+    @property
+    def is_background(self) -> bool:
+        return False
+
+    @property
+    def result(self) -> str | None:
+        return None
+
+    async def _run_next_step(self) -> None:
+        await self._service._reevaluate_and_apply(self._username, self._observer_project_name)
+
+
 class WakeupService:
     def __init__(
-        self, db: Db, project_service: ProjectService, ephemeral_jobs: JobQueue, ws_adapter: WsAdapter | None = None,
+        self, db: Db, project_service: ProjectService, job_queue: JobQueue, ws_adapter: WsAdapter | None = None,
     ) -> None:
         self._db = db
         self._project_service = project_service
-        self._ephemeral_jobs = ephemeral_jobs
+        self._job_queue = job_queue
         # None whenever no websocket transport is configured — push is
         # simply skipped in that case; a re-evaluated self-loop is still
         # applied and persisted either way, only live delivery depends on this.
@@ -106,8 +129,4 @@ class WakeupService:
                     })
 
     def _wake(self, username: str, observer_project_name: str) -> None:
-        async def work(on_progress: OnProgress) -> tuple[str | None, str | None]:
-            await self._reevaluate_and_apply(username, observer_project_name)
-            return None, None
-
-        self._ephemeral_jobs.submit(kind="automaton_wakeup", reference_id=None, total=1, work=work)
+        self._job_queue.submit(WakeupJob(self, username, observer_project_name))

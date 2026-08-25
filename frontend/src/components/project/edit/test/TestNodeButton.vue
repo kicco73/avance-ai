@@ -10,17 +10,15 @@ const props = defineProps({
     default: 'idle',
     validator: (value) => ['idle', 'running', 'ok', 'warning', 'fail'].includes(value)
   },
-  progress: { type: Object, default: null },
+  progress: { type: Number, default: null },
   disabled: { type: Boolean, default: false },
   disabledReason: { type: String, default: 'No test for this node' }
 })
 
 const emit = defineEmits(['activate'])
 
-const hasProgress = computed(() => props.progress != null && props.progress.total > 0)
-const progressPercent = computed(() => (
-  hasProgress.value ? Math.min(100, Math.round((props.progress.current / props.progress.total) * 100)) : 0
-))
+const hasProgress = computed(() => props.progress != null)
+const progressPercent = computed(() => (hasProgress.value ? Math.min(100, Math.round(props.progress)) : 0))
 
 function onClick() {
   // running: never clickable (can't re-launch an in-flight test). Any other status,

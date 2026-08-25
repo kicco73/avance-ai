@@ -9,8 +9,9 @@ import DocInfoButton from '../../../DocInfoButton.vue'
 import MetricDetail from '../../../inspector/MetricDetail.vue'
 import ModelMenu from '../../../ModelMenu.vue'
 import {
-  deleteBenchmarkRuns, getBenchmarkMetrics, getBenchmarkRun, getBenchmarkRuns, getProjectSignals, getProjectStates,
-  getStateJob, postBenchmarkRun, postSessionsRun, postSignalTest, postStateTest, postUserSessionsRun,
+  createTestEventsSource, deleteBenchmarkRuns, getAggregateResult, getBenchmarkMetrics,
+  getBenchmarkRuns, getJobsStatus, getProjectSignals, getProjectStates, postBenchmarkRun, postRootAggregation,
+  postSessionsRun, postSignalTest, postSignalsAggregation, postStateTest, postStatesAggregation, postUserSessionsRun,
   postUsersAggregation
 } from '../../../../api.js'
 import { loadSessions, sessions, sessionsLoading } from '../../../../chatStore.js'
@@ -129,71 +130,24 @@ function cacheKey(strategyName, nodeId) {
 // own implicit default for anything missing here.
 const nodeStatuses = ref({})
 const nodeProgress = ref({})
-// A state node's own most recent job result — Signal Accuracy only, kept
-// purely client-side (no server-side history for an ephemeral job, see
-// backend jobs/job_sink.py's InMemoryJobSink), lost on page refresh.
+// A node's own most recent result — kept client-side only, lost on page refresh.
 const nodeLastResult = ref({})
-// A state node's own most recent job failure message, alongside
-// nodeLastResult above (null result on failure must stay distinguishable
-// from "never run").
+// A node's own most recent failure message, alongside nodeLastResult
+// above (null result on failure must stay distinguishable from "never run").
 const nodeError = ref({})
-// sessions-branch/a user node/users-branch's own most recent aggregation
-// job result — already the per-metric list, kept client-side only, same
-// as nodeLastResult/nodeError above.
-const aggregateResults = ref({})
-const aggregateErrors = ref({})
-// cacheKey -> pending setTimeout id, plain bookkeeping (never rendered).
-const pollTimers = {}
 
 const selectedNodeId = ref(null)
 const selectedRun = ref(null)
 const selectedRunLoading = ref(false)
 
-// running beats fail beats warning beats ok; idle only when nothing in
-// scope has ever run under this strategy — used to roll leaf statuses
-// up into their branch/root node.
-function aggregateStatus(statuses) {
-  if (statuses.some((s) => s === 'running')) return 'running'
-  if (statuses.some((s) => s === 'fail')) return 'fail'
-  if (statuses.some((s) => s === 'warning')) return 'warning'
-  if (statuses.length > 0 && statuses.every((s) => s === 'ok')) return 'ok'
-  return 'idle'
-}
-
-// Every state leaf's own status under the active strategy, rolled up
-// into states-branch's own status below.
-const statesBranchStatus = computed(() => {
-  const prefix = `${strategy.value}:state:`
-  const statuses = Object.entries(nodeStatuses.value)
-    .filter(([key]) => key.startsWith(prefix))
-    .map(([, status]) => status)
-  return aggregateStatus(statuses)
-})
-
-const signalsBranchStatus = computed(() => {
-  const prefix = `${strategy.value}:signal:`
-  const statuses = Object.entries(nodeStatuses.value)
-    .filter(([key]) => key.startsWith(prefix))
-    .map(([, status]) => status)
-  return aggregateStatus(statuses)
-})
-
 // TestsTree only ever sees the active strategy's own statuses — a node
-// with no entry here falls back to its own 'idle' default. states-branch
-// and root are derived (not launched jobs in their own right), so they're
-// computed here rather than read straight off nodeStatuses.
+// with no entry here falls back to its own 'idle' default.
 const currentStrategyStatuses = computed(() => {
   const prefix = `${strategy.value}:`
   const result = {}
   for (const [key, status] of Object.entries(nodeStatuses.value)) {
     if (key.startsWith(prefix)) result[key.slice(prefix.length)] = status
   }
-  result['states-branch'] = statesBranchStatus.value
-  result['signals-branch'] = signalsBranchStatus.value
-  result['root'] = aggregateStatus([
-    result['sessions-branch'] ?? 'idle', statesBranchStatus.value, result['users-branch'] ?? 'idle',
-    signalsBranchStatus.value
-  ])
   return result
 })
 
@@ -210,67 +164,12 @@ const selectedCacheKey = computed(() => (
   selectedNodeId.value ? cacheKey(strategy.value, selectedNodeId.value) : null
 ))
 
-// One row per state, its own SignalAccuracy result under the active
-// strategy — states-branch's own "aggregate stats" view.
-const statesAggregateRows = computed(() => {
-  const prefix = `${strategy.value}:state:`
-  return Object.entries(nodeLastResult.value)
-    .filter(([key, result]) => key.startsWith(prefix) && result)
-    .map(([key, result]) => ({ ...result, name: key.slice(prefix.length) }))
-})
-
-// Sample-count-weighted average across every state that has a result —
-// the single "how's the whole state machine doing" number.
-const statesOverall = computed(() => {
-  const rows = statesAggregateRows.value
-  const totalSamples = rows.reduce((sum, row) => sum + (row.sample_count || 0), 0)
-  if (totalSamples === 0) return null
-  const weightedSum = rows.reduce((sum, row) => sum + (row.value || 0) * (row.sample_count || 0), 0)
-  return { value: weightedSum / totalSamples, sample_count: totalSamples }
-})
-
-const statesFailedEntries = computed(() => {
-  const prefix = `${strategy.value}:state:`
-  return Object.entries(nodeError.value)
-    .filter(([key, error]) => key.startsWith(prefix) && error)
-    .map(([key, error]) => ({ name: key.slice(prefix.length), error }))
-})
-
-const signalsAggregateRows = computed(() => {
-  const prefix = `${strategy.value}:signal:`
-  return Object.entries(nodeLastResult.value)
-    .filter(([key, result]) => key.startsWith(prefix) && result)
-    .map(([key, result]) => ({ ...result, name: key.slice(prefix.length) }))
-})
-
-const signalsOverall = computed(() => {
-  const rows = signalsAggregateRows.value
-  const totalSamples = rows.reduce((sum, row) => sum + (row.sample_count || 0), 0)
-  if (totalSamples === 0) return null
-  const weightedSum = rows.reduce((sum, row) => sum + (row.value || 0) * (row.sample_count || 0), 0)
-  return { value: weightedSum / totalSamples, sample_count: totalSamples }
-})
-
-const signalsFailedEntries = computed(() => {
-  const prefix = `${strategy.value}:signal:`
-  return Object.entries(nodeError.value)
-    .filter(([key, error]) => key.startsWith(prefix) && error)
-    .map(([key, error]) => ({ name: key.slice(prefix.length), error }))
-})
-
-function clearPoll(key) {
-  if (pollTimers[key] != null) {
-    clearTimeout(pollTimers[key])
-    delete pollTimers[key]
-  }
-}
-
 function setStatus(key, status) {
   nodeStatuses.value = { ...nodeStatuses.value, [key]: status }
 }
 
-function setProgress(key, current, total) {
-  nodeProgress.value = { ...nodeProgress.value, [key]: { current, total } }
+function setProgress(key, percentage) {
+  nodeProgress.value = { ...nodeProgress.value, [key]: percentage }
 }
 
 function clearProgress(key) {
@@ -288,232 +187,188 @@ function statusFromOutcome(status, error) {
   return 'running'
 }
 
-function pollSessionRun(nodeId, runStrategy, key, runId) {
-  clearPoll(key)
-  const tick = async () => {
-    let run = null
-    try {
-      run = await getBenchmarkRun(props.projectName, runId)
-    } catch {
-      // already surfaced via apiFetch — keep polling, a transient
-      // network hiccup shouldn't drop this node's own status tracking.
-      pollTimers[key] = setTimeout(tick, 1000)
-      return
-    }
-    if (run.status === 'pending' || run.status === 'running') {
-      setProgress(key, run.processed_messages, run.total_messages)
-      pollTimers[key] = setTimeout(tick, 1000)
-      return
-    }
-    const outcome = statusFromOutcome(run.status, run.error)
-    setStatus(key, outcome)
-    if (selectedNodeId.value === nodeId && strategy.value === runStrategy) selectedRun.value = run
-  }
-  tick()
+// nodeId's own {kind, target} in the aggregate-result/jobs-status
+// vocabulary — null for 'session:*' and 'root', neither of which is one.
+function aggregateKindAndTarget(nodeId) {
+  if (nodeId.startsWith('state:')) return { kind: 'state', target: nodeId.slice('state:'.length) }
+  if (nodeId.startsWith('signal:')) return { kind: 'signal', target: nodeId.slice('signal:'.length) }
+  if (nodeId.startsWith('user:')) return { kind: 'user_sessions', target: nodeId.slice('user:'.length) }
+  if (nodeId === 'sessions-branch') return { kind: 'sessions', target: null }
+  if (nodeId === 'users-branch') return { kind: 'users', target: null }
+  if (nodeId === 'states-branch') return { kind: 'all_states', target: null }
+  if (nodeId === 'signals-branch') return { kind: 'all_signals', target: null }
+  return null
 }
 
-function pollStateJob(key, jobId, runStrategy, mirrorLeafNodeIds = []) {
-  clearPoll(key)
-  const tick = async () => {
-    let job = null
-    try {
-      job = await getStateJob(props.projectName, jobId)
-    } catch {
-      pollTimers[key] = setTimeout(tick, 1000)
-      return
-    }
-    if (job == null || job.status === 'pending' || job.status === 'running') {
-      if (job != null) setProgress(key, job.progress_current, job.progress_total)
-      pollTimers[key] = setTimeout(tick, 1000)
-      return
-    }
-    const outcome = statusFromOutcome(job.status, job.error)
-    setStatus(key, outcome)
-    // A state test replays every session annotated with this state under
-    // the hood (see BenchmarkRunService.start_job) — mirroring its outcome
-    // onto those session leaves the same way activateSessionsRun does.
-    mirrorLeafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(runStrategy, leafNodeId), outcome))
-    nodeError.value = { ...nodeError.value, [key]: job.status === 'failed' ? job.error : null }
-    nodeLastResult.value = {
-      ...nodeLastResult.value,
-      [key]: job.result ? JSON.parse(job.result) : null
-    }
-  }
-  tick()
+function nodeIdFor(kind, target) {
+  if (kind === 'state') return `state:${target}`
+  if (kind === 'signal') return `signal:${target}`
+  if (kind === 'user_sessions') return `user:${target}`
+  if (kind === 'sessions') return 'sessions-branch'
+  if (kind === 'users') return 'users-branch'
+  if (kind === 'all_states') return 'states-branch'
+  if (kind === 'all_signals') return 'signals-branch'
+  return null
 }
 
-function pollAggregationJob(key, jobId, runStrategy, mirrorLeafNodeIds = []) {
-  clearPoll(key)
-  const tick = async () => {
-    let job = null
-    try {
-      job = await getStateJob(props.projectName, jobId)
-    } catch {
-      pollTimers[key] = setTimeout(tick, 1000)
-      return
-    }
-    if (job == null || job.status === 'pending' || job.status === 'running') {
-      if (job != null) setProgress(key, job.progress_current, job.progress_total)
-      pollTimers[key] = setTimeout(tick, 1000)
-      return
-    }
-    const outcome = statusFromOutcome(job.status, job.error)
-    setStatus(key, outcome)
-    mirrorLeafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(runStrategy, leafNodeId), outcome))
-    aggregateErrors.value = { ...aggregateErrors.value, [key]: job.status === 'failed' ? job.error : null }
-    aggregateResults.value = {
-      ...aggregateResults.value,
-      [key]: job.result ? JSON.parse(job.result) : null
-    }
+async function fetchAggregateResult(key, eventStrategy, kind, target) {
+  try {
+    const result = await getAggregateResult(props.projectName, kind, target, eventStrategy)
+    nodeLastResult.value = { ...nodeLastResult.value, [key]: result }
+  } catch {
+    // already surfaced via apiFetch
   }
-  tick()
+}
+
+// The single live-update channel for every node's status/progress/result
+// — connected once in onMounted, replacing all per-node polling.
+function handleTestEvent(message) {
+  const { key, status, percentage, error } = message
+  if (status === 'pending' || status === 'running') {
+    setStatus(key, 'running')
+    if (percentage != null) setProgress(key, percentage)
+    return
+  }
+  const outcome = statusFromOutcome(status, error)
+  setStatus(key, outcome)
+  clearProgress(key)
+  const separatorIndex = key.indexOf(':')
+  const eventStrategy = key.slice(0, separatorIndex)
+  const nodeId = key.slice(separatorIndex + 1)
+  if (nodeId.startsWith('session:')) {
+    if (selectedNodeId.value === nodeId && strategy.value === eventStrategy) loadSelectedRun(nodeId)
+    return
+  }
+  nodeError.value = { ...nodeError.value, [key]: status === 'failed' ? error : null }
+  if (status !== 'completed') return
+  const target = aggregateKindAndTarget(nodeId)
+  if (target == null) return // root — no result of its own
+  fetchAggregateResult(key, eventStrategy, target.kind, target.target)
+}
+
+async function hydrateJobsStatus() {
+  let jobsStatus = null
+  try {
+    jobsStatus = await getJobsStatus(props.projectName, strategy.value)
+  } catch {
+    return
+  }
+  for (const { session_id, status } of jobsStatus.sessions) {
+    if (status === 'ok') setStatus(cacheKey(strategy.value, `session:${session_id}`), 'ok')
+  }
+  for (const { kind, target, status } of jobsStatus.aggregates) {
+    if (status !== 'ok') continue
+    const nodeId = nodeIdFor(kind, target)
+    const key = cacheKey(strategy.value, nodeId)
+    setStatus(key, 'ok')
+    fetchAggregateResult(key, strategy.value, kind, target)
+  }
 }
 
 async function activateSessionLeaf(nodeId, activeStrategy) {
   const key = cacheKey(activeStrategy, nodeId)
   setStatus(key, 'running')
-  clearProgress(key)
   try {
     const sessionId = Number(nodeId.slice('session:'.length))
-    const run = await postBenchmarkRun(props.projectName, sessionId, activeStrategy)
-    setProgress(key, run.processed_messages, run.total_messages)
-    pollSessionRun(nodeId, activeStrategy, key, run.id)
+    await postBenchmarkRun(props.projectName, sessionId, activeStrategy)
   } catch {
     // already surfaced via apiFetch
     setStatus(key, 'fail')
   }
 }
 
-// Every session-leaf nodeId the "Sessions" branch shows — same filter as
-// TestsTree.vue's own annotatedSessions.
-function annotatedSessionNodeIds() {
-  return sessions.value.filter((s) => s.has_annotations).map((s) => `session:${s.id}`)
-}
-
-async function activateStateLeaf(nodeId, activeStrategy, mirrorLeafNodeIds = []) {
+async function activateStateLeaf(nodeId, activeStrategy) {
   const key = cacheKey(activeStrategy, nodeId)
   setStatus(key, 'running')
-  clearProgress(key)
-  // A state test replays every annotated session under the hood (see
-  // BenchmarkRunService.start_job) — mirrored here the same way
-  // activateSessionsRun mirrors its own whole-project replay.
-  mirrorLeafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(activeStrategy, leafNodeId), 'running'))
   try {
     const stateKey = nodeId.slice('state:'.length)
-    const { job_id } = await postStateTest(props.projectName, stateKey, activeStrategy)
-    pollStateJob(key, job_id, activeStrategy, mirrorLeafNodeIds)
+    await postStateTest(props.projectName, stateKey, activeStrategy)
   } catch {
     // already surfaced via apiFetch
     setStatus(key, 'fail')
-    mirrorLeafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(activeStrategy, leafNodeId), 'fail'))
   }
 }
 
-// The whole-project replay (session_id: null) — same backend run kind as
-// a single session's, just scoped to every labeled session at once (see
-// BenchmarkRunService.create_run). Both sessions-branch and root show it.
 async function activateSessionsRun(activeStrategy) {
   const key = cacheKey(activeStrategy, 'sessions-branch')
-  const leafNodeIds = annotatedSessionNodeIds()
   setStatus(key, 'running')
-  clearProgress(key)
-  leafNodeIds.forEach((leafNodeId) => {
-    setStatus(cacheKey(activeStrategy, leafNodeId), 'running')
-    clearProgress(cacheKey(activeStrategy, leafNodeId))
-  })
   try {
-    const { job_id } = await postSessionsRun(props.projectName, activeStrategy)
-    pollAggregationJob(key, job_id, activeStrategy, leafNodeIds)
+    await postSessionsRun(props.projectName, activeStrategy)
   } catch {
     // already surfaced via apiFetch
     setStatus(key, 'fail')
-    leafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(activeStrategy, leafNodeId), 'fail'))
   }
 }
 
 async function activateAllStates(activeStrategy) {
-  const leafNodeIds = annotatedSessionNodeIds()
-  await Promise.all(
-    projectStates.value.map((stateKey) => activateStateLeaf(`state:${stateKey}`, activeStrategy, leafNodeIds))
-  )
-}
-
-async function activateSignalLeaf(nodeId, activeStrategy, mirrorLeafNodeIds = []) {
-  const key = cacheKey(activeStrategy, nodeId)
+  const key = cacheKey(activeStrategy, 'states-branch')
   setStatus(key, 'running')
-  clearProgress(key)
-  mirrorLeafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(activeStrategy, leafNodeId), 'running'))
   try {
-    const signalName = nodeId.slice('signal:'.length)
-    const { job_id } = await postSignalTest(props.projectName, signalName, activeStrategy)
-    pollStateJob(key, job_id, activeStrategy, mirrorLeafNodeIds)
+    await postStatesAggregation(props.projectName, activeStrategy)
   } catch {
     // already surfaced via apiFetch
     setStatus(key, 'fail')
-    mirrorLeafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(activeStrategy, leafNodeId), 'fail'))
+  }
+}
+
+async function activateSignalLeaf(nodeId, activeStrategy) {
+  const key = cacheKey(activeStrategy, nodeId)
+  setStatus(key, 'running')
+  try {
+    const signalName = nodeId.slice('signal:'.length)
+    await postSignalTest(props.projectName, signalName, activeStrategy)
+  } catch {
+    // already surfaced via apiFetch
+    setStatus(key, 'fail')
   }
 }
 
 async function activateAllSignals(activeStrategy) {
-  const leafNodeIds = annotatedSessionNodeIds()
-  await Promise.all(
-    projectSignals.value.map((signal) => activateSignalLeaf(`signal:${signal.name}`, activeStrategy, leafNodeIds))
-  )
+  const key = cacheKey(activeStrategy, 'signals-branch')
+  setStatus(key, 'running')
+  try {
+    await postSignalsAggregation(props.projectName, activeStrategy)
+  } catch {
+    // already surfaced via apiFetch
+    setStatus(key, 'fail')
+  }
 }
 
 function signalLabel(name) {
   return projectSignals.value.find((signal) => signal.name === name)?.ui_label || name
 }
 
-// Every user-leaf nodeId the "Users" branch shows — one per distinct
-// username among annotated sessions, same source annotatedSessionNodeIds
-// uses for its own leaves.
-function annotatedUsernames() {
-  return [...new Set(sessions.value.filter((s) => s.has_annotations).map((s) => s.username))]
-}
-
-function annotatedSessionNodeIdsFor(username) {
-  return sessions.value.filter((s) => s.has_annotations && s.username === username).map((s) => `session:${s.id}`)
-}
-
 async function activateUserLeaf(nodeId, activeStrategy) {
   const key = cacheKey(activeStrategy, nodeId)
-  const username = nodeId.slice('user:'.length)
-  const leafNodeIds = annotatedSessionNodeIdsFor(username)
   setStatus(key, 'running')
-  clearProgress(key)
-  leafNodeIds.forEach((leafNodeId) => {
-    setStatus(cacheKey(activeStrategy, leafNodeId), 'running')
-    clearProgress(cacheKey(activeStrategy, leafNodeId))
-  })
   try {
-    const { job_id } = await postUserSessionsRun(props.projectName, username, activeStrategy)
-    pollAggregationJob(key, job_id, activeStrategy, leafNodeIds)
+    const username = nodeId.slice('user:'.length)
+    await postUserSessionsRun(props.projectName, username, activeStrategy)
   } catch {
     // already surfaced via apiFetch
     setStatus(key, 'fail')
-    leafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(activeStrategy, leafNodeId), 'fail'))
   }
 }
 
-// The "Users" branch's own root aggregation — a mean across one
-// whole-project-scope run per distinct annotated user (see backend
-// BenchmarkRunService.start_users_aggregation_job).
 async function activateUsersAggregation(activeStrategy) {
   const key = cacheKey(activeStrategy, 'users-branch')
-  const userLeafNodeIds = annotatedUsernames().map((username) => `user:${username}`)
-  const sessionLeafNodeIds = annotatedSessionNodeIds()
   setStatus(key, 'running')
-  clearProgress(key)
-  userLeafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(activeStrategy, leafNodeId), 'running'))
-  sessionLeafNodeIds.forEach((leafNodeId) => setStatus(cacheKey(activeStrategy, leafNodeId), 'running'))
   try {
-    const { job_id } = await postUsersAggregation(props.projectName, activeStrategy)
-    pollAggregationJob(key, job_id, activeStrategy, [...userLeafNodeIds, ...sessionLeafNodeIds])
+    await postUsersAggregation(props.projectName, activeStrategy)
   } catch {
     // already surfaced via apiFetch
     setStatus(key, 'fail')
-    ;[...userLeafNodeIds, ...sessionLeafNodeIds].forEach((leafNodeId) => setStatus(cacheKey(activeStrategy, leafNodeId), 'fail'))
+  }
+}
+
+async function activateRoot(activeStrategy) {
+  const key = cacheKey(activeStrategy, 'root')
+  setStatus(key, 'running')
+  try {
+    await postRootAggregation(props.projectName, activeStrategy)
+  } catch {
+    // already surfaced via apiFetch
+    setStatus(key, 'fail')
   }
 }
 
@@ -528,11 +383,11 @@ async function onActivate(nodeId) {
   if (nodeId.startsWith('session:')) {
     await activateSessionLeaf(nodeId, activeStrategy)
   } else if (nodeId.startsWith('state:')) {
-    await activateStateLeaf(nodeId, activeStrategy, annotatedSessionNodeIds())
+    await activateStateLeaf(nodeId, activeStrategy)
   } else if (nodeId.startsWith('user:')) {
     await activateUserLeaf(nodeId, activeStrategy)
   } else if (nodeId.startsWith('signal:')) {
-    await activateSignalLeaf(nodeId, activeStrategy, annotatedSessionNodeIds())
+    await activateSignalLeaf(nodeId, activeStrategy)
   } else if (nodeId === 'sessions-branch') {
     await activateSessionsRun(activeStrategy)
   } else if (nodeId === 'states-branch') {
@@ -542,12 +397,7 @@ async function onActivate(nodeId) {
   } else if (nodeId === 'signals-branch') {
     await activateAllSignals(activeStrategy)
   } else if (nodeId === 'root') {
-    // Every sub-test at once: the whole-project replay, every state's own
-    // test, the users aggregation, and every signal's own accuracy.
-    await Promise.all([
-      activateSessionsRun(activeStrategy), activateAllStates(activeStrategy), activateUsersAggregation(activeStrategy),
-      activateAllSignals(activeStrategy)
-    ])
+    await activateRoot(activeStrategy)
   }
 }
 
@@ -632,12 +482,10 @@ async function onResetCache() {
   resettingCache.value = true
   try {
     await deleteBenchmarkRuns(props.projectName)
-    Object.keys(pollTimers).forEach(clearPoll)
     nodeStatuses.value = {}
+    nodeProgress.value = {}
     nodeLastResult.value = {}
     nodeError.value = {}
-    aggregateResults.value = {}
-    aggregateErrors.value = {}
     selectedRun.value = null
     if (selectedNodeId.value && isRunNode(selectedNodeId.value)) {
       await loadSelectedRun(selectedNodeId.value)
@@ -649,6 +497,8 @@ async function onResetCache() {
   }
 }
 
+let testEventSource = null
+
 onMounted(() => {
   // selectedNodeId always starts null on a fresh mount (this tab isn't
   // kept alive while closed — see EditProjectView.vue's autoOpen v-if),
@@ -656,6 +506,7 @@ onMounted(() => {
   onSelect('root')
   loadSessions(true, props.projectName)
   loadMetricDefinitions()
+  hydrateJobsStatus()
   statesLoading.value = true
   getProjectStates(props.projectName).then((states) => {
     projectStates.value = states
@@ -672,12 +523,14 @@ onMounted(() => {
   }).finally(() => {
     signalsLoading.value = false
   })
+  testEventSource = createTestEventsSource(props.projectName)
+  testEventSource.onmessage = (event) => handleTestEvent(JSON.parse(event.data))
   window.addEventListener('mousemove', onTreeDrag)
   window.addEventListener('mouseup', stopTreeDrag)
 })
 
 onBeforeUnmount(() => {
-  Object.keys(pollTimers).forEach(clearPoll)
+  testEventSource?.close()
   window.removeEventListener('mousemove', onTreeDrag)
   window.removeEventListener('mouseup', stopTreeDrag)
   document.removeEventListener('click', handleStrategyClickOutside, true)
@@ -787,8 +640,8 @@ onBeforeUnmount(() => {
       </template>
 
       <template v-else-if="selectedNodeId === 'sessions-branch' || selectedNodeId.startsWith('user:') || selectedNodeId === 'users-branch'">
-        <p v-if="aggregateErrors[selectedCacheKey]" class="tests-panel-error">{{ aggregateErrors[selectedCacheKey] }}</p>
-        <p v-else-if="!aggregateResults[selectedCacheKey] || !aggregateResults[selectedCacheKey].length" class="tests-panel-placeholder">
+        <p v-if="nodeError[selectedCacheKey]" class="tests-panel-error">{{ nodeError[selectedCacheKey] }}</p>
+        <p v-else-if="!nodeLastResult[selectedCacheKey] || !nodeLastResult[selectedCacheKey].length" class="tests-panel-placeholder">
           No test has been run for {{ selectedNodeId.startsWith('user:') ? 'this user' : selectedNodeId === 'users-branch' ? 'the users aggregation' : 'the whole project' }} under this strategy yet.
         </p>
         <table v-else class="tests-panel-metrics-table">
@@ -799,7 +652,7 @@ onBeforeUnmount(() => {
           </thead>
           <tbody>
             <tr
-              v-for="metric in aggregateResults[selectedCacheKey]" :key="metric.name"
+              v-for="metric in nodeLastResult[selectedCacheKey]" :key="metric.name"
               :class="{ 'tests-panel-row-empty': !metric.sample_count }"
             >
               <td><MetricDetail :label="metricLabel(metric.name)" :description="metricDescription(metric.name)" :value="metric.value" /></td>
@@ -864,10 +717,8 @@ onBeforeUnmount(() => {
       </template>
 
       <template v-else-if="selectedNodeId === 'signals-branch'">
-        <div v-if="signalsFailedEntries.length" class="tests-panel-error">
-          <div v-for="entry in signalsFailedEntries" :key="entry.name">{{ entry.name }}: {{ entry.error }}</div>
-        </div>
-        <p v-if="!signalsOverall" class="tests-panel-placeholder">
+        <p v-if="nodeError[selectedCacheKey]" class="tests-panel-error">{{ nodeError[selectedCacheKey] }}</p>
+        <p v-else-if="!nodeLastResult[selectedCacheKey]" class="tests-panel-placeholder">
           No signal test has been run under this strategy yet.
         </p>
         <table v-else class="tests-panel-metrics-table">
@@ -875,39 +726,27 @@ onBeforeUnmount(() => {
             <tr><th>Metric</th><th>Samples</th></tr>
           </thead>
           <tbody>
-            <tr :class="{ 'tests-panel-row-empty': !signalsOverall.sample_count }">
-              <td><MetricDetail :label="metricLabel('signal_accuracy')" :description="metricDescription('signal_accuracy')" :value="signalsOverall.value" /></td>
-              <td>{{ signalsOverall.sample_count }}</td>
+            <tr :class="{ 'tests-panel-row-empty': !nodeLastResult[selectedCacheKey].sample_count }">
+              <td><MetricDetail label="Overall" :value="nodeLastResult[selectedCacheKey].value" /></td>
+              <td>{{ nodeLastResult[selectedCacheKey].sample_count }}</td>
             </tr>
           </tbody>
         </table>
       </template>
 
       <template v-else-if="selectedNodeId === 'states-branch'">
-        <div v-if="statesFailedEntries.length" class="tests-panel-error">
-          <div v-for="entry in statesFailedEntries" :key="entry.name">{{ entry.name }}: {{ entry.error }}</div>
-        </div>
-        <p v-if="!statesAggregateRows.length" class="tests-panel-placeholder">
+        <p v-if="nodeError[selectedCacheKey]" class="tests-panel-error">{{ nodeError[selectedCacheKey] }}</p>
+        <p v-else-if="!nodeLastResult[selectedCacheKey]" class="tests-panel-placeholder">
           No state test has been run under this strategy yet.
         </p>
         <table v-else class="tests-panel-metrics-table">
           <thead>
-            <tr>
-              <th>State</th><th>Mean</th><th>Median</th><th>Std dev</th><th>Samples</th>
-            </tr>
+            <tr><th>Metric</th><th>Samples</th></tr>
           </thead>
           <tbody>
-            <tr v-for="row in statesAggregateRows" :key="row.name" :class="{ 'tests-panel-row-empty': !row.sample_count }">
-              <td><MetricDetail :label="row.name" :value="row.value" /></td>
-              <td>{{ formatNumber(row.mean) }}</td>
-              <td>{{ formatNumber(row.median) }}</td>
-              <td>{{ formatNumber(row.standard_deviation) }}</td>
-              <td>{{ row.sample_count }}</td>
-            </tr>
-            <tr v-if="statesOverall" class="tests-panel-overall-row" :class="{ 'tests-panel-row-empty': !statesOverall.sample_count }">
-              <td><MetricDetail label="Overall" :value="statesOverall.value" /></td>
-              <td colspan="3"></td>
-              <td>{{ statesOverall.sample_count }}</td>
+            <tr :class="{ 'tests-panel-row-empty': !nodeLastResult[selectedCacheKey].sample_count }">
+              <td><MetricDetail label="Overall" :value="nodeLastResult[selectedCacheKey].value" /></td>
+              <td>{{ nodeLastResult[selectedCacheKey].sample_count }}</td>
             </tr>
           </tbody>
         </table>
