@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 class WakeupJob(Job):
 
     def __init__(self, service: "WakeupService", username: str, observer_project_name: str) -> None:
-        super().__init__()
+        super().__init__(key=f"wakeup:{observer_project_name}:{username}", username="system")
         self._service = service
         self._username = username
         self._observer_project_name = observer_project_name

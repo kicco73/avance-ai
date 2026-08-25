@@ -63,7 +63,11 @@ class BenchmarkReplayJob(Job):
         self, service: "BenchmarkRunService", run: dict, automaton: Automaton,
         session_ids: list[int], signal_source_cls: type, total: int,
     ) -> None:
-        super().__init__()
+        key = (
+            f"{run['strategy']}:session:{run['session_id']}" if run['session_id'] is not None
+            else f"{run['strategy']}:pooled-replay"
+        )
+        super().__init__(key=key, username=Session().user)
         self._service = service
         self._run = run
         self._automaton = automaton
@@ -147,12 +151,28 @@ class BenchmarkReplayJob(Job):
         return self._processor.prepare(session_id)
 
 
+_NODE_ID_BY_KIND = {
+    'sessions': 'sessions-branch',
+    'users': 'users-branch',
+    'all_states': 'states-branch',
+    'all_signals': 'signals-branch',
+}
+
+
+def _aggregation_node_id(kind: str, target: str | None) -> str:
+    if kind in _NODE_ID_BY_KIND:
+        return _NODE_ID_BY_KIND[kind]
+    if kind == 'user_sessions':
+        return f'user:{target}'
+    return f'{kind}:{target}'
+
+
 class _AggregationJob(Job):
     """Common shape for every aggregation job kind: check the cache first,
     compute, persist, return."""
 
     def __init__(self, service: "BenchmarkRunService", project_name: str, kind: str, target: str | None, strategy: str) -> None:
-        super().__init__()
+        super().__init__(key=f"{strategy}:{_aggregation_node_id(kind, target)}", username=Session().user)
         self._service = service
         self._project_name = project_name
         self._kind = kind
@@ -330,7 +350,7 @@ class AllSignalsAggregationJob(_AggregationJob):
 class RootAggregationJob(Job):
 
     def __init__(self, service: "BenchmarkRunService", strategy: str, branch_jobs: list[Job]) -> None:
-        super().__init__()
+        super().__init__(key=f"{strategy}:root", username=Session().user)
         self._service = service
         self._branch_jobs = branch_jobs
 
@@ -363,10 +383,7 @@ class BenchmarkRunService:
     def create_run(self, username: str | None, project_name: str, session_id: int | None, strategy: str) -> dict:
         run, job = self._construct_run(username, project_name, session_id, strategy)
         if job is not None:
-            if session_id is not None:
-                self._job_queue.submit_with_progress_feedback(job, f"{strategy}:session:{session_id}", Session().user)
-            else:
-                self._job_queue.submit(job)
+            self._job_queue.submit(job)
         return self._status_for(run)
 
     def _construct_run(
@@ -545,7 +562,7 @@ class BenchmarkRunService:
             raise ValueError(f"Unknown benchmark run strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
         session_ids = sorted(self._db.get_session_ids_with_expected_state(project_name, state_key))
         job = StateAggregationJob(self, project_name, state_key, strategy, session_ids)
-        self._job_queue.submit_with_progress_feedback(job, f"{strategy}:state:{state_key}", Session().user)
+        self._job_queue.submit(job)
         return job
 
     def start_signal_job(self, project_name: str, signal_name: str, strategy: str) -> Job:
@@ -554,7 +571,7 @@ class BenchmarkRunService:
         sessions = self._db.list_chat_sessions(None, project_name, type=None)
         session_ids = sorted(int(row['id']) for row in sessions if row['labeled'])
         job = SignalAggregationJob(self, project_name, signal_name, strategy, session_ids)
-        self._job_queue.submit_with_progress_feedback(job, f"{strategy}:signal:{signal_name}", Session().user)
+        self._job_queue.submit(job)
         return job
 
     def _construct_sessions_run_job(self, project_name: str, strategy: str) -> Job:
@@ -566,7 +583,7 @@ class BenchmarkRunService:
 
     def start_sessions_run_job(self, project_name: str, strategy: str) -> Job:
         job = self._construct_sessions_run_job(project_name, strategy)
-        self._job_queue.submit_with_progress_feedback(job, f"{strategy}:sessions-branch", Session().user)
+        self._job_queue.submit(job)
         return job
 
     def start_user_sessions_run_job(self, username: str, project_name: str, strategy: str) -> Job:
@@ -575,7 +592,7 @@ class BenchmarkRunService:
         sessions = self._db.list_chat_sessions(username, project_name, type=None)
         session_ids = sorted(int(row['id']) for row in sessions if row['labeled'])
         job = PooledAggregationJob(self, project_name, 'user_sessions', username, strategy, session_ids)
-        self._job_queue.submit_with_progress_feedback(job, f"{strategy}:user:{username}", Session().user)
+        self._job_queue.submit(job)
         return job
 
     def _construct_users_aggregation_job(self, project_name: str, strategy: str) -> Job:
@@ -591,7 +608,7 @@ class BenchmarkRunService:
 
     def start_users_aggregation_job(self, project_name: str, strategy: str) -> Job:
         job = self._construct_users_aggregation_job(project_name, strategy)
-        self._job_queue.submit_with_progress_feedback(job, f"{strategy}:users-branch", Session().user)
+        self._job_queue.submit(job)
         return job
 
     def _construct_all_states_job(self, project_name: str, strategy: str) -> Job:
@@ -605,7 +622,7 @@ class BenchmarkRunService:
 
     def start_all_states_job(self, project_name: str, strategy: str) -> Job:
         job = self._construct_all_states_job(project_name, strategy)
-        self._job_queue.submit_with_progress_feedback(job, f"{strategy}:states-branch", Session().user)
+        self._job_queue.submit(job)
         return job
 
     def _construct_all_signals_job(self, project_name: str, strategy: str) -> Job:
@@ -617,7 +634,7 @@ class BenchmarkRunService:
 
     def start_all_signals_job(self, project_name: str, strategy: str) -> Job:
         job = self._construct_all_signals_job(project_name, strategy)
-        self._job_queue.submit_with_progress_feedback(job, f"{strategy}:signals-branch", Session().user)
+        self._job_queue.submit(job)
         return job
 
     def start_root_job(self, project_name: str, strategy: str) -> Job:
@@ -630,7 +647,7 @@ class BenchmarkRunService:
             self._construct_all_signals_job(project_name, strategy),
         ]
         job = RootAggregationJob(self, strategy, branch_jobs)
-        self._job_queue.submit_with_progress_feedback(job, f"{strategy}:root", Session().user)
+        self._job_queue.submit(job)
         return job
 
     def _aggregate_signal_accuracy(self, sub_run_ids: list[int], state_key: str) -> dict:

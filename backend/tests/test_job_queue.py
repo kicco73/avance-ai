@@ -26,7 +26,7 @@ def _wait_until(predicate, timeout=2.0, interval=0.01) -> bool:
 
 class _QuickJob(Job):
     def __init__(self, started: threading.Event | None = None) -> None:
-        super().__init__()
+        super().__init__(key="quick", username="test")
         self._started = started
         self._result: str | None = None
 
@@ -45,7 +45,7 @@ class _QuickJob(Job):
 
 class _RaisingJob(Job):
     def __init__(self, message: str) -> None:
-        super().__init__()
+        super().__init__(key="raising", username="test")
         self._message = message
 
     def _prepare(self) -> tuple[int, list[Job]]:
@@ -61,7 +61,7 @@ class _RaisingJob(Job):
 
 class _BlockingJob(Job):
     def __init__(self, started: threading.Event, release: threading.Event) -> None:
-        super().__init__()
+        super().__init__(key="blocking", username="test")
         self._started = started
         self._release = release
 

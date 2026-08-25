@@ -69,7 +69,7 @@ class LabelProjectController(BaseController):
         — no separate status endpoint, no separate connection."""
         uploads = [(file.filename or "", await file.read()) for file in files]
         job = self.tracking_service.build_import_sessions_job(project_name, uploads)
-        return stream_job_progress(self.job_queue, self.test_event_broadcaster, job, "import")
+        return stream_job_progress(self.job_queue, self.test_event_broadcaster, job)
 
     @delete("/api/projects/{project_name}/sessions/imported", role="supervisor")
     def delete_imported_sessions(self, project_name: str):
@@ -327,7 +327,7 @@ class LabelProjectController(BaseController):
             try:
                 while not await request.is_disconnected():
                     try:
-                        message = await asyncio.wait_for(connection.get(), timeout=60.0)
+                        message = await asyncio.wait_for(connection.get(), timeout=1.0)
                     except asyncio.TimeoutError:
                         continue
                     yield f"data: {json.dumps(message)}\n\n"

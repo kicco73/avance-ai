@@ -25,7 +25,6 @@ class JobQueue(object):
 
     def __init__(self, max_concurrent: int, broadcaster: "QueueProgressBroadcaster") -> None:
         self._broadcaster = broadcaster
-        self._broadcast_routing: dict[Job, tuple[str, str]] = {}
         self._lock = threading.RLock()
         self._not_empty = threading.Condition(self._lock)
         self._deque: deque[Job] = deque()
@@ -61,16 +60,15 @@ class JobQueue(object):
                 self._not_empty.wait()
             return self._deque.popleft()
 
-    def _broadcast_status(self, job: Job, error: str | None = None) -> None:
-        with self._lock:
-            routing = self._broadcast_routing.get(job)
-            if routing is None:
-                return
-            key, username = routing
-            status = self.status_for(key, username) or {}
-            if job.is_done() or error:
-                del self._broadcast_routing[job]
-        self._broadcaster.push(username, status)
+    def _broadcast_status(self, job: Job) -> None:
+        status = {
+            "key": job.key,
+            "status": job.status(),
+            "percentage": job.progress(),
+            "result": job.result,
+            "error": job.error(),
+        }
+        self._broadcaster.push(job.username, status)
 
     def _worker_loop(self) -> None:
         loop = asyncio.new_event_loop()
@@ -85,11 +83,13 @@ class JobQueue(object):
                 else:
                     self._submit(job)
             except Exception as exc:
-                logger.exception(f"Job {job} failed.")
-                self._broadcast_status(job, error=str(exc))
+                logger.exception(f"Job {job} failed: {exc}")
+                self._broadcast_status(job)
                 self._forget(job)
 
+
     def submit(self, job: Job) -> None:
+        self._broadcast_status(job)
         dependencies = job.prepare()
 
         with self._lock:
@@ -100,19 +100,3 @@ class JobQueue(object):
 
         if not dependencies:
             self._submit(job)
-
-    def submit_with_progress_feedback(self, job: Job, key: str, username: str) -> None:
-        with self._lock:
-            self._broadcast_routing[job] = (key, username)
-        self.submit(job)
-
-    def status_for(self, key: str, username: str) -> dict | None:
-        with self._lock:
-            for job, (routed_key, routed_username) in self._broadcast_routing.items():
-                if routed_key == key and routed_username == username:
-                    return {
-                        "key": key,
-                        "status": 'failed' if job.is_failed() else 'completed' if job.is_done() else 'running',
-                        "percentage": job.progress(),
-                        "result": job.result,
-                    }

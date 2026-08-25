@@ -163,7 +163,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
             _, job = await self.project_service.put_project(project_name, content, content_type, self._activate_project)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-        return stream_job_progress(self.job_queue, self.test_event_broadcaster, job, "upload")
+        return stream_job_progress(self.job_queue, self.test_event_broadcaster, job)
 
     @delete("/api/projects/{project_name}", role="admin")
     async def delete_project(self, project_name: str):

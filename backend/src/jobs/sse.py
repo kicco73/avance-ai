@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import uuid
 from typing import TYPE_CHECKING
 
 from fastapi.responses import StreamingResponse
@@ -14,15 +13,15 @@ if TYPE_CHECKING:
 
 
 def stream_job_progress(
-    job_queue: JobQueue, broadcaster: "QueueProgressBroadcaster", job: Job, key: str
+    job_queue: JobQueue, broadcaster: "QueueProgressBroadcaster", job: Job
 ) -> StreamingResponse:
-    """Submits `job` under a fresh, one-shot connection id and streams its
-    progress back as SSE on this same response — one connection per
-    request, closed the moment the job completes or fails. Shared by every
-    "run a job, watch it inline" endpoint (session import, project upload)."""
-    connection_id = f"{key}:{uuid.uuid4().hex}"
-    connection = broadcaster.connect(connection_id)
-    job_queue.submit_with_progress_feedback(job, key, connection_id)
+    """Submits `job` (already carrying its own key/username, see Job.__init__)
+    and streams its progress back as SSE on this same response — one
+    connection per request, closed the moment the job completes or fails.
+    Shared by every "run a job, watch it inline" endpoint (session import,
+    project upload)."""
+    connection = broadcaster.connect(job.username)
+    job_queue.submit(job)
 
     async def stream():
         try:
@@ -35,6 +34,6 @@ def stream_job_progress(
                     return
                 yield f"data: {json.dumps(message)}\n\n"
         finally:
-            broadcaster.disconnect(connection_id, connection)
+            broadcaster.disconnect(job.username, connection)
 
     return StreamingResponse(stream(), media_type="text/event-stream")

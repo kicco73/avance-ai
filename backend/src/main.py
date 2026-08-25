@@ -58,16 +58,15 @@ async def _seed_default_project_if_empty(
     # Lluna.zip bundles a real sessions.json (unlike create_new_project's
     # "Hello world" template) — the returned job has real work to do, so
     # it must actually run through the real queue, not be dropped.
-    connection_id = "seed:startup"
-    connection = broadcaster.connect(connection_id)
-    job_queue.submit_with_progress_feedback(job, "seed", connection_id)
+    connection = broadcaster.connect(job.username)
+    job_queue.submit(job)
     try:
         while True:
             message = await connection.get()
             if message["status"] in ("completed", "failed"):
                 break
     finally:
-        broadcaster.disconnect(connection_id, connection)
+        broadcaster.disconnect(job.username, connection)
     project_service.publish_project(DEFAULT_SEED_PROJECT_NAME)
 
 def _build_fallback_app(error: Exception) -> FastAPI:

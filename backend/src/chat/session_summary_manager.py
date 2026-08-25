@@ -20,7 +20,7 @@ SUMMARY_PROMPT = (
 class SessionSummaryJob(Job):
 
     def __init__(self, db: Db, ai_service: AiService, session_id: int, summary_id: int) -> None:
-        super().__init__()
+        super().__init__(key=f"session-summary:{session_id}", username="system")
         self._db = db
         self._ai_service = ai_service
         self._session_id = session_id

@@ -28,6 +28,5 @@ class QueueProgressBroadcaster:
     def push(self, username: str, message: dict) -> None:
         with self._lock:
             connections = list(self._connections.get(username, {}).items())
-        print(f"DEBUG push username={username!r} known={list(self._connections.keys())!r} n_conns={len(connections)} message={message!r}")
         for connection, loop in connections:
             loop.call_soon_threadsafe(connection.put_nowait, message)

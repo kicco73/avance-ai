@@ -103,8 +103,8 @@ def fake_ai_service() -> FakeAiService:
 
 class NullBroadcaster:
     """Stands in for QueueProgressBroadcaster wherever a JobQueue is built but
-    the test never exercises SSE — every job it runs has no `key`, so
-    JobQueue never actually calls push() on this."""
+    the test never exercises SSE — every push() lands here and is dropped,
+    since nothing ever connect()s to read it."""
 
     def push(self, username: str, message: dict) -> None:
         pass

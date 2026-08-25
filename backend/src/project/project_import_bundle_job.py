@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 
 from db import Db
 from jobs import Job
@@ -22,7 +23,7 @@ class ProjectImportBundleJob(Job):
         self, manager: SessionImportManager, db: Db, project_name: str,
         sessions: list[dict], benchmark_entries: list[dict],
     ) -> None:
-        super().__init__()
+        super().__init__(key="upload", username=f"upload:{uuid.uuid4().hex}")
         self._manager = manager
         self._db = db
         self._project_name = project_name

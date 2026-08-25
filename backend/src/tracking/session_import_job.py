@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 
 from pydantic import ValidationError
 
@@ -15,7 +16,7 @@ class SessionImportJob(Job):
     def __init__(
         self, manager: SessionImportManager, db: Db, project_name: str, uploads: list[tuple[str, bytes]],
     ) -> None:
-        super().__init__()
+        super().__init__(key="import", username=f"import:{uuid.uuid4().hex}")
         self._manager = manager
         self._db = db
         self._project_name = project_name
