@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import parse_sse_result
+
 pytestmark = pytest.mark.regression
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
@@ -20,7 +22,7 @@ def test_put_project_returns_a_success_payload(client):
     content = (SAMPLES_DIR / "Hello world.zip").read_bytes()
     response = client.put("/api/projects/proj", content=content, headers={"Content-Type": "application/zip"})
     assert response.status_code == 200, response.text
-    assert response.json() == {"success": True, "project_name": "proj"}
+    assert parse_sse_result(response) == {"success": True, "project_name": "proj"}
 
 
 def test_fresh_install_has_no_active_project(client):

@@ -17,6 +17,7 @@ from .editor import ProjectEditor
 from .inspector import ProjectInspector
 from .manager import ProjectManager
 from .parsers import AutomatonLoader
+from .project_import_bundle_job import ProjectImportBundleJob
 from .types import CommitCallback
 
 __all__ = ["ProjectService", "CommitCallback"]
@@ -148,10 +149,10 @@ class ProjectService(object):
 
     async def put_project(
         self, project_name: str, content: bytes, content_type: str | None, commit: CommitCallback
-    ) -> dict:
+    ) -> tuple[dict, ProjectImportBundleJob]:
         return await self._manager.put_project(project_name, content, content_type, commit)
 
-    async def create_new_project(self, commit: CommitCallback) -> dict:
+    async def create_new_project(self, commit: CommitCallback) -> tuple[dict, ProjectImportBundleJob]:
         return await self._manager.create_new_project(commit)
 
     def export_project_zip(self, project_name: str) -> bytes:

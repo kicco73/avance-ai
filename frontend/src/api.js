@@ -578,13 +578,17 @@ export function activateProject(projectName) {
   })
 }
 
-export function putProject(projectName, file) {
+// Streams progress SSE-style within this same response, same as
+// postImportSessions — see readSseResult. `onProgress` gets each chunk's
+// `percentage` (0-100) as the queued import of any bundled
+// sessions.json/benchmark.json advances.
+export function putProject(projectName, file, onProgress) {
   const contentType = /\.zip$/i.test(file.name) ? 'application/zip' : 'application/x-yaml'
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}`, {
     method: 'PUT',
     headers: { 'Content-Type': contentType },
     body: file
-  })
+  }, { parse: 'sse', onProgress })
 }
 
 // `sessionId`, when given, pins the graph to the exact revision that

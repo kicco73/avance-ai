@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import uuid
 from http import HTTPStatus
 from urllib.parse import quote
 
@@ -14,7 +13,7 @@ from fastapi import HTTPException, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
 
 from chat.chat_service import ChatService
-from jobs import JobQueue
+from jobs import JobQueue, stream_job_progress
 from metrics.benchmark_run_service import BenchmarkRunService
 from metrics.queue_progress_broadcaster import QueueProgressBroadcaster
 from project.project_service import ProjectService
@@ -70,24 +69,7 @@ class LabelProjectController(BaseController):
         — no separate status endpoint, no separate connection."""
         uploads = [(file.filename or "", await file.read()) for file in files]
         job = self.tracking_service.build_import_sessions_job(project_name, uploads)
-        connection_id = f"import:{uuid.uuid4().hex}"
-        connection = self.test_event_broadcaster.connect(connection_id)
-        self.job_queue.submit_with_progress_feedback(job, "import", connection_id)
-
-        async def stream():
-            try:
-                while True:
-                    message = await connection.get()
-                    if message["status"] in ("completed", "failed"):
-                        if message["status"] == "completed" and job.result:
-                            message = {**message, "result": json.loads(job.result)}
-                        yield f"data: {json.dumps(message)}\n\n"
-                        return
-                    yield f"data: {json.dumps(message)}\n\n"
-            finally:
-                self.test_event_broadcaster.disconnect(connection_id, connection)
-
-        return StreamingResponse(stream(), media_type="text/event-stream")
+        return stream_job_progress(self.job_queue, self.test_event_broadcaster, job, "import")
 
     @delete("/api/projects/{project_name}/sessions/imported", role="supervisor")
     def delete_imported_sessions(self, project_name: str):

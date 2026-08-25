@@ -52,6 +52,10 @@ const showProfile = ref(false)
 const modelUploadInput = ref(null)
 const chatWindowRef = ref(null)
 const manageProjectsView = ref(null)
+const uploadingProject = ref(false)
+// 0-100, or null before the first progress chunk has arrived — see
+// SessionsTree.vue's identical importProgress for the same reasoning.
+const uploadProgress = ref(null)
 // Set from ProfileMenu's own 'loaded' — it already fetches the current
 // user's full profile (getMe(), which includes role) for its avatar, so
 // this reuses that instead of a second, redundant /api/auth/me call.
@@ -205,8 +209,12 @@ async function handleModelUploadChange(event) {
 
   const projectName = file.name.replace(/\.(zip|ya?ml)$/i, '')
   clearChatUi()
+  uploadingProject.value = true
+  uploadProgress.value = null
   try {
-    await putProject(projectName, file)
+    await putProject(projectName, file, (message) => {
+      uploadProgress.value = message.percentage
+    })
     // A freshly uploaded project has never been published — nothing can
     // chat with it yet (see db.create_chat_session, which requires a
     // published_revision) until someone opens "Edit project" and clicks
@@ -216,6 +224,9 @@ async function handleModelUploadChange(event) {
     await refreshStateAndProjects()
   } catch {
     // already surfaced via apiFetch
+  } finally {
+    uploadingProject.value = false
+    uploadProgress.value = null
   }
 }
 
@@ -497,6 +508,8 @@ onBeforeUnmount(() => {
     <ManageProjectsView
       v-if="showManageProjects"
       ref="manageProjectsView"
+      :uploading="uploadingProject"
+      :upload-progress="uploadProgress"
       @close="showManageProjects = false"
       @new-project="handleNewProject"
       @upload="triggerModelUpload"

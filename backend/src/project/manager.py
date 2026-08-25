@@ -19,6 +19,7 @@ from tracking.session_import import SessionImportManager
 from .inspector import ProjectInspector
 from .parsers import AutomatonLoader, decode_text_archives, extract_zip_safely, looks_like_zip
 from .parsers import IMAGE_EXTENSIONS, TEXT_CONTENT_TYPE_BY_EXTENSION
+from .project_import_bundle_job import ProjectImportBundleJob
 from .types import CommitCallback
 
 logger = logging.getLogger(__name__)
@@ -331,10 +332,19 @@ class ProjectManager:
 
     async def put_project(
         self, project_name: str, content: bytes, content_type: str | None, commit: CommitCallback
-    ) -> dict:
+    ) -> tuple[dict, ProjectImportBundleJob]:
         """Creates or replaces `project_name` from a raw body — a zip
         archive, or a single bare YAML file treated as index.yml's own
-        content with no attachments."""
+        content with no attachments. Extract -> validate -> persist ->
+        commit happen here, synchronously (the last one needs the chat
+        lock, which only ever runs safely on the caller's own event loop).
+        The bundled sessions.json/benchmark.json, if any, are returned as
+        an unprepared ProjectImportBundleJob instead of imported inline —
+        one entry at a time, so a large re-import reports real progress
+        instead of blocking. The caller decides what to do with it: submit
+        it to the real job queue (SettingsController.put_project), or just
+        drop it where nothing was ever bundled to import (create_new_project's
+        built-in template)."""
 
         if not self._automaton_loader.is_safe_project_name(project_name):
             raise ValueError(f"Invalid project name: '{project_name}'.")
@@ -389,10 +399,11 @@ class ProjectManager:
             }
             self._db.save_project_files(project_name, to_persist_bytes, content_types)
         await self.finalize_update(project_name, new_automaton, commit)
-        self._import_sessions_export(project_name, sessions_to_import)
-        self._import_benchmark_export(project_name, benchmark_to_import)
 
-        return {"success": True, "project_name": project_name}
+        job = ProjectImportBundleJob(
+            self._session_import_manager, self._db, project_name, sessions_to_import, benchmark_to_import
+        )
+        return {"success": True, "project_name": project_name}, job
 
     @staticmethod
     def _parse_sessions_export(raw_sessions: str | None) -> list[dict]:
@@ -408,23 +419,6 @@ class ProjectManager:
             raise ValueError(f"'{SESSIONS_EXPORT_FILENAME}' must be a JSON array of sessions.")
         return parsed
 
-    def _import_sessions_export(self, project_name: str, sessions: list[dict]) -> None:
-        """Best-effort, one session at a time: a malformed entry is
-        skipped and logged rather than blocking the rest. Publishes
-        `project_name` first, since every ChatSession needs a published revision."""
-        if not sessions:
-            return
-        self._db.publish_project(project_name)
-        for session_data in sessions:
-            try:
-                username = session_data.get('username') or self._db.next_test_user_username(project_name)
-                self._session_import_manager.import_session_json(username, project_name, session_data)
-            except (ValueError, KeyError, TypeError):
-                logger.exception(
-                    "Skipped a malformed session while importing '%s' from '%s'.",
-                    project_name, SESSIONS_EXPORT_FILENAME,
-                )
-
     @staticmethod
     def _parse_benchmark_export(raw_benchmark: str | None) -> list[dict]:
         if raw_benchmark is None:
@@ -437,23 +431,6 @@ class ProjectManager:
             raise ValueError(f"'{BENCHMARK_EXPORT_FILENAME}' must be a JSON array of benchmark results.")
         return parsed
 
-    def _import_benchmark_export(self, project_name: str, entries: list[dict]) -> None:
-        if not entries:
-            return
-        revision = self._db.get_project_revision(project_name)
-        edit_count = self._db.get_project_draft_edit_count(project_name)
-        for entry in entries:
-            try:
-                self._db.upsert_benchmark_aggregate_result(
-                    project_name, revision, edit_count,
-                    entry['kind'], entry.get('target'), entry['strategy'], json.dumps(entry['results']),
-                )
-            except (KeyError, TypeError):
-                logger.exception(
-                    "Skipped a malformed benchmark result while importing '%s' from '%s'.",
-                    project_name, BENCHMARK_EXPORT_FILENAME,
-                )
-
     def _unique_project_name(self, base: str) -> str:
         """`base` itself if free, else the first "`base` N" (N starting
         at 2) not already in use."""
@@ -465,10 +442,11 @@ class ProjectManager:
             suffix += 1
         return f"{base} {suffix}"
 
-    async def create_new_project(self, commit: CommitCallback) -> dict:
+    async def create_new_project(self, commit: CommitCallback) -> tuple[dict, ProjectImportBundleJob]:
         """Creates a project from NEW_PROJECT_TEMPLATE, going through
-        put_project so validation/staging/commit stay identical to a
-        real upload."""
+        put_project so validation/staging/commit stay identical to a real
+        upload — same (result, job) contract; the caller submits `job` to
+        the real job queue, same as any other upload."""
         content = NEW_PROJECT_TEMPLATE.read_bytes()
         project_name = self._unique_project_name(NEW_PROJECT_NAME)
         return await self.put_project(project_name, content, "application/zip", commit)

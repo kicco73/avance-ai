@@ -39,7 +39,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logger = logging.getLogger(__name__)
 
 
-async def _seed_default_project_if_empty(db: Db, project_service: ProjectService, controller: AvanceController) -> None:
+async def _seed_default_project_if_empty(
+    db: Db, project_service: ProjectService, controller: AvanceController,
+    job_queue: JobQueue, broadcaster: QueueProgressBroadcaster,
+) -> None:
     if db.list_projects():
         return
 
@@ -49,9 +52,22 @@ async def _seed_default_project_if_empty(db: Db, project_service: ProjectService
     Session().user = "system"
     Session().role = "supervisor"
     content = DEFAULT_SEED_PROJECT_ZIP.read_bytes()
-    await project_service.put_project(
+    _, job = await project_service.put_project(
         DEFAULT_SEED_PROJECT_NAME, content, "application/zip", controller.settings._activate_project,
     )
+    # Lluna.zip bundles a real sessions.json (unlike create_new_project's
+    # "Hello world" template) — the returned job has real work to do, so
+    # it must actually run through the real queue, not be dropped.
+    connection_id = "seed:startup"
+    connection = broadcaster.connect(connection_id)
+    job_queue.submit_with_progress_feedback(job, "seed", connection_id)
+    try:
+        while True:
+            message = await connection.get()
+            if message["status"] in ("completed", "failed"):
+                break
+    finally:
+        broadcaster.disconnect(connection_id, connection)
     project_service.publish_project(DEFAULT_SEED_PROJECT_NAME)
 
 def _build_fallback_app(error: Exception) -> FastAPI:
@@ -150,7 +166,7 @@ def create_app() -> FastAPI:
         )
         app.include_router(controller.router)
 
-        await _seed_default_project_if_empty(db, project_service, controller)
+        await _seed_default_project_if_empty(db, project_service, controller, job_queue, test_event_broadcaster)
 
         if chat_ws_adapter is not None:
             adapter = chat_ws_adapter

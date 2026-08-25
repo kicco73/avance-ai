@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+# Instructions for Claude Code: DO NOT TOUCH THIS FILE
 
 class Job(ABC):
 

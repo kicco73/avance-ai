@@ -57,7 +57,9 @@ class AvanceController(object):
         self.label_project = LabelProjectController(
             chat_service, project_service, tracking_service, benchmark_run_service, test_event_broadcaster, job_queue,
         )
-        self.settings = SettingsController(chat_service, project_service, db, version)
+        self.settings = SettingsController(
+            chat_service, project_service, db, version, test_event_broadcaster, job_queue,
+        )
         self.auth = AuthController(auth_service)
         self.user = UserController(auth_service)
 

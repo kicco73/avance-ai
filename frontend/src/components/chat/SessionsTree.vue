@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 import DocInfoButton from '../DocInfoButton.vue'
+import ProgressSpinner from '../ProgressSpinner.vue'
 
 const props = defineProps({
   sessions: { type: Array, required: true },
@@ -258,9 +259,7 @@ const {
           <svg v-if="!deletingAllImported" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
             <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm-3 6h12l-1 12H7L6 9zm3 2v8h2v-8H9zm4 0v8h2v-8h-2z" />
           </svg>
-          <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" class="sessions-tree-spinner">
-            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="42 14" />
-          </svg>
+          <ProgressSpinner v-else />
         </button>
         <button
           v-if="allowImport"
@@ -274,17 +273,7 @@ const {
           <svg v-if="!importing" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
             <path d="M12 3l4 4h-3v6h-2V7H8l4-4zM5 19v-6h2v6h10v-6h2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z" />
           </svg>
-          <svg v-else-if="importProgress != null" viewBox="0 0 24 24" width="16" height="16" fill="none" class="sessions-tree-progress-ring">
-            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" opacity="0.25" />
-            <circle
-              cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
-              stroke-dasharray="56.55" :stroke-dashoffset="56.55 * (1 - importProgress / 100)"
-              transform="rotate(-90 12 12)"
-            />
-          </svg>
-          <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" class="sessions-tree-spinner">
-            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="42 14" />
-          </svg>
+          <ProgressSpinner v-else :progress="importProgress" />
         </button>
         <input v-if="allowImport" ref="importInput" type="file" accept=".txt,text/plain,.json,application/json" multiple class="sessions-tree-import-input" @change="onImportFileChosen" />
       </div>
@@ -465,16 +454,6 @@ const {
   border-color: #ccc;
   color: #ccc;
   cursor: not-allowed;
-}
-
-.sessions-tree-spinner {
-  animation: sessions-tree-spin 0.8s linear infinite;
-}
-
-@keyframes sessions-tree-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .collapse-toggle-btn {

@@ -6,6 +6,8 @@ import threading
 from collections import deque
 from typing import TYPE_CHECKING
 
+# Instructions for Claude Code: DO NOT TOUCH THIS FILE
+
 from .job import Job
 
 if TYPE_CHECKING:
