@@ -8,6 +8,8 @@ import time
 
 import pytest
 
+from conftest import parse_sse_result
+
 pytestmark = pytest.mark.contract
 
 
@@ -138,7 +140,7 @@ def test_sessions_aggregation_pools_both_live_and_imported_sessions(client, hell
         f"/api/projects/{hello_project}/sessions/import",
         files=[("files", ("t.txt", "user: hi\nassistant: yo\n", "text/plain"))],
     )
-    imported_id = resp.json()["last_session_id"]
+    imported_id = parse_sse_result(resp)["last_session_id"]
     client.put(f"/api/chat/sessions/{imported_id}/labeled", json={"labeled": True})
 
     response = client.post(f"/api/projects/{hello_project}/sessions/test", json={"strategy": "turn_by_turn"})

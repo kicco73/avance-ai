@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,18 @@ from session import Session
 from tracking.tracking_service import TrackingService
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
+
+
+def parse_sse_result(response) -> dict:
+    """POST .../sessions/import streams its progress as SSE 'data: {...}'
+    chunks within the same response, ending with a `completed`/`failed`
+    chunk — this picks out that final chunk's `result` payload."""
+    message = None
+    for line in response.text.strip().split("\n"):
+        if line.startswith("data: "):
+            message = json.loads(line[len("data: "):])
+    assert message is not None and message["status"] == "completed", response.text
+    return message["result"]
 
 
 @pytest.fixture(autouse=True)
@@ -113,11 +126,11 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     project_service = ProjectService(app_db)
     session_manager = ChatSessionManager(app_db)
     metric_service = MetricService(app_db, project_service)
+    test_event_broadcaster = QueueProgressBroadcaster()
+    job_queue = JobQueue(max_concurrent=1, broadcaster=test_event_broadcaster)
     tracking_service = TrackingService(
         app_db, fake_ai_service, project_service, metric_service,
     )
-    test_event_broadcaster = QueueProgressBroadcaster(asyncio.new_event_loop())
-    job_queue = JobQueue(max_concurrent=1, broadcaster=test_event_broadcaster)
     chat_service = ChatService(
         app_db, fake_ai_service, project_service, session_manager, tracking_service, metric_service, job_queue,
     )
@@ -133,7 +146,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     register_error_handlers(fastapi_app)
     controller = AvanceController(
         chat_service, project_service, None, None, app_db, tracking_service, benchmark_run_service,
-        auth_service, test_event_broadcaster, "test-version",
+        auth_service, test_event_broadcaster, job_queue, "test-version",
     )
     fastapi_app.include_router(controller.router)
     return fastapi_app

@@ -8,6 +8,7 @@ import json
 
 import pytest
 
+from conftest import parse_sse_result
 from session import Session
 
 pytestmark = pytest.mark.contract
@@ -18,7 +19,7 @@ def _import_transcript(client, text="user: hi there\nassistant: hello, world!\n"
         "/api/projects/hello/sessions/import", files=[("files", (title, text, "text/plain"))]
     )
     assert response.status_code == 200, response.text
-    return response.json()["last_session_id"]
+    return parse_sse_result(response)["last_session_id"]
 
 
 def _import_json(client, sessions: list[dict], filename="sessions.json"):
@@ -26,7 +27,7 @@ def _import_json(client, sessions: list[dict], filename="sessions.json"):
         "/api/projects/hello/sessions/import", files=[("files", (filename, json.dumps(sessions), "application/json"))]
     )
     assert response.status_code == 200, response.text
-    return response.json()
+    return parse_sse_result(response)
 
 
 def _messages(client, session_id):
@@ -176,7 +177,7 @@ def test_import_json_handles_a_mixed_batch_of_files(client, hello_project):
         ],
     )
     assert response.status_code == 200, response.text
-    body = response.json()
+    body = parse_sse_result(response)
 
     by_ok = {r["ok"] for r in body["results"]}
     assert by_ok == {True, False}

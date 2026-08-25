@@ -109,6 +109,7 @@ def chat_service_for(db):
         ai_service = ai_service or FakeSchemaAiService([{"signals": '{"foo": 1}'}])
         project_service = FakeProjectService(automaton)
         metric_service = MetricService(db, project_service)
+        job_queue = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
         tracking_service = TrackingService(
             db, ai_service, project_service, metric_service,
         )
@@ -119,7 +120,7 @@ def chat_service_for(db):
             session_manager=ChatSessionManager(db),
             tracking_service=tracking_service,
             metric_service=metric_service,
-            job_queue=JobQueue(max_concurrent=1, broadcaster=NullBroadcaster()),
+            job_queue=job_queue,
         )
         return service
 

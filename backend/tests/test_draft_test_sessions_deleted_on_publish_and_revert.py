@@ -9,6 +9,8 @@ import zipfile
 
 import pytest
 
+from conftest import parse_sse_result
+
 pytestmark = pytest.mark.contract
 
 TWO_STATE_YML = (
@@ -127,7 +129,7 @@ def test_imported_sessions_are_unaffected_by_publish(client):
         "/api/projects/proj/sessions/import", files=[("files", ("t.txt", "user: hi\nassistant: hello\n", "text/plain"))]
     )
     assert response.status_code == 200, response.text
-    imported_session_id = response.json()["last_session_id"]
+    imported_session_id = parse_sse_result(response)["last_session_id"]
 
     client.put("/api/projects/proj/files/notes.txt", content=b"edited")
     assert client.post("/api/projects/proj/publish", json={}).status_code == 200

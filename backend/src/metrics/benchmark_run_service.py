@@ -108,6 +108,7 @@ class BenchmarkReplayJob(Job):
                 self._pending_message_ids = message_ids
 
             message_id = self._pending_message_ids.pop(0)
+            assert self._processor is not None and self._current_session_id is not None
             await self._processor.process_message(self._current_session_id, message_id)
 
             if not self._pending_message_ids and not self._pending_session_ids:
@@ -128,6 +129,8 @@ class BenchmarkReplayJob(Job):
     def _prepare_session(self, session_id: int) -> tuple[list[int], str | None]:
         db = self._service._db
         session = db.get_chat_session(session_id)
+        if session is None:
+            return [], f"session {session_id}: not found, skipped"
         env = self._service._build_seed_env(session)
         system_facts = SystemFacts()
         session_facts = SessionFacts(db, FixedProjectContext(project_name=self._run['project_name']))
@@ -360,7 +363,10 @@ class BenchmarkRunService:
     def create_run(self, username: str | None, project_name: str, session_id: int | None, strategy: str) -> dict:
         run, job = self._construct_run(username, project_name, session_id, strategy)
         if job is not None:
-            self._job_queue.submit(job)
+            if session_id is not None:
+                self._job_queue.submit_with_progress_feedback(job, f"{strategy}:session:{session_id}", Session().user)
+            else:
+                self._job_queue.submit(job)
         return self._status_for(run)
 
     def _construct_run(
@@ -539,7 +545,7 @@ class BenchmarkRunService:
             raise ValueError(f"Unknown benchmark run strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
         session_ids = sorted(self._db.get_session_ids_with_expected_state(project_name, state_key))
         job = StateAggregationJob(self, project_name, state_key, strategy, session_ids)
-        self._job_queue.submit(job)
+        self._job_queue.submit_with_progress_feedback(job, f"{strategy}:state:{state_key}", Session().user)
         return job
 
     def start_signal_job(self, project_name: str, signal_name: str, strategy: str) -> Job:
@@ -548,16 +554,19 @@ class BenchmarkRunService:
         sessions = self._db.list_chat_sessions(None, project_name, type=None)
         session_ids = sorted(int(row['id']) for row in sessions if row['labeled'])
         job = SignalAggregationJob(self, project_name, signal_name, strategy, session_ids)
-        self._job_queue.submit(job)
+        self._job_queue.submit_with_progress_feedback(job, f"{strategy}:signal:{signal_name}", Session().user)
         return job
 
-    def start_sessions_run_job(self, project_name: str, strategy: str) -> Job:
+    def _construct_sessions_run_job(self, project_name: str, strategy: str) -> Job:
         if strategy not in VALID_STRATEGIES:
             raise ValueError(f"Unknown benchmark run strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
         sessions = self._db.list_chat_sessions(None, project_name, type=None)
         session_ids = sorted(int(row['id']) for row in sessions if row['labeled'])
-        job = PooledAggregationJob(self, project_name, 'sessions', None, strategy, session_ids)
-        self._job_queue.submit(job)
+        return PooledAggregationJob(self, project_name, 'sessions', None, strategy, session_ids)
+
+    def start_sessions_run_job(self, project_name: str, strategy: str) -> Job:
+        job = self._construct_sessions_run_job(project_name, strategy)
+        self._job_queue.submit_with_progress_feedback(job, f"{strategy}:sessions-branch", Session().user)
         return job
 
     def start_user_sessions_run_job(self, username: str, project_name: str, strategy: str) -> Job:
@@ -566,10 +575,10 @@ class BenchmarkRunService:
         sessions = self._db.list_chat_sessions(username, project_name, type=None)
         session_ids = sorted(int(row['id']) for row in sessions if row['labeled'])
         job = PooledAggregationJob(self, project_name, 'user_sessions', username, strategy, session_ids)
-        self._job_queue.submit(job)
+        self._job_queue.submit_with_progress_feedback(job, f"{strategy}:user:{username}", Session().user)
         return job
 
-    def start_users_aggregation_job(self, project_name: str, strategy: str) -> Job:
+    def _construct_users_aggregation_job(self, project_name: str, strategy: str) -> Job:
         if strategy not in VALID_STRATEGIES:
             raise ValueError(f"Unknown benchmark run strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
         sessions = self._db.list_chat_sessions(None, project_name, type=None)
@@ -578,41 +587,50 @@ class BenchmarkRunService:
             username: sorted(int(row['id']) for row in sessions if row['labeled'] and row['username'] == username)
             for username in usernames
         }
-        job = UsersAggregationJob(self, project_name, strategy, session_ids_by_user)
-        self._job_queue.submit(job)
+        return UsersAggregationJob(self, project_name, strategy, session_ids_by_user)
+
+    def start_users_aggregation_job(self, project_name: str, strategy: str) -> Job:
+        job = self._construct_users_aggregation_job(project_name, strategy)
+        self._job_queue.submit_with_progress_feedback(job, f"{strategy}:users-branch", Session().user)
         return job
 
-    def start_all_states_job(self, project_name: str, strategy: str) -> Job:
+    def _construct_all_states_job(self, project_name: str, strategy: str) -> Job:
         if strategy not in VALID_STRATEGIES:
             raise ValueError(f"Unknown benchmark run strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
         session_ids_by_state = {
             state_key: sorted(self._db.get_session_ids_with_expected_state(project_name, state_key))
             for state_key in self._project_states(project_name)
         }
-        job = AllStatesAggregationJob(self, project_name, strategy, session_ids_by_state)
-        self._job_queue.submit(job)
+        return AllStatesAggregationJob(self, project_name, strategy, session_ids_by_state)
+
+    def start_all_states_job(self, project_name: str, strategy: str) -> Job:
+        job = self._construct_all_states_job(project_name, strategy)
+        self._job_queue.submit_with_progress_feedback(job, f"{strategy}:states-branch", Session().user)
         return job
 
-    def start_all_signals_job(self, project_name: str, strategy: str) -> Job:
+    def _construct_all_signals_job(self, project_name: str, strategy: str) -> Job:
         if strategy not in VALID_STRATEGIES:
             raise ValueError(f"Unknown benchmark run strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
         sessions = self._db.list_chat_sessions(None, project_name, type=None)
         session_ids = sorted(int(row['id']) for row in sessions if row['labeled'])
-        job = AllSignalsAggregationJob(self, project_name, strategy, session_ids, self._project_signal_names(project_name))
-        self._job_queue.submit(job)
+        return AllSignalsAggregationJob(self, project_name, strategy, session_ids, self._project_signal_names(project_name))
+
+    def start_all_signals_job(self, project_name: str, strategy: str) -> Job:
+        job = self._construct_all_signals_job(project_name, strategy)
+        self._job_queue.submit_with_progress_feedback(job, f"{strategy}:signals-branch", Session().user)
         return job
 
     def start_root_job(self, project_name: str, strategy: str) -> Job:
         if strategy not in VALID_STRATEGIES:
             raise ValueError(f"Unknown benchmark run strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
         branch_jobs = [
-            self.start_sessions_run_job(project_name, strategy),
-            self.start_all_states_job(project_name, strategy),
-            self.start_users_aggregation_job(project_name, strategy),
-            self.start_all_signals_job(project_name, strategy),
+            self._construct_sessions_run_job(project_name, strategy),
+            self._construct_all_states_job(project_name, strategy),
+            self._construct_users_aggregation_job(project_name, strategy),
+            self._construct_all_signals_job(project_name, strategy),
         ]
         job = RootAggregationJob(self, strategy, branch_jobs)
-        self._job_queue.submit(job)
+        self._job_queue.submit_with_progress_feedback(job, f"{strategy}:root", Session().user)
         return job
 
     def _aggregate_signal_accuracy(self, sub_run_ids: list[int], state_key: str) -> dict:

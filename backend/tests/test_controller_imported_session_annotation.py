@@ -10,6 +10,8 @@ import zipfile
 
 import pytest
 
+from conftest import parse_sse_result
+
 pytestmark = pytest.mark.contract
 
 TRANSCRIPT = "user: hi there\nassistant: hello, world!\n"
@@ -69,7 +71,7 @@ def _import_and_get_messages(client) -> tuple[int, dict]:
         "/api/projects/proj/sessions/import", files=[("files", ("transcript.txt", TRANSCRIPT, "text/plain"))]
     )
     assert response.status_code == 200, response.text
-    session_id = response.json()["last_session_id"]
+    session_id = parse_sse_result(response)["last_session_id"]
     messages = client.get(f"/api/chat/sessions/{session_id}/messages").json()
     by_role = {m["role"]: m for m in messages}
     assert set(by_role) == {"user", "assistant"}

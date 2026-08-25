@@ -2,11 +2,11 @@
 only. Every endpoint lives on AvanceController (see controller.py)."""
 
 from __future__ import annotations
-import asyncio
 import inspect
 import logging
 from contextlib import asynccontextmanager
 from http import HTTPStatus
+from pathlib import Path
 
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,6 +27,7 @@ from metrics.metric_service import MetricService
 from metrics.queue_progress_broadcaster import QueueProgressBroadcaster
 from project.project_service import ProjectService
 from ai.ai_service import AiService
+from session import Session
 from tracking.tracking_service import TrackingService
 from tracking.wakeup_service import WakeupService
 from talk.talk_service import TalkService
@@ -36,6 +37,23 @@ __version__ = "1.10.0"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
+
+# Resolved off this module's own location, not the cwd — same convention
+# as project/manager.py's own NEW_PROJECT_TEMPLATE.
+DEFAULT_SEED_PROJECT_ZIP = Path(__file__).resolve().parents[1] / "samples" / "projects" / "Drogodependencia.zip"
+DEFAULT_SEED_PROJECT_NAME = "Drogodependencia"
+
+
+async def _seed_default_project_if_empty(db: Db, project_service: ProjectService, controller: AvanceController) -> None:
+    if db.list_projects():
+        return
+    Session().user = "system"
+    Session().role = "supervisor"
+    content = DEFAULT_SEED_PROJECT_ZIP.read_bytes()
+    await project_service.put_project(
+        DEFAULT_SEED_PROJECT_NAME, content, "application/zip", controller.settings._activate_project,
+    )
+    project_service.publish_project(DEFAULT_SEED_PROJECT_NAME)
 
 
 def _build_fallback_app(error: Exception) -> FastAPI:
@@ -86,7 +104,7 @@ def create_app() -> FastAPI:
         auth_service = AuthService(db, config.auth_providers, config.auth_token_ttl_in_hours)
         app.state.auth_service = auth_service
 
-        test_event_broadcaster = QueueProgressBroadcaster(asyncio.get_running_loop())
+        test_event_broadcaster = QueueProgressBroadcaster()
         job_queue = JobQueue(max_concurrent=config.jobs_max_concurrent, broadcaster=test_event_broadcaster)
 
         project_service = ProjectService(db)
@@ -130,9 +148,11 @@ def create_app() -> FastAPI:
 
         controller = AvanceController(
             chat_service, project_service, talk_service, listen_service, db, tracking_service, benchmark_run_service,
-            auth_service, test_event_broadcaster, __version__,
+            auth_service, test_event_broadcaster, job_queue, __version__,
         )
         app.include_router(controller.router)
+
+        await _seed_default_project_if_empty(db, project_service, controller)
 
         if chat_ws_adapter is not None:
             adapter = chat_ws_adapter

@@ -25,9 +25,19 @@ class BenchmarkRunCache:
         # FIXME: caller must hold locked().
         if session_id is None:
             return None
-        return self._db.find_benchmark_run_by_cache_key(
+        run = self._db.find_benchmark_run_by_cache_key(
             session_id, strategy, project_draft_edit_count, session_labeling_revision,
         )
+        if run is None:
+            return None
+        # A row with no results and no still-running job is a dead/failed
+        # attempt — treat it as a cache miss so the play button can retry
+        # it, rather than returning the same stale 'failed' status forever.
+        # self._live_jobs directly, not live_job_for(), which takes the
+        # same non-reentrant lock the caller already holds via locked().
+        if run['results'] is None and self._live_jobs.get(run['id']) is None:
+            return None
+        return run
 
     def create(
         self, username: str | None, project_name: str, session_id: int | None, strategy: str,

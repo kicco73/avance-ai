@@ -10,13 +10,21 @@ const props = defineProps({
   selectedNodeId: { type: String, default: null },
   allowImport: { type: Boolean, default: false },
   importing: { type: Boolean, default: false },
+  // 0-100, or null before the first progress chunk has arrived — shows
+  // a filling ring instead of the indeterminate spinner once known.
+  importProgress: { type: Number, default: null },
   allowDownloadAll: { type: Boolean, default: false },
   downloadingAll: { type: Boolean, default: false },
+  allowDeleteAllImported: { type: Boolean, default: false },
+  deletingAllImported: { type: Boolean, default: false },
   collapsed: { type: Boolean, default: false },
   hideCollapseToggle: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['select', 'import', 'download-all', 'update:collapsed', 'move-sessions', 'delete-test-user'])
+const emit = defineEmits([
+  'select', 'import', 'download-all', 'delete-all-imported', 'update:collapsed', 'move-sessions',
+  'delete-test-user', 'delete-user-sessions'
+])
 
 const TEST_USER_PREFIX = 'Test user '
 
@@ -39,6 +47,8 @@ function onImportFileChosen(event) {
   if (files.length) emit('import', files)
   event.target.value = ''
 }
+
+const hasImportedSessions = computed(() => props.sessions.some((s) => s.type === 'imported'))
 
 function formatSessionTimestamp(iso) {
   if (!iso) return 'Timeline not available'
@@ -193,8 +203,15 @@ function onBranchDrop(user, event) {
   selectedSessionIds.value = new Set()
 }
 
-function onDeleteTestUserClick(username) {
-  emit('delete-test-user', { testUserSeq: testUserSeqOf(username) })
+// Any branch with no live session in it is deletable via the branch's ×
+// button — a "Test user N" branch or an arbitrary imported username alike.
+function isDeletableBranch(user) {
+  return user.sessions.every((s) => s.type !== 'live')
+}
+
+function onDeleteBranchClick(user) {
+  if (isTestUserBranch(user.username)) emit('delete-test-user', { testUserSeq: testUserSeqOf(user.username) })
+  else emit('delete-user-sessions', { username: user.username })
 }
 
 watch(
@@ -228,23 +245,48 @@ const {
   <div class="sessions-tree-header">
     <span v-if="!collapsed" class="sessions-tree-title">Sessions</span>
     <div style="display: flex">
-      <div v-if="!collapsed && allowImport" class="sessions-tree-header-actions">
+      <div v-if="!collapsed && (allowImport || allowDeleteAllImported)" class="sessions-tree-header-actions">
         <button
+          v-if="allowDeleteAllImported"
           type="button"
-          class="sessions-tree-icon-btn"
-          :class="{ 'sessions-tree-icon-btn-busy': importing }"
-          :disabled="importing"
-          :title="importing ? 'Importing…' : `Import transcript(s) — .txt or a 'Download all' .json export`"
-          @click="triggerImport"
+          class="sessions-tree-icon-btn sessions-tree-icon-btn-danger"
+          :class="{ 'sessions-tree-icon-btn-busy': deletingAllImported }"
+          :disabled="!hasImportedSessions || deletingAllImported"
+          :title="deletingAllImported ? 'Deleting…' : 'Delete all imported sessions'"
+          @click="emit('delete-all-imported')"
         >
-          <svg v-if="!importing" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-            <path d="M12 3l4 4h-3v6h-2V7H8l4-4zM5 19v-6h2v6h10v-6h2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z" />
+          <svg v-if="!deletingAllImported" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+            <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm-3 6h12l-1 12H7L6 9zm3 2v8h2v-8H9zm4 0v8h2v-8h-2z" />
           </svg>
           <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" class="sessions-tree-spinner">
             <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="42 14" />
           </svg>
         </button>
-        <input ref="importInput" type="file" accept=".txt,text/plain,.json,application/json" multiple class="sessions-tree-import-input" @change="onImportFileChosen" />
+        <button
+          v-if="allowImport"
+          type="button"
+          class="sessions-tree-icon-btn"
+          :class="{ 'sessions-tree-icon-btn-busy': importing }"
+          :disabled="importing"
+          :title="importing ? (importProgress != null ? `Importing… ${Math.round(importProgress)}%` : 'Importing…') : `Import transcript(s) — .txt or a 'Download all' .json export`"
+          @click="triggerImport"
+        >
+          <svg v-if="!importing" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+            <path d="M12 3l4 4h-3v6h-2V7H8l4-4zM5 19v-6h2v6h10v-6h2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z" />
+          </svg>
+          <svg v-else-if="importProgress != null" viewBox="0 0 24 24" width="16" height="16" fill="none" class="sessions-tree-progress-ring">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" opacity="0.25" />
+            <circle
+              cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+              stroke-dasharray="56.55" :stroke-dashoffset="56.55 * (1 - importProgress / 100)"
+              transform="rotate(-90 12 12)"
+            />
+          </svg>
+          <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" class="sessions-tree-spinner">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="42 14" />
+          </svg>
+        </button>
+        <input v-if="allowImport" ref="importInput" type="file" accept=".txt,text/plain,.json,application/json" multiple class="sessions-tree-import-input" @change="onImportFileChosen" />
       </div>
       <button
         v-if="!hideCollapseToggle"
@@ -287,11 +329,11 @@ const {
             {{ user.label }}
           </button>
           <button
-            v-if="isTestUserBranch(user.username)"
+            v-if="isDeletableBranch(user)"
             type="button"
             class="sessions-tree-delete-btn"
-            title="Delete this test user"
-            @click.stop="onDeleteTestUserClick(user.username)"
+            :title="isTestUserBranch(user.username) ? 'Delete this test user' : 'Delete all sessions from this user'"
+            @click.stop="onDeleteBranchClick(user)"
           >&times;</button>
         </div>
 
@@ -407,6 +449,22 @@ const {
   cursor: default;
   background: white;
   color: #4a6fa5;
+}
+
+.sessions-tree-icon-btn-danger {
+  border-color: #c62828;
+  color: #c62828;
+}
+
+.sessions-tree-icon-btn-danger:hover:not(:disabled) {
+  background: #c62828;
+  color: white;
+}
+
+.sessions-tree-icon-btn-danger:disabled {
+  border-color: #ccc;
+  color: #ccc;
+  cursor: not-allowed;
 }
 
 .sessions-tree-spinner {
@@ -656,7 +714,10 @@ const {
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  margin: 0.5rem 0.9rem 0.9rem;
+  /* margin-top: auto anchors this to the panel's bottom edge regardless
+     of what's above it (a short tree, or the "No sessions yet." status
+     text, neither of which fill the panel's height on their own). */
+  margin: auto 0.9rem 0.9rem;
 }
 
 .sessions-tree-download-btn {

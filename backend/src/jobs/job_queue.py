@@ -62,18 +62,13 @@ class JobQueue(object):
     def _broadcast_status(self, job: Job, error: str | None = None) -> None:
         with self._lock:
             routing = self._broadcast_routing.get(job)
-            if routing is not None and (job.is_done() or error):
+            if routing is None:
+                return
+            key, username = routing
+            status = self.status_for(key, username) or {}
+            if job.is_done() or error:
                 del self._broadcast_routing[job]
-        if routing is None:
-            return
-        key, username = routing
-        status = 'failed' if job.is_failed() else 'completed' if job.is_done() else 'running'
-        self._broadcaster.push(username, {
-            "key": key,
-            "status": status,
-            "percentage": job.progress(),
-            "error": error,
-        })
+        self._broadcaster.push(username, status)
 
     def _worker_loop(self) -> None:
         loop = asyncio.new_event_loop()
@@ -108,3 +103,14 @@ class JobQueue(object):
         with self._lock:
             self._broadcast_routing[job] = (key, username)
         self.submit(job)
+
+    def status_for(self, key: str, username: str) -> dict | None:
+        with self._lock:
+            for job, (routed_key, routed_username) in self._broadcast_routing.items():
+                if routed_key == key and routed_username == username:
+                    return {
+                        "key": key,
+                        "status": 'failed' if job.is_failed() else 'completed' if job.is_done() else 'running',
+                        "percentage": job.progress(),
+                        "result": job.result,
+                    }

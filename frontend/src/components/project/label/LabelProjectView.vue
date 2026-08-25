@@ -15,9 +15,9 @@ import { handleEnterNext } from '../../inspector/enterToNextField.js'
 import ErrorBanner from '../../ErrorBanner.vue'
 import {
   getMessages, getSessionSignals, getSessions, getProjectGraph, postImportSessions,
-  getExportSessions, putMessageExpectedState, putMessageExpectedSignals, putMessageComment, putSessionLabeled,
-  putSessionTitle, putSessionComment, deleteSessionAnnotations, deleteSession, getUsers,
-  putSessionsTestUser, deleteTestUser
+  getExportSessions, deleteImportedSessions, putMessageExpectedState, putMessageExpectedSignals, putMessageComment,
+  putSessionLabeled, putSessionTitle, putSessionComment, deleteSessionAnnotations, deleteSession, getUsers,
+  putSessionsTestUser, deleteTestUser, deleteUserSessions
 } from '../../../api.js'
 import { currentSessionId, sessions, sessionsLoading, loadSessions, refreshSessionsQuietly, selectSession } from '../../../chatStore.js'
 import {
@@ -104,17 +104,24 @@ function toggleBenchmarkSessionsPanel() {
 // dispatch and error handling happens server-side; this just renders the
 // returned result.
 const importingSessions = ref(false)
+// null until the first SSE progress chunk arrives — SessionsTree.vue
+// shows the indeterminate spinner until then, a filling ring after.
+const importProgress = ref(null)
 
 async function handleImportSession(files) {
   importingSessions.value = true
+  importProgress.value = null
   let result
   try {
-    result = await postImportSessions(props.projectName, files)
+    result = await postImportSessions(props.projectName, files, (message) => {
+      importProgress.value = message.percentage
+    })
   } catch {
     // already surfaced via apiFetch
     return
   } finally {
     importingSessions.value = false
+    importProgress.value = null
   }
 
   if (result.last_session_id != null) {
@@ -183,6 +190,47 @@ async function onDeleteTestUser({ testUserSeq }) {
     if (currentSession.value?.username === deletedUsername) currentSessionId.value = null
     await refreshSessionsQuietly(true, props.projectName)
   } catch {
+  }
+}
+
+// Any other non-live branch's own × button (see SessionsTree.vue's
+// isDeletableBranch) — an arbitrary imported username, not a "Test user N" one.
+async function onDeleteUserSessions({ username }) {
+  const ok = await confirmDialog({
+    title: 'Delete sessions',
+    body: `Delete every imported session from "${username}"? This cannot be undone.`,
+    okLabel: 'Delete',
+    danger: true
+  })
+  if (!ok) return
+  try {
+    await deleteUserSessions(props.projectName, username)
+    if (currentSession.value?.username === username) currentSessionId.value = null
+    await refreshSessionsQuietly(true, props.projectName)
+  } catch {
+  }
+}
+
+// The sessions panel's own "Delete all imported sessions" icon — every
+// imported session of the project, across every user.
+const deletingAllImported = ref(false)
+async function handleDeleteAllImported() {
+  const ok = await confirmDialog({
+    title: 'Delete all imported sessions',
+    body: 'Delete every imported session of this project? This cannot be undone.',
+    okLabel: 'Delete',
+    danger: true
+  })
+  if (!ok) return
+  deletingAllImported.value = true
+  try {
+    await deleteImportedSessions(props.projectName)
+    if (currentSessionIsImported.value) currentSessionId.value = null
+    await refreshSessionsQuietly(true, props.projectName)
+  } catch {
+    // already surfaced via apiFetch
+  } finally {
+    deletingAllImported.value = false
   }
 }
 
@@ -623,15 +671,20 @@ onBeforeUnmount(() => {
               :selected-node-id="treeSelectedNodeId"
               :allow-import="true"
               :importing="importingSessions"
+              :import-progress="importProgress"
               :allow-download-all="true"
               :downloading-all="downloadingSessions"
+              :allow-delete-all-imported="true"
+              :deleting-all-imported="deletingAllImported"
               :collapsed="!benchmarkSessionsPanelOpen"
               @update:collapsed="toggleBenchmarkSessionsPanel"
               @select="onSelectTreeNode"
               @import="handleImportSession"
               @download-all="handleDownloadSessions"
+              @delete-all-imported="handleDeleteAllImported"
               @move-sessions="onMoveSessions"
               @delete-test-user="onDeleteTestUser"
+              @delete-user-sessions="onDeleteUserSessions"
             />
           </div>
           <div v-if="benchmarkSessionsPanelOpen" class="split-divider" @mousedown="startSessionsDrag"></div>

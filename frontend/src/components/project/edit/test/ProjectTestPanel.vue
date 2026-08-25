@@ -605,7 +605,7 @@ onBeforeUnmount(() => {
       <p v-if="!selectedNodeId" class="tests-panel-placeholder">Select a node to see its results.</p>
 
       <template v-else-if="selectedNodeId === 'root'">
-        <p class="tests-panel-placeholder">Aggregates not available at this time.<br />Please select Sessions, States, Users, or Signals to see results.</p>
+        <p class="tests-panel-placeholder">Aggregates not available in this product version.<br />Please select Sessions, States, Users, or Signals to see results.</p>
       </template>
 
       <template v-else-if="selectedNodeId.startsWith('session:')">

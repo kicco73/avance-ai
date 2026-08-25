@@ -4,7 +4,37 @@ import { requireLogin } from './authStore.js'
 const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 const WS_URL = import.meta.env.VITE_WS_URL ?? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/chat`
 
-async function apiFetch(url, options, { parse = 'json' } = {}) {
+// Reads a `text/event-stream` body of `data: {...}\n\n` chunks, calling
+// `onProgress` for each one, until a `completed`/`failed` chunk arrives —
+// used by postImportSessions to show real progress instead of a spinner.
+async function readSseResult(res, onProgress) {
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let final = null
+  while (!final) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    let boundary
+    while ((boundary = buffer.indexOf('\n\n')) !== -1) {
+      const chunk = buffer.slice(0, boundary)
+      buffer = buffer.slice(boundary + 2)
+      if (!chunk.startsWith('data: ')) continue
+      const message = JSON.parse(chunk.slice('data: '.length))
+      onProgress?.(message)
+      if (message.status === 'completed' || message.status === 'failed') final = message
+    }
+  }
+  if (final?.status === 'failed') {
+    const message = final.error || 'Import failed.'
+    setApiError(message, '')
+    throw new Error(message)
+  }
+  return final?.result ?? null
+}
+
+async function apiFetch(url, options, { parse = 'json', onProgress } = {}) {
   let res
   try {
     // The session cookie is httpOnly and, in dev, often cross-origin
@@ -47,6 +77,7 @@ async function apiFetch(url, options, { parse = 'json' } = {}) {
   if (res.status === 204) return null
   if (parse === 'blob') return res.blob()
   if (parse === 'text') return res.text()
+  if (parse === 'sse') return readSseResult(res, onProgress)
   return res.json()
 }
 
@@ -305,15 +336,17 @@ export function postListenTranscribe(audioBlob) {
 // The "Label sessions" view's own Import button — every selected file in
 // one request, whichever mix of a .txt transcript and a "Download all"
 // .json export it contains. All per-file/per-session dispatch and error
-// handling happens server-side; returns {results: [{file, ok, session_id?,
-// error?}, ...], last_session_id}.
-export function postImportSessions(projectName, files) {
+// handling happens server-side. Streams SSE progress chunks within this
+// same request/response (see post_import_sessions); pass `onProgress
+// (message)` to render live percentage instead of a spinner. The
+// returned promise resolves with the final {results, last_session_id}.
+export function postImportSessions(projectName, files, onProgress) {
   const formData = new FormData()
   for (const file of files) formData.append('files', file)
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/sessions/import`, {
     method: 'POST',
     body: formData
-  })
+  }, { parse: 'sse', onProgress })
 }
 
 // The "Label sessions" view's own "Download all" button — every session
@@ -321,6 +354,14 @@ export function postImportSessions(projectName, files) {
 // so the caller can trigger a real file download.
 export function getExportSessions(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/sessions/export`, {}, { parse: 'blob' })
+}
+
+// The "Label sessions" view's own "Delete all imported sessions" button —
+// every imported session of `projectName`, across every user.
+export function deleteImportedSessions(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/sessions/imported`, {
+    method: 'DELETE'
+  })
 }
 
 export function putSessionsTestUser(projectName, sessionIds, testUserSeq) {
@@ -333,6 +374,14 @@ export function putSessionsTestUser(projectName, sessionIds, testUserSeq) {
 
 export function deleteTestUser(projectName, testUserSeq) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/test-users/${encodeURIComponent(testUserSeq)}`, {
+    method: 'DELETE'
+  })
+}
+
+// The "Label sessions" view's per-branch × button for any non-live
+// branch that isn't a "Test user N" one — an arbitrary imported username.
+export function deleteUserSessions(projectName, username) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/sessions/users/${encodeURIComponent(username)}`, {
     method: 'DELETE'
   })
 }
