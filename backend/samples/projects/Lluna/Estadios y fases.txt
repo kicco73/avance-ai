@@ -1,0 +1,207 @@
+ESTADIOS Y FASES — v2.0
+Criterios canónicos del Modelo Transteórico y cálculo de Ê.
+
+═══════════════════════════════════════════════════════════════════
+1. CRITERIOS CANÓNICOS  [C]
+═══════════════════════════════════════════════════════════════════
+
+El criterio de estadiaje es el HORIZONTE TEMPORAL DE LA INTENCIÓN, cruzado con
+la CONDUCTA MANIFIESTA. Ni el sufrimiento, ni la gravedad del consumo, ni la
+adherencia, ni las ganas de hablar. Sólo eso.
+
+  PRECONTEMPLACIÓN
+    intención_comprometida_horizonte == sin_horizonte
+    No pretende cambiar en los próximos seis meses.
+    No hay atribución causal de daño al propio consumo, o es marginal o
+    externalizada (reconocimiento_del_problema bajo).
+    NOTA: precontemplación no es ignorancia. Muchas personas llegan aquí
+    después de varios intentos fallidos. Es una posición, no un déficit.
+
+  CONTEMPLACIÓN
+    intención_comprometida_horizonte == en_6m
+    Pretende cambiar dentro de seis meses, PERO NO dentro de treinta días,
+    y no ha dado pasos consolidados. Ambivalencia activa.
+    Es el estadio con mayor riesgo de estancamiento crónico.
+
+  PREPARACIÓN
+    intención_comprometida_horizonte == en_30d  Y  acción_efectiva_magnitud_y_duración_magnitud ≥ umbral_paso (15)
+    LOS DOS CRITERIOS SON NECESARIOS. NINGUNO ES SUFICIENTE.
+    Treinta días sin paso es contemplación tardía. Paso sin treinta días es
+    experimentación. Ninguna de las dos es preparación.
+    Ventana temporal limitada: si no se entra en acción, se retrocede a
+    contemplación. El sistema lo refleja por descenso de Ê, no por arista.
+
+  ACCIÓN
+    acción_efectiva_magnitud_y_duración_magnitud ≥ umbral_cambio (50)  Y  acción_efectiva_magnitud_y_duración_mesesConsolidados < 6
+
+  MANTENIMIENTO
+    acción_efectiva_magnitud_y_duración_magnitud ≥ umbral_cambio (50)  Y  acción_efectiva_magnitud_y_duración_mesesConsolidados ≥ 6
+
+  RECAÍDA
+    EVENTO, no estadio. Interrupción del cambio consolidado con retorno al
+    patrón previo. Sólo posible desde acción o mantenimiento: no se puede
+    recaer de lo que no se ha dejado.
+    Operacionalizada en R8. Reentrada canónica por CONTEMPLACIÓN.
+
+  (FINALIZACIÓN — no implementada. Estadio teórico, sin criterio operativo
+   establecido para conductas adictivas distintas del tabaquismo. No existe
+   en la máquina de estados y no debe añadirse.)
+
+EL PROCESO ES ESPIRAL, NO LINEAL. La mayoría de las personas recorre el ciclo
+varias veces antes de un cambio estable. Retroceder es parte del recorrido, no
+su interrupción. El sistema no penaliza el retroceso de ninguna forma
+perceptible para la persona.
+
+═══════════════════════════════════════════════════════════════════
+2. UMBRAL DE SEIS MESES  [D-05]
+═══════════════════════════════════════════════════════════════════
+
+La frontera Acción / Mantenimiento se mide sobre acción_efectiva_magnitud_y_duración_diasConsolidados.
+
+  Primitivo:  acción_efectiva_magnitud_y_duración_diasConsolidados. Días transcurridos desde la última fecha en
+              que la conducta objetivo RETORNÓ AL PATRÓN PREVIO — no desde el
+              último episodio aislado.
+  Derivado:   acción_efectiva_magnitud_y_duración_mesesConsolidados = diasConsolidados / 30.44
+  Frontera:   183 días.
+
+  Un LAPSO no reinicia el contador. Sólo lo reinicia una RECAÍDA confirmada
+  por R8 (descenso bajo umbral sostenido ≥21 días o ≥2 ventanas).
+
+PENDIENTE DE RATIFICACIÓN: el documento fuente no define mesesConsolidados.
+Esta es la propuesta. Sus dos decisiones sustantivas son (a) el primitivo es
+días, no meses, y (b) el reloj mide desde el retorno al patrón, no desde el
+último consumo. La alternativa "días desde el último consumo" es incompatible
+con reducción de daños, porque hace imposible alcanzar mantenimiento a quien
+mantiene consumo reducido estable — que es precisamente el objetivo del marco.
+
+═══════════════════════════════════════════════════════════════════
+3. HISTÉRESIS DE ESTADIO (fase 6)
+═══════════════════════════════════════════════════════════════════
+
+Ê no se lee directamente del argmax del posterior. Autómata de Schmitt por
+frontera, con margen Δ_e = 0.08 sobre la probabilidad posterior.  [H0]
+
+  Para cambiar de Ê = s a Ê = s'  se exige:
+    ASCENDENTE   P(s') ≥ P(s) + Δ_e   en 2 evaluaciones consecutivas
+    DESCENDENTE  P(s') ≥ P(s) + Δ_e   en 1 evaluación
+
+  Asimetría deliberada: subir cuesta el doble que bajar. Un descenso de Ê
+  activa un repertorio más cauto, que nunca daña. Un ascenso de Ê activa
+  procesos conductuales, que fuera de tiempo sí dañan.
+
+  Con Confianza < 35 no se permite ningún ascenso de Ê.
+  Con flag_incoherencia_interna no se permite ningún ascenso de Ê.
+
+Además de la histéresis, la restricción de anclaje:
+  Los ascensos de Ê hacia PREPARACIÓN, ACCIÓN o MANTENIMIENTO exigen ancla_Eᵢ
+  del clasificador correspondiente. Los descensos, y los ascensos hacia
+  CONTEMPLACIÓN, no la exigen.
+  Regla: el anclaje por ítem se exige sólo en transiciones CON CONSECUENCIA
+  CONDUCTUAL. El lenguaje espontáneo basta para elevar la incertidumbre y para
+  disparar transiciones protectoras; no basta para autorizar un plan.
+
+═══════════════════════════════════════════════════════════════════
+4. PROCESOS DE CAMBIO POR ESTADIO  [C]
+═══════════════════════════════════════════════════════════════════
+
+Diez procesos. Cinco experienciales, cinco conductuales.
+
+  EXPERIENCIALES   aumento de la concienciación · relieve dramático ·
+                   reevaluación ambiental · auto-reevaluación · liberación social
+  CONDUCTUALES     auto-liberación · manejo de contingencias · relaciones de
+                   ayuda · contracondicionamiento · control de estímulos
+
+Asignación canónica — es un mapa PRESCRIPTIVO, dice qué promover, no qué medir:
+
+  Precontemplación → aumento de la concienciación · relieve dramático ·
+                     reevaluación ambiental
+  Contemplación    → los anteriores, más AUTO-REEVALUACIÓN como puente
+  Preparación      → auto-liberación · inicio de control de estímulos y
+                     contracondicionamiento
+  Acción           → manejo de contingencias · relaciones de ayuda ·
+                     contracondicionamiento · control de estímulos
+  Mantenimiento    → los conductuales ya consolidados · prevención de recaída ·
+                     liberación social
+  Recaída          → NINGUNO hasta reevaluar los ocho criterios
+
+LOS PROCESOS NO EMPIEZAN DONDE EMPIEZA EL ESTADIO. Se solapan: cada proceso
+arranca a mitad de un estadio y se prolonga en el siguiente. Funcionan como
+puente. Por eso el repertorio de un estadio incluye el cierre de los procesos
+del anterior.
+
+EL ERROR DOCUMENTADO: promover procesos conductuales a quien todavía necesita
+trabajo experiencial no sólo no facilita el avance, lo obstaculiza. Produce
+estancamiento en contemplación, frustración y caída de autoeficacia. Es la
+razón de ser de perfil_de_procesos_de_cambio y de la asimetría de toda la fase 6.
+
+═══════════════════════════════════════════════════════════════════
+5. NIVELES DE CAMBIO
+═══════════════════════════════════════════════════════════════════
+
+Lluna interviene EXCLUSIVAMENTE en el nivel síntoma/situación. Es el nivel más
+consciente y contemporáneo, y el que corresponde a un acompañamiento
+conversacional asíncrono sin capa clínica humana.
+
+Los otros cuatro niveles — cogniciones desadaptativas, conflictos personales
+actuales, conflictos de familia/sistemas, conflictos intrapersonales — quedan
+fuera de alcance. Cuando el material los toca, se reconoce, se acompaña, y se
+ofrece recurso presencial (R0). No se trabaja.
+
+Esto no es una limitación técnica que se irá levantando. Es el límite del
+producto.
+
+═══════════════════════════════════════════════════════════════════
+6. VARIANTE DEGRADADA — SÓLO OCHO ESCALARES  (index_minimo.yml)
+═══════════════════════════════════════════════════════════════════
+
+Sólo si el evaluador liga los ocho nombres del bloque signals y NINGÚN derivado.
+No es la configuración recomendada. Cuesta cara y aquí está el precio.
+
+QUÉ SE PIERDE
+  · Subcomponentes. acción_efectiva_magnitud_y_duración pasa a ser un escalar
+    que funde magnitud y duración, que es exactamente lo que el eje prohíbe.
+    intención_comprometida funde horizonte, fuerza y locus.
+  · Anclaje por ítem. Desaparece ancla_*. Nada distingue una observación de
+    ítem de una lingüística, y el eje más inflado del sistema (E7) queda sin
+    su única corrección.
+  · Histéresis. Desaparecen los derivados _min2 y con ellos el suelo temporal:
+    una sola evaluación basta para transitar.
+  · Los doce flags. Todos los vetos pasan a ser comparaciones directas, con lo
+    que la ausencia de evidencia deja el veto ABIERTO en vez de cerrado.
+
+CÓMO SE COMPENSA. Todo lo anterior se traslada al criterio de puntuación: los
+ficheros de eje dejan de ser diccionario de extracción y pasan a ser instrucción
+de puntuación. El modelo que asigna el escalar es quien debe aplicar el
+sostenimiento y la asimetría, no el trigger.
+
+  REGLA DE PUNTUACIÓN INNEGOCIABLE EN ESTA VARIANTE:
+  un escalar sólo sube si la evidencia se ha sostenido en dos intercambios;
+  baja con uno. Sin esta regla, la variante oscila y conmuta de registro varias
+  veces por sesión, que es la forma más rápida de destruir la alianza.
+
+ANCLAJES DE ESCALA para los dos ejes que se funden  [H0]
+
+  intención_comprometida
+    0–33  sin horizonte de cambio en seis meses     (precontemplación)
+    34–66  cambio dentro de seis meses               (contemplación)
+    67–100  dentro de treinta días Y con un paso dado (preparación)
+    Dentro de cada tramo, la posición la fija la fuerza del lenguaje de
+    compromiso: deseo abajo, compromiso arriba. Locus por presión externa
+    dominante: no superar 66 nunca, aunque el horizonte sea de treinta días.
+
+  acción_efectiva_magnitud_y_duración
+    0–14  sin cambio
+    15–49  algún paso: contexto, compañía, vía de administración
+    50–79  cambio manifiesto sostenido menos de seis meses  (acción)
+    80–100  cambio manifiesto sostenido seis meses o más     (mantenimiento)
+    NO BAJAR de 50 por un episodio aislado. Sólo si el patrón previo se ha
+    restablecido durante ≥21 días. Es la regla R8 trasladada a la puntuación, y
+    es la que evita que cada tropiezo dispare la transición a Recaída.
+
+Los seis ejes restantes conservan su escala original.
+
+TRIGGERS DE LA VARIANTE — están en index_minimo.yml, no aquí. Los vetos que en
+la configuración completa son flags aparecen allí como comparaciones directas
+sobre balance_decisional, craving_nivel_e_inestabilidad y
+perfil_de_procesos_de_cambio.
+

@@ -1,0 +1,83 @@
+reconocimiento_del_problema — RECONOCIMIENTO DEL PROBLEMA
+Tipo: CLASIFICADOR. Puede aportar condición positiva a una transición.
+Escala: [0,1] ∪ {null}.
+
+═══════════════════════════════════════════════════════════════════
+QUÉ MIDE Y QUÉ NO
+═══════════════════════════════════════════════════════════════════
+
+Grado en que la persona ATRIBUYE consecuencias adversas a SU PROPIO consumo.
+
+Es atribución causal. No es aceptación de una etiqueta diagnóstica.
+Una persona puede reconocer con precisión el daño y rechazar la palabra
+adicción: eso PUNTÚA ALTO. La confusión inversa — tomar la aceptación de la
+etiqueta como reconocimiento — infla reconocimiento_del_problema en quien repite un discurso aprendido y
+lo hunde en quien piensa por su cuenta.
+
+Tres cosas distintas que no deben fundirse:
+  (a) que haya consecuencias        → no lo mide reconocimiento_del_problema
+  (b) que la persona las perciba    → lo mide reconocimiento_del_problema parcialmente
+  (c) que las atribuya a su consumo → esto es reconocimiento_del_problema
+
+La externalización puntúa BAJO aunque el relato de daño sea intenso: "lo dejé
+porque mi pareja me montó un pollo" describe consecuencia sin atribución.
+
+Procedencia: SOCRATES escala Reconocimiento · URICA subescala Precontemplación
+(invertida) · ítems de consecuencias de AUDIT y CAST.
+Aval psicométrico: NO transferido. Ver "Funcionamiento de ítems.txt" §6.
+
+═══════════════════════════════════════════════════════════════════
+BANCO DE ÍTEMS
+═══════════════════════════════════════════════════════════════════
+
+1.1  Atribución directa
+     Canónico: "Mi consumo me está causando problemas."
+     Checkpoint: "¿Dirías que algo de lo que te está pasando ahora tiene que
+     ver con el consumo, o lo ves por otro lado?"
+
+1.2  Atribución en salud
+     Canónico: "Mi forma de consumir está dañando mi salud."
+     Checkpoint: "El cuerpo, ¿te está diciendo algo últimamente?"
+
+1.3  Atribución relacional
+     Canónico: "Mi consumo ha hecho daño a personas cercanas."
+     Checkpoint: "¿Alguien de tu entorno lo lleva peor que tú?"
+
+1.4  Control percibido
+     Canónico: "A veces consumo más de lo que había previsto."
+     Checkpoint: "¿Suele salir como lo tenías pensado, o se te va?"
+
+1.5  Preocupación propia (no ajena)
+     Canónico: "Me preocupa mi forma de consumir."
+     Checkpoint: "Dejando fuera lo que opinen los demás: a ti, ¿te preocupa?"
+     NOTA: es el ítem que mejor separa atribución propia de presión externa.
+
+1.6  Negación explícita  (PUNTÚA INVERTIDO)
+     Canónico: "Que yo sepa, no tengo ningún problema que cambiar."
+     Se detecta casi siempre en lenguaje espontáneo. No suele hacer falta
+     administrarlo, y administrarlo tiene coste alto en alianza.
+
+1.7  Coste percibido acumulado
+     Canónico: "He perdido cosas por consumir."
+     Checkpoint: "¿Hay algo que hayas dejado por el camino en todo esto?"
+
+1.8  Discrepancia con valores
+     Canónico: "Consumo de una forma que no encaja con la persona que quiero ser."
+     Checkpoint: "¿Esto encaja con cómo te gustaría vivir?"
+     NOTA: puente hacia auto-reevaluación (perfil_de_procesos_de_cambio). Alto rendimiento en contemplación.
+
+═══════════════════════════════════════════════════════════════════
+USO EN EL MOTOR
+═══════════════════════════════════════════════════════════════════
+
+Aparece positivamente en: T1 (reconocimiento_del_problema >= 45), T2 (reconocimiento_del_problema >= 45 y n_reconocimiento_del_problema >= 2).
+Aparece en reglas: R6 (reconocimiento_del_problema <= 30 con magnitud alta), R9(c).
+Umbral 45 [H0]. σ_item 10 · σ_lenguaje 22.
+
+AUTORIZADO EN: Contemplación, Preparación, Acción, Mantenimiento.
+PROHIBIDO EN: Vinculación (sólo alianza_terapéutica), Recaída (fase de acogida; se autoriza sólo
+cuando arranca la reevaluación), y siempre que flag_crisis_activa.
+
+CUIDADO PARTICULAR: preguntar por reconocimiento a quien no reconoce es la vía
+más rápida de generar resistencia y cerrar la puerta de alianza. En Ê ==
+Precontemplación, reconocimiento_del_problema se estima ÚNICAMENTE por lenguaje espontáneo. Ningún ítem.

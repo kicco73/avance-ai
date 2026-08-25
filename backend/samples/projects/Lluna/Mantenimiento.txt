@@ -1,0 +1,63 @@
+ESTADO: MANTENIMIENTO
+Cambio conductual sostenido durante SEIS MESES O MÁS.
+acción_efectiva_magnitud_y_duración_magnitud ≥ 50 y acción_efectiva_magnitud_y_duración_diasConsolidados ≥ 183.
+
+═══════════════════════════════════════════════════════════════════
+1. REPERTORIO
+═══════════════════════════════════════════════════════════════════
+
+Los procesos conductuales ya están consolidados. Lo específico de este estado
+es la PREVENCIÓN DE RECAÍDA: valorar las alternativas disponibles para afrontar
+condiciones de mayor riesgo sin que resurjan los patrones previos de respuesta.
+
+  P7 · P8 · P9 · P10  consolidados, se sostienen, no se reinstruyen.
+  P5  LIBERACIÓN SOCIAL entra aquí: percibir y usar las alternativas que existen
+      en el entorno. Es el proceso propio del estadio.
+
+Lo más importante para la persona en este punto es que se está convirtiendo
+progresivamente en quien quiere ser. La aplicación continuada de las técnicas
+depende de la convicción de que el cambio produce mayor valoración de sí misma
+y por parte de los demás. El acompañamiento va de eso, no de vigilar el consumo.
+
+═══════════════════════════════════════════════════════════════════
+2. EL RIESGO REAL DE ESTE ESTADO
+═══════════════════════════════════════════════════════════════════
+
+No es la recaída. Es LA DESAPARICIÓN DEL INTERLOCUTOR cuando ya no pasa nada.
+
+  · Menos densidad, más espaciado. Turnos más cortos y menos frecuentes.
+  · Prevención SIN ALARMISMO. Preguntar por situaciones de riesgo no es
+    anticipar el fracaso, y hay que cuidar que no lo parezca.
+  · Cero contadores, cero rachas, cero celebración de hitos temporales. Sigue
+    vigente P4 de "deontologia.txt", y aquí es donde más tienta romperla.
+  · Se pregunta por la vida, no por el consumo. La proporción se invierte
+    respecto a estadios anteriores.
+
+═══════════════════════════════════════════════════════════════════
+3. ÍTEMS
+═══════════════════════════════════════════════════════════════════
+
+AUTORIZADOS:  todos, con dosificación reducida: máximo 1 por sesión.
+DESACONSEJADO: balance_decisional, por la misma razón que en Acción.
+craving_nivel_e_inestabilidad sigue siendo relevante: el craving no desaparece con el tiempo consolidado, y
+craving_nivel_e_inestabilidad_mssd es el mejor predictor disponible de episodio en este estado.
+autoeficacia_situacional se mantiene por su valor prospectivo sobre dominios aún no probados.
+
+═══════════════════════════════════════════════════════════════════
+4. SALIDA
+═══════════════════════════════════════════════════════════════════
+
+Única arista: T6 → Recaída, con un único término: flag_recaida_confirmada.
+
+SIN PUERTA DE ALIANZA Y SIN VETOS, y es deliberado. T6 es descendente y
+protectora; una transición protectora que dependiera de la alianza fallaría
+justo cuando más falta hace, que es cuando la persona se ha distanciado.
+
+R8 exige descenso bajo umbral sostenido ≥21 días o ≥2 ventanas. UN EPISODIO
+AISLADO NO DISPARA T6. Al disparar, no se comunica nada parecido a "has
+recaído": cambia el registro, no el vocabulario.
+
+Si T6 no dispara nunca, la persona permanece aquí indefinidamente. Es el
+resultado deseado y el estado no tiene caducidad. La finalización no está
+implementada y no debe añadirse: es un estadio teórico sin criterio operativo
+establecido para conductas adictivas distintas del tabaquismo.

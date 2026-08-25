@@ -1,0 +1,72 @@
+ESTADO: CONTEMPLACIÓN
+Pretende cambiar dentro de los próximos seis meses, pero NO dentro de los
+próximos treinta días, y no ha dado pasos consolidados. Ambivalencia activa.
+
+Es el destino de tres aristas (T1, T2, T7) y el estadio con mayor riesgo de
+ESTANCAMIENTO CRÓNICO de todo el modelo. Todo lo que sigue está orientado a eso.
+
+═══════════════════════════════════════════════════════════════════
+1. LA AMBIVALENCIA SE TRABAJA, NO SE ATROPELLA
+═══════════════════════════════════════════════════════════════════
+
+La persona considera y rechaza el cambio a la vez. Las dos cosas son verdad al
+mismo tiempo, y las dos se sostienen.
+
+  · Se resume la ambivalencia COMPLETA, incluido lo que la persona obtiene del
+    consumo, sin ironía y sin prisa por resolver.
+  · Se pregunta por el polo de los contras del cambio ANTES que por los pros.
+    Explorar sólo los pros no es una omisión neutral: es persuasión, y produce
+    el argumento contrario.
+  · No se inclina el resumen. Ni con el orden, ni con el énfasis, ni con la
+    conjunción final.
+
+CAUSA DOCUMENTADA DEL ESTANCAMIENTO: promover procesos conductuales aquí.
+Es exactamente lo que el veto de perfil_de_procesos_de_cambio en T3 impide. Si el contraste de procesos
+sigue del lado experiencial, el trabajo pendiente es experiencial, y ofrecer
+técnica conductual produce frustración, caída de autoeficacia y un fracaso que
+la persona se atribuye.
+
+═══════════════════════════════════════════════════════════════════
+2. REPERTORIO
+═══════════════════════════════════════════════════════════════════
+
+  P1 · P2 · P3 continúan (se cierran los procesos del estadio anterior)
+  P4 AUTO-REEVALUACIÓN se inicia aquí. ES EL PUENTE hacia preparación.
+     Valorar afectiva y cognitivamente el impacto del consumo sobre los propios
+     valores y sobre la manera de ser. Distinguir los valores que se quiere
+     hacer realidad, los que se ponen en acción y los que se desea modificar.
+     El ítem 1.8 y el 8.4 son las dos entradas naturales.
+
+LA VENTANA. Al final de contemplación se abre una ventana de disponibilidad.
+Señales, ninguna necesaria y ninguna suficiente: baja la resistencia · dejan de
+aparecer preguntas sobre el problema · aparece resolución y calma · aparecen
+afirmaciones automotivadoras directas · aumentan las preguntas sobre el cambio ·
+la persona imagina cómo sería la vida después · empieza a experimentar por su
+cuenta. Cuando aparecen, es el momento de que T3 pueda evaluarse con datos.
+Si la ventana se cierra sin que el cambio se inicie, aparecen defensas para
+reducir el malestar y la persona vuelve a posiciones anteriores. Eso se refleja
+como descenso de Ê, sin tocar S_nom y sin comentario.
+
+═══════════════════════════════════════════════════════════════════
+3. ÍTEMS
+═══════════════════════════════════════════════════════════════════
+
+AUTORIZADOS:  reconocimiento_del_problema completo · balance_decisional completo (uso principal del eje) · alianza_terapéutica · intención_comprometida ·
+              perfil_de_procesos_de_cambio · craving_nivel_e_inestabilidad · de acción_efectiva_magnitud_y_duración sólo 4.3 y 4.4 (no presuponen intención de reducir)
+DESACONSEJADO: autoeficacia_situacional en contemplación temprana. Capacidad sin intención no informa.
+PROHIBIDOS:   4.1 · 4.2 · 4.5 · 4.6
+
+═══════════════════════════════════════════════════════════════════
+4. SALIDA
+═══════════════════════════════════════════════════════════════════
+
+Única arista: T3 → Preparación. Es la transición más cargada del sistema, con
+once condiciones. Glosa completa en "Avance por estado.txt" §3.
+
+Los dos criterios canónicos (horizonte a treinta días Y un paso dado) son
+ambos necesarios y ninguno suficiente. Además: anclaje por ítem obligatorio en
+intención_comprometida, fuerza de compromiso ≥ 50, y cuatro vetos — presión externa, ambivalencia
+clavada, horizonte sin paso y trabajo experiencial aún dominante.
+
+Que no dispare es el resultado normal durante mucho tiempo. No es un problema
+que haya que resolver acelerando.

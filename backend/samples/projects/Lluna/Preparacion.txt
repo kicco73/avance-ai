@@ -1,0 +1,71 @@
+ESTADO: PREPARACIÓN
+Pretende cambiar dentro de los próximos treinta días Y HA DADO ALGÚN PASO.
+Los dos criterios son necesarios; ninguno es suficiente.
+
+Primer estado con CONSECUENCIA CONDUCTUAL. Cruzar aquí autoriza planificación.
+Por eso T3 es la transición más compuertada del sistema.
+
+═══════════════════════════════════════════════════════════════════
+1. LO QUE CAMBIA AL ENTRAR
+═══════════════════════════════════════════════════════════════════
+
+Aquí SE PUEDE PROPONER. Es lo único que cambia, y es mucho.
+
+  · Se NOMBRA el cambio de registro antes de hacerlo, y se puede rechazar.
+    "Si quieres, podemos mirar cómo hacerlo. O lo dejamos para otro día."
+  · Las opciones se ofrecen EN PLURAL. Siempre. Una opción única es una
+    prescripción disfrazada.
+  · El plan es de la persona o no es. El sistema no tiene plan preferido, no
+    tiene meta preferida y no tiene ritmo preferido.
+  · La abstinencia es UNA meta posible entre varias. Reducir dosis, reducir
+    días, cambiar vía, cambiar contexto y cambiar compañía son metas completas,
+    no escalones hacia otra cosa.
+
+La tarea aquí no es motivar: es ayudar a elegir el recurso más adecuado,
+accesible y efectivo. Buena parte de eso está fuera de Lluna, y eso es R0.
+
+═══════════════════════════════════════════════════════════════════
+2. REPERTORIO
+═══════════════════════════════════════════════════════════════════
+
+  P6  AUTO-LIBERACIÓN — proceso central. Aumentar la capacidad de decidir y
+      elegir, unida a la creencia de que uno mismo es elemento esencial del
+      cambio y de que posee o puede desarrollar las habilidades necesarias.
+  P9  Contracondicionamiento — INICIO. Sustituir, no suprimir.
+  P10 Control de estímulos — INICIO. Modificar el entorno que precipita.
+  P4  Auto-reevaluación continúa. No se cierra al entrar aquí.
+
+autoeficacia_situacional pasa a ser el eje de trabajo principal: se identifican los dominios donde la
+confianza es baja (autoeficacia_situacional_min) y se trabaja ESE dominio concreto. La autoeficacia
+sube por dominios, no por ánimo genérico.
+
+Este es el estado que alimenta el calendario de situaciones de riesgo, que
+operacionaliza autoeficacia_situacional de forma prospectiva.
+
+═══════════════════════════════════════════════════════════════════
+3. LA VENTANA ES LIMITADA
+═══════════════════════════════════════════════════════════════════
+
+Preparación tiene duración acotada. Si no se entra en acción dentro de la
+ventana, se retrocede a contemplación. El sistema lo refleja como descenso de Ê
+—repertorio de contemplación, sin tocar S_nom— y SIN COMENTARIO. No se avisa de
+que la ventana se cierra: eso sería presión, y la presión es lo que la cierra.
+
+═══════════════════════════════════════════════════════════════════
+4. ÍTEMS
+═══════════════════════════════════════════════════════════════════
+
+AUTORIZADOS:  todos. autoeficacia_situacional y acción_efectiva_magnitud_y_duración son los ejes de trabajo principales aquí.
+DOSIFICACIÓN NORMAL: máximo 1 por turno, máximo 2 por sesión, mínimo 3 turnos
+entre ítems. Que estén todos autorizados no cambia la cuota.
+PRECAUCIÓN: si craving_nivel_e_inestabilidad_mssd es alto, NO SE PIDE COMPROMISO en este estado. Un
+compromiso hecho en cresta se rompe en valle, y la rotura se paga en
+autoeficacia y en alianza.
+
+═══════════════════════════════════════════════════════════════════
+5. SALIDA
+═══════════════════════════════════════════════════════════════════
+
+Única arista: T4 → Acción. Glosa en "Avance por estado.txt" §4.
+Magnitud ≥ 50 sostenida dos evaluaciones, anclada por ítem, con 14 a 182 días
+consolidados, y sin lapso reciente, craving volátil ni acción sin reconocimiento.

@@ -1,0 +1,79 @@
+autoeficacia_situacional — AUTOEFICACIA SITUACIONAL
+Tipo: MODULADOR. Sólo puede VETAR. Nunca aporta condición positiva.
+Escala: [0,1] ∪ {null}. DOS estadísticos obligatorios: autoeficacia_situacional_media y autoeficacia_situacional_min.
+
+═══════════════════════════════════════════════════════════════════
+QUÉ MIDE
+═══════════════════════════════════════════════════════════════════
+
+Confianza en poder gestionar SITUACIONES CONCRETAS sin consumir. Por dominios.
+No es autoestima, no es optimismo, no es motivación. Es expectativa de eficacia
+situada, y por eso se mide por situaciones y nunca en global.
+
+TRES DOMINIOS  (estructura DTCQ/AASE):
+  D1  AFECTO NEGATIVO        tristeza, ansiedad, rabia, aburrimiento, soledad
+  D2  SITUACIÓN SOCIAL POSITIVA  fiesta, celebración, buen rollo, disponibilidad
+  D3  MALESTAR FÍSICO        dolor, insomnio, resaca, síntomas de abstinencia
+
+DOS ESTADÍSTICOS, AMBOS NECESARIOS:
+  autoeficacia_situacional_media = media de los tres dominios → cuánta confianza hay
+  autoeficacia_situacional_min   = mínimo de los tres         → dónde se rompe
+
+Media 75 con mínimo 20 es un PERFIL DE RIESGO, no un perfil bueno. Colapsar
+los dos en un escalar borra exactamente la información que sirve. Si sólo hay
+observaciones de un dominio: autoeficacia_situacional_media se calcula, autoeficacia_situacional_min queda null.
+
+Procedencia: DTCQ (Annis) · AASE/DASE.
+
+═══════════════════════════════════════════════════════════════════
+BANCO DE ÍTEMS
+═══════════════════════════════════════════════════════════════════
+
+D1 — AFECTO NEGATIVO
+3.1  "Confío en no consumir cuando estoy muy bajo de ánimo."
+     Checkpoint: "Un día malo de verdad. ¿Cuánto te ves capaz de esquivarlo ahí?"
+3.2  "Confío en no consumir cuando estoy muy nervioso o angustiado."
+     Checkpoint: "Y cuando la cabeza no para, ¿qué tal lo llevas?"
+3.3  "Confío en no consumir cuando me aburro o estoy solo."
+     Checkpoint: "Los ratos muertos, ¿cómo se te dan?"
+
+D2 — SITUACIÓN SOCIAL POSITIVA
+3.4  "Confío en no consumir en una celebración."
+     Checkpoint: "Una fiesta de las buenas, ¿cómo la ves?"
+3.5  "Confío en no consumir cuando estoy con gente que consume."
+     Checkpoint: "Si están todos, ¿te cuesta más o te da igual?"
+3.6  "Confío en no consumir cuando estoy pasándomelo bien."
+     Checkpoint: "¿Y cuando estás bien, no mal? Ahí, ¿qué pasa?"
+     NOTA: dominio sistemáticamente infravalorado. Buena parte del consumo no
+     ocurre en el hundimiento sino en la celebración, y el sistema tiende a no
+     preguntarlo porque no encaja con el relato de daño.
+
+D3 — MALESTAR FÍSICO
+3.7  "Confío en no consumir cuando tengo dolor físico."
+     Checkpoint: "Cuando el cuerpo duele, ¿ahí qué?"
+3.8  "Confío en no consumir cuando no puedo dormir."
+     Checkpoint: "Las noches malas, ¿cómo van?"
+3.9  "Confío en no consumir cuando tengo síntomas de abstinencia."
+     Checkpoint: "Cuando el cuerpo lo pide de verdad, ¿qué tal?"
+     PRECAUCIÓN: puntuación baja aquí puede activar R0. Comprobar.
+
+═══════════════════════════════════════════════════════════════════
+USO EN EL MOTOR
+═══════════════════════════════════════════════════════════════════
+
+NO aparece positivamente en ningún trigger. Por diseño.
+Aparece en reglas: R9(a) media ≥70 con craving_nivel_e_inestabilidad_mssd ≥60 · R9(d) media−min ≥55.
+Modula: con autoeficacia_situacional_min bajo se trabaja ESE dominio concreto, no la confianza global.
+La autoeficacia sube por dominios; el ánimo genérico no la mueve.
+σ_item 10 · σ_lenguaje 28. Es el eje con mayor σ lingüístico junto a craving_nivel_e_inestabilidad:
+la confianza declarada en abstracto es una de las observaciones menos fiables
+del sistema.
+
+AUTORIZADO EN: Preparación (uso principal, alimenta el calendario de riesgo),
+Acción, Mantenimiento.
+DESACONSEJADO EN: Contemplación temprana — preguntar por capacidad antes de que
+haya intención produce una respuesta que no significa nada.
+PROHIBIDO EN: Vinculación, Precontemplación, Recaída en fase de acogida.
+
+DESPUÉS DE UN EPISODIO: no se administra autoeficacia_situacional en las 72 h siguientes. La medida
+está deprimida por el evento y registrarla contamina la serie.

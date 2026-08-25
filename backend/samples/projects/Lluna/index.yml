@@ -1,0 +1,602 @@
+avance-version: "1.10.0"
+
+project:
+  id: lluna
+  ui-label: Lluna
+  ui-description: |
+    A state-machine implementation of the Transtheoretical Model of Change, 
+    augmented with Motivational Interviewing and Relapse Prevention principles.
+    (Prochaska, DiClemente)
+
+  signal-tracking-on-ai-message: true
+  talk-enabled: false
+init-action:
+  ui-label: new user
+  on-enter: celebrate()
+  target: state-0
+
+# Fixed instructions appended to every state's contextual_prompt (except
+# fixed_message states, which use a translation-only prompt instead).
+general-prompt: |
+  You are part of a harm-reduction prototype application for alcohol use,
+  following the Transtheoretical Model of Change and Relapse Prevention frameworks.
+  Read attachment.
+
+attachments:
+  - general_prompt.txt
+
+# Independent monitoring signals:
+# each is a 0-100 value estimated from the conversation.
+
+signals:
+
+  reconocimiento_del_problema:
+    ui-label: Reconocimiento del problema
+    ui-description: >
+      Es un eje Clasificador
+    definition: |
+      E1: Grado en que la persona atribuye consecuencias adversas a su propio consumo. No es aceptación de una etiqueta diagnóstica: es atribución causal. Una persona puede reconocer perfectamente el daño y rechazar la palabra adicción, y eso puntúa alto en E1.
+    attachments:
+      - Reconocimiento del problema.txt
+
+  balance_decisional:
+    ui-label: Balance decisional
+    ui-description: >
+      Es un eje Modulador
+    definition: |
+      E2: Contraste entre los pros percibidos del cambio y sus contras. La agregación correcta es estandarizar cada polo por separado y restar.
+    attachments:
+      - Balance decisional.txt
+
+  autoeficacia_situacional:
+    ui-label: Autoeficacia situacional
+    ui-description: >
+      Es un eje Modulador
+    definition: |
+      E3: Confianza en poder gestionar situaciones concretas sin consumir, medida por dominios: afecto negativo, situación social positiva, malestar físico.
+    attachments:
+      - Autoeficacia situacional.txt
+
+  acción_efectiva_magnitud_y_duración:
+    ui-label: Acción efectiva. magnitud y duración
+    ui-description: >
+      Es un eje Clasificador
+    definition: |
+      E4: Dos componentes que no deben fundirse. La magnitud recoge cuánto ha cambiado la conducta manifiesta, en una escala compatible con reducción de daños: bajar dosis, reducir días, cambiar vía de administración o contexto cuentan como cambio, no sólo la abstinencia. La duración recoge cuántos meses lleva consolidado ese cambio.
+    attachments:
+      - Accion efectiva - magnitud y duracion.txt
+
+  craving_nivel_e_inestabilidad:
+    ui-label: Craving - nivel e inestabilidad
+    ui-description: >
+      Es un eje Modulador
+    definition: |
+      E5: Dos señales: la intensidad del deseo y su variabilidad entre observaciones, estimada como diferencia media al cuadrado sucesiva normalizada.
+    attachments:
+      - Craving - nivel e inestabilidad.txt
+
+  alianza_terapéutica:
+    ui-label: Alianza terapéutica
+    ui-description: >
+      Es un eje Regulador
+    definition: |
+      E6: Vínculo, acuerdo sobre objetivos y acuerdo sobre tareas, según la estructura del WAI-SR. No clasifica y no debe clasificar: una alianza fuerte no indica un estadio avanzado, sólo que la conversación puede sostener más carga.
+    attachments:
+      - Alianza terapeutica.txt
+
+  intención_comprometida:
+    ui-label: Intención comprometida
+    ui-description: >
+      Es un eje Clasificador
+    definition: |
+      E7: Horizonte:	Es el criterio canónico del algoritmo de estadiaje: precontemplación es no pretender cambiar en seis meses; contemplación, pretenderlo en seis meses; preparación, pretenderlo en treinta días y haber dado algún paso.
+      Fuerza: la fuerza del lenguaje de compromiso al evaluar un plan predijo la proporción de días de abstinencia, y mediaba el efecto del deseo, la capacidad, la necesidad y las razones. Orden: deseo < capacidad < activación < compromiso.
+      Locus:	Teoría de la autodeterminación: la motivación controlada por presión externa predice peor adherencia y más abandono que la autónoma.
+    attachments:
+      - Intencion comprometida.txt
+
+  perfil_de_procesos_de_cambio:
+    ui-label: Perfil de procesos de cambio
+    ui-description: >
+      Es un eje Modulador
+    definition: |
+      E8: Contraste entre el uso de procesos conductuales y el uso de procesos experienciales, sobre los diez procesos del modelo. Su valor real es prescriptivo, no clasificatorio. E8 responde a la pregunta operativa que sigue a la clasificación: sabido el estadio, qué proceso conviene promover. Y advierte de un error frecuente: inducir procesos conductuales a alguien que aún está en trabajo experiencial es la vía documentada del estancamiento en contemplación.
+    attachments:
+      - Perfil de procesos de cambio.txt
+
+  detectRisk:
+    ui-label: "Acute risk detected"
+    ui-description: >
+      Binary safety signal: presence of an acute risk signal in the most
+      recent message.
+    definition: |
+      Read attachment.
+    attachments:
+      - acute_risk_detection_instructions.txt
+
+
+# Bidirectional message reactions — the user can react to any bot message
+# with these at any time; the bot may react to the user's message only in
+# a state with reactions-enabled: true (see below), never a subset of this
+# vocabulary.
+reactions:
+
+  supportive:
+    ui-label: "🙏"
+    ui-description: >
+      Silent acknowledgment, without minimizing or correcting.
+    definition: |
+      Use rarely when the user has shared something vulnerable —
+      shame, fear, a difficult admission — and a verbal response
+      would feel like over-explaining or clinical. 
+      Never use on a message describing an acute risk event; 
+      that always gets a full response, not a reaction.
+
+  encouraging:
+    ui-label: "💪"
+    ui-description: >
+      Light affirmation of effort, not a full congratulation.
+    definition: |
+      Use when the user reports a small, concrete step taken toward
+      change — resisting an urge, showing up to a hard conversation,
+      sticking to a plan for one more day — that doesn't yet warrant the
+      fuller acknowledgment a genuine milestone gets.
+
+  celebrating:
+    ui-label: "🎉"
+    ui-description: >
+      Marks a genuine milestone, alongside the fuller reply it deserves.
+    definition: |
+      Use only alongside a real milestone: committing to a concrete plan,
+      reaching a sustained-behavior threshold, or another moment that
+      already triggers celebrate() on-enter. Never use it as a
+      substitute for actually acknowledging the milestone in the reply.
+
+  listening:
+    ui-label: "🤍"
+    ui-description: >
+      Acknowledges being heard, without judgment or a next step.
+    definition: |
+      Use seldom when the user is venting, disclosing a relapse, 
+      or simply talking through something without asking for advice 
+      or a plan — especially right after a lapse, when the goal is 
+      re-engagement, not analysis.
+
+  grounding:
+    ui-label: "🌱"
+    ui-description: >
+      Gentle acknowledgment of returning to the present moment.
+    definition: |
+      Use when the user describes grounding themselves, pausing,
+      breathing, noticing an urge without acting on it, or otherwise
+      returning attention to the present. It should feel calming,
+      never congratulatory.
+
+  choosing:
+    ui-label: "🧭"
+    ui-description: >
+      Marks a meaningful moment of choosing a healthier direction.
+    definition: |
+      Use when the user consciously chooses not to act on an urge,
+      chooses a healthier alternative, or makes a decision aligned
+      with their longer-term goals. Use for a meaningful choice,
+      not for every positive statement.
+
+  resetting:
+    ui-label: "🔄"
+    ui-description: >
+      Acknowledges starting again without framing the setback as failure.
+    definition: |
+      Use when the user describes returning to their plan after a lapse,
+      breaking a difficult cycle, or deciding to begin again. Especially
+      useful after setbacks. Never use to imply that the user is back
+      at zero or has lost previous progress.
+
+  self-kindness:
+    ui-label: "💛"
+    ui-description: >
+      Acknowledges compassion toward oneself during a difficult moment.
+    definition: |
+      Use when the user responds to themselves with patience, forgiveness,
+      or understanding instead of shame or self-criticism. Particularly
+      appropriate after a lapse or difficult day.
+
+  brave:
+    ui-label: "🦁"
+    ui-description: >
+      Recognizes the courage involved in facing something difficult.
+    definition: |
+      Use when the user openly discusses something painful, admits a
+      struggle, faces an uncomfortable situation, or does something
+      difficult despite fear. Do not use for routine updates.
+
+  resisting:
+    ui-label: "🛡️"
+    ui-description: >
+      Acknowledges successfully creating distance from an urge.
+    definition: |
+      Use when the user reports delaying, interrupting, avoiding, or
+      moving through an urge without acting on it. Focus on the skill
+      they used rather than portraying the urge itself as a failure.
+
+  reflecting:
+    ui-label: "🔎"
+    ui-description: >
+      Marks useful self-awareness or insight.
+    definition: |
+      Use when the user identifies a trigger, pattern, emotion,
+      consequence, or personal insight that could help them understand
+      their behavior. Do not use merely because the user is thinking
+      aloud.
+
+  reconnecting:
+    ui-label: "🤝"
+    ui-description: >
+      Acknowledges reaching toward supportive people or resources.
+    definition: |
+      Use when the user contacts a trusted person, attends a support
+      group, talks honestly with someone, or otherwise reconnects with
+      their support system. Use for a concrete act of connection.
+
+  asking-help:
+    ui-label: "🙋"
+    ui-description: >
+      Recognizes the strength involved in asking for support.
+    definition: |
+      Use when the user asks for help, admits they cannot handle something
+      alone, or reaches out for professional or personal support. This
+      should communicate acceptance, never dependency or weakness.
+
+  staying:
+    ui-label: "🌳"
+    ui-description: >
+      Acknowledges quietly staying with the process through difficulty.
+    definition: |
+      Use when the user describes getting through a difficult period,
+      tolerating discomfort, or continuing their recovery despite a hard
+      day. Especially useful when there is no dramatic milestone to
+      celebrate.
+
+  noticing:
+    ui-label: "👀"
+    ui-description: >
+      Acknowledges noticing an urge, trigger, or emotional pattern.
+    definition: |
+      Use when the user catches an urge, trigger, thought, or emotional
+      state before automatically reacting to it. The emphasis is on
+      awareness rather than control.
+
+  pausing:
+    ui-label: "⏸️"
+    ui-description: >
+      Marks a deliberate pause before acting.
+    definition: |
+      Use when the user creates a meaningful pause between an urge and
+      an action, even if the eventual outcome is uncertain. Particularly
+      useful when the user describes using a pause as a recovery skill.
+
+  protecting:
+    ui-label: "🔒"
+    ui-description: >
+      Acknowledges setting a boundary that protects recovery.
+    definition: |
+      Use when the user avoids a known trigger, changes an environment,
+      sets a boundary, removes access to something risky, or otherwise
+      makes their surroundings safer for themselves.
+
+  honest:
+    ui-label: "🙌"
+    ui-description: >
+      Acknowledges honest self-reporting without judgment.
+    definition: |
+      Use when the user tells the truth about an urge, lapse, craving,
+      difficult behavior, or emotional state instead of hiding or
+      minimizing it. Never use as praise for disclosure of an acute
+      safety risk; those messages require a full response.
+
+  learning:
+    ui-label: "💡"
+    ui-description: >
+      Marks a useful lesson extracted from an experience.
+    definition: |
+      Use when the user identifies what happened, what contributed to it,
+      or what they might try differently next time. Especially valuable
+      after setbacks when the user is moving from self-judgment toward
+      learning.
+
+  returning:
+    ui-label: "🏠"
+    ui-description: >
+      Acknowledges returning to supportive habits after drifting away.
+    definition: |
+      Use when the user reconnects with a routine, coping strategy,
+      support system, or recovery intention after a period of disengagement.
+      Do not imply that previous progress has disappeared.
+
+  patience:
+    ui-label: "🐢"
+    ui-description: >
+      Acknowledges accepting gradual progress instead of demanding
+      immediate change.
+    definition: |
+      Use when the user recognizes that recovery takes time, tolerates
+      slow progress, or chooses not to judge themselves for needing
+      multiple attempts. Avoid using it to minimize genuine distress.
+
+  boundary:
+    ui-label: "🧱"
+    ui-description: >
+      Acknowledges a concrete protective boundary.
+    definition: |
+      Use when the user establishes or maintains a boundary around
+      people, places, situations, routines, or access that could undermine
+      their recovery. Use for a concrete protective action, not a general
+      intention.
+
+  momentum:
+    ui-label: "🌊"
+    ui-description: >
+      Marks a series of small actions beginning to reinforce one another.
+    definition: |
+      Use when several recent small steps are starting to form a
+      sustainable pattern. Never use solely because of a streak or
+      abstinence count, and never imply that losing momentum erases
+      previous progress.
+
+  acceptance:
+    ui-label: "🕊️"
+    ui-description: >
+      Acknowledges accepting an uncomfortable feeling without needing
+      to immediately escape it.
+    definition: |
+      Use when the user describes allowing a craving, emotion, thought,
+      or difficult reality to exist without immediately trying to suppress
+      or act on it. Do not use when acceptance would minimize an acute risk.
+
+  recommitting:
+    ui-label: "🔗"
+    ui-description: >
+      Marks a conscious recommitment to a chosen recovery direction.
+    definition: |
+      Use when the user explicitly renews a commitment after uncertainty,
+      disengagement, or a setback. The emphasis is on the next choice,
+      not on restoring a previous streak or status.
+
+  proud:
+    ui-label: "🌟"
+    ui-description: >
+      Acknowledges earned self-recognition without turning recovery
+      into a performance.
+    definition: |
+      Use when the user describes a meaningful action they genuinely
+      feel proud of, especially one that required effort or persistence.
+      Use sparingly so that pride remains connected to authentic progress.
+
+  safe-choice:
+    ui-label: "🧸"
+    ui-description: >
+      Acknowledges choosing immediate safety or support during vulnerability.
+    definition: |
+      Use when the user moves toward safety, removes themselves from a
+      risky situation, contacts support, or chooses a protective action
+      while vulnerable. Never use instead of responding appropriately
+      to an acute safety concern.
+
+  one-day:
+    ui-label: "☀️"
+    ui-description: >
+      Acknowledges focusing on the next manageable step rather than
+      the entire recovery journey.
+    definition: |
+      Use when the user intentionally narrows their focus to today,
+      the next hour, or the next manageable action. Especially useful
+      when the future feels overwhelming.
+
+  re-engaging:
+    ui-label: "🔌"
+    ui-description: >
+      Marks returning to active participation in recovery.
+    definition: |
+      Use when the user comes back after avoiding the topic, disengaging
+      from support, or stepping away from their routine. It should signal
+      welcome and continuation, never disappointment about the absence.
+
+states:
+
+  Precontemplation:
+    ui-label: Precontemplacion
+    ui-description: >-
+      La persona no pretende cambiar en los próximos seis meses. No hay atribución causal de daño al propio consumo, o la que hay es marginal o externalizada.
+    contextual-prompt: |-
+      Read Precontemplacion.txt
+    attachments:
+      - precontemplation_instructions.txt
+    reactions-enabled: true
+    actions:
+      - name: raise awareness
+        ui-label: "La persona reconoce que tiene un problema y se plantea cambiar"
+        ui-button: Raise awareness
+        target: Contemplation
+        trigger:
+
+        ui-description: La persona pretende cambiar dentro de los próximos seis meses
+      - name: action-0
+        ui-label: Falta de Vínculo Terapeutico
+        target: state-0
+        trigger:
+      - name: action-1
+        ui-label: Riesgo agudo detectado
+        trigger: "signal.detectRisk == 100"
+        target: Crisis
+  Contemplation:
+    ui-label: Contemplacion
+    ui-description: >-
+      La persona pretende cambiar dentro de los próximos seis meses, pero no dentro de los próximos treinta días, y no ha dado pasos consolidados. Ambivalencia activa.
+    contextual-prompt: |-
+      Read Contemplacion.txt
+    reactions-enabled: true
+    actions:
+      - name: resolve ambivalence
+        ui-label: "Los pros superan a los contras, intención de cambio"
+        ui-button: "Resolve ambivalence"
+        target: Preparation
+        trigger:
+
+      - name: action-0
+        ui-label: Falta de Vínculo Terapeutico
+        target: state-0
+        trigger:
+      - name: action-1
+        ui-label: Riesgo agudo detectado
+        trigger: "signal.detectRisk == 100"
+        target: Crisis
+  Preparation:
+    ui-label: Preparacion
+    ui-description: >-
+      La persona pretende cambiar dentro de los próximos treinta días Y HA DADO ALGÚN PASO. Los dos criterios son necesarios; ninguno es suficiente.
+    contextual-prompt: |-
+      Read Preparacion.txt
+    reactions-enabled: true
+    actions:
+      - name: commit to plan
+        ui-label: "Concreta fechas y pasos. Reduce consumo"
+        ui-button: "Mark: plan defined"
+        target: Action
+        trigger:
+        on-enter: celebrate()
+
+      - name: action-0
+        ui-label: Falta de Vinculo Terapeutico
+        trigger:
+        target: state-0
+      - name: action-1
+        ui-label: Riesgo aguda detectado
+        target: Crisis
+        trigger: "signal.detectRisk == 100"
+  Action:
+    ui-label: "Accion"
+    ui-description: >-
+      Cambio conductual manifiesto y sostenido durante MENOS de seis meses.
+    contextual-prompt: |-
+      Read Accion.txt
+
+    reactions-enabled: true
+    actions:
+      # order matters: safety-critical actions are evaluated first (FIFO priority)
+      - name: detect risk
+        ui-label: "Riesgo agudo detectado"
+        ui-button: "Detect acute risk"
+        target: Crisis
+        trigger: "signal.detectRisk == 100"
+        ui-description: Regulation (EU) 2024/1689 (Artificial Intelligence Act), las guías y materiales de la Comisión Europea, GDPR, Regulation (EU) 2017/745 (Medical Device Regulation).
+      - name: encounter risk
+        ui-label: "Interrupción del cambio consolidado con retorno al patrón previo"
+        ui-button: "Encounter risk"
+        target: Relapse
+        trigger:
+        ui-description: El suceso de consumo, ha de ser >1
+      - name: sustain behaviour
+        ui-label: "Conducta sostenida >= 6 meses"
+        ui-button: "Mark: behavior sustained"
+        target: Maintenance
+        trigger:
+
+      - name: action-0
+        ui-label: Falta de Vinculo Terapeutico
+        trigger:
+        target: state-0
+  Maintenance:
+    ui-label: Mantenimiento
+    ui-description: >-
+      Cambio conductual sostenido durante SEIS MESES O MÁS.
+    contextual-prompt: |-
+      Read Mantenimiento.txt
+    transition-log-level: WARNING
+    reactions-enabled: true
+    actions:
+      - name: detect risk
+        ui-label: "Riesgo agudo detectado"
+        ui-button: "Detect acute risk"
+        target: Crisis
+        trigger: "signal.detectRisk == 100"
+        ui-description: Regulation (EU) 2024/1689 (Artificial Intelligence Act), las guías y materiales de la Comisión Europea, GDPR, Regulation (EU) 2017/745 (Medical Device Regulation).
+      - name: encounter risk
+        ui-label: "Interrupción del cambio consolidado con retorno al patrón previo"
+        ui-button: "Encounter risk"
+        target: Relapse
+        trigger:
+
+        ui-description: El suceso de consumo, ha de ser >1
+      - name: action-0
+        ui-label: Falta de Vinculo Terapeutico
+        target: state-0
+        trigger:
+  Relapse:
+    ui-label: Recaida
+    ui-description: >-
+      EVENTO, no estadio. Interrupción del cambio consolidado con retorno al patrón previo. Sólo es posible desde acción o mantenimiento: no se puede recaer de lo que no se ha dejado.
+    contextual-prompt: |-
+      Read Recaida.txt
+    reactions-enabled: true
+    actions:
+      - name: resume path
+        ui-label: "Retroceso a Contemplacion"
+        ui-button: "Resume path"
+        target: Contemplation
+        trigger:
+
+        ui-description: El suceso de consumo tiene que ser >1
+      - name: action-0
+        ui-label: Retroceso a Precontemplacion
+        target: Precontemplation
+        ui-description: El suceso de consumo, ha de ser >1
+        trigger:
+      - name: action-1
+        ui-label: Riesgo agudo detectado
+        trigger: "signal.detectRisk == 100"
+        target: Crisis
+    history-cutoff: true
+  Crisis:
+    ui-label: Crisis
+    transition-log-level: CRITICAL
+    chat: false
+    ui-description: >
+      An acute-risk signal has been detected. Control passes to a fixed,
+      non-generative safety protocol: this state has no contextual_prompt —
+      the two are mutually exclusive (see AutomatonBuilder.build) — since
+      the backend never generates free-form content here, only translates
+      `fixed_message` below into the user's language, verbatim in meaning.
+    fixed-message: |
+      What you're describing sounds serious, and I want to make sure you have immediate support.
+
+      This prototype cannot continue the conversation in this state: if you are in immediate danger or thinking about harming yourself, please contact right now:
+
+      - Emergency services: 112
+      - Suicide Prevention Hotline (Spain): 024
+      - Teléfono de la Esperanza: 717 003 717
+
+    actions: []
+    history-cutoff: true
+    reactions-enabled: false
+  state-0:
+    ui-label: Vinculacion
+    contextual-prompt: "Escucha. Refleja. Devuelve lo dicho con precisión y sin añadir. Ofrece un encuadre breve y honesto; qué es esto, qué puede esperar, qué NO puede esperar, y que puede irse cuando quiera. Administra, y sólo si el flujo lo permite, ítems de E6 (6.1 a 6.5). Son los únicos autorizados y no cuentan contra la cuota de dosificación. Ofrece información de reducción de daños si la persona la pide o si el contenido lo hace pertinente."
+    ui-description: "Estado previo a toda evaluación.\nNo es un estadio del Modelo Transteórico: es la PRECONDICIÓN para que el Modelo Transteórico pueda aplicarse."
+    chat: true
+    history-cutoff: false
+    reactions-enabled: true
+    actions:
+      - name: action-0
+        ui-label: Paso a Contemplacion
+        target: Contemplation
+        trigger: '0'
+        ui-description: Qué tiene que ocurrir para pasar de Vinculación a Contemplación
+      - name: action-1
+        ui-label: Paso a Precontemplacion
+        target: Precontemplation
+        ui-description: Qué tiene que ocurrir para pasar de Vinculación a Precontemplación
+        trigger: '0'
+      - name: action-2
+        ui-label: Riesgo agudo detectado
+        trigger: signal.detectRisk == 100
+        target: Crisis

@@ -1,0 +1,75 @@
+acción_efectiva_magnitud_y_duración — ACCIÓN EFECTIVA: MAGNITUD Y DURACIÓN
+Tipo: CLASIFICADOR. Puede aportar condición positiva a una transición.
+DOS componentes que NO se funden nunca.
+
+═══════════════════════════════════════════════════════════════════
+COMPONENTES
+═══════════════════════════════════════════════════════════════════
+
+acción_efectiva_magnitud_y_duración_magnitud ∈ [0,1] ∪ {null}
+  Cuánto ha cambiado la conducta manifiesta. Escala compatible con reducción
+  de daños: bajar dosis, reducir días, cambiar vía de administración o cambiar
+  contexto CUENTAN COMO CAMBIO. La abstinencia es el extremo de la escala, no
+  su definición.
+
+  0  sin cambio
+  20  cambio de contexto o de compañía de consumo
+  35  cambio de vía de administración a una de menor riesgo
+  50  reducción sostenida de dosis o de días        ← umbral_cambio
+  70  reducción mayor, con sustitución de repertorio
+  100  abstinencia
+  umbral_paso = 15   [H0, D-15]
+
+acción_efectiva_magnitud_y_duración_diasConsolidados ∈ ℕ   (PRIMITIVO)
+  Días desde la última fecha en que la conducta RETORNÓ AL PATRÓN PREVIO.
+  No desde el último episodio. Un lapso no lo reinicia; sólo R8 lo reinicia.
+acción_efectiva_magnitud_y_duración_mesesConsolidados = diasConsolidados / 30.44   (DERIVADO)
+  Frontera acción/mantenimiento: 183 días.  [D-05]
+
+POR QUÉ NO SE FUNDEN: magnitud y duración responden a preguntas distintas.
+Alguien con magnitud 100 y 8 días está en acción incipiente. Alguien con
+magnitud 50 y 400 días está en mantenimiento. Un escalar único los confunde
+y produce estadiaje absurdo en los dos extremos.
+
+═══════════════════════════════════════════════════════════════════
+BANCO DE ÍTEMS
+═══════════════════════════════════════════════════════════════════
+
+MAGNITUD
+4.1  Frecuencia. "¿Cuántos días de la última semana has consumido?"
+     Checkpoint: "¿Cómo ha ido esta semana comparada con las de antes?"
+4.2  Cantidad. "¿Cuánto sueles consumir cada vez, ahora?"
+     Checkpoint: "Y cuando pasa, ¿es como antes o menos?"
+4.3  Vía y contexto. "¿Has cambiado la forma o el sitio donde consumes?"
+     Checkpoint: "¿Ha cambiado algo de cómo o dónde?"
+4.4  Repertorio sustitutivo. "¿Has puesto otra cosa en ese hueco?"
+     Checkpoint: "Ese rato, ahora, ¿en qué se te va?"
+
+DURACIÓN
+4.5  "¿Desde cuándo llevas así?"
+     Checkpoint: "¿Y esto desde cuándo, más o menos?"
+4.6  Estabilidad del patrón. "¿Ha habido semanas en que volviera a ser como antes?"
+     Checkpoint: "¿Ha habido alguna semana que se pareciera a las de antes?"
+     NOTA: éste es EL ítem que operacionaliza D-05. Distingue lapso de retorno
+     al patrón. Sin él, diasConsolidados es una estimación ciega.
+
+═══════════════════════════════════════════════════════════════════
+USO EN EL MOTOR
+═══════════════════════════════════════════════════════════════════
+
+Aparece positivamente en: T3 (magnitud >= 15), T4 (magnitud >= 50 estable,
+ancla_acción_efectiva_magnitud_y_duración, 14 <= dias < 183), T5 (magnitud >= 50, dias >= 183, ancla_acción_efectiva_magnitud_y_duración).
+Aparece en reglas: R6, R7, R8, R10.
+σ_item 8 · σ_lenguaje 26. Es el eje con σ_item más bajo del sistema y con
+la mayor exigencia de anclaje: lo declarado sobre la propia conducta es donde
+más pesa la deseabilidad, y a la vez es el eje que decide las dos transiciones
+con más consecuencia.
+
+AUTORIZADO EN: Preparación, Acción, Mantenimiento. En Contemplación sólo 4.3 y
+4.4 (los que no presuponen intención de reducir).
+PROHIBIDO EN: Vinculación, Precontemplación, y con flag_crisis_activa.
+
+REGLA DE ENCUADRE INNEGOCIABLE: acción_efectiva_magnitud_y_duración no se devuelve nunca. Ni como racha, ni como
+contador, ni como felicitación, ni como gráfica. Es una variable interna.
+Convertir diasConsolidados en un número visible es gamificar la abstinencia, que
+está prohibido en "deontologia.txt" P4.
