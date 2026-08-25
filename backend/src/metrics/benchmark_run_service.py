@@ -277,73 +277,75 @@ class PooledAggregationJob(_AggregationJob):
 
 
 class UsersAggregationJob(_AggregationJob):
+    """Depends on one PooledAggregationJob('user_sessions', ...) per user
+    — not raw session ids directly — so each user's own "user:*" tree
+    node gets its own real progress, the same way clicking that user's
+    play button standalone (start_user_sessions_run_job) would."""
 
     def __init__(
         self, service: "BenchmarkRunService", project_name: str, strategy: str, session_ids_by_user: dict[str, list[int]],
     ) -> None:
         super().__init__(service, project_name, 'users', None, strategy)
         self._session_ids_by_user = session_ids_by_user
-        self._sub_run_ids_by_user: dict[str, list[int]] = {}
+        self._user_jobs: list[PooledAggregationJob] = []
 
     def _resolve_or_construct_dependencies(self) -> list[Job]:
-        dependencies = []
-        for username, session_ids in self._session_ids_by_user.items():
-            run_ids, deps = self._resolve_session_ids(session_ids)
-            self._sub_run_ids_by_user[username] = run_ids
-            dependencies.extend(deps)
-        return dependencies
+        self._user_jobs = [
+            PooledAggregationJob(self._service, self._project_name, 'user_sessions', username, self._strategy, session_ids)
+            for username, session_ids in self._session_ids_by_user.items()
+        ]
+        return list(self._user_jobs)
 
     async def _compute(self) -> list[dict]:
-        per_user_results = [
-            self._service._aggregate_pooled_runs(ids, self._project_name) for ids in self._sub_run_ids_by_user.values()
-        ]
+        per_user_results = [json.loads(job.result) for job in self._user_jobs]
         return self._service._aggregate_across_results(per_user_results)
 
 
 class AllStatesAggregationJob(_AggregationJob):
+    """Depends on one StateAggregationJob per state — see
+    UsersAggregationJob's own docstring for why."""
 
     def __init__(
         self, service: "BenchmarkRunService", project_name: str, strategy: str, session_ids_by_state: dict[str, list[int]],
     ) -> None:
         super().__init__(service, project_name, 'all_states', None, strategy)
         self._session_ids_by_state = session_ids_by_state
-        self._sub_run_ids_by_state: dict[str, list[int]] = {}
+        self._state_jobs: list[StateAggregationJob] = []
 
     def _resolve_or_construct_dependencies(self) -> list[Job]:
-        dependencies = []
-        for state_key, session_ids in self._session_ids_by_state.items():
-            run_ids, deps = self._resolve_session_ids(session_ids)
-            self._sub_run_ids_by_state[state_key] = run_ids
-            dependencies.extend(deps)
-        return dependencies
+        self._state_jobs = [
+            StateAggregationJob(self._service, self._project_name, state_key, self._strategy, session_ids)
+            for state_key, session_ids in self._session_ids_by_state.items()
+        ]
+        return list(self._state_jobs)
 
     async def _compute(self) -> dict:
-        per_state_results = [
-            self._service._aggregate_signal_accuracy(ids, state_key)
-            for state_key, ids in self._sub_run_ids_by_state.items()
-        ]
+        per_state_results = [json.loads(job.result) for job in self._state_jobs]
         return self._service._aggregate_weighted_by_sample_count(per_state_results)
 
 
 class AllSignalsAggregationJob(_AggregationJob):
+
+    """Depends on one SignalAggregationJob per signal — see
+    UsersAggregationJob's own docstring for why."""
 
     def __init__(
         self, service: "BenchmarkRunService", project_name: str, strategy: str, session_ids: list[int], signal_names: list[str],
     ) -> None:
         super().__init__(service, project_name, 'all_signals', None, strategy)
         self._session_ids = session_ids
-        self._sub_run_ids: list[int] = []
         self._signal_names = signal_names
+        self._signal_jobs: list[SignalAggregationJob] = []
 
     def _resolve_or_construct_dependencies(self) -> list[Job]:
-        self._sub_run_ids, dependencies = self._resolve_session_ids(self._session_ids)
-        return dependencies
-
-    async def _compute(self) -> dict:
-        per_signal_results = [
-            self._service._aggregate_signal_name_accuracy(self._sub_run_ids, signal_name)
+        self._signal_jobs = [
+            SignalAggregationJob(self._service, self._project_name, signal_name, self._strategy, self._session_ids)
             for signal_name in self._signal_names
         ]
+        return list(self._signal_jobs)
+
+    async def _compute(self) -> dict:
+        per_signal_results = [json.loads(job.result) for job in self._signal_jobs]
         return self._service._aggregate_weighted_by_sample_count(per_signal_results)
 
 
@@ -503,9 +505,9 @@ class BenchmarkRunService:
             status, error = 'completed', None
         elif job is not None:
             status = 'failed' if job.is_failed() else ('completed' if job.is_done() else 'running')
-            error = None
+            error = job.error() if status == 'failed' else None
         else:
-            status, error = 'failed', None
+            status, error = 'failed', 'Job result unavailable (the server may have restarted before it finished).'
         return {
             **run,
             'status': status,
@@ -539,9 +541,19 @@ class BenchmarkRunService:
 
     def _resolve_or_construct_session_run(self, session_id: int, project_name: str, strategy: str) -> tuple[int, Job | None]:
         candidates = [run for run in self.list_runs(project_name, session_id) if run['strategy'] == strategy]
-        fresh = candidates[0] if candidates and not candidates[0]['stale'] else None
-        if fresh is not None:
-            return fresh['id'], None
+        candidate = candidates[0] if candidates and not candidates[0]['stale'] else None
+        if candidate is not None:
+            # 'running' — some other branch of the same root click already
+            # claimed this exact session — must still be depended on here
+            # too, not silently treated as "nothing to wait for" just
+            # because a (still in-flight) row already exists.
+            if candidate['status'] == 'running':
+                live_job = self._cache.live_job_for(candidate['id'])
+                assert live_job is not None
+                return candidate['id'], live_job
+            if candidate['status'] == 'completed':
+                return candidate['id'], None
+            # 'failed' — a dead attempt; fall through to retry below.
         session = self._db.get_chat_session(session_id)
         assert session is not None
         run, job = self._construct_run(session['username'], project_name, session_id, strategy)

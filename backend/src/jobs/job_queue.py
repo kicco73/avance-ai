@@ -89,6 +89,16 @@ class JobQueue(object):
 
 
     def submit(self, job: Job) -> None:
+        with self._lock:
+            # Already in flight — some other waiter got to this exact job
+            # object first (a dependency shared across two different
+            # parents, e.g. the same session under both "sessions" and
+            # "users" when root runs everything at once). Its own _forget()
+            # already scans every waiter's dependency list for readiness,
+            # so there is nothing left to do here.
+            if job in self._dependents:
+                return
+
         self._broadcast_status(job)
         dependencies = job.prepare()
 

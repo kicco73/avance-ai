@@ -11,14 +11,10 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 // component happens to pass the prop, so entering/leaving manual mode is
 // always symmetric: onMounted forces it off, onBeforeUnmount always
 // restores it, with no separate opt-in/opt-out call for a manual-mode
-// consumer to remember. Necessary because App.vue's own widget stays
-// mounted (just visually covered) the entire time EditProjectView's
-// overlay is open — both instances read the same shared applyAspect,
-// see chatStore.js's own docstring on it.
-const props = defineProps({
-  hideSessionsPanel: { type: Boolean, default: false },
-  themeMode: { type: String, default: 'auto' }
-})
+// consumer to remember. applyAspect is shared across every ChatWindow
+// instance (a genuine app-wide preference, see chatSkin.js), which is
+// exactly why a manual instance must restore it on unmount rather than
+// leaving it however it last set it.
 import ActionButtons from './ActionButtons.vue'
 import ChatInput from './ChatInput.vue'
 import MessageBubble from './MessageBubble.vue'
@@ -27,17 +23,33 @@ import ProjectsMenu from '../ProjectsMenu.vue'
 import SplashScreen from '../SplashScreen.vue'
 import { setApiError } from '../../errorStore.js'
 import { startRecording, stopRecording } from '../../mic.js'
+import { liveStore } from '../../chatStore.js'
 import {
+  audioEnabled,
+  talkAvailable,
+  micAvailable,
+  spokenTextEnabled,
+  toggleSpokenText,
+} from '../../chatStoreFactory.js'
+import { applyAspect } from '../../chatSkin.js'
+
+const props = defineProps({
+  hideSessionsPanel: { type: Boolean, default: false },
+  themeMode: { type: String, default: 'auto' },
+  // Which chat conversation this window renders — its own independent
+  // session/messages/state, never shared with any other store instance
+  // (see chatStoreFactory.js's createChatStore). Defaults to the app's
+  // one live chat; RunChat.vue passes its own test store instead.
+  store: { type: Object, default: () => liveStore }
+})
+
+const {
   state,
   messages,
   chatLoading,
   chatStatus,
   actionLoading,
   autoTrackingEnabled,
-  audioEnabled,
-  talkAvailable,
-  micAvailable,
-  spokenTextEnabled,
   draft,
   currentSessionId,
   selectedSessionActive,
@@ -54,12 +66,9 @@ import {
   handleVoiceMessage,
   handleAction,
   toggleAudio,
-  toggleSpokenText,
-  applyAspect,
   projectPaused,
-  projectPausedReason,
-  clearChatUi
-} from '../../chatStore.js'
+  projectPausedReason
+} = props.store
 
 const emit = defineEmits(['project-select', 'project-download'])
 
@@ -173,7 +182,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('mouseup', stopSessionsDrag)
   if (props.themeMode === 'manual') applyAspect.value = true
   clearSessionsPanelIdleTimer()
-  clearChatUi()
 })
 
 function submit() {

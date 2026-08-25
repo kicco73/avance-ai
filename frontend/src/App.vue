@@ -38,7 +38,6 @@ import {
   loadMessages,
   loadAiModels,
   clearChatUi,
-  testModeProjectName,
   currentProjectName
 } from './chatStore.js'
 
@@ -274,12 +273,13 @@ function handleManageProjectsChat(projectName) {
 
 // Edit is only ever opened from Manage projects now (ProjectsMenu.vue no
 // longer has its own entry point into it) — so "Back" out of it returns
-// there rather than to the main chat view.
+// there rather than to the main chat view. EditProjectView's own "Run"
+// tab has its own independent chat store (see testChatStore.js) — it
+// never touches the live chat's own state, so there's nothing here to
+// reset/reload on close.
 function closeEditProject() {
   showEditProject.value = false
   showManageProjects.value = true
-  testModeProjectName.value = null
-  loadMessages()
 }
 
 // Label, unlike Edit, also has a direct entry point (SettingsMenu's own

@@ -225,7 +225,7 @@ async function fetchAggregateResult(key, eventStrategy, kind, target) {
 function handleTestEvent(message) {
   const { key, status, percentage, error } = message
   if (status === 'pending' || status === 'running') {
-    setStatus(key, 'running')
+    setStatus(key, status)
     if (percentage != null) setProgress(key, percentage)
     return
   }

@@ -19,7 +19,7 @@ import {
   putSessionLabeled, putSessionTitle, putSessionComment, deleteSessionAnnotations, deleteSession, getUsers,
   putSessionsTestUser, deleteTestUser, deleteUserSessions
 } from '../../../api.js'
-import { currentSessionId, sessions, sessionsLoading, loadSessions, refreshSessionsQuietly, selectSession } from '../../../chatStore.js'
+import { sessions, sessionsLoading, loadSessions, refreshSessionsQuietly } from '../../../chatStore.js'
 import {
   buildTimeline, commentForMessage, highlightedStateKeyFor, nearestMessageIdAtOrBefore, signalValuesFor
 } from '../../../benchmarkTimeline.js'
@@ -37,6 +37,11 @@ const props = defineProps({
 const emit = defineEmits(['close', 'project-select'])
 
 const loading = ref(true)
+// This view's own session pointer — never chatStore.js's shared
+// currentSessionId. Browsing/reviewing a session here (including an
+// imported one, which can never be "the" live session) must not leak
+// into what the main chat window is showing.
+const currentSessionId = ref(null)
 // Raw backend message rows, kept as-is rather than chatStore.js's live
 // `messages` shape — this view reviews a fixed past session, not a live
 // conversation.
@@ -139,18 +144,24 @@ async function handleImportSession(files) {
 
 // SessionsTree's own node id, either `user:<username>` (a user branch was
 // clicked, not one of their sessions) or `session:<id>`. Kept separate
-// from currentSessionId so the tree can highlight a selected user even
-// though that's not a session — see onSelectTreeNode below.
+// from this view's own currentSessionId so the tree can highlight a
+// selected user even though that's not a session — see onSelectTreeNode below.
 const selectedUserNode = ref(null)
 const treeSelectedNodeId = computed(() =>
   selectedUserNode.value ? `user:${selectedUserNode.value}` : (currentSessionId.value != null ? `session:${currentSessionId.value}` : null)
 )
 
-// A session leaf uses the same shared selectSession as every other
-// session picker in the app — currentSessionId is the one source of
-// truth. A user branch has no session of its own, so it just clears the
-// active session, which the chat pane and Info tab then both render as
-// "Please select a session."
+// This view's own session switch — unlike chatStore.js's selectSession,
+// never touches the main chat window's messages/state, only this view's
+// own currentSessionId (which loadTimeline below reacts to).
+function selectSession(session) {
+  if (session.id === currentSessionId.value) return
+  currentSessionId.value = session.id
+}
+
+// A user branch has no session of its own, so it just clears the active
+// session, which the chat pane and Info tab then both render as "Please
+// select a session."
 function onSelectTreeNode(nodeId) {
   if (nodeId.startsWith('user:')) {
     selectedUserNode.value = nodeId.slice('user:'.length)
@@ -293,8 +304,6 @@ async function loadTimeline() {
   }
 }
 
-// currentSessionId is shared with the main page, so a switch there also
-// reloads this view's timeline from scratch.
 watch(currentSessionId, loadTimeline)
 
 // Chronological, merged view of the session's messages and state
@@ -619,23 +628,14 @@ watch(selected, () => {
 
 onMounted(async () => {
   loadUsers()
-  // currentSessionId is a shared ref also driven by the main chat window,
-  // so it may still point at another project's session on entry. Loading
-  // the list first and checking membership avoids opening into it.
   await loadSessions(true, props.projectName)
-  const stillBelongsHere = sessions.value.some((s) => s.id === currentSessionId.value)
-  if (stillBelongsHere) {
-    loadTimeline()
+  const mostRecent = sessions.value[0] ?? null
+  if (mostRecent) {
+    selectSession(mostRecent) // ids necessarily differ here, so this always triggers watch(currentSessionId, loadTimeline)
   } else {
-    const mostRecent = sessions.value[0] ?? null
-    if (mostRecent) {
-      selectSession(mostRecent) // ids necessarily differ here, so this always triggers watch(currentSessionId, loadTimeline)
-    } else {
-      // No sessions at all — watch() only fires on an actual change, so
-      // a currentSessionId already null would never clear `loading`.
-      currentSessionId.value = null
-      loadTimeline()
-    }
+    // No sessions at all — watch() only fires on an actual change, so
+    // a currentSessionId already null would never clear `loading`.
+    loadTimeline()
   }
   window.addEventListener('mousemove', onDrag)
   window.addEventListener('mouseup', stopDrag)

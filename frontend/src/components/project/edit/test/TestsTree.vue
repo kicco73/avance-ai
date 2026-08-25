@@ -31,7 +31,7 @@ const props = defineProps({
 
 const emit = defineEmits(['select', 'activate'])
 
-const expanded = ref({ root: true, sessions: true, states: true, users: true, signals: true })
+const expanded = ref({ root: true, sessions: false, states: false, users: false, signals: false })
 const expandedUsers = ref({})
 
 function isExpanded(key) {
@@ -117,6 +117,37 @@ function moveSelection(delta) {
   // every row already carries its own nodeId as a data attribute.
   treeRef.value?.querySelector(`[data-node-id="${CSS.escape(nextId)}"]`)?.focus()
 }
+
+// Enter toggles the selected node's own children, same gesture as clicking
+// its caret — only meaningful for nodes that have any (branches and users).
+function onEnterKey() {
+  const nodeId = props.selectedNodeId
+  if (nodeId === 'root') toggleExpanded('root')
+  else if (nodeId === 'sessions-branch') toggleExpanded('sessions')
+  else if (nodeId === 'states-branch') toggleExpanded('states')
+  else if (nodeId === 'users-branch') toggleExpanded('users')
+  else if (nodeId === 'signals-branch') toggleExpanded('signals')
+  else if (nodeId?.startsWith('user:')) toggleUserExpanded(nodeId.slice('user:'.length))
+}
+
+// Mirrors TestNodeButton's own onClick guard (disabled || isBusy) — Right
+// arrow is the keyboard equivalent of clicking the selected node's play
+// button, so it must respect the exact same conditions.
+function canActivate(nodeId) {
+  const status = statusFor(nodeId)
+  if (status === 'pending' || status === 'running') return false
+  if (nodeId.startsWith('session:')) {
+    const sessionId = Number(nodeId.slice('session:'.length))
+    const session = annotatedSessions.value.find((s) => s.id === sessionId)
+    if (session && sessionButtonDisabled(session)) return false
+  }
+  return true
+}
+
+function onRightArrowKey() {
+  const nodeId = props.selectedNodeId
+  if (nodeId && canActivate(nodeId)) emit('activate', nodeId)
+}
 </script>
 
 <template>
@@ -126,6 +157,8 @@ function moveSelection(delta) {
     tabindex="0"
     @keydown.up.prevent="moveSelection(-1)"
     @keydown.down.prevent="moveSelection(1)"
+    @keydown.enter.prevent="onEnterKey"
+    @keydown.right.prevent="onRightArrowKey"
   >
     <li class="tests-tree-node">
       <div class="tests-tree-node-row">

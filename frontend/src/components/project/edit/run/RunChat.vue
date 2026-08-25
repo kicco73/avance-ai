@@ -8,11 +8,15 @@ import ChatTimeline from '../../../chat/ChatTimeline.vue'
 import RestartFromHereButton from '../../../chat/RestartFromHereButton.vue'
 import SessionsPanel from '../../../chat/SessionsPanel.vue'
 import ModelMenu from '../../../ModelMenu.vue'
-import {
-  autoTrackingEnabled, autoTrackingLoading, toggleAutoTracking, handleReset, spokenTextEnabled, applyAspect,
+import { spokenTextEnabled } from '../../../../chatStoreFactory.js'
+import { applyAspect } from '../../../../chatSkin.js'
+import { testStore } from '../../../../testChatStore.js'
+
+const {
+  autoTrackingEnabled, autoTrackingLoading, toggleAutoTracking, handleReset,
   sessions, sessionsLoading, currentSessionId, loadSessions, selectSession, handleNewSession, handleDeleteSession,
   state, handleReact
-} from '../../../../chatStore.js'
+} = testStore
 
 defineProps({
   timeline: { type: Array, required: true },
@@ -133,7 +137,7 @@ onBeforeUnmount(() => {
           <ModelMenu />
         </div>
       </div>
-      <ChatWindow hide-sessions-panel theme-mode="manual">
+      <ChatWindow hide-sessions-panel theme-mode="manual" :store="testStore">
         <template #timeline>
           <ChatTimeline
             :timeline="timeline"
