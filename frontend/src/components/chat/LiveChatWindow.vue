@@ -10,6 +10,7 @@ import ChatView from './ChatView.vue'
 import TermsView from '../TermsView.vue'
 import SplashScreen from '../SplashScreen.vue'
 import { getLegalTermsStatus, postAcceptProjectTerms } from '../../api.js'
+import { loadMessages } from '../../chatStore.js'
 
 const props = defineProps({
   projectName: { type: String, required: true },
@@ -30,6 +31,7 @@ async function checkTerms() {
     const status = await getLegalTermsStatus(props.projectName)
     termsContent.value = status.content || ''
     termsPending.value = status.pending
+    if (!status.pending) loadMessages()
   } catch {
     checkFailed.value = true
   }
@@ -46,6 +48,7 @@ async function acceptTerms() {
     return
   }
   termsPending.value = false
+  loadMessages()
 }
 
 watch(() => props.projectName, checkTerms, { immediate: true })
@@ -83,5 +86,6 @@ defineExpose({
   display: flex;
   min-height: 0;
   min-width: 0;
+  background: white;
 }
 </style>

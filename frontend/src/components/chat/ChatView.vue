@@ -398,6 +398,7 @@ watch(
   flex: 1;
   min-height: 0;
   min-width: 0;
+  background: white;
 }
 
 .chat-window-shell {
