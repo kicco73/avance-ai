@@ -66,8 +66,8 @@ class TrackingService(object):
 	def build_import_sessions_job(self, project_name: str, uploads: list[tuple[str, bytes]]) -> SessionImportJob:
 		return SessionImportJob(self._session_import_manager, self._db, project_name, uploads)
 
-	def reassign_sessions_to_test_user(self, session_ids: list[int], test_user_seq: int) -> None:
-		self._db.reassign_sessions_to_test_user(session_ids, test_user_seq)
+	def reassign_sessions_to_username(self, session_ids: list[int], username: str) -> None:
+		self._db.reassign_sessions_to_username(session_ids, username)
 
 	def delete_sessions_by_username(self, project_name: str, username: str) -> None:
 		self._db.delete_sessions_by_username_and_project(username, project_name)
@@ -75,10 +75,10 @@ class TrackingService(object):
 	def delete_imported_sessions(self, project_name: str) -> None:
 		self._db.delete_imported_sessions(project_name)
 
-	def export_sessions(self, username: str, project_name: str) -> list[dict]:
+	def export_sessions(self, username: str, project_name: str, type: str | tuple[str, ...] = ('live', 'imported')) -> list[dict]:
 		"""The "Label sessions" view's own "Download all" button — see
 		SessionExportManager.export_sessions."""
-		return self._session_export_manager.export_sessions(username, project_name)
+		return self._session_export_manager.export_sessions(username, project_name, type=type)
 
 	@property
 	def automaton(self) -> Automaton:

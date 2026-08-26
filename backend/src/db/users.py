@@ -7,17 +7,11 @@ from peewee import SQL
 from .models import Project, User
 from .utils import _utc_iso
 
-#FIXME temporary for prototype
+_ADMIN_EMAILS = {"enrico.carniani@gmail.com", "itinococalero@gmail.com"}
 
-def _initial_role(name: str | None) -> str:
-    return 'admin'
-    first = (name or "").strip().split()
-    first_name = first[0].lower() if first else ""
-    if first_name.startswith('i'):
-        return "supervisor"
-    if first_name == "enrico":
-        return "admin"
-    return "user"
+
+def _initial_role(email: str) -> str:
+    return "admin" if email in _ADMIN_EMAILS else "user"
 
 
 class UserMixin:
@@ -42,7 +36,7 @@ class UserMixin:
             id=email,
             defaults={
                 "provider": provider, "provider_user_id": provider_user_id, "email": email, "name": name,
-                "picture_url": picture_url, "role": _initial_role(name),
+                "picture_url": picture_url, "role": _initial_role(email),
             },
         )
         user.name = name
@@ -87,6 +81,21 @@ class UserMixin:
     def set_user_role(self, user_id: str, role: str) -> None:
         User.update(role=role).where(User.id == user_id).execute()
 
+    def erase_user_data(self, email: str) -> None:
+        """ProfileView.vue's "Erase all my data" — deleting the User row
+        is now enough on its own: ChatSession.user/BenchmarkRun.user/
+        SystemWarning.user_id/EditHistory.user_id are real FKs onto it with
+        on_delete='CASCADE' (see models.py), which in turn cascades
+        further to Message/Tracking/SessionSummary/BenchmarkRunObservation
+        via their own existing FKs onto ChatSession/BenchmarkRun.
+
+        Deleting the User row last would matter if anything above still
+        needed to look it up mid-delete — nothing does, so this is just
+        the one statement. Next login re-authenticates as a brand new,
+        unregistered identity (see auth_service.py's own login/
+        verify_token), routing straight back through TermsView.vue."""
+        User.delete().where(User.id == email).execute()
+
     def update_last_login(self, user_id) -> None:
         User.update(last_login=datetime.utcnow()).where(User.id == user_id).execute()
 
@@ -94,21 +103,21 @@ class UserMixin:
         row = User.get_or_none(User.email == user)
         if row is None:
             return None
-        if row.active_project is None:
+        if row.active_project_id is None:
             first_project = Project.select(Project.name).order_by(SQL('rowid')).first()
             if first_project is None:
                 return None
-            row.active_project = first_project.name
+            row.active_project_id = first_project.name
             row.save()
-        return row.active_project
+        return row.active_project_id
 
     def set_active_project_name(self, project_name: str, user: str) -> None:
         row = User.get_or_none(User.email == user)
         if row is not None:
-            row.active_project = project_name
+            row.active_project_id = project_name
             row.save()
         else:
-            User.create(id=user, email=user, active_project=project_name)
+            User.create(id=user, email=user, active_project_id=project_name)
 
     def clear_active_project_name(self, user: str) -> None:
-        User.update(active_project=None).where(User.email == user).execute()
+        User.update(active_project_id=None).where(User.email == user).execute()

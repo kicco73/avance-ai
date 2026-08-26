@@ -5,14 +5,19 @@ user, per the auth-service section-0 config and the auth middleware
 from __future__ import annotations
 
 from http import HTTPStatus
+from pathlib import Path
 
-from fastapi import HTTPException, Response
+from fastapi import HTTPException, Request, Response
 
 from auth.auth_service import SESSION_COOKIE_NAME, AuthService
 from schemas import LoginRequest
 from session import Session
 
 from .base_controller import BaseController, get, post
+
+# Public, static — no auth needed to read it (a rejected/pending identity
+# still needs to see it before deciding).
+TERMS_PATH = Path(__file__).resolve().parent.parent / "docs" / "TERMS.md"
 
 
 class AuthController(BaseController):
@@ -23,6 +28,10 @@ class AuthController(BaseController):
     @get("/api/auth/providers", role=None)
     def get_providers(self):
         return {"providers": self.auth_service.public_providers()}
+
+    @get("/api/auth/terms", role=None)
+    def get_terms(self):
+        return {"content": TERMS_PATH.read_text(encoding="utf-8")}
 
     @post("/api/auth/login", role=None)
     def post_login(self, req: LoginRequest, response: Response):
@@ -40,7 +49,25 @@ class AuthController(BaseController):
         )
         return {"success": True}
 
-    @post("/api/auth/logout")
+    @post("/api/auth/accept-terms", role="pending")
+    def post_accept_terms(self, request: Request):
+        """TermsView.vue's Accept button — creates the User row that
+        login() deliberately deferred. Reads the session cookie straight
+        off the request (rather than Session(), which only carries email/
+        role) since AuthService.complete_registration needs the full
+        identity the token already has: provider/provider_user_id/name/
+        picture_url."""
+        token = request.cookies.get(SESSION_COOKIE_NAME)
+        try:
+            self.auth_service.complete_registration(token)
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail=str(exc)) from exc
+        return {"success": True}
+
+    # role="pending": logout must stay reachable by an identity that
+    # rejected the Terms screen and never got a User row at all — not
+    # just by fully registered ones.
+    @post("/api/auth/logout", role="pending")
     def post_logout(self, response: Response):
         response.delete_cookie(key=SESSION_COOKIE_NAME)
         return {"success": True}
@@ -53,3 +80,14 @@ class AuthController(BaseController):
         ProfileView.vue, the only two consumers of the current user's
         own profile data."""
         return self.auth_service.get_profile(Session().user)
+
+    @post("/api/auth/erase-data")
+    def post_erase_data(self, response: Response):
+        """ProfileView.vue's "Erase all my data" — deletes the User row
+        and everything tied to it (see AuthService.erase_account), then
+        clears the cookie itself so the now-nonexistent identity can't
+        make another request even if the frontend's own follow-up logout
+        call never lands."""
+        self.auth_service.erase_account(Session().user)
+        response.delete_cookie(key=SESSION_COOKIE_NAME)
+        return {"success": True}

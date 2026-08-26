@@ -21,8 +21,10 @@ import MessageBubble from './MessageBubble.vue'
 import SessionsPanel from './SessionsPanel.vue'
 import ProjectsMenu from '../ProjectsMenu.vue'
 import SplashScreen from '../SplashScreen.vue'
+import TermsView from '../TermsView.vue'
 import { setApiError } from '../../errorStore.js'
 import { startRecording, stopRecording } from '../../mic.js'
+import { projectFileContentUrl } from '../../api.js'
 import { liveStore } from '../../chatStore.js'
 import {
   audioEnabled,
@@ -67,12 +69,29 @@ const {
   handleAction,
   toggleAudio,
   projectPaused,
-  projectPausedReason
+  projectPausedReason,
+  currentProjectName,
+  legalTermsPending,
+  acceptLegalTerms
 } = props.store
 
 const emit = defineEmits(['project-select', 'project-download'])
 
 const projectsMenuRef = ref(null)
+
+// TermsView.vue's own fetchTerms override — same {content} shape as
+// getTerms(), just reading this project's own legal/terms.md pinned to
+// the live session that triggered legalTermsPending in the first place
+// (see chatSkin.js's loadSkin for the identical fetch/credentials pattern,
+// used there for index.css instead).
+async function fetchLegalTerms() {
+  const response = await fetch(
+    projectFileContentUrl(currentProjectName.value, 'legal/terms.md', currentSessionId.value),
+    { credentials: 'include', cache: 'no-store' }
+  )
+  if (!response.ok) throw new Error('Failed to load this application’s terms.')
+  return { content: await response.text() }
+}
 
 defineExpose({
   refreshProjectsMenu: () => projectsMenuRef.value?.refresh()
@@ -268,6 +287,19 @@ watch(
 </script>
 
 <template>
+  <!-- Fixed/full-viewport (see TermsView.vue's own styling), so its
+       placement here doesn't matter — it covers the sessions panel,
+       header, and footer alike regardless of where in this template it
+       sits. Only ever true for the live store (see chatStoreFactory.js's
+       legalTermsPending): this project's own legal/terms.md changed since
+       the user's previous live session here, or this is their first one. -->
+  <TermsView
+    v-if="legalTermsPending"
+    :show-reject="false"
+    :fetch-terms="fetchLegalTerms"
+    @accept="acceptLegalTerms"
+  />
+
   <div
     class="chat-window-shell"
     :class="state?.key ? `state-${state.key}` : null"
@@ -314,7 +346,11 @@ watch(
       </div>
     </Transition>
 
-    <div class="chat-window" @click="closeSessionsPanelOnChatClick">
+    <div
+      class="chat-window"
+      :class="{ 'chat-window-dimmed': !hideSessionsPanel && sessionsPanelOpen }"
+      @click="closeSessionsPanelOnChatClick"
+    >
     <button
       v-if="!hideSessionsPanel && !sessionsPanelOpen"
       type="button"
@@ -399,6 +435,25 @@ watch(
   flex: 1;
   min-height: 0;
   min-width: 0;
+  /* Leaving (dimmed class removed) targets this rule, so un-blurring is
+     instant — no animation back to full focus. */
+  transition: filter 0s;
+  will-change: filter;
+  /* Promotes the whole pane to its own compositing layer so the browser
+     doesn't repaint the entire message list (markdown, images, code
+     blocks) on every frame of the blur transition — without this the
+     animation drops frames on anything but a trivial conversation. */
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+.chat-window-dimmed {
+  filter: blur(2.5px);
+  /* Entering targets this rule instead of the base one above: waits for
+     the sessions panel's own 0.32s slide-in to finish, then the blur
+     snaps on instantly (0s duration) rather than fading in — no animated
+     blur in either direction, only the panel/overlay-icon movement is. */
+  transition: filter 0s 0.32s;
 }
 
 .sessions-reopen-btn {
@@ -428,8 +483,9 @@ watch(
 
 /* Overlays the chat rather than sitting in the flex flow — opening it
    must never resize/reflow the chat pane underneath. z-index above
-   App.vue's .profile-menu-overlay/.settings-menu-overlay (30): open,
-   this panel must cover those fixed buttons, never sit under them. */
+   App.vue's .topbar-overlay (30): open, this panel must cover those
+   fixed buttons, never sit under them (though .topbar-overlay-hidden
+   already fades them out in lockstep with this opening anyway). */
 .sessions-panel-wrap {
   position: absolute;
   top: 0;
@@ -444,7 +500,7 @@ watch(
 
 .sessions-slide-enter-active,
 .sessions-slide-leave-active {
-  transition: transform 0.18s ease;
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .sessions-slide-enter-from,
@@ -533,5 +589,30 @@ watch(
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+}
+
+/* While the sessions panel is open, the chat behind it is inert — dimmed
+   and non-interactive, so a click anywhere just reaches
+   closeSessionsPanelOnChatClick above instead of the chat's own controls. */
+.chat-window-dimmed .chat-header,
+.chat-window-dimmed .messages,
+.chat-window-dimmed .chat-ended-notice,
+.chat-window-dimmed .chat-footer {
+  pointer-events: none;
+}
+
+.chat-window::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.14);
+  z-index: 15;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.chat-window-dimmed::after {
+  opacity: 1;
 }
 </style>

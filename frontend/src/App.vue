@@ -4,6 +4,7 @@ import ChatWindow from './components/chat/ChatWindow.vue'
 import EditProjectView from './components/project/edit/EditProjectView.vue'
 import LabelProjectView from './components/project/label/LabelProjectView.vue'
 import LoginView from './components/LoginView.vue'
+import TermsView from './components/TermsView.vue'
 import ProfileMenu from './components/ProfileMenu.vue'
 import ProfileView from './components/ProfileView.vue'
 import SettingsMenu from './components/settings/SettingsMenu.vue'
@@ -15,6 +16,7 @@ import ToastContainer from './components/ToastContainer.vue'
 import DialogHost from './components/DialogHost.vue'
 import {
   getState,
+  getMe,
   putProject,
   postNewProject,
   activateProject,
@@ -25,6 +27,7 @@ import {
   postRestoreBackup,
   postPublishProject,
   postLogout,
+  postAcceptTerms,
   getAbout
 } from './api.js'
 import { disconnect as disconnectChat } from './chatClient.js'
@@ -38,7 +41,8 @@ import {
   loadMessages,
   loadAiModels,
   clearChatUi,
-  currentProjectName
+  currentProjectName,
+  sessionsPanelOpen
 } from './chatStore.js'
 
 const showEditProject = ref(false)
@@ -55,13 +59,12 @@ const uploadingProject = ref(false)
 // 0-100, or null before the first progress chunk has arrived — see
 // SessionsTree.vue's identical importProgress for the same reasoning.
 const uploadProgress = ref(null)
-// Set from ProfileMenu's own 'loaded' — it already fetches the current
-// user's full profile (getMe(), which includes role) for its avatar, so
-// this reuses that instead of a second, redundant /api/auth/me call.
+// Fetched once, up front (see resolveLandingView) — the role-based
+// landing routing needs it before the very first render, and ProfileMenu.vue's
+// own avatar reuses the same fetch instead of a second, redundant
+// /api/auth/me call (see its own `profile` prop below).
+const currentUserProfile = ref(null)
 const currentUserRole = ref(null)
-function handleProfileLoaded(profile) {
-  currentUserRole.value = profile?.role ?? null
-}
 
 // Initial-boot backend readiness gate — entirely separate from the shared
 // error store (which is for runtime errors on an already-running app). 'checking': the
@@ -70,6 +73,15 @@ function handleProfileLoaded(profile) {
 // retrying on an interval with the splash visible. 'ready': normal app UI.
 // 'failed': retry budget exhausted, explicit error + manual "Retry".
 const bootStatus = ref('checking')
+// True for a session that authenticated but has no User row — either a
+// brand-new identity that never finished registration, or one whose row
+// was deleted after the cookie was issued (see auth_service.py's own
+// verify_token: both resolve to role=None, indistinguishable from here).
+// TermsView.vue's Accept calls complete_registration(), which creates the
+// row either way — this is the only path that recovers either case; a
+// plain re-login just reissues the same role=None token. Takes over the
+// whole screen the same way needsLogin does, ahead of bootStatus.
+const needsTerms = ref(false)
 
 const PING_INTERVAL_MS = 800
 const PING_TIMEOUT_MS = 3000
@@ -88,6 +100,13 @@ let bootSequenceToken = 0
 // the failure modes this boot check needs to treat the same as "not ready
 // yet". On success, reuses the result directly as the app's current state
 // (GET /api/state IS the readiness check — nothing else to fetch for it).
+// 'ready': backend is up and this session is a fully registered user.
+// 'pending': backend is up, but this session authenticated without a
+// matching User row — GET /api/state requires role="user", which a
+// pending (role=None) identity's 403 is the only way to reach here (see
+// auth_service.py's own verify_token). Never "still booting": retrying
+// with the same cookie always gets the same 403 back. 'retry': anything
+// else (backend still starting, network hiccup, timeout).
 async function pingBackend() {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), PING_TIMEOUT_MS)
@@ -95,9 +114,9 @@ async function pingBackend() {
     const newState = await getState(controller.signal)
     setCapabilities({ talkAvailable: newState.talk_enabled ?? true, micAvailable: newState.listen_enabled ?? true })
     handleStateChange(newState)
-    return true
-  } catch {
-    return false
+    return 'ready'
+  } catch (err) {
+    return err.status === 403 ? 'pending' : 'retry'
   } finally {
     clearTimeout(timeout)
   }
@@ -110,7 +129,18 @@ function bootSucceeded() {
   // same apiFetch as everything else, so a stale message could otherwise
   // still be sitting in the shared store the moment the chat UI mounts.
   clearApiError()
-  loadMessages()
+  // loadMessages() is what actually creates/resolves the live session
+  // (see chatStoreFactory.js's ensureSession) — only the chat-live landing
+  // (a plain user, or a supervisor with no active project yet) needs one
+  // at boot. An admin landing on Manage projects or a supervisor landing
+  // on Label sessions (see goToLandingView, just run by resolveLandingView
+  // before this) shouldn't spin up a live session nobody's about to use;
+  // ChatWindow.vue stays mounted-but-hidden behind those and only needs
+  // one once they actually switch into the live chat themselves (see
+  // handleManageProjectsChat -> handleProjectSwitch -> refreshStateAndProjects).
+  if (!showManageProjects.value && !showBenchmarkProject.value) {
+    loadMessages()
+  }
   loadAiModels()
   // No proactive chat-socket connect here: chatClient.js connects lazily
   // on the first sendMessage() call, and the opening message (if any) is
@@ -118,13 +148,62 @@ function bootSucceeded() {
   // by the time the backend finishes booting, regardless of transport.
 }
 
+// Every top-level full-screen view, off — the common first step of both
+// picking a fresh landing view and switching to a different one, so
+// exactly one is ever showing regardless of which one was active before
+// (Settings is now reachable from more than just the main chat screen —
+// see goToLandingView/handleSettings* below).
+function closeAllTopLevelViews() {
+  showEditProject.value = false
+  showBenchmarkProject.value = false
+  showManageProjects.value = false
+  showManageUsers.value = false
+  showProfile.value = false
+}
+
+// The role-appropriate "home": chat-live for a plain user, Label
+// sessions for a supervisor (against whichever project is currently
+// active), Manage projects for an admin. Neither Label sessions nor
+// Manage projects has a Back button of its own any more, so this is also
+// where Settings' own modal-like Manage users returns to on close.
+function goToLandingView() {
+  closeAllTopLevelViews()
+  if (currentUserRole.value === 'admin') {
+    showManageProjects.value = true
+  } else if (currentUserRole.value === 'supervisor' && currentProjectName.value) {
+    handleModelBenchmark(currentProjectName.value)
+  }
+  // Anything else (a plain 'user', or a supervisor with no active
+  // project yet): the default chat-live landing, nothing further to set.
+}
+
+// Resolved once per boot, before bootStatus ever flips to 'ready' — the
+// landing view has to be right from the very first render, not settled a
+// moment later once some async fetch resolves (that would flash the
+// chat-live default first for every supervisor/admin).
+async function resolveLandingView() {
+  try {
+    currentUserProfile.value = await getMe()
+    currentUserRole.value = currentUserProfile.value?.role ?? null
+  } catch {
+    return // already surfaced via apiFetch; falls back to the chat-live default
+  }
+  goToLandingView()
+}
+
 async function runPingAttempt(token) {
   if (token !== bootSequenceToken) return // superseded by a newer sequence
   pingAttempts++
-  const ok = await pingBackend()
+  const result = await pingBackend()
   if (token !== bootSequenceToken) return
-  if (ok) {
+  if (result === 'ready') {
+    await resolveLandingView()
+    if (token !== bootSequenceToken) return
     bootSucceeded()
+    return
+  }
+  if (result === 'pending') {
+    needsTerms.value = true
     return
   }
   if (pingAttempts >= MAX_PING_ATTEMPTS) {
@@ -156,6 +235,34 @@ function handleLoggedIn() {
   startBootSequence()
 }
 
+// TermsView.vue's Accept — creates the User row (or recreates a deleted
+// one, see needsTerms's own comment), then resumes booting exactly like
+// a fresh login would: the same cookie now resolves as a registered user.
+async function handleTermsAccept() {
+  try {
+    await postAcceptTerms()
+  } catch {
+    // already surfaced via apiFetch; stays on TermsView so it can be retried
+    return
+  }
+  needsTerms.value = false
+  startBootSequence()
+}
+
+// TermsView.vue's Reject — same clean logout as handleLogout, but no
+// User row was ever created (or recreated), so this leaves no trace of
+// the attempt.
+async function handleTermsReject() {
+  try {
+    await postLogout()
+  } catch {
+    // already surfaced via apiFetch
+  }
+  disconnectChat()
+  needsTerms.value = false
+  requireLogin()
+}
+
 async function handleLogout() {
   try {
     await postLogout()
@@ -176,12 +283,22 @@ function triggerModelUpload() {
 // GET /api/state call (none of putModel/activateModel/deleteModel's
 // responses carry the state payload itself), same as handleReset picks up
 // the opening message via REST, regardless of chat transport.
-async function refreshStateAndProjects() {
+// `skipMessages`: EditProjectView.vue's own two callers (entering and
+// publishing-while-still-inside it) pass this — Edit always hides
+// ChatWindow.vue (v-if="!showEditProject") and Back returns to Manage
+// projects, never to the live chat, so loadMessages() here would only
+// ever create a live session nobody's about to see. Worse than wasted:
+// ChatWindow.vue stays mounted (just hidden) while inside Edit, so a
+// legalTermsPending it set would still be sitting there the moment Back
+// remounts it visibly — and TermsView.vue's z-index (1000) sits above
+// Manage projects' own overlay (100), so that would show as a stuck
+// full-screen Terms prompt blocking Manage projects, not just a flash.
+async function refreshStateAndProjects({ skipMessages = false } = {}) {
   const newState = await getState()
   chatWindowRef.value?.refreshProjectsMenu()
   manageProjectsView.value?.refresh()
   handleStateChange(newState)
-  await loadMessages()
+  if (!skipMessages) await loadMessages()
 }
 
 // "New project": same server-side effect as picking samples/Hello
@@ -245,7 +362,7 @@ async function handleModelEdit(projectName) {
   clearChatUi()
   try {
     await activateProject(projectName)
-    await refreshStateAndProjects()
+    await refreshStateAndProjects({ skipMessages: true })
   } catch {
     // already surfaced via apiFetch
   }
@@ -271,45 +388,45 @@ function handleManageProjectsChat(projectName) {
   handleProjectSwitch(projectName)
 }
 
-// Edit is only ever opened from Manage projects now (ProjectsMenu.vue no
-// longer has its own entry point into it) — so "Back" out of it returns
-// there rather than to the main chat view. EditProjectView's own "Run"
-// tab has its own independent chat store (see testChatStore.js) — it
-// never touches the live chat's own state, so there's nothing here to
-// reset/reload on close.
-function closeEditProject() {
-  showEditProject.value = false
-  showManageProjects.value = true
-}
-
-// Label, unlike Edit, also has a direct entry point (SettingsMenu's own
-// "Label sessions") that bypasses Manage projects entirely — so unlike
-// closeEditProject, "Back" must return wherever it was opened from rather
-// than assuming Manage projects.
-const benchmarkReturnsToManageProjects = ref(true)
-
-function closeBenchmarkProject() {
-  showBenchmarkProject.value = false
-  if (benchmarkReturnsToManageProjects.value) showManageProjects.value = true
-}
-
-function handleModelBenchmark(projectName, returnsToManageProjects = true) {
+function handleModelBenchmark(projectName) {
   benchmarkProjectName.value = projectName
-  benchmarkReturnsToManageProjects.value = returnsToManageProjects
   showBenchmarkProject.value = true
 }
 
-// SettingsMenu's own "Label sessions" entry — same view, opened straight
-// at whichever project is currently active rather than via Manage projects.
+// Settings' own three view-switching entries — each closes whichever
+// top-level view is currently showing first, since Settings is now
+// reachable from all of them (main chat, Label sessions, Manage
+// projects), not just the main chat screen.
+function handleSettingsManageProjects() {
+  closeAllTopLevelViews()
+  showManageProjects.value = true
+}
+
+function handleSettingsManageUsers() {
+  closeAllTopLevelViews()
+  showManageUsers.value = true
+}
+
+// Opened straight at whichever project is currently active, rather than
+// via Manage projects.
 function handleSettingsLabelSessions() {
   if (!currentProjectName.value) return
-  handleModelBenchmark(currentProjectName.value, false)
+  closeAllTopLevelViews()
+  handleModelBenchmark(currentProjectName.value)
+}
+
+// Settings-menu shortcut straight into Edit for whichever project is
+// currently active — same shape as handleSettingsLabelSessions above.
+function handleSettingsEditProjects() {
+  if (!currentProjectName.value) return
+  closeAllTopLevelViews()
+  handleModelEdit(currentProjectName.value)
 }
 
 async function handleModelEditSaved() {
   clearChatUi()
   try {
-    await refreshStateAndProjects()
+    await refreshStateAndProjects({ skipMessages: true })
   } catch {
     // already surfaced via apiFetch
   }
@@ -451,6 +568,8 @@ onBeforeUnmount(() => {
        api.js's apiFetch) can happen at any point, including mid-boot. -->
   <LoginView v-if="needsLogin" @logged-in="handleLoggedIn" />
 
+  <TermsView v-else-if="needsTerms" @accept="handleTermsAccept" @reject="handleTermsReject" />
+
   <SplashScreen v-else-if="bootStatus === 'waiting'" variant="connecting" />
   <SplashScreen v-else-if="bootStatus === 'failed'" variant="failed" @retry="startBootSequence" />
 
@@ -465,20 +584,20 @@ onBeforeUnmount(() => {
         @project-download="handleModelDownload"
       />
 
-      <div class="profile-menu-overlay">
-        <ProfileMenu @profile="showProfile = true" @logout="handleLogout" @loaded="handleProfileLoaded" />
-      </div>
-
-      <div v-if="roleSatisfies(currentUserRole, 'supervisor')" class="settings-menu-overlay">
+      <div class="topbar-overlay" :class="{ 'topbar-overlay-hidden': sessionsPanelOpen }">
         <SettingsMenu
+          v-if="roleSatisfies(currentUserRole, 'supervisor')"
           :role="currentUserRole"
-          @manage-projects="showManageProjects = true"
-          @manage-users="showManageUsers = true"
+          align="right"
+          @manage-projects="handleSettingsManageProjects"
+          @manage-users="handleSettingsManageUsers"
           @label-sessions="handleSettingsLabelSessions"
+          @edit-projects="handleSettingsEditProjects"
           @about="handleShowAbout"
           @download-backup="handleDownloadBackup"
           @restore-backup="handleRestoreBackup"
         />
+        <ProfileMenu :profile="currentUserProfile" @profile="showProfile = true" @logout="handleLogout" />
       </div>
 
       <input
@@ -492,17 +611,40 @@ onBeforeUnmount(() => {
 
     <EditProjectView
       v-if="showEditProject"
+      :key="editProjectName"
       :project-name="editProjectName"
-      @close="closeEditProject"
+      :role="currentUserRole"
+      :profile="currentUserProfile"
       @saved="handleModelEditSaved"
+      @project-select="handleModelEdit"
+      @manage-projects="handleSettingsManageProjects"
+      @manage-users="handleSettingsManageUsers"
+      @label-sessions="handleSettingsLabelSessions"
+      @edit-projects="handleSettingsEditProjects"
+      @about="handleShowAbout"
+      @download-backup="handleDownloadBackup"
+      @restore-backup="handleRestoreBackup"
+      @profile="showProfile = true"
+      @logout="handleLogout"
     />
 
     <LabelProjectView
       v-if="showBenchmarkProject"
       :key="benchmarkProjectName"
       :project-name="benchmarkProjectName"
-      @close="closeBenchmarkProject"
+      :role="currentUserRole"
+      :profile="currentUserProfile"
+      @close="goToLandingView"
       @project-select="handleBenchmarkProjectSwitch"
+      @manage-projects="handleSettingsManageProjects"
+      @manage-users="handleSettingsManageUsers"
+      @label-sessions="handleSettingsLabelSessions"
+      @edit-projects="handleSettingsEditProjects"
+      @about="handleShowAbout"
+      @download-backup="handleDownloadBackup"
+      @restore-backup="handleRestoreBackup"
+      @profile="showProfile = true"
+      @logout="handleLogout"
     />
 
     <ManageProjectsView
@@ -510,7 +652,8 @@ onBeforeUnmount(() => {
       ref="manageProjectsView"
       :uploading="uploadingProject"
       :upload-progress="uploadProgress"
-      @close="showManageProjects = false"
+      :role="currentUserRole"
+      :profile="currentUserProfile"
       @new-project="handleNewProject"
       @upload="triggerModelUpload"
       @delete="handleModelDelete"
@@ -519,12 +662,31 @@ onBeforeUnmount(() => {
       @chat="handleManageProjectsChat"
       @download="handleModelDownload"
       @wipe-live-sessions="handleManageProjectsWipeLiveSessions"
+      @manage-projects="handleSettingsManageProjects"
+      @manage-users="handleSettingsManageUsers"
+      @label-sessions="handleSettingsLabelSessions"
+      @edit-projects="handleSettingsEditProjects"
+      @about="handleShowAbout"
+      @download-backup="handleDownloadBackup"
+      @restore-backup="handleRestoreBackup"
+      @profile="showProfile = true"
+      @logout="handleLogout"
     />
 
     <ManageUsersView
       v-if="showManageUsers"
       :current-user-role="currentUserRole"
-      @close="showManageUsers = false"
+      :profile="currentUserProfile"
+      @close="goToLandingView"
+      @manage-projects="handleSettingsManageProjects"
+      @manage-users="handleSettingsManageUsers"
+      @label-sessions="handleSettingsLabelSessions"
+      @edit-projects="handleSettingsEditProjects"
+      @about="handleShowAbout"
+      @download-backup="handleDownloadBackup"
+      @restore-backup="handleRestoreBackup"
+      @profile="showProfile = true"
+      @logout="handleLogout"
     />
 
     <ProfileView
@@ -566,26 +728,29 @@ body {
 }
 
 /* Anchored to .app-body, not the viewport: when ErrorBanner pushes
-   .app-body down, these must shift down with it, staying aligned with
-   ChatWindow.vue's own .sessions-reopen-btn (also positioned relative
-   to something inside .app-body) instead of staying put while
-   everything else moves. */
-.profile-menu-overlay {
+   .app-body down, this must shift down with it. Settings sits left of
+   Profile (row order in the template) — the two read as one control
+   cluster in the corner, both hidden together (see -hidden below) since
+   neither means anything once the sessions panel covers this corner. */
+.topbar-overlay {
   position: absolute;
   top: 0.75rem;
   right: 0.75rem;
   z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform, opacity;
+  backface-visibility: hidden;
 }
 
-/* Left: 3.25rem sits it immediately to the right of ChatWindow.vue's
-   own .sessions-reopen-btn (left: 0.75rem, width: 2rem) — the two read
-   as one row of overlay icon buttons even though this one lives here,
-   not inside ChatWindow.vue itself. */
-.settings-menu-overlay {
-  position: absolute;
-  top: 0.75rem;
-  left: 3.25rem;
-  z-index: 30;
+/* Slides out to the right in lockstep with the sessions panel opening
+   (see ChatWindow.vue's own .chat-window-dimmed fade/blur). */
+.topbar-overlay-hidden {
+  transform: translateX(3.5rem);
+  opacity: 0;
+  pointer-events: none;
 }
 
 .upload-model-input {

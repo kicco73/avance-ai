@@ -169,6 +169,6 @@ class StateTestRequest(BaseModel):
     strategy: str
 
 
-class ReassignSessionsToTestUserRequest(BaseModel):
+class ReassignSessionsRequest(BaseModel):
     session_ids: list[int]
-    test_user_seq: int
+    username: str

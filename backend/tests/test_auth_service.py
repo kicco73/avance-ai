@@ -71,36 +71,71 @@ class TestLogin:
         with pytest.raises(AuthError):
             auth_service.login("google", "bad-credential")
 
-    def test_valid_credential_creates_a_user_and_returns_a_token(self, db, auth_service, identity, jwt_secret):
+    def test_valid_credential_returns_a_token_without_creating_a_user(self, db, auth_service, identity, jwt_secret):
+        """login() deliberately defers user creation to
+        complete_registration() (see TestCompleteRegistration below) — a
+        first-time identity gets a token, not a User row, so rejecting
+        the Terms screen leaves no trace at all."""
         token = auth_service.login("google", "good-credential")
 
         assert isinstance(token, str)
         payload = jwt.decode(token, jwt_secret, algorithms=["HS256"])
-        user = db.get_user_by_id(payload["user_id"])
-        assert user is not None
-        assert user["email"] == identity.email
-        assert user["provider_user_id"] == identity.provider_user_id
+        assert payload["email"] == identity.email
+        assert payload["provider_user_id"] == identity.provider_user_id
         assert payload["provider"] == "google"
+        assert db.get_user_by_id(identity.email) is None
 
-    def test_a_second_login_from_the_same_identity_reuses_the_same_user(self, db, auth_service, jwt_secret):
+    def test_a_second_login_from_the_same_identity_before_registering_still_creates_no_user(
+        self, db, auth_service, identity
+    ):
+        auth_service.login("google", "good-credential")
+        auth_service.login("google", "good-credential")
+
+        assert db.get_user_by_id(identity.email) is None
+
+    def test_login_updates_last_login_for_an_already_registered_user(self, db, auth_service, identity, jwt_secret):
         first_token = auth_service.login("google", "good-credential")
+        auth_service.complete_registration(first_token)
+
         second_token = auth_service.login("google", "good-credential")
-
-        first_user_id = jwt.decode(first_token, jwt_secret, algorithms=["HS256"])["user_id"]
-        second_user_id = jwt.decode(second_token, jwt_secret, algorithms=["HS256"])["user_id"]
-        assert first_user_id == second_user_id
-
-    def test_login_updates_last_login(self, db, auth_service, jwt_secret):
-        token = auth_service.login("google", "good-credential")
-        user_id = jwt.decode(token, jwt_secret, algorithms=["HS256"])["user_id"]
-
-        user = db.get_user_by_id(user_id)
+        payload = jwt.decode(second_token, jwt_secret, algorithms=["HS256"])
+        user = db.get_user_by_id(payload["email"])
         assert user is not None
         assert user["last_login"] is not None
 
 
+class TestCompleteRegistration:
+    def test_accepting_terms_creates_the_user_row(self, db, auth_service, identity):
+        token = auth_service.login("google", "good-credential")
+
+        auth_service.complete_registration(token)
+
+        user = db.get_user_by_id(identity.email)
+        assert user is not None
+        assert user["email"] == identity.email
+        assert user["provider_user_id"] == identity.provider_user_id
+        assert user["last_login"] is not None
+
+    def test_the_same_token_still_works_after_registering(self, auth_service, identity):
+        token = auth_service.login("google", "good-credential")
+        auth_service.complete_registration(token)
+
+        verified = auth_service.verify_token(token)
+
+        assert verified is not None
+        assert verified.email == identity.email
+        assert verified.role is not None
+
+    def test_an_invalid_token_raises_value_error(self, auth_service):
+        with pytest.raises(ValueError):
+            auth_service.complete_registration("not-a-real-jwt")
+
+
 class TestVerifyToken:
-    def test_a_token_issued_by_login_verifies_back_to_the_same_identity(self, auth_service, identity):
+    def test_a_token_issued_by_login_verifies_to_a_pending_identity(self, auth_service, identity):
+        """No User row exists yet right after login() — verify_token
+        still resolves the identity (straight off the token), just with
+        role=None, rather than treating it as unauthenticated."""
         token = auth_service.login("google", "good-credential")
 
         verified = auth_service.verify_token(token)
@@ -109,21 +144,28 @@ class TestVerifyToken:
         assert verified.email == identity.email
         assert verified.provider_user_id == identity.provider_user_id
         assert verified.name == identity.name
+        assert verified.role is None
+
+    def test_a_token_verifies_to_the_registered_identity_once_terms_are_accepted(self, auth_service, identity):
+        token = auth_service.login("google", "good-credential")
+        auth_service.complete_registration(token)
+
+        verified = auth_service.verify_token(token)
+
+        assert verified is not None
+        assert verified.email == identity.email
+        assert verified.role is not None
 
     def test_a_garbage_token_returns_none(self, auth_service):
         assert auth_service.verify_token("not-a-real-jwt") is None
 
     def test_a_token_signed_with_a_different_secret_returns_none(self, auth_service):
-        forged = jwt.encode({"user_id": 1, "provider": "google"}, "wrong-secret", algorithm="HS256")
+        forged = jwt.encode({"email": "alice@example.com", "provider": "google"}, "wrong-secret", algorithm="HS256")
         assert auth_service.verify_token(forged) is None
 
     def test_an_expired_token_returns_none(self, auth_service, jwt_secret):
         expired = jwt.encode(
-            {"user_id": 1, "provider": "google", "exp": datetime.now(timezone.utc) - timedelta(days=1)},
+            {"email": "alice@example.com", "provider": "google", "exp": datetime.now(timezone.utc) - timedelta(days=1)},
             jwt_secret, algorithm="HS256",
         )
         assert auth_service.verify_token(expired) is None
-
-    def test_a_token_naming_a_user_that_no_longer_exists_returns_none(self, auth_service, jwt_secret):
-        token = jwt.encode({"user_id": "nobody@example.com", "provider": "google"}, jwt_secret, algorithm="HS256")
-        assert auth_service.verify_token(token) is None

@@ -7,6 +7,8 @@ import { roleSatisfies } from '../../roles.js'
 import DocInfoButton from '../DocInfoButton.vue'
 import ErrorBanner from '../ErrorBanner.vue'
 import ProjectsMenu from '../ProjectsMenu.vue'
+import SettingsMenu from './SettingsMenu.vue'
+import ProfileMenu from '../ProfileMenu.vue'
 import InspectorSignalsTab from '../inspector/InspectorSignalsTab.vue'
 import InspectorUserInfoCard from '../inspector/InspectorUserInfoCard.vue'
 import MetricDetail from '../inspector/MetricDetail.vue'
@@ -14,10 +16,21 @@ import MetricsTrendsChart from './MetricsTrendsChart.vue'
 import TimelineChart from './TimelineChart.vue'
 
 const props = defineProps({
-  currentUserRole: { type: String, default: null }
+  currentUserRole: { type: String, default: null },
+  // ProfileMenu.vue's own avatar/name — App.vue already fetched this once
+  // during boot, passed straight through so this view can show the same
+  // topbar avatar the main chat screen does.
+  profile: { type: Object, default: null }
 })
 
-const emit = defineEmits(['close'])
+// The Settings-menu ones (manage-projects/manage-users/label-sessions/
+// about/download-backup/restore-backup) are a plain pass-through of
+// SettingsMenu.vue's own emits; profile/logout are the same pass-through
+// of ProfileMenu.vue's own.
+const emit = defineEmits([
+  'close', 'manage-projects', 'manage-users', 'label-sessions', 'edit-projects', 'about', 'download-backup',
+  'restore-backup', 'profile', 'logout'
+])
 
 const canEditRole = computed(() => roleSatisfies(props.currentUserRole, 'admin'))
 
@@ -183,6 +196,18 @@ defineExpose({ refresh: load })
       <div class="manage-users-header-actions">
         <ProjectsMenu :selected-name="statsProjectName" @select="statsProjectName = $event" />
         <button class="close-btn" @click="emit('close')">Back</button>
+        <SettingsMenu
+          :role="currentUserRole"
+          align="right"
+          @manage-projects="emit('manage-projects')"
+          @manage-users="emit('manage-users')"
+          @label-sessions="emit('label-sessions')"
+          @edit-projects="emit('edit-projects')"
+          @about="emit('about')"
+          @download-backup="emit('download-backup')"
+          @restore-backup="(file) => emit('restore-backup', file)"
+        />
+        <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
       </div>
     </div>
 
@@ -578,5 +603,5 @@ defineExpose({ refresh: load })
 .inspector-detail-badge { flex-shrink: 0; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.15rem 0.5rem; border-radius: 999px; color: white; }
 .inspector-detail-badge-state { background: #4a6fa5; }
 .inspector-signal-name { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; }
-.inspector-signal-ui_description { font-size: 0.78rem; color: #666; line-height: 1.4; }
+.inspector-signal-ui_description { display: block; margin-top: 0.3rem; font-size: 0.78rem; color: #666; line-height: 1.4; }
 </style>

@@ -239,6 +239,8 @@ const {
   /* Matches LONG_PRESS_MS above, so the bulge finishes growing right as
      the reaction picker opens. */
   transition: transform 0.45s ease;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* Visual feedback while holding down an assistant bubble, building up to

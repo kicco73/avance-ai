@@ -7,16 +7,36 @@ import { getProjectMetadata, getProjectsRuntimeStatus, putProjectPause, putProje
 import { confirmDialog } from '../../dialogStore.js'
 import ErrorBanner from '../ErrorBanner.vue'
 import ProgressSpinner from '../ProgressSpinner.vue'
+import SettingsMenu from './SettingsMenu.vue'
+import ProfileMenu from '../ProfileMenu.vue'
 
 const props = defineProps({
   uploading: { type: Boolean, default: false },
   // 0-100, or null before the first progress chunk has arrived — see
   // SessionsTree.vue's identical importProgress for the same reasoning.
-  uploadProgress: { type: Number, default: null }
+  uploadProgress: { type: Number, default: null },
+  // This is an admin's own landing page now (see App.vue's role-based
+  // routing) — no Back button to fall back on, so its own Settings menu
+  // (same one the main chat screen shows) is how it reaches every other
+  // top-level view instead.
+  role: { type: String, default: null },
+  // ProfileMenu.vue's own avatar/name — App.vue already fetched this once
+  // during boot (see its own `profile` prop docstring), passed straight
+  // through so this landing page can show the same topbar avatar the main
+  // chat screen does.
+  profile: { type: Object, default: null }
 })
 
 // Emits events only; App.vue owns the actual new/upload/delete actions.
-const emit = defineEmits(['close', 'new-project', 'upload', 'delete', 'edit', 'benchmark', 'download', 'chat', 'wipe-live-sessions'])
+// The Settings-menu ones (manage-projects/manage-users/label-sessions/
+// about/download-backup/restore-backup) are a plain pass-through of
+// SettingsMenu.vue's own emits; profile/logout are the same pass-through
+// of ProfileMenu.vue's own.
+const emit = defineEmits([
+  'new-project', 'upload', 'delete', 'edit', 'benchmark', 'download', 'chat', 'wipe-live-sessions',
+  'manage-projects', 'manage-users', 'label-sessions', 'edit-projects', 'about', 'download-backup', 'restore-backup',
+  'profile', 'logout'
+])
 
 const rows = ref([])
 const loading = ref(true)
@@ -162,7 +182,18 @@ defineExpose({ refresh: load })
           <ProgressSpinner v-if="uploading" :progress="uploadProgress" />
           {{ uploading ? (uploadProgress != null ? `Uploading… ${Math.round(uploadProgress)}%` : 'Uploading…') : 'Upload project...' }}
         </button>
-        <button class="close-btn" @click="emit('close')">Back</button>
+        <SettingsMenu
+          :role="role"
+          align="right"
+          @manage-projects="emit('manage-projects')"
+          @manage-users="emit('manage-users')"
+          @label-sessions="emit('label-sessions')"
+          @edit-projects="emit('edit-projects')"
+          @about="emit('about')"
+          @download-backup="emit('download-backup')"
+          @restore-backup="(file) => emit('restore-backup', file)"
+        />
+        <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
       </div>
     </div>
 
@@ -307,20 +338,6 @@ defineExpose({ refresh: load })
   display: flex;
   align-items: center;
   gap: 0.5rem;
-}
-
-.close-btn {
-  padding: 0.4rem 1rem;
-  border-radius: 6px;
-  border: 1px solid #4a6fa5;
-  background: white;
-  color: #4a6fa5;
-  cursor: pointer;
-}
-
-.close-btn:hover {
-  background: #4a6fa5;
-  color: white;
 }
 
 .manage-projects-action-btn {

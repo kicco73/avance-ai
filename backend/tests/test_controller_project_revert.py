@@ -56,13 +56,13 @@ def test_revert_restores_an_edited_file_to_its_published_content(client):
 def test_revert_removes_a_file_created_after_publish(client):
     _upload_activate_publish(client, "proj")
 
-    assert client.put(f"/api/projects/proj/files/brand_new.txt", content=b"new").status_code == 200
-    assert "brand_new.txt" in client.get("/api/projects/proj/files").json()["files"]
+    assert client.put(f"/api/projects/proj/files/behaviour/brand_new.txt", content=b"new").status_code == 200
+    assert "behaviour/brand_new.txt" in client.get("/api/projects/proj/files").json()["files"]
 
     assert client.post("/api/projects/proj/revert").status_code == 200
 
-    assert "brand_new.txt" not in client.get("/api/projects/proj/files").json()["files"]
-    assert client.get("/api/projects/proj/files/brand_new.txt").status_code == 404
+    assert "behaviour/brand_new.txt" not in client.get("/api/projects/proj/files").json()["files"]
+    assert client.get("/api/projects/proj/files/behaviour/brand_new.txt").status_code == 404
 
 
 def test_revert_clears_undo_history(client):

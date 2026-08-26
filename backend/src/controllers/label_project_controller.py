@@ -24,7 +24,7 @@ from schemas import (
     CreateBenchmarkRunRequest,
     ExpectedSignalsRequest,
     ExpectedStateRequest,
-    ReassignSessionsToTestUserRequest,
+    ReassignSessionsRequest,
     SetSessionLabeledRequest,
     SetSessionTitleRequest,
     StateTestRequest,
@@ -80,24 +80,30 @@ class LabelProjectController(BaseController):
         return {"success": True}
 
     @get("/api/projects/{project_name}/sessions/export", role="supervisor")
-    def get_export_sessions(self, project_name: str):
+    def get_export_sessions(self, project_name: str, type: str | None = None):
         """The "Label sessions" view's own "Download all" button — every
-        session (native and imported alike) of `project_name`, as one
-        JSON array."""
-        payload = self.tracking_service.export_sessions(Session().user, project_name)
+        session of `project_name` (native and imported alike, same as
+        ever, when `type` is omitted), or only `type` ('live' |
+        'imported') when given — SessionsTree.vue always passes one,
+        narrowing to whichever tab is currently showing."""
+        payload = self.tracking_service.export_sessions(Session().user, project_name, type=type or ('live', 'imported'))
         content = json.dumps(payload, indent=2).encode("utf-8")
         encoded_project_name = quote(project_name)
+        suffix = f"-{type}" if type else ""
         return Response(
             content=content,
             media_type="application/json",
             headers={
-                "Content-Disposition": f"attachment; filename=\"sessions.json\"; filename*=UTF-8''{encoded_project_name}-sessions.json"
+                "Content-Disposition": f"attachment; filename=\"sessions.json\"; filename*=UTF-8''{encoded_project_name}{suffix}-sessions.json"
             },
         )
 
-    @put("/api/projects/{project_name}/sessions/test-user", role="supervisor")
-    def put_sessions_test_user(self, project_name: str, req: ReassignSessionsToTestUserRequest):
-        self.tracking_service.reassign_sessions_to_test_user(req.session_ids, req.test_user_seq)
+    @put("/api/projects/{project_name}/sessions/reassign", role="supervisor")
+    def put_sessions_reassign(self, project_name: str, req: ReassignSessionsRequest):
+        """The "Label sessions" view's drag-and-drop between branches —
+        `req.username` is whichever branch the sessions were dropped on,
+        a "Test user N" one or any other imported username alike."""
+        self.tracking_service.reassign_sessions_to_username(req.session_ids, req.username)
         return {"success": True}
 
     @delete("/api/projects/{project_name}/test-users/{test_user_seq}", role="supervisor")

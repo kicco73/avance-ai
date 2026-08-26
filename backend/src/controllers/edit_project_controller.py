@@ -142,24 +142,10 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_name}/files/{file_name}", role="admin")
-    def get_project_file(self, project_name: str, file_name: str):
-        """{content, can_undo, can_redo} of `file_name`'s current
-        content — can_undo/can_redo drive the Undo/Redo buttons. Missing
-        index.css reports 204 instead of 404, since it's optional."""
-        try:
-            return self.project_service.get_project_file(project_name, file_name)
-        except FileNotFoundError as exc:
-            if file_name == "index.css":
-                return Response(status_code=HTTPStatus.NO_CONTENT)
-            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
-        except ValueError as exc:
-            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-
-    @get("/api/projects/{project_name}/files/{file_name}/content")
+    @get("/api/projects/{project_name}/files/{file_name:path}/content")
     def get_project_file_content(self, project_name: str, file_name: str, request: Request, session_id: int | None = None):
         """Raw bytes of `file_name`'s content, for callers that can't use
-        the JSON GET above. ETag'd off the content itself, so an
+        the JSON GET below. ETag'd off the content itself, so an
         unchanged file 304s on a matching If-None-Match. No elevated role:
         chatStore.js's own loadSkin (index.css + any image it references,
         via cssAssetUrls.js) hits this for every live chat session,
@@ -177,7 +163,25 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             content=content, media_type=content_type, headers={"ETag": etag, "Cache-Control": "no-cache"}
         )
 
-    @post("/api/projects/{project_name}/files/{file_name}/undo", role="admin")
+    # Named to sort alphabetically after get_project_file_content: routes
+    # register in alphabetical method-name order, and this method's own
+    # {file_name:path} wildcard (needed for legal/terms.md) would otherwise
+    # swallow get_project_file_content's literal "/content" suffix.
+    @get("/api/projects/{project_name}/files/{file_name:path}", role="admin")
+    def get_project_file_info(self, project_name: str, file_name: str):
+        """{content, can_undo, can_redo} of `file_name`'s current
+        content — can_undo/can_redo drive the Undo/Redo buttons. Missing
+        index.css reports 204 instead of 404, since it's optional."""
+        try:
+            return self.project_service.get_project_file(project_name, file_name)
+        except FileNotFoundError as exc:
+            if file_name == "index.css":
+                return Response(status_code=HTTPStatus.NO_CONTENT)
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @post("/api/projects/{project_name}/files/{file_name:path}/undo", role="admin")
     async def undo_project_file(self, project_name: str, file_name: str, request: Request):
         """Loads a step back into the current user's undo history for
         `file_name` — a pure editor preview: nothing is persisted, and
@@ -190,7 +194,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @post("/api/projects/{project_name}/files/{file_name}/redo", role="admin")
+    @post("/api/projects/{project_name}/files/{file_name:path}/redo", role="admin")
     async def redo_project_file(self, project_name: str, file_name: str, request: Request):
         """Mirror of .../undo, replaying the current user's own redo
         history instead (see ProjectService.redo_project_file)."""
@@ -213,7 +217,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         return {"success": True}
 
-    @put("/api/projects/{project_name}/files/{file_name}", role="admin")
+    @put("/api/projects/{project_name}/files/{file_name:path}", role="admin")
     async def put_project_file(self, project_name: str, file_name: str, request: Request):
         """Creates or edits one of `project_name`'s files in place —
         stages a copy of the whole project dir, validates, and only on
@@ -230,7 +234,7 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return result
 
-    @delete("/api/projects/{project_name}/files/{file_name}", role="admin")
+    @delete("/api/projects/{project_name}/files/{file_name:path}", role="admin")
     async def delete_project_file(self, project_name: str, file_name: str):
         """Deletes one text attachment from `project_name`'s directory —
         index.yml itself is rejected (see ProjectService.delete_project_file)."""

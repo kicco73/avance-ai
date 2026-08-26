@@ -33,9 +33,54 @@ class Project(BaseModel):
     ui_label = TextField(null=True)
     ui_description = TextField(null=True)
 
+    class Meta:
+        table_name = 'Project'
+
+class User(BaseModel):
+    id = CharField(primary_key=True)
+    # "google", etc. — which AuthProvider verified this account. Nullable
+    # along with provider_user_id/name: UserMixin's get_active_project_name/
+    # set_active_project_name/clear_active_project_name still take a bare
+    # `user: str` (resolved against `email`, see db/users.py) rather than a
+    # real FK — set_active_project_name's own create-fallback, for a user
+    # with no User row yet, has no provider identity to fill these with.
+    provider = CharField(null=True)
+    # The provider's own opaque id for this account (Google: the "sub"
+    # claim) — stable identity, unlike email, which a provider account
+    # could in principle change.
+    provider_user_id = CharField(null=True)
+    email = CharField()
+    name = CharField(null=True)
+    picture_url = CharField(null=True)
+    created_at = DateTimeField(default=datetime.utcnow)
+    last_login = DateTimeField(null=True)
+    # Absorbs the old standalone Settings table — its only field, the
+    # user's own active project. Nullable: a user with no projects yet
+    # still needs a row. on_delete='SET NULL' so deleting the active
+    # project never leaves a dangling reference — every user pointing at
+    # it just goes back to "no active project" (get_active_project_name
+    # picks a fallback the next time it's read).
+    active_project = ForeignKeyField(
+        Project, field='name', column_name='active_project_id', null=True,
+        backref='users_with_active', on_delete='SET NULL',
+    )
+    role = CharField(default='user')
+
+    class Meta:
+        table_name = 'User'
+        indexes = ((('provider', 'provider_user_id'), True),)
+
 class ChatSession(BaseModel):
     id = AutoField()
     username = CharField()
+    # Nullable: a live session's own creator, when they're a real
+    # registered account (see db/sessions.py's create_chat_session) — an
+    # imported transcript's synthetic identity (e.g. "Test user 3", see
+    # next_test_user_username below) was never a real account, so this
+    # stays null for it. `username` above is kept regardless, as the
+    # display/lookup identifier every existing query already uses;
+    # `user` only backs "erase all my data"'s cascade.
+    user = ForeignKeyField(User, field='id', column_name='user_id', null=True, backref='chat_sessions_owned', on_delete='CASCADE')
     project_name = ForeignKeyField(Project, field='name', column_name='project_name', backref='chat_sessions')
     type = CharField(default='live')
     # Optional, freeform — an imported session gets the uploaded
@@ -60,6 +105,7 @@ class ChatSession(BaseModel):
     labeling_revision = IntegerField(null=False, default=0)
 
     class Meta:
+        table_name = 'ChatSession'
         indexes = ((('username', 'project_name', 'datetime_start', 'datetime_end'), False), (('username', 'project_name', 'start_state', 'end_state'), False))
 
 class Message(BaseModel):
@@ -74,32 +120,8 @@ class Message(BaseModel):
     reaction = TextField(null=True)
     session = ForeignKeyField(ChatSession, null=False, backref='messages', on_delete='CASCADE')
 
-class User(BaseModel):
-    id = CharField(primary_key=True)
-    # "google", etc. — which AuthProvider verified this account. Nullable
-    # along with provider_user_id/name: UserMixin's get_active_project_name/
-    # set_active_project_name/clear_active_project_name still take a bare
-    # `user: str` (resolved against `email`, see db/users.py) rather than a
-    # real FK — set_active_project_name's own create-fallback, for a user
-    # with no User row yet, has no provider identity to fill these with.
-    provider = CharField(null=True)
-    # The provider's own opaque id for this account (Google: the "sub"
-    # claim) — stable identity, unlike email, which a provider account
-    # could in principle change.
-    provider_user_id = CharField(null=True)
-    email = CharField()
-    name = CharField(null=True)
-    picture_url = CharField(null=True)
-    created_at = DateTimeField(default=datetime.utcnow)
-    last_login = DateTimeField(null=True)
-    # Absorbs the old standalone Settings table — its only field, the
-    # user's own active_project, unrelated to any Project FK since a
-    # user with no projects yet still needs a row.
-    active_project = CharField(null=True)
-    role = CharField(default='user')
-
     class Meta:
-        indexes = ((('provider', 'provider_user_id'), True),)
+        table_name = 'Message'
 
 class Tracking(BaseModel):
     id = AutoField()
@@ -119,6 +141,9 @@ class Tracking(BaseModel):
     new_state = CharField(null=True, index=True)
     message = ForeignKeyField(Message, null=True, backref='tracking_row', on_delete='SET NULL')
 
+    class Meta:
+        table_name = 'Tracking'
+
 class Archive(BaseModel):
     id = AutoField()
     project_name = ForeignKeyField(Project, field='name', column_name='project_name', backref='archives')
@@ -128,6 +153,7 @@ class Archive(BaseModel):
     content_type = CharField(null=False)
 
     class Meta:
+        table_name = 'Archive'
         # One row per revision — a published revision's own rows are never
         # updated in place again (see Db.save_project_files's fork step),
         # so (project_name, archive_name) alone can no longer be unique.
@@ -142,6 +168,7 @@ class StateRemap(BaseModel):
     new_key = CharField()
 
     class Meta:
+        table_name = 'StateRemap'
         primary_key = CompositeKey('project_name', 'old_key')
 
 class SessionSummary(BaseModel):
@@ -153,9 +180,18 @@ class SessionSummary(BaseModel):
     # Null until the job completes — see SessionSummaryManager's own work.
     content = TextField(null=True)
 
+    class Meta:
+        table_name = 'SessionSummary'
+
 class BenchmarkRun(BaseModel):
     id = AutoField()
     username = CharField(null=True)
+    # Nullable for the same reason as ChatSession.user above — this run's
+    # own username may be a real registered account or an imported
+    # transcript's synthetic identity. Needed as its own FK (not just
+    # reachable via session below) because session is itself null for a
+    # project-wide aggregate run — see the comment on it just below.
+    user = ForeignKeyField(User, field='id', column_name='user_id', null=True, backref='benchmark_runs_owned', on_delete='CASCADE')
     project_name = CharField(index=True)
     # None means "every labeled session of the project", never a single
     # unresolved session — same dual as BenchmarkCalculator(session_id=
@@ -173,6 +209,7 @@ class BenchmarkRun(BaseModel):
     results = TextField(null=True)
 
     class Meta:
+        table_name = 'BenchmarkRun'
         indexes = (
             (('username', 'project_name'), False),
             (('session', 'strategy', 'project_draft_edit_count', 'session_labeling_revision'), True),
@@ -193,6 +230,7 @@ class BenchmarkRunObservation(BaseModel):
     new_state = CharField(null=True, index=True)
 
     class Meta:
+        table_name = 'BenchmarkRunObservation'
         indexes = ((('run', 'session'), False),)
 
 class BenchmarkAggregateResult(BaseModel):
@@ -207,6 +245,7 @@ class BenchmarkAggregateResult(BaseModel):
     created_at = DateTimeField(default=datetime.utcnow)
 
     class Meta:
+        table_name = 'BenchmarkAggregateResult'
         indexes = (
             (('project_name', 'revision'), False),
             (('project_name', 'revision', 'project_draft_edit_count', 'kind', 'target', 'strategy'), True),
@@ -217,11 +256,18 @@ class SystemWarning(BaseModel):
     that resolved to None at runtime instead of raising — one of three
     failure kinds ('project_not_found', 'no_session', 'env_key_not_declared')."""
     id = AutoField()
-    username = CharField()
+    # Not nullable: unlike ChatSession/BenchmarkRun's own username, this
+    # is always Session().user (see tracking/automaton_namespace.py's
+    # AutomatonNamespace) — a real registered account is the only thing
+    # ever authenticated enough to reach this code path at all.
+    user_id = ForeignKeyField(User, field='id', backref='system_warnings', on_delete='CASCADE')
     project_name = CharField(index=True)
     kind = CharField()
     message = TextField()
     timestamp = DateTimeField(index=True, default=datetime.utcnow)
+
+    class Meta:
+        table_name = 'SystemWarning'
 
 class ProjectObserverIndex(BaseModel):
     """Reverse index of automaton.* cross-project references, rebuilt
@@ -232,11 +278,18 @@ class ProjectObserverIndex(BaseModel):
     observer_project_name = CharField(index=True)
 
     class Meta:
+        table_name = 'ProjectObserverIndex'
         indexes = ((('project_name', 'observer_project_name'), True),)
 
-class History(BaseModel):
+class EditHistory(BaseModel):
+    """Per-(user, project, file) undo/redo trail for the project editor —
+    named EditHistory (not just History) to read unambiguously as project-
+    file edit history, not e.g. chat/session history."""
     id = AutoField()
-    user_id = CharField(index=True, null=False)
+    # Not nullable: always Session().user (see project/editor.py's own
+    # undo_project_file/redo_project_file) — project editing requires a
+    # real registered account, never an imported/synthetic identity.
+    user_id = ForeignKeyField(User, field='id', backref='edit_history_entries', on_delete='CASCADE')
     project_name = CharField(index=True, null=False)
     archive_name = CharField(index=True, null=False)
     kind = CharField(null=False)
@@ -244,8 +297,12 @@ class History(BaseModel):
     content = BlobField(null=False)
 
     class Meta:
+        table_name = 'EditHistory'
         indexes = ((('user_id', 'project_name', 'archive_name', 'kind', 'seq'), True),)
 
 class Settings(BaseModel):
     key = CharField(primary_key=True)
     value = CharField()
+
+    class Meta:
+        table_name = 'Settings'

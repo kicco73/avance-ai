@@ -9,13 +9,13 @@ class ObservabilityMixin:
     automaton.*) — grouped since neither is conversation nor project-file data."""
 
     def save_system_warning(self, username: str, project_name: str, kind: str, message: str) -> int:
-        row = SystemWarning.create(username=username, project_name=project_name, kind=kind, message=message)
+        row = SystemWarning.create(user_id=username, project_name=project_name, kind=kind, message=message)
         return row.id
 
     def get_system_warnings(self, username: str, project_name: str) -> list[dict]:
         rows = (
             SystemWarning.select()
-            .where((SystemWarning.username == username) & (SystemWarning.project_name == project_name))
+            .where((SystemWarning.user_id == username) & (SystemWarning.project_name == project_name))
             .order_by(SystemWarning.timestamp.asc())
         )
         return [

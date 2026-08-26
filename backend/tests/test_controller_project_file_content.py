@@ -63,11 +63,11 @@ def test_get_project_file_still_404s_for_a_missing_non_css_file(client, hello_pr
 @pytest.mark.regression
 def test_image_upload_succeeds_with_matching_content_type(client, hello_project):
     response = client.put(
-        f"/api/projects/{hello_project}/files/logo.png", content=PNG_MAGIC, headers={"Content-Type": "image/png"}
+        f"/api/projects/{hello_project}/files/aspect/logo.png", content=PNG_MAGIC, headers={"Content-Type": "image/png"}
     )
     assert response.status_code == 200, response.text
 
-    response = client.get(f"/api/projects/{hello_project}/files/logo.png")
+    response = client.get(f"/api/projects/{hello_project}/files/aspect/logo.png")
     assert response.status_code == 200
     body = response.json()
     assert body["content_type"] == "image/png"
@@ -77,16 +77,37 @@ def test_image_upload_succeeds_with_matching_content_type(client, hello_project)
 
 
 @pytest.mark.regression
+def test_bare_name_still_resolves_to_its_aspect_file(client, hello_project):
+    response = client.put(
+        f"/api/projects/{hello_project}/files/aspect/logo.png", content=PNG_MAGIC, headers={"Content-Type": "image/png"}
+    )
+    assert response.status_code == 200, response.text
+
+    response = client.get(f"/api/projects/{hello_project}/files/logo.png/content")
+    assert response.status_code == 200
+    assert response.content == PNG_MAGIC
+
+
+@pytest.mark.regression
+def test_image_upload_rejects_a_bare_name_for_a_new_file(client, hello_project):
+    response = client.put(
+        f"/api/projects/{hello_project}/files/logo.png", content=PNG_MAGIC, headers={"Content-Type": "image/png"}
+    )
+    assert response.status_code == 400
+    assert "aspect/logo.png" in response.json()["error"]["message"]
+
+
+@pytest.mark.regression
 def test_image_upload_rejects_mismatched_content_type(client, hello_project):
     response = client.put(
-        f"/api/projects/{hello_project}/files/logo.png", content=PNG_MAGIC, headers={"Content-Type": "image/jpeg"}
+        f"/api/projects/{hello_project}/files/aspect/logo.png", content=PNG_MAGIC, headers={"Content-Type": "image/jpeg"}
     )
     assert response.status_code == 400
 
 
 @pytest.mark.regression
 def test_image_upload_rejects_missing_content_type(client, hello_project):
-    response = client.put(f"/api/projects/{hello_project}/files/logo.png", content=PNG_MAGIC)
+    response = client.put(f"/api/projects/{hello_project}/files/aspect/logo.png", content=PNG_MAGIC)
     assert response.status_code == 400
 
 
@@ -94,7 +115,7 @@ def test_image_upload_rejects_missing_content_type(client, hello_project):
 def test_image_upload_rejects_oversized_file(client, hello_project):
     oversized = b"0" * (MAX_IMAGE_UPLOAD_BYTES + 1)
     response = client.put(
-        f"/api/projects/{hello_project}/files/logo.png", content=oversized, headers={"Content-Type": "image/png"}
+        f"/api/projects/{hello_project}/files/aspect/logo.png", content=oversized, headers={"Content-Type": "image/png"}
     )
     assert response.status_code == 400
 
@@ -112,7 +133,7 @@ def test_index_css_save_rejects_a_missing_reference(client, hello_project):
 @pytest.mark.regression
 def test_index_css_save_accepts_an_existing_reference(client, hello_project):
     response = client.put(
-        f"/api/projects/{hello_project}/files/bg.png", content=PNG_MAGIC, headers={"Content-Type": "image/png"}
+        f"/api/projects/{hello_project}/files/aspect/bg.png", content=PNG_MAGIC, headers={"Content-Type": "image/png"}
     )
     assert response.status_code == 200, response.text
 
@@ -135,7 +156,7 @@ def test_index_css_save_ignores_absolute_url_references(client, hello_project):
 class TestGetProjectFileContent:
     def test_returns_raw_bytes_with_matching_media_type(self, client, hello_project):
         client.put(
-            f"/api/projects/{hello_project}/files/logo.png", content=PNG_MAGIC, headers={"Content-Type": "image/png"}
+            f"/api/projects/{hello_project}/files/aspect/logo.png", content=PNG_MAGIC, headers={"Content-Type": "image/png"}
         )
 
         response = client.get(f"/api/projects/{hello_project}/files/logo.png/content")

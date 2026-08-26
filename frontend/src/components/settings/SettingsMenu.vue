@@ -8,10 +8,19 @@ const props = defineProps({
   // App.vue only renders this component once the current user is at
   // least 'supervisor' — this further disables the 'admin'-only items
   // for a plain supervisor, per each action's own backend role gate.
-  role: { type: String, default: null }
+  role: { type: String, default: null },
+  // 'left' (default) anchors the dropdown's own left edge to the
+  // button's — right for the main chat topbar's own icon, near the
+  // screen's left. ManageProjectsView.vue/LabelProjectView.vue's header
+  // instead has this button as the last one on the right, where a
+  // left-anchored panel would run off the edge of the screen — 'right'
+  // anchors its right edge to the button's instead, opening leftward.
+  align: { type: String, default: 'left' }
 })
 
-const emit = defineEmits(['manage-projects', 'manage-users', 'label-sessions', 'download-backup', 'restore-backup', 'about'])
+const emit = defineEmits([
+  'manage-projects', 'manage-users', 'label-sessions', 'edit-projects', 'download-backup', 'restore-backup', 'about'
+])
 
 const open = ref(false)
 const rootEl = ref(null)
@@ -20,6 +29,7 @@ const restoreInput = ref(null)
 const canManageProjects = computed(() => roleSatisfies(props.role, 'admin'))
 const canManageUsers = computed(() => roleSatisfies(props.role, 'admin'))
 const canLabelSessions = computed(() => roleSatisfies(props.role, 'supervisor'))
+const canEditProjects = computed(() => roleSatisfies(props.role, 'admin'))
 const canBackup = computed(() => roleSatisfies(props.role, 'admin'))
 const canViewAbout = computed(() => roleSatisfies(props.role, 'supervisor'))
 
@@ -40,6 +50,11 @@ function selectManageUsers() {
 function selectLabelSessions() {
   open.value = false
   emit('label-sessions')
+}
+
+function selectEditProjects() {
+  open.value = false
+  emit('edit-projects')
 }
 
 function selectDownloadBackup() {
@@ -85,30 +100,36 @@ onBeforeUnmount(() => {
       </svg>
     </button>
 
-    <div v-if="open" class="settings-panel">
-      <ul class="settings-list">
-        <li>
-          <button class="settings-item" :disabled="!canManageProjects" :title="canManageProjects ? '' : 'Requires admin access'" @click="selectManageProjects">Manage projects</button>
-        </li>
-        <li>
-          <button class="settings-item" :disabled="!canManageUsers" :title="canManageUsers ? '' : 'Requires admin access'" @click="selectManageUsers">Manage users</button>
-        </li>
-        <li>
-          <button class="settings-item" :disabled="!canLabelSessions" :title="canLabelSessions ? '' : 'Requires supervisor access'" @click="selectLabelSessions">Label sessions</button>
-        </li>
-        <li class="settings-separator" role="separator"></li>
-        <li>
-          <button class="settings-item" :disabled="!canBackup" :title="canBackup ? '' : 'Requires admin access'" @click="selectDownloadBackup">Download backup</button>
-        </li>
-        <li>
-          <button class="settings-item" :disabled="!canBackup" :title="canBackup ? '' : 'Requires admin access'" @click="selectRestoreBackup">Restore backup...</button>
-        </li>
-        <li class="settings-separator" role="separator"></li>
-        <li>
-          <button class="settings-item" :disabled="!canViewAbout" @click="selectAbout">About Avance...</button>
-        </li>
-      </ul>
-    </div>
+    <Transition name="settings-panel">
+      <div v-if="open" class="settings-panel" :class="{ 'settings-panel-align-right': align === 'right' }">
+        <ul class="settings-list">
+          <li>
+            <button class="settings-item" :disabled="!canManageProjects" :title="canManageProjects ? '' : 'Requires admin access'" @click="selectManageProjects">Manage projects</button>
+          </li>
+          <li>
+            <button class="settings-item" :disabled="!canManageUsers" :title="canManageUsers ? '' : 'Requires admin access'" @click="selectManageUsers">Manage users</button>
+          </li>
+          <li>
+            <button class="settings-item" :disabled="!canLabelSessions" :title="canLabelSessions ? '' : 'Requires supervisor access'" @click="selectLabelSessions">Label sessions</button>
+          </li>
+          <li class="settings-separator" role="separator"></li>
+          <li>
+            <button class="settings-item" :disabled="!canEditProjects" :title="canEditProjects ? '' : 'Requires admin access'" @click="selectEditProjects">Edit projects</button>
+          </li>
+          <li class="settings-separator" role="separator"></li>
+          <li>
+            <button class="settings-item" :disabled="!canBackup" :title="canBackup ? '' : 'Requires admin access'" @click="selectDownloadBackup">Download backup</button>
+          </li>
+          <li>
+            <button class="settings-item" :disabled="!canBackup" :title="canBackup ? '' : 'Requires admin access'" @click="selectRestoreBackup">Restore backup...</button>
+          </li>
+          <li class="settings-separator" role="separator"></li>
+          <li>
+            <button class="settings-item" :disabled="!canViewAbout" @click="selectAbout">About Avance...</button>
+          </li>
+        </ul>
+      </div>
+    </Transition>
 
     <input
       ref="restoreInput"
@@ -158,6 +179,24 @@ onBeforeUnmount(() => {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   z-index: 100;
   overflow: hidden;
+  transform-origin: top left;
+}
+
+.settings-panel-align-right {
+  left: auto;
+  right: 0;
+  transform-origin: top right;
+}
+
+.settings-panel-enter-active,
+.settings-panel-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.settings-panel-enter-from,
+.settings-panel-leave-to {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.96);
 }
 
 .settings-list {

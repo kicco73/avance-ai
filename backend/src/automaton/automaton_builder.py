@@ -59,13 +59,27 @@ class AutomatonBuilder(object):
 
     @staticmethod
     def _extract_required_archives(required_attachments: list[str], all_archives: dict[str, MemoryArchive], for_field: str) -> dict[str, MemoryArchive]:
+        by_basename: dict[str, list[str]] = {}
+        for archive_name in all_archives:
+            by_basename.setdefault(Path(archive_name).name, []).append(archive_name)
+
         extracted_archives = {}
         for required_attachment in required_attachments:
-            if required_attachment not in all_archives:
+            if required_attachment in all_archives:
+                extracted_archives[required_attachment] = all_archives[required_attachment]
+                continue
+            matches = by_basename.get(required_attachment, [])
+            if len(matches) == 1:
+                extracted_archives[required_attachment] = all_archives[matches[0]]
+                continue
+            if len(matches) > 1:
                 raise ValueError(
-                    f"{for_field} attachment named '{required_attachment}' not found"
+                    f"{for_field} attachment named '{required_attachment}' is ambiguous — "
+                    f"matches {', '.join(sorted(matches))}"
                 )
-            extracted_archives[required_attachment] = all_archives[required_attachment]
+            raise ValueError(
+                f"{for_field} attachment named '{required_attachment}' not found"
+            )
         return extracted_archives
 
     def _build_signal(self, name, raw_signal: dict, all_archives: dict[str, MemoryArchive]) -> Signal:

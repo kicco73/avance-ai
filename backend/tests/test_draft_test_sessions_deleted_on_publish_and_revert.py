@@ -90,7 +90,7 @@ def test_a_no_op_publish_still_deletes_test_sessions(client):
 
 def test_revert_deletes_every_test_session(client):
     _upload_activate_and_establish_state(client, "proj")
-    client.put("/api/projects/proj/files/notes.txt", content=b"edited after publish")
+    client.put("/api/projects/proj/files/behaviour/notes.txt", content=b"edited after publish")
     session_id = _create_test_session(client, "proj")
     assert session_id in _test_session_ids(client, "proj")
 
@@ -116,7 +116,7 @@ def test_native_sessions_are_unaffected_by_publish(client):
     _upload_activate_and_establish_state(client, "proj")
     native_session_id = client.get("/api/chat/session").json()["id"]
 
-    client.put("/api/projects/proj/files/notes.txt", content=b"edited")
+    client.put("/api/projects/proj/files/behaviour/notes.txt", content=b"edited")
     assert client.post("/api/projects/proj/publish", json={}).status_code == 200
 
     sessions = client.get("/api/projects/proj/sessions").json()
@@ -131,7 +131,7 @@ def test_imported_sessions_are_unaffected_by_publish(client):
     assert response.status_code == 200, response.text
     imported_session_id = parse_sse_result(response)["last_session_id"]
 
-    client.put("/api/projects/proj/files/notes.txt", content=b"edited")
+    client.put("/api/projects/proj/files/behaviour/notes.txt", content=b"edited")
     assert client.post("/api/projects/proj/publish", json={}).status_code == 200
 
     sessions = client.get("/api/projects/proj/sessions", params={"include_imported": True}).json()
