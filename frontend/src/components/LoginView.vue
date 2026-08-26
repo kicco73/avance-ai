@@ -113,6 +113,8 @@ onMounted(async () => {
   align-items: center;
   gap: 1rem;
   text-align: center;
+  width: 345px;
+  box-sizing: border-box;
   padding: 2.5rem 2rem;
   background: white;
   border-radius: 14px;

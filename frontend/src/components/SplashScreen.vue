@@ -1,6 +1,7 @@
 <script setup>
 import { errorMessage } from '../errorStore.js'
 import ErrorBanner from './ErrorBanner.vue'
+import logoUrl from '../assets/avance-logo.png'
 
 // 'connecting'/'failed': full-page overlay before the topbar renders.
 // 'no-project'/'paused': topbar is showing, this fills the content area
@@ -29,7 +30,7 @@ const emit = defineEmits(['retry'])
 <template>
   <div class="splash" :class="{ 'splash-embedded': embedded }">
     <div class="splash-content">
-      <h1 v-if="!embedded" class="splash-title">Avance</h1>
+      <img v-if="!embedded" :src="logoUrl" class="splash-logo" alt="Avance" />
 
       <template v-if="variant === 'connecting'">
         <div class="splash-pulse" aria-hidden="true"></div>
@@ -90,11 +91,13 @@ const emit = defineEmits(['retry'])
   align-items: center;
   gap: 1rem;
   text-align: center;
+  width: 345px;
+  box-sizing: border-box;
   padding: 2.5rem 2rem;
   background: white;
   border-radius: 14px;
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.18);
-  animation: splash-content-in 0.5s ease-out;
+  animation: splash-content-in 1s ease-out;
 }
 
 @keyframes splash-content-in {
@@ -111,6 +114,7 @@ const emit = defineEmits(['retry'])
 /* Embedded doesn't get the floating card treatment — it already sits
    inside its own flush white area (see .splash-embedded above). */
 .splash-embedded .splash-content {
+  width: auto;
   padding: 1.5rem;
   background: none;
   border-radius: 0;
@@ -118,12 +122,10 @@ const emit = defineEmits(['retry'])
   animation: none;
 }
 
-.splash-title {
-  margin: 0;
-  font-size: 1.3rem;
-  font-weight: 600;
-  color: #4a6fa5;
-  letter-spacing: 0.02em;
+.splash-logo {
+  width: 150px;
+  height: auto;
+  margin-top: 0.8rem;
 }
 
 .splash-pulse {
