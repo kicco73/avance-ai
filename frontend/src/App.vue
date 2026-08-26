@@ -1,5 +1,5 @@
 <script setup>
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import ChatWindow from './components/chat/ChatWindow.vue'
 import EditProjectView from './components/project/edit/EditProjectView.vue'
 import LabelProjectView from './components/project/label/LabelProjectView.vue'
@@ -17,6 +17,7 @@ import DialogHost from './components/DialogHost.vue'
 import {
   getState,
   getMe,
+  getProjects,
   putProject,
   postNewProject,
   activateProject,
@@ -34,7 +35,7 @@ import { disconnect as disconnectChat } from './chatClient.js'
 import { clearApiError } from './errorStore.js'
 import { needsLogin, requireLogin } from './authStore.js'
 import { roleSatisfies } from './roles.js'
-import { confirmDialog, infoDialog } from './dialogStore.js'
+import { activeDialog, aboutDialog, confirmDialog } from './dialogStore.js'
 import {
   setCapabilities,
   handleStateChange,
@@ -45,13 +46,120 @@ import {
   sessionsPanelOpen
 } from './chatStore.js'
 
-const showEditProject = ref(false)
 const editProjectName = ref(null)
-const showBenchmarkProject = ref(false)
 const benchmarkProjectName = ref(null)
-const showManageProjects = ref(false)
-const showManageUsers = ref(false)
 const showProfile = ref(false)
+// Admin only: what's currently pushed over the permanently-mounted
+// ManageProjectsView base — null | 'edit' | 'label' | 'manageUsers' |
+// 'chat'. A plain 'user' has no stack at all (chat is the whole app); a
+// 'supervisor' has no stack either (LabelProjectView is the whole app).
+const pushedView = ref(null)
+// Which way the next transition (see the <Transition>s below) should go —
+// 'forward' for anything that pushes a new view over another, 'back' only
+// for a pop. Sets, not toggles: every navigation call site names its own
+// direction explicitly via setNavForward/setNavBack rather than inferring
+// it from anything.
+const navDirection = ref('forward')
+// The actual :name passed to the 2D slide <Transition>s, set explicitly
+// and synchronously alongside navDirection/pushedView by
+// pushView/popPushedView below — not derived at render time via a ternary
+// on navDirection. A ternary there raced against pushedView's own v-if
+// change (both flip in the same tick) and could resolve against a stale
+// combination. The chat flip below sidesteps this differently — see its
+// own JS transition hooks further down.
+const slideTransitionName = ref('view-slide-forward')
+function setNavForward() {
+  navDirection.value = 'forward'
+  slideTransitionName.value = 'view-slide-forward'
+}
+function setNavBack() {
+  navDirection.value = 'back'
+  slideTransitionName.value = 'view-slide-back'
+}
+function pushView(view) {
+  setNavForward()
+  pushedView.value = view
+}
+function popPushedView() {
+  setNavBack()
+  pushedView.value = null
+}
+
+// Reads the live --flip-duration custom property (see .app-body's own
+// CSS) rather than duplicating its value here, so the debug-speed knob
+// stays a single source of truth.
+function flipDurationMs() {
+  const raw = getComputedStyle(document.querySelector('.app-body')).getPropertyValue('--flip-duration').trim()
+  return parseFloat(raw) || 500
+}
+
+function afterTransform(el, done) {
+  const onEnd = (event) => {
+    if (event.propertyName !== 'transform' || event.target !== el) return
+    el.removeEventListener('transitionend', onEnd)
+    done()
+  }
+  el.addEventListener('transitionend', onEnd)
+}
+
+// Chat's own side of the flip (see ManageProjectsView's .view-flip-base*
+// classes for the other side), driven by JS hooks instead of Vue's
+// CSS-class Transition convention — see the long comment above
+// .view-flip-base in <style> for why: a Transition whose :name changes in
+// the same tick as its child's v-if doesn't reliably re-resolve its
+// enter/leave classes on an already-mounted child, so a CSS-class
+// approach kept leaving chat with stale "forward" values on a 'back' pop.
+// Reading navDirection.value directly inside these hooks, called by Vue
+// at the actual moment each transition starts, sidesteps that entirely.
+// Chat only ever *enters* forward (its one entry point, "Open chat" on a
+// Manage projects row, always pushes) but can *leave* either way (a pop
+// back to Manage projects, or a further forward push to Edit/Label/Manage
+// users while chat was showing) — see the two branches in onChatLeave.
+function onChatBeforeEnter(el) {
+  el.style.transition = 'none'
+  el.style.backfaceVisibility = 'hidden'
+  el.style.zIndex = '101'
+  el.style.transform = 'rotateY(-90deg)'
+}
+
+function onChatEnter(el, done) {
+  const duration = flipDurationMs()
+  setTimeout(() => {
+    el.style.transition = `transform ${duration}ms ease-out`
+    requestAnimationFrame(() => {
+      el.style.transform = 'rotateY(0deg)'
+    })
+    afterTransform(el, () => {
+      // Back to resting on the CSS class's own z-index:100 — the inline
+      // 101 above only needed to hold during the transition itself.
+      el.style.zIndex = ''
+      done()
+    })
+  }, duration)
+}
+
+function onChatBeforeLeave(el) {
+  el.style.backfaceVisibility = 'hidden'
+  el.style.zIndex = navDirection.value === 'back' ? '101' : ''
+  el.style.transform = 'rotateY(0deg)'
+}
+
+function onChatLeave(el, done) {
+  const duration = flipDurationMs()
+  const isBack = navDirection.value === 'back'
+  el.style.transition = `transform ${duration}ms ${isBack ? 'ease-in' : 'ease-in-out'}`
+  requestAnimationFrame(() => {
+    el.style.transform = `rotateY(${isBack ? -90 : 90}deg)`
+  })
+  afterTransform(el, done)
+}
+// Chat has no Settings/Profile controls of its own (unlike the other
+// views, each of which builds SettingsMenu/ProfileMenu into its own
+// header) — true whenever chat is the thing on screen, whether that's a
+// plain user's whole app or an admin's pushed chat, so the shared
+// .topbar-overlay below knows when to show itself.
+const chatVisible = computed(() => currentUserRole.value === 'user' || pushedView.value === 'chat')
+const dialogOpen = computed(() => !!activeDialog.value)
 const modelUploadInput = ref(null)
 const chatWindowRef = ref(null)
 const manageProjectsView = ref(null)
@@ -130,15 +238,13 @@ function bootSucceeded() {
   // still be sitting in the shared store the moment the chat UI mounts.
   clearApiError()
   // loadMessages() is what actually creates/resolves the live session
-  // (see chatStoreFactory.js's ensureSession) — only the chat-live landing
-  // (a plain user, or a supervisor with no active project yet) needs one
-  // at boot. An admin landing on Manage projects or a supervisor landing
-  // on Label sessions (see goToLandingView, just run by resolveLandingView
-  // before this) shouldn't spin up a live session nobody's about to use;
-  // ChatWindow.vue stays mounted-but-hidden behind those and only needs
-  // one once they actually switch into the live chat themselves (see
+  // (see chatStoreFactory.js's ensureSession) — only a plain user's chat
+  // landing needs one at boot; an admin (Manage projects, permanently
+  // mounted) or supervisor (Label sessions, their whole app) shouldn't
+  // spin up a live session nobody's about to see. ChatWindow.vue only
+  // mounts for them at all once they actually push into it (see
   // handleManageProjectsChat -> handleProjectSwitch -> refreshStateAndProjects).
-  if (!showManageProjects.value && !showBenchmarkProject.value) {
+  if (currentUserRole.value === 'user') {
     loadMessages()
   }
   loadAiModels()
@@ -148,47 +254,52 @@ function bootSucceeded() {
   // by the time the backend finishes booting, regardless of transport.
 }
 
-// Every top-level full-screen view, off — the common first step of both
-// picking a fresh landing view and switching to a different one, so
-// exactly one is ever showing regardless of which one was active before
-// (Settings is now reachable from more than just the main chat screen —
-// see goToLandingView/handleSettings* below).
-function closeAllTopLevelViews() {
-  showEditProject.value = false
-  showBenchmarkProject.value = false
-  showManageProjects.value = false
-  showManageUsers.value = false
-  showProfile.value = false
-}
-
-// The role-appropriate "home": chat-live for a plain user, Label
-// sessions for a supervisor (against whichever project is currently
-// active), Manage projects for an admin. Neither Label sessions nor
-// Manage projects has a Back button of its own any more, so this is also
-// where Settings' own modal-like Manage users returns to on close.
-function goToLandingView() {
-  closeAllTopLevelViews()
-  if (currentUserRole.value === 'admin') {
-    showManageProjects.value = true
-  } else if (currentUserRole.value === 'supervisor' && currentProjectName.value) {
-    handleModelBenchmark(currentProjectName.value)
+// The one shared way to resolve "the active project" for a caller with no
+// specific project of its own in hand (resolveLandingView's supervisor
+// case and Settings menu's Label sessions/Edit projects below — nothing
+// more specific to go on in any of them). Never stored anywhere, never a
+// fallback for an explicit project: resolved fresh, straight off the
+// backend, every single time. A Manage projects row click, Label
+// Sessions' own ProjectsMenu pick, etc. always carry their own project
+// name already and have no reason to call this at all.
+async function getActiveProjectName() {
+  try {
+    const res = await getProjects()
+    // No active project set at all (a fresh install, or one manually
+    // cleared) — the first project in the list beats returning nothing.
+    return res.active ?? res.projects[0]?.name ?? null
+  } catch {
+    // already surfaced via apiFetch
+    return null
   }
-  // Anything else (a plain 'user', or a supervisor with no active
-  // project yet): the default chat-live landing, nothing further to set.
 }
 
 // Resolved once per boot, before bootStatus ever flips to 'ready' — the
 // landing view has to be right from the very first render, not settled a
 // moment later once some async fetch resolves (that would flash the
-// chat-live default first for every supervisor/admin).
+// chat-live default first for every supervisor/admin). currentUserRole
+// alone drives which of the 3 role branches the template renders; a
+// supervisor additionally needs their active project up front, since
+// LabelProjectView *is* their whole app, not something pushed later.
 async function resolveLandingView() {
+  // A logout doesn't reload the page — it's the same running app instance
+  // just re-showing LoginView — so anything left over from a previous
+  // session (mid-erase-account they were on Profile, admin had something
+  // pushed, ...) would otherwise still be sitting in these refs the next
+  // time boot succeeds, landing the new session somewhere it never
+  // actually navigated to itself.
+  pushedView.value = null
+  showProfile.value = false
+  navDirection.value = 'forward'
   try {
     currentUserProfile.value = await getMe()
     currentUserRole.value = currentUserProfile.value?.role ?? null
   } catch {
     return // already surfaced via apiFetch; falls back to the chat-live default
   }
-  goToLandingView()
+  if (currentUserRole.value === 'supervisor') {
+    benchmarkProjectName.value = await getActiveProjectName()
+  }
 }
 
 async function runPingAttempt(token) {
@@ -264,6 +375,8 @@ async function handleTermsReject() {
 }
 
 async function handleLogout() {
+  const ok = await confirmDialog({ title: 'Log out', body: 'Log out of Avance?', okLabel: 'Log out' })
+  if (!ok) return
   try {
     await postLogout()
   } catch {
@@ -284,15 +397,10 @@ function triggerModelUpload() {
 // responses carry the state payload itself), same as handleReset picks up
 // the opening message via REST, regardless of chat transport.
 // `skipMessages`: EditProjectView.vue's own two callers (entering and
-// publishing-while-still-inside it) pass this — Edit always hides
-// ChatWindow.vue (v-if="!showEditProject") and Back returns to Manage
-// projects, never to the live chat, so loadMessages() here would only
-// ever create a live session nobody's about to see. Worse than wasted:
-// ChatWindow.vue stays mounted (just hidden) while inside Edit, so a
-// legalTermsPending it set would still be sitting there the moment Back
-// remounts it visibly — and TermsView.vue's z-index (1000) sits above
-// Manage projects' own overlay (100), so that would show as a stuck
-// full-screen Terms prompt blocking Manage projects, not just a flash.
+// publishing-while-still-inside it) pass this — Edit is admin-only, and
+// ChatWindow.vue only mounts for an admin once actually pushed into, so
+// loadMessages() here would only ever create a live session nobody's
+// about to see.
 async function refreshStateAndProjects({ skipMessages = false } = {}) {
   const newState = await getState()
   chatWindowRef.value?.refreshProjectsMenu()
@@ -367,60 +475,48 @@ async function handleModelEdit(projectName) {
     // already surfaced via apiFetch
   }
   editProjectName.value = projectName
-  showEditProject.value = true
-}
-
-function handleManageProjectsEdit(projectName) {
-  showManageProjects.value = false
-  handleModelEdit(projectName)
-}
-
-function handleManageProjectsBenchmark(projectName) {
-  showManageProjects.value = false
-  handleModelBenchmark(projectName)
-}
-
-// "Open chat" on a project's own row: same switch as picking it from
-// ProjectsMenu, then back to the main chat screen (closing Manage
-// projects is what actually reveals it — there's no separate route).
-function handleManageProjectsChat(projectName) {
-  showManageProjects.value = false
-  handleProjectSwitch(projectName)
+  pushView('edit')
 }
 
 function handleModelBenchmark(projectName) {
   benchmarkProjectName.value = projectName
-  showBenchmarkProject.value = true
+  pushView('label')
 }
 
-// Settings' own three view-switching entries — each closes whichever
-// top-level view is currently showing first, since Settings is now
-// reachable from all of them (main chat, Label sessions, Manage
-// projects), not just the main chat screen.
+// "Open chat" on a project's own row: same switch as picking it from
+// ProjectsMenu — ManageProjectsView is never unmounted, so this just
+// pushes chat over it.
+function handleManageProjectsChat(projectName) {
+  pushView('chat')
+  handleProjectSwitch(projectName)
+}
+
+// Settings' own three view-switching entries. Manage projects is the
+// admin's permanent base (never unmounted) — picking it is always a pop,
+// never a push. The other two are admin-only push targets, but this is
+// also reachable by a supervisor clicking their own "Label sessions" item
+// (already where they are, since it's their whole app) — for them this
+// just re-points their standing LabelProjectView at the current active
+// project, with no push/transition at all.
 function handleSettingsManageProjects() {
-  closeAllTopLevelViews()
-  showManageProjects.value = true
+  popPushedView()
 }
 
 function handleSettingsManageUsers() {
-  closeAllTopLevelViews()
-  showManageUsers.value = true
+  pushView('manageUsers')
 }
 
-// Opened straight at whichever project is currently active, rather than
-// via Manage projects.
-function handleSettingsLabelSessions() {
-  if (!currentProjectName.value) return
-  closeAllTopLevelViews()
-  handleModelBenchmark(currentProjectName.value)
+async function handleSettingsLabelSessions() {
+  const projectName = await getActiveProjectName()
+  if (!projectName) return
+  benchmarkProjectName.value = projectName
+  if (currentUserRole.value === 'admin') pushView('label')
 }
 
-// Settings-menu shortcut straight into Edit for whichever project is
-// currently active — same shape as handleSettingsLabelSessions above.
-function handleSettingsEditProjects() {
-  if (!currentProjectName.value) return
-  closeAllTopLevelViews()
-  handleModelEdit(currentProjectName.value)
+async function handleSettingsEditProjects() {
+  const projectName = await getActiveProjectName()
+  if (!projectName) return
+  await handleModelEdit(projectName)
 }
 
 async function handleModelEditSaved() {
@@ -544,10 +640,15 @@ async function handleRestoreBackup(file) {
 async function handleShowAbout() {
   try {
     const about = await getAbout()
-    await infoDialog({ title: about.name, body: `Version ${about.version}` })
+    await aboutDialog({ version: about.version })
   } catch {
     // already surfaced via apiFetch
   }
+}
+
+function openProfile() {
+  setNavForward()
+  showProfile.value = true
 }
 
 onMounted(startBootSequence)
@@ -573,18 +674,146 @@ onBeforeUnmount(() => {
   <SplashScreen v-else-if="bootStatus === 'waiting'" variant="connecting" />
   <SplashScreen v-else-if="bootStatus === 'failed'" variant="failed" @retry="startBootSequence" />
 
-  <div v-else-if="bootStatus === 'ready'" class="app">
+  <div v-else-if="bootStatus === 'ready'" class="app" :class="{ 'app-dialog-open': dialogOpen }">
     <ErrorBanner />
 
     <div class="app-body">
+      <!-- Plain user: chat is the entire app, no stack, no transition. -->
       <ChatWindow
-        v-if="!showEditProject"
+        v-if="currentUserRole === 'user'"
         ref="chatWindowRef"
         @project-select="handleProjectSwitch"
         @project-download="handleModelDownload"
       />
 
-      <div class="topbar-overlay" :class="{ 'topbar-overlay-hidden': sessionsPanelOpen }">
+      <!-- Supervisor: Label sessions is the entire app, no stack, no
+           transition — Settings can only re-point it at another active
+           project (handleSettingsLabelSessions), never push/pop it. -->
+      <LabelProjectView
+        v-else-if="currentUserRole === 'supervisor'"
+        :key="benchmarkProjectName"
+        :project-name="benchmarkProjectName"
+        role="supervisor"
+        :profile="currentUserProfile"
+        @project-select="handleBenchmarkProjectSwitch"
+        @manage-projects="handleSettingsManageProjects"
+        @manage-users="handleSettingsManageUsers"
+        @label-sessions="handleSettingsLabelSessions"
+        @edit-projects="handleSettingsEditProjects"
+        @about="handleShowAbout"
+        @download-backup="handleDownloadBackup"
+        @restore-backup="handleRestoreBackup"
+        @profile="openProfile"
+        @logout="handleLogout"
+      />
+
+      <!-- Admin: ManageProjectsView is the permanent base, never
+           unmounted; at most one view is ever pushed over it. Every push
+           target 2D-slides except chat, which 3D-flips. -->
+      <template v-else-if="currentUserRole === 'admin'">
+        <ManageProjectsView
+          ref="manageProjectsView"
+          class="view-flip-base"
+          :class="{
+            'view-flip-base-flipped': pushedView === 'chat',
+            'view-flip-base-forward': navDirection === 'forward',
+            'view-flip-base-back': navDirection === 'back'
+          }"
+          :uploading="uploadingProject"
+          :upload-progress="uploadProgress"
+          role="admin"
+          :profile="currentUserProfile"
+          @new-project="handleNewProject"
+          @upload="triggerModelUpload"
+          @delete="handleModelDelete"
+          @edit="handleModelEdit"
+          @benchmark="handleModelBenchmark"
+          @chat="handleManageProjectsChat"
+          @download="handleModelDownload"
+          @wipe-live-sessions="handleManageProjectsWipeLiveSessions"
+          @manage-projects="handleSettingsManageProjects"
+          @manage-users="handleSettingsManageUsers"
+          @label-sessions="handleSettingsLabelSessions"
+          @edit-projects="handleSettingsEditProjects"
+          @about="handleShowAbout"
+          @download-backup="handleDownloadBackup"
+          @restore-backup="handleRestoreBackup"
+          @profile="openProfile"
+          @logout="handleLogout"
+        />
+
+        <Transition :name="slideTransitionName">
+          <EditProjectView
+            v-if="pushedView === 'edit'"
+            :key="editProjectName"
+            :project-name="editProjectName"
+            role="admin"
+            :profile="currentUserProfile"
+            @saved="handleModelEditSaved"
+            @back="popPushedView"
+            @project-select="handleModelEdit"
+            @manage-projects="handleSettingsManageProjects"
+            @manage-users="handleSettingsManageUsers"
+            @label-sessions="handleSettingsLabelSessions"
+            @edit-projects="handleSettingsEditProjects"
+            @about="handleShowAbout"
+            @download-backup="handleDownloadBackup"
+            @restore-backup="handleRestoreBackup"
+            @profile="openProfile"
+            @logout="handleLogout"
+          />
+          <LabelProjectView
+            v-else-if="pushedView === 'label'"
+            :key="benchmarkProjectName"
+            :project-name="benchmarkProjectName"
+            role="admin"
+            :profile="currentUserProfile"
+            @close="popPushedView"
+            @project-select="handleBenchmarkProjectSwitch"
+            @manage-projects="handleSettingsManageProjects"
+            @manage-users="handleSettingsManageUsers"
+            @label-sessions="handleSettingsLabelSessions"
+            @edit-projects="handleSettingsEditProjects"
+            @about="handleShowAbout"
+            @download-backup="handleDownloadBackup"
+            @restore-backup="handleRestoreBackup"
+            @profile="openProfile"
+            @logout="handleLogout"
+          />
+          <ManageUsersView
+            v-else-if="pushedView === 'manageUsers'"
+            :current-user-role="currentUserRole"
+            :profile="currentUserProfile"
+            @close="popPushedView"
+            @manage-projects="handleSettingsManageProjects"
+            @manage-users="handleSettingsManageUsers"
+            @label-sessions="handleSettingsLabelSessions"
+            @edit-projects="handleSettingsEditProjects"
+            @about="handleShowAbout"
+            @download-backup="handleDownloadBackup"
+            @restore-backup="handleRestoreBackup"
+            @profile="openProfile"
+            @logout="handleLogout"
+          />
+        </Transition>
+
+        <Transition
+          :css="false"
+          @before-enter="onChatBeforeEnter"
+          @enter="onChatEnter"
+          @before-leave="onChatBeforeLeave"
+          @leave="onChatLeave"
+        >
+          <ChatWindow
+            v-if="pushedView === 'chat'"
+            ref="chatWindowRef"
+            @project-select="handleProjectSwitch"
+            @project-download="handleModelDownload"
+          />
+        </Transition>
+      </template>
+
+      <div class="topbar-overlay" v-if="chatVisible" :class="{ 'topbar-overlay-hidden': sessionsPanelOpen }">
         <SettingsMenu
           v-if="roleSatisfies(currentUserRole, 'supervisor')"
           :role="currentUserRole"
@@ -597,7 +826,7 @@ onBeforeUnmount(() => {
           @download-backup="handleDownloadBackup"
           @restore-backup="handleRestoreBackup"
         />
-        <ProfileMenu :profile="currentUserProfile" @profile="showProfile = true" @logout="handleLogout" />
+        <ProfileMenu :profile="currentUserProfile" @profile="openProfile" @logout="handleLogout" />
       </div>
 
       <input
@@ -609,90 +838,14 @@ onBeforeUnmount(() => {
       />
     </div>
 
-    <EditProjectView
-      v-if="showEditProject"
-      :key="editProjectName"
-      :project-name="editProjectName"
-      :role="currentUserRole"
-      :profile="currentUserProfile"
-      @saved="handleModelEditSaved"
-      @project-select="handleModelEdit"
-      @manage-projects="handleSettingsManageProjects"
-      @manage-users="handleSettingsManageUsers"
-      @label-sessions="handleSettingsLabelSessions"
-      @edit-projects="handleSettingsEditProjects"
-      @about="handleShowAbout"
-      @download-backup="handleDownloadBackup"
-      @restore-backup="handleRestoreBackup"
-      @profile="showProfile = true"
-      @logout="handleLogout"
-    />
-
-    <LabelProjectView
-      v-if="showBenchmarkProject"
-      :key="benchmarkProjectName"
-      :project-name="benchmarkProjectName"
-      :role="currentUserRole"
-      :profile="currentUserProfile"
-      @close="goToLandingView"
-      @project-select="handleBenchmarkProjectSwitch"
-      @manage-projects="handleSettingsManageProjects"
-      @manage-users="handleSettingsManageUsers"
-      @label-sessions="handleSettingsLabelSessions"
-      @edit-projects="handleSettingsEditProjects"
-      @about="handleShowAbout"
-      @download-backup="handleDownloadBackup"
-      @restore-backup="handleRestoreBackup"
-      @profile="showProfile = true"
-      @logout="handleLogout"
-    />
-
-    <ManageProjectsView
-      v-if="showManageProjects"
-      ref="manageProjectsView"
-      :uploading="uploadingProject"
-      :upload-progress="uploadProgress"
-      :role="currentUserRole"
-      :profile="currentUserProfile"
-      @new-project="handleNewProject"
-      @upload="triggerModelUpload"
-      @delete="handleModelDelete"
-      @edit="handleManageProjectsEdit"
-      @benchmark="handleManageProjectsBenchmark"
-      @chat="handleManageProjectsChat"
-      @download="handleModelDownload"
-      @wipe-live-sessions="handleManageProjectsWipeLiveSessions"
-      @manage-projects="handleSettingsManageProjects"
-      @manage-users="handleSettingsManageUsers"
-      @label-sessions="handleSettingsLabelSessions"
-      @edit-projects="handleSettingsEditProjects"
-      @about="handleShowAbout"
-      @download-backup="handleDownloadBackup"
-      @restore-backup="handleRestoreBackup"
-      @profile="showProfile = true"
-      @logout="handleLogout"
-    />
-
-    <ManageUsersView
-      v-if="showManageUsers"
-      :current-user-role="currentUserRole"
-      :profile="currentUserProfile"
-      @close="goToLandingView"
-      @manage-projects="handleSettingsManageProjects"
-      @manage-users="handleSettingsManageUsers"
-      @label-sessions="handleSettingsLabelSessions"
-      @edit-projects="handleSettingsEditProjects"
-      @about="handleShowAbout"
-      @download-backup="handleDownloadBackup"
-      @restore-backup="handleRestoreBackup"
-      @profile="showProfile = true"
-      @logout="handleLogout"
-    />
-
-    <ProfileView
-      v-if="showProfile"
-      @close="showProfile = false"
-    />
+    <!-- Universal, independent of the role/stack above: reachable from
+         any of the 3 branches via the same ProfileMenu. -->
+    <Transition :name="slideTransitionName">
+      <ProfileView
+        v-if="showProfile"
+        @close="() => { setNavBack(); showProfile = false }"
+      />
+    </Transition>
 
   </div>
 </template>
@@ -704,6 +857,15 @@ body {
   padding: 0;
   height: 100%;
   overflow: hidden;
+  /* Shows around .app's edges once it shrinks for an open dialog (see
+     .app-dialog-open) and through the chat flip's crossover (.app-body
+     and .app are otherwise transparent) — one shared background instead
+     of a dedicated div, since both need the exact same reveal. Also the
+     base behind LoginView/TermsView/SplashScreen (each references this
+     same custom property, defined here since it's the only truly global
+     stylesheet in the app). */
+  --app-base-gradient: linear-gradient(160deg, #e4e7eb, #9aa1ac);
+  background: var(--app-base-gradient);
 }
 
 #app {
@@ -717,6 +879,17 @@ body {
   flex-direction: column;
   height: 100vh;
   font-family: system-ui, -apple-system, sans-serif;
+  transform: scale(1);
+  filter: blur(0);
+  transition: transform 0.2s ease-in-out, filter 0.2s ease-in-out;
+}
+
+/* The native <dialog> DialogHost.vue renders into sits in the browser's
+   own top-layer, entirely unaffected by transforms on regular ancestors
+   — so scaling/blurring .app here never touches the dialog's own size. */
+.app-dialog-open {
+  transform: scale(0.9);
+  filter: blur(3px);
 }
 
 .app-body {
@@ -725,6 +898,71 @@ body {
   display: flex;
   min-height: 0;
   overflow: hidden;
+  perspective: 1300px;
+  --flip-duration: 500ms;
+}
+
+/* iOS-style 3D flip — chat only (see .app-body's perspective above).
+   ManageProjectsView's own side of it (.view-flip-base below) is a plain
+   reactive class toggle; chat's side is driven by JS transition hooks in
+   the script instead of Vue's CSS-class Transition convention (see
+   onChatBeforeEnter/onChatEnter/onChatBeforeLeave/onChatLeave and the
+   chat <Transition>'s :css="false") — a Transition whose :name changes in
+   the same tick as its child's v-if does not reliably re-resolve its
+   enter/leave CSS classes against the new name on an already-mounted
+   child, so chat's own leave kept using stale "forward" values after a
+   pop tagged 'back'. JS hooks read navDirection fresh at call time and
+   sidestep that entirely. */
+
+/* ManageProjectsView is never unmounted (see the admin branch above), so
+   it never gets Vue Transition enter/leave classes of its own — this is
+   the same 0->90 leaving rotation as .view-flip-forward-leave-to /
+   .view-flip-back-leave-to above, just driven by plain reactive classes
+   instead, since there's no mount/unmount here to hook a Transition onto.
+   navDirection-scoped because a single class toggle can't otherwise carry
+   different timing for "rotating away" (push) vs "rotating back into
+   view" (pop) on the very same transform property. */
+.view-flip-base {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  will-change: transform;
+}
+
+.view-flip-base-forward {
+  transition: transform var(--flip-duration) ease-in;
+}
+
+.view-flip-base-back {
+  transition: transform var(--flip-duration) ease-out;
+  transition-delay: var(--flip-duration);
+}
+
+.view-flip-base-flipped {
+  transform: rotateY(90deg);
+}
+
+/* 2D push/pop slide — the other 5 top-level overlay views (Edit project,
+   Label sessions, Manage projects, Manage users, Profile). Same
+   forward/back semantics as the flip above, just a translateX instead of
+   a rotateY. */
+.view-slide-forward-enter-active,
+.view-slide-forward-leave-active,
+.view-slide-back-enter-active,
+.view-slide-back-leave-active {
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.view-slide-forward-enter-active,
+.view-slide-back-leave-active {
+  z-index: 101 !important;
+}
+
+.view-slide-forward-enter-from {
+  transform: translateX(100%);
+}
+
+.view-slide-back-leave-to {
+  transform: translateX(100%);
 }
 
 /* Anchored to .app-body, not the viewport: when ErrorBanner pushes
@@ -736,7 +974,7 @@ body {
   position: absolute;
   top: 0.75rem;
   right: 0.75rem;
-  z-index: 30;
+  z-index: 200;
   display: flex;
   align-items: center;
   gap: 0.5rem;

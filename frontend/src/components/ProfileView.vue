@@ -74,8 +74,8 @@ async function eraseAllData() {
 <template>
   <div class="profile-view-overlay">
     <div class="profile-view-header">
+      <button class="back-btn" title="Back" @click="emit('close')">«</button>
       <h2>Profile</h2>
-      <button class="close-btn" @click="emit('close')">Back</button>
     </div>
 
     <div class="profile-view-body">
@@ -122,7 +122,7 @@ async function eraseAllData() {
 .profile-view-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 0.6rem;
   padding: 0.75rem 1rem;
   background: white;
   border-bottom: 1px solid #ddd;
@@ -133,16 +133,24 @@ async function eraseAllData() {
   font-size: 1.1rem;
 }
 
-.close-btn {
-  padding: 0.4rem 1rem;
+.back-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
   border-radius: 6px;
   border: 1px solid #4a6fa5;
   background: white;
   color: #4a6fa5;
+  font-size: 1rem;
+  line-height: 1;
   cursor: pointer;
 }
 
-.close-btn:hover {
+.back-btn:hover {
   background: #4a6fa5;
   color: white;
 }

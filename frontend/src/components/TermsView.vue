@@ -77,7 +77,7 @@ function reject() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: white;
+  background: var(--app-base-gradient);
   font-family: system-ui, -apple-system, sans-serif;
   z-index: 1000;
   padding: 2rem;
@@ -118,6 +118,7 @@ function reject() {
   padding: 1rem 1.4rem;
   border: 1px solid #ddd;
   border-radius: 10px;
+  background: white;
   font-size: 0.9rem;
   line-height: 1.6;
   color: #333;

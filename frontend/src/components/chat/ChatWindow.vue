@@ -293,6 +293,7 @@ watch(
        sits. Only ever true for the live store (see chatStoreFactory.js's
        legalTermsPending): this project's own legal/terms.md changed since
        the user's previous live session here, or this is their first one. -->
+  <div class="chat-window-outer">
   <TermsView
     v-if="legalTermsPending"
     :show-reject="false"
@@ -416,9 +417,19 @@ watch(
     </template>
     </div>
   </div>
+  </div>
 </template>
 
 <style scoped>
+.chat-window-outer {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+}
+
 .chat-window-shell {
   position: relative;
   display: flex;
@@ -583,6 +594,7 @@ watch(
 .chat-header {
   flex-shrink: 0;
   height: 70px;
+  position: relative;
 }
 
 .chat-footer {

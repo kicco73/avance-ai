@@ -103,7 +103,7 @@ const props = defineProps({
 setTestProject(props.projectName)
 
 const emit = defineEmits([
-  'saved', 'project-select', 'manage-projects', 'manage-users', 'label-sessions', 'edit-projects', 'about',
+  'saved', 'back', 'project-select', 'manage-projects', 'manage-users', 'label-sessions', 'edit-projects', 'about',
   'download-backup', 'restore-backup', 'profile', 'logout'
 ])
 
@@ -1438,6 +1438,14 @@ async function leaveEditProject(onLeave) {
 function handleSettingsManageProjects() {
   leaveEditProject(() => emit('manage-projects'))
 }
+
+// The header's own dedicated Back button — same destination and same
+// leaveEditProject guard as the Settings menu's "Manage projects" item,
+// but its own separate emit: App.vue tells the two apart to slide the
+// right direction (Back pops, the Settings item pushes).
+function handleBack() {
+  leaveEditProject(() => emit('back'))
+}
 function handleSettingsManageUsers() {
   leaveEditProject(() => emit('manage-users'))
 }
@@ -1586,7 +1594,10 @@ onBeforeUnmount(() => {
 <template>
   <div class="edit-project-overlay">
     <div class="edit-project-header">
-      <h2>Edit project — {{ projectName }}</h2>
+      <div class="edit-project-header-title">
+        <button class="back-btn" title="Back" @click="handleBack">«</button>
+        <h2>Edit project — {{ projectName }}</h2>
+      </div>
       <div class="mode-segment">
         <button
           class="mode-segment-btn"
@@ -1630,10 +1641,6 @@ onBeforeUnmount(() => {
           </template>
         </div>
         <ProjectsMenu :selected-name="projectName" @select="handleProjectMenuSelect" />
-        <!-- Same guard as the Settings menu's own "Manage projects" item
-             (leaveEditProject) — this is just a one-click shortcut to it,
-             since Edit is only ever opened from Manage projects. -->
-        <button class="close-btn" @click="handleSettingsManageProjects">Back</button>
         <SettingsMenu
           :role="role"
           align="right"
@@ -1858,10 +1865,42 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid #ddd;
 }
 
-.edit-project-header h2 {
+.edit-project-header-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+  justify-self: start;
+}
+
+.edit-project-header-title h2 {
   margin: 0;
   font-size: 1.1rem;
-  justify-self: start;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.back-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid #4a6fa5;
+  background: white;
+  color: #4a6fa5;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.back-btn:hover {
+  background: #4a6fa5;
+  color: white;
 }
 
 .edit-project-header-actions {

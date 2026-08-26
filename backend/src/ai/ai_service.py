@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import threading
+from collections import OrderedDict
 from typing import Any, AsyncIterator, Sequence
 
 import partial_json_parser
@@ -13,6 +14,24 @@ from ai.llm_provider import (
 )
 from ai.cascading_llm_provider import CascadingLLMProvider
 from ai import gemini_provider_v2, openai_provider_v2, anthropic_provider_v2
+
+class LRUCache(OrderedDict):
+	def __init__(self, maxsize: int = 128) -> None:
+		super().__init__()
+		self.maxsize = maxsize
+
+	def __getitem__(self, key):
+		value = super().__getitem__(key)
+		self.move_to_end(key)
+		return value
+
+	def __setitem__(self, key, value) -> None:
+		if key in self:
+			self.move_to_end(key)
+		super().__setitem__(key, value)
+		if len(self) > self.maxsize:
+			self.popitem(last=False)
+
 
 _PROVIDER_CLASSES : dict[str, object] = {
 	"anthropic": anthropic_provider_v2.AnthropicProvider,
@@ -39,7 +58,7 @@ class AiService(object):
 		# get_input_tokens() cache, keyed by (provider label, prompt hash) —
 		# the same prompt can cost a different count on a different
 		# provider, so the label is part of the key, not just the hash.
-		self._input_tokens_cache: dict[str, int] = {}
+		self._input_tokens_cache: LRUCache = LRUCache(maxsize=32)
 		self._input_tokens_cache_lock = threading.Lock()
 
 	@classmethod
@@ -102,9 +121,8 @@ class AiService(object):
 	def get_input_tokens(self, prompt: str) -> int:
 		cache_key = f"{self._current_provider_label}:{hashlib.sha256(prompt.encode()).hexdigest()}"
 		with self._input_tokens_cache_lock:
-			cached = self._input_tokens_cache.get(cache_key)
-		if cached is not None:
-			return cached
+			if cache_key in self._input_tokens_cache:
+				return self._input_tokens_cache[cache_key]
 		tokens = self._current_leaf_provider.get_input_tokens(prompt)
 		with self._input_tokens_cache_lock:
 			self._input_tokens_cache[cache_key] = tokens

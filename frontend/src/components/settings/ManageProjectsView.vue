@@ -525,6 +525,16 @@ defineExpose({ refresh: load })
 
 .manage-projects-icon-running .manage-projects-dot {
   background: #2e7d32;
+  animation: manage-projects-dot-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes manage-projects-dot-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
 }
 
 .manage-projects-icon-paused .manage-projects-dot {

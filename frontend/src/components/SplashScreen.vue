@@ -65,13 +65,15 @@ const emit = defineEmits(['retry'])
   display: flex;
   align-items: center;
   justify-content: center;
-  background: white;
+  background: var(--app-base-gradient);
   font-family: system-ui, -apple-system, sans-serif;
   z-index: 1000;
 }
 
 /* Embedded: fills whatever flex slot it's given, alongside the
-   still-visible topbar, instead of covering the whole viewport. */
+   still-visible topbar, instead of covering the whole viewport — stays
+   white, blending into the chat area it sits in rather than the app's
+   own base gradient. */
 .splash-embedded {
   position: static;
   inset: auto;
@@ -79,6 +81,7 @@ const emit = defineEmits(['retry'])
   min-width: 0;
   min-height: 0;
   z-index: auto;
+  background: white;
 }
 
 .splash-content {

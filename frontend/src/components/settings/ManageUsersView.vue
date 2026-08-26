@@ -192,10 +192,10 @@ defineExpose({ refresh: load })
 <template>
   <div class="manage-users-overlay">
     <div class="manage-users-header">
+      <button class="back-btn" title="Back" @click="emit('close')">«</button>
       <h2>Users</h2>
       <div class="manage-users-header-actions">
         <ProjectsMenu :selected-name="statsProjectName" @select="statsProjectName = $event" />
-        <button class="close-btn" @click="emit('close')">Back</button>
         <SettingsMenu
           :role="currentUserRole"
           align="right"
@@ -350,7 +350,7 @@ defineExpose({ refresh: load })
 .manage-users-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 0.6rem;
   padding: 0.75rem 1rem;
   border-bottom: 1px solid #ddd;
 }
@@ -361,21 +361,30 @@ defineExpose({ refresh: load })
 }
 
 .manage-users-header-actions {
+  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
 
-.close-btn {
-  padding: 0.4rem 1rem;
+.back-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
   border-radius: 6px;
   border: 1px solid #4a6fa5;
   background: white;
   color: #4a6fa5;
+  font-size: 1rem;
+  line-height: 1;
   cursor: pointer;
 }
 
-.close-btn:hover {
+.back-btn:hover {
   background: #4a6fa5;
   color: white;
 }

@@ -52,3 +52,9 @@ export function chooseDialog({ title, body, options }) {
 export function infoDialog({ title, body }) {
   return enqueue({ kind: 'info', title, body })
 }
+
+// SettingsMenu's "About Avance...": just the logo and the version, no
+// separate title/body text.
+export function aboutDialog({ version }) {
+  return enqueue({ kind: 'about', version })
+}

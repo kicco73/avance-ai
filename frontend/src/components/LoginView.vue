@@ -7,6 +7,7 @@
 import { onMounted, ref } from 'vue'
 import { getAuthProviders, postLogin } from '../api.js'
 import { clearLoginRequirement } from '../authStore.js'
+import logoUrl from '../assets/avance-logo.png'
 
 const emit = defineEmits(['logged-in'])
 
@@ -68,15 +69,25 @@ onMounted(async () => {
     callback: handleCredentialResponse
   })
   loading.value = false
-  window.google.accounts.id.renderButton(buttonEl.value, { theme: 'outline', size: 'large' })
+  // 'filled_blue'/'filled_black' always render the G icon on its own
+  // white badge, baked into Google's widget — no official option makes
+  // that badge blue, so 'outline' (white button) is the closest match
+  // that doesn't clash with it.
+  window.google.accounts.id.renderButton(buttonEl.value, {
+    theme: 'outline',
+    size: 'large',
+    shape: 'rectangular',
+    text: 'signin_with',
+    logo_alignment: 'center',
+    width: 280
+  })
 })
 </script>
 
 <template>
   <div class="login-view">
     <div class="login-content">
-      <h1 class="login-title">Avance</h1>
-      <p class="login-message">Sign in to continue.</p>
+      <img :src="logoUrl" class="login-logo" alt="Avance" />
       <p v-if="loading" class="login-loading">Loading…</p>
       <div ref="buttonEl" class="login-google-button"></div>
       <p v-if="error" class="login-error">{{ error }}</p>
@@ -91,7 +102,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: white;
+  background: var(--app-base-gradient);
   font-family: system-ui, -apple-system, sans-serif;
   z-index: 1000;
 }
@@ -102,7 +113,28 @@ onMounted(async () => {
   align-items: center;
   gap: 1rem;
   text-align: center;
-  padding: 1.5rem;
+  padding: 2.5rem 2rem;
+  background: white;
+  border-radius: 14px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.18);
+  animation: login-card-in 1s ease-out;
+}
+
+@keyframes login-card-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.login-logo {
+  width: 150px;
+  height: auto;
+  margin-top: 0.8rem;
 }
 
 .login-title {
@@ -125,8 +157,15 @@ onMounted(async () => {
   color: #999;
 }
 
+/* No radius/overflow clip here on purpose: Google's own ~4px rounding is
+   baked into the button graphic itself, not a separate border we can
+   isolate — clipping to any other radius cuts into that graphic at the
+   corners instead of framing it cleanly. */
 .login-google-button {
   min-height: 2.5rem;
+  display: inline-block;
+  margin-top: 0.6rem;
+  transform: scale(0.9);
 }
 
 .login-error {

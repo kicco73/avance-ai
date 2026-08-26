@@ -655,10 +655,10 @@ onBeforeUnmount(() => {
 <template>
   <div class="benchmark-overlay">
     <div class="benchmark-header">
+      <button class="back-btn" title="Back" @click="emit('close')">«</button>
       <h2>Label sessions — {{ projectName }}</h2>
       <div class="benchmark-header-actions">
         <ProjectsMenu :selected-name="projectName" @select="(name) => emit('project-select', name)" />
-        <button class="close-btn" @click="emit('close')">Back</button>
         <SettingsMenu
           :role="role"
           align="right"
@@ -877,7 +877,7 @@ onBeforeUnmount(() => {
 .benchmark-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 0.6rem;
   padding: 0.75rem 1rem;
   border-bottom: 1px solid #ddd;
 }
@@ -888,6 +888,7 @@ onBeforeUnmount(() => {
 }
 
 .benchmark-header-actions {
+  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -897,16 +898,24 @@ onBeforeUnmount(() => {
   max-width: 220px;
 }
 
-.close-btn {
-  padding: 0.4rem 1rem;
+.back-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
   border-radius: 6px;
   border: 1px solid #4a6fa5;
   background: white;
   color: #4a6fa5;
+  font-size: 1rem;
+  line-height: 1;
   cursor: pointer;
 }
 
-.close-btn:hover {
+.back-btn:hover {
   background: #4a6fa5;
   color: white;
 }

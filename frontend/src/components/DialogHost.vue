@@ -7,6 +7,7 @@
 // close is the browser's own <dialog> behavior, not reimplemented here.
 import { computed, nextTick, ref, watch } from 'vue'
 import { activeDialog, resolveActiveDialog } from '../dialogStore.js'
+import logoUrl from '../assets/avance-logo.png'
 
 const CLOSE_ANIMATION_MS = 180
 
@@ -103,9 +104,18 @@ function closeInfo() {
     @close="onNativeClose"
     @click="onBackdropClick"
   >
-    <div class="dialog-card" :class="{ 'dialog-card-visible': cardVisible }">
-      <h2 class="dialog-title">{{ activeDialog.title }}</h2>
-      <p v-if="activeDialog.body" class="dialog-body">{{ activeDialog.body }}</p>
+    <div
+      class="dialog-card"
+      :class="{ 'dialog-card-visible': cardVisible, 'dialog-card-about': activeDialog.kind === 'about' }"
+    >
+      <template v-if="activeDialog.kind === 'about'">
+        <img :src="logoUrl" class="dialog-about-logo" alt="Avance" />
+        <p class="dialog-about-version">Version {{ activeDialog.version }}</p>
+      </template>
+      <template v-else>
+        <h2 class="dialog-title">{{ activeDialog.title }}</h2>
+        <p v-if="activeDialog.body" class="dialog-body">{{ activeDialog.body }}</p>
+      </template>
 
       <template v-if="activeDialog.kind === 'prompt'">
         <input
@@ -146,7 +156,7 @@ function closeInfo() {
           >{{ option.label }}</button>
         </template>
 
-        <template v-else-if="activeDialog.kind === 'info'">
+        <template v-else-if="activeDialog.kind === 'info' || activeDialog.kind === 'about'">
           <button class="dialog-btn dialog-btn-primary" @click="closeInfo">Close</button>
         </template>
       </div>
@@ -231,6 +241,29 @@ function closeInfo() {
   justify-content: flex-end;
   gap: 0.5rem;
   margin-top: 1.1rem;
+}
+
+.dialog-card-about {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.dialog-card-about .dialog-actions {
+  justify-content: center;
+  width: 100%;
+}
+
+.dialog-about-logo {
+  width: 96px;
+  height: auto;
+}
+
+.dialog-about-version {
+  margin: 0.8rem 0 0;
+  font-size: 0.85rem;
+  color: #777;
 }
 
 .dialog-btn {
