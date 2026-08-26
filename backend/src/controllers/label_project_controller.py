@@ -4,14 +4,18 @@ state-aggregation machinery its own Performance tab drives.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 from http import HTTPStatus
 from urllib.parse import quote
 
-from fastapi import HTTPException, Response, UploadFile
+from fastapi import HTTPException, Request, Response, UploadFile
+from fastapi.responses import StreamingResponse
 
 from chat.chat_service import ChatService
+from jobs import JobQueue, stream_job_progress
 from metrics.benchmark_run_service import BenchmarkRunService
+from metrics.queue_progress_broadcaster import QueueProgressBroadcaster
 from project.project_service import ProjectService
 from session import Session
 from tracking.tracking_service import TrackingService
@@ -38,11 +42,15 @@ class LabelProjectController(BaseController):
         project_service: ProjectService,
         tracking_service: TrackingService,
         benchmark_run_service: BenchmarkRunService,
+        test_event_broadcaster: QueueProgressBroadcaster,
+        job_queue: JobQueue,
     ) -> None:
         self.chat_service = chat_service
         self.project_service = project_service
         self.tracking_service = tracking_service
         self.benchmark_run_service = benchmark_run_service
+        self.test_event_broadcaster = test_event_broadcaster
+        self.job_queue = job_queue
 
     @get("/api/projects/{project_name}/benchmark-metrics", role="supervisor")
     def get_benchmark_metrics(self, project_name: str, session_id: int | None = None):
@@ -55,11 +63,21 @@ class LabelProjectController(BaseController):
     async def post_import_sessions(self, project_name: str, files: list[UploadFile]):
         """The "Label sessions" view's own upload button — every selected
         file in one request, whichever mix of a .txt transcript and a
-        "Download all" .json export it contains. All per-file/per-session
-        dispatch and error handling happens server-side; the frontend
-        just uploads and renders the returned per-item results."""
+        "Download all" .json export it contains. Runs on the real job
+        queue; this same response streams its progress SSE-style,
+        ending with a chunk carrying the final {results, last_session_id}
+        — no separate status endpoint, no separate connection."""
         uploads = [(file.filename or "", await file.read()) for file in files]
-        return self.tracking_service.import_sessions_batch(project_name, uploads)
+        job = self.tracking_service.build_import_sessions_job(project_name, uploads)
+        return stream_job_progress(self.job_queue, self.test_event_broadcaster, job)
+
+    @delete("/api/projects/{project_name}/sessions/imported", role="supervisor")
+    def delete_imported_sessions(self, project_name: str):
+        """The "Label sessions" view's own "Delete all imported sessions"
+        button — every imported session of the project, across every
+        user, not just the current one's."""
+        self.tracking_service.delete_imported_sessions(project_name)
+        return {"success": True}
 
     @get("/api/projects/{project_name}/sessions/export", role="supervisor")
     def get_export_sessions(self, project_name: str):
@@ -84,7 +102,15 @@ class LabelProjectController(BaseController):
 
     @delete("/api/projects/{project_name}/test-users/{test_user_seq}", role="supervisor")
     def delete_test_user(self, project_name: str, test_user_seq: int):
-        self.tracking_service.delete_sessions_by_username(f"Test user {test_user_seq}")
+        self.tracking_service.delete_sessions_by_username(project_name, f"Test user {test_user_seq}")
+        return {"success": True}
+
+    @delete("/api/projects/{project_name}/sessions/users/{username}", role="supervisor")
+    def delete_user_sessions(self, project_name: str, username: str):
+        """The "Label sessions" view's per-branch × button for any
+        non-live branch — an arbitrary imported username, not just a
+        "Test user N" one (see delete_test_user above for that case)."""
+        self.tracking_service.delete_sessions_by_username(project_name, username)
         return {"success": True}
 
     @delete("/api/chat/sessions/{session_id}")
@@ -219,54 +245,93 @@ class LabelProjectController(BaseController):
 
     @post("/api/projects/{project_name}/states/{state_key}/test", role="supervisor")
     def post_state_test(self, project_name: str, state_key: str, req: StateTestRequest):
-        """Launches the "States" branch's aggregation job for one state.
-        Returns immediately with the ephemeral job's id; poll GET
-        .../state-jobs/{job_id} for its outcome."""
         try:
-            job_id = self.benchmark_run_service.start_job(project_name, state_key, req.strategy)
+            self.benchmark_run_service.start_job(project_name, state_key, req.strategy)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-        return {"job_id": job_id}
+        return {"success": True}
 
     @post("/api/projects/{project_name}/signals/{signal_name}/test", role="supervisor")
     def post_signal_test(self, project_name: str, signal_name: str, req: StateTestRequest):
         try:
-            job_id = self.benchmark_run_service.start_signal_job(project_name, signal_name, req.strategy)
+            self.benchmark_run_service.start_signal_job(project_name, signal_name, req.strategy)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-        return {"job_id": job_id}
+        return {"success": True}
 
-    @get("/api/projects/{project_name}/state-jobs/{job_id}", role="supervisor")
-    def get_state_job(self, project_name: str, job_id: int):
-        """One ephemeral 'state_aggregation' job's status/progress/
-        result. None (never a 404) for an unknown job_id, e.g. after a
-        backend restart — distinguishable from "in progress"/"completed"."""
-        return self.benchmark_run_service.get_job_status(job_id)
+    @post("/api/projects/{project_name}/states/aggregation", role="supervisor")
+    def post_states_aggregation(self, project_name: str, req: StateTestRequest):
+        try:
+            self.benchmark_run_service.start_all_states_job(project_name, req.strategy)
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return {"success": True}
+
+    @post("/api/projects/{project_name}/signals/aggregation", role="supervisor")
+    def post_signals_aggregation(self, project_name: str, req: StateTestRequest):
+        try:
+            self.benchmark_run_service.start_all_signals_job(project_name, req.strategy)
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return {"success": True}
+
+    @post("/api/projects/{project_name}/root/aggregation", role="supervisor")
+    def post_root_aggregation(self, project_name: str, req: StateTestRequest):
+        try:
+            self.benchmark_run_service.start_root_job(project_name, req.strategy)
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return {"success": True}
 
     @post("/api/projects/{project_name}/users/aggregation", role="supervisor")
     def post_users_aggregation(self, project_name: str, req: StateTestRequest):
-        """Launches the "Users" branch's aggregation job — each user's own
-        pooled result (composed from that user's own leaf sub-runs) becomes
-        one data point. Returns immediately with the ephemeral job's id;
-        poll GET .../state-jobs/{job_id} (the job is generic, same as start_job's) for its outcome."""
         try:
-            job_id = self.benchmark_run_service.start_users_aggregation_job(project_name, req.strategy)
+            self.benchmark_run_service.start_users_aggregation_job(project_name, req.strategy)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-        return {"job_id": job_id}
+        return {"success": True}
 
     @post("/api/projects/{project_name}/sessions/test", role="supervisor")
     def post_sessions_run(self, project_name: str, req: StateTestRequest):
         try:
-            job_id = self.benchmark_run_service.start_sessions_run_job(project_name, req.strategy)
+            self.benchmark_run_service.start_sessions_run_job(project_name, req.strategy)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-        return {"job_id": job_id}
+        return {"success": True}
 
     @post("/api/projects/{project_name}/users/{username}/test", role="supervisor")
     def post_user_sessions_run(self, project_name: str, username: str, req: StateTestRequest):
         try:
-            job_id = self.benchmark_run_service.start_user_sessions_run_job(username, project_name, req.strategy)
+            self.benchmark_run_service.start_user_sessions_run_job(username, project_name, req.strategy)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-        return {"job_id": job_id}
+        return {"success": True}
+
+    @get("/api/projects/{project_name}/jobs-status", role="supervisor")
+    def get_jobs_status(self, project_name: str, strategy: str):
+        return self.benchmark_run_service.get_jobs_status(project_name, strategy)
+
+    @get("/api/projects/{project_name}/aggregate-result", role="supervisor")
+    def get_aggregate_result(self, project_name: str, kind: str, strategy: str, target: str | None = None):
+        result = self.benchmark_run_service.get_aggregate_result(project_name, kind, target, strategy)
+        if result is None:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="No aggregate result for this key yet.")
+        return result
+
+    @get("/api/projects/{project_name}/test-events", role="supervisor")
+    async def get_test_events(self, project_name: str, request: Request):
+        username = Session().user
+        connection = self.test_event_broadcaster.connect(username)
+
+        async def events():
+            try:
+                while not await request.is_disconnected():
+                    try:
+                        message = await asyncio.wait_for(connection.get(), timeout=1.0)
+                    except asyncio.TimeoutError:
+                        continue
+                    yield f"data: {json.dumps(message)}\n\n"
+            finally:
+                self.test_event_broadcaster.disconnect(username, connection)
+
+        return StreamingResponse(events(), media_type="text/event-stream")

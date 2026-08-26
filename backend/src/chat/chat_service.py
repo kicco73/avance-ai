@@ -42,7 +42,7 @@ class ChatService(object):
 		session_manager: ChatSessionManager,
 		tracking_service: TrackingService,
 		metric_service: MetricService,
-		persisted_jobs: JobQueue,
+		job_queue: JobQueue,
 	) -> None:
 		self._db = db
 		self._ai_service = ai_service
@@ -50,9 +50,9 @@ class ChatService(object):
 		self._session_manager = session_manager
 		self._tracking_service = tracking_service
 		self.metric_service = metric_service
-		# Shares persisted_jobs with BenchmarkRunService (see main.py's own
+		# Shares job_queue with BenchmarkRunService (see main.py's own
 		# wiring) — never its own private queue.
-		self._session_summary_manager = SessionSummaryManager(db, ai_service, persisted_jobs, session_manager)
+		self._session_summary_manager = SessionSummaryManager(db, ai_service, job_queue, session_manager)
 		self.env = PersistedEnv(db, project_service)
 		self._system_facts = SystemFacts()
 		self._session_facts = SessionFacts(db, project_service)

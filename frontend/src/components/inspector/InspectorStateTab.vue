@@ -33,7 +33,13 @@ const props = defineProps({
   sessionEndElement: { type: Object, default: null },
   // Test mode only: no edit form, no delete, no "+ Add state" — this tab
   // is a plain read-only viewer for whatever's selected in the Test tree.
-  readOnly: { type: Boolean, default: false }
+  readOnly: { type: Boolean, default: false },
+  // Estimated input-token cost of selectedElement's own turn prompt (see
+  // EditProjectView.vue's own stateTabTokens) — a separate prop rather
+  // than folded into selectedElement.data, since that object round-trips
+  // back out through the 'select' emit below and must stay exactly what
+  // was passed in.
+  stateTokens: { type: Number, default: null }
 })
 
 const emit = defineEmits([
@@ -125,6 +131,7 @@ onMounted(loadProjectMetadata)
     <InspectorDetailCard
       v-else-if="selectedElement && isBehaviorContext"
       :selected-element="selectedElement"
+      :state-tokens="stateTokens"
       :editable-files="editableFiles"
       :highlighted-state-key="highlightedStateKey"
       :recently-added-key="recentlyAddedKey"

@@ -1,11 +1,9 @@
-"""Integration tests for POST/GET
-/api/projects/{project_name}/states/{state_key}/test|state-jobs, exercising
-BenchmarkRunService.start_job end to end: launching/reusing session-scoped
-sub-runs and aggregating Signal Accuracy.
+"""Integration tests for POST /api/projects/{project_name}/states/{state_key}/test,
+exercising BenchmarkRunService.start_job end to end: launching/reusing
+session-scoped sub-runs and aggregating Signal Accuracy.
 """
 from __future__ import annotations
 
-import json
 import time
 
 import pytest
@@ -13,14 +11,16 @@ import pytest
 pytestmark = pytest.mark.contract
 
 
-def _wait_for_terminal_state_job(client, project_name, job_id, timeout=5.0, interval=0.05):
+def _wait_for_aggregate_result(client, project_name, kind, strategy, target=None, timeout=5.0, interval=0.05):
+    params = {"kind": kind, "strategy": strategy}
+    if target is not None:
+        params["target"] = target
     deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        job = client.get(f"/api/projects/{project_name}/state-jobs/{job_id}").json()
-        if job is not None and job["status"] in ("completed", "failed"):
-            return job
+    response = client.get(f"/api/projects/{project_name}/aggregate-result", params=params)
+    while time.monotonic() < deadline and response.status_code != 200:
         time.sleep(interval)
-    return client.get(f"/api/projects/{project_name}/state-jobs/{job_id}").json()
+        response = client.get(f"/api/projects/{project_name}/aggregate-result", params=params)
+    return response
 
 
 def _make_session_annotated_at_hello(client, *, labeled=False):
@@ -41,26 +41,20 @@ def test_state_test_aggregates_signal_accuracy_across_sessions(client, hello_pro
         f"/api/projects/{hello_project}/states/Hello/test", json={"strategy": "turn_by_turn"},
     )
     assert response.status_code == 200, response.text
-    job_id = response.json()["job_id"]
 
-    job = _wait_for_terminal_state_job(client, hello_project, job_id)
-
-    assert job["status"] == "completed", job
-    assert job["result"] is not None
-    result = json.loads(job["result"])
-    assert result["name"] == "signal_accuracy"
+    result = _wait_for_aggregate_result(client, hello_project, "state", "turn_by_turn", target="Hello")
+    assert result.status_code == 200, result.text
+    assert result.json()["name"] == "signal_accuracy"
 
 
 def test_state_test_ignores_an_unlabeled_sessions_leftover_annotation(client, hello_project):
     session_id = _make_session_annotated_at_hello(client)
 
-    response = client.post(
-        f"/api/projects/{hello_project}/states/Hello/test", json={"strategy": "turn_by_turn"},
-    )
-    job = _wait_for_terminal_state_job(client, hello_project, response.json()["job_id"])
+    client.post(f"/api/projects/{hello_project}/states/Hello/test", json={"strategy": "turn_by_turn"})
 
-    assert job["status"] == "completed", job
-    assert job["progress_total"] == 0
+    result = _wait_for_aggregate_result(client, hello_project, "state", "turn_by_turn", target="Hello")
+    assert result.status_code == 200, result.text
+    assert result.json()["sample_count"] == 0
     assert client.get(f"/api/projects/{hello_project}/benchmark-runs?session_id={session_id}").json() == []
 
 
@@ -69,17 +63,18 @@ def test_state_test_with_no_touching_sessions_still_completes(client, hello_proj
     response = client.post(
         f"/api/projects/{hello_project}/states/Hello/test", json={"strategy": "turn_by_turn"},
     )
-    job_id = response.json()["job_id"]
+    assert response.status_code == 200, response.text
 
-    job = _wait_for_terminal_state_job(client, hello_project, job_id)
+    result = _wait_for_aggregate_result(client, hello_project, "state", "turn_by_turn", target="Hello")
+    assert result.status_code == 200, result.text
 
-    assert job["status"] == "completed", job
 
-
-def test_get_state_job_returns_none_for_unknown_id(client, hello_project):
-    response = client.get(f"/api/projects/{hello_project}/state-jobs/999999")
-    assert response.status_code == 200
-    assert response.json() is None
+def test_get_aggregate_result_404_for_an_unknown_key(client, hello_project):
+    response = client.get(
+        f"/api/projects/{hello_project}/aggregate-result",
+        params={"kind": "state", "target": "NoSuchState", "strategy": "turn_by_turn"},
+    )
+    assert response.status_code == 404
 
 
 def test_get_project_states_lists_real_state_keys(client, hello_project):

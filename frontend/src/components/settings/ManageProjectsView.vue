@@ -6,6 +6,14 @@ import { onMounted, ref } from 'vue'
 import { getProjectMetadata, getProjectsRuntimeStatus, putProjectPause, putProjectResume } from '../../api.js'
 import { confirmDialog } from '../../dialogStore.js'
 import ErrorBanner from '../ErrorBanner.vue'
+import ProgressSpinner from '../ProgressSpinner.vue'
+
+const props = defineProps({
+  uploading: { type: Boolean, default: false },
+  // 0-100, or null before the first progress chunk has arrived — see
+  // SessionsTree.vue's identical importProgress for the same reasoning.
+  uploadProgress: { type: Number, default: null }
+})
 
 // Emits events only; App.vue owns the actual new/upload/delete actions.
 const emit = defineEmits(['close', 'new-project', 'upload', 'delete', 'edit', 'benchmark', 'download', 'chat', 'wipe-live-sessions'])
@@ -145,7 +153,15 @@ defineExpose({ refresh: load })
       <h2>Manage projects</h2>
       <div class="manage-projects-header-actions">
         <button class="manage-projects-action-btn" @click="emit('new-project')">New project</button>
-        <button class="manage-projects-action-btn" @click="emit('upload')">Upload project...</button>
+        <button
+          class="manage-projects-action-btn"
+          :class="{ 'manage-projects-action-btn-busy': uploading }"
+          :disabled="uploading"
+          @click="emit('upload')"
+        >
+          <ProgressSpinner v-if="uploading" :progress="uploadProgress" />
+          {{ uploading ? (uploadProgress != null ? `Uploading… ${Math.round(uploadProgress)}%` : 'Uploading…') : 'Upload project...' }}
+        </button>
         <button class="close-btn" @click="emit('close')">Back</button>
       </div>
     </div>
@@ -308,6 +324,9 @@ defineExpose({ refresh: load })
 }
 
 .manage-projects-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   padding: 0.4rem 1rem;
   border-radius: 6px;
   border: 1px solid #4a6fa5;
@@ -319,6 +338,16 @@ defineExpose({ refresh: load })
 .manage-projects-action-btn:hover {
   background: #4a6fa5;
   color: white;
+}
+
+.manage-projects-action-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.manage-projects-action-btn-busy:hover {
+  background: white;
+  color: #4a6fa5;
 }
 
 .manage-projects-body {

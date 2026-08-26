@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from conftest import parse_sse_result
 from db import Db
 
 
@@ -45,8 +46,8 @@ def test_mark_session_labeled_works_for_an_imported_session(client, hello_projec
     also never "active"."""
     imported = client.post(
         "/api/projects/hello/sessions/import", files=[("files", ("transcript.txt", "user: hi\nassistant: hello\n", "text/plain"))]
-    ).json()
-    session_id = imported["last_session_id"]
+    )
+    session_id = parse_sse_result(imported)["last_session_id"]
 
     response = client.put(f"/api/chat/sessions/{session_id}/labeled", json={"labeled": True})
 
@@ -100,8 +101,8 @@ def test_put_session_title_and_comment_work_for_an_imported_session(client, hell
     active-resolution path used by title/comment updates."""
     imported = client.post(
         "/api/projects/hello/sessions/import", files=[("files", ("transcript.txt", "user: hi\nassistant: hello\n", "text/plain"))]
-    ).json()
-    session_id = imported["last_session_id"]
+    )
+    session_id = parse_sse_result(imported)["last_session_id"]
 
     title_resp = client.put(f"/api/chat/sessions/{session_id}/title", json={"title": "Renamed import"})
     assert title_resp.status_code == 200

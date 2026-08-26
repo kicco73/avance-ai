@@ -20,6 +20,7 @@ from .session_facts import SessionFacts
 from .system_facts import SystemFacts
 from .definitions import Signals
 from .session_import import SessionImportManager
+from .session_import_job import SessionImportJob
 from .session_export import SessionExportManager
 from .tracking_processor import UserVariables
 from .tracking_processor_ai import TrackingProcessorAfterAiMessage
@@ -62,14 +63,17 @@ class TrackingService(object):
 		entry silently freezing an unrelated, newly-restored session."""
 		self._disabled_test_sessions.clear()
 
-	def import_sessions_batch(self, project_name: str, uploads: list[tuple[str, bytes]]) -> dict:
-		return self._session_import_manager.import_batch(project_name, uploads)
+	def build_import_sessions_job(self, project_name: str, uploads: list[tuple[str, bytes]]) -> SessionImportJob:
+		return SessionImportJob(self._session_import_manager, self._db, project_name, uploads)
 
 	def reassign_sessions_to_test_user(self, session_ids: list[int], test_user_seq: int) -> None:
 		self._db.reassign_sessions_to_test_user(session_ids, test_user_seq)
 
-	def delete_sessions_by_username(self, username: str) -> None:
-		self._db.delete_sessions_by_username(username)
+	def delete_sessions_by_username(self, project_name: str, username: str) -> None:
+		self._db.delete_sessions_by_username_and_project(username, project_name)
+
+	def delete_imported_sessions(self, project_name: str) -> None:
+		self._db.delete_imported_sessions(project_name)
 
 	def export_sessions(self, username: str, project_name: str) -> list[dict]:
 		"""The "Label sessions" view's own "Download all" button — see

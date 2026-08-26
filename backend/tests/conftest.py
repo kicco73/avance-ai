@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import json
 from pathlib import Path
 
 import pytest
@@ -13,14 +15,27 @@ from controller import AvanceController
 from db import Db
 from error_handlers import register_error_handlers
 from events.dispatcher import _reset_for_tests as _reset_dispatcher_for_tests
-from jobs import InMemoryJobSink, JobQueue, PersistedJobSink
+from jobs import JobQueue
 from metrics.benchmark_run_service import BenchmarkRunService
 from metrics.metric_service import MetricService
+from metrics.queue_progress_broadcaster import QueueProgressBroadcaster
 from project.project_service import ProjectService
 from session import Session
 from tracking.tracking_service import TrackingService
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
+
+
+def parse_sse_result(response) -> dict:
+    """POST .../sessions/import streams its progress as SSE 'data: {...}'
+    chunks within the same response, ending with a `completed`/`failed`
+    chunk — this picks out that final chunk's `result` payload."""
+    message = None
+    for line in response.text.strip().split("\n"):
+        if line.startswith("data: "):
+            message = json.loads(line[len("data: "):])
+    assert message is not None and message["status"] == "completed", response.text
+    return message["result"]
 
 
 @pytest.fixture(autouse=True)
@@ -62,6 +77,14 @@ class FakeAiService:
     def select_model(self, index: int | None) -> None:
         pass
 
+    def get_total_tokens(self) -> int:
+        return 0
+
+    def get_input_tokens(self, prompt: str) -> int:
+        # Deterministic word-count stand-in — good enough to exercise
+        # callers without a real provider's count-tokens call.
+        return len(prompt.split())
+
     async def generate(self, system_prompt: str, history: list[dict], on_retry=None) -> str:
         self.calls.append((system_prompt, history))
         return "Fake AI reply."
@@ -86,6 +109,15 @@ def fake_ai_service() -> FakeAiService:
     return FakeAiService()
 
 
+class NullBroadcaster:
+    """Stands in for QueueProgressBroadcaster wherever a JobQueue is built but
+    the test never exercises SSE — every push() lands here and is dropped,
+    since nothing ever connect()s to read it."""
+
+    def push(self, username: str, message: dict) -> None:
+        pass
+
+
 @pytest.fixture
 def app_db(tmp_path) -> Db:
     """File-backed, not :memory: — TestClient runs sync endpoints in a real
@@ -99,19 +131,19 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     """The real controller/routing wiring, but against an isolated
     file-backed Db and a FakeAiService, so tests never touch the
     developer's real avance.db or make costly AI calls."""
-    project_service = ProjectService(app_db)
+    project_service = ProjectService(app_db, fake_ai_service)
     session_manager = ChatSessionManager(app_db)
     metric_service = MetricService(app_db, project_service)
+    test_event_broadcaster = QueueProgressBroadcaster(fake_ai_service)
+    job_queue = JobQueue(max_concurrent=1, broadcaster=test_event_broadcaster)
     tracking_service = TrackingService(
         app_db, fake_ai_service, project_service, metric_service,
     )
-    persisted_jobs = JobQueue(PersistedJobSink(app_db), max_concurrent=1)
-    ephemeral_jobs = JobQueue(InMemoryJobSink(), max_concurrent=1)
     chat_service = ChatService(
-        app_db, fake_ai_service, project_service, session_manager, tracking_service, metric_service, persisted_jobs,
+        app_db, fake_ai_service, project_service, session_manager, tracking_service, metric_service, job_queue,
     )
     benchmark_run_service = BenchmarkRunService(
-        app_db, fake_ai_service, tracking_service, persisted_jobs, ephemeral_jobs,
+        app_db, fake_ai_service, tracking_service, job_queue,
     )
     # No real providers: this app fixture never goes through AuthMiddleware
     # (that's only wired in main.py's create_app(), not here) or exercises
@@ -122,7 +154,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     register_error_handlers(fastapi_app)
     controller = AvanceController(
         chat_service, project_service, None, None, app_db, tracking_service, benchmark_run_service,
-        auth_service, "test-version",
+        auth_service, test_event_broadcaster, job_queue, "test-version",
     )
     fastapi_app.include_router(controller.router)
     return fastapi_app

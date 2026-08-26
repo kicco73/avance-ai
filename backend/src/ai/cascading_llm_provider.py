@@ -29,6 +29,19 @@ class CascadingLLMProvider(LLMProvider):
     def current_provider(self) -> LLMProvider:
         return self._cascade.current
 
+    def get_total_tokens(self) -> int:
+        """Sums every wrapped provider's own counter, not just the
+        currently-active one — a fallback that already burned tokens on an
+        earlier provider before advancing must still count."""
+        return sum(provider.get_total_tokens() for provider in self._cascade.providers)
+
+    def get_input_tokens(self, prompt: str) -> int:
+        """Delegates to the cascade's current leaf — AiService itself
+        always calls the leaf provider directly (see its own
+        _current_leaf_provider), so this exists only to satisfy
+        LLMProvider's contract for any other caller."""
+        return self.current_provider.get_input_tokens(prompt)
+
     # No generate() override: the LLMProvider base default calls
     # self.generate_stream, which resolves polymorphically to the
     # override below, so it's already cascade/retry-aware.

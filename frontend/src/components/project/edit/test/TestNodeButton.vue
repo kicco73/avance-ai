@@ -8,24 +8,26 @@ const props = defineProps({
   status: {
     type: String,
     default: 'idle',
-    validator: (value) => ['idle', 'running', 'ok', 'warning', 'fail'].includes(value)
+    validator: (value) => ['idle', 'pending', 'running', 'ok', 'warning', 'fail'].includes(value)
   },
-  progress: { type: Object, default: null },
+  progress: { type: Number, default: null },
   disabled: { type: Boolean, default: false },
   disabledReason: { type: String, default: 'No test for this node' }
 })
 
 const emit = defineEmits(['activate'])
 
-const hasProgress = computed(() => props.progress != null && props.progress.total > 0)
-const progressPercent = computed(() => (
-  hasProgress.value ? Math.min(100, Math.round((props.progress.current / props.progress.total) * 100)) : 0
-))
+// pending (queued, no step has run yet) always spins; running switches to
+// the real percentage the moment its first step reports in, even at 0%.
+const hasProgress = computed(() => props.status === 'running' && props.progress != null)
+const progressPercent = computed(() => (hasProgress.value ? Math.min(100, Math.round(props.progress)) : 0))
+const isBusy = computed(() => props.status === 'pending' || props.status === 'running')
 
 function onClick() {
-  // running: never clickable (can't re-launch an in-flight test). Any other status,
-  // including a past outcome, is a legitimate click — activate there means "re-run".
-  if (props.disabled || props.status === 'running') return
+  // pending/running: never clickable (can't re-launch an in-flight test). Any
+  // other status, including a past outcome, is a legitimate click — activate
+  // there means "re-run".
+  if (props.disabled || isBusy.value) return
   emit('activate')
 }
 </script>
@@ -34,16 +36,16 @@ function onClick() {
   <button
     type="button"
     class="test-node-btn"
-    :class="[`test-node-btn-${status}`, { 'test-node-btn-disabled': disabled }]"
-    :disabled="disabled || status === 'running'"
-    :title="disabled ? disabledReason : (status === 'running' ? 'Running…' : 'Run test')"
+    :class="[`test-node-btn-${isBusy ? 'running' : status}`, { 'test-node-btn-disabled': disabled }]"
+    :disabled="disabled || isBusy"
+    :title="disabled ? disabledReason : (status === 'pending' ? 'Queued…' : status === 'running' ? 'Running…' : 'Run test')"
     @click="onClick"
   >
     <svg v-if="status === 'idle'" viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
       <path d="M8 5v14l11-7z" />
     </svg>
     <svg
-      v-else-if="status === 'running'"
+      v-else-if="isBusy"
       class="test-node-btn-spinner"
       :class="{ 'test-node-btn-spinner-indeterminate': !hasProgress }"
       viewBox="0 0 24 24" width="17" height="17"

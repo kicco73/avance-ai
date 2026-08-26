@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Callable
@@ -60,7 +61,29 @@ def content_to_text(content: Any, provider_name: str = "LLM") -> str:
 	return "\n\n".join(parts)
 
 
-class LLMProvider(ABC):
+class TokenCounter:
+	"""Thread-safe running total of tokens consumed by a provider's calls.
+	Providers are shared, process-wide instances that JobQueue's worker
+	threads (see jobs/job_queue.py) can call concurrently, so the counter
+	itself is lock-guarded rather than a plain int."""
+
+	def __init__(self) -> None:
+		self._token_lock = threading.Lock()
+		self._total_tokens = 0
+
+	def get_total_tokens(self) -> int:
+		with self._token_lock:
+			return self._total_tokens
+
+	def _add_tokens(self, count: int) -> None:
+		with self._token_lock:
+			self._total_tokens += count
+
+
+class LLMProvider(TokenCounter, ABC):
+
+	def __init__(self) -> None:
+		TokenCounter.__init__(self)
 
 	async def generate(
 		self, system_prompt: str, history: list[dict], on_retry: OnRetry | None = None
@@ -77,7 +100,17 @@ class LLMProvider(ABC):
 		raise NotImplementedError
 		yield
 
-class LLMProviderWithSchema(ABC):
+	@abstractmethod
+	def get_input_tokens(self, prompt: str) -> int:
+		"""Estimated token count `prompt` would cost as input, computed
+		each provider's own way (a real count-tokens API call, or a local
+		tokenizer estimate) — never a network call to actually generate."""
+		raise NotImplementedError
+
+class LLMProviderWithSchema(TokenCounter, ABC):
+
+	def __init__(self) -> None:
+		TokenCounter.__init__(self)
 
 	@abstractmethod
 	async def generate_stream_with_schema(
@@ -85,4 +118,10 @@ class LLMProviderWithSchema(ABC):
 	) -> AsyncIterator[str]:
 		raise NotImplementedError
 		yield
+
+	@abstractmethod
+	def get_input_tokens(self, prompt: str) -> int:
+		"""See LLMProvider.get_input_tokens — same contract, duplicated
+		here since LLMProviderWithSchema doesn't inherit LLMProvider."""
+		raise NotImplementedError
 

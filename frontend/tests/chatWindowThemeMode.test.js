@@ -71,6 +71,9 @@ describe('ChatWindow.vue themeMode="manual" end to end (not just the store refs)
 
   it('an always-mounted auto ChatWindow (App.vue) plus a manual one entering (RunChat) — Run mode opening over the live chat', async () => {
     const api = await import('../src/api.js')
+    const chatSkin = await import('../src/chatSkin.js')
+    const testChatStore = await import('../src/testChatStore.js')
+    testChatStore.setTestProject('test-proj')
     api.getCurrentSession.mockResolvedValue({ id: 1, project_name: 'live-proj', active: true, state: { key: 'live', ui_label: 'Live', actions: [] } })
     api.getCurrentTestSession.mockResolvedValue({ id: 99, project_name: 'test-proj', active: true, state: { key: 'test', ui_label: 'Test', actions: [] } })
     api.getMessages.mockResolvedValue([])
@@ -84,15 +87,16 @@ describe('ChatWindow.vue themeMode="manual" end to end (not just the store refs)
     await chatStore.loadMessages()
     await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(1))
 
-    // EditProjectView's setMode('run'): sets testModeProjectName, mounts
-    // RunChat -> ChatWindow(manual), then calls ensureDraftChatSession().
-    chatStore.testModeProjectName.value = 'test-proj'
+    // EditProjectView's setMode('run'): flips activeChatMode, mounts
+    // RunChat -> ChatWindow(manual, :store="testStore"), then calls
+    // ensureDraftChatSession().
+    chatSkin.activeChatMode.value = 'test'
     const testContainer = document.createElement('div')
     document.body.appendChild(testContainer)
-    const testApp = createApp(ChatWindow, { hideSessionsPanel: true, themeMode: 'manual' })
+    const testApp = createApp(ChatWindow, { hideSessionsPanel: true, themeMode: 'manual', store: testChatStore.testStore })
     testApp.mount(testContainer)
     await nextTick()
-    await chatStore.loadMessages()
+    await testChatStore.loadMessages()
 
     await nextTick()
     expect(currentSkinStyleTags()).toHaveLength(0)

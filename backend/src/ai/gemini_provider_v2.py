@@ -51,6 +51,7 @@ def _handle_gemini_errors() -> Generator[None, None, None]:
 
 class GeminiProvider(LLMProviderWithSchema):
 	def __init__(self, config: AIServiceConfig) -> None:
+		super().__init__()
 		self._api_key: str = config.key
 		self._base_url: str | None = config.url
 		self._model_name: str = config.model
@@ -64,6 +65,13 @@ class GeminiProvider(LLMProviderWithSchema):
 		# from different worker threads.
 		self._clients: dict[asyncio.AbstractEventLoop, genai.Client] = {}
 		self._clients_lock = threading.Lock()
+		# get_input_tokens() only ever uses the sync (non-.aio) surface,
+		# which isn't event-loop-bound the way the async transport above
+		# is — one plain client, built once, is enough.
+		self._sync_client: genai.Client = genai.Client(
+			api_key=self._api_key,
+			http_options={"base_url": self._base_url} if self._base_url else None,
+		)
 
 	def _client(self) -> genai.Client:
 		loop = asyncio.get_running_loop()
@@ -132,6 +140,7 @@ class GeminiProvider(LLMProviderWithSchema):
 
 		contents, config = self._format_history_and_config(system_prompt, history, schema or {})
 
+		total_tokens = 0
 		with _handle_gemini_errors():
 			response_stream = await self._client().aio.models.generate_content_stream(
 				model=self._model_name,
@@ -140,7 +149,16 @@ class GeminiProvider(LLMProviderWithSchema):
 			)
 
 			async for chunk in response_stream:
+				usage = chunk.usage_metadata
+				if usage is not None and usage.total_token_count is not None:
+					total_tokens = usage.total_token_count
 				if not chunk.text:
 					continue
 				yield chunk.text
+		self._add_tokens(total_tokens)
+
+	def get_input_tokens(self, prompt: str) -> int:
+		with _handle_gemini_errors():
+			response = self._sync_client.models.count_tokens(model=self._model_name, contents=prompt)
+		return response.total_tokens
 

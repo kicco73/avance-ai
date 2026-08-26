@@ -28,6 +28,7 @@ import {
   getSessionSignals,
   getSessions,
   getProjectGraph,
+  getStateInputTokens,
   postAddState,
   postAddSignal,
   postAddEnvKey,
@@ -54,11 +55,20 @@ import { confirmDialog, promptDialog, chooseDialog } from '../../../dialogStore.
 import ErrorBanner from '../../ErrorBanner.vue'
 import { refreshIdentifierRegistry } from '../../../identifierRegistry.js'
 import { buildTimeline, highlightedStateKeyFor, nearestMessageIdAtOrBefore, resultingStateKeyFor, signalValuesFor } from '../../../benchmarkTimeline.js'
+// `sessions` here is the *project's* whole session catalog (loaded by
+// ProjectTestPanel.vue, the benchmark "Test" tab, via the live store) —
+// unrelated to runSessions below, "Run" mode's own draft session pool,
+// which just happens to share the same name in testStore.
+import { sessions } from '../../../chatStore.js'
+import { activeChatMode } from '../../../chatSkin.js'
+import { setTestProject, testStore } from '../../../testChatStore.js'
+
 // Aliased: this file already uses "state" for automaton state nodes.
-// `liveState` is the live conversation's current state, highlighted as
-// "current" in the Inspector (see highlightedStateKey below).
-import {
-  state as liveState,
+// `runState` is the "Run" tab's own current conversation state,
+// highlighted as "current" in the Inspector (see highlightedStateKey
+// below) only while that tab is actually open.
+const {
+  state: runState,
   messages,
   currentSessionId,
   draft,
@@ -67,10 +77,9 @@ import {
   handleTruncateFrom,
   loadMessages,
   loadSessions,
-  testModeProjectName,
-  sessions,
+  sessions: runSessions,
   refreshSessionsQuietly
-} from '../../../chatStore.js'
+} = testStore
 
 const props = defineProps({
   projectName: {
@@ -78,6 +87,10 @@ const props = defineProps({
     required: true
   }
 })
+
+// One EditProjectView instance is always scoped to a single project for
+// its whole lifetime — the "Run" tab's own test store targets it once here.
+setTestProject(props.projectName)
 
 const emit = defineEmits(['close', 'saved'])
 
@@ -313,7 +326,7 @@ const selectedStateKey = computed(() => {
 // Run mode's own currently selected test session, from the same shared
 // list its Session Explorer (RunChat.vue) loads — read here for the
 // Inspector's SessionDetailCard, which RunChat.vue doesn't itself show.
-const runCurrentSession = computed(() => sessions.value.find((s) => s.id === currentSessionId.value) ?? null)
+const runCurrentSession = computed(() => runSessions.value.find((s) => s.id === currentSessionId.value) ?? null)
 
 // Resolved off index.yml's own already-loaded graph data (see
 // IndexYmlEditorPanel.vue's stateElementFor/actionsForState) rather than
@@ -457,9 +470,10 @@ const sessionStartState = ref(null)
 // timeline" (see selectMessage/selectTransition, both a toggle).
 const selected = ref(null)
 
-// chatStore.js's live `messages` reshaped into the common input shape
-// buildTimeline expects. The in-flight assistant placeholder has no
-// messageId yet — kept in with `id: null`, unmatched until it resolves.
+// testStore's own `messages` (the "Run" tab's draft conversation)
+// reshaped into the common input shape buildTimeline expects. The
+// in-flight assistant placeholder has no messageId yet — kept in with
+// `id: null`, unmatched until it resolves.
 const rawLiveMessages = computed(() =>
   messages.value.map((m) => ({
     id: m.messageId ?? null,
@@ -566,12 +580,13 @@ function selectTransition(transition) {
       : { kind: 'transition', transition }
 }
 
-// Falls back to the *live* current state/signals (rather than null)
-// whenever nothing is selected. "Current state" only means anything in
-// 'run' mode — 'edit' has no live conversation driving the graph, so nothing is ever "current" while editing.
+// Falls back to the Run tab's own current state/signals (rather than
+// null) whenever nothing is selected. "Current state" only means
+// anything in 'run' mode — 'edit' has no conversation driving the graph,
+// so nothing is ever "current" while editing.
 const highlightedStateKey = computed(() => {
   if (mode.value !== 'run') return null
-  return selected.value ? highlightedStateKeyFor(selected.value, timeline.value, sessionStartState.value) : (liveState.value?.key ?? null)
+  return selected.value ? highlightedStateKeyFor(selected.value, timeline.value, sessionStartState.value) : (runState.value?.key ?? null)
 })
 
 // old_state === '' (the init transition) is a real, clickable edge in
@@ -609,7 +624,7 @@ const effectiveSignalValues = computed(() =>
 )
 
 // "Restart from here": both truncate the conversation at this message's
-// timestamp (see chatStore.js's handleTruncateFrom, which rolls the live
+// timestamp (see testStore's own handleTruncateFrom, which rolls its
 // state back too), then differ in what happens to the text — preloaded, or resent as-is.
 async function restartAndPrefill(message) {
   await handleTruncateFrom(message.timestamp)
@@ -635,34 +650,55 @@ const editorOpen = computed(() => mode.value === 'edit')
 const runOpen = computed(() => mode.value === 'run')
 const testOpen = computed(() => mode.value === 'test')
 
-// Entering 'run' mode bootstraps a chat session against the draft, even
-// if a real native session is already active — loadMessages()/ensureSession()
-// resolve the correct session pool from testModeProjectName (see setMode).
-// rememberedRunSessionId (set by setMode below, right before leaving 'run')
-// carries currentSessionId across a Design/Test <-> Run switch — otherwise
-// ChatWindow's own onBeforeUnmount clears it, and re-entering 'run' with no
-// session_id would resolve to a different (if still most-recent) session
-// than the one actually left open.
-let rememberedRunSessionId = null
+// Whichever state key the "State" Inspector tab is actually showing right
+// now — stateTabElement in edit mode, autoSelectedElement's own key while
+// browsing a run (see InspectorStateTab's :selected-element binding below).
+const stateTabTokensKey = computed(() => (mode.value === 'test' ? autoSelectedStateKey.value : selectedStateKey.value))
 
+// Estimated input-token cost of that state's own turn prompt (see backend
+// ProjectInspector.get_state_input_tokens) — null while unknown/loading,
+// or when nothing is selected. Fetched on demand per state rather than
+// bundled into the Graph fetch, since it can cost a real provider call.
+const stateTabTokens = ref(null)
+let stateTabTokensRequestId = 0
+
+async function refreshStateTabTokens() {
+  const key = stateTabTokensKey.value
+  if (key == null) {
+    stateTabTokens.value = null
+    return
+  }
+  const requestId = ++stateTabTokensRequestId
+  try {
+    const { tokens } = await getStateInputTokens(props.projectName, key)
+    if (requestId === stateTabTokensRequestId) stateTabTokens.value = tokens
+  } catch {
+    // already surfaced via apiFetch
+    if (requestId === stateTabTokensRequestId) stateTabTokens.value = null
+  }
+}
+
+watch(stateTabTokensKey, refreshStateTabTokens, { immediate: true })
+
+// Entering 'run' mode bootstraps a chat session against the draft, even
+// if a real native session is already active — testStore is its own
+// independent chat (see testChatStore.js), so its currentSessionId
+// naturally survives a Design/Test <-> Run switch on its own; no
+// remember-and-restore hack needed.
 async function ensureDraftChatSession() {
-  if (rememberedRunSessionId != null) currentSessionId.value = rememberedRunSessionId
   await loadMessages()
   await loadSessions()
 }
 
-// testModeProjectName (see chatStore.js) signals every session
-// bootstrap/list/refresh function there that "Run" mode's separate
-// session pool is in effect — set while 'run' is active, cleared otherwise (and on unmount, defensively).
 function setMode(next) {
-  if (mode.value === 'run' && next !== 'run') rememberedRunSessionId = currentSessionId.value
   mode.value = next
-  testModeProjectName.value = next === 'run' ? props.projectName : null
+  // Only chatSkin.js's own skin routing reads this — see its own docstring.
+  activeChatMode.value = next === 'run' ? 'test' : 'live'
   if (next === 'run') ensureDraftChatSession()
   if (next === 'test') ensureUsersList()
 }
 
-onBeforeUnmount(() => { testModeProjectName.value = null })
+onBeforeUnmount(() => { activeChatMode.value = 'live' })
 
 // Left panel width in px, adjusted by dragging the split divider.
 const explorerWidth = ref(220)
@@ -788,6 +824,11 @@ async function refreshAfterProjectEdit() {
   if (inspecting.value) await inspectorRef.value?.refresh()
   refreshValidStateKeys()
   refreshProjectRevision()
+  // Every edit funnels through here, so this is the single choke point
+  // that keeps the selected state's "Tokens: X" estimate from going
+  // stale after a save (its cache key is content-addressed backend-side,
+  // so a changed prompt naturally recomputes rather than serving a stale hit).
+  refreshStateTabTokens()
 }
 
 // {revision, published_revision} — null while not yet loaded. A save can
@@ -1399,8 +1440,8 @@ watch(selected, () => {
   })
 })
 
-// A session switch (currentSessionId is shared, see chatStore.js's
-// selectSession) always shows *that* session's timeline from scratch.
+// A session switch (testStore's own selectSession) always shows *that*
+// session's timeline from scratch.
 watch(currentSessionId, () => {
   selected.value = null
   refreshSessionStartState()
@@ -1577,6 +1618,7 @@ onBeforeUnmount(() => {
                 :ref="registerTab('state')"
                 :project-name="projectName"
                 :selected-element="mode === 'test' ? autoSelectedElement : stateTabElement"
+                :state-tokens="stateTabTokens"
                 :selected-session="mode === 'test' ? autoSelectedSession : null"
                 :session-start-element="mode === 'test' ? autoSessionStartElement : null"
                 :session-end-element="mode === 'test' ? autoSessionEndElement : null"

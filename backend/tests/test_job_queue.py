@@ -5,9 +5,14 @@ import time
 
 import pytest
 
-from jobs import InMemoryJobSink, JobQueue
+from conftest import NullBroadcaster
+from jobs import Job, JobQueue
 
 pytestmark = pytest.mark.contract
+
+
+def _queue(max_concurrent: int = 1) -> JobQueue:
+    return JobQueue(max_concurrent=max_concurrent, broadcaster=NullBroadcaster())
 
 
 def _wait_until(predicate, timeout=2.0, interval=0.01) -> bool:
@@ -19,110 +24,118 @@ def _wait_until(predicate, timeout=2.0, interval=0.01) -> bool:
     return predicate()
 
 
+class _QuickJob(Job):
+    def __init__(self, started: threading.Event | None = None) -> None:
+        super().__init__(key="quick", username="test")
+        self._started = started
+        self._result: str | None = None
+
+    def _prepare(self) -> tuple[int, list[Job]]:
+        return 1, []
+
+    @property
+    def result(self) -> str | None:
+        return self._result
+
+    async def _run_next_step(self) -> None:
+        if self._started is not None:
+            self._started.set()
+        self._result = "done"
+
+
+class _RaisingJob(Job):
+    def __init__(self, message: str) -> None:
+        super().__init__(key="raising", username="test")
+        self._message = message
+
+    def _prepare(self) -> tuple[int, list[Job]]:
+        return 1, []
+
+    @property
+    def result(self) -> str | None:
+        return None
+
+    async def _run_next_step(self) -> None:
+        raise ValueError(self._message)
+
+
+class _BlockingJob(Job):
+    def __init__(self, started: threading.Event, release: threading.Event) -> None:
+        super().__init__(key="blocking", username="test")
+        self._started = started
+        self._release = release
+
+    def _prepare(self) -> tuple[int, list[Job]]:
+        return 1, []
+
+    @property
+    def result(self) -> str | None:
+        return None
+
+    async def _run_next_step(self) -> None:
+        self._started.set()
+        self._release.wait(timeout=2.0)
+
+
 def test_submit_returns_immediately_and_the_job_runs_to_completion():
-    sink = InMemoryJobSink()
     started = threading.Event()
+    job_queue = _queue()
+    job = _QuickJob(started)
 
-    async def work(on_progress):
-        started.set()
-        on_progress(1)
-        return None, "done"
-
-    job_queue = JobQueue(sink, max_concurrent=1)
-    job_id = job_queue.submit("some_kind", reference_id=None, total=1, work=work)
+    job_queue.submit(job)
 
     assert started.wait(timeout=2.0)
-    assert _wait_until(lambda: sink.get(job_id)["status"] == "completed")
-
-    job = sink.get(job_id)
-    assert job["result"] == "done"
-    assert job["progress_current"] == 1
-    assert job["error"] is None
+    assert _wait_until(lambda: job.is_done())
+    assert job.result == "done"
+    assert not job.is_failed()
 
 
-def test_a_raising_job_is_marked_failed_with_the_exception_message():
-    sink = InMemoryJobSink()
+def test_a_raising_job_is_marked_failed():
+    job_queue = _queue()
+    job = _RaisingJob("boom")
 
-    async def work(on_progress):
-        raise ValueError("boom")
+    job_queue.submit(job)
 
-    job_queue = JobQueue(sink, max_concurrent=1)
-    job_id = job_queue.submit("k", None, 1, work)
-
-    assert _wait_until(lambda: sink.get(job_id)["status"] == "failed")
-    assert sink.get(job_id)["error"] == "boom"
+    assert _wait_until(lambda: job.is_failed())
 
 
-def test_progress_callback_updates_the_sink_while_running():
-    sink = InMemoryJobSink()
-    saw_progress = threading.Event()
+def test_jobs_beyond_pool_size_wait_until_a_worker_frees_up():
+    started = threading.Event()
+    release = threading.Event()
+    job_queue = _queue()
+    first = _BlockingJob(started, release)
+    second = _QuickJob()
 
-    async def work(on_progress):
-        on_progress(5)
-        saw_progress.set()
-        return None, None
+    job_queue.submit(first)
+    job_queue.submit(second)
 
-    job_queue = JobQueue(sink, max_concurrent=1)
-    job_queue.submit("k", None, 10, work)
-
-    assert saw_progress.wait(timeout=2.0)
-
-
-def test_jobs_beyond_pool_size_stay_pending_until_a_worker_frees_up():
-    sink = InMemoryJobSink()
-    release_first = threading.Event()
-    first_started = threading.Event()
-
-    async def blocking_work(on_progress):
-        first_started.set()
-        # Blocking here is exactly what a real synchronous db write would
-        # do — fine on this job's own dedicated thread.
-        release_first.wait(timeout=2.0)
-        return None, None
-
-    async def quick_work(on_progress):
-        return None, None
-
-    job_queue = JobQueue(sink, max_concurrent=1)
-    first_id = job_queue.submit("k", None, 1, blocking_work)
-    second_id = job_queue.submit("k", None, 1, quick_work)
-
-    assert first_started.wait(timeout=2.0)
+    assert started.wait(timeout=2.0)
     # The pool's single worker is already busy with the first job — the
-    # second must still be queued, never rejected.
-    assert sink.get(second_id)["status"] == "pending"
+    # second must still be waiting, never rejected.
+    assert not second.is_done()
 
-    release_first.set()
+    release.set()
 
-    assert _wait_until(lambda: sink.get(second_id)["status"] == "completed")
-    assert sink.get(first_id)["status"] == "completed"
+    assert _wait_until(lambda: second.is_done())
+    assert _wait_until(lambda: first.is_done())
 
 
 def test_two_queues_never_share_worker_pools():
-    sink_a = InMemoryJobSink()
-    sink_b = InMemoryJobSink()
-    queue_a = JobQueue(sink_a, max_concurrent=1)
-    queue_b = JobQueue(sink_b, max_concurrent=1)
-
-    block = threading.Event()
     started_a = threading.Event()
+    block = threading.Event()
+    queue_a = _queue()
+    queue_b = _queue()
+    job_a = _BlockingJob(started_a, block)
+    job_b = _QuickJob()
 
-    async def blocking_work(on_progress):
-        started_a.set()
-        block.wait(timeout=2.0)
-        return None, None
-
-    async def quick_work(on_progress):
-        return None, None
-
-    job_a = queue_a.submit("k", None, 1, blocking_work)
+    queue_a.submit(job_a)
     assert started_a.wait(timeout=2.0)
 
-    job_b = queue_b.submit("k", None, 1, quick_work)
-    assert _wait_until(lambda: sink_b.get(job_b)["status"] == "completed")
+    queue_b.submit(job_b)
+    assert _wait_until(lambda: job_b.is_done())
     # queue_a's only worker is still blocked on job_a — proves job_b never
     # had to wait for it, i.e. the two pools are genuinely independent.
-    assert sink_a.get(job_a)["status"] == "running"
+    assert not job_a.is_done()
 
     block.set()
-    assert _wait_until(lambda: sink_a.get(job_a)["status"] == "completed")
+    assert _wait_until(lambda: job_a.is_done())

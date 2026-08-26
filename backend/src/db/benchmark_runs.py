@@ -19,6 +19,15 @@ class BenchmarkRunMixin:
         self, username: str | None, project_name: str, session_id: int | None, strategy: str,
         project_draft_edit_count: int, session_labeling_revision: int | None, ai_model_snapshot: dict,
     ) -> dict:
+        # A prior dead/failed attempt (no results, no live job — see
+        # BenchmarkRunCache.find) can still occupy this exact cache key;
+        # discard it first so the retry's own insert doesn't collide with
+        # it under the same unique index.
+        BenchmarkRun.delete().where(
+            (BenchmarkRun.session == session_id) & (BenchmarkRun.strategy == strategy)
+            & (BenchmarkRun.project_draft_edit_count == project_draft_edit_count)
+            & (BenchmarkRun.session_labeling_revision == session_labeling_revision)
+        ).execute()
         row = BenchmarkRun.create(
             username=username, project_name=project_name, session=session_id, strategy=strategy,
             project_draft_edit_count=project_draft_edit_count, session_labeling_revision=session_labeling_revision,

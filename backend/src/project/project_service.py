@@ -6,6 +6,8 @@ caller (chat/, tracking/, controllers/) needs to know which collaborator
 actually does the work."""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from automaton.automaton import (
     Action, ActionPayload, Automaton, EnvKeyPayload, ProjectPayload, SignalPayload, State, StatePayload,
 )
@@ -17,18 +19,22 @@ from .editor import ProjectEditor
 from .inspector import ProjectInspector
 from .manager import ProjectManager
 from .parsers import AutomatonLoader
+from .project_import_bundle_job import ProjectImportBundleJob
 from .types import CommitCallback
+
+if TYPE_CHECKING:
+    from ai.ai_service import AiService
 
 __all__ = ["ProjectService", "CommitCallback"]
 
 
 class ProjectService(object):
-    def __init__(self, db: Db) -> None:
+    def __init__(self, db: Db, ai_service: "AiService | None" = None) -> None:
         self._db = db
         session_export_manager = SessionExportManager(db)
         session_import_manager = SessionImportManager(db)
         self._automaton_loader = AutomatonLoader(db)
-        self._inspector = ProjectInspector(db, self._automaton_loader)
+        self._inspector = ProjectInspector(db, self._automaton_loader, ai_service)
         self._manager = ProjectManager(
             db, self._automaton_loader, self._inspector, session_export_manager, session_import_manager
         )
@@ -96,6 +102,9 @@ class ProjectService(object):
     def get_project_graph(self, project_name: str, session_id: int | None = None) -> dict:
         return self._inspector.get_project_graph(project_name, session_id)
 
+    def get_state_input_tokens(self, project_name: str, state_key: str, session_id: int | None = None) -> int | None:
+        return self._inspector.get_state_input_tokens(project_name, state_key, session_id)
+
     def list_projects(self) -> dict:
         return self._inspector.list_projects()
 
@@ -148,10 +157,10 @@ class ProjectService(object):
 
     async def put_project(
         self, project_name: str, content: bytes, content_type: str | None, commit: CommitCallback
-    ) -> dict:
+    ) -> tuple[dict, ProjectImportBundleJob]:
         return await self._manager.put_project(project_name, content, content_type, commit)
 
-    async def create_new_project(self, commit: CommitCallback) -> dict:
+    async def create_new_project(self, commit: CommitCallback) -> tuple[dict, ProjectImportBundleJob]:
         return await self._manager.create_new_project(commit)
 
     def export_project_zip(self, project_name: str) -> bytes:

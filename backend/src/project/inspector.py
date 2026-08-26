@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from automaton.automaton import Action, Automaton, ProjectPayload, State, StatePayload
 from automaton.identifier_registry import build_registry
 from db import Db
@@ -8,11 +10,18 @@ from tracking.tracking_engine import TrackingEngine
 
 from .parsers import AutomatonLoader
 
+if TYPE_CHECKING:
+    from ai.ai_service import AiService
+
 
 class ProjectInspector:
-    def __init__(self, db: Db, automaton_loader: AutomatonLoader) -> None:
+    def __init__(self, db: Db, automaton_loader: AutomatonLoader, ai_service: "AiService | None" = None) -> None:
         self._db = db
         self._automaton_loader = automaton_loader
+        # Optional: only needed for get_project_graph's per-state input-
+        # token estimate — every other method here works without it, so
+        # tests that don't care about that estimate can omit it.
+        self._ai_service = ai_service
 
     def _resolve_state(
         self, project_name: str, automaton: Automaton, *, session_id: int | None = None, type: str | None = None,
@@ -228,6 +237,27 @@ class ProjectInspector:
         automaton, excluding the reserved "" pseudo-state."""
         automaton = self._automaton_loader.load(project_name)
         return [state.key for state in automaton.states.values() if state.key != ""]
+
+    def get_state_input_tokens(self, project_name: str, state_key: str, session_id: int | None = None) -> int | None:
+        """Estimated input-token cost of `state_key`'s own turn prompt
+        (see tracking_processor.estimate_state_prompt), for the Inspect
+        panel's detail card — deliberately its own call, fetched on demand
+        for whichever single state is open, rather than folded into
+        get_project_graph: that would cost one estimate call per state on
+        every graph load. None when no AiService was wired in."""
+        if self._ai_service is None:
+            return None
+        revision = self._resolve_inspector_revision(project_name, session_id)
+        automaton = self._automaton_loader.load_at_revision(project_name, revision)
+        if state_key not in automaton.states:
+            raise ValueError(f"Project '{project_name}' has no state '{state_key}'.")
+        state = automaton.get_state(state_key)
+        # Deferred: tracking.tracking_processor imports tracking.definitions,
+        # which imports project.project_service, which imports this very
+        # module — a top-level import here would be circular.
+        from tracking.tracking_processor import estimate_state_prompt
+        prompt = estimate_state_prompt(self._ai_service, automaton, state)
+        return self._ai_service.get_input_tokens(prompt)
 
     def get_project_graph(self, project_name: str, session_id: int | None = None) -> dict:
         """The project's state machine as nodes (states) and edges

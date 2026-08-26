@@ -14,6 +14,8 @@ from fastapi import HTTPException, Request, Response
 
 from chat.chat_service import ChatService
 from db import Db
+from jobs import JobQueue, stream_job_progress
+from metrics.queue_progress_broadcaster import QueueProgressBroadcaster
 from project.project_service import ProjectService
 
 from .base_controller import BaseController, delete, get, post, put
@@ -25,11 +27,16 @@ APP_NAME = "Avance"
 
 class SettingsController(BaseController, ProjectCommitMixin):
 
-    def __init__(self, chat_service: ChatService, project_service: ProjectService, db: Db, version: str) -> None:
+    def __init__(
+        self, chat_service: ChatService, project_service: ProjectService, db: Db, version: str,
+        test_event_broadcaster: QueueProgressBroadcaster, job_queue: JobQueue,
+    ) -> None:
         self.chat_service = chat_service
         self.project_service = project_service
         self.db = db
         self.version = version
+        self.test_event_broadcaster = test_event_broadcaster
+        self.job_queue = job_queue
 
     @get("/api/settings/about", role="supervisor")
     def get_about(self):
@@ -103,8 +110,12 @@ class SettingsController(BaseController, ProjectCommitMixin):
     async def post_new_project(self):
         """"New project" — same effect as PUT /api/projects/{project_name}
         with backend/samples/Hello world.zip as the body, minus picking a
-        name first (see ProjectService.create_new_project)."""
-        return await self.project_service.create_new_project(self._activate_project)
+        name first (see ProjectService.create_new_project). The built-in
+        template bundles no sessions/benchmark results, so there's nothing
+        for the returned job to do — no progress worth reporting, plain
+        JSON response, unlike a real upload."""
+        result, _job = await self.project_service.create_new_project(self._activate_project)
+        return result
 
     @put("/api/projects/{project_name}/activate")
     async def activate_project(self, project_name: str):
@@ -139,15 +150,20 @@ class SettingsController(BaseController, ProjectCommitMixin):
     async def put_project(self, project_name: str, request: Request):
         """Creates or replaces `project_name` from a raw body (YAML or zip, see
         ProjectService._looks_like_zip). Stage -> validate -> only on success
-        commit, swap, and wipe `project_name`'s prior conversation data."""
+        commit, swap, and wipe `project_name`'s prior conversation data. The
+        project definition itself is staged and committed synchronously
+        (fast, and needs the main event loop's chat lock); this same
+        response then streams SSE progress for a background Job importing
+        whatever sessions.json/benchmark.json the upload bundled, ending
+        with a chunk carrying the final {success, project_name}."""
         content = await request.body()
         content_type = request.headers.get("content-type")
 
         try:
-            result = await self.project_service.put_project(project_name, content, content_type, self._activate_project)
+            _, job = await self.project_service.put_project(project_name, content, content_type, self._activate_project)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
-        return result
+        return stream_job_progress(self.job_queue, self.test_event_broadcaster, job)
 
     @delete("/api/projects/{project_name}", role="admin")
     async def delete_project(self, project_name: str):

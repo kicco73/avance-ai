@@ -1,11 +1,9 @@
-from .job_queue import JobQueue, JobWork, OnProgress
-from .job_sink import InMemoryJobSink, JobSink, PersistedJobSink
+from .job import Job
+from .job_queue import JobQueue
+from .sse import stream_job_progress
 
 __all__ = [
-    "InMemoryJobSink",
+    "Job",
     "JobQueue",
-    "JobSink",
-    "JobWork",
-    "OnProgress",
-    "PersistedJobSink",
+    "stream_job_progress",
 ]

@@ -4,7 +4,7 @@ signal_source.get_turn_data(message_id, current_state)."""
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Callable, Protocol
+from typing import Protocol
 
 from automaton.automaton import Automaton
 from db import Db
@@ -28,10 +28,14 @@ def _parse_utc(iso_timestamp: str | None) -> datetime | None:
     return datetime.fromisoformat(iso_timestamp).replace(tzinfo=None)
 
 
-class BenchmarkProcessor:
+class BenchmarkProcessor(object):
     """Extends (tracking_engine, env, metrics, signal_source, sink) with
     `db`/`automaton`, needed to walk session messages and evaluate/apply
-    against the automaton, and `session_facts` for replay/transition instants."""
+    against the automaton, and `session_facts` for replay/transition
+    instants. One instance replays exactly one session, one message at a
+    time: prepare() sets up the session and hands back its message ids,
+    process_message() advances by exactly one — the caller (BenchmarkReplayJob)
+    owns the loop, so it can yield to other jobs between messages."""
 
     def __init__(
         self,
@@ -52,50 +56,50 @@ class BenchmarkProcessor:
         self._metrics = metrics
         self._signal_source = signal_source
         self._sink = sink
+        self._current_state: str | None = None
+        self._ordered_ids: list[int] = []
+        self._by_id: dict[int, dict] = {}
 
-    async def run_session(self, session_id: int, run: dict, report_progress: Callable[[], None]) -> str | None:
+    def prepare(self, session_id: int) -> tuple[list[int], str | None]:
         session = self._db.get_chat_session(session_id)
         if session is None:
-            return f"session {session_id}: not found, skipped"
+            return [], f"session {session_id}: not found, skipped"
 
         current_state = self._determine_starting_state(session_id, session)
         if current_state is None:
-            return f"session {session_id}: no known starting state, skipped"
+            return [], f"session {session_id}: no known starting state, skipped"
 
         messages = self._db.get_messages(session_id)
-        by_id = {m['id']: m for m in messages}
-        ordered_ids = sorted(by_id.keys())
-        user_message_ids = [mid for mid in ordered_ids if by_id[mid]['role'] == 'user']
+        self._by_id = {m['id']: m for m in messages}
+        self._ordered_ids = sorted(self._by_id.keys())
+        self._current_state = current_state
+        return [mid for mid in self._ordered_ids if self._by_id[mid]['role'] == 'user'], None
 
-        for message_id in user_message_ids:
-            real_timestamp = _parse_utc(by_id[message_id]['timestamp'])
-            self._session_facts.set_replay_instant(real_timestamp)
-            self._metrics.advance_to(message_id, real_timestamp)
+    async def process_message(self, session_id: int, message_id: int) -> None:
+        real_timestamp = _parse_utc(self._by_id[message_id]['timestamp'])
+        self._session_facts.set_replay_instant(real_timestamp)
+        self._metrics.advance_to(message_id, real_timestamp)
 
-            signal_values, stored_env = await self._signal_source.get_turn_data(message_id, current_state)
-            self._env.update(stored_env)
+        signal_values, stored_env = await self._signal_source.get_turn_data(message_id, self._current_state)
+        self._env.update(stored_env)
 
-            state = self._automaton.get_state(current_state)
-            action = self._tracking_engine.evaluate_triggered_action(self._automaton, state, signal_values)
+        state = self._automaton.get_state(self._current_state)
+        action = self._tracking_engine.evaluate_triggered_action(self._automaton, state, signal_values)
 
-            if action is not None:
-                self._session_facts.set_last_transition_instant(real_timestamp)
+        if action is not None:
+            self._session_facts.set_last_transition_instant(real_timestamp)
 
-            observation_message_id = (
-                self._next_assistant_message_id(ordered_ids, by_id, message_id)
-                if self._automaton.autotracking_on_ai_message else message_id
-            )
-            self._tracking_engine.apply_transition(
-                self._automaton, state, action, signal_values, session_id,
-                message_id=observation_message_id,
-            )
+        observation_message_id = (
+            self._next_assistant_message_id(self._ordered_ids, self._by_id, message_id)
+            if self._automaton.autotracking_on_ai_message else message_id
+        )
+        self._tracking_engine.apply_transition(
+            self._automaton, state, action, signal_values, session_id,
+            message_id=observation_message_id,
+        )
 
-            if action is not None:
-                current_state = action.target
-
-            report_progress()
-
-        return None
+        if action is not None:
+            self._current_state = action.target
 
     def _determine_starting_state(self, session_id: int, session: dict) -> str | None:
         for row in self._db.get_signals(session_id):

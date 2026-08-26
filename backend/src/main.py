@@ -21,9 +21,10 @@ from config import AppConfig
 from controller import AvanceController
 from db import Db
 from error_handlers import register_error_handlers
-from jobs import InMemoryJobSink, JobQueue, PersistedJobSink
+from jobs import JobQueue
 from metrics.benchmark_run_service import BenchmarkRunService
 from metrics.metric_service import MetricService
+from metrics.queue_progress_broadcaster import QueueProgressBroadcaster
 from project.project_service import ProjectService
 from ai.ai_service import AiService
 from session import Session
@@ -32,26 +33,41 @@ from tracking.wakeup_service import WakeupService
 from talk.talk_service import TalkService
 from listen.listen_service import ListenService
 
-__version__ = "1.10.1"
+__version__ = "1.11.0"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-DEFAULT_SEED_PROJECT_ZIP = Path(__file__).resolve().parents[1] / "samples" / "projects" / "Lluna.zip"
-DEFAULT_SEED_PROJECT_NAME = "Drogodependencia"
 
-
-async def _seed_default_project_if_empty(db: Db, project_service: ProjectService, controller: AvanceController) -> None:
+async def _seed_default_project_if_empty(
+    db: Db, project_service: ProjectService, controller: AvanceController,
+    job_queue: JobQueue, broadcaster: QueueProgressBroadcaster,
+) -> None:
     if db.list_projects():
         return
+
+    DEFAULT_SEED_PROJECT_ZIP = Path(__file__).resolve().parents[1] / "samples" / "projects" / "Lluna.zip"
+    DEFAULT_SEED_PROJECT_NAME = "Lluna"
+
     Session().user = "system"
     Session().role = "supervisor"
     content = DEFAULT_SEED_PROJECT_ZIP.read_bytes()
-    await project_service.put_project(
+    _, job = await project_service.put_project(
         DEFAULT_SEED_PROJECT_NAME, content, "application/zip", controller.settings._activate_project,
     )
+    # Lluna.zip bundles a real sessions.json (unlike create_new_project's
+    # "Hello world" template) — the returned job has real work to do, so
+    # it must actually run through the real queue, not be dropped.
+    connection = broadcaster.connect(job.username)
+    job_queue.submit(job)
+    try:
+        while True:
+            message = await connection.get()
+            if message["status"] in ("completed", "failed"):
+                break
+    finally:
+        broadcaster.disconnect(job.username, connection)
     project_service.publish_project(DEFAULT_SEED_PROJECT_NAME)
-
 
 def _build_fallback_app(error: Exception) -> FastAPI:
     """Used only when essential startup wiring fails: every request gets
@@ -101,13 +117,10 @@ def create_app() -> FastAPI:
         auth_service = AuthService(db, config.auth_providers, config.auth_token_ttl_in_hours)
         app.state.auth_service = auth_service
 
-        # Two independent worker pools, never shared — see jobs/job_queue.py's
-        # JobQueue for why a job must never wait on another job from its own
-        # queue.
-        persisted_job_queue = JobQueue(PersistedJobSink(db), max_concurrent=config.jobs_max_concurrent_persisted)
-        ephemeral_job_queue = JobQueue(InMemoryJobSink(), max_concurrent=config.jobs_max_concurrent_ephemeral)
+        test_event_broadcaster = QueueProgressBroadcaster(ai_service)
+        job_queue = JobQueue(max_concurrent=config.jobs_max_concurrent, broadcaster=test_event_broadcaster)
 
-        project_service = ProjectService(db)
+        project_service = ProjectService(db, ai_service)
         session_manager = ChatSessionManager(db, open_window_minutes=config.max_session_duration_in_minutes)
         
         # A leaf service (see metrics/metric_service.py's own module
@@ -123,14 +136,14 @@ def create_app() -> FastAPI:
         # ChatService depend on ai_service/metric_service directly, never each other.
         tracking_service = TrackingService(db, ai_service, project_service, metric_service, talk_enabled=talk_service is not None)
         chat_service = ChatService(
-            db, ai_service, project_service, session_manager, tracking_service, metric_service, persisted_job_queue,
+            db, ai_service, project_service, session_manager, tracking_service, metric_service, job_queue,
         )
 
-        # Shares persisted_job_queue/ephemeral_job_queue with anything else
-        # that submits a job of either kind (see jobs/job_queue.py's own
-        # module docstring) — never its own private queue.
+        # Shares job_queue with anything else that submits a job (see
+        # jobs/job_queue.py's own module docstring) — never its own
+        # private queue.
         benchmark_run_service = BenchmarkRunService(
-            db, ai_service, tracking_service, persisted_job_queue, ephemeral_job_queue,
+            db, ai_service, tracking_service, job_queue,
         )
 
         # Availability cascade (see ProjectService.recompute_availability/
@@ -144,15 +157,15 @@ def create_app() -> FastAPI:
         # subscribes once for the process lifetime. Built after
         # chat_ws_adapter: a self-loop wake-up needs it to push the
         # transition to an already-open connection.
-        WakeupService(db, project_service, ephemeral_job_queue, chat_ws_adapter).register()
+        WakeupService(db, project_service, job_queue, chat_ws_adapter).register()
 
         controller = AvanceController(
             chat_service, project_service, talk_service, listen_service, db, tracking_service, benchmark_run_service,
-            auth_service, __version__,
+            auth_service, test_event_broadcaster, job_queue, __version__,
         )
         app.include_router(controller.router)
 
-        await _seed_default_project_if_empty(db, project_service, controller)
+        await _seed_default_project_if_empty(db, project_service, controller, job_queue, test_event_broadcaster)
 
         if chat_ws_adapter is not None:
             adapter = chat_ws_adapter

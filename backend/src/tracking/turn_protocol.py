@@ -42,11 +42,19 @@ class TurnProtocol(ABC):
 		"""Returns chunks of text coming from the response streaming and
 		calls metadata callback to handle tags in a compatible way for V1 and V2.
 		"""
-		final_prompt = self.__build_prompt(
+		final_prompt = self.build_final_prompt(base_prompt, signal_definition, env, reaction_definition)
+		return self._generate_reply(final_prompt, chat_history, on_metadata)
+
+	def build_final_prompt(
+		self, base_prompt: str, signal_definition: str | None, env: Env, reaction_definition: str | None = None,
+	) -> str:
+		"""The exact system_prompt generate_reply() sends to the AI — split
+		out so a caller that only wants the rendered text (e.g. a token
+		estimate) doesn't have to trigger a real generation call to get it."""
+		return self.__build_prompt(
 			text=base_prompt, env=env.serialise_as_text(), signals=signal_definition,
 			reaction=reaction_definition, audio=None,
 		)
-		return self._generate_reply(final_prompt, chat_history, on_metadata)
 
 	@abstractmethod
 	def _generate_reply(self, prompt: str, chat_history: list[dict], on_metadata: MetadataCallback,) -> AsyncIterator[str]:
