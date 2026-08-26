@@ -248,7 +248,7 @@ function bootSucceeded() {
   // mounted) or supervisor (Label sessions, their whole app) shouldn't
   // spin up a live session nobody's about to see. ChatWindow.vue only
   // mounts for them at all once they actually push into it (see
-  // handleManageProjectsChat -> handleProjectSwitch -> refreshStateAndProjects).
+  // handleManageProjectsChat -> handleProjectSwitch's own loadMessages()).
   if (currentUserRole.value === 'user') {
     loadMessages()
   }
@@ -405,17 +405,11 @@ function triggerModelUpload() {
 // GET /api/state call (none of putModel/activateModel/deleteModel's
 // responses carry the state payload itself), same as handleReset picks up
 // the opening message via REST, regardless of chat transport.
-// `skipMessages`: EditProjectView.vue's own two callers (entering and
-// publishing-while-still-inside it) pass this — Edit is admin-only, and
-// ChatWindow.vue only mounts for an admin once actually pushed into, so
-// loadMessages() here would only ever create a live session nobody's
-// about to see.
-async function refreshStateAndProjects({ skipMessages = false } = {}) {
+async function refreshStateAndProjects() {
   const newState = await getState()
   chatWindowRef.value?.refreshProjectsMenu()
   manageProjectsView.value?.refresh()
   handleStateChange(newState)
-  if (!skipMessages) await loadMessages()
 }
 
 // "New project": same server-side effect as picking samples/Hello
@@ -479,7 +473,7 @@ async function handleModelEdit(projectName) {
   clearChatUi()
   try {
     await activateProject(projectName)
-    await refreshStateAndProjects({ skipMessages: true })
+    await refreshStateAndProjects()
   } catch {
     // already surfaced via apiFetch
   }
@@ -536,7 +530,7 @@ async function handleSettingsEditProjects() {
 async function handleModelEditSaved() {
   clearChatUi()
   try {
-    await refreshStateAndProjects({ skipMessages: true })
+    await refreshStateAndProjects()
   } catch {
     // already surfaced via apiFetch
   }
@@ -550,6 +544,7 @@ async function handleProjectSwitch(projectName) {
   try {
     await activateProject(projectName)
     await refreshStateAndProjects()
+    await loadMessages()
   } catch {
     // already surfaced via apiFetch
   }
