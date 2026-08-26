@@ -90,7 +90,9 @@ function popPushedView() {
 // stays a single source of truth.
 function flipDurationMs() {
   const raw = getComputedStyle(document.querySelector('.app-body')).getPropertyValue('--flip-duration').trim()
-  return parseFloat(raw) || 500
+  const value = parseFloat(raw)
+  if (!value) return 500
+  return raw.endsWith('ms') ? value : value * 1000
 }
 
 function afterTransform(el, done) {
