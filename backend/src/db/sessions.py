@@ -7,7 +7,7 @@ from peewee import fn
 
 from tracking.errors import TrackingServiceError
 
-from .models import ChatSession, Message, Project, Tracking
+from .models import ChatSession, Message, Project, Tracking, User
 
 # Same default as chat.session_manager.DEFAULT_OPEN_WINDOW_MINUTES, kept
 # here too (same reasoning as that module's own docstring) so this layer
@@ -39,8 +39,13 @@ class SessionMixin:
             raise ValueError(f"Project '{project_name}' does not exist.")
         if title is None:
             title = f"{type.capitalize()} session {self.count_chat_sessions(username, type) + 1}"
+        # `username` may be a real registered account's email or an
+        # imported transcript's synthetic identity (see
+        # next_test_user_username below) — user stays null for the
+        # latter, since there's no User row to point at.
+        user = User.get_or_none(User.id == username)
         session = ChatSession.create(
-            username=username, project_name=project_name, type=type, title=title,
+            username=username, user=user, project_name=project_name, type=type, title=title,
             project_revision=revision,
             datetime_start=datetime_start, datetime_end=datetime_end,
             start_state=start_state, end_state=end_state,
@@ -90,6 +95,23 @@ class SessionMixin:
             query = query.where(ChatSession.datetime_start <= until)
         query = self._filter_by_type(query, type)
         session = query.order_by(ChatSession.datetime_start.desc(), ChatSession.id.desc()).first()
+        return self._chat_session_to_dict(session) if session is not None else None
+
+    def get_previous_chat_session(
+        self, username: str, project_name: str, before_session_id: int,
+        type: str | tuple[str, ...] | None='live',
+    ) -> dict | None:
+        """The session immediately before `before_session_id` in this
+        (username, project_name)'s own history, ordered by id — unlike
+        get_latest_chat_session, the answer never changes on a later call
+        against the same still-current session. ChatService's own
+        legal/terms.md re-notice check relies on exactly that stability."""
+        query = ChatSession.select().where(
+            (ChatSession.project_name == project_name) & (ChatSession.username == username)
+            & (ChatSession.id < before_session_id)
+        )
+        query = self._filter_by_type(query, type)
+        session = query.order_by(ChatSession.id.desc()).first()
         return self._chat_session_to_dict(session) if session is not None else None
 
     def list_chat_sessions(
@@ -150,15 +172,20 @@ class SessionMixin:
         Message.delete().where(Message.session == session_id).execute()
         ChatSession.delete().where(ChatSession.id == session_id).execute()
 
-    def reassign_sessions_to_test_user(self, session_ids: list[int], test_user_seq: int) -> None:
+    def reassign_sessions_to_username(self, session_ids: list[int], username: str) -> None:
+        """The "Label sessions" view's drag-and-drop between branches —
+        moves each of `session_ids` under `username` instead, whether
+        that's a "Test user N" branch or any other imported username.
+        Imported only: a live session's username is its owner's real,
+        authenticated identity, never just a display label to relabel freely."""
         sessions = list(ChatSession.select().where(ChatSession.id.in_(session_ids)))
         for session in sessions:
-            if not session.username.startswith('Test user '):
+            if session.type != 'imported':
                 raise TrackingServiceError(
-                    f"Session {session.id} belongs to a real user and can't be moved to a test user.",
+                    f"Session {session.id} is a live session and can't be reassigned.",
                     status_code=HTTPStatus.CONFLICT,
                 )
-        ChatSession.update(username=f'Test user {test_user_seq}').where(ChatSession.id.in_(session_ids)).execute()
+        ChatSession.update(username=username).where(ChatSession.id.in_(session_ids)).execute()
 
     def delete_sessions_by_username_and_project(self, username: str, project_name: str) -> None:
         """The "Label sessions" view's per-branch × button, for any

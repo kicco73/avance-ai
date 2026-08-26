@@ -62,41 +62,41 @@ def test_restore_backup_rejects_a_completely_unrelated_schema(file_db, tmp_path)
 
 @pytest.mark.regression
 def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
-    """Same five tables, but 'message' is missing its session_id column —
+    """Same five tables, but 'Message' is missing its session_id column —
     the exact same-tables-wrong-columns case a naive "tables only" check
     would miss."""
     ddl = [
-        "CREATE TABLE project (name TEXT PRIMARY KEY, revision INTEGER, published_revision INTEGER, "
+        "CREATE TABLE Project (name TEXT PRIMARY KEY, revision INTEGER, published_revision INTEGER, "
         "is_paused INTEGER, paused_reason TEXT, manually_paused INTEGER, project_id TEXT, "
         "ui_label TEXT, ui_description TEXT, draft_edit_count INTEGER)",
-        "CREATE TABLE chatsession (id INTEGER PRIMARY KEY, username TEXT, project_name TEXT, type TEXT, "
-        "title TEXT, project_revision INTEGER, datetime_start TEXT, datetime_end TEXT, start_state TEXT, "
-        "end_state TEXT, labeled INTEGER, comment TEXT, labeling_revision INTEGER)",
-        "CREATE TABLE message (id INTEGER PRIMARY KEY, role TEXT, content TEXT, timestamp TEXT, audio_text TEXT)",
-        "CREATE TABLE user (id TEXT PRIMARY KEY, provider TEXT, provider_user_id TEXT, email TEXT, "
-        "name TEXT, picture_url TEXT, created_at TEXT, last_login TEXT, active_project TEXT)",
-        "CREATE TABLE tracking (id INTEGER PRIMARY KEY, session_id INTEGER, timestamp TEXT, "
+        "CREATE TABLE ChatSession (id INTEGER PRIMARY KEY, username TEXT, user_id TEXT, project_name TEXT, "
+        "type TEXT, title TEXT, project_revision INTEGER, datetime_start TEXT, datetime_end TEXT, "
+        "start_state TEXT, end_state TEXT, labeled INTEGER, comment TEXT, labeling_revision INTEGER)",
+        "CREATE TABLE Message (id INTEGER PRIMARY KEY, role TEXT, content TEXT, timestamp TEXT, audio_text TEXT)",
+        "CREATE TABLE User (id TEXT PRIMARY KEY, provider TEXT, provider_user_id TEXT, email TEXT, "
+        "name TEXT, picture_url TEXT, created_at TEXT, last_login TEXT, active_project_id TEXT, role TEXT)",
+        "CREATE TABLE Tracking (id INTEGER PRIMARY KEY, session_id INTEGER, timestamp TEXT, "
         "\"values\" TEXT, old_state TEXT, action TEXT, new_state TEXT, env TEXT)",
-        "CREATE TABLE archive (project_name TEXT, archive_name TEXT, revision INTEGER, content BLOB)",
-        "CREATE TABLE history (id INTEGER PRIMARY KEY, user_id TEXT, project_name TEXT, "
+        "CREATE TABLE Archive (project_name TEXT, archive_name TEXT, revision INTEGER, content BLOB)",
+        "CREATE TABLE EditHistory (id INTEGER PRIMARY KEY, user_id TEXT, project_name TEXT, "
         "archive_name TEXT, kind TEXT, seq INTEGER, content TEXT)",
-        "CREATE TABLE stateremap (project_name TEXT, old_key TEXT, new_key TEXT)",
-        "CREATE TABLE benchmarkrun (id INTEGER PRIMARY KEY, username TEXT, project_name TEXT, session_id INTEGER, "
-        "strategy TEXT, project_draft_edit_count INTEGER, session_labeling_revision INTEGER, "
+        "CREATE TABLE StateRemap (project_name TEXT, old_key TEXT, new_key TEXT)",
+        "CREATE TABLE BenchmarkRun (id INTEGER PRIMARY KEY, username TEXT, user_id TEXT, project_name TEXT, "
+        "session_id INTEGER, strategy TEXT, project_draft_edit_count INTEGER, session_labeling_revision INTEGER, "
         "batch_segments INTEGER, ai_model_snapshot TEXT, results TEXT)",
-        "CREATE TABLE benchmarkrunobservation (id INTEGER PRIMARY KEY, run_id INTEGER, session_id INTEGER, "
+        "CREATE TABLE BenchmarkRunObservation (id INTEGER PRIMARY KEY, run_id INTEGER, session_id INTEGER, "
         "message_id INTEGER, timestamp TEXT, \"values\" TEXT, old_state TEXT, action TEXT, new_state TEXT)",
-        "CREATE TABLE benchmarkaggregateresult (id INTEGER PRIMARY KEY, project_name TEXT, revision INTEGER, "
+        "CREATE TABLE BenchmarkAggregateResult (id INTEGER PRIMARY KEY, project_name TEXT, revision INTEGER, "
         "project_draft_edit_count INTEGER, kind TEXT, target TEXT, strategy TEXT, results TEXT, created_at TEXT)",
-        "CREATE TABLE sessionsummary (id INTEGER PRIMARY KEY, session_id INTEGER, content TEXT)",
-        "CREATE TABLE systemwarning (id INTEGER PRIMARY KEY, username TEXT, project_name TEXT, kind TEXT, "
+        "CREATE TABLE SessionSummary (id INTEGER PRIMARY KEY, session_id INTEGER, content TEXT)",
+        "CREATE TABLE SystemWarning (id INTEGER PRIMARY KEY, user_id TEXT, project_name TEXT, kind TEXT, "
         "message TEXT, timestamp TEXT)",
-        "CREATE TABLE projectobserverindex (id INTEGER PRIMARY KEY, project_name TEXT, observer_project_name TEXT)",
-        "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)",
+        "CREATE TABLE ProjectObserverIndex (id INTEGER PRIMARY KEY, project_name TEXT, observer_project_name TEXT)",
+        "CREATE TABLE Settings (key TEXT PRIMARY KEY, value TEXT)",
     ]
     wrong = _make_sqlite_bytes(tmp_path, "wrong_columns.db", ddl)
 
-    with pytest.raises(ValueError, match="message"):
+    with pytest.raises(ValueError, match="Message"):
         file_db.restore_backup(wrong)
 
     assert file_db.export_backup().startswith(b"SQLite format 3\x00")

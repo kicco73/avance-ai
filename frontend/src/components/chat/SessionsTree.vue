@@ -51,6 +51,19 @@ function onImportFileChosen(event) {
 
 const hasImportedSessions = computed(() => props.sessions.some((s) => s.type === 'imported'))
 
+// Live | Imported — the tree only ever shows one type at a time. Delete
+// (imported-only, destructive) is hidden on Live; Download all narrows to
+// whichever type is active (see the 'download-all' emit below).
+const activeTab = ref('live')
+const filteredSessions = computed(() => props.sessions.filter((s) => s.type === activeTab.value))
+
+// Drag-and-drop reassignment (see onSessionDragStart/isValidDropTarget
+// below) is imported-only backend-side (a live session's username is its
+// owner's real identity, not just a label) — every branch/session shown
+// here is already narrowed to activeTab's own type, so this alone is
+// enough to gate it for all of them, not just "Test user N" branches.
+const canDragAndDrop = computed(() => activeTab.value === 'imported')
+
 function formatSessionTimestamp(iso) {
   if (!iso) return 'Timeline not available'
   const date = new Date(iso)
@@ -65,7 +78,7 @@ function displayNameFor(username) {
 
 const branchOrder = ref([])
 watch(
-  () => props.sessions,
+  filteredSessions,
   (list) => {
     const current = new Set(list.map((s) => s.username))
     const next = branchOrder.value.filter((username) => current.has(username))
@@ -79,7 +92,7 @@ watch(
 
 const usersByUsername = computed(() => {
   const map = new Map()
-  for (const session of props.sessions) {
+  for (const session of filteredSessions.value) {
     if (!map.has(session.username)) map.set(session.username, [])
     map.get(session.username).push(session)
   }
@@ -105,7 +118,7 @@ const selectedSessionIds = ref(new Set())
 const selectionAnchor = ref(null)
 
 function onSessionRowClick(session, user, event) {
-  if (!isTestUserBranch(user.username)) {
+  if (!canDragAndDrop.value) {
     emit('select', `session:${session.id}`)
     return
   }
@@ -166,7 +179,7 @@ function onSessionDragEnd() {
 }
 
 function isValidDropTarget(username) {
-  return isTestUserBranch(username) && username !== draggingFromUsername.value
+  return canDragAndDrop.value && username !== draggingFromUsername.value
 }
 
 function onBranchDragEnter(user, event) {
@@ -200,7 +213,7 @@ function onBranchDrop(user, event) {
     return
   }
   if (!payload?.sessionIds?.length || payload.fromUsername === user.username) return
-  emit('move-sessions', { sessionIds: payload.sessionIds, testUserSeq: testUserSeqOf(user.username) })
+  emit('move-sessions', { sessionIds: payload.sessionIds, username: user.username })
   selectedSessionIds.value = new Set()
 }
 
@@ -223,7 +236,14 @@ watch(
     if (nodeId.startsWith('user:')) username = nodeId.slice('user:'.length)
     else if (nodeId.startsWith('session:')) {
       const id = Number(nodeId.slice('session:'.length))
-      username = props.sessions.find((s) => s.id === id)?.username ?? null
+      const session = props.sessions.find((s) => s.id === id)
+      username = session?.username ?? null
+      // Keeps the Live/Imported tab in sync with whatever's actually
+      // selected — without this, a selection driven from outside (the
+      // central panel/Inspector, or the initial one on mount) can land on
+      // a session that's simply invisible under whichever tab activeTab
+      // defaulted to, looking like the explorer fell out of sync.
+      if (session) activeTab.value = session.type
     }
     if (username != null && !expanded.value.has(username)) {
       const next = new Set(expanded.value)
@@ -248,20 +268,6 @@ const {
     <div style="display: flex">
       <div v-if="!collapsed && (allowImport || allowDeleteAllImported)" class="sessions-tree-header-actions">
         <button
-          v-if="allowDeleteAllImported"
-          type="button"
-          class="sessions-tree-icon-btn sessions-tree-icon-btn-danger"
-          :class="{ 'sessions-tree-icon-btn-busy': deletingAllImported }"
-          :disabled="!hasImportedSessions || deletingAllImported"
-          :title="deletingAllImported ? 'Deleting…' : 'Delete all imported sessions'"
-          @click="emit('delete-all-imported')"
-        >
-          <svg v-if="!deletingAllImported" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-            <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm-3 6h12l-1 12H7L6 9zm3 2v8h2v-8H9zm4 0v8h2v-8h-2z" />
-          </svg>
-          <ProgressSpinner v-else />
-        </button>
-        <button
           v-if="allowImport"
           type="button"
           class="sessions-tree-icon-btn"
@@ -276,6 +282,20 @@ const {
           <ProgressSpinner v-else :progress="importProgress" />
         </button>
         <input v-if="allowImport" ref="importInput" type="file" accept=".txt,text/plain,.json,application/json" multiple class="sessions-tree-import-input" @change="onImportFileChosen" />
+        <button
+          v-if="allowDeleteAllImported && activeTab === 'imported'"
+          type="button"
+          class="sessions-tree-icon-btn sessions-tree-icon-btn-danger"
+          :class="{ 'sessions-tree-icon-btn-busy': deletingAllImported }"
+          :disabled="!hasImportedSessions || deletingAllImported"
+          :title="deletingAllImported ? 'Deleting…' : 'Delete all imported sessions'"
+          @click="emit('delete-all-imported')"
+        >
+          <svg v-if="!deletingAllImported" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+            <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm-3 6h12l-1 12H7L6 9zm3 2v8h2v-8H9zm4 0v8h2v-8h-2z" />
+          </svg>
+          <ProgressSpinner v-else />
+        </button>
       </div>
       <button
         v-if="!hideCollapseToggle"
@@ -287,6 +307,21 @@ const {
   </div>
 
   <template v-if="!collapsed">
+    <div class="sessions-tree-tabs">
+      <button
+        type="button"
+        class="sessions-tree-tab"
+        :class="{ 'sessions-tree-tab-active': activeTab === 'live' }"
+        @click="activeTab = 'live'"
+      >Live</button>
+      <button
+        type="button"
+        class="sessions-tree-tab"
+        :class="{ 'sessions-tree-tab-active': activeTab === 'imported' }"
+        @click="activeTab = 'imported'"
+      >Imported</button>
+    </div>
+
     <p v-if="loading" class="sessions-tree-status">Loading…</p>
     <p v-else-if="!usersByUsername.length" class="sessions-tree-status">No sessions yet.</p>
 
@@ -334,9 +369,9 @@ const {
                 class="sessions-tree-session-item"
                 :class="{
                   'sessions-tree-session-item-active': selectedNodeId === `session:${session.id}`,
-                  'sessions-tree-session-item-selected': isTestUserBranch(user.username) && selectedSessionIds.has(session.id)
+                  'sessions-tree-session-item-selected': canDragAndDrop && selectedSessionIds.has(session.id)
                 }"
-                :draggable="isTestUserBranch(user.username)"
+                :draggable="canDragAndDrop"
                 @click="onSessionRowClick(session, user, $event)"
                 @dragstart="onSessionDragStart(session, user, $event)"
                 @dragend="onSessionDragEnd"
@@ -359,7 +394,7 @@ const {
                   </span>
                   <span class="session-timestamp">{{ formatSessionTimestamp(session.datetime_start) }}</span>
                 </span>
-                <span v-if="isTestUserBranch(user.username)" class="sessions-tree-drag-handle" aria-hidden="true">
+                <span v-if="canDragAndDrop" class="sessions-tree-drag-handle" aria-hidden="true">
                   <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
                     <circle cx="8" cy="6" r="1.6" />
                     <circle cx="8" cy="12" r="1.6" />
@@ -377,8 +412,8 @@ const {
     </TransitionGroup>
 
     <div v-if="allowDownloadAll" class="sessions-tree-download-row">
-      <button class="sessions-tree-download-btn" :disabled="downloadingAll" @click="emit('download-all')">
-        {{ downloadingAll ? 'Downloading…' : 'Download all' }}
+      <button class="sessions-tree-download-btn" :disabled="downloadingAll" @click="emit('download-all', activeTab)">
+        {{ downloadingAll ? 'Downloading…' : `Download all ${activeTab}` }}
       </button>
       <DocInfoButton doc-name="session-specs" title="Session export format" />
     </div>
@@ -482,6 +517,40 @@ const {
   padding: 0.75rem 0.9rem;
   font-size: 0.85rem;
   color: #666;
+}
+
+/* Matches Inspector.vue's own .inspector-tabs/.inspector-tab-btn exactly
+   (flat underline style, same colors) — flex:1 + centered text is this
+   tree's own adaptation, for a fixed two-option toggle spanning the
+   panel's width instead of Inspector's own left-aligned, variable-count row. */
+.sessions-tree-tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.5rem 0.9rem 0;
+  border-bottom: 1px solid #ddd;
+}
+
+.sessions-tree-tab {
+  flex: 1;
+  text-align: center;
+  padding: 0.45rem 0.9rem;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: #666;
+}
+
+.sessions-tree-tab:hover {
+  color: #333;
+}
+
+.sessions-tree-tab-active {
+  color: #2c4d7a;
+  font-weight: 600;
+  border-bottom-color: #4a6fa5;
 }
 
 .sessions-tree {

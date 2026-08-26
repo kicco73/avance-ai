@@ -36,14 +36,18 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
-  'start-explorer-drag', 'new-attachment', 'new-aspect', 'select-file', 'upload-file',
+  'start-explorer-drag', 'new-attachment', 'new-aspect', 'new-legal', 'select-file', 'upload-file',
   'jump-to-definition', 'select', 'saved'
 ])
 
 // The Behavior branch's own attachments (see FileExplorer.vue's identical
-// grouping) — index.yml's code segment offers these for `attachments:` autocomplete.
+// grouping) — index.yml's code segment offers these for `attachments:`
+// autocomplete. legal/terms.md is excluded too: it's a standalone legal
+// doc, not something a state ever attaches to chat.
 const attachmentFiles = computed(() =>
-  props.files.filter((name) => name !== 'index.yml' && name !== 'index.css' && !IMAGE_PATTERN.test(name))
+  props.files.filter(
+    (name) => name !== 'index.yml' && name !== 'index.css' && name !== 'legal/terms.md' && !IMAGE_PATTERN.test(name)
+  )
 )
 
 const codeEditorRef = ref(null)
@@ -67,6 +71,7 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef 
       :explorer-width="explorerWidth"
       @new-attachment="emit('new-attachment')"
       @new-aspect="emit('new-aspect')"
+      @new-legal="emit('new-legal')"
       @select-file="emit('select-file', $event)"
       @upload-file="emit('upload-file', $event)"
     />

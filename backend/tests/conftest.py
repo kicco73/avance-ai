@@ -58,8 +58,16 @@ def _default_session_user():
 def db() -> Db:
     """A fresh in-memory SQLite database per test — db.py's `database`
     Proxy is a module-level global, so each Db(...) call rebinds it to
-    a brand new connection."""
-    return Db("sqlite:///:memory:")
+    a brand new connection.
+
+    Seeds a User row for "user" — _default_session_user's own default
+    Session().user — since EditHistory.user_id/SystemWarning.user_id/
+    ChatSession.user/BenchmarkRun.user are now real FKs onto User (see
+    models.py): anything writing one of those under the default session
+    identity needs a matching row to reference."""
+    instance = Db("sqlite:///:memory:")
+    instance.get_or_create_user("test", "sub-user", "user", "user", None)
+    return instance
 
 
 class FakeAiService:

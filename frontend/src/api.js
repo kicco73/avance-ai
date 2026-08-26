@@ -101,6 +101,26 @@ export function postLogout() {
   return apiFetch(`${API_URL}/auth/logout`, { method: 'POST' })
 }
 
+// Raw markdown content of the Terms of Service — reachable even by a
+// pending (not-yet-registered) or fully anonymous session, since
+// TermsView.vue must show it before there's any account to gate on.
+export function getTerms() {
+  return apiFetch(`${API_URL}/auth/terms`)
+}
+
+// TermsView.vue's Accept action — creates the User row postLogin's own
+// login() deliberately deferred (see auth_service.py).
+export function postAcceptTerms() {
+  return apiFetch(`${API_URL}/auth/accept-terms`, { method: 'POST' })
+}
+
+// ProfileView.vue's "Erase all my data" — deletes the account and
+// everything tied to it server-side (see Db.erase_user_data); also
+// clears the session cookie itself.
+export function postEraseData() {
+  return apiFetch(`${API_URL}/auth/erase-data`, { method: 'POST' })
+}
+
 export function getMe() {
   return apiFetch(`${API_URL}/auth/me`)
 }
@@ -350,10 +370,13 @@ export function postImportSessions(projectName, files, onProgress) {
 }
 
 // The "Label sessions" view's own "Download all" button — every session
-// (native and imported alike) of `projectName`, as one JSON array. A blob
-// so the caller can trigger a real file download.
-export function getExportSessions(projectName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/sessions/export`, {}, { parse: 'blob' })
+// of `projectName` matching `type` ('live' | 'imported'), as one JSON
+// array. A blob so the caller can trigger a real file download.
+export function getExportSessions(projectName, type) {
+  return apiFetch(
+    `${API_URL}/projects/${encodeURIComponent(projectName)}/sessions/export?type=${encodeURIComponent(type)}`,
+    {}, { parse: 'blob' }
+  )
 }
 
 // The "Label sessions" view's own "Delete all imported sessions" button —
@@ -364,11 +387,14 @@ export function deleteImportedSessions(projectName) {
   })
 }
 
-export function putSessionsTestUser(projectName, sessionIds, testUserSeq) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/sessions/test-user`, {
+// SessionsTree.vue's own drag-and-drop between branches — `username` is
+// whichever branch the sessions were dropped on, a "Test user N" one or
+// any other imported username alike.
+export function putSessionsReassign(projectName, sessionIds, username) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/sessions/reassign`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ session_ids: sessionIds, test_user_seq: testUserSeq })
+    body: JSON.stringify({ session_ids: sessionIds, username })
   })
 }
 

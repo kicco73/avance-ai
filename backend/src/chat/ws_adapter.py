@@ -32,7 +32,10 @@ class WsAdapter(object):
         clean close instead of a connection it can still send frames on."""
         token = websocket.cookies.get(SESSION_COOKIE_NAME)
         identity = self._auth_service.verify_token(token) if token else None
-        if identity is None:
+        # role=None means "verified identity, no User row yet" (mid
+        # Terms-of-Service flow, see AuthService.verify_token) — same as
+        # unauthenticated for chat purposes, just not for every route.
+        if identity is None or identity.role is None:
             await websocket.close(code=4401)
             return
         Session().user = identity.email

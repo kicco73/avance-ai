@@ -1,15 +1,4 @@
 <script setup>
-// Design mode's file tree — upload/new/select. Mostly presentational: file
-// state comes in as props, and the actual file creation is emitted back up
-// to the parent's own handlers (handleUploadFile, handleNewAttachment,
-// handleNewAspect, selectFile) — only the "+" menu's own open/closed state
-// lives here. Deleting a file lives in the Inspector's Info tab now
-// (InspectorFileCard.vue), against whichever file is currently open — not here.
-//
-// The flat `files` list is grouped into two branches, root itself never shown:
-// - "Behavior" (index.yml) — its text attachments (txt, md, csv, extra yml/yaml...)
-// - "Theme" (index.css) — the image assets its url(...) rules can reference
-// Theme is omitted entirely when there's neither an index.css nor any image asset yet.
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 
 const props = defineProps({
@@ -21,7 +10,7 @@ const props = defineProps({
   explorerWidth: { type: Number, required: true }
 })
 
-const emit = defineEmits(['new-attachment', 'new-aspect', 'select-file', 'upload-file'])
+const emit = defineEmits(['new-attachment', 'new-aspect', 'new-legal', 'select-file', 'upload-file'])
 
 const fileInputRef = ref(null)
 
@@ -47,6 +36,11 @@ function selectNewAspect() {
   emit('new-aspect')
 }
 
+function selectNewLegal() {
+  newFileMenuOpen.value = false
+  emit('new-legal')
+}
+
 function handleClickOutsideNewFileMenu(event) {
   if (newFileMenuOpen.value && newFileMenuRootEl.value && !newFileMenuRootEl.value.contains(event.target)) {
     newFileMenuOpen.value = false
@@ -59,24 +53,24 @@ onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutsideNewFileMenu, true)
 })
 
-const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'])
+const ASPECT_PREFIX = 'aspect/'
+const BEHAVIOUR_PREFIX = 'behaviour/'
+const LEGAL_TERMS_FILE_NAME = 'legal/terms.md'
 
-function extensionOf(name) {
-  const dot = name.lastIndexOf('.')
-  return dot === -1 ? '' : name.slice(dot).toLowerCase()
+function basename(name) {
+  const idx = name.lastIndexOf('/')
+  return idx === -1 ? name : name.slice(idx + 1)
 }
 
-const themeAssets = computed(() =>
-  props.files.filter((name) => name !== 'index.css' && IMAGE_EXTENSIONS.has(extensionOf(name)))
-)
-const behaviorAttachments = computed(() =>
-  props.files.filter((name) => name !== 'index.yml' && name !== 'index.css' && !IMAGE_EXTENSIONS.has(extensionOf(name)))
-)
+const themeAssets = computed(() => props.files.filter((name) => name.startsWith(ASPECT_PREFIX)))
+const behaviorAttachments = computed(() => props.files.filter((name) => name.startsWith(BEHAVIOUR_PREFIX)))
 const hasIndexCss = computed(() => props.files.includes('index.css'))
 const showThemeBranch = computed(() => hasIndexCss.value || themeAssets.value.length > 0)
+const hasLegalTerms = computed(() => props.files.includes(LEGAL_TERMS_FILE_NAME))
 
-// index.yml's branch starts open, everything else starts closed.
-const expanded = ref({ behavior: true, theme: false })
+// Every branch starts closed on entry — the watch below reopens
+// whichever one holds a file a jump-to-definition/attachment click opens.
+const expanded = ref({ behavior: false, theme: false })
 function toggleBranch(key) {
   expanded.value[key] = !expanded.value[key]
 }
@@ -107,6 +101,7 @@ watch(
           <ul v-if="newFileMenuOpen" class="file-explorer-new-menu-list">
             <li><button class="file-explorer-new-menu-item" @click="selectNewAttachment">New attachment</button></li>
             <li><button class="file-explorer-new-menu-item" :disabled="hasIndexCss" :title="hasIndexCss ? 'index.css already exists' : ''" @click="selectNewAspect">New aspect</button></li>
+            <li><button class="file-explorer-new-menu-item" :disabled="hasLegalTerms" :title="hasLegalTerms ? 'legal/terms.md already exists' : ''" @click="selectNewLegal">New legal</button></li>
           </ul>
         </div>
       </div>
@@ -146,7 +141,7 @@ watch(
                 :title="name"
                 @click="emit('select-file', name)"
               >
-                {{ name }}
+                {{ basename(name) }}
               </button>
             </li>
           </ul>
@@ -175,10 +170,24 @@ watch(
                 :title="name"
                 @click="emit('select-file', name)"
               >
-                {{ name }}
+                {{ basename(name) }}
               </button>
             </li>
           </ul>
+        </div>
+      </li>
+
+      <li v-if="hasLegalTerms" class="file-explorer-branch">
+        <div class="file-explorer-node-row">
+          <span class="file-explorer-caret-spacer"></span>
+          <button
+            class="file-explorer-item"
+            :class="{ 'file-explorer-item-active': currentFileName === LEGAL_TERMS_FILE_NAME }"
+            title="legal/terms.md"
+            @click="emit('select-file', LEGAL_TERMS_FILE_NAME)"
+          >
+            Legal
+          </button>
         </div>
       </li>
     </ul>
@@ -218,6 +227,7 @@ watch(
 .file-explorer-node-row { display: flex; align-items: center; gap: 0.1rem; }
 .file-explorer-caret { flex-shrink: 0; width: 1.2rem; height: 1.6rem; display: flex; align-items: center; justify-content: center; border: none; background: none; cursor: pointer; font-size: 0.7rem; color: #777; padding: 0; transform: rotate(0deg); transition: transform 0.18s ease; }
 .file-explorer-caret-open { transform: rotate(90deg); }
+.file-explorer-caret-spacer { flex-shrink: 0; width: 1.2rem; }
 .file-explorer-children-wrap { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.18s ease; }
 .file-explorer-children-wrap-open { grid-template-rows: 1fr; }
 .file-explorer-children { list-style: none; margin: 0; padding: 0 0 0 1.2rem; overflow: hidden; min-height: 0; }

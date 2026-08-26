@@ -7,6 +7,14 @@ from __future__ import annotations
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _users(db):
+    """EditHistory.user_id is a real FK onto User now (see models.py) — every
+    identifier this file's tests use as a "user" needs a matching row."""
+    for username in ("user", "alice", "bob"):
+        db.get_or_create_user("test", f"sub-{username}", username, username, None)
+
+
 @pytest.mark.contract
 def test_get_archive_returns_none_for_an_unknown_file(db):
     assert db.get_archive("proj", "missing.yml") is None

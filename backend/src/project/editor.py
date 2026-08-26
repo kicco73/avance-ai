@@ -11,10 +11,10 @@ from session import Session
 
 from .inspector import ProjectInspector
 from .manager import ProjectManager
-from .parsers import AutomatonLoader, css_referenced_basenames, css_syntax_errors, missing_css_references
+from .parsers import AutomatonLoader, canonical_archive_name, css_referenced_basenames, css_syntax_errors, missing_css_references
 from .parsers import (
-    EDITABLE_EXTENSIONS, IMAGE_CONTENT_TYPE_BY_EXTENSION, IMAGE_EXTENSIONS, MAX_IMAGE_UPLOAD_BYTES,
-    TEXT_CONTENT_TYPE_BY_EXTENSION, TEXT_EDITABLE_EXTENSIONS,
+    ASPECT_DIR, IMAGE_CONTENT_TYPE_BY_EXTENSION,
+    MAX_IMAGE_UPLOAD_BYTES, TEXT_CONTENT_TYPE_BY_EXTENSION, TEXT_EDITABLE_EXTENSIONS,
 )
 from .types import CommitCallback
 
@@ -30,7 +30,15 @@ class ProjectEditor:
         self._inspector = inspector
         self._manager = manager
 
+    def _resolve_file_name(self, project_name: str, file_name: str, revision: int | None = None) -> str:
+        names = self._db.list_archives(project_name, revision=revision)
+        if file_name in names:
+            return file_name
+        matches = [name for name in names if Path(name).name == file_name]
+        return matches[0] if len(matches) == 1 else file_name
+
     def _file_undo_redo_info(self, project_name: str, file_name: str) -> dict:
+        file_name = self._resolve_file_name(project_name, file_name)
         content = self._db.get_archive(project_name, file_name)
         if content is None:
             raise FileNotFoundError(f"File '{file_name}' does not exist in project '{project_name}'.")
@@ -80,6 +88,7 @@ class ProjectEditor:
         onto the same origin — not in dev, where they're on two different
         ports with no proxy between them."""
         revision = self._inspector._resolve_inspector_revision(project_name, session_id)
+        file_name = self._resolve_file_name(project_name, file_name, revision)
         content = self._db.get_archive(project_name, file_name, revision=revision)
         if content is None:
             raise FileNotFoundError(f"File '{file_name}' does not exist in project '{project_name}'.")
@@ -97,7 +106,11 @@ class ProjectEditor:
         if project_name not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
 
-        self._check_editable_file_name(file_name)
+        existing_names = self._db.list_archives(project_name)
+        resolved_name = self._resolve_file_name(project_name, file_name)
+        if resolved_name not in existing_names:
+            self._check_editable_file_name(file_name)
+        file_name = resolved_name
         extension = Path(file_name).suffix.lower()
 
         if extension in TEXT_EDITABLE_EXTENSIONS:
@@ -109,7 +122,7 @@ class ProjectEditor:
                     raise ValueError(
                         f"index.css has invalid syntax: {'; '.join(syntax_errors)}."
                     )
-                known_names = set(self._db.list_archives(project_name)) | {file_name}
+                known_names = {Path(name).name for name in existing_names if name.startswith(f"{ASPECT_DIR}/")}
                 missing = missing_css_references(text_content, known_names)
                 if missing:
                     raise ValueError(
@@ -229,7 +242,11 @@ class ProjectEditor:
         unsaved state, kept so a later redo can restore it."""
         if project_name not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
-        self._check_editable_file_name(file_name)
+        existing_names = self._db.list_archives(project_name)
+        resolved_name = self._resolve_file_name(project_name, file_name)
+        if resolved_name not in existing_names:
+            self._check_editable_file_name(file_name)
+        file_name = resolved_name
         is_text = Path(file_name).suffix.lower() in TEXT_EDITABLE_EXTENSIONS
         raw_content = content.encode("utf-8") if is_text and isinstance(content, str) else content
 
@@ -251,7 +268,11 @@ class ProjectEditor:
         redo history instead (see db.Db.redo_project_file)."""
         if project_name not in self._db.list_projects():
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
-        self._check_editable_file_name(file_name)
+        existing_names = self._db.list_archives(project_name)
+        resolved_name = self._resolve_file_name(project_name, file_name)
+        if resolved_name not in existing_names:
+            self._check_editable_file_name(file_name)
+        file_name = resolved_name
         is_text = Path(file_name).suffix.lower() in TEXT_EDITABLE_EXTENSIONS
         raw_content = content.encode("utf-8") if is_text and isinstance(content, str) else content
 
@@ -277,18 +298,14 @@ class ProjectEditor:
 
     @staticmethod
     def _check_editable_file_name(file_name: str) -> None:
-        """A flat, non-hidden file name (no path traversal) with one of
-        EDITABLE_EXTENSIONS. Anything else stays out of scope."""
-        if not file_name or file_name in (".", "..") or Path(file_name).name != file_name:
+        if not file_name or file_name in (".", "..") or file_name.startswith("."):
             raise ValueError(f"Invalid file name: '{file_name}'.")
-        if file_name.startswith("."):
-            raise ValueError(f"Invalid file name: '{file_name}'.")
-        extension = Path(file_name).suffix.lower()
-        if extension not in EDITABLE_EXTENSIONS:
-            raise ValueError(
-                f"Unsupported file '{file_name}': only {sorted(EDITABLE_EXTENSIONS)} "
-                "files can be read/edited via this endpoint."
-            )
+        try:
+            canonical = canonical_archive_name(file_name)
+        except ValueError as exc:
+            raise ValueError(f"Invalid file name: '{file_name}' — {exc}") from exc
+        if canonical != file_name:
+            raise ValueError(f"Invalid file name: '{file_name}' — did you mean '{canonical}'?")
 
     async def delete_project_file(
         self, project_name: str, file_name: str, commit: CommitCallback
@@ -306,9 +323,13 @@ class ProjectEditor:
             raise FileNotFoundError(f"Project '{project_name}' does not exist.")
 
         archives = self._db.get_archives(project_name=project_name)
-        if file_name != "index.css" and Path(file_name).suffix.lower() in IMAGE_EXTENSIONS:
+        if file_name not in archives:
+            matches = [name for name in archives if Path(name).name == file_name]
+            if len(matches) == 1:
+                file_name = matches[0]
+        if file_name.startswith(f"{ASPECT_DIR}/"):
             index_css = archives.get("index.css")
-            if index_css is not None and file_name in css_referenced_basenames(index_css.decode("utf-8")):
+            if index_css is not None and Path(file_name).name in css_referenced_basenames(index_css.decode("utf-8")):
                 raise ValueError(
                     f"'{file_name}' is still referenced by index.css — remove the reference "
                     f"there first (or delete index.css itself, which takes its assets with it)."
@@ -317,7 +338,7 @@ class ProjectEditor:
         try:
             del archives[file_name]
             cascade_names = (
-                [name for name in archives if Path(name).suffix.lower() in IMAGE_EXTENSIONS]
+                [name for name in archives if name.startswith(f"{ASPECT_DIR}/")]
                 if file_name == "index.css" else []
             )
             for name in cascade_names:

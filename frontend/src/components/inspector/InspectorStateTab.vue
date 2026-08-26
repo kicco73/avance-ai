@@ -164,5 +164,5 @@ onMounted(loadProjectMetadata)
 .inspector-detail-badge-session { background: #455a64; }
 .inspector-detail-badge-neutral { background: #4a6fa5; }
 .inspector-signal-name { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; }
-.inspector-signal-ui_description { font-size: 0.78rem; color: #666; line-height: 1.4; }
+.inspector-signal-ui_description { display: block; margin-top: 0.3rem; font-size: 0.78rem; color: #666; line-height: 1.4; }
 </style>

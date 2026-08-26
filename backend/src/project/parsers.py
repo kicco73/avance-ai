@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import logging
 import re
 import zipfile
 from pathlib import Path
@@ -11,13 +12,12 @@ from automaton.automaton import Automaton
 from automaton.automaton_builder import AutomatonBuilder
 from db import Db
 
-# What the file explorer/editor endpoints read, write, list, or delete —
-# index.yml plus the text/plain attachment extensions.
+logger = logging.getLogger(__name__)
+
 TEXT_EDITABLE_EXTENSIONS = {".yml", ".yaml", ".txt", ".md", ".csv", ".css"}
 
-# Persisted Archive.content_type per text extension, inferred from the
-# extension alone: the request's Content-Type header is always the generic
-# 'text/plain; charset=utf-8' regardless of which file it is.
+LEGAL_TERMS_FILE_NAME = "legal/terms.md"
+
 TEXT_CONTENT_TYPE_BY_EXTENSION = {
     ".yml": "text/yaml",
     ".yaml": "text/yaml",
@@ -27,8 +27,6 @@ TEXT_CONTENT_TYPE_BY_EXTENSION = {
     ".css": "text/css",
 }
 
-# Image attachments an index.css url(...) can reference — opaque bytes,
-# never decoded, Content-Type validated against this exact mapping.
 IMAGE_CONTENT_TYPE_BY_EXTENSION = {
     ".png": "image/png",
     ".jpg": "image/jpeg",
@@ -40,18 +38,38 @@ IMAGE_CONTENT_TYPE_BY_EXTENSION = {
 IMAGE_EXTENSIONS = set(IMAGE_CONTENT_TYPE_BY_EXTENSION)
 IMAGE_CONTENT_TYPES = set(IMAGE_CONTENT_TYPE_BY_EXTENSION.values())
 
-# Everything _check_editable_file_name lets through: text or image.
 EDITABLE_EXTENSIONS = TEXT_EDITABLE_EXTENSIONS | IMAGE_EXTENSIONS
 
-# No other request-size limit exists anywhere in this stack (nginx.conf has
-# no client_max_body_size).
 MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024
+
+SESSIONS_EXPORT_FILENAME = "sessions.json"
+BENCHMARK_EXPORT_FILENAME = "benchmark.json"
+BUNDLE_FILE_NAMES = {SESSIONS_EXPORT_FILENAME, BENCHMARK_EXPORT_FILENAME}
+
+ASPECT_DIR = "aspect"
+BEHAVIOUR_DIR = "behaviour"
+ROOT_FILE_NAMES = {"index.yml", "index.css"}
+ASPECT_EXTENSIONS = IMAGE_EXTENSIONS | {".css"}
+BEHAVIOUR_EXTENSIONS = {".txt", ".md", ".csv"}
+
+
+def canonical_archive_name(name: str) -> str:
+    basename = Path(name).name
+    if basename in ROOT_FILE_NAMES:
+        if name != basename:
+            raise ValueError(f"'{basename}' must be at the project root, not '{name}'.")
+        return basename
+    if name == LEGAL_TERMS_FILE_NAME:
+        return name
+    extension = Path(basename).suffix.lower()
+    if extension in ASPECT_EXTENSIONS:
+        return f"{ASPECT_DIR}/{basename}"
+    if extension in BEHAVIOUR_EXTENSIONS:
+        return f"{BEHAVIOUR_DIR}/{basename}"
+    raise ValueError(f"Unsupported file extension for '{name}': '{extension or '(none)'}'.")
 
 
 def decode_text_archives(archives: dict[str, bytes]) -> dict[str, str | bytes]:
-    """Turns a raw-bytes archive dict into what AutomatonBuilder.build
-    expects: `str` for text files (TEXT_EDITABLE_EXTENSIONS), untouched
-    `bytes` for images — a text archive left undecoded would be wrapped wrong."""
     decoded: dict[str, str | bytes] = {}
     for name, content in archives.items():
         if Path(name).suffix.lower() in TEXT_EDITABLE_EXTENSIONS and isinstance(content, (bytes, bytearray)):
@@ -66,10 +84,6 @@ _ABSOLUTE_URL_PATTERN = re.compile(r"^(https?:)?//|^data:", re.IGNORECASE)
 
 
 def css_referenced_basenames(css_text: str) -> set[str]:
-    """Every relative `url(...)` target in `css_text`, reduced to its bare
-    filename — a project's archive namespace is flat, so that's how a
-    reference resolves. Absolute URLs (http(s)://, //, data:) are skipped:
-    they don't name a project file at all."""
     names = set()
     for _, target in _CSS_URL_PATTERN.findall(css_text):
         target = target.strip()
@@ -80,9 +94,6 @@ def css_referenced_basenames(css_text: str) -> set[str]:
 
 
 def missing_css_references(css_text: str, known_archive_names: set[str]) -> list[str]:
-    """Every name css_referenced_basenames(css_text) names that isn't in
-    `known_archive_names` — order is whatever set iteration gives; the one
-    caller sorts before display."""
     return [name for name in css_referenced_basenames(css_text) if name not in known_archive_names]
 
 
@@ -131,9 +142,6 @@ def css_syntax_errors(css_text: str) -> list[str]:
 
 
 def looks_like_zip(content_type: str | None, content: bytes) -> bool:
-    """Content-Type decides first ('zip'/'yaml' in the media type); a
-    missing or generic header falls back to sniffing the zip magic
-    number, unambiguous regardless of what the client claims."""
     if content_type:
         media_type = content_type.split(";")[0].strip().lower()
         if "zip" in media_type:
@@ -143,76 +151,69 @@ def looks_like_zip(content_type: str | None, content: bytes) -> bool:
     return content[:4] == b"PK\x03\x04"
 
 
+_RESERVED_ZIP_DIRS = {ASPECT_DIR, BEHAVIOUR_DIR, "legal"}
+
+
 def extract_zip_safely(content: bytes, staging_dir: Path) -> None:
-    """Validates zip-slip safety, shape, and exactly one root
-    'index.yml' — all before extracting anything. Two shapes are
-    accepted: every file flat at the zip's root, or every file nested
-    exactly one level inside a single common top-level folder (a
-    common export shape, e.g. a GitHub download or drag-a-folder
-    zip) — that folder is stripped, its contents imported as if
-    they'd been flat all along. Anything deeper, or a mix of
-    root-level files and a subdirectory, is rejected. Raises
-    ValueError or zipfile.BadZipFile on any violation."""
+    """Validates zip-slip safety and that 'index.yml' sits at the zip's
+    own root — a single top-level wrapper folder (e.g. a GitHub download
+    or drag-a-folder zip) is stripped first, so it counts as root too.
+    Every other file is canonicalized into this project's own layout
+    (root, 'aspect/', 'behaviour/', 'legal/' — see canonical_archive_name)
+    by extension, regardless of where it originally sat in the zip."""
     with zipfile.ZipFile(io.BytesIO(content)) as zf:
         names = [entry.replace("\\", "/") for entry in zf.namelist()]
         # macOS's Finder/Archive Utility tacks on a __MACOSX/ sidecar
         # folder full of resource-fork metadata (AppleDouble ._filename
-        # entries, nothing of actual interest) whenever it zips a
-        # folder — ignored outright rather than counted as a second
-        # top-level folder, so a Mac-zipped single-folder export still
-        # gets descended into instead of rejected.
+        # entries, nothing of actual interest) whenever it zips a folder.
         names = [n for n in names if n.split("/", 1)[0] != "__MACOSX"]
 
         for name in names:
             if name.startswith("/") or any(part == ".." for part in Path(name).parts):
                 raise ValueError(f"Unsafe path inside zip: '{name}'.")
 
-        # A pure directory entry (name ending in '/') carries no file
-        # of its own — irrelevant to both the shape check and
-        # extraction, whether or not the zip tool bothered to include one.
         file_names = [n for n in names if not n.endswith("/")]
         flat_names = [n for n in file_names if "/" not in n]
         top_level_dirs = {n.split("/", 1)[0] for n in file_names if "/" in n}
+        wrapper_dirs = top_level_dirs - _RESERVED_ZIP_DIRS
 
-        if flat_names and top_level_dirs:
+        if wrapper_dirs and (flat_names or (top_level_dirs - wrapper_dirs) or len(wrapper_dirs) > 1):
             raise ValueError(
-                "Zip must be either flat (no subdirectories) or a single folder containing "
-                "everything — found both root-level file(s) and a subdirectory."
+                "Zip must be either the project's own layout (index.yml/index.css at the root, "
+                "assets under 'aspect/', 'behaviour/', 'legal/') or a single folder wrapping that "
+                "same layout."
             )
-        if len(top_level_dirs) > 1:
-            raise ValueError(
-                f"Zip must be flat or contain a single top-level folder — found multiple: "
-                f"{', '.join(sorted(top_level_dirs))}."
-            )
-
-        prefix = f"{next(iter(top_level_dirs))}/" if top_level_dirs else ""
-        # original name -> effective (prefix-stripped) name.
+        prefix = f"{next(iter(wrapper_dirs))}/" if wrapper_dirs else ""
         effective = {n: n[len(prefix):] for n in file_names}
 
-        staging_resolved = staging_dir.resolve()
-        for original, stripped in effective.items():
-            if not stripped or "/" in stripped:
-                raise ValueError(f"Zip must be flat (no subdirectories): found '{original}'.")
-            resolved = (staging_dir / stripped).resolve()
-            if resolved != staging_resolved and staging_resolved not in resolved.parents:
-                raise ValueError(f"Unsafe path inside zip: '{original}'.")
-
-        index_entries = [s for s in effective.values() if s == "index.yml"]
-        other_yaml_entries = [
-            s for s in effective.values() if s != "index.yml" and s.lower().endswith((".yml", ".yaml"))
-        ]
-        if not index_entries:
+        if "index.yml" not in effective.values():
             raise ValueError("Zip must contain an 'index.yml' file at its root.")
-        if len(index_entries) > 1:
-            raise ValueError("Zip contains more than one 'index.yml'.")
-        if other_yaml_entries:
-            raise ValueError(
-                "Zip must contain only one YAML file (index.yml) at its root; "
-                f"also found: {', '.join(sorted(other_yaml_entries))}"
-            )
 
         for original, stripped in effective.items():
-            target = staging_dir / stripped
+            if stripped in BUNDLE_FILE_NAMES:
+                continue
+            top = stripped.split("/", 1)[0]
+            nested_ok = (
+                "/" not in stripped
+                or stripped == LEGAL_TERMS_FILE_NAME
+                or (top in (ASPECT_DIR, BEHAVIOUR_DIR) and stripped.count("/") == 1)
+            )
+            if not nested_ok:
+                raise ValueError(f"Unsupported path inside zip: '{original}'.")
+
+        canonical: dict[str, str] = {}
+        for original, stripped in effective.items():
+            canonical[original] = stripped if stripped in BUNDLE_FILE_NAMES else canonical_archive_name(stripped)
+
+        by_canonical: dict[str, str] = {}
+        for original, name in canonical.items():
+            clash = by_canonical.get(name)
+            if clash is not None:
+                raise ValueError(f"'{original}' and '{clash}' both resolve to the same file '{name}'.")
+            by_canonical[name] = original
+
+        for original, name in canonical.items():
+            target = staging_dir / name
             target.parent.mkdir(parents=True, exist_ok=True)
             with zf.open(original) as src, open(target, "wb") as dst:
                 dst.write(src.read())

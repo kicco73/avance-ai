@@ -4,7 +4,7 @@ import json
 
 from peewee import fn
 
-from .models import BenchmarkRun, BenchmarkRunObservation
+from .models import BenchmarkRun, BenchmarkRunObservation, User
 from .utils import _utc_iso
 
 # Distinguishes "no username filter at all" (this sentinel, the default)
@@ -28,8 +28,12 @@ class BenchmarkRunMixin:
             & (BenchmarkRun.project_draft_edit_count == project_draft_edit_count)
             & (BenchmarkRun.session_labeling_revision == session_labeling_revision)
         ).execute()
+        # `username` may be a real registered account's email, an
+        # imported/synthetic identity, or None (a multi-user pool run) —
+        # user stays null unless it resolves to an actual User row.
+        user = User.get_or_none(User.id == username) if username is not None else None
         row = BenchmarkRun.create(
-            username=username, project_name=project_name, session=session_id, strategy=strategy,
+            username=username, user=user, project_name=project_name, session=session_id, strategy=strategy,
             project_draft_edit_count=project_draft_edit_count, session_labeling_revision=session_labeling_revision,
             ai_model_snapshot=json.dumps(ai_model_snapshot),
         )

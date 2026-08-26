@@ -18,7 +18,10 @@ class AuthenticatedUser:
     email: str
     name: str
     picture_url: str | None
-    role: str = "user"
+    # None means "verified identity, no User row yet" — see AuthService's
+    # own verify_token/complete_registration for the Terms-of-Service gate
+    # this backs.
+    role: str | None = "user"
 
 
 class AuthProvider(ABC):

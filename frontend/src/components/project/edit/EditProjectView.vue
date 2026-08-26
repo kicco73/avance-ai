@@ -17,6 +17,9 @@ import InspectorStateTab from '../../inspector/InspectorStateTab.vue'
 import InspectorActionsTab from '../../inspector/InspectorActionsTab.vue'
 import SessionDetailCard from '../../inspector/SessionDetailCard.vue'
 import InspectorUserInfoCard from '../../inspector/InspectorUserInfoCard.vue'
+import SettingsMenu from '../../settings/SettingsMenu.vue'
+import ProfileMenu from '../../ProfileMenu.vue'
+import ProjectsMenu from '../../ProjectsMenu.vue'
 import { useLeaveConfirmation } from '../../../composables/useLeaveConfirmation.js'
 import {
   getProjectFiles,
@@ -85,20 +88,36 @@ const props = defineProps({
   projectName: {
     type: String,
     required: true
-  }
+  },
+  // Settings-menu access (see the header's own SettingsMenu below) —
+  // same role gating as ManageProjectsView.vue/LabelProjectView.vue.
+  role: { type: String, default: null },
+  // ProfileMenu.vue's own avatar/name — App.vue already fetched this once
+  // during boot, passed straight through so this view can show the same
+  // topbar avatar the main chat screen does.
+  profile: { type: Object, default: null }
 })
 
 // One EditProjectView instance is always scoped to a single project for
 // its whole lifetime — the "Run" tab's own test store targets it once here.
 setTestProject(props.projectName)
 
-const emit = defineEmits(['close', 'saved'])
+const emit = defineEmits([
+  'saved', 'project-select', 'manage-projects', 'manage-users', 'label-sessions', 'edit-projects', 'about',
+  'download-backup', 'restore-backup', 'profile', 'logout'
+])
 
 // Upload (handleUploadFile below, and the file explorer's own hidden
 // <input accept>) additionally allows every image extension the backend
 // whitelists (see project_service.py's IMAGE_EXTENSIONS).
 const IMAGE_PATTERN = /\.(png|jpe?g|gif|webp|svg)$/i
-const UPLOADABLE_PATTERN = /\.(txt|ya?ml|css|png|jpe?g|gif|webp|svg)$/i
+const UPLOADABLE_PATTERN = /\.(txt|md|csv|ya?ml|css|png|jpe?g|gif|webp|svg)$/i
+
+function canonicalUploadName(fileName) {
+  if (fileName === 'index.yml' || fileName === 'index.css') return fileName
+  if (IMAGE_PATTERN.test(fileName) || /\.css$/i.test(fileName)) return `aspect/${fileName}`
+  return `behaviour/${fileName}`
+}
 // Mirrors project_service.py's own MAX_IMAGE_UPLOAD_BYTES — checked here
 // purely for immediate feedback; the backend enforces this authoritatively
 // regardless.
@@ -114,6 +133,33 @@ const INDEX_CSS_SKELETON = `.chat-header {
 
 .chat-footer {
 }
+`
+
+// The one file allowed to live in a subfolder — see editor.py's
+// LEGAL_TERMS_FILE_NAME. "New legal" (handleNewLegal below) is the only
+// way to create it; the file explorer shows it under its own "Legal"
+// branch instead of grouping it with the Behavior attachments.
+const LEGAL_TERMS_FILE_NAME = 'legal/terms.md'
+
+// "New legal" seeds legal/terms.md with a placeholder the project owner
+// fills in — per-app terms shown once, on top of the platform's own
+// general Terms of Service (see backend/src/docs/TERMS.md).
+const LEGAL_TERMS_SKELETON = `# Condiciones de esta aplicación
+
+Estas son las condiciones específicas de esta aplicación, además de las
+Condiciones de Uso y la Política de Privacidad generales de la plataforma.
+
+## Qué hace esta aplicación con sus datos
+
+[Describa aquí qué datos recoge esta aplicación y para qué los usa.]
+
+## Permisos que solicita
+
+[Describa aquí los permisos específicos que esta aplicación necesita, si los hay.]
+
+## Conservación
+
+[Indique aquí durante cuánto tiempo se conservan los datos de esta aplicación.]
 `
 
 function lineIndent(line) {
@@ -277,10 +323,13 @@ const isBehaviorNodeSelected = computed(() => currentFileName.value === 'index.y
 // own url(...) rules could reference. Deleting index.css takes these down
 // with it (see handleDeleteFile) since an asset with no stylesheet left to
 // reference it is just dead weight.
-const themeAssetNames = computed(() => files.value.filter((name) => name !== 'index.css' && IMAGE_PATTERN.test(name)))
+const themeAssetNames = computed(() => files.value.filter((name) => name.startsWith('aspect/')))
 // RunChat.vue's "Apply aspect" toggle only makes sense once a theme
 // actually exists to apply.
 const hasTheme = computed(() => files.value.includes('index.css'))
+// Gates the "New legal" menu item — only offered while no legal/terms.md
+// exists yet, and drives the file explorer's "Legal" branch visibility.
+const hasLegalTerms = computed(() => files.value.includes(LEGAL_TERMS_FILE_NAME))
 const activeEditorIsDirty = computed(() => {
   if (currentFileName.value === 'index.yml') return indexYmlEditorRef.value?.isDirty ?? false
   if (currentFileName.value === 'index.css') return indexCssEditorRef.value?.isDirty ?? false
@@ -824,10 +873,11 @@ async function refreshAfterProjectEdit() {
   if (inspecting.value) await inspectorRef.value?.refresh()
   refreshValidStateKeys()
   refreshProjectRevision()
-  // Every edit funnels through here, so this is the single choke point
-  // that keeps the selected state's "Tokens: X" estimate from going
-  // stale after a save (its cache key is content-addressed backend-side,
-  // so a changed prompt naturally recomputes rather than serving a stale hit).
+  // Keeps the selected state's "Tokens: X" estimate from going stale
+  // after a save — its cache key is content-addressed backend-side, so a
+  // changed prompt naturally recomputes rather than serving a stale hit.
+  // handleFileSaved (a raw YAML "Save") is the other edit tail and does
+  // this too, since it doesn't funnel through here.
   refreshStateTabTokens()
 }
 
@@ -841,10 +891,12 @@ const publishing = ref(false)
 // both confirm and cancel.
 const publishRemapPrompt = ref(null)
 const publishRemapChoice = ref('')
-// Set only while handleClose's "publish before leaving?" confirm was
-// accepted — handlePublish's success paths close the view once the
-// publish lands; every other exit clears this instead, so a later, unrelated Publish click never closes the view too.
-const closeAfterPublish = ref(false)
+// Set only while leaveEditProject's "publish before leaving?" confirm was
+// accepted — holds whatever navigation was actually requested (Back, or
+// one of the Settings-menu items), so handlePublish's success paths can
+// carry it out once the publish actually lands. Every other exit clears
+// this instead, so a later, unrelated Publish click never navigates away too.
+const pendingLeaveAction = ref(null)
 
 async function refreshProjectRevision() {
   try {
@@ -866,22 +918,23 @@ async function refreshActiveEditorHistory() {
   await activeEditor()?.reload?.()
 }
 
-// Closes the view once a publish handleClose asked for actually lands
-// (see closeAfterPublish) — called by both handlePublish's direct-success
-// path and confirmPublishRemap's, once resolved.
-function closeIfRequested() {
-  if (!closeAfterPublish.value) return
-  closeAfterPublish.value = false
-  emit('close')
+// Carries out whatever navigation leaveEditProject asked for once a
+// publish it required actually lands (see pendingLeaveAction) — called
+// by both handlePublish's direct-success path and confirmPublishRemap's.
+function runPendingLeaveAction() {
+  if (!pendingLeaveAction.value) return
+  const action = pendingLeaveAction.value
+  pendingLeaveAction.value = null
+  action()
 }
 
-function resetCloseAfterPublish() {
-  closeAfterPublish.value = false
+function resetPendingLeaveAction() {
+  pendingLeaveAction.value = null
 }
 
 async function handlePublish() {
   if (publishUpToDate.value || publishing.value) {
-    resetCloseAfterPublish()
+    resetPendingLeaveAction()
     return
   }
   publishing.value = true
@@ -902,16 +955,16 @@ async function handlePublish() {
         danger: true
       })
       if (!ok) {
-        resetCloseAfterPublish()
+        resetPendingLeaveAction()
         return
       }
     }
     projectRevision.value = await postPublishProject(props.projectName)
     await refreshActiveEditorHistory()
-    closeIfRequested()
+    runPendingLeaveAction()
   } catch {
     // already surfaced via apiFetch
-    resetCloseAfterPublish()
+    resetPendingLeaveAction()
   } finally {
     publishing.value = false
   }
@@ -923,7 +976,7 @@ async function confirmPublishRemap(stateKey) {
     projectRevision.value = await postPublishProject(props.projectName, stateKey)
     publishRemapPrompt.value = null
     await refreshActiveEditorHistory()
-    closeIfRequested()
+    runPendingLeaveAction()
   } catch {
     // already surfaced via apiFetch — leave the modal open so the user
     // can pick a different state or cancel
@@ -935,7 +988,7 @@ async function confirmPublishRemap(stateKey) {
 function cancelPublishRemap() {
   publishRemapPrompt.value = null
   publishing.value = false
-  resetCloseAfterPublish()
+  resetPendingLeaveAction()
 }
 
 // The "Rev. X" split button's dropdown arrow — only rendered when
@@ -1180,6 +1233,10 @@ async function handleFileSaved() {
   if (inspecting.value) await inspectorRef.value?.refresh()
   refreshValidStateKeys()
   refreshProjectRevision()
+  // See refreshAfterProjectEdit's own comment on this — this is the other
+  // edit tail, and a raw YAML save is exactly the "save yml" case that
+  // must also refresh the selected state's token estimate.
+  refreshStateTabTokens()
 }
 
 // The Inspector's "State"/"Actions" tabs share the same selection the
@@ -1232,15 +1289,16 @@ async function handleUploadFile(event) {
   clearApiError()
   try {
     for (const file of files) {
+      const targetName = canonicalUploadName(file.name)
       if (IMAGE_PATTERN.test(file.name)) {
-        await putProjectFileBinary(props.projectName, file.name, file)
+        await putProjectFileBinary(props.projectName, targetName, file)
       } else {
         const text = await file.text()
-        await putProjectFile(props.projectName, file.name, text)
+        await putProjectFile(props.projectName, targetName, text)
       }
     }
     await loadFiles()
-    await selectFile(files[files.length - 1].name)
+    await selectFile(canonicalUploadName(files[files.length - 1].name))
   } catch {
     // already surfaced via apiFetch
   } finally {
@@ -1259,6 +1317,13 @@ async function createProjectFile(name, content) {
     await putProjectFile(props.projectName, name, content)
     await loadFiles()
     await selectFile(name)
+    // putProjectFile forks the draft revision server-side the same as any
+    // other save (see Db.save_project_file's own _ensure_draft_revision) —
+    // without this, projectRevision stays stale and publishUpToDate keeps
+    // reading true, so the Publish button silently no-ops on a project
+    // whose only unpublished change is a brand-new file (New attachment/
+    // New aspect/New legal all share this tail).
+    refreshProjectRevision()
   } catch {
     // already surfaced via apiFetch
   } finally {
@@ -1277,17 +1342,23 @@ async function handleNewAttachment() {
     validate(value) {
       const trimmed = value.trim()
       if (!trimmed) return 'Enter a file name.'
-      if (files.value.includes(toMdFileName(trimmed))) return `A file named "${toMdFileName(trimmed)}" already exists.`
+      if (trimmed.includes('/')) return 'File names can\'t contain "/".'
+      if (files.value.includes(`behaviour/${toMdFileName(trimmed)}`)) return `A file named "${toMdFileName(trimmed)}" already exists.`
       return null
     }
   })
   if (rawName === null) return // cancelled
-  await createProjectFile(toMdFileName(rawName.trim()), '')
+  await createProjectFile(`behaviour/${toMdFileName(rawName.trim())}`, '')
 }
 
 async function handleNewAspect() {
   if (files.value.includes('index.css')) return
   await createProjectFile('index.css', INDEX_CSS_SKELETON)
+}
+
+async function handleNewLegal() {
+  if (hasLegalTerms.value) return
+  await createProjectFile(LEGAL_TERMS_FILE_NAME, LEGAL_TERMS_SKELETON)
 }
 
 // index.yml is protected server-side too (delete_project_file rejects it) —
@@ -1332,11 +1403,15 @@ const { confirmLeaveIfNeeded } = useLeaveConfirmation(activeEditorIsDirty, 'Disc
 // Unsaved-file changes are checked first — the more urgent, data-loss
 // concern. Only past that, and only when there's actually a pending
 // revision to decide about, does a three-way choice show: publish before
-// leaving, leave it pending, or cancel the close outright.
-async function handleClose() {
+// leaving, leave it pending, or cancel the close outright. Shared by
+// every Settings-menu item that actually navigates away from here (see
+// handleSettings* below — "Manage projects" is this view's own Back now,
+// the only place it's ever entered from) — About/Download backup/Restore
+// backup don't navigate away, so they skip this guard entirely.
+async function leaveEditProject(onLeave) {
   if (!(await confirmLeaveIfNeeded())) return
   if (publishUpToDate.value) {
-    emit('close')
+    onLeave()
     return
   }
   const choice = await chooseDialog({
@@ -1348,12 +1423,35 @@ async function handleClose() {
     ]
   })
   if (choice === 'publish') {
-    closeAfterPublish.value = true
+    pendingLeaveAction.value = onLeave
     handlePublish()
     return
   }
-  if (choice === 'leave') emit('close')
+  if (choice === 'leave') onLeave()
   // null (Cancel/backdrop/ESC) — stay open, nothing to do.
+}
+
+// The Settings-menu items that navigate away — a plain pass-through of
+// SettingsMenu.vue's own emits, same shape as ManageProjectsView.vue/
+// LabelProjectView.vue's, guarded by leaveEditProject instead of firing
+// straight away (those two views have nothing unsaved to lose; this one does).
+function handleSettingsManageProjects() {
+  leaveEditProject(() => emit('manage-projects'))
+}
+function handleSettingsManageUsers() {
+  leaveEditProject(() => emit('manage-users'))
+}
+function handleSettingsLabelSessions() {
+  leaveEditProject(() => emit('label-sessions'))
+}
+
+// ProjectsMenu.vue's own switch — guarded the same way, since it edits a
+// *different* project out from under whatever's unsaved/unpublished here.
+function handleProjectMenuSelect(name) {
+  leaveEditProject(() => emit('project-select', name))
+}
+function handleSettingsEditProjects() {
+  leaveEditProject(() => emit('edit-projects'))
 }
 
 // Live values for whatever signals the active conversation currently
@@ -1489,24 +1587,24 @@ onBeforeUnmount(() => {
   <div class="edit-project-overlay">
     <div class="edit-project-header">
       <h2>Edit project — {{ projectName }}</h2>
+      <div class="mode-segment">
+        <button
+          class="mode-segment-btn"
+          :class="{ 'mode-segment-btn-active': mode === 'edit' }"
+          @click="setMode('edit')"
+        >Design</button>
+        <button
+          class="mode-segment-btn"
+          :class="{ 'mode-segment-btn-active': mode === 'run' }"
+          @click="setMode('run')"
+        >Run</button>
+        <button
+          class="mode-segment-btn"
+          :class="{ 'mode-segment-btn-active': mode === 'test' }"
+          @click="setMode('test')"
+        >Test</button>
+      </div>
       <div class="edit-project-header-actions">
-        <div class="mode-segment">
-          <button
-            class="mode-segment-btn"
-            :class="{ 'mode-segment-btn-active': mode === 'edit' }"
-            @click="setMode('edit')"
-          >Design</button>
-          <button
-            class="mode-segment-btn"
-            :class="{ 'mode-segment-btn-active': mode === 'run' }"
-            @click="setMode('run')"
-          >Run</button>
-          <button
-            class="mode-segment-btn"
-            :class="{ 'mode-segment-btn-active': mode === 'test' }"
-            @click="setMode('test')"
-          >Test</button>
-        </div>
         <div v-if="projectRevision" class="publish-split-btn">
           <button
             class="publish-btn"
@@ -1531,7 +1629,23 @@ onBeforeUnmount(() => {
             </div>
           </template>
         </div>
-        <button class="close-btn" @click="handleClose">Back</button>
+        <ProjectsMenu :selected-name="projectName" @select="handleProjectMenuSelect" />
+        <!-- Same guard as the Settings menu's own "Manage projects" item
+             (leaveEditProject) — this is just a one-click shortcut to it,
+             since Edit is only ever opened from Manage projects. -->
+        <button class="close-btn" @click="handleSettingsManageProjects">Back</button>
+        <SettingsMenu
+          :role="role"
+          align="right"
+          @manage-projects="handleSettingsManageProjects"
+          @manage-users="handleSettingsManageUsers"
+          @label-sessions="handleSettingsLabelSessions"
+          @edit-projects="handleSettingsEditProjects"
+          @about="emit('about')"
+          @download-backup="emit('download-backup')"
+          @restore-backup="(file) => emit('restore-backup', file)"
+        />
+        <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
       </div>
     </div>
 
@@ -1558,6 +1672,7 @@ onBeforeUnmount(() => {
           @start-explorer-drag="startExplorerDrag"
           @new-attachment="handleNewAttachment"
           @new-aspect="handleNewAspect"
+          @new-legal="handleNewLegal"
           @select-file="selectFile"
           @upload-file="handleUploadFile"
           @jump-to-definition="(target) => jumpToDefinition(target, { silent: true })"
@@ -1731,10 +1846,14 @@ onBeforeUnmount(() => {
   font-family: system-ui, -apple-system, sans-serif;
 }
 
+/* Three columns so .mode-segment sits truly centered in the header
+   regardless of how wide the title/actions on either side are — the two
+   outer columns are equal (1fr each), so the middle one's own auto width
+   is centered between them rather than just within the actions column. */
 .edit-project-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
   padding: 0.75rem 1rem;
   border-bottom: 1px solid #ddd;
 }
@@ -1742,30 +1861,22 @@ onBeforeUnmount(() => {
 .edit-project-header h2 {
   margin: 0;
   font-size: 1.1rem;
+  justify-self: start;
 }
-
 
 .edit-project-header-actions {
   display: flex;
   align-items: center;
+  justify-self: end;
   gap: 0.5rem;
 }
 
-.close-btn {
-  padding: 0.4rem 1rem;
-  border-radius: 6px;
-  border: 1px solid #4a6fa5;
-  background: white;
-  color: #4a6fa5;
-  cursor: pointer;
-}
-
-.close-btn:hover {
-  background: #4a6fa5;
-  color: white;
+.edit-project-header-actions .projects-menu {
+  max-width: 220px;
 }
 
 .mode-segment {
+  justify-self: center;
   display: flex;
   gap: 0.2rem;
   padding: 0.2rem;

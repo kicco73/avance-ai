@@ -4,10 +4,11 @@ import ChatTimeline from '../../chat/ChatTimeline.vue'
 import SessionsTree from '../../chat/SessionsTree.vue'
 import MessageCommentButton from '../../chat/MessageCommentButton.vue'
 import ProjectsMenu from '../../ProjectsMenu.vue'
+import SettingsMenu from '../../settings/SettingsMenu.vue'
+import ProfileMenu from '../../ProfileMenu.vue'
 import Inspector from '../../inspector/Inspector.vue'
 import InspectorGraphTab from '../../inspector/InspectorGraphTab.vue'
 import InspectorSignalsTab from '../../inspector/InspectorSignalsTab.vue'
-import InspectorMetricsTab from '../../inspector/InspectorMetricsTab.vue'
 import InspectorUserInfoCard from '../../inspector/InspectorUserInfoCard.vue'
 import CardMenu from '../../inspector/CardMenu.vue'
 import { vAutosize } from '../../inspector/textareaAutosize.js'
@@ -17,11 +18,11 @@ import {
   getMessages, getSessionSignals, getSessions, getProjectGraph, postImportSessions,
   getExportSessions, deleteImportedSessions, putMessageExpectedState, putMessageExpectedSignals, putMessageComment,
   putSessionLabeled, putSessionTitle, putSessionComment, deleteSessionAnnotations, deleteSession, getUsers,
-  putSessionsTestUser, deleteTestUser, deleteUserSessions
+  putSessionsReassign, deleteTestUser, deleteUserSessions
 } from '../../../api.js'
 import { sessions, sessionsLoading, loadSessions, refreshSessionsQuietly } from '../../../chatStore.js'
 import {
-  buildTimeline, commentForMessage, highlightedStateKeyFor, nearestMessageIdAtOrBefore, signalValuesFor
+  buildTimeline, commentForMessage, highlightedStateKeyFor, signalValuesFor
 } from '../../../benchmarkTimeline.js'
 import { summarizeImportFailures } from '../../../sessionImport.js'
 import { setApiError, clearApiError } from '../../../errorStore.js'
@@ -31,10 +32,27 @@ const props = defineProps({
   projectName: {
     type: String,
     required: true
-  }
+  },
+  // This is a supervisor's own landing page now (see App.vue's role-based
+  // routing) — no Back button to fall back on, so its own Settings menu
+  // (same one the main chat screen shows) is how it reaches every other
+  // top-level view instead.
+  role: { type: String, default: null },
+  // ProfileMenu.vue's own avatar/name — App.vue already fetched this once
+  // during boot (see its own `profile` prop docstring), passed straight
+  // through so this landing page can show the same topbar avatar the main
+  // chat screen does.
+  profile: { type: Object, default: null }
 })
 
-const emit = defineEmits(['close', 'project-select'])
+// The Settings-menu ones (manage-projects/manage-users/label-sessions/
+// about/download-backup/restore-backup) are a plain pass-through of
+// SettingsMenu.vue's own emits; profile/logout are the same pass-through
+// of ProfileMenu.vue's own.
+const emit = defineEmits([
+  'close', 'project-select', 'manage-projects', 'manage-users', 'label-sessions', 'edit-projects', 'about',
+  'download-backup', 'restore-backup', 'profile', 'logout'
+])
 
 const loading = ref(true)
 // This view's own session pointer — never chatStore.js's shared
@@ -55,16 +73,11 @@ const sessionStartState = ref(null)
 const inspectorRef = ref(null)
 const inspectorWidth = ref(360)
 const inspectorCollapsed = ref(false)
-// Metrics reads off live Tracking rows, which an imported session never
-// has, so that tab is only included for native sessions.
-const inspectorTabs = computed(() => {
-  const base = [
-    { id: 'states', label: 'States' },
-    { id: 'signals', label: 'Signals' }
-  ]
-  const withMetrics = currentSessionIsImported.value ? base : [...base, { id: 'metrics', label: 'Metrics' }]
-  return [{ id: 'info', label: 'Info' }, ...withMetrics]
-})
+const inspectorTabs = computed(() => [
+  { id: 'info', label: 'Info' },
+  { id: 'states', label: 'States' },
+  { id: 'signals', label: 'Signals' }
+])
 const inspectorActiveTab = ref('info')
 // Starts open — reviewing a specific session is the point of this view.
 const benchmarkSessionsPanelOpen = ref(true)
@@ -179,9 +192,9 @@ watch(currentSessionId, (id) => {
   if (id != null) selectedUserNode.value = null
 })
 
-async function onMoveSessions({ sessionIds, testUserSeq }) {
+async function onMoveSessions({ sessionIds, username }) {
   try {
-    await putSessionsTestUser(props.projectName, sessionIds, testUserSeq)
+    await putSessionsReassign(props.projectName, sessionIds, username)
     await refreshSessionsQuietly(true, props.projectName)
   } catch {
   }
@@ -292,9 +305,10 @@ async function loadTimeline() {
     rawMessages.value = messageRows
     signalsLog.value = signalRows
     sessionStartState.value = allSessions.find((s) => s.id === sessionId)?.start_state ?? null
-    // The Metrics tab doesn't reactively recompute on session change, so
-    // it needs an explicit refresh here — the `selected` reset above
-    // isn't enough when `selected` was already null.
+    // Some tabs (e.g. States/Signals) don't reactively recompute on
+    // session change alone, so this refreshes whichever one's active —
+    // the `selected` reset above isn't enough when `selected` was
+    // already null.
     await nextTick()
     inspectorRef.value?.refresh()
   } catch {
@@ -338,15 +352,6 @@ const firedActionEdge = computed(() => {
   if (selected.value?.kind !== 'transition') return null
   const t = selected.value.transition
   return { stateKey: t.old_state, actionName: t.action }
-})
-
-const untilMessageId = computed(() => {
-  if (!selected.value) return null
-  if (selected.value.kind === 'message') return selected.value.message.id
-  // A transition auto-tracking produced links straight back to the
-  // message that caused it; a manual action's transition falls back to
-  // the nearest-before heuristic since it was never evaluated from a message.
-  return selected.value.transition.message_id ?? nearestMessageIdAtOrBefore(rawMessages.value, selected.value.transition.timestamp)
 })
 
 const signalValues = computed(() => signalValuesFor(selected.value, signalsLog.value, rawMessages.value))
@@ -531,22 +536,21 @@ const currentSessionLabeled = computed(() => {
   return sessions.value.find((s) => s.id === currentSessionId.value)?.has_annotations ?? false
 })
 
-function handleClose() {
-  emit('close')
-}
-
 // Every session of this project as one .json file, re-uploadable through
 // this view's own Import button. Same synthetic-<a> download trick as
 // App.vue's handleModelDownload.
 const downloadingSessions = ref(false)
-async function handleDownloadSessions() {
+// `type` ('live' | 'imported') comes from SessionsTree.vue's own active
+// tab (see its 'download-all' emit) — Download all only ever exports
+// whichever kind is currently showing.
+async function handleDownloadSessions(type) {
   downloadingSessions.value = true
   try {
-    const blob = await getExportSessions(props.projectName)
+    const blob = await getExportSessions(props.projectName, type)
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `${props.projectName}-sessions.json`
+    link.download = `${props.projectName}-${type}-sessions.json`
     document.body.appendChild(link)
     link.click()
     link.remove()
@@ -620,8 +624,8 @@ async function onUpdateSessionComment() {
   }
 }
 
-// Metrics aren't reactive to props on their own — every selection
-// change needs an explicit nudge.
+// Some tabs aren't reactive to a selection change on their own — an
+// explicit nudge here refreshes whichever one's active.
 watch(selected, () => {
   nextTick(() => inspectorRef.value?.refresh())
 })
@@ -654,7 +658,19 @@ onBeforeUnmount(() => {
       <h2>Label sessions — {{ projectName }}</h2>
       <div class="benchmark-header-actions">
         <ProjectsMenu :selected-name="projectName" @select="(name) => emit('project-select', name)" />
-        <button class="close-btn" @click="handleClose">Back</button>
+        <button class="close-btn" @click="emit('close')">Back</button>
+        <SettingsMenu
+          :role="role"
+          align="right"
+          @manage-projects="emit('manage-projects')"
+          @manage-users="emit('manage-users')"
+          @label-sessions="emit('label-sessions')"
+          @edit-projects="emit('edit-projects')"
+          @about="emit('about')"
+          @download-backup="emit('download-backup')"
+          @restore-backup="(file) => emit('restore-backup', file)"
+        />
+        <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
       </div>
     </div>
 
@@ -841,9 +857,6 @@ onBeforeUnmount(() => {
               @update-expected-signals="onUpdateExpectedSignals"
             />
           </template>
-          <template #tab-metrics="{ registerTab }">
-            <InspectorMetricsTab :ref="registerTab('metrics')" :until-message-id="untilMessageId" :project-name="projectName" />
-          </template>
         </Inspector>
       </div>
     </div>
@@ -897,7 +910,6 @@ onBeforeUnmount(() => {
   background: #4a6fa5;
   color: white;
 }
-
 
 .sessions-toggle-btn {
   padding: 0.4rem 1rem;
@@ -1209,6 +1221,8 @@ onBeforeUnmount(() => {
 }
 
 .inspector-signal-ui_description {
+  display: block;
+  margin-top: 0.3rem;
   font-size: 0.78rem;
   color: #666;
   line-height: 1.4;

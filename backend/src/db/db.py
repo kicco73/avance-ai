@@ -20,16 +20,13 @@ from .tracking import TrackingMixin
 from playhouse.db_url import connect, parse as parse_db_url
 
 from .models import (
-    Archive, BenchmarkAggregateResult, BenchmarkRun, BenchmarkRunObservation, ChatSession, History, Message,
+    Archive, BenchmarkAggregateResult, BenchmarkRun, BenchmarkRunObservation, ChatSession, EditHistory, Message,
     Project, ProjectObserverIndex, Settings, User, SessionSummary, StateRemap, SystemWarning, Tracking, database,
 )
 
 logger = logging.getLogger(__name__)
 
 def _utc_iso(dt: datetime | None) -> str | None:
-    """Every DateTimeField here is naive-but-really-UTC. Stamping the
-    timezone explicitly is required: a frontend `new Date(...)` parses a
-    timezone-less ISO string as *local* time, shifting it silently."""
     return dt.replace(tzinfo=timezone.utc).isoformat() if dt is not None else None
 
 class Db(
@@ -47,16 +44,15 @@ class Db(
 
     _SQLITE_MAGIC = b"SQLite format 3\x00"
     _MODELS = (
-        Project, ChatSession, Message, User, Tracking, Archive, History, StateRemap,
+        Project, ChatSession, Message, User, Tracking, Archive, EditHistory, StateRemap,
         BenchmarkRun, BenchmarkRunObservation, BenchmarkAggregateResult, SessionSummary, SystemWarning,
         ProjectObserverIndex, Settings,
     )
 
     def __init__(self, database_url: str, force_drop_and_create_when_incompatible: bool=False) -> None:
         self._database_url = database_url
-        database.initialize(connect(database_url))
+        database.initialize(connect(database_url, pragmas={'foreign_keys': 1}))
         database.connect(reuse_if_open=True)
-        self._enable_foreign_keys()
         if force_drop_and_create_when_incompatible:
             self._drop_and_recreate_if_incompatible()
         database.create_tables(self._MODELS, safe=True)
@@ -64,9 +60,6 @@ class Db(
 
     @staticmethod
     def _backfill_projects() -> None:
-        """Creates a Project row for every project_name referenced by
-        ChatSession/Archive that doesn't have one yet. Idempotent
-        (get_or_create), so safe to run on every startup."""
         names = {row.project_name_id for row in ChatSession.select(ChatSession.project_name).distinct()}
         names |= {row.project_name_id for row in Archive.select(Archive.project_name).distinct()}
         for name in names:
@@ -82,9 +75,6 @@ class Db(
         if actual == self._expected_schema():
             return
         logger.warning("Database schema at '%s' doesn't match what this code expects — dropping and recreating every table from scratch (database.force-drop-and-create-when-incompatible is enabled).", path)
-        # Dropping a parent table while a child still FOREIGN KEYs into
-        # it raises IntegrityError under SQLite. `actual`'s table order
-        # isn't dependency-safe, so FK checking is switched off for the drop only.
         database.execute_sql('PRAGMA foreign_keys = OFF')
         try:
             for table in actual:
@@ -147,7 +137,6 @@ class Db(
             pass
         database.close()
         os.replace(tmp_path, path)
-        database.initialize(connect(self._database_url))
+        database.initialize(connect(self._database_url, pragmas={'foreign_keys': 1}))
         database.connect(reuse_if_open=True)
-        self._enable_foreign_keys()
 

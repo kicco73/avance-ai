@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .models import Archive, ChatSession, History, Message, Project, StateRemap, Tracking, database
+from .models import Archive, ChatSession, EditHistory, Message, Project, StateRemap, Tracking, database
 
 
 class ProjectMixin:
@@ -113,7 +113,7 @@ class ProjectMixin:
             # Every user's Undo/Redo stack just went stale — it
             # referenced content belonging to the revision just frozen,
             # not the new draft.
-            History.delete().where(History.project_name == project_name).execute()
+            EditHistory.delete().where(EditHistory.project_name == project_name).execute()
             return new_revision
 
     def get_archive(self, project_name: str, archive_name: str, revision: int | None = None) -> bytes | None:
@@ -190,6 +190,17 @@ class ProjectMixin:
             ).order_by(Project.name)
         ]
 
+    def list_distinct_archive_names(self) -> list[tuple[str, str]]:
+        return [
+            (row.project_name_id, row.archive_name)
+            for row in Archive.select(Archive.project_name, Archive.archive_name).distinct()
+        ]
+
+    def rename_archive_everywhere(self, project_name: str, old_name: str, new_name: str) -> None:
+        Archive.update(archive_name=new_name).where(
+            (Archive.project_name == project_name) & (Archive.archive_name == old_name)
+        ).execute()
+
     def list_archives(self, project_name: str, revision: int | None = None) -> list[str]:
         if revision is None:
             revision = self._current_revision(project_name)
@@ -204,14 +215,14 @@ class ProjectMixin:
         Archive.delete().where(
             (Archive.project_name == project_name) & (Archive.archive_name == archive_name) & (Archive.revision == revision)
         ).execute()
-        History.delete().where((History.project_name == project_name) & (History.archive_name == archive_name)).execute()
+        EditHistory.delete().where((EditHistory.project_name == project_name) & (EditHistory.archive_name == archive_name)).execute()
 
     def delete_archives(self, project_name: str) -> None:
         """Deletes the project entirely, every revision at once — unlike
         delete_archive, skips _ensure_draft_revision since the whole
         project is going away. The Project row goes with it too."""
         Archive.delete().where(Archive.project_name == project_name).execute()
-        History.delete().where(History.project_name == project_name).execute()
+        EditHistory.delete().where(EditHistory.project_name == project_name).execute()
         StateRemap.delete().where(StateRemap.project_name == project_name).execute()
         Project.delete().where(Project.name == project_name).execute()
 
@@ -233,7 +244,7 @@ class ProjectMixin:
                 & (Project.published_revision.is_null() | (Project.published_revision != Project.revision))
             ).execute()
             if changed:
-                History.delete().where(History.project_name == project_name).execute()
+                EditHistory.delete().where(EditHistory.project_name == project_name).execute()
             # Runs unconditionally: a stale Test session must never
             # survive even a no-op double-fired publish.
             self.delete_draft_test_sessions(project_name)
@@ -250,7 +261,7 @@ class ProjectMixin:
                 (Archive.project_name == project_name) & (Archive.revision == project.revision)
             ).execute()
             Project.update(revision=project.published_revision).where(Project.name == project_name).execute()
-            History.delete().where(History.project_name == project_name).execute()
+            EditHistory.delete().where(EditHistory.project_name == project_name).execute()
             self.delete_draft_test_sessions(project_name)
 
     def get_state_remap(self, project_name: str, old_key: str) -> str | None:

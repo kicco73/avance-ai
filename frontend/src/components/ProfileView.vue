@@ -1,16 +1,31 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
-import { getMe } from '../api.js'
+import { computed, onMounted, ref, watch } from 'vue'
+import { getMe, postEraseData } from '../api.js'
+import { confirmDialog, infoDialog } from '../dialogStore.js'
+import { disconnect as disconnectChat } from '../chatClient.js'
+import { requireLogin } from '../authStore.js'
 
 const emit = defineEmits(['close'])
 
 const profile = ref(null)
 const loading = ref(true)
+const erasing = ref(false)
 
 const initial = computed(() => {
   const source = profile.value?.name || profile.value?.email
   return source ? source.charAt(0).toUpperCase() : '?'
 })
+
+// Same reasoning as ProfileMenu.vue's own imageFailed — picture_url being
+// a valid string doesn't mean the image behind it actually loads (an
+// expired Google URL, a transient blip, an ad blocker); without this a
+// failed load shows as a permanently broken image icon instead of ever
+// falling back to the initial-letter avatar.
+const imageFailed = ref(false)
+watch(() => profile.value?.picture_url, () => {
+  imageFailed.value = false
+})
+const showAvatarImg = computed(() => !!profile.value?.picture_url && !imageFailed.value)
 
 function formatDate(iso) {
   return iso ? new Date(iso).toLocaleString() : '—'
@@ -28,6 +43,32 @@ async function load() {
 }
 
 onMounted(load)
+
+// Deletes the account and everything tied to it server-side (see
+// Db.erase_user_data), then reports success and logs out — the erase
+// endpoint already clears the session cookie itself, so this only needs
+// to flip the frontend's own state back to the login wall.
+async function eraseAllData() {
+  const ok = await confirmDialog({
+    title: 'Deleting your account',
+    body: 'This permanently deletes your account and erases all your data completely. This cannot be undone.',
+    okLabel: 'Erase everything',
+    danger: true
+  })
+  if (!ok) return
+
+  erasing.value = true
+  try {
+    await postEraseData()
+  } catch {
+    erasing.value = false
+    return // already surfaced via apiFetch
+  }
+
+  await infoDialog({ title: 'Data erased', body: 'All your data has been erased. Logging you out.' })
+  disconnectChat()
+  requireLogin()
+}
 </script>
 
 <template>
@@ -41,7 +82,7 @@ onMounted(load)
       <p v-if="loading" class="profile-view-status">Loading…</p>
 
       <div v-else-if="profile" class="profile-card">
-        <img v-if="profile.picture_url" :src="profile.picture_url" class="profile-card-avatar" alt="" />
+        <img v-if="showAvatarImg" :src="profile.picture_url" class="profile-card-avatar" alt="" referrerpolicy="no-referrer" @error="imageFailed = true" />
         <div v-else class="profile-card-avatar profile-card-avatar-fallback">{{ initial }}</div>
 
         <h3 class="profile-card-name">{{ profile.name ?? profile.email }}</h3>
@@ -58,6 +99,10 @@ onMounted(load)
             <span class="profile-card-field-value">{{ formatDate(profile.last_login) }}</span>
           </div>
         </div>
+
+        <button type="button" class="erase-data-btn" :disabled="erasing" @click="eraseAllData">
+          Delete my account
+        </button>
       </div>
     </div>
   </div>
@@ -196,5 +241,27 @@ onMounted(load)
 .profile-card-field-value {
   font-size: 0.95rem;
   color: #333;
+}
+
+.erase-data-btn {
+  margin-top: 2rem;
+  padding: 0.55rem 1.2rem;
+  border-radius: 8px;
+  border: 1px solid #c62828;
+  background: white;
+  color: #c62828;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.erase-data-btn:hover:not(:disabled) {
+  background: #c62828;
+  color: white;
+}
+
+.erase-data-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 </style>

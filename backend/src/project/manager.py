@@ -18,17 +18,11 @@ from tracking.session_import import SessionImportManager
 
 from .inspector import ProjectInspector
 from .parsers import AutomatonLoader, decode_text_archives, extract_zip_safely, looks_like_zip
-from .parsers import IMAGE_EXTENSIONS, TEXT_CONTENT_TYPE_BY_EXTENSION
+from .parsers import BENCHMARK_EXPORT_FILENAME, IMAGE_EXTENSIONS, SESSIONS_EXPORT_FILENAME, TEXT_CONTENT_TYPE_BY_EXTENSION
 from .project_import_bundle_job import ProjectImportBundleJob
 from .types import CommitCallback
 
 logger = logging.getLogger(__name__)
-
-# Optional "bring your own sessions" file in a project zip — a
-# session_export.py-shaped JSON array, imported-only, never a project file
-# (excluded before AutomatonBuilder sees `files`, never persisted as Archive).
-SESSIONS_EXPORT_FILENAME = "sessions.json"
-BENCHMARK_EXPORT_FILENAME = "benchmark.json"
 
 # "New project" starts from this sample zip, resolved off this module's own
 # location, not the cwd.
@@ -317,6 +311,12 @@ class ProjectManager:
         """Validates via _load_and_validate(), persists `project_name` as
         active, then awaits `commit(project_name, new_automaton)`."""
         new_automaton = self._automaton_loader.load(project_name)
+        # active_project_id is a real FK onto Project.name — for a brand
+        # new project (commit below is what first calls save_project_files/
+        # ensure_project), the row doesn't exist yet at this point, so it
+        # has to be ensured here first. Idempotent, so a no-op for an
+        # already-persisted project.
+        self._db.ensure_project(project_name)
         self._db.set_active_project_name(project_name, Session().user)
         await commit(project_name, new_automaton)
         return new_automaton
@@ -358,13 +358,16 @@ class ProjectManager:
                     # except image assets — read_text() on those (e.g. a PNG's
                     # magic bytes) raised a UnicodeDecodeError, so import/export
                     # was never actually round-trippable for a project with
-                    # any Theme asset in it.
+                    # any Theme asset in it. rglob (not iterdir) since
+                    # extract_zip_safely lets LEGAL_TERMS_FILE_NAME stay
+                    # nested one level — every other file is still flat, so
+                    # this is a no-op change for them.
                     files = {
-                        file.name: (
+                        file.relative_to(staging_dir).as_posix(): (
                             file.read_bytes() if file.suffix.lower() in IMAGE_EXTENSIONS
                             else file.read_text(encoding="utf-8")
                         )
-                        for file in staging_dir.iterdir()
+                        for file in staging_dir.rglob("*") if file.is_file()
                     }
             else:
                 files = {"index.yml": content.decode("utf-8")}
@@ -384,8 +387,11 @@ class ProjectManager:
             logger.exception(exc)
             raise ValueError(f"Invalid project definition: {exc}") from exc
 
-        self._db.set_active_project_name(project_name, Session().user)
+        # ensure_project first: active_project_id is a real FK onto
+        # Project.name, and this project's own row doesn't exist yet for
+        # a brand new project.
         self._db.ensure_project(project_name)
+        self._db.set_active_project_name(project_name, Session().user)
         if to_persist is not None:
             # This upload path is text-only; content_type is inferred from
             # each entry's own extension, same as put_project_file.
@@ -477,11 +483,17 @@ class ProjectManager:
         return buffer.getvalue()
 
     async def delete_project(self, project_name: str, commit: CommitCallback) -> None:
+        # Captured before delete_archives: that call drops the Project
+        # row itself, and active_project_id is a real FK onto it with
+        # on_delete='SET NULL' — by the time it returns, every user who
+        # had this project active (including this one) already reads
+        # back None, so checking afterwards could never see a match.
+        was_active = project_name == self._inspector.get_active_project_name()
         self._db.reset_project(project_name)
         self._db.delete_archives(project_name)
         self._automaton_loader.invalidate_cache(project_name)
 
-        if project_name == self._inspector.get_active_project_name():
+        if was_active:
             # Falls back to whatever's left, or nothing at all (the
             # "select a project" empty state) if that was the last one.
             remaining = self._db.list_projects()
