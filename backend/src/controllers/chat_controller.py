@@ -199,6 +199,15 @@ class ChatController(BaseController):
         superseding whichever session was previously current."""
         return self.chat_service.create_session()
 
+    @get("/api/projects/{project_name}/legal-terms-status")
+    def get_legal_terms_status(self, project_name: str):
+        return self.chat_service.get_legal_terms_status(project_name)
+
+    @post("/api/projects/{project_name}/accept-terms")
+    def post_accept_chat_terms(self, project_name: str):
+        self.chat_service.accept_legal_terms(project_name)
+        return {"success": True}
+
     @get("/api/projects/{project_name}/sessions")
     def get_sessions(self, project_name: str, include_imported: bool = False):
         """Every session for `project_name`, for the "Sessions" side

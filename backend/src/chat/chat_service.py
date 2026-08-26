@@ -28,7 +28,6 @@ from jobs import JobQueue
 from tracking.tracking_engine import DbTrackingSink, TrackingEngine
 from tracking.turn_callbacks import OnMetadata
 from metrics.metric_service import MetricService
-from project.parsers import LEGAL_TERMS_FILE_NAME
 from project.project_service import ProjectService
 from tracking.tracking_service import TrackingService
 
@@ -144,29 +143,19 @@ class ChatService(object):
 		except ValueError as exc:
 			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 
-	def _legal_terms_pending(self, project_name: str, session: dict) -> bool:
-		"""Whether `session` — a live session just freshly created — should
-		gate behind a one-time legal/terms.md notice before the user can
-		chat: only when the project's own published revision this session
-		is pinned to differs from this user's previous live session here
-		(no previous session, i.e. a first-ever one, counts as a change
-		too), and that revision actually has a legal/terms.md to show.
-		Uses get_previous_chat_session (not get_latest_chat_session) so the
-		answer stays the same however many times this same session is
-		later resolved again — the frontend only ever gets `True` once,
-		right when the session is created, never again on a reload."""
-		previous = self._db.get_previous_chat_session(session["username"], project_name, session["id"], type='live')
-		if previous is not None and previous["project_revision"] == session["project_revision"]:
-			return False
-		return self._db.get_archive(project_name, LEGAL_TERMS_FILE_NAME, revision=session["project_revision"]) is not None
+	def get_legal_terms_status(self, project_name: str) -> dict:
+		return self._project_service.get_legal_terms_status(self._username, project_name)
+
+	def accept_legal_terms(self, project_name: str) -> None:
+		self._project_service.accept_legal_terms(self._username, project_name)
 
 	def _resolve_or_create_session_of_type(
 		self, strategy: SessionTypeStrategy, project_name: str, session_id: int | None
 	) -> dict:
-		is_new_live_session = False
 		try:
-			# No active session means a new one is about to be created —
-			# the moment the previously active one (if any) is discovered closed.
+			if strategy.type_name == 'live' and self._project_service.legal_terms_pending(self._username, project_name):
+				return {"legal_terms_pending": True, "project_name": project_name}
+			is_new_live_session = False
 			if strategy.type_name == 'live':
 				is_new_live_session = self._session_manager.get_active_session(self._username, project_name) is None
 				if is_new_live_session:
@@ -180,10 +169,7 @@ class ChatService(object):
 		except ValueError as exc:
 			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 		automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
-		payload = {**self._session_payload(session, active=True), "state": automaton.get_state_payload(state)}
-		if is_new_live_session:
-			payload["legal_terms_pending"] = self._legal_terms_pending(project_name, session)
-		return payload
+		return {**self._session_payload(session, active=True), "state": automaton.get_state_payload(state)}
 
 	def get_or_create_current_session(self, session_id: int | None) -> dict:
 		"""Bootstrap for a client with no (or a possibly-stale) session_id:
@@ -204,6 +190,8 @@ class ChatService(object):
 
 	def _create_session_of_type(self, strategy: SessionTypeStrategy, project_name: str) -> dict:
 		try:
+			if strategy.type_name == 'live' and self._project_service.legal_terms_pending(self._username, project_name):
+				return {"legal_terms_pending": True, "project_name": project_name}
 			session = self._session_manager.create_session(
 				strategy, self._project_service, self._username, project_name
 			)
@@ -213,10 +201,7 @@ class ChatService(object):
 		# "on-enter": a new session enters its starting state *through*
 		# init_action itself — the same wire key every other real
 		# transition reports, just for init_action instead of a regular Action.
-		payload = {**self._session_payload(session, active=True), "on-enter": automaton.init_action.on_enter}
-		if strategy.type_name == 'live':
-			payload["legal_terms_pending"] = self._legal_terms_pending(project_name, session)
-		return payload
+		return {**self._session_payload(session, active=True), "on-enter": automaton.init_action.on_enter}
 
 	def create_session(self) -> dict:
 		return self._create_session_of_type(get_session_type_strategy('live'), self._active_project_name)

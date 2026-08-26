@@ -80,8 +80,8 @@ class BenchmarkReplayJob(Job):
         self._signal_source = None
         self._warnings: list[str] = []
 
-    def _prepare(self) -> tuple[int, list[Job]]:
-        return self._total, []
+    def _prepare(self) -> tuple[int, tuple[Job, ...]]:
+        return self._total, ()
 
     @property
     def is_background(self) -> bool:
@@ -128,6 +128,7 @@ class BenchmarkReplayJob(Job):
 
     def _finalize(self) -> None:
         self._service._calculate_and_save_results(self._run)
+        self._service._cache.untrack_many([self._run['id']])
         self._total_steps = self._steps_done + 1
 
     def _prepare_session(self, session_id: int) -> tuple[list[int], str | None]:
@@ -180,13 +181,13 @@ class _AggregationJob(Job):
         self._strategy = strategy
         self._result_value: dict | list[dict] | None = None
 
-    def _prepare(self) -> tuple[int, list[Job]]:
+    def _prepare(self) -> tuple[int, tuple[Job, ...]]:
         return 1, self._resolve_or_construct_dependencies()
 
-    def _resolve_or_construct_dependencies(self) -> list[Job]:
+    def _resolve_or_construct_dependencies(self) -> tuple[Job, ...]:
         raise NotImplementedError
 
-    def _resolve_session_ids(self, session_ids: list[int]) -> tuple[list[int], list[Job]]:
+    def _resolve_session_ids(self, session_ids: list[int]) -> tuple[list[int], tuple[Job, ...]]:
         run_ids = []
         dependencies = []
         for session_id in session_ids:
@@ -194,7 +195,7 @@ class _AggregationJob(Job):
             run_ids.append(run_id)
             if job is not None:
                 dependencies.append(job)
-        return run_ids, dependencies
+        return run_ids, tuple(dependencies)
 
     @property
     def is_background(self) -> bool:
@@ -234,7 +235,7 @@ class StateAggregationJob(_AggregationJob):
         self._session_ids = session_ids
         self._sub_run_ids: list[int] = []
 
-    def _resolve_or_construct_dependencies(self) -> list[Job]:
+    def _resolve_or_construct_dependencies(self) -> tuple[Job, ...]:
         self._sub_run_ids, dependencies = self._resolve_session_ids(self._session_ids)
         return dependencies
 
@@ -250,7 +251,7 @@ class SignalAggregationJob(_AggregationJob):
         self._session_ids = session_ids
         self._sub_run_ids: list[int] = []
 
-    def _resolve_or_construct_dependencies(self) -> list[Job]:
+    def _resolve_or_construct_dependencies(self) -> tuple[Job, ...]:
         self._sub_run_ids, dependencies = self._resolve_session_ids(self._session_ids)
         return dependencies
 
@@ -268,7 +269,7 @@ class PooledAggregationJob(_AggregationJob):
         self._session_ids = session_ids
         self._sub_run_ids: list[int] = []
 
-    def _resolve_or_construct_dependencies(self) -> list[Job]:
+    def _resolve_or_construct_dependencies(self) -> tuple[Job, ...]:
         self._sub_run_ids, dependencies = self._resolve_session_ids(self._session_ids)
         return dependencies
 
@@ -289,12 +290,12 @@ class UsersAggregationJob(_AggregationJob):
         self._session_ids_by_user = session_ids_by_user
         self._user_jobs: list[PooledAggregationJob] = []
 
-    def _resolve_or_construct_dependencies(self) -> list[Job]:
+    def _resolve_or_construct_dependencies(self) -> tuple[Job, ...]:
         self._user_jobs = [
             PooledAggregationJob(self._service, self._project_name, 'user_sessions', username, self._strategy, session_ids)
             for username, session_ids in self._session_ids_by_user.items()
         ]
-        return list(self._user_jobs)
+        return tuple(self._user_jobs)
 
     async def _compute(self) -> list[dict]:
         per_user_results = [json.loads(job.result) for job in self._user_jobs]
@@ -312,12 +313,12 @@ class AllStatesAggregationJob(_AggregationJob):
         self._session_ids_by_state = session_ids_by_state
         self._state_jobs: list[StateAggregationJob] = []
 
-    def _resolve_or_construct_dependencies(self) -> list[Job]:
+    def _resolve_or_construct_dependencies(self) -> tuple[Job, ...]:
         self._state_jobs = [
             StateAggregationJob(self._service, self._project_name, state_key, self._strategy, session_ids)
             for state_key, session_ids in self._session_ids_by_state.items()
         ]
-        return list(self._state_jobs)
+        return tuple(self._state_jobs)
 
     async def _compute(self) -> dict:
         per_state_results = [json.loads(job.result) for job in self._state_jobs]
@@ -337,12 +338,12 @@ class AllSignalsAggregationJob(_AggregationJob):
         self._signal_names = signal_names
         self._signal_jobs: list[SignalAggregationJob] = []
 
-    def _resolve_or_construct_dependencies(self) -> list[Job]:
+    def _resolve_or_construct_dependencies(self) -> tuple[Job, ...]:
         self._signal_jobs = [
             SignalAggregationJob(self._service, self._project_name, signal_name, self._strategy, self._session_ids)
             for signal_name in self._signal_names
         ]
-        return list(self._signal_jobs)
+        return tuple(self._signal_jobs)
 
     async def _compute(self) -> dict:
         per_signal_results = [json.loads(job.result) for job in self._signal_jobs]
@@ -354,9 +355,9 @@ class RootAggregationJob(Job):
     def __init__(self, service: "BenchmarkRunService", strategy: str, branch_jobs: list[Job]) -> None:
         super().__init__(key=f"{strategy}:root", username=Session().user)
         self._service = service
-        self._branch_jobs = branch_jobs
+        self._branch_jobs = tuple(branch_jobs)
 
-    def _prepare(self) -> tuple[int, list[Job]]:
+    def _prepare(self) -> tuple[int, tuple[Job, ...]]:
         return 1, self._branch_jobs
 
     @property

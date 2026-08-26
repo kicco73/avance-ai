@@ -116,12 +116,15 @@ class ProjectMixin:
             EditHistory.delete().where(EditHistory.project_name == project_name).execute()
             return new_revision
 
-    def get_archive(self, project_name: str, archive_name: str, revision: int | None = None) -> bytes | None:
+    def get_archive_row(self, project_name: str, archive_name: str, revision: int | None = None) -> Archive | None:
         if revision is None:
             revision = self._current_revision(project_name)
-        row = Archive.get_or_none(
+        return Archive.get_or_none(
             (Archive.project_name == project_name) & (Archive.archive_name == archive_name) & (Archive.revision == revision)
         )
+
+    def get_archive(self, project_name: str, archive_name: str, revision: int | None = None) -> bytes | None:
+        row = self.get_archive_row(project_name, archive_name, revision=revision)
         return row.content if row is not None else None
 
     def get_archive_content_type(self, project_name: str, archive_name: str, revision: int | None = None) -> str | None:

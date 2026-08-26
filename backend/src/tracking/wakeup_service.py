@@ -32,8 +32,8 @@ class WakeupJob(Job):
         self._username = username
         self._observer_project_name = observer_project_name
 
-    def _prepare(self) -> tuple[int, list[Job]]:
-        return 1, []
+    def _prepare(self) -> tuple[int, tuple[Job, ...]]:
+        return 1, ()
 
     @property
     def is_background(self) -> bool:

@@ -4,27 +4,26 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 // A Test/draft session is a single, ephemeral conversation, so the
 // embedded test chat hides the sessions panel entirely.
 //
-// themeMode: 'auto' (default, App.vue's own widget) shows the project's
-// index.css skin the whole time, same as the live chat always has.
-// 'manual' (RunChat.vue) starts unskinned instead and leaves showing it
-// up to the shared applyAspect flag/toggle — owned here, not by whichever
-// component happens to pass the prop, so entering/leaving manual mode is
-// always symmetric: onMounted forces it off, onBeforeUnmount always
-// restores it, with no separate opt-in/opt-out call for a manual-mode
-// consumer to remember. applyAspect is shared across every ChatWindow
-// instance (a genuine app-wide preference, see chatSkin.js), which is
-// exactly why a manual instance must restore it on unmount rather than
-// leaving it however it last set it.
+// themeMode: 'auto' (default, LiveChatWindow.vue's own instance) shows
+// the project's index.css skin the whole time, same as the live chat
+// always has. 'manual' (RunChat.vue) starts unskinned instead and leaves
+// showing it up to the shared applyAspect flag/toggle — owned here, not
+// by whichever component happens to pass the prop, so entering/leaving
+// manual mode is always symmetric: onMounted forces it off, onBeforeUnmount
+// always restores it, with no separate opt-in/opt-out call for a
+// manual-mode consumer to remember. applyAspect is shared across every
+// ChatView instance (a genuine app-wide preference, see chatSkin.js),
+// which is exactly why a manual instance must restore it on unmount
+// rather than leaving it however it last set it.
 import ActionButtons from './ActionButtons.vue'
 import ChatInput from './ChatInput.vue'
 import MessageBubble from './MessageBubble.vue'
 import SessionsPanel from './SessionsPanel.vue'
 import ProjectsMenu from '../ProjectsMenu.vue'
 import SplashScreen from '../SplashScreen.vue'
-import TermsView from '../TermsView.vue'
 import { setApiError } from '../../errorStore.js'
+import { connect as connectChat, disconnect as disconnectChat } from '../../chatClient.js'
 import { startRecording, stopRecording } from '../../mic.js'
-import { projectFileContentUrl } from '../../api.js'
 import { liveStore } from '../../chatStore.js'
 import {
   audioEnabled,
@@ -69,29 +68,12 @@ const {
   handleAction,
   toggleAudio,
   projectPaused,
-  projectPausedReason,
-  currentProjectName,
-  legalTermsPending,
-  acceptLegalTerms
+  projectPausedReason
 } = props.store
 
 const emit = defineEmits(['project-select', 'project-download'])
 
 const projectsMenuRef = ref(null)
-
-// TermsView.vue's own fetchTerms override — same {content} shape as
-// getTerms(), just reading this project's own legal/terms.md pinned to
-// the live session that triggered legalTermsPending in the first place
-// (see chatSkin.js's loadSkin for the identical fetch/credentials pattern,
-// used there for index.css instead).
-async function fetchLegalTerms() {
-  const response = await fetch(
-    projectFileContentUrl(currentProjectName.value, 'legal/terms.md', currentSessionId.value),
-    { credentials: 'include', cache: 'no-store' }
-  )
-  if (!response.ok) throw new Error('Failed to load this application’s terms.')
-  return { content: await response.text() }
-}
 
 defineExpose({
   refreshProjectsMenu: () => projectsMenuRef.value?.refresh()
@@ -191,12 +173,14 @@ watch(sessionsPanelOpen, (open) => {
 })
 
 onMounted(() => {
+  connectChat()
   window.addEventListener('mousemove', onSessionsDrag)
   window.addEventListener('mouseup', stopSessionsDrag)
   if (props.themeMode === 'manual') applyAspect.value = false
   if (sessionsPanelOpen.value) resetSessionsPanelIdleTimer()
 })
 onBeforeUnmount(() => {
+  disconnectChat()
   window.removeEventListener('mousemove', onSessionsDrag)
   window.removeEventListener('mouseup', stopSessionsDrag)
   if (props.themeMode === 'manual') applyAspect.value = true
@@ -281,26 +265,14 @@ watch(
 
 // index.css's "skin" is applied globally now (see chatStore.js's own
 // loadSkin) — one shared <style> for the whole app rather than one per
-// ChatWindow instance, since App.vue's own widget stays mounted behind
-// EditProjectView's overlay the entire time it's open and would
-// otherwise fight this instance's tag for which one's rules actually win.
+// ChatView instance, since LiveChatWindow.vue's own instance stays
+// mounted behind EditProjectView's overlay the entire time it's open and
+// would otherwise fight this instance's tag for which one's rules
+// actually win.
 </script>
 
 <template>
-  <!-- Fixed/full-viewport (see TermsView.vue's own styling), so its
-       placement here doesn't matter — it covers the sessions panel,
-       header, and footer alike regardless of where in this template it
-       sits. Only ever true for the live store (see chatStoreFactory.js's
-       legalTermsPending): this project's own legal/terms.md changed since
-       the user's previous live session here, or this is their first one. -->
   <div class="chat-window-outer">
-  <TermsView
-    v-if="legalTermsPending"
-    :show-reject="false"
-    :fetch-terms="fetchLegalTerms"
-    @accept="acceptLegalTerms"
-  />
-
   <div
     class="chat-window-shell"
     :class="state?.key ? `state-${state.key}` : null"
@@ -422,10 +394,8 @@ watch(
 
 <style scoped>
 .chat-window-outer {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
   display: flex;
+  flex: 1;
   min-height: 0;
   min-width: 0;
 }
@@ -494,9 +464,10 @@ watch(
 
 /* Overlays the chat rather than sitting in the flex flow — opening it
    must never resize/reflow the chat pane underneath. z-index above
-   App.vue's .topbar-overlay (30): open, this panel must cover those
-   fixed buttons, never sit under them (though .topbar-overlay-hidden
-   already fades them out in lockstep with this opening anyway). */
+   LiveChatWindow.vue's own .topbar-overlay (30): open, this panel must
+   cover those fixed buttons, never sit under them (though
+   .topbar-overlay-hidden already fades them out in lockstep with this
+   opening anyway). */
 .sessions-panel-wrap {
   position: absolute;
   top: 0;

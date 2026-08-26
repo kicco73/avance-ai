@@ -13,16 +13,17 @@ class Job(ABC):
         self._total_steps: int | None = None
         self._is_failed = False
         self._error: str | None = None
+        self._dependencies: tuple["Job", ...] = ()
 
     @abstractmethod
-    def _prepare(self) -> tuple[int, list["Job"]]:
+    def _prepare(self) -> tuple[int, tuple["Job"]]:
         raise NotImplementedError
 
-    def prepare(self) -> list["Job"]:
+    def prepare(self) -> tuple["Job"]:
         if self._total_steps is not None:
             raise ValueError(f"Job {self} is already prepared")
-        self._total_steps, dependencies = self._prepare()
-        return dependencies
+        self._total_steps, self._dependencies = self._prepare()
+        return self._dependencies
 
     @property
     def is_background(self) -> bool:
@@ -63,6 +64,12 @@ class Job(ABC):
             raise ValueError(f"Job {self} not prepared")
         try:
             self._is_failed = False
+            failed = [dep for dep in self._dependencies if dep.is_failed()]
+            if failed:
+                raise RuntimeError(
+                    f"{len(failed)} of {len(self._dependencies)} "
+                    f"dependencies failed: {', '.join(dep.key for dep in failed)}"
+                )
             await self._run_next_step()
         except Exception as exc:
             self._is_failed = True

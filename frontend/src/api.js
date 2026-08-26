@@ -114,6 +114,14 @@ export function postAcceptTerms() {
   return apiFetch(`${API_URL}/auth/accept-terms`, { method: 'POST' })
 }
 
+export function getLegalTermsStatus(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/legal-terms-status`)
+}
+
+export function postAcceptProjectTerms(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/accept-terms`, { method: 'POST' })
+}
+
 // ProfileView.vue's "Erase all my data" — deletes the account and
 // everything tied to it server-side (see Db.erase_user_data); also
 // clears the session cookie itself.

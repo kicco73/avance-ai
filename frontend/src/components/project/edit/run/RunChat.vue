@@ -3,7 +3,7 @@
 // exclusive, so this never shares space with Design's split-view). Auto-tracking state
 // comes straight from chatStore.js's shared singleton rather than being prop-drilled.
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import ChatWindow from '../../../chat/ChatWindow.vue'
+import ChatView from '../../../chat/ChatView.vue'
 import ChatTimeline from '../../../chat/ChatTimeline.vue'
 import RestartFromHereButton from '../../../chat/RestartFromHereButton.vue'
 import SessionsPanel from '../../../chat/SessionsPanel.vue'
@@ -137,7 +137,7 @@ onBeforeUnmount(() => {
           <ModelMenu />
         </div>
       </div>
-      <ChatWindow hide-sessions-panel theme-mode="manual" :store="testStore">
+      <ChatView hide-sessions-panel theme-mode="manual" :store="testStore">
         <template #timeline>
           <ChatTimeline
             :timeline="timeline"
@@ -161,7 +161,7 @@ onBeforeUnmount(() => {
             </template>
           </ChatTimeline>
         </template>
-      </ChatWindow>
+      </ChatView>
     </div>
   </div>
 </template>

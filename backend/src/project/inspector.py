@@ -8,7 +8,7 @@ from db import Db
 from session import Session
 from tracking.tracking_engine import TrackingEngine
 
-from .parsers import AutomatonLoader
+from .parsers import AutomatonLoader, LEGAL_TERMS_FILE_NAME
 
 if TYPE_CHECKING:
     from ai.ai_service import AiService
@@ -56,6 +56,17 @@ class ProjectInspector:
 
     def get_draft_revision(self, project_name: str) -> int:
         return self._db.get_project_revision(project_name)
+
+    def get_legal_terms_status(self, username: str, project_name: str, revision: int | None = None) -> dict:
+        current = self._db.get_archive_row(project_name, LEGAL_TERMS_FILE_NAME, revision=revision)
+        if current is None:
+            return {"pending": False, "content": None}
+        accepted_id = self._db.get_accepted_terms_archive_id(username, project_name)
+        pending = accepted_id != current.id
+        return {"pending": pending, "content": current.content.decode("utf-8") if pending else None}
+
+    def legal_terms_pending(self, username: str, project_name: str, revision: int | None = None) -> bool:
+        return self.get_legal_terms_status(username, project_name, revision)["pending"]
 
     def get_automaton(self, project_name: str, revision: int) -> Automaton:
         return self._automaton_loader.load_at_revision(project_name, revision)

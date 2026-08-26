@@ -26,13 +26,13 @@ class SessionImportJob(Job):
         self._last_session_id: int | None = None
         self._transcript_test_user: str | None = None
 
-    def _prepare(self) -> tuple[int, list[Job]]:
+    def _prepare(self) -> tuple[int, tuple[Job, ...]]:
         for filename, content in self._uploads:
             if (filename or '').lower().endswith('.json'):
                 self._pending.extend(self._parse_json_upload(filename, content))
             else:
                 self._pending.append(('transcript', filename, content))
-        return len(self._pending), []
+        return len(self._pending), ()
 
     @property
     def is_background(self) -> bool:

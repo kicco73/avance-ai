@@ -18,7 +18,7 @@ from tracking.session_import import SessionImportManager
 
 from .inspector import ProjectInspector
 from .parsers import AutomatonLoader, decode_text_archives, extract_zip_safely, looks_like_zip
-from .parsers import BENCHMARK_EXPORT_FILENAME, IMAGE_EXTENSIONS, SESSIONS_EXPORT_FILENAME, TEXT_CONTENT_TYPE_BY_EXTENSION
+from .parsers import BENCHMARK_EXPORT_FILENAME, IMAGE_EXTENSIONS, LEGAL_TERMS_FILE_NAME, SESSIONS_EXPORT_FILENAME, TEXT_CONTENT_TYPE_BY_EXTENSION
 from .project_import_bundle_job import ProjectImportBundleJob
 from .types import CommitCallback
 
@@ -135,6 +135,17 @@ class ProjectManager:
             }
             for row in self._db.list_projects_runtime_status()
         ]
+
+    def accept_legal_terms(self, username: str, project_name: str) -> None:
+        """Records that `username` has accepted `project_name`'s current
+        legal/terms.md — a no-op if the project has none. Always accepts
+        whichever Archive row is current *right now*, not whichever one
+        the frontend last saw as pending: if it changed again in between,
+        the next legal_terms_pending check will correctly ask again."""
+        current = self._db.get_archive_row(project_name, LEGAL_TERMS_FILE_NAME)
+        if current is None:
+            return
+        self._db.record_terms_acceptance(username, project_name, current.id)
 
     def set_manually_paused(self, project_name: str) -> dict:
         """Only allowed from 'running', enforced here rather than left to

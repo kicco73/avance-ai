@@ -33,7 +33,7 @@ class ProjectImportBundleJob(Job):
         self._edit_count: int | None = None
         self._pending: list[tuple] = []
 
-    def _prepare(self) -> tuple[int, list[Job]]:
+    def _prepare(self) -> tuple[int, tuple[Job, ...]]:
         if self._sessions:
             self._db.publish_project(self._project_name)
         if self._benchmark_entries:
@@ -46,7 +46,7 @@ class ProjectImportBundleJob(Job):
         # A plain upload with no bundled sessions/benchmark results still
         # needs one step to reach is_done() — Job.progress() divides by
         # total_steps, which must never be 0.
-        return max(len(self._pending), 1), []
+        return max(len(self._pending), 1), ()
 
     @property
     def is_background(self) -> bool:

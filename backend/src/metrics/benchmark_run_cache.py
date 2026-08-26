@@ -35,7 +35,12 @@ class BenchmarkRunCache:
         # it, rather than returning the same stale 'failed' status forever.
         # self._live_jobs directly, not live_job_for(), which takes the
         # same non-reentrant lock the caller already holds via locked().
-        if run['results'] is None and self._live_jobs.get(run['id']) is None:
+        job = self._live_jobs.get(run['id'])
+        if run['results'] is None and (job is None or job.is_failed()):
+            # Drop the stale reference now — otherwise it (and, after a
+            # retry, its now-deleted DB row's id) stays pinned in memory
+            # for the lifetime of the process.
+            self._live_jobs.pop(run['id'], None)
             return None
         return run
 

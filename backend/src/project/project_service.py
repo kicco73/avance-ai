@@ -51,6 +51,12 @@ class ProjectService(object):
     def get_draft_revision(self, project_name: str) -> int:
         return self._inspector.get_draft_revision(project_name)
 
+    def legal_terms_pending(self, username: str, project_name: str) -> bool:
+        return self._inspector.legal_terms_pending(username, project_name, revision=self.get_published_revision(project_name))
+
+    def get_legal_terms_status(self, username: str, project_name: str) -> dict:
+        return self._inspector.get_legal_terms_status(username, project_name, revision=self.get_published_revision(project_name))
+
     def get_automaton(self, project_name: str, revision: int) -> Automaton:
         return self._inspector.get_automaton(project_name, revision)
 
@@ -124,6 +130,9 @@ class ProjectService(object):
 
     def get_runtime_status(self) -> list[dict]:
         return self._manager.get_runtime_status()
+
+    def accept_legal_terms(self, username: str, project_name: str) -> None:
+        self._manager.accept_legal_terms(username, project_name)
 
     def set_manually_paused(self, project_name: str) -> dict:
         return self._manager.set_manually_paused(project_name)

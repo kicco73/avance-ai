@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import ChatWindow from './components/chat/ChatWindow.vue'
+import LiveChatWindow from './components/chat/LiveChatWindow.vue'
 import EditProjectView from './components/project/edit/EditProjectView.vue'
 import LabelProjectView from './components/project/label/LabelProjectView.vue'
 import LoginView from './components/LoginView.vue'
@@ -42,12 +42,12 @@ import {
   loadMessages,
   loadAiModels,
   clearChatUi,
-  currentProjectName,
   sessionsPanelOpen
 } from './chatStore.js'
 
 const editProjectName = ref(null)
 const benchmarkProjectName = ref(null)
+const liveChatProjectName = ref(null)
 const showProfile = ref(false)
 // Admin only: what's currently pushed over the permanently-mounted
 // ManageProjectsView base — null | 'edit' | 'label' | 'manageUsers' |
@@ -224,7 +224,12 @@ async function pingBackend() {
     handleStateChange(newState)
     return 'ready'
   } catch (err) {
-    return err.status === 403 ? 'pending' : 'retry'
+    if (err.status === 403) return 'pending'
+    // apiFetch already called requireLogin() for this — LoginView is
+    // showing. Nothing to retry until the user logs back in, which
+    // restarts this whole sequence itself (see handleLoggedIn).
+    if (err.status === 401) return 'unauthorized'
+    return 'retry'
   } finally {
     clearTimeout(timeout)
   }
@@ -300,6 +305,9 @@ async function resolveLandingView() {
   if (currentUserRole.value === 'supervisor') {
     benchmarkProjectName.value = await getActiveProjectName()
   }
+  if (currentUserRole.value === 'user') {
+    liveChatProjectName.value = await getActiveProjectName()
+  }
 }
 
 async function runPingAttempt(token) {
@@ -307,6 +315,7 @@ async function runPingAttempt(token) {
   pingAttempts++
   const result = await pingBackend()
   if (token !== bootSequenceToken) return
+  if (result === 'unauthorized') return
   if (result === 'ready') {
     await resolveLandingView()
     if (token !== bootSequenceToken) return
@@ -488,6 +497,11 @@ function handleModelBenchmark(projectName) {
 // pushes chat over it.
 function handleManageProjectsChat(projectName) {
   pushView('chat')
+  handleLiveChatProjectSelect(projectName)
+}
+
+function handleLiveChatProjectSelect(projectName) {
+  liveChatProjectName.value = projectName
   handleProjectSwitch(projectName)
 }
 
@@ -679,10 +693,11 @@ onBeforeUnmount(() => {
 
     <div class="app-body">
       <!-- Plain user: chat is the entire app, no stack, no transition. -->
-      <ChatWindow
+      <LiveChatWindow
         v-if="currentUserRole === 'user'"
         ref="chatWindowRef"
-        @project-select="handleProjectSwitch"
+        :project-name="liveChatProjectName"
+        @project-select="handleLiveChatProjectSelect"
         @project-download="handleModelDownload"
       />
 
@@ -804,10 +819,11 @@ onBeforeUnmount(() => {
           @before-leave="onChatBeforeLeave"
           @leave="onChatLeave"
         >
-          <ChatWindow
+          <LiveChatWindow
             v-if="pushedView === 'chat'"
             ref="chatWindowRef"
-            @project-select="handleProjectSwitch"
+            :project-name="liveChatProjectName"
+            @project-select="handleLiveChatProjectSelect"
             @project-download="handleModelDownload"
           />
         </Transition>

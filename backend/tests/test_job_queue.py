@@ -59,6 +59,28 @@ class _RaisingJob(Job):
         raise ValueError(self._message)
 
 
+class _WaiterJob(Job):
+    """Stands in for an aggregation job: its own _run_next_step would
+    otherwise always succeed, regardless of whether the dependency it
+    waited on failed — mirrors an aggregation reading whatever partial
+    data is left behind, with no exception of its own."""
+
+    def __init__(self, dependency: Job, key: str = "waiter") -> None:
+        super().__init__(key=key, username="test")
+        self._dependency = dependency
+        self._result: str | None = None
+
+    def _prepare(self) -> tuple[int, list[Job]]:
+        return 1, [self._dependency]
+
+    @property
+    def result(self) -> str | None:
+        return self._result
+
+    async def _run_next_step(self) -> None:
+        self._result = "done"
+
+
 class _BlockingJob(Job):
     def __init__(self, started: threading.Event, release: threading.Event) -> None:
         super().__init__(key="blocking", username="test")
@@ -118,6 +140,27 @@ def test_jobs_beyond_pool_size_wait_until_a_worker_frees_up():
 
     assert _wait_until(lambda: second.is_done())
     assert _wait_until(lambda: first.is_done())
+
+
+def test_a_failed_shared_dependency_fails_every_waiter():
+    """Two independent 'branches' (e.g. a state aggregation and a users
+    aggregation) both depend on the very same session job, which fails
+    (e.g. the AI provider ran out of credits). Both waiters must end up
+    failed themselves, even though each one's own _run_next_step never
+    raises on its own."""
+    job_queue = _queue(max_concurrent=2)
+    shared_dependency = _RaisingJob("out of credits")
+    first_waiter = _WaiterJob(shared_dependency, key="first")
+    second_waiter = _WaiterJob(shared_dependency, key="second")
+
+    job_queue.submit(first_waiter)
+    job_queue.submit(second_waiter)
+
+    assert _wait_until(lambda: shared_dependency.is_failed())
+    assert _wait_until(lambda: first_waiter.is_failed())
+    assert _wait_until(lambda: second_waiter.is_failed())
+    assert first_waiter.result is None
+    assert second_waiter.result is None
 
 
 def test_two_queues_never_share_worker_pools():

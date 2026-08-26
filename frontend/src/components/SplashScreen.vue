@@ -90,7 +90,32 @@ const emit = defineEmits(['retry'])
   align-items: center;
   gap: 1rem;
   text-align: center;
+  padding: 2.5rem 2rem;
+  background: white;
+  border-radius: 14px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.18);
+  animation: splash-content-in 0.5s ease-out;
+}
+
+@keyframes splash-content-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Embedded doesn't get the floating card treatment — it already sits
+   inside its own flush white area (see .splash-embedded above). */
+.splash-embedded .splash-content {
   padding: 1.5rem;
+  background: none;
+  border-radius: 0;
+  box-shadow: none;
+  animation: none;
 }
 
 .splash-title {

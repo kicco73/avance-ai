@@ -7,7 +7,7 @@ import {
 import { sendMessage as sendChatMessage, onNotification } from './chatClient.js'
 import { playMessageChime, playMessageAudio, playReactionChime } from './audio.js'
 import { runOnEnterScript } from './onEnterActions.js'
-import { clearApiError } from './errorStore.js'
+import { clearApiError, setApiError } from './errorStore.js'
 import { confirmDialog } from './dialogStore.js'
 import { registerSkinSource } from './chatSkin.js'
 
@@ -86,16 +86,6 @@ export function createChatStore({
   const draft = ref('')
   const turnCount = ref(0)
   let nextMessageId = 0
-  // Set (never auto-cleared — see ensureSession/handleNewSession below)
-  // whenever a freshly-created live session's own legal/terms.md changed
-  // since this user's previous one here; only acceptLegalTerms clears it.
-  // Stays false forever for the 'test' store, since the backend only ever
-  // reports it for a 'live' session.
-  const legalTermsPending = ref(false)
-
-  function acceptLegalTerms() {
-    legalTermsPending.value = false
-  }
 
   registerSkinSource(kind, currentProjectName, currentSessionId)
 
@@ -153,17 +143,11 @@ export function createChatStore({
       projectPausedReason.value = session.paused_reason || ''
       return null
     }
+    if (session.legal_terms_pending) return null
     currentSessionId.value = session.id
     selectedSessionActive.value = session.active
     currentProjectName.value = session.project_name
     state.value = session.state
-    // Only ever set true here, never false — `legal_terms_pending` is
-    // only present in the response at all on the one bootstrap call that
-    // actually created this session; a later resolve of the same session
-    // (e.g. a page reload before Accept) omits it, and overwriting the
-    // ref to false in that case would silently dismiss the gate without
-    // acceptLegalTerms() ever having been called.
-    if (session.legal_terms_pending) legalTermsPending.value = true
     if (useAutoTracking) await loadAutoTracking()
     return session.id
   }
@@ -572,12 +556,12 @@ export function createChatStore({
     }
     try {
       const session = await createSession()
+      if (session.legal_terms_pending) {
+        setApiError('This project’s terms have changed. Please reload the page to continue.')
+        return
+      }
       currentSessionId.value = session.id
       selectedSessionActive.value = session.active
-      // Same one-shot signal as ensureSession's own — this call always
-      // creates a genuinely new session, so unlike there, no "only ever
-      // set true" guard is needed: there's nothing stale to protect against.
-      if (session.legal_terms_pending) legalTermsPending.value = true
       clearApiError()
       messages.value = []
       // A brand new session enters init_action.target through init_action
@@ -600,7 +584,6 @@ export function createChatStore({
     sessions, sessionsLoading, sessionsPanelOpen, currentProjectName,
     messages, historyLoaded, chatLoading, chatStatus, actionLoading,
     autoTrackingEnabled, autoTrackingLoading, draft, turnCount,
-    legalTermsPending, acceptLegalTerms,
     handleStateChange, loadMessages, loadSessions, refreshSessionsQuietly, toggleSessionsPanel,
     selectSession, reloadMessages, handleTruncateFrom, handleDeleteSession, toggleAutoTracking,
     toggleAudio, handleSend, handleVoiceMessage, handleResend, handleReact, handleAction,

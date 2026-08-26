@@ -131,57 +131,20 @@ function cacheKey(strategyName, nodeId) {
   return `${strategyName}:${nodeId}`
 }
 
-// { [cacheKey]: 'idle'|'running'|'ok'|'warning'|'fail' } — idle is TestsTree's
-// own implicit default for anything missing here.
-const nodeStatuses = ref({})
-const nodeProgress = ref({})
-// A node's own most recent result — kept client-side only, lost on page refresh.
+// One raw snapshot per event key (`${strategy}:${nodeId}`) — the last
+// status message received for that node, kept whole. Displayed status,
+// error, and progress are all derived from it on read (see outcome()
+// below), never split into separate stores that could drift apart from
+// one another as new events arrive.
+const nodeEvents = ref({})
+// A node's own most recent aggregate result payload — fetched over REST
+// once its job completes, a genuinely different piece of data (and a
+// different source) from the SSE status stream above, so it stays separate.
 const nodeLastResult = ref({})
-// A node's own most recent failure message, alongside nodeLastResult
-// above (null result on failure must stay distinguishable from "never run").
-const nodeError = ref({})
 
 const selectedNodeId = ref(null)
 const selectedRun = ref(null)
 const selectedRunLoading = ref(false)
-
-// TestsTree only ever sees the active strategy's own statuses — a node
-// with no entry here falls back to its own 'idle' default.
-const currentStrategyStatuses = computed(() => {
-  const prefix = `${strategy.value}:`
-  const result = {}
-  for (const [key, status] of Object.entries(nodeStatuses.value)) {
-    if (key.startsWith(prefix)) result[key.slice(prefix.length)] = status
-  }
-  return result
-})
-
-const currentStrategyProgress = computed(() => {
-  const prefix = `${strategy.value}:`
-  const result = {}
-  for (const [key, progress] of Object.entries(nodeProgress.value)) {
-    if (key.startsWith(prefix)) result[key.slice(prefix.length)] = progress
-  }
-  return result
-})
-
-const selectedCacheKey = computed(() => (
-  selectedNodeId.value ? cacheKey(strategy.value, selectedNodeId.value) : null
-))
-
-function setStatus(key, status) {
-  nodeStatuses.value = { ...nodeStatuses.value, [key]: status }
-}
-
-function setProgress(key, percentage) {
-  nodeProgress.value = { ...nodeProgress.value, [key]: percentage }
-}
-
-function clearProgress(key) {
-  const next = { ...nodeProgress.value }
-  delete next[key]
-  nodeProgress.value = next
-}
 
 // completed with no error -> ok; completed but error carries text (one
 // or more sessions skipped, e.g. no known starting state) -> warning,
@@ -190,6 +153,51 @@ function statusFromOutcome(status, error) {
   if (status === 'failed') return 'fail'
   if (status === 'completed') return error ? 'warning' : 'ok'
   return 'running'
+}
+
+// A node with no event yet falls back to TestsTree's own implicit 'idle'.
+function outcome(message) {
+  if (!message) return 'idle'
+  if (message.status === 'pending' || message.status === 'running') return message.status
+  return statusFromOutcome(message.status, message.error)
+}
+
+// TestsTree only ever sees the active strategy's own statuses/progress —
+// a node from the other strategy must never leak through.
+const currentStrategyStatuses = computed(() => {
+  const prefix = `${strategy.value}:`
+  const result = {}
+  for (const [key, message] of Object.entries(nodeEvents.value)) {
+    if (key.startsWith(prefix)) result[key.slice(prefix.length)] = outcome(message)
+  }
+  return result
+})
+
+const currentStrategyProgress = computed(() => {
+  const prefix = `${strategy.value}:`
+  const result = {}
+  for (const [key, message] of Object.entries(nodeEvents.value)) {
+    if (key.startsWith(prefix) && message.status === 'running' && message.percentage != null) {
+      result[key.slice(prefix.length)] = message.percentage
+    }
+  }
+  return result
+})
+
+const selectedCacheKey = computed(() => (
+  selectedNodeId.value ? cacheKey(strategy.value, selectedNodeId.value) : null
+))
+
+const selectedNodeError = computed(() => {
+  const message = nodeEvents.value[selectedCacheKey.value]
+  return message?.status === 'failed' ? message.error : null
+})
+
+// Writes one node's event as a single, complete replacement — used both
+// for real SSE messages and for the optimistic 'running'/'fail' the
+// activate*() functions below set on click, before the first real one arrives.
+function setNodeEvent(key, status, error = null) {
+  nodeEvents.value = { ...nodeEvents.value, [key]: { key, status, percentage: null, error } }
 }
 
 // nodeId's own {kind, target} in the aggregate-result/jobs-status
@@ -226,18 +234,15 @@ async function fetchAggregateResult(key, eventStrategy, kind, target) {
 }
 
 // The single live-update channel for every node's status/progress/result
-// — connected once in onMounted, replacing all per-node polling.
+// — connected once in onMounted, replacing all per-node polling. Each
+// message replaces its node's whole event record in one write (see
+// nodeEvents/setNodeEvent above), so a fresh 'pending'/'running' for a
+// re-run can never leave a stale error behind from the previous attempt.
 function handleTestEvent(message) {
   if (typeof message.tokens === 'number') tokensBurnt.value = message.tokens
-  const { key, status, percentage, error } = message
-  if (status === 'pending' || status === 'running') {
-    setStatus(key, status)
-    if (percentage != null) setProgress(key, percentage)
-    return
-  }
-  const outcome = statusFromOutcome(status, error)
-  setStatus(key, outcome)
-  clearProgress(key)
+  nodeEvents.value = { ...nodeEvents.value, [message.key]: message }
+
+  const { key, status } = message
   const separatorIndex = key.indexOf(':')
   const eventStrategy = key.slice(0, separatorIndex)
   const nodeId = key.slice(separatorIndex + 1)
@@ -245,7 +250,6 @@ function handleTestEvent(message) {
     if (selectedNodeId.value === nodeId && strategy.value === eventStrategy) loadSelectedRun(nodeId)
     return
   }
-  nodeError.value = { ...nodeError.value, [key]: status === 'failed' ? error : null }
   if (status !== 'completed') return
   const target = aggregateKindAndTarget(nodeId)
   if (target == null) return // root — no result of its own
@@ -260,83 +264,83 @@ async function hydrateJobsStatus() {
     return
   }
   for (const { session_id, status } of jobsStatus.sessions) {
-    if (status === 'ok') setStatus(cacheKey(strategy.value, `session:${session_id}`), 'ok')
+    if (status === 'ok') setNodeEvent(cacheKey(strategy.value, `session:${session_id}`), 'completed')
   }
   for (const { kind, target, status } of jobsStatus.aggregates) {
     if (status !== 'ok') continue
     const nodeId = nodeIdFor(kind, target)
     const key = cacheKey(strategy.value, nodeId)
-    setStatus(key, 'ok')
+    setNodeEvent(key, 'completed')
     fetchAggregateResult(key, strategy.value, kind, target)
   }
 }
 
 async function activateSessionLeaf(nodeId, activeStrategy) {
   const key = cacheKey(activeStrategy, nodeId)
-  setStatus(key, 'running')
+  setNodeEvent(key, 'running')
   try {
     const sessionId = Number(nodeId.slice('session:'.length))
     await postBenchmarkRun(props.projectName, sessionId, activeStrategy)
   } catch {
     // already surfaced via apiFetch
-    setStatus(key, 'fail')
+    setNodeEvent(key, 'failed')
   }
 }
 
 async function activateStateLeaf(nodeId, activeStrategy) {
   const key = cacheKey(activeStrategy, nodeId)
-  setStatus(key, 'running')
+  setNodeEvent(key, 'running')
   try {
     const stateKey = nodeId.slice('state:'.length)
     await postStateTest(props.projectName, stateKey, activeStrategy)
   } catch {
     // already surfaced via apiFetch
-    setStatus(key, 'fail')
+    setNodeEvent(key, 'failed')
   }
 }
 
 async function activateSessionsRun(activeStrategy) {
   const key = cacheKey(activeStrategy, 'sessions-branch')
-  setStatus(key, 'running')
+  setNodeEvent(key, 'running')
   try {
     await postSessionsRun(props.projectName, activeStrategy)
   } catch {
     // already surfaced via apiFetch
-    setStatus(key, 'fail')
+    setNodeEvent(key, 'failed')
   }
 }
 
 async function activateAllStates(activeStrategy) {
   const key = cacheKey(activeStrategy, 'states-branch')
-  setStatus(key, 'running')
+  setNodeEvent(key, 'running')
   try {
     await postStatesAggregation(props.projectName, activeStrategy)
   } catch {
     // already surfaced via apiFetch
-    setStatus(key, 'fail')
+    setNodeEvent(key, 'failed')
   }
 }
 
 async function activateSignalLeaf(nodeId, activeStrategy) {
   const key = cacheKey(activeStrategy, nodeId)
-  setStatus(key, 'running')
+  setNodeEvent(key, 'running')
   try {
     const signalName = nodeId.slice('signal:'.length)
     await postSignalTest(props.projectName, signalName, activeStrategy)
   } catch {
     // already surfaced via apiFetch
-    setStatus(key, 'fail')
+    setNodeEvent(key, 'failed')
   }
 }
 
 async function activateAllSignals(activeStrategy) {
   const key = cacheKey(activeStrategy, 'signals-branch')
-  setStatus(key, 'running')
+  setNodeEvent(key, 'running')
   try {
     await postSignalsAggregation(props.projectName, activeStrategy)
   } catch {
     // already surfaced via apiFetch
-    setStatus(key, 'fail')
+    setNodeEvent(key, 'failed')
   }
 }
 
@@ -346,35 +350,35 @@ function signalLabel(name) {
 
 async function activateUserLeaf(nodeId, activeStrategy) {
   const key = cacheKey(activeStrategy, nodeId)
-  setStatus(key, 'running')
+  setNodeEvent(key, 'running')
   try {
     const username = nodeId.slice('user:'.length)
     await postUserSessionsRun(props.projectName, username, activeStrategy)
   } catch {
     // already surfaced via apiFetch
-    setStatus(key, 'fail')
+    setNodeEvent(key, 'failed')
   }
 }
 
 async function activateUsersAggregation(activeStrategy) {
   const key = cacheKey(activeStrategy, 'users-branch')
-  setStatus(key, 'running')
+  setNodeEvent(key, 'running')
   try {
     await postUsersAggregation(props.projectName, activeStrategy)
   } catch {
     // already surfaced via apiFetch
-    setStatus(key, 'fail')
+    setNodeEvent(key, 'failed')
   }
 }
 
 async function activateRoot(activeStrategy) {
   const key = cacheKey(activeStrategy, 'root')
-  setStatus(key, 'running')
+  setNodeEvent(key, 'running')
   try {
     await postRootAggregation(props.projectName, activeStrategy)
   } catch {
     // already surfaced via apiFetch
-    setStatus(key, 'fail')
+    setNodeEvent(key, 'failed')
   }
 }
 
@@ -418,7 +422,7 @@ async function loadSelectedRun(nodeId) {
     const run = runs.find((run) => run.strategy === strategy.value) ?? null
     selectedRun.value = run
     if (run != null && run.status !== 'pending' && run.status !== 'running') {
-      setStatus(cacheKey(strategy.value, nodeId), statusFromOutcome(run.status, run.error))
+      setNodeEvent(cacheKey(strategy.value, nodeId), run.status, run.error)
     }
   } catch {
     selectedRun.value = null
@@ -473,7 +477,7 @@ function formatNumber(value) {
 
 const resettingCache = ref(false)
 
-const anyTestExecuted = computed(() => Object.values(nodeStatuses.value).some((status) => status !== 'idle'))
+const anyTestExecuted = computed(() => Object.keys(nodeEvents.value).length > 0)
 
 async function onResetCache() {
   if (strategy.value === 'turn_by_turn') {
@@ -488,10 +492,8 @@ async function onResetCache() {
   resettingCache.value = true
   try {
     await deleteBenchmarkRuns(props.projectName)
-    nodeStatuses.value = {}
-    nodeProgress.value = {}
+    nodeEvents.value = {}
     nodeLastResult.value = {}
-    nodeError.value = {}
     selectedRun.value = null
     if (selectedNodeId.value && isRunNode(selectedNodeId.value)) {
       await loadSelectedRun(selectedNodeId.value)
@@ -647,7 +649,7 @@ onBeforeUnmount(() => {
       </template>
 
       <template v-else-if="selectedNodeId === 'sessions-branch' || selectedNodeId.startsWith('user:') || selectedNodeId === 'users-branch'">
-        <p v-if="nodeError[selectedCacheKey]" class="tests-panel-error">{{ nodeError[selectedCacheKey] }}</p>
+        <p v-if="selectedNodeError" class="tests-panel-error">{{ selectedNodeError }}</p>
         <p v-else-if="!nodeLastResult[selectedCacheKey] || !nodeLastResult[selectedCacheKey].length" class="tests-panel-placeholder">
           No test has been run for {{ selectedNodeId.startsWith('user:') ? 'this user' : selectedNodeId === 'users-branch' ? 'the users aggregation' : 'the whole project' }} under this strategy yet.
         </p>
@@ -673,7 +675,7 @@ onBeforeUnmount(() => {
       </template>
 
       <template v-else-if="selectedNodeId.startsWith('state:')">
-        <p v-if="nodeError[selectedCacheKey]" class="tests-panel-error">{{ nodeError[selectedCacheKey] }}</p>
+        <p v-if="selectedNodeError" class="tests-panel-error">{{ selectedNodeError }}</p>
         <p v-else-if="!nodeLastResult[selectedCacheKey]" class="tests-panel-placeholder">
           No test has been run for this state under this strategy yet.
         </p>
@@ -696,7 +698,7 @@ onBeforeUnmount(() => {
       </template>
 
       <template v-else-if="selectedNodeId.startsWith('signal:')">
-        <p v-if="nodeError[selectedCacheKey]" class="tests-panel-error">{{ nodeError[selectedCacheKey] }}</p>
+        <p v-if="selectedNodeError" class="tests-panel-error">{{ selectedNodeError }}</p>
         <p v-else-if="!nodeLastResult[selectedCacheKey]" class="tests-panel-placeholder">
           No test has been run for this signal under this strategy yet.
         </p>
@@ -724,7 +726,7 @@ onBeforeUnmount(() => {
       </template>
 
       <template v-else-if="selectedNodeId === 'signals-branch'">
-        <p v-if="nodeError[selectedCacheKey]" class="tests-panel-error">{{ nodeError[selectedCacheKey] }}</p>
+        <p v-if="selectedNodeError" class="tests-panel-error">{{ selectedNodeError }}</p>
         <p v-else-if="!nodeLastResult[selectedCacheKey]" class="tests-panel-placeholder">
           No signal test has been run under this strategy yet.
         </p>
@@ -742,7 +744,7 @@ onBeforeUnmount(() => {
       </template>
 
       <template v-else-if="selectedNodeId === 'states-branch'">
-        <p v-if="nodeError[selectedCacheKey]" class="tests-panel-error">{{ nodeError[selectedCacheKey] }}</p>
+        <p v-if="selectedNodeError" class="tests-panel-error">{{ selectedNodeError }}</p>
         <p v-else-if="!nodeLastResult[selectedCacheKey]" class="tests-panel-placeholder">
           No state test has been run under this strategy yet.
         </p>

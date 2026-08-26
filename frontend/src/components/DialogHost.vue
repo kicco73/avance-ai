@@ -258,6 +258,18 @@ function closeInfo() {
 .dialog-about-logo {
   width: 96px;
   height: auto;
+  animation: dialog-about-logo-in 3s ease-out;
+}
+
+@keyframes dialog-about-logo-in {
+  from {
+    opacity: 0;
+    transform: scale(1.15);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .dialog-about-version {

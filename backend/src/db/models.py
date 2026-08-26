@@ -81,7 +81,7 @@ class ChatSession(BaseModel):
     # display/lookup identifier every existing query already uses;
     # `user` only backs "erase all my data"'s cascade.
     user = ForeignKeyField(User, field='id', column_name='user_id', null=True, backref='chat_sessions_owned', on_delete='CASCADE')
-    project_name = ForeignKeyField(Project, field='name', column_name='project_name', backref='chat_sessions')
+    project_name = ForeignKeyField(Project, field='name', column_name='project_name', backref='chat_sessions', on_delete='CASCADE')
     type = CharField(default='live')
     # Optional, freeform — an imported session gets the uploaded
     # transcript's filename to start with; a native one has none until
@@ -146,7 +146,7 @@ class Tracking(BaseModel):
 
 class Archive(BaseModel):
     id = AutoField()
-    project_name = ForeignKeyField(Project, field='name', column_name='project_name', backref='archives')
+    project_name = ForeignKeyField(Project, field='name', column_name='project_name', backref='archives', on_delete='CASCADE')
     archive_name = CharField(index=True, null=False)
     revision = IntegerField(null=False, default=0)
     content = BlobField(null=False)
@@ -299,6 +299,22 @@ class EditHistory(BaseModel):
     class Meta:
         table_name = 'EditHistory'
         indexes = ((('user_id', 'project_name', 'archive_name', 'kind', 'seq'), True),)
+
+class UserProject(BaseModel):
+    """One row per (user, project) once that user has ever accepted the
+    project's legal/terms.md — its absence means the user has never
+    accepted any revision of it. accepted_terms points at the specific
+    Archive row (archive_name=legal/terms.md) they accepted; a mismatch
+    against the project's current such row means the terms changed since
+    and must be re-accepted before a new live session can open (see
+    ProjectService.legal_terms_pending/accept_legal_terms)."""
+    user = ForeignKeyField(User, field='id', column_name='user_id', backref='user_projects', on_delete='CASCADE')
+    project_name = ForeignKeyField(Project, field='name', column_name='project_name', backref='user_projects', on_delete='CASCADE')
+    accepted_terms = ForeignKeyField(Archive, column_name='accepted_terms_id', backref='accepted_by', null=True, on_delete='SET NULL')
+
+    class Meta:
+        table_name = 'UserProject'
+        primary_key = CompositeKey('user', 'project_name')
 
 class Settings(BaseModel):
     key = CharField(primary_key=True)

@@ -26,8 +26,8 @@ class SessionSummaryJob(Job):
         self._session_id = session_id
         self._summary_id = summary_id
 
-    def _prepare(self) -> tuple[int, list[Job]]:
-        return 1, []
+    def _prepare(self) -> tuple[int, tuple[Job, ...]]:
+        return 1, ()
 
     @property
     def is_background(self) -> bool:

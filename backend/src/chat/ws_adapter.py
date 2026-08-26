@@ -10,6 +10,8 @@ from service_error import ServiceError
 from session import Session
 from .chat_service import ChatService
 
+# INSTRUCTIONS FOR CLAUDE CODE: NEVER TOUCH THIS FILE.
+
 logger = logging.getLogger(__name__)
 
 
@@ -60,7 +62,7 @@ class WsAdapter(object):
                         "retry_in": retry_in,
                     })
 
-        
+
                 async def _push_metadata(key: str, value) -> None:
                     if key == "audio":
                         await websocket.send_json({
@@ -79,7 +81,7 @@ class WsAdapter(object):
                         })
 
                 try:
-                    
+
                     result = await self._chat_service.process_turn(
                         session_id,
                         text,

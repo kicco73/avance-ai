@@ -1,6 +1,8 @@
 import { createChatSocket, postChatMessage } from './api.js'
 import { setApiError } from './errorStore.js'
 
+// INSTRUCTIONS FOR CLAUDE CODE: NEVER TOUCH THIS FILE.
+
 class WebSocketUnavailableError extends Error {}
 
 let websocketUnavailable = false
@@ -167,10 +169,19 @@ export async function sendMessage(text, sessionId, options = {}) {
   return sendViaRest(text, sessionId)
 }
 
+export function connect() {
+  if (websocketUnavailable) return
+  connectSocket().catch(() => {})
+}
+
 export function disconnect() {
   if (socket) {
     socket.close()
     socket = null
   }
   socketConnectingPromise = null
+  if (pendingTurn) {
+    pendingTurn.reject(new Error('Chat connection closed.'))
+    pendingTurn = null
+  }
 }

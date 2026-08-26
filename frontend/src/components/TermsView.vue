@@ -6,24 +6,23 @@
 // (postAcceptTerms) and lets App.vue resume booting; Reject logs out
 // with no row ever created — no trace of the attempt.
 //
-// Also reused as-is by ChatWindow.vue whenever a project's own
-// legal/terms.md changed since this user's last live session there (see
-// chatStoreFactory.js's legalTermsPending) — showReject=false there since
-// there's nothing to decline, just an Accept to dismiss it.
+// Also reused as-is by LiveChatWindow.vue whenever a project's own
+// legal/terms.md is pending acceptance for the active user — showReject=
+// false there since there's nothing to decline, just an Accept to dismiss it.
 import { onMounted, ref } from 'vue'
 import { getTerms } from '../api.js'
 import { renderMarkdown } from '../markdown.js'
+import logoUrl from '../assets/avance-logo.png'
 
 const props = defineProps({
-  // False for ChatWindow.vue's own reuse of this component (a live
-  // session's legal/terms.md changed — an FYI notice, not a consent gate
-  // the user can decline) — the platform-level TermsView caller below
-  // leaves this at its default, since that one's Reject really does log
-  // the session out with no User row ever created.
+  // False for LiveChatWindow.vue's own reuse of this component (a
+  // project's legal/terms.md pending acceptance — not a consent gate the
+  // user can decline) — the platform-level TermsView caller below leaves
+  // this at its default, since that one's Reject really does log the
+  // session out with no User row ever created.
   showReject: { type: Boolean, default: true },
-  // Defaults to the platform-wide GET /api/terms; ChatWindow.vue passes
-  // its own fetcher instead, reading a project's own legal/terms.md
-  // pinned to the session that triggered this screen.
+  // Defaults to the platform-wide GET /api/terms; LiveChatWindow.vue passes
+  // its own fetcher instead, reading the project's own legal/terms.md.
   fetchTerms: { type: Function, default: getTerms }
 })
 
@@ -44,18 +43,25 @@ onMounted(async () => {
   }
 })
 
+const CLOSE_ANIMATION_MS = 300
+const closing = ref(false)
+
 function accept() {
-  emit('accept')
+  if (closing.value) return
+  closing.value = true
+  setTimeout(() => emit('accept'), CLOSE_ANIMATION_MS)
 }
 
 function reject() {
-  emit('reject')
+  if (closing.value) return
+  closing.value = true
+  setTimeout(() => emit('reject'), CLOSE_ANIMATION_MS)
 }
 </script>
 
 <template>
-  <div class="terms-view">
-    <div class="terms-panel">
+  <div class="terms-view" :class="{ 'terms-view-closing': closing }">
+    <div class="terms-panel" :style="{ '--terms-watermark': `url(${logoUrl})` }">
       <h1 class="terms-title">Terms of Service</h1>
 
       <p v-if="loading" class="terms-status">Loading…</p>
@@ -81,6 +87,26 @@ function reject() {
   font-family: system-ui, -apple-system, sans-serif;
   z-index: 1000;
   padding: 2rem;
+  opacity: 1;
+  transform: scale(1);
+  transition: opacity 0.3s ease-in, transform 0.3s ease-in;
+  animation: terms-view-in 0.35s ease-out;
+}
+
+@keyframes terms-view-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.terms-view-closing {
+  opacity: 0;
+  transform: scale(0.94);
 }
 
 .terms-panel {
@@ -112,6 +138,8 @@ function reject() {
 }
 
 .terms-content {
+  position: relative;
+  z-index: 0;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -121,7 +149,20 @@ function reject() {
   background: white;
   font-size: 0.9rem;
   line-height: 1.6;
-  color: #333;
+  color: #313b4a;
+}
+
+.terms-content::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: var(--terms-watermark);
+  background-repeat: no-repeat;
+  background-position: calc(100% - 30px) 30px;
+  background-size: 31.5%;
+  opacity: 0.07;
+  pointer-events: none;
+  z-index: -1;
 }
 
 .terms-content :is(h1, h2, h3, h4) {
