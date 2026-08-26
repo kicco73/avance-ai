@@ -13,7 +13,6 @@ import InspectorUserInfoCard from '../../inspector/InspectorUserInfoCard.vue'
 import CardMenu from '../../inspector/CardMenu.vue'
 import { vAutosize } from '../../inspector/textareaAutosize.js'
 import { handleEnterNext } from '../../inspector/enterToNextField.js'
-import ErrorBanner from '../../ErrorBanner.vue'
 import {
   getMessages, getSessionSignals, getSessions, getProjectGraph, postImportSessions,
   getExportSessions, deleteImportedSessions, putMessageExpectedState, putMessageExpectedSignals, putMessageComment,
@@ -673,8 +672,6 @@ onBeforeUnmount(() => {
         <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
       </div>
     </div>
-
-    <ErrorBanner />
 
     <div class="benchmark-body">
       <div class="benchmark-chat-pane">

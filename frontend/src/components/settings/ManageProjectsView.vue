@@ -5,7 +5,6 @@
 import { onMounted, ref } from 'vue'
 import { getProjectMetadata, getProjectsRuntimeStatus, putProjectPause, putProjectResume } from '../../api.js'
 import { confirmDialog } from '../../dialogStore.js'
-import ErrorBanner from '../ErrorBanner.vue'
 import ProgressSpinner from '../ProgressSpinner.vue'
 import SettingsMenu from './SettingsMenu.vue'
 import ProfileMenu from '../ProfileMenu.vue'
@@ -196,8 +195,6 @@ defineExpose({ refresh: load })
         <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
       </div>
     </div>
-
-    <ErrorBanner />
 
     <div class="manage-projects-body">
       <p v-if="loading" class="manage-projects-status">Loading…</p>

@@ -1,5 +1,33 @@
 [
   {
+    "name": "Live session 1",
+    "username": "enrico.carniani@gmail.com",
+    "type": "imported",
+    "timestamp": "2026-08-26T22:54:02.800919+00:00",
+    "datetime_end": "2026-08-26T22:54:03.847244+00:00",
+    "start_state": "state-0",
+    "end_state": "state-0",
+    "labeled": false,
+    "comment": null,
+    "messages": [
+      {
+        "role": "assistant",
+        "text": "Hola. Soy Lluna, un espacio de acompa\u00f1amiento para hablar sobre consumo; no soy un tratamiento m\u00e9dico ni un terapeuta. Puedes esperar escucha y opciones de reducci\u00f3n de da\u00f1os, pero no juicios ni obligaciones, y puedes irte cuando quieras.",
+        "timestamp": "2026-08-26T22:54:03.842476+00:00",
+        "audio_text": null,
+        "values": {
+          "detectRisk": 0
+        },
+        "expected_state": null,
+        "expected_values": null,
+        "comment": null,
+        "old_state": null,
+        "action": null,
+        "new_state": null
+      }
+    ]
+  },
+  {
     "name": "Live session 2",
     "username": "itinococalero@gmail.com",
     "type": "imported",

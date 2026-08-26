@@ -5,7 +5,6 @@ import { valuesToSignalValues } from '../../benchmarkTimeline.js'
 import { confirmDialog } from '../../dialogStore.js'
 import { roleSatisfies } from '../../roles.js'
 import DocInfoButton from '../DocInfoButton.vue'
-import ErrorBanner from '../ErrorBanner.vue'
 import ProjectsMenu from '../ProjectsMenu.vue'
 import SettingsMenu from './SettingsMenu.vue'
 import ProfileMenu from '../ProfileMenu.vue'
@@ -210,8 +209,6 @@ defineExpose({ refresh: load })
         <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
       </div>
     </div>
-
-    <ErrorBanner />
 
     <div class="manage-users-body">
       <div

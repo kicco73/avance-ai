@@ -1,0 +1,2543 @@
+[
+  {
+    "kind": "state",
+    "target": "state-0",
+    "strategy": "batch",
+    "results": {
+      "name": "signal_accuracy",
+      "value": 0.0,
+      "mean": null,
+      "median": null,
+      "standard_deviation": null,
+      "minimum": null,
+      "maximum": null,
+      "sample_count": 0,
+      "components": {}
+    }
+  },
+  {
+    "kind": "state",
+    "target": "Crisis",
+    "strategy": "batch",
+    "results": {
+      "name": "signal_accuracy",
+      "value": 0.0,
+      "mean": null,
+      "median": null,
+      "standard_deviation": null,
+      "minimum": null,
+      "maximum": null,
+      "sample_count": 0,
+      "components": {}
+    }
+  },
+  {
+    "kind": "state",
+    "target": "Relapse",
+    "strategy": "batch",
+    "results": {
+      "name": "signal_accuracy",
+      "value": 0.0,
+      "mean": null,
+      "median": null,
+      "standard_deviation": null,
+      "minimum": null,
+      "maximum": null,
+      "sample_count": 0,
+      "components": {}
+    }
+  },
+  {
+    "kind": "state",
+    "target": "Maintenance",
+    "strategy": "batch",
+    "results": {
+      "name": "signal_accuracy",
+      "value": 0.0,
+      "mean": null,
+      "median": null,
+      "standard_deviation": null,
+      "minimum": null,
+      "maximum": null,
+      "sample_count": 0,
+      "components": {}
+    }
+  },
+  {
+    "kind": "user_sessions",
+    "target": "ramon@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 60.0,
+        "mean": 60.0,
+        "median": 100.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 100.0,
+        "mean": 100.0,
+        "median": 100.0,
+        "standard_deviation": 0.0,
+        "minimum": 100.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "standard_deviation": 30.0,
+        "minimum": 0.0,
+        "maximum": 60.0,
+        "sample_count": 2,
+        "components": {
+          "state_accuracy": 60.0,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 67.34013676289096,
+        "mean": 67.34013676289096,
+        "median": 100.0,
+        "standard_deviation": 46.18802153517006,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 100.0,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "youssef@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 60.0,
+        "mean": 60.0,
+        "median": 100.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 100.0,
+        "mean": 100.0,
+        "median": 100.0,
+        "standard_deviation": 0.0,
+        "minimum": 100.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "standard_deviation": 30.0,
+        "minimum": 0.0,
+        "maximum": 60.0,
+        "sample_count": 2,
+        "components": {
+          "state_accuracy": 60.0,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 67.34013676289096,
+        "mean": 67.34013676289096,
+        "median": 100.0,
+        "standard_deviation": 46.18802153517006,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 100.0,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "sergi@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 60.0,
+        "mean": 60.0,
+        "median": 100.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 100.0,
+        "mean": 100.0,
+        "median": 100.0,
+        "standard_deviation": 0.0,
+        "minimum": 100.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "standard_deviation": 30.0,
+        "minimum": 0.0,
+        "maximum": 60.0,
+        "sample_count": 2,
+        "components": {
+          "state_accuracy": 60.0,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 67.34013676289096,
+        "mean": 67.34013676289096,
+        "median": 100.0,
+        "standard_deviation": 46.18802153517006,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 100.0,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "montse@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 60.0,
+        "mean": 60.0,
+        "median": 100.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 100.0,
+        "mean": 100.0,
+        "median": 100.0,
+        "standard_deviation": 0.0,
+        "minimum": 100.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "standard_deviation": 30.0,
+        "minimum": 0.0,
+        "maximum": 60.0,
+        "sample_count": 2,
+        "components": {
+          "state_accuracy": 60.0,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 67.34013676289096,
+        "mean": 67.34013676289096,
+        "median": 100.0,
+        "standard_deviation": 46.18802153517006,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 100.0,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "ferran@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 60.0,
+        "mean": 60.0,
+        "median": 100.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 100.0,
+        "mean": 100.0,
+        "median": 100.0,
+        "standard_deviation": 0.0,
+        "minimum": 100.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "standard_deviation": 30.0,
+        "minimum": 0.0,
+        "maximum": 60.0,
+        "sample_count": 2,
+        "components": {
+          "state_accuracy": 60.0,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 67.34013676289096,
+        "mean": 67.34013676289096,
+        "median": 100.0,
+        "standard_deviation": 46.18802153517006,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 100.0,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "oscar@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 60.0,
+        "mean": 60.0,
+        "median": 100.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 100.0,
+        "mean": 100.0,
+        "median": 100.0,
+        "standard_deviation": 0.0,
+        "minimum": 100.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "standard_deviation": 30.0,
+        "minimum": 0.0,
+        "maximum": 60.0,
+        "sample_count": 2,
+        "components": {
+          "state_accuracy": 60.0,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 67.34013676289096,
+        "mean": 67.34013676289096,
+        "median": 100.0,
+        "standard_deviation": 46.18802153517006,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 100.0,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "marc@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 60.0,
+        "mean": 60.0,
+        "median": 100.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 100.0,
+        "mean": 100.0,
+        "median": 100.0,
+        "standard_deviation": 0.0,
+        "minimum": 100.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "standard_deviation": 30.0,
+        "minimum": 0.0,
+        "maximum": 60.0,
+        "sample_count": 2,
+        "components": {
+          "state_accuracy": 60.0,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 67.34013676289096,
+        "mean": 67.34013676289096,
+        "median": 100.0,
+        "standard_deviation": 46.18802153517006,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 100.0,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "nuria@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 60.0,
+        "mean": 60.0,
+        "median": 100.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 100.0,
+        "mean": 100.0,
+        "median": 100.0,
+        "standard_deviation": 0.0,
+        "minimum": 100.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "standard_deviation": 30.0,
+        "minimum": 0.0,
+        "maximum": 60.0,
+        "sample_count": 2,
+        "components": {
+          "state_accuracy": 60.0,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 67.34013676289096,
+        "mean": 67.34013676289096,
+        "median": 100.0,
+        "standard_deviation": 46.18802153517006,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 100.0,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "dani@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 60.0,
+        "mean": 60.0,
+        "median": 100.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 100.0,
+        "mean": 100.0,
+        "median": 100.0,
+        "standard_deviation": 0.0,
+        "minimum": 100.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "standard_deviation": 30.0,
+        "minimum": 0.0,
+        "maximum": 60.0,
+        "sample_count": 2,
+        "components": {
+          "state_accuracy": 60.0,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 67.34013676289096,
+        "mean": 67.34013676289096,
+        "median": 100.0,
+        "standard_deviation": 46.18802153517006,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 100.0,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "toni@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 60.0,
+        "mean": 60.0,
+        "median": 100.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 100.0,
+        "mean": 100.0,
+        "median": 100.0,
+        "standard_deviation": 0.0,
+        "minimum": 100.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "standard_deviation": 30.0,
+        "minimum": 0.0,
+        "maximum": 60.0,
+        "sample_count": 2,
+        "components": {
+          "state_accuracy": 60.0,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 67.34013676289096,
+        "mean": 67.34013676289096,
+        "median": 100.0,
+        "standard_deviation": 46.18802153517006,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 100.0,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "jordi@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 60.0,
+        "mean": 60.0,
+        "median": 100.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 100.0,
+        "mean": 100.0,
+        "median": 100.0,
+        "standard_deviation": 0.0,
+        "minimum": 100.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "standard_deviation": 30.0,
+        "minimum": 0.0,
+        "maximum": 60.0,
+        "sample_count": 2,
+        "components": {
+          "state_accuracy": 60.0,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 67.34013676289096,
+        "mean": 67.34013676289096,
+        "median": 100.0,
+        "standard_deviation": 46.18802153517006,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 100.0,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "roser@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 60.0,
+        "mean": 60.0,
+        "median": 100.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 100.0,
+        "mean": 100.0,
+        "median": 100.0,
+        "standard_deviation": 0.0,
+        "minimum": 100.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "standard_deviation": 30.0,
+        "minimum": 0.0,
+        "maximum": 60.0,
+        "sample_count": 2,
+        "components": {
+          "state_accuracy": 60.0,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 67.34013676289096,
+        "mean": 67.34013676289096,
+        "median": 100.0,
+        "standard_deviation": 46.18802153517006,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 100.0,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "clara@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 60.0,
+        "mean": 60.0,
+        "median": 100.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 100.0,
+        "mean": 100.0,
+        "median": 100.0,
+        "standard_deviation": 0.0,
+        "minimum": 100.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "standard_deviation": 30.0,
+        "minimum": 0.0,
+        "maximum": 60.0,
+        "sample_count": 2,
+        "components": {
+          "state_accuracy": 60.0,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 67.34013676289096,
+        "mean": 67.34013676289096,
+        "median": 100.0,
+        "standard_deviation": 46.18802153517006,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 100.0,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "pol@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 60.0,
+        "mean": 60.0,
+        "median": 100.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 100.0,
+        "mean": 100.0,
+        "median": 100.0,
+        "standard_deviation": 0.0,
+        "minimum": 100.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "standard_deviation": 30.0,
+        "minimum": 0.0,
+        "maximum": 60.0,
+        "sample_count": 2,
+        "components": {
+          "state_accuracy": 60.0,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 67.34013676289096,
+        "mean": 67.34013676289096,
+        "median": 100.0,
+        "standard_deviation": 46.18802153517006,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 100.0,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "manel@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 40.0,
+        "mean": 40.0,
+        "median": 0.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 66.66666666666667,
+        "mean": 66.66666666666667,
+        "median": 100.0,
+        "standard_deviation": 47.14045207910317,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 20.0,
+        "mean": 20.0,
+        "median": 20.0,
+        "standard_deviation": 20.0,
+        "minimum": 0.0,
+        "maximum": 40.0,
+        "sample_count": 2,
+        "components": {
+          "state_accuracy": 40.0,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 67.34013676289096,
+        "mean": 67.34013676289096,
+        "median": 100.0,
+        "standard_deviation": 46.18802153517006,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 100.0,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "amparo@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 60.0,
+        "mean": 60.0,
+        "median": 100.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 100.0,
+        "mean": 100.0,
+        "median": 100.0,
+        "standard_deviation": 0.0,
+        "minimum": 100.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "standard_deviation": 30.0,
+        "minimum": 0.0,
+        "maximum": 60.0,
+        "sample_count": 2,
+        "components": {
+          "state_accuracy": 60.0,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 67.34013676289096,
+        "mean": 67.34013676289096,
+        "median": 100.0,
+        "standard_deviation": 46.18802153517006,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 100.0,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "pilar@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 40.0,
+        "mean": 40.0,
+        "median": 0.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 100.0,
+        "mean": 100.0,
+        "median": 100.0,
+        "standard_deviation": 0.0,
+        "minimum": 100.0,
+        "maximum": 100.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 3,
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 3,
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 20.0,
+        "mean": 20.0,
+        "median": 20.0,
+        "standard_deviation": 20.0,
+        "minimum": 0.0,
+        "maximum": 40.0,
+        "sample_count": 2,
+        "components": {
+          "state_accuracy": 40.0,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 67.34013676289096,
+        "mean": 67.34013676289096,
+        "median": 100.0,
+        "standard_deviation": 46.18802153517006,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 100.0,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      }
+    ]
+  },
+  {
+    "kind": "state",
+    "target": "Action",
+    "strategy": "batch",
+    "results": {
+      "name": "signal_accuracy",
+      "value": 0.0,
+      "mean": null,
+      "median": null,
+      "standard_deviation": null,
+      "minimum": null,
+      "maximum": null,
+      "sample_count": 0,
+      "components": {}
+    }
+  },
+  {
+    "kind": "user_sessions",
+    "target": "berta@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 60.0,
+        "mean": 60.0,
+        "median": 100.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 100.0,
+        "mean": 100.0,
+        "median": 100.0,
+        "standard_deviation": 0.0,
+        "minimum": 100.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "standard_deviation": 30.0,
+        "minimum": 0.0,
+        "maximum": 60.0,
+        "sample_count": 2,
+        "components": {
+          "state_accuracy": 60.0,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 67.34013676289096,
+        "mean": 67.34013676289096,
+        "median": 100.0,
+        "standard_deviation": 46.18802153517006,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 100.0,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      }
+    ]
+  },
+  {
+    "kind": "state",
+    "target": "Preparation",
+    "strategy": "batch",
+    "results": {
+      "name": "signal_accuracy",
+      "value": 0.0,
+      "mean": null,
+      "median": null,
+      "standard_deviation": null,
+      "minimum": null,
+      "maximum": null,
+      "sample_count": 0,
+      "components": {}
+    }
+  },
+  {
+    "kind": "user_sessions",
+    "target": "encarna@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 80.0,
+        "mean": 80.0,
+        "median": 100.0,
+        "standard_deviation": 40.0,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 100.0,
+        "mean": 100.0,
+        "median": 100.0,
+        "standard_deviation": 0.0,
+        "minimum": 100.0,
+        "maximum": 100.0,
+        "sample_count": 4,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 1,
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 1,
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 40.0,
+        "mean": 40.0,
+        "median": 40.0,
+        "standard_deviation": 40.0,
+        "minimum": 0.0,
+        "maximum": 80.0,
+        "sample_count": 2,
+        "components": {
+          "state_accuracy": 80.0,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 73.33333333333333,
+        "mean": 73.33333333333333,
+        "median": 100.0,
+        "standard_deviation": 37.712361663282536,
+        "minimum": 19.999999999999996,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {
+          "state_error": 19.999999999999996,
+          "signal_error": 100.0,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "aleix@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 60.0,
+        "mean": 60.0,
+        "median": 100.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 100.0,
+        "mean": 100.0,
+        "median": 100.0,
+        "standard_deviation": 0.0,
+        "minimum": 100.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 30.0,
+        "mean": 30.0,
+        "median": 30.0,
+        "standard_deviation": 30.0,
+        "minimum": 0.0,
+        "maximum": 60.0,
+        "sample_count": 2,
+        "components": {
+          "state_accuracy": 60.0,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 67.34013676289096,
+        "mean": 67.34013676289096,
+        "median": 100.0,
+        "standard_deviation": 46.18802153517006,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 100.0,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      }
+    ]
+  },
+  {
+    "kind": "users",
+    "target": null,
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 59.0,
+        "mean": 59.0,
+        "median": 60.0,
+        "standard_deviation": 7.681145747868608,
+        "minimum": 40.0,
+        "maximum": 80.0,
+        "sample_count": 100,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 98.33333333333333,
+        "mean": 98.33333333333333,
+        "median": 100.0,
+        "standard_deviation": 7.264831572567788,
+        "minimum": 66.66666666666667,
+        "maximum": 100.0,
+        "sample_count": 60,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 40,
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 40,
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 29.5,
+        "mean": 29.5,
+        "median": 30.0,
+        "standard_deviation": 3.840572873934304,
+        "minimum": 20.0,
+        "maximum": 40.0,
+        "sample_count": 40,
+        "components": {}
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 67.63979659141309,
+        "mean": 67.63979659141309,
+        "median": 67.34013676289096,
+        "standard_deviation": 1.3061869099666406,
+        "minimum": 67.34013676289096,
+        "maximum": 73.33333333333333,
+        "sample_count": 60,
+        "components": {}
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      }
+    ]
+  },
+  {
+    "kind": "state",
+    "target": "Precontemplation",
+    "strategy": "batch",
+    "results": {
+      "name": "signal_accuracy",
+      "value": 0.0,
+      "mean": null,
+      "median": null,
+      "standard_deviation": null,
+      "minimum": null,
+      "maximum": null,
+      "sample_count": 0,
+      "components": {}
+    }
+  },
+  {
+    "kind": "state",
+    "target": "Contemplation",
+    "strategy": "batch",
+    "results": {
+      "name": "signal_accuracy",
+      "value": 0.0,
+      "mean": null,
+      "median": null,
+      "standard_deviation": null,
+      "minimum": null,
+      "maximum": null,
+      "sample_count": 0,
+      "components": {}
+    }
+  },
+  {
+    "kind": "all_states",
+    "target": null,
+    "strategy": "batch",
+    "results": {
+      "name": "overall",
+      "value": 0.0,
+      "mean": null,
+      "median": null,
+      "standard_deviation": null,
+      "minimum": null,
+      "maximum": null,
+      "sample_count": 0,
+      "components": {}
+    }
+  },
+  {
+    "kind": "signal",
+    "target": "balance_decisional",
+    "strategy": "batch",
+    "results": {
+      "name": "balance_decisional",
+      "value": 0.0,
+      "mean": null,
+      "median": null,
+      "standard_deviation": null,
+      "minimum": null,
+      "maximum": null,
+      "sample_count": 0,
+      "components": {}
+    }
+  },
+  {
+    "kind": "signal",
+    "target": "reconocimiento_del_problema",
+    "strategy": "batch",
+    "results": {
+      "name": "reconocimiento_del_problema",
+      "value": 0.0,
+      "mean": null,
+      "median": null,
+      "standard_deviation": null,
+      "minimum": null,
+      "maximum": null,
+      "sample_count": 0,
+      "components": {}
+    }
+  },
+  {
+    "kind": "sessions",
+    "target": null,
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 59.0,
+        "mean": 59.0,
+        "median": 100.0,
+        "standard_deviation": 49.18333050943175,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 100,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 98.33333333333333,
+        "mean": 98.33333333333333,
+        "median": 100.0,
+        "standard_deviation": 12.801909579781015,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 60,
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 40,
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 40,
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 29.5,
+        "mean": 29.5,
+        "median": 29.5,
+        "standard_deviation": 29.5,
+        "minimum": 0.0,
+        "maximum": 59.0,
+        "sample_count": 2,
+        "components": {
+          "state_accuracy": 59.0,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 67.21111299371216,
+        "mean": 67.21111299371216,
+        "median": 100.0,
+        "standard_deviation": 46.370488699411204,
+        "minimum": 1.6333389811365007,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "components": {
+          "state_error": 1.6333389811365007,
+          "signal_error": 100.0,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 0.0,
+        "mean": null,
+        "median": null,
+        "standard_deviation": null,
+        "minimum": null,
+        "maximum": null,
+        "sample_count": 0,
+        "components": {}
+      }
+    ]
+  },
+  {
+    "kind": "signal",
+    "target": "autoeficacia_situacional",
+    "strategy": "batch",
+    "results": {
+      "name": "autoeficacia_situacional",
+      "value": 0.0,
+      "mean": null,
+      "median": null,
+      "standard_deviation": null,
+      "minimum": null,
+      "maximum": null,
+      "sample_count": 0,
+      "components": {}
+    }
+  },
+  {
+    "kind": "signal",
+    "target": "acci\u00f3n_efectiva_magnitud_y_duraci\u00f3n",
+    "strategy": "batch",
+    "results": {
+      "name": "acci\u00f3n_efectiva_magnitud_y_duraci\u00f3n",
+      "value": 0.0,
+      "mean": null,
+      "median": null,
+      "standard_deviation": null,
+      "minimum": null,
+      "maximum": null,
+      "sample_count": 0,
+      "components": {}
+    }
+  },
+  {
+    "kind": "signal",
+    "target": "craving_nivel_e_inestabilidad",
+    "strategy": "batch",
+    "results": {
+      "name": "craving_nivel_e_inestabilidad",
+      "value": 0.0,
+      "mean": null,
+      "median": null,
+      "standard_deviation": null,
+      "minimum": null,
+      "maximum": null,
+      "sample_count": 0,
+      "components": {}
+    }
+  },
+  {
+    "kind": "signal",
+    "target": "alianza_terap\u00e9utica",
+    "strategy": "batch",
+    "results": {
+      "name": "alianza_terap\u00e9utica",
+      "value": 0.0,
+      "mean": null,
+      "median": null,
+      "standard_deviation": null,
+      "minimum": null,
+      "maximum": null,
+      "sample_count": 0,
+      "components": {}
+    }
+  },
+  {
+    "kind": "signal",
+    "target": "intenci\u00f3n_comprometida",
+    "strategy": "batch",
+    "results": {
+      "name": "intenci\u00f3n_comprometida",
+      "value": 0.0,
+      "mean": null,
+      "median": null,
+      "standard_deviation": null,
+      "minimum": null,
+      "maximum": null,
+      "sample_count": 0,
+      "components": {}
+    }
+  },
+  {
+    "kind": "signal",
+    "target": "perfil_de_procesos_de_cambio",
+    "strategy": "batch",
+    "results": {
+      "name": "perfil_de_procesos_de_cambio",
+      "value": 0.0,
+      "mean": null,
+      "median": null,
+      "standard_deviation": null,
+      "minimum": null,
+      "maximum": null,
+      "sample_count": 0,
+      "components": {}
+    }
+  },
+  {
+    "kind": "signal",
+    "target": "detectRisk",
+    "strategy": "batch",
+    "results": {
+      "name": "detectRisk",
+      "value": 0.0,
+      "mean": null,
+      "median": null,
+      "standard_deviation": null,
+      "minimum": null,
+      "maximum": null,
+      "sample_count": 0,
+      "components": {}
+    }
+  },
+  {
+    "kind": "all_signals",
+    "target": null,
+    "strategy": "batch",
+    "results": {
+      "name": "overall",
+      "value": 0.0,
+      "mean": null,
+      "median": null,
+      "standard_deviation": null,
+      "minimum": null,
+      "maximum": null,
+      "sample_count": 0,
+      "components": {}
+    }
+  }
+]

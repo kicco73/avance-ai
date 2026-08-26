@@ -55,7 +55,6 @@ import {
 } from '../../../api.js'
 import { clearApiError, setApiError, setApiWarning } from '../../../errorStore.js'
 import { confirmDialog, promptDialog, chooseDialog } from '../../../dialogStore.js'
-import ErrorBanner from '../../ErrorBanner.vue'
 import { refreshIdentifierRegistry } from '../../../identifierRegistry.js'
 import { buildTimeline, highlightedStateKeyFor, nearestMessageIdAtOrBefore, resultingStateKeyFor, signalValuesFor } from '../../../benchmarkTimeline.js'
 // `sessions` here is the *project's* whole session catalog (loaded by
@@ -1655,8 +1654,6 @@ onBeforeUnmount(() => {
         <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
       </div>
     </div>
-
-    <ErrorBanner />
 
     <div class="edit-project-body">
       <div class="edit-project-panels">
