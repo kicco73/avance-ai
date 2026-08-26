@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from db import Db
@@ -10,13 +12,13 @@ pytestmark = pytest.mark.contract
 
 
 class _FakeJob(Job):
-    """A stand-in for a BenchmarkReplayJob whose own terminal state
-    (failed or not) is set directly, without ever going through the
-    queue — all BenchmarkRunCache.find() needs to see."""
+    """A stand-in for a BenchmarkReplayJob, driven through the real
+    prepare()/run_next_step() so its terminal state comes from the same
+    path any other job's does — never poked into Job's own state directly."""
 
-    def __init__(self, failed: bool) -> None:
+    def __init__(self, should_fail: bool) -> None:
         super().__init__(key="fake", username="test")
-        self._is_failed = failed
+        self._should_fail = should_fail
 
     def _prepare(self) -> tuple[int, tuple[Job, ...]]:
         return 1, ()
@@ -26,11 +28,21 @@ class _FakeJob(Job):
         return None
 
     async def _run_next_step(self) -> None:
-        pass
+        if self._should_fail:
+            raise RuntimeError("boom")
 
 
 def _make_dead_run(db: Db, session_id: int) -> dict:
     return db.create_benchmark_run(None, "proj", session_id, "batch", 1, 0, {})
+
+
+def _run_to_terminal(job: Job) -> Job:
+    job.prepare()
+    try:
+        asyncio.run(job.run_next_step())
+    except Exception:
+        pass
+    return job
 
 
 def test_find_treats_a_failed_jobs_run_as_a_cache_miss_and_forgets_it(db: Db):
@@ -40,7 +52,7 @@ def test_find_treats_a_failed_jobs_run_as_a_cache_miss_and_forgets_it(db: Db):
 
     cache = BenchmarkRunCache(db)
     with cache.locked():
-        cache.track(run["id"], _FakeJob(failed=True))
+        cache.track(run["id"], _run_to_terminal(_FakeJob(should_fail=True)))
         found = cache.find(session_id, "batch", 1, 0)
 
     assert found is None
@@ -55,8 +67,10 @@ def test_find_still_waits_for_a_job_that_is_genuinely_still_running(db: Db):
     run = _make_dead_run(db, session_id)
 
     cache = BenchmarkRunCache(db)
+    job = _FakeJob(should_fail=False)
+    job.prepare()  # prepared but never run — genuinely still in flight
     with cache.locked():
-        cache.track(run["id"], _FakeJob(failed=False))
+        cache.track(run["id"], job)
         found = cache.find(session_id, "batch", 1, 0)
 
     assert found is not None and found["id"] == run["id"]

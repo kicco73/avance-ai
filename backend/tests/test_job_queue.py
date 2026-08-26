@@ -163,6 +163,27 @@ def test_a_failed_shared_dependency_fails_every_waiter():
     assert second_waiter.result is None
 
 
+def test_a_dependency_that_already_finished_before_a_second_waiter_needs_it_still_runs_that_waiter():
+    """Mirrors 'root': two branches resolve the same underlying session
+    job, but the first branch's copy can finish (and be forgotten) before
+    the second branch even gets to submit it — its own _forget() already
+    ran once, with nobody yet registered to be told. The second waiter
+    must still run to completion, not crash on a second prepare() nor
+    hang forever waiting for a notification that already fired."""
+    job_queue = _queue(max_concurrent=2)
+    already_finished_dependency = _QuickJob()
+
+    job_queue.submit(already_finished_dependency)
+    assert _wait_until(lambda: already_finished_dependency.is_done())
+
+    late_waiter = _WaiterJob(already_finished_dependency, key="late")
+    job_queue.submit(late_waiter)
+
+    assert _wait_until(lambda: late_waiter.is_done())
+    assert late_waiter.result == "done"
+    assert not late_waiter.is_failed()
+
+
 def test_two_queues_never_share_worker_pools():
     started_a = threading.Event()
     block = threading.Event()

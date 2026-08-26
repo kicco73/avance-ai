@@ -81,7 +81,10 @@ class BenchmarkReplayJob(Job):
         self._warnings: list[str] = []
 
     def _prepare(self) -> tuple[int, tuple[Job, ...]]:
-        return self._total, ()
+        # +1: _finalize() always lands on its own dedicated step (see
+        # _run_next_step()) — never folded into the last message's step,
+        # so the declared total is exact and never needs correcting later.
+        return self._total + 1, ()
 
     @property
     def is_background(self) -> bool:
@@ -114,10 +117,9 @@ class BenchmarkReplayJob(Job):
             message_id = self._pending_message_ids.pop(0)
             assert self._processor is not None and self._current_session_id is not None
             await self._processor.process_message(self._current_session_id, message_id)
-
-            if not self._pending_message_ids and not self._pending_session_ids:
-                self._close_current_session()
-                self._finalize()
+            # Never finalize here even if this was the last message — the
+            # next call's while loop above finds nothing left and finalizes
+            # on its own dedicated step (see _prepare()'s +1).
 
     def _close_current_session(self) -> None:
         if isinstance(self._signal_source, BatchSignalSource):
@@ -129,7 +131,6 @@ class BenchmarkReplayJob(Job):
     def _finalize(self) -> None:
         self._service._calculate_and_save_results(self._run)
         self._service._cache.untrack_many([self._run['id']])
-        self._total_steps = self._steps_done + 1
 
     def _prepare_session(self, session_id: int) -> tuple[list[int], str | None]:
         db = self._service._db

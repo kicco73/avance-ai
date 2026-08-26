@@ -90,13 +90,14 @@ class JobQueue(object):
 
     def submit(self, job: Job) -> None:
         with self._lock:
-            # Already in flight — some other waiter got to this exact job
+            # Already prepared — some other waiter got to this exact job
             # object first (a dependency shared across two different
             # parents, e.g. the same session under both "sessions" and
-            # "users" when root runs everything at once). Its own _forget()
-            # already scans every waiter's dependency list for readiness,
-            # so there is nothing left to do here.
-            if job in self._dependents:
+            # "users" when root runs everything at once). is_pending() is
+            # true only before prepare() has ever run, so this catches a
+            # job that's still in flight AND one that already finished
+            # (possibly before this second parent even got here) alike.
+            if not job.is_pending():
                 return
 
         self._broadcast_status(job)
@@ -108,5 +109,13 @@ class JobQueue(object):
         for dependency in dependencies:
             self.submit(dependency)
 
-        if not dependencies:
+        with self._lock:
+            # Every dependency may already be terminal by now — including
+            # one that finished before this loop even started, which would
+            # otherwise never get another chance to notify this waiter (its
+            # own _forget() already ran, once, before this entry existed).
+            ready = job in self._dependents and all(dep.is_done() or dep.is_failed() for dep in self._dependents[job])
+            if ready:
+                del self._dependents[job]
+        if ready:
             self._submit(job)

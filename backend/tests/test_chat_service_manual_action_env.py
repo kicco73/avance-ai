@@ -60,6 +60,9 @@ class FakeProjectService:
     def get_published_revision(self, project_name: str) -> int:
         return 0
 
+    def legal_terms_pending(self, username: str, project_name: str) -> bool:
+        return False
+
     def get_project_availability(self, project_name: str):
         return (False, None)
 

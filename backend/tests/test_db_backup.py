@@ -80,6 +80,7 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
         "CREATE TABLE Archive (project_name TEXT, archive_name TEXT, revision INTEGER, content BLOB)",
         "CREATE TABLE EditHistory (id INTEGER PRIMARY KEY, user_id TEXT, project_name TEXT, "
         "archive_name TEXT, kind TEXT, seq INTEGER, content TEXT)",
+        "CREATE TABLE UserProject (user_id TEXT, project_name TEXT, accepted_terms_id INTEGER)",
         "CREATE TABLE StateRemap (project_name TEXT, old_key TEXT, new_key TEXT)",
         "CREATE TABLE BenchmarkRun (id INTEGER PRIMARY KEY, username TEXT, user_id TEXT, project_name TEXT, "
         "session_id INTEGER, strategy TEXT, project_draft_edit_count INTEGER, session_labeling_revision INTEGER, "
