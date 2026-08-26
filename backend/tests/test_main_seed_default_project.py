@@ -21,10 +21,10 @@ pytestmark = pytest.mark.contract
 
 def _build(app_db: Db) -> tuple[ProjectService, AvanceController, JobQueue, QueueProgressBroadcaster]:
     fake_ai_service = FakeAiService()
-    project_service = ProjectService(app_db)
+    project_service = ProjectService(app_db, fake_ai_service)
     session_manager = ChatSessionManager(app_db)
     metric_service = MetricService(app_db, project_service)
-    broadcaster = QueueProgressBroadcaster()
+    broadcaster = QueueProgressBroadcaster(fake_ai_service)
     job_queue = JobQueue(max_concurrent=1, broadcaster=broadcaster)
     tracking_service = TrackingService(app_db, fake_ai_service, project_service, metric_service)
     chat_service = ChatService(

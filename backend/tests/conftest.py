@@ -77,6 +77,14 @@ class FakeAiService:
     def select_model(self, index: int | None) -> None:
         pass
 
+    def get_total_tokens(self) -> int:
+        return 0
+
+    def get_input_tokens(self, prompt: str) -> int:
+        # Deterministic word-count stand-in — good enough to exercise
+        # callers without a real provider's count-tokens call.
+        return len(prompt.split())
+
     async def generate(self, system_prompt: str, history: list[dict], on_retry=None) -> str:
         self.calls.append((system_prompt, history))
         return "Fake AI reply."
@@ -123,10 +131,10 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     """The real controller/routing wiring, but against an isolated
     file-backed Db and a FakeAiService, so tests never touch the
     developer's real avance.db or make costly AI calls."""
-    project_service = ProjectService(app_db)
+    project_service = ProjectService(app_db, fake_ai_service)
     session_manager = ChatSessionManager(app_db)
     metric_service = MetricService(app_db, project_service)
-    test_event_broadcaster = QueueProgressBroadcaster()
+    test_event_broadcaster = QueueProgressBroadcaster(fake_ai_service)
     job_queue = JobQueue(max_concurrent=1, broadcaster=test_event_broadcaster)
     tracking_service = TrackingService(
         app_db, fake_ai_service, project_service, metric_service,

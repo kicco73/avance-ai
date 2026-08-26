@@ -6,7 +6,7 @@ from typing import AsyncIterator
 
 from db.db import Db
 from ai.ai_service import AiService
-from ai.llm_provider import MetadataCallback
+from ai.llm_provider import MetadataCallback, content_to_text
 from automaton.automaton import Action, Automaton, State, StatePayload
 
 from .env import Env
@@ -254,4 +254,39 @@ class TrackingProcessor(object):
 	@staticmethod
 	def _current_state_payload(automaton: Automaton, state: State) -> StatePayload:
 		return automaton.get_state_payload(state)
+
+
+def estimate_state_prompt(ai_service: AiService, automaton: Automaton, state: State) -> str:
+	"""The system_prompt TrackingProcessor.generate_reply would actually
+	send for `state`, plus a synthetic one-turn history standing in for a
+	real conversation — a single '...' placeholder user message, preceded
+	by the state's own attachments (see build_priming_messages). Renders
+	with no live session/Db needed, for ProjectInspector.get_state_input_tokens'
+	own per-state input-token estimate."""
+	if state.fixed_message:
+		base_prompt = FIXED_MESSAGE_INSTRUCTIONS.format(fixed_message=state.fixed_message)
+		signal_definition = None
+		reaction_definition = None
+		turn_attachments: list = []
+	else:
+		signals = Signals(FixedProjectContext(automaton), None)
+		signal_definition = signals.get_definition(automaton.triggerable_signal_names(state.key))
+		reaction_definition = (
+			TrackingProcessor._build_reaction_definition(automaton) if state.reactions_enabled else None
+		)
+		base_prompt = f"{automaton.general_prompt}\n\n{state.contextual_prompt}"
+		turn_attachments = list(automaton.general_attachments.values()) + list(state.attachments.values())
+
+	env = Env(stored={key.name: key.value for key in automaton.env_keys})
+	has_to_evaluate_signals_before_ai_reply = not automaton.autotracking_on_ai_message
+	protocol_class = TurnProtocolUsingSchema if ai_service.is_provider_with_schema() else TurnProcotolUsingTextExtraction
+	protocol = protocol_class(
+		ai_service, has_to_evaluate_signals_before_ai_reply,
+		reactions_enabled=state.reactions_enabled, talk_enabled=automaton.talk_enabled,
+	)
+	system_prompt = protocol.build_final_prompt(base_prompt, signal_definition, env, reaction_definition)
+
+	history_parts = [content_to_text(message["content"]) for message in build_priming_messages(turn_attachments)]
+	history_parts.append("...")
+	return "\n\n".join([system_prompt, *history_parts])
 

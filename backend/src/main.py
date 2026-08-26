@@ -117,10 +117,10 @@ def create_app() -> FastAPI:
         auth_service = AuthService(db, config.auth_providers, config.auth_token_ttl_in_hours)
         app.state.auth_service = auth_service
 
-        test_event_broadcaster = QueueProgressBroadcaster()
+        test_event_broadcaster = QueueProgressBroadcaster(ai_service)
         job_queue = JobQueue(max_concurrent=config.jobs_max_concurrent, broadcaster=test_event_broadcaster)
 
-        project_service = ProjectService(db)
+        project_service = ProjectService(db, ai_service)
         session_manager = ChatSessionManager(db, open_window_minutes=config.max_session_duration_in_minutes)
         
         # A leaf service (see metrics/metric_service.py's own module

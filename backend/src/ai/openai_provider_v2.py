@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any, AsyncIterator, Dict, List, Optional
 
+import tiktoken
 from openai import AsyncOpenAI, APIConnectionError, APIStatusError, RateLimitError
 
 from ai.llm_provider import (
@@ -18,10 +19,20 @@ logger = logging.getLogger(__name__)
 
 MAX_OUTPUT_TOKENS: int = 1024
 
+# Fallback when tiktoken has no encoding for this model name (e.g. a
+# llama.cpp/local model) — the closest OpenAI encoding still gives a
+# reasonable estimate rather than an exact count.
+DEFAULT_ENCODING_NAME = "cl100k_base"
+# ~4 chars/token is the commonly cited English-text approximation — used
+# only if tiktoken's own encoding files can't be loaded at all (e.g. an
+# air-gapped llama.cpp deployment with no outbound network access).
+CHARS_PER_TOKEN_ESTIMATE = 4
+
 
 class OpenAICompatibleProvider(LLMProviderWithSchema):
 
     def __init__(self, config: AIServiceConfig) -> None:
+        super().__init__()
         base_url: str = (
             config.url.rstrip("/")
               if config.url else "http://localhost:8080/v1"
@@ -31,6 +42,30 @@ class OpenAICompatibleProvider(LLMProviderWithSchema):
             api_key=config.key or "lm-studio",
         )
         self._model_name: str = config.model or "default-model"
+        # Lazily resolved by get_input_tokens() — sentinel False means
+        # "already tried, no encoding available" (see _get_encoding).
+        self._encoding: tiktoken.Encoding | None | bool = None
+
+    def _get_encoding(self) -> tiktoken.Encoding | None:
+        if self._encoding is None:
+            try:
+                self._encoding = tiktoken.encoding_for_model(self._model_name)
+            except Exception:
+                try:
+                    self._encoding = tiktoken.get_encoding(DEFAULT_ENCODING_NAME)
+                except Exception:
+                    logger.warning(
+                        "No tiktoken encoding available for '%s' — falling back to a "
+                        "character-count token estimate.", self._model_name,
+                    )
+                    self._encoding = False
+        return self._encoding or None
+
+    def get_input_tokens(self, prompt: str) -> int:
+        encoding = self._get_encoding()
+        if encoding is not None:
+            return len(encoding.encode(prompt))
+        return max(1, len(prompt) // CHARS_PER_TOKEN_ESTIMATE)
 
     def build_schema(self, tags: Dict[str, str]) -> Dict[str, Any]:
         properties: Dict[str, Dict[str, Any]] = {}
@@ -88,18 +123,23 @@ class OpenAICompatibleProvider(LLMProviderWithSchema):
                 },
             }
 
+        total_tokens = 0
         try:
             stream = await self._client.chat.completions.create(
                 model=self._model_name,
                 messages=messages,  # type: ignore
                 max_tokens=MAX_OUTPUT_TOKENS,
                 stream=True,
+                stream_options={"include_usage": True},
                 **extra_kwargs,
             )
 
             async for chunk in stream:
+                if chunk.usage is not None:
+                    total_tokens = chunk.usage.total_tokens
                 if chunk.choices and chunk.choices[0].delta.content:
                     yield chunk.choices[0].delta.content
+            self._add_tokens(total_tokens)
 
         except RateLimitError as exc:
             raise AIServiceProviderRateLimitedError(

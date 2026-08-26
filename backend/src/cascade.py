@@ -74,6 +74,10 @@ class ProviderCascade(Generic[Provider]):
     def current_index(self) -> int:
         return self._index
 
+    @property
+    def providers(self) -> list[Provider]:
+        return [entry.provider for entry in self._entries]
+
     def advance(self) -> None:
         self._index = (self._index + 1) % len(self._entries)
         logger.warning(

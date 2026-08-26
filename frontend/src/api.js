@@ -622,6 +622,14 @@ export function getProjectMetadata(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/project`)
 }
 
+// { tokens: number | null } — estimated input-token cost of `stateKey`'s
+// own turn prompt (attachments, signal/reaction definitions, env, ...),
+// null when no AiService is configured. `sessionId`: see getProjectGraph above.
+export function getStateInputTokens(projectName, stateKey, sessionId) {
+  const query = sessionId != null ? `?session_id=${encodeURIComponent(sessionId)}` : ''
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/states/${encodeURIComponent(stateKey)}/tokens${query}`)
+}
+
 export function putProjectField(projectName, field, value) {
   return apiFetch(
     `${API_URL}/projects/${encodeURIComponent(projectName)}/project/${encodeURIComponent(field)}`,

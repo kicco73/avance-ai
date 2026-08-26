@@ -28,6 +28,7 @@ import {
   getSessionSignals,
   getSessions,
   getProjectGraph,
+  getStateInputTokens,
   postAddState,
   postAddSignal,
   postAddEnvKey,
@@ -649,6 +650,36 @@ const editorOpen = computed(() => mode.value === 'edit')
 const runOpen = computed(() => mode.value === 'run')
 const testOpen = computed(() => mode.value === 'test')
 
+// Whichever state key the "State" Inspector tab is actually showing right
+// now — stateTabElement in edit mode, autoSelectedElement's own key while
+// browsing a run (see InspectorStateTab's :selected-element binding below).
+const stateTabTokensKey = computed(() => (mode.value === 'test' ? autoSelectedStateKey.value : selectedStateKey.value))
+
+// Estimated input-token cost of that state's own turn prompt (see backend
+// ProjectInspector.get_state_input_tokens) — null while unknown/loading,
+// or when nothing is selected. Fetched on demand per state rather than
+// bundled into the Graph fetch, since it can cost a real provider call.
+const stateTabTokens = ref(null)
+let stateTabTokensRequestId = 0
+
+async function refreshStateTabTokens() {
+  const key = stateTabTokensKey.value
+  if (key == null) {
+    stateTabTokens.value = null
+    return
+  }
+  const requestId = ++stateTabTokensRequestId
+  try {
+    const { tokens } = await getStateInputTokens(props.projectName, key)
+    if (requestId === stateTabTokensRequestId) stateTabTokens.value = tokens
+  } catch {
+    // already surfaced via apiFetch
+    if (requestId === stateTabTokensRequestId) stateTabTokens.value = null
+  }
+}
+
+watch(stateTabTokensKey, refreshStateTabTokens, { immediate: true })
+
 // Entering 'run' mode bootstraps a chat session against the draft, even
 // if a real native session is already active — testStore is its own
 // independent chat (see testChatStore.js), so its currentSessionId
@@ -793,6 +824,11 @@ async function refreshAfterProjectEdit() {
   if (inspecting.value) await inspectorRef.value?.refresh()
   refreshValidStateKeys()
   refreshProjectRevision()
+  // Every edit funnels through here, so this is the single choke point
+  // that keeps the selected state's "Tokens: X" estimate from going
+  // stale after a save (its cache key is content-addressed backend-side,
+  // so a changed prompt naturally recomputes rather than serving a stale hit).
+  refreshStateTabTokens()
 }
 
 // {revision, published_revision} — null while not yet loaded. A save can
@@ -1582,6 +1618,7 @@ onBeforeUnmount(() => {
                 :ref="registerTab('state')"
                 :project-name="projectName"
                 :selected-element="mode === 'test' ? autoSelectedElement : stateTabElement"
+                :state-tokens="stateTabTokens"
                 :selected-session="mode === 'test' ? autoSelectedSession : null"
                 :session-start-element="mode === 'test' ? autoSessionStartElement : null"
                 :session-end-element="mode === 'test' ? autoSessionEndElement : null"

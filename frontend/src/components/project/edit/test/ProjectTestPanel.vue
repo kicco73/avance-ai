@@ -39,6 +39,11 @@ const strategyPanelEl = ref(null)
 const strategyPanelStyle = ref({})
 const strategyLabel = computed(() => strategyLabels[strategy.value])
 
+// Running total of AI tokens consumed so far — piggybacked onto every
+// SSE test-event message by the backend's QueueProgressBroadcaster (see
+// AiService.get_total_tokens), not fetched separately.
+const tokensBurnt = ref(0)
+
 async function positionStrategyPanel() {
   await nextTick()
   const btn = strategyBtnEl.value
@@ -223,6 +228,7 @@ async function fetchAggregateResult(key, eventStrategy, kind, target) {
 // The single live-update channel for every node's status/progress/result
 // — connected once in onMounted, replacing all per-node polling.
 function handleTestEvent(message) {
+  if (typeof message.tokens === 'number') tokensBurnt.value = message.tokens
   const { key, status, percentage, error } = message
   if (status === 'pending' || status === 'running') {
     setStatus(key, status)
@@ -580,6 +586,7 @@ onBeforeUnmount(() => {
         </div>
         <div v-else class="tests-panel-toolbar-title"></div>
         <div class="tests-panel-toolbar-actions">
+          <span class="tests-panel-tokens-label">Tokens burnt: {{ tokensBurnt }}</span>
           <div class="strategy-menu">
             <button ref="strategyBtnEl" class="strategy-btn" :title="strategyLabel" @click="toggleStrategyMenu">
               <span class="strategy-btn-label">{{ strategyLabel }}</span>
@@ -831,6 +838,12 @@ onBeforeUnmount(() => {
 .tests-panel-reset-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.tests-panel-tokens-label {
+  font-size: 0.8rem;
+  color: #555;
+  white-space: nowrap;
 }
 
 .strategy-menu {

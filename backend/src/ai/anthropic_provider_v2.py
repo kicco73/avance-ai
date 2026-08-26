@@ -77,6 +77,7 @@ def _handle_anthropic_errors() -> Generator[None, None, None]:
 
 class AnthropicProvider(LLMProviderWithSchema):
 	def __init__(self, config: AIServiceConfig) -> None:
+		super().__init__()
 		self._model_name: str = config.model or CLAUDE_DEFAULT_MODEL
 
 		self._async_client: anthropic.AsyncAnthropic = (
@@ -84,6 +85,13 @@ class AnthropicProvider(LLMProviderWithSchema):
 				api_key=config.key,
 				timeout=REQUEST_TIMEOUT_SECONDS,
 			)
+		)
+		# get_input_tokens() calls messages.count_tokens synchronously —
+		# a plain sync client, rather than awaiting the async one above,
+		# keeps that method callable with no running event loop.
+		self._sync_client: anthropic.Anthropic = anthropic.Anthropic(
+			api_key=config.key,
+			timeout=REQUEST_TIMEOUT_SECONDS,
 		)
 
 	def build_schema(
@@ -205,6 +213,9 @@ class AnthropicProvider(LLMProviderWithSchema):
 				async for text in stream.text_stream:
 					if text:
 						yield text
+				final_message = await stream.get_final_message()
+				usage = final_message.usage
+				self._add_tokens(usage.input_tokens + usage.output_tokens)
 
 		except (
 			AIServiceError,
@@ -216,3 +227,11 @@ class AnthropicProvider(LLMProviderWithSchema):
 		except Exception as exc:
 			with _handle_anthropic_errors():
 				raise exc
+
+	def get_input_tokens(self, prompt: str) -> int:
+		with _handle_anthropic_errors():
+			response = self._sync_client.messages.count_tokens(
+				model=self._model_name,
+				messages=[{"role": "user", "content": prompt}],
+			)
+		return response.input_tokens

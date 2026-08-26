@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import threading
 from typing import Any, AsyncIterator, Sequence
 
 import partial_json_parser
@@ -34,6 +36,11 @@ class AiService(object):
 		# None = auto (use auto_provider); an index pins to that entry
 		# of selectable_providers/configs instead.
 		self._selected_index: int | None = None
+		# get_input_tokens() cache, keyed by (provider label, prompt hash) —
+		# the same prompt can cost a different count on a different
+		# provider, so the label is part of the key, not just the hash.
+		self._input_tokens_cache: dict[str, int] = {}
+		self._input_tokens_cache_lock = threading.Lock()
 
 	@classmethod
 	def from_config(cls, ai_service_config: list[AIServiceConfig]) -> "AiService":
@@ -67,16 +74,45 @@ class AiService(object):
 		guaranteed to be one."""
 		return getattr(self._active_provider, "current_provider", self._active_provider)
 
+	@property
+	def _current_config_index(self) -> int:
+		if self._selected_index is not None:
+			return self._selected_index
+		return getattr(self._auto_provider, "current_index", 0)
+
+	@property
+	def _current_provider_label(self) -> str:
+		"""Identifies the concrete provider/model get_input_tokens() would
+		actually hit right now — part of its cache key, since the same
+		prompt can cost a different token count on a different provider."""
+		index = self._current_config_index
+		if 0 <= index < len(self._configs):
+			config = self._configs[index]
+			return f"{config.driver}/{config.model}"
+		return type(self._current_leaf_provider).__name__
+
 	def select_model(self, index: int | None) -> None:
 		if index is not None and not (0 <= index < len(self._selectable_providers)):
 			raise ValueError(f"Invalid model index: {index!r}.")
 		self._selected_index = index
 
+	def get_total_tokens(self) -> int:
+		return self._active_provider.get_total_tokens()
+
+	def get_input_tokens(self, prompt: str) -> int:
+		cache_key = f"{self._current_provider_label}:{hashlib.sha256(prompt.encode()).hexdigest()}"
+		with self._input_tokens_cache_lock:
+			cached = self._input_tokens_cache.get(cache_key)
+		if cached is not None:
+			return cached
+		tokens = self._current_leaf_provider.get_input_tokens(prompt)
+		with self._input_tokens_cache_lock:
+			self._input_tokens_cache[cache_key] = tokens
+		return tokens
+
 	def get_models_info(self) -> dict:
 		auto = self._selected_index is None
-		current_index = (
-			getattr(self._auto_provider, "current_index", 0) if auto else self._selected_index
-		)
+		current_index = self._current_config_index
 		return {
 			"auto": auto,
 			"current_index": current_index,

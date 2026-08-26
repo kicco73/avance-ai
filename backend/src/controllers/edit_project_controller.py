@@ -84,6 +84,20 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
+    @get("/api/projects/{project_name}/states/{state_name}/tokens", role="supervisor")
+    def get_state_input_tokens(self, project_name: str, state_name: str, session_id: int | None = None):
+        """Estimated input-token cost of `state_name`'s own turn prompt,
+        for the Inspect panel's detail card — fetched on demand for the
+        one state currently open, not for the whole graph at once (see
+        ProjectInspector.get_state_input_tokens). `tokens` is null when no
+        AiService is configured for this deployment."""
+        try:
+            return {"tokens": self.project_service.get_state_input_tokens(project_name, state_name, session_id)}
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
     @get("/api/projects/{project_name}/signals", role="supervisor")
     def get_project_signals(self, project_name: str, state_key: str | None = None, session_id: int | None = None):
         """Signal definitions for the Inspect panel. `state_key`, when

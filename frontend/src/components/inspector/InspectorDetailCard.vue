@@ -8,6 +8,7 @@ import CardMenu from './CardMenu.vue'
 import TriggerEditor from './TriggerEditor.vue'
 import OnEnterEditor from './OnEnterEditor.vue'
 import { handleEnterNext } from './enterToNextField.js'
+import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 
 const props = defineProps({
   selectedElement: { type: Object, default: null }, // { kind: 'state' | 'action', data } | null
@@ -25,6 +26,12 @@ const props = defineProps({
   // — only passed by callers inside an active edit session; elsewhere the
   // card stays read-only.
   editable: { type: Boolean, default: false },
+  // Estimated input-token cost of a state's own turn prompt (see
+  // EditProjectView.vue's own stateTabTokens) — null while unknown/
+  // loading, or for an action card, which has none. Kept as its own prop
+  // rather than folded into selectedElement.data, which round-trips back
+  // out unmodified through the 'select' emit below.
+  stateTokens: { type: Number, default: null },
   // Every state's {key, uiLabel} — options for the action form's target
   // <select>. Unused for a state card.
   availableStates: { type: Array, default: () => [] },
@@ -44,6 +51,23 @@ const props = defineProps({
 const emit = defineEmits(['select-attachment', 'jump-to-attachment', 'close', 'select', 'set-field', 'delete', 'update:open'])
 
 const showEditForm = computed(() => props.editable && props.open)
+
+// stateTokens' own bar: green under 750, orange under 1000, red at/above
+// it — the fill itself is capped at 1000 (never overflows the track)
+// even when the real count is higher; the exact number stays available
+// on hover via the floating tooltip below.
+const TOKENS_BAR_MAX = 1000
+const TOKENS_ORANGE_FROM = 750
+const TOKENS_RED_FROM = 1000
+const tokensBarWidth = computed(() => `${Math.min(props.stateTokens ?? 0, TOKENS_BAR_MAX) / TOKENS_BAR_MAX * 100}%`)
+const tokensBarLevel = computed(() => {
+  if (props.stateTokens >= TOKENS_RED_FROM) return 'red'
+  if (props.stateTokens >= TOKENS_ORANGE_FROM) return 'orange'
+  return 'green'
+})
+const {
+  visible: tokensTooltipVisible, style: tokensTooltipStyle, show: showTokensTooltip, hide: hideTokensTooltip
+} = useFloatingTooltip()
 
 // A click anywhere on the card background toggles open/closed and (when
 // selectable) reselects. Safe because every actual form control inside
@@ -293,9 +317,43 @@ function selectAttachment(fileName) {
               @click.stop
               @blur="commitContextualPrompt"
             ></textarea>
+            <div v-if="stateTokens != null" class="inspector-detail-tokens">
+              <span class="inspector-ai-field-icon" title="Estimated by the AI provider">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zM11.5 9.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>
+              </span>
+              <span class="inspector-detail-tokens-label">Tokens</span>
+              <div
+                class="inspector-detail-tokens-bar-track"
+                @mouseenter="showTokensTooltip($event.currentTarget)"
+                @mouseleave="hideTokensTooltip"
+              >
+                <div
+                  class="inspector-detail-tokens-bar-fill"
+                  :class="`inspector-detail-tokens-bar-fill-${tokensBarLevel}`"
+                  :style="{ width: tokensBarWidth }"
+                ></div>
+              </div>
+            </div>
           </div>
           <div v-else key="readonly" class="inspector-detail-readonly">
             <p v-if="selectedElement.data.uiDescription" class="inspector-detail-ui_description">{{ selectedElement.data.uiDescription }}</p>
+            <div v-if="stateTokens != null" class="inspector-detail-tokens">
+              <span class="inspector-ai-field-icon" title="Estimated by the AI provider">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zM11.5 9.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>
+              </span>
+              <span class="inspector-detail-tokens-label">Tokens</span>
+              <div
+                class="inspector-detail-tokens-bar-track"
+                @mouseenter="showTokensTooltip($event.currentTarget)"
+                @mouseleave="hideTokensTooltip"
+              >
+                <div
+                  class="inspector-detail-tokens-bar-fill"
+                  :class="`inspector-detail-tokens-bar-fill-${tokensBarLevel}`"
+                  :style="{ width: tokensBarWidth }"
+                ></div>
+              </div>
+            </div>
           </div>
         </Transition>
       </template>
@@ -359,6 +417,9 @@ function selectAttachment(fileName) {
         >{{ attachmentLabel(idx) }}</button>
       </div>
     </div>
+    <Teleport to="body">
+      <span v-if="tokensTooltipVisible" class="inspector-detail-tokens-tooltip-floating" :style="tokensTooltipStyle">{{ stateTokens }} tokens</span>
+    </Teleport>
   </div>
 </template>
 
@@ -409,6 +470,13 @@ function selectAttachment(fileName) {
 .close-x-btn:hover { background: #eee; }
 .inspector-detail-body { padding: 0.6rem 0.75rem; overflow-y: auto; font-size: 0.8rem; color: #444; }
 .inspector-detail-ui_description { margin: 0 0 0.5rem; line-height: 1.4; }
+.inspector-detail-tokens { display: flex; align-items: center; gap: 0.4rem; margin: 0.4rem 0 0; }
+.inspector-detail-tokens-label { flex-shrink: 0; font-size: 0.72rem; color: #888; }
+.inspector-detail-tokens-bar-track { position: relative; flex: 1; min-width: 40px; height: 8px; border-radius: 999px; background: #eee; overflow: hidden; cursor: default; }
+.inspector-detail-tokens-bar-fill { height: 100%; border-radius: 999px; transition: width 0.3s ease; }
+.inspector-detail-tokens-bar-fill-green { background: #2e7d32; }
+.inspector-detail-tokens-bar-fill-orange { background: #f5a623; }
+.inspector-detail-tokens-bar-fill-red { background: #c62828; }
 .inspector-detail-field { margin: 0 0 0.4rem; line-height: 1.4; }
 .inspector-detail-code { font-size: 0.75rem; background: #eee; border-radius: 4px; padding: 0.1rem 0.4rem; }
 .inspector-attachments { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.5rem; }
@@ -418,4 +486,25 @@ function selectAttachment(fileName) {
 .inspector-attachment-btn-disabled:hover { background: white; color: #aaa; }
 .crossfade-enter-active, .crossfade-leave-active { transition: opacity 0.15s ease; }
 .crossfade-enter-from, .crossfade-leave-to { opacity: 0; }
+</style>
+
+<style>
+/* Unscoped: teleported to <body> (see the tokens bar's tooltip above),
+   outside this component's normal DOM subtree — same reasoning as
+   ModelMenu.vue's own unscoped Teleport styles. */
+.inspector-detail-tokens-tooltip-floating {
+  position: fixed;
+  width: max-content;
+  max-width: 200px;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  background: #333;
+  color: white;
+  font-size: 0.72rem;
+  font-weight: 400;
+  line-height: 1.3;
+  text-align: left;
+  pointer-events: none;
+  z-index: 1000;
+}
 </style>
