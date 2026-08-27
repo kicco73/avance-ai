@@ -159,7 +159,12 @@ class OpenAICompatibleProvider(LLMProviderWithSchema):
                 f"API error ({exc.status_code}): {exc}"
             ) from exc
         except APIConnectionError as exc:
-            raise AIServiceError(f"Connection error: {exc}") from exc
+            # Not an HTTP-level failure at all — the request never reached a
+            # server (e.g. connection refused because no local llama.cpp/LM
+            # Studio instance is running on this base_url). Retrying won't
+            # fix that mid-call, so this cascades immediately rather than
+            # burning MAX_RETRIES backoff attempts against a closed port.
+            raise AIServiceProviderPermanentError(f"Connection error: {exc}") from exc
         except Exception as exc:
             raise AIServiceError(f"Unexpected error: {exc}") from exc
 
