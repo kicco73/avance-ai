@@ -182,7 +182,10 @@ class TrackingMixin:
             .order_by(Tracking.timestamp.desc())
             .first()
         )
-        return transition.new_state if transition else None
+        if transition is not None:
+            return transition.new_state
+        session = ChatSession.get_or_none(ChatSession.id == session_id)
+        return session.start_state if session is not None else None
 
     def get_last_transition_timestamp(self, project_name: str, until: datetime | None=None) -> datetime | None:
         transition = self._latest_transition(project_name, real_only=True, until=until)

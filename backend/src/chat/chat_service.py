@@ -198,10 +198,11 @@ class ChatService(object):
 		except ValueError as exc:
 			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 		automaton = self._project_service.get_automaton_for_session(session["id"])
-		# "on-enter": a new session enters its starting state *through*
-		# init_action itself — the same wire key every other real
-		# transition reports, just for init_action instead of a regular Action.
-		return {**self._session_payload(session, active=True), "on-enter": automaton.init_action.on_enter}
+		payload = self._session_payload(session, active=True)
+		on_enter = strategy.on_enter_for_new_session(automaton)
+		if on_enter is not None:
+			payload["on-enter"] = on_enter
+		return payload
 
 	def create_session(self) -> dict:
 		return self._create_session_of_type(get_session_type_strategy('live'), self._active_project_name)

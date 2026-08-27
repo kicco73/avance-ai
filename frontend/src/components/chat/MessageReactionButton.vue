@@ -5,7 +5,7 @@
 // below, off a long-press on the whole bubble, and passes the element to
 // position it against. Modeled on MessageCommentButton.vue's own popover
 // mechanics otherwise (teleport to body, click-away to close).
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 const props = defineProps({
   // {key, ui_label}[] — the active project's whole reaction vocabulary,
@@ -25,11 +25,22 @@ const open = ref(false)
 const popoverRef = ref(null)
 const style = ref({})
 
-function openPopover(anchorEl) {
+async function openPopover(anchorEl) {
   if (!props.reactions.length) return
   const rect = anchorEl?.getBoundingClientRect?.()
   if (rect) style.value = { top: `${rect.bottom + 6}px`, left: `${rect.left}px` }
   open.value = true
+  if (!rect) return
+  await nextTick()
+  const popoverRect = popoverRef.value?.getBoundingClientRect()
+  if (!popoverRect || popoverRect.bottom <= window.innerHeight) return
+  const roomAbove = rect.top - 6 >= popoverRect.height
+  style.value = {
+    top: roomAbove
+      ? `${rect.top - popoverRect.height - 6}px`
+      : `${Math.max(6, window.innerHeight - popoverRect.height - 6)}px`,
+    left: `${rect.left}px`
+  }
 }
 
 function closePopover() {
@@ -135,6 +146,8 @@ defineExpose({ open: openPopover, close: closePopover })
   flex-wrap: wrap;
   gap: 0.3rem;
   max-width: 220px;
+  max-height: min(320px, calc(100vh - 12px));
+  overflow-y: auto;
   padding: 0.5rem;
   border-radius: 8px;
   background: white;

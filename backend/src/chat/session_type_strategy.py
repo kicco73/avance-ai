@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from automaton.automaton import Automaton
     from chat.session_manager import ChatSessionManager
     from project.project_service import ProjectService
 
@@ -44,6 +45,12 @@ class SessionTypeStrategy(ABC):
     @abstractmethod
     def revision_for(self, project_service: "ProjectService", project_name: str) -> int: ...
 
+    # The "on-enter" payload a brand-new session of this type should report
+    # to the client, if any — None when starting_state() resumes an
+    # already-ongoing state rather than genuinely entering one.
+    @abstractmethod
+    def on_enter_for_new_session(self, automaton: "Automaton") -> dict | None: ...
+
 
 class LiveSessionStrategy(SessionTypeStrategy):
     type_name = 'live'
@@ -66,6 +73,9 @@ class LiveSessionStrategy(SessionTypeStrategy):
     def revision_for(self, project_service: "ProjectService", project_name: str) -> int:
         return project_service.get_published_revision(project_name)
 
+    def on_enter_for_new_session(self, automaton: "Automaton") -> dict | None:
+        return None
+
 
 class TestSessionStrategy(SessionTypeStrategy):
     type_name = 'test'
@@ -86,6 +96,9 @@ class TestSessionStrategy(SessionTypeStrategy):
 
     def revision_for(self, project_service: "ProjectService", project_name: str) -> int:
         return project_service.get_draft_revision(project_name)
+
+    def on_enter_for_new_session(self, automaton: "Automaton") -> dict | None:
+        return automaton.init_action.on_enter
 
 
 class ImportedSessionStrategy(SessionTypeStrategy):
@@ -110,6 +123,11 @@ class ImportedSessionStrategy(SessionTypeStrategy):
     def revision_for(self, project_service: "ProjectService", project_name: str) -> int:
         raise NotImplementedError(
             "An imported session's revision is stamped at import time, never resolved fresh."
+        )
+
+    def on_enter_for_new_session(self, automaton: "Automaton") -> dict | None:
+        raise NotImplementedError(
+            "An imported session is never created via create_session — nothing to report."
         )
 
 
