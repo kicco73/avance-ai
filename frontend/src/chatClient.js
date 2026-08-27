@@ -98,7 +98,8 @@ async function readSseTurnStream(res, { onChunk } = {}) {
         if (data.content && onChunk) onChunk(data.content)
         continue
       }
-      if (eventType === 'error')        setApiError(data.message, data.detail)
+      if (eventType === 'error') {
+        setApiError(data.message, data.detail)
         throw new Error(data.message)
       }
       if (eventType === 'done') {

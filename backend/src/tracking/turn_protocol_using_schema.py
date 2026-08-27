@@ -43,7 +43,6 @@ Always fill in the 'env' field of your structured response:
 
 Current env memory:
 """
-
 # Batch-only variants (BatchSignalSource, covering several turns in one
 # call) — a single live turn or turn-by-turn replay uses the plain
 # EMBED_SIGNAL_TAG_PROMPT/EMBED_ENV_TAG_PROMPT above instead, since it has
@@ -55,10 +54,9 @@ EMBED_SIGNAL_BATCH_TAG_PROMPT = """
 Definition of signals metadata:
 	- a small CSV table, as plain text (not a JSON object).
 	- first row: the signal names, comma-separated, e.g. "mood,engagement".
-	- one data row per turn this response covers, each starting with the turn
-	  number followed by that turn's values, e.g. "1,50.2,70" — numbered 1, 2, 3,
-	  ... always restarting at 1 for THIS response, never the turn's absolute
-	  position in the conversation history.
+	- one data row per turn this response covers, each starting with that turn's own
+	  "[Turn N]" number (see the instructions above for where that number comes
+	  from) followed by that turn's values, e.g. "3,50.2,70".
 	- it is vitally important to always calculate and return a value for each and any signal
 	  specified in the list below, for every turn you are asked to cover.
 
@@ -72,10 +70,9 @@ Definition of env metadata:
 	  signals, which are re-evaluated fresh every turn.
 
 Always fill in the 'env' field of your structured response:
-	- a JSON object, as plain text, e.g. {"1": {"favorite_color": "blue"}}.
-	- one entry per turn this response covers, keyed "1", "2", "3", ... — always
-	  restarting at "1" for THIS response, never the turn's absolute position in
-	  the conversation history.
+	- a JSON object, as plain text, e.g. {"3": {"favorite_color": "blue"}}.
+	- one entry per turn this response covers, keyed by that turn's own "[Turn N]"
+	  number (see the instructions above for where that number comes from).
 	- each entry's value is an object of only the variable names you are actually
 	  reporting as new or changed that turn — map it to {} when nothing changed.
 """

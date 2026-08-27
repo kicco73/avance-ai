@@ -108,6 +108,9 @@ class FakeAiService:
     def get_total_tokens(self) -> int:
         return 0
 
+    def get_max_output_tokens(self) -> int:
+        return 4096
+
     def get_input_tokens(self, prompt: str) -> int:
         # Deterministic word-count stand-in — good enough to exercise
         # callers without a real provider's count-tokens call.

@@ -82,18 +82,33 @@ class TurnByTurnSignalSource:
         return [{"role": m["role"], "content": m["content"]} for m in messages if m["id"] <= message_id]
 
 
+# Rough per-turn output-token cost used to cap how many turns one batch
+# call asks for at once (see BatchSignalSource._max_turns_per_call) — a
+# heuristic, not a hard guarantee, since env's actual length varies with
+# what the model reports. Keeps a batch call from asking for more turns
+# than can plausibly fit before the provider truncates the response (see
+# AIServiceProviderOutputTruncatedError) — better to split into another
+# call than to lose an unbounded tail of turns to truncation.
+TOKENS_PER_SIGNAL_VALUE_ESTIMATE = 2
+TOKENS_PER_ENV_TURN_ESTIMATE = 40
+BATCH_OUTPUT_BUDGET_SAFETY_MARGIN = 0.7
+
 BATCH_TAG_INSTRUCTIONS = (
-    "This turn covers multiple messages of the conversation at once, "
-    "numbered in order. The 'signals' and 'env' fields each already cover "
-    "every one of these turns at once (see their own format above — a "
-    "numbered entry per turn). The starting env given below is read-only "
-    "context from before this stretch of the conversation — the 'env' "
-    "field's own numbered entries are what you must produce as output for "
-    "each turn, not a repeat of the starting one."
+    "This turn covers multiple messages of the conversation at once. Each "
+    "user message you are being asked to cover is prefixed with its own "
+    "'[Turn N] ' label directly in the conversation above — use that exact "
+    "number when numbering the corresponding row/entry in 'signals' and "
+    "'env'; read it off the label, don't count messages or infer it "
+    "yourself. The 'signals' and 'env' fields each already cover every one "
+    "of these turns at once (see their own format above — a numbered "
+    "entry per turn). The starting env given below is read-only context "
+    "from before this stretch of the conversation — the 'env' field's own "
+    "numbered entries are what you must produce as output for each turn, "
+    "not a repeat of the starting one."
 )
 
 
-class BatchSignalSource:
+class BatchSignalSource(object):
     """One AI call per session (or remaining stretch) instead of per turn,
     re-covering from the divergence point when a state needs an unasked
     signal. Uses only general_prompt, since states aren't known upfront."""
@@ -144,7 +159,7 @@ class BatchSignalSource:
         protocol_cls = TurnProtocolUsingSchema if self._ai_service.is_provider_with_schema() else TurnProcotolUsingTextExtraction
         protocol = protocol_cls(self._ai_service, True)
 
-        chat_history = self._build_chat_history(turn_ids[-1])
+        chat_history = self._build_chat_history(turn_ids)
 
         # Index i = turn i+1 (see MetadataHandler.parse_batch_signals/parse_batch_env)
         # — empty until on_metadata actually fires for that tag, which never
@@ -192,9 +207,31 @@ class BatchSignalSource:
     def _user_message_ids(self) -> list[int]:
         return [m['id'] for m in self._db.get_messages(self._session_id) if m['role'] == 'user']
 
-    def _turns_from(self, message_id: int) -> list[int]:
-        return [mid for mid in self._user_message_ids() if mid >= message_id]
+    def _max_turns_per_call(self) -> int:
+        per_turn_tokens = len(self._signal_names) * TOKENS_PER_SIGNAL_VALUE_ESTIMATE + TOKENS_PER_ENV_TURN_ESTIMATE
+        budget = self._ai_service.get_max_output_tokens() * BATCH_OUTPUT_BUDGET_SAFETY_MARGIN
+        return max(1, int(budget // per_turn_tokens))
 
-    def _build_chat_history(self, up_to_message_id: int) -> list[dict]:
+    def _turns_from(self, message_id: int) -> list[int]:
+        remaining = [mid for mid in self._user_message_ids() if mid >= message_id]
+        return remaining[:self._max_turns_per_call()]
+
+    def _build_chat_history(self, turn_ids: list[int]) -> list[dict]:
+        """Full session history up to and including the last turn this
+        call covers, for context — but each user message actually being
+        numbered in this call's 'signals'/'env' output gets an explicit
+        "[Turn N] " prefix. Without this, the model has to infer its own
+        local 1-based numbering from a (possibly much longer) history
+        that already carries its own absolute position, and reliably
+        gets the two confused; with it, the model reads the number
+        straight off the message instead of counting."""
+        turn_number_by_message_id = {mid: i for i, mid in enumerate(turn_ids, start=1)}
         messages = self._db.get_messages(self._session_id)
-        return [{"role": m["role"], "content": m["content"]} for m in messages if m["id"] <= up_to_message_id]
+        history = []
+        for m in messages:
+            if m["id"] > turn_ids[-1]:
+                continue
+            turn_number = turn_number_by_message_id.get(m["id"])
+            content = f"[Turn {turn_number}] {m['content']}" if turn_number is not None else m["content"]
+            history.append({"role": m["role"], "content": content})
+        return history
