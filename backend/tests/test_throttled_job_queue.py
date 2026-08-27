@@ -101,3 +101,35 @@ def test_max_jobs_per_minute_forces_a_wait_until_the_next_window(fake_time):
     assert log[1] - log[0] < 1
     # ...the third must wait for the next 60-second window to open.
     assert log[2] - log[0] >= 60
+
+
+def test_max_jobs_per_minute_is_a_true_sliding_window_across_the_boundary(fake_time):
+    log: list[float] = []
+    job_queue = ThrottledJobQueue(
+        max_concurrent=1,
+        broadcaster=NullBroadcaster(),
+        max_jobs_per_minute=2,
+        min_job_interval_ms=0,
+    )
+
+    # Run the first two jobs right at the tail end of the queue's first
+    # 60-second window...
+    fake_time.sleep(59.99)
+    tail_jobs = [_TimestampedJob(f"tail-{i}", log, fake_time) for i in range(2)]
+    for job in tail_jobs:
+        job_queue.submit(job)
+    assert _wait_until(lambda: all(job.is_done() for job in tail_jobs))
+
+    # ...then nudge the clock just past that window boundary and submit one
+    # more. A fixed window resets its count exactly here and would let this
+    # job through immediately, producing 3 jobs inside a ~20ms span even
+    # though the limit is 2 per minute. A true sliding window must still
+    # count the first two as "within the last 60 seconds" and make this one
+    # wait out the rest of that window.
+    fake_time.sleep(0.02)
+    late_job = _TimestampedJob("late", log, fake_time)
+    job_queue.submit(late_job)
+    assert _wait_until(lambda: late_job.is_done())
+
+    assert len(log) == 3
+    assert log[2] - log[0] >= 60

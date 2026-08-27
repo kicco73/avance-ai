@@ -1,19 +1,19 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import threading
 from collections import deque
 from typing import TYPE_CHECKING
 
 # Instructions for Claude Code: DO NOT TOUCH THIS FILE
 
+from logging_factory import LoggerFactory
 from .job import Job
 
 if TYPE_CHECKING:
     from metrics.queue_progress_broadcaster import QueueProgressBroadcaster
 
-logger = logging.getLogger(__name__)
+logger = LoggerFactory.get_logger(__name__)
 
 
 class JobQueue(object):
@@ -108,7 +108,7 @@ class JobQueue(object):
         dependencies = job.prepare()
 
         with self._lock:
-            self._dependents[job] = dependencies
+            self._dependents[job] = list(dependencies)
 
         for dependency in dependencies:
             self.submit(dependency)
@@ -125,9 +125,9 @@ class JobQueue(object):
             self._submit(job)
 
     async def wait_for(self, job: Job) -> None:
-        event = threading.Event()
-        with self._lock:
-            if job.is_done() or job.is_failed():
-                return
-            self._waiters.setdefault(job, []).append(event)
-        await asyncio.to_thread(event.wait)
+        connection = self._broadcaster.connect(job.username)
+        try:
+            while not (job.is_done() or job.is_failed()):
+                await connection.get()
+        finally:
+            self._broadcaster.disconnect(job.username, connection)

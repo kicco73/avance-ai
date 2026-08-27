@@ -1,19 +1,20 @@
 <script setup>
-// Two-level tree under one root: "Sessions" (a leaf per annotated session)
-// and "States" (a leaf per state key). Root and the two branch nodes are
-// activatable too — root/sessions-branch launches the whole-project
-// replay, states-branch launches every state's own test — and carry that
-// scope's own aggregate status, same as any leaf. ProjectTestPanel.vue
-// owns all data fetching/launching/polling — this component only renders and emits.
+// Two-level tree under four independent branches: "Sessions" (a leaf per
+// annotated session), "States" (a leaf per state key), "Users", and
+// "Signals". Each branch node is activatable too — it launches every one
+// of its own children's tests at once — and carries that scope's own
+// aggregate status, same as any leaf. The project-wide "run everything"
+// control lives outside this tree, in ProjectTestPanel.vue's header
+// (styled like its reset button). ProjectTestPanel.vue owns all data
+// fetching/launching/polling — this component only renders and emits.
 //
-// Node identifiers are plain strings prefixed by kind — 'root',
+// Node identifiers are plain strings prefixed by kind —
 // 'sessions-branch', 'states-branch', `session:<id>`, `state:<key>` — used
 // directly as both the emitted identifier and the key into `statuses` below.
 import { computed, ref } from 'vue'
 import TestNodeButton from './TestNodeButton.vue'
 
 const props = defineProps({
-  projectName: { type: String, required: true },
   // Full session list (see chatStore.js's sessions, fetched with
   // include_imported=true upstream) — filtered here to has_annotations,
   // the only ones the "Sessions" branch ever shows.
@@ -31,7 +32,7 @@ const props = defineProps({
 
 const emit = defineEmits(['select', 'activate'])
 
-const expanded = ref({ root: true, sessions: false, states: false, users: false, signals: false })
+const expanded = ref({ sessions: false, states: false, users: false, signals: false })
 const expandedUsers = ref({})
 
 function isExpanded(key) {
@@ -85,9 +86,7 @@ function formatSessionTimestamp(iso) {
 }
 
 const flatNodeIds = computed(() => {
-  const ids = ['root']
-  if (!isExpanded('root')) return ids
-  ids.push('sessions-branch')
+  const ids = ['sessions-branch']
   if (isExpanded('sessions')) ids.push(...annotatedSessions.value.map((s) => `session:${s.id}`))
   ids.push('states-branch')
   if (isExpanded('states')) ids.push(...props.states.map((key) => `state:${key}`))
@@ -122,8 +121,7 @@ function moveSelection(delta) {
 // its caret — only meaningful for nodes that have any (branches and users).
 function onEnterKey() {
   const nodeId = props.selectedNodeId
-  if (nodeId === 'root') toggleExpanded('root')
-  else if (nodeId === 'sessions-branch') toggleExpanded('sessions')
+  if (nodeId === 'sessions-branch') toggleExpanded('sessions')
   else if (nodeId === 'states-branch') toggleExpanded('states')
   else if (nodeId === 'users-branch') toggleExpanded('users')
   else if (nodeId === 'signals-branch') toggleExpanded('signals')
@@ -160,25 +158,6 @@ function onRightArrowKey() {
     @keydown.enter.prevent="onEnterKey"
     @keydown.right.prevent="onRightArrowKey"
   >
-    <li class="tests-tree-node">
-      <div class="tests-tree-node-row">
-        <button class="tests-tree-caret" :class="{ 'tests-tree-caret-open': isExpanded('root') }" title="Toggle" @click="toggleExpanded('root')">▸</button>
-        <div class="tests-tree-item">
-          <TestNodeButton :status="statusFor('root')" :progress="progressFor('root')" @activate="emit('activate', 'root')" />
-          <button
-            type="button"
-            class="tests-tree-row"
-            data-node-id="root"
-            :class="{ 'tests-tree-row-selected': selectedNodeId === 'root' }"
-            @click="emit('select', 'root')"
-          >
-            <span class="tests-tree-label">{{ projectName }}</span>
-          </button>
-        </div>
-      </div>
-
-      <div class="tests-tree-children-wrap" :class="{ 'tests-tree-children-wrap-open': isExpanded('root') }">
-      <ul class="tests-tree-children">
         <li class="tests-tree-node">
           <div class="tests-tree-node-row">
             <button class="tests-tree-caret" :class="{ 'tests-tree-caret-open': isExpanded('sessions') }" title="Toggle" @click="toggleExpanded('sessions')">▸</button>
@@ -378,9 +357,6 @@ function onRightArrowKey() {
           </ul>
           </div>
         </li>
-      </ul>
-      </div>
-    </li>
   </ul>
 </template>
 

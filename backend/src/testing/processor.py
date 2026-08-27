@@ -15,6 +15,11 @@ from testing.metrics_provider import TestMetricsProvider
 
 
 class TestSignalSource(Protocol):
+    # Real AI calls made so far — TestReplayJob watches this to know when
+    # one of its own "steps" (one real AI call, not one turn replayed) is
+    # done, since a batch call can silently cover several turns at once.
+    calls_made: int
+
     async def get_turn_data(self, message_id: int, current_state: str) -> tuple[dict, dict]:
         ...
 

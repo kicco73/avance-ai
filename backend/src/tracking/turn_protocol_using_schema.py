@@ -54,11 +54,17 @@ EMBED_SIGNAL_BATCH_TAG_PROMPT = """
 Definition of signals metadata:
 	- a small CSV table, as plain text (not a JSON object).
 	- first row: the signal names, comma-separated, e.g. "mood,engagement".
-	- one data row per turn this response covers, each starting with that turn's own
-	  "[Turn N]" number (see the instructions above for where that number comes
-	  from) followed by that turn's values, e.g. "3,50.2,70".
-	- it is vitally important to always calculate and return a value for each and any signal
-	  specified in the list below, for every turn you are asked to cover.
+	- one data row per turn, each starting with that turn's own number — the same
+	  number shown on its "[Turn N]" marker in the conversation transcript —
+	  followed by that turn's values. The transcript's turn numbers always run
+	  1, 2, 3, ... with no gaps, so with 3 marked turns you write exactly 3 rows:
+	  mood,engagement
+	  1,50.2,70
+	  2,52.0,68
+	  3,60.0,75
+	- it is vitally important to always calculate and return a value for each and any
+	  signal specified in the list below, for every turn marked in the transcript —
+	  never skip one, never merge two into one row.
 
 Always fill in the 'signals' field of your structured response:
 """
@@ -70,11 +76,15 @@ Definition of env metadata:
 	  signals, which are re-evaluated fresh every turn.
 
 Always fill in the 'env' field of your structured response:
-	- a JSON object, as plain text, e.g. {"3": {"favorite_color": "blue"}}.
-	- one entry per turn this response covers, keyed by that turn's own "[Turn N]"
-	  number (see the instructions above for where that number comes from).
+	- a JSON object, as plain text, keyed by each turn's own number — the same
+	  number shown on its "[Turn N]" marker in the conversation transcript. The
+	  transcript's turn numbers always run 1, 2, 3, ... with no gaps, so with 3
+	  marked turns you write exactly 3 entries:
+	  {"1": {"favorite_color": "blue"}, "2": {}, "3": {"mood": "better"}}
 	- each entry's value is an object of only the variable names you are actually
 	  reporting as new or changed that turn — map it to {} when nothing changed.
+	- one entry per turn marked in the transcript — never skip one, never merge
+	  two into one entry.
 """
 
 EMBED_REACTION_TAG_PROMPT = """
@@ -110,8 +120,8 @@ class TurnProtocolUsingSchema(TurnProtocol):
 		"signals": "JSON dictionary containing required calculated signal values, rendered as text.",
 		"reaction": "The key of a declared reaction to react to the user's last message with, or empty if none fits, rendered as text.",
 		"text": "Normal textual response to the user, in markdown format, rendered as text.",
-		"signals_batch": "CSV table of calculated signal values: header row of signal names, then one row per turn starting with its turn number, e.g. \"mood,engagement\\n1,50.2,70\", rendered as text.",
-		"env_batch": "JSON object of updated memory state: one entry per turn keyed by its 1-based turn number, each entry mapping only the changed keys (an empty object if none), rendered as text.",
+		"signals_batch": "CSV table of calculated signal values: header row of signal names, then one row per turn marked in the transcript, each starting with that turn's own [Turn N] number (always 1, 2, 3, ... with no gaps), e.g. \"mood,engagement\\n1,50.2,70\\n2,52.0,68\", rendered as text.",
+		"env_batch": "JSON object of updated memory state: one entry per turn marked in the transcript, keyed by that turn's own [Turn N] number (always 1, 2, 3, ... with no gaps), each entry mapping only the changed keys (an empty object if none), e.g. {\"1\": {...}, \"2\": {}}, rendered as text.",
 	}
 
 	def _generate_reply(self, prompt: str, chat_history: list[dict], on_metadata: MetadataCallback,) -> AsyncIterator[str]:

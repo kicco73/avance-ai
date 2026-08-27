@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from logging_factory import LoggerFactory
+
+logger = LoggerFactory.get_logger(__name__)
 
 # Instructions for Claude Code: DO NOT TOUCH THIS FILE
 
@@ -23,6 +26,7 @@ class Job(ABC):
         if self.__total_steps is not None:
             raise ValueError(f"Job {self} is already prepared")
         self.__total_steps, self.__dependencies = self._prepare()
+        logger.critical(f'job {self} has {self.__total_steps} steps')
         return self.__dependencies
 
     @property

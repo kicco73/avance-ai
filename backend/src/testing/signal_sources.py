@@ -31,6 +31,11 @@ class TurnByTurnSignalSource:
         self._db = db
         self._automaton = automaton
         self._session_id = session_id
+        # One real AI call per get_turn_data call, always — see
+        # BatchSignalSource.calls_made for why TestReplayJob needs this on
+        # both signal sources (one job "step" = one real AI call, not one
+        # turn replayed).
+        self.calls_made = 0
 
     async def get_turn_data(self, message_id: int, current_state: str) -> tuple[dict, dict]:
         signal_names = set(self._automaton.triggerable_signal_names(current_state))
@@ -74,6 +79,7 @@ class TurnByTurnSignalSource:
 
         async for _ in protocol.generate_reply_with_schema(base_prompt, tag_specs, chat_history, on_metadata):
             pass
+        self.calls_made += 1
 
         return signal_values, stored_env
 
@@ -83,35 +89,54 @@ class TurnByTurnSignalSource:
 
 
 # Rough per-turn output-token cost used to cap how many turns one batch
-# call asks for at once (see BatchSignalSource._max_turns_per_call) — a
-# heuristic, not a hard guarantee, since env's actual length varies with
-# what the model reports. Keeps a batch call from asking for more turns
-# than can plausibly fit before the provider truncates the response (see
-# AIServiceProviderOutputTruncatedError) — better to split into another
-# call than to lose an unbounded tail of turns to truncation.
+# call asks for at once (see TestReplayJob._chunk_into_batches, which owns
+# this decision upfront — BatchSignalSource itself just executes whatever
+# group it's handed) — a heuristic, not a hard guarantee, since env's
+# actual length varies with what the model reports. Keeps a batch call
+# from asking for more turns than can plausibly fit before the provider
+# truncates the response (see AIServiceProviderOutputTruncatedError) —
+# better to split into another call than to lose an unbounded tail of
+# turns to truncation.
 TOKENS_PER_SIGNAL_VALUE_ESTIMATE = 2
 TOKENS_PER_ENV_TURN_ESTIMATE = 40
 BATCH_OUTPUT_BUDGET_SAFETY_MARGIN = 0.7
 
+
+def estimate_max_turns_per_call(signal_count: int, max_output_tokens: int) -> int:
+    """Shared by TestReplayJob._chunk_into_batches (deciding each batch's
+    real turn grouping upfront) and TestService._count_batch_segments
+    (the matching upfront step-count estimate) — both use the project's
+    full signal count as the worst case, before any state has been
+    visited, so the declared step count and the real chunking agree."""
+    per_turn_tokens = signal_count * TOKENS_PER_SIGNAL_VALUE_ESTIMATE + TOKENS_PER_ENV_TURN_ESTIMATE
+    budget = max_output_tokens * BATCH_OUTPUT_BUDGET_SAFETY_MARGIN
+    return max(1, int(budget // per_turn_tokens))
+
 BATCH_TAG_INSTRUCTIONS = (
-    "This turn covers multiple messages of the conversation at once. Each "
-    "user message you are being asked to cover is prefixed with its own "
-    "'[Turn N] ' label directly in the conversation above — use that exact "
-    "number when numbering the corresponding row/entry in 'signals' and "
-    "'env'; read it off the label, don't count messages or infer it "
-    "yourself. The 'signals' and 'env' fields each already cover every one "
-    "of these turns at once (see their own format above — a numbered "
-    "entry per turn). The starting env given below is read-only context "
-    "from before this stretch of the conversation — the 'env' field's own "
-    "numbered entries are what you must produce as output for each turn, "
-    "not a repeat of the starting one."
+    "Below is a conversation transcript to analyze, not a conversation to "
+    "reply to — do not write a reply to it, only fill in the 'signals' and "
+    "'env' fields, following their own format definitions (a numbered row/entry "
+    "per turn, one field format each). Each user turn you are being asked to "
+    "cover is marked with its own '[Turn N]' label in the transcript, numbered "
+    "1, 2, 3, ... with no gaps — use that exact number when numbering the "
+    "corresponding row/entry in 'signals' and 'env'; read it off the label, "
+    "don't count turns or infer it yourself. The starting env given below is "
+    "read-only context from before this stretch of the conversation — the "
+    "'env' field's own numbered entries are what you must produce as output "
+    "for each turn, not a repeat of the starting one."
 )
 
 
 class BatchSignalSource(object):
-    """One AI call per session (or remaining stretch) instead of per turn,
-    re-covering from the divergence point when a state needs an unasked
-    signal. Uses only general_prompt, since states aren't known upfront."""
+    """Executes one AI call per group of turns it's handed — grouping
+    (how many turns share a call) is TestReplayJob's decision, made
+    upfront via prepare_batch(), not this class's. Always requests every
+    signal the project declares, not just whichever state's own triggers
+    need — signals are re-evaluated fresh every turn regardless of
+    whether they end up driving a transition, so this is never wasted,
+    and it means a single prepare_batch() call is always enough: there's
+    no "discovered a new signal partway through" gap to re-cover, unlike
+    an earlier design that grew its signal set turn by turn."""
 
     def __init__(
         self, ai_service: AiService, tracking_service: TrackingService, db: Db, automaton: Automaton, session_id: int,
@@ -121,27 +146,28 @@ class BatchSignalSource(object):
         self._db = db
         self._automaton = automaton
         self._session_id = session_id
-        self.batch_segments = 0
-        # message_id -> (signal_values, stored_env) for every turn the
-        # most recent call(s) actually cover.
+        self.calls_made = 0
+        # message_id -> (signal_values, stored_env) for every turn a
+        # prepare_batch() call has covered so far.
         self._covered: dict[int, tuple[dict, dict]] = {}
-        self._signal_names: set[str] = set()
 
     async def get_turn_data(self, message_id: int, current_state: str) -> tuple[dict, dict]:
-        needed = set(self._automaton.triggerable_signal_names(current_state))
+        # current_state unused: prepare_batch() already covered every
+        # turn in its group for every project signal, regardless of
+        # which state a given turn lands in — see the class docstring.
+        return self._covered.get(message_id, ({}, {}))
 
-        if message_id in self._covered:
-            existing_values, _ = self._covered[message_id]
-            if needed <= set(existing_values.keys()):
-                return self._covered[message_id]
+    async def prepare_batch(self, turn_ids: list[int]) -> None:
+        """Makes exactly one AI call covering all of `turn_ids` — called
+        by TestReplayJob before it starts reading get_turn_data() for any
+        of them. A no-op if they're already covered (e.g. TestReplayJob
+        replaying from cache after a dependency job already ran this
+        segment)."""
+        if all(mid in self._covered for mid in turn_ids):
+            return
 
-        self._signal_names |= needed
-        await self._call_from(message_id)
-        return self._covered[message_id]
-
-    async def _call_from(self, message_id: int) -> None:
-        turn_ids = self._turns_from(message_id)
-        signal_definition = Signals(FixedProjectContext(self._automaton), self._db).get_definition(self._signal_names)
+        signal_names = {s.name for s in self._automaton.signals}
+        signal_definition = Signals(FixedProjectContext(self._automaton), self._db).get_definition(signal_names)
 
         # Same two tag NAMES as TurnByTurnSignalSource's single turn, but a
         # different template_key ('signals_batch'/'env_batch') — a separate
@@ -150,16 +176,22 @@ class BatchSignalSource(object):
         # all and the shared attempt at one format for both proved unstable.
         tag_specs: list[tuple[str, str]] = [('signals', 'signals_batch'), ('env', 'env_batch')]
 
-        seed_env = self._seed_env(message_id)
+        seed_env = self._seed_env(turn_ids[0])
         base_prompt = f"{self._automaton.general_prompt}\n\n{BATCH_TAG_INSTRUCTIONS}"
         base_prompt = f"{base_prompt}\n\nStarting env (read-only context):\n{Env(stored=seed_env).serialise_as_text()}"
         if signal_definition:
             base_prompt = f"{base_prompt}\n\n{signal_definition}"
+        base_prompt = f"{base_prompt}\n\nConversation transcript:\n{self._build_conversation_text(turn_ids)}"
 
         protocol_cls = TurnProtocolUsingSchema if self._ai_service.is_provider_with_schema() else TurnProcotolUsingTextExtraction
         protocol = protocol_cls(self._ai_service, True)
 
-        chat_history = self._build_chat_history(turn_ids)
+        # Not the real conversation as native multi-turn messages — see
+        # _build_conversation_text, which already flattened it into
+        # base_prompt above as a document to analyze. A chat API still
+        # needs at least one message to generate against; this one line
+        # is that trigger, not part of the data being analyzed.
+        chat_history = [{"role": "user", "content": "Produce the structured output described above now."}]
 
         # Index i = turn i+1 (see MetadataHandler.parse_batch_signals/parse_batch_env)
         # — empty until on_metadata actually fires for that tag, which never
@@ -178,12 +210,12 @@ class BatchSignalSource(object):
 
         async for _ in protocol.generate_reply_with_schema(base_prompt, tag_specs, chat_history, on_metadata):
             pass
+        self.calls_made += 1
 
         for i, turn_id in enumerate(turn_ids):
             signals = signals_by_turn[i] if i < len(signals_by_turn) else {}
             env = env_by_turn[i] if i < len(env_by_turn) else {}
             self._covered[turn_id] = (signals, env)
-        self.batch_segments += 1
 
     def _seed_env(self, message_id: int) -> dict:
         all_user_message_ids = self._user_message_ids()
@@ -207,31 +239,31 @@ class BatchSignalSource(object):
     def _user_message_ids(self) -> list[int]:
         return [m['id'] for m in self._db.get_messages(self._session_id) if m['role'] == 'user']
 
-    def _max_turns_per_call(self) -> int:
-        per_turn_tokens = len(self._signal_names) * TOKENS_PER_SIGNAL_VALUE_ESTIMATE + TOKENS_PER_ENV_TURN_ESTIMATE
-        budget = self._ai_service.get_max_output_tokens() * BATCH_OUTPUT_BUDGET_SAFETY_MARGIN
-        return max(1, int(budget // per_turn_tokens))
-
-    def _turns_from(self, message_id: int) -> list[int]:
-        remaining = [mid for mid in self._user_message_ids() if mid >= message_id]
-        return remaining[:self._max_turns_per_call()]
-
-    def _build_chat_history(self, turn_ids: list[int]) -> list[dict]:
+    def _build_conversation_text(self, turn_ids: list[int]) -> str:
         """Full session history up to and including the last turn this
-        call covers, for context — but each user message actually being
-        numbered in this call's 'signals'/'env' output gets an explicit
-        "[Turn N] " prefix. Without this, the model has to infer its own
-        local 1-based numbering from a (possibly much longer) history
-        that already carries its own absolute position, and reliably
-        gets the two confused; with it, the model reads the number
-        straight off the message instead of counting."""
+        call covers, flattened into plain text — not passed as the
+        provider's own native multi-turn message array. A real multi-turn
+        history primes a chat model to reply to the latest message; this
+        call needs the opposite framing (analyze N independent turns as
+        data, produce no reply at all), so the whole transcript is
+        embedded directly in the prompt as a document to read, with the
+        actual API call carrying only a one-line trigger message (see
+        _call_from). Each turn actually being numbered in this call's
+        'signals'/'env' output gets an explicit "[Turn N]" label right
+        before it. Without this, the model has to infer its own local
+        1-based numbering from a (possibly much longer) history that
+        already carries its own absolute position, and reliably gets the
+        two confused; with it, the model reads the number straight off
+        the transcript instead of counting."""
         turn_number_by_message_id = {mid: i for i, mid in enumerate(turn_ids, start=1)}
         messages = self._db.get_messages(self._session_id)
-        history = []
+        lines = []
         for m in messages:
             if m["id"] > turn_ids[-1]:
                 continue
             turn_number = turn_number_by_message_id.get(m["id"])
-            content = f"[Turn {turn_number}] {m['content']}" if turn_number is not None else m["content"]
-            history.append({"role": m["role"], "content": content})
-        return history
+            if turn_number is not None:
+                lines.append(f"[Turn {turn_number}]")
+            role_label = "User" if m["role"] == "user" else "Assistant"
+            lines.append(f"{role_label}: {m['content']}")
+        return "\n".join(lines)

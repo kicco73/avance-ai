@@ -183,6 +183,15 @@ const currentStrategyProgress = computed(() => {
   return result
 })
 
+// The project-wide "run everything" control lives in this panel's own
+// header (styled like the reset button next to it), not in TestsTree —
+// 'root' has no row of its own in the tree any more.
+const rootStatus = computed(() => currentStrategyStatuses.value.root ?? 'idle')
+const rootProgress = computed(() => currentStrategyProgress.value.root ?? null)
+const rootBusy = computed(() => rootStatus.value === 'pending' || rootStatus.value === 'running')
+const rootHasProgress = computed(() => rootStatus.value === 'running' && rootProgress.value != null)
+const rootProgressPercent = computed(() => (rootHasProgress.value ? Math.min(100, Math.round(rootProgress.value)) : 0))
+
 const selectedCacheKey = computed(() => (
   selectedNodeId.value ? cacheKey(strategy.value, selectedNodeId.value) : null
 ))
@@ -410,6 +419,11 @@ async function onActivate(nodeId) {
   }
 }
 
+function onActivateRoot() {
+  if (rootBusy.value) return
+  onActivate('root')
+}
+
 async function loadSelectedRun(nodeId) {
   const sessionId = Number(nodeId.slice('session:'.length))
   selectedRunLoading.value = true
@@ -551,21 +565,55 @@ onBeforeUnmount(() => {
     <div class="tests-panel-tree" :style="{ width: treeWidth + 'px' }">
       <div class="tests-panel-strategy">
         <span class="tests-panel-tree-header">Test explorer</span>
-        <button
-          class="tests-panel-reset-btn"
-          title="Reset test cache"
-          :disabled="resettingCache || !anyTestExecuted"
-          @click="onResetCache"
-        >
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-            <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" />
-          </svg>
-        </button>
+        <div class="tests-panel-tree-actions">
+          <button
+            type="button"
+            class="tests-panel-root-btn"
+            :class="`tests-panel-root-btn-${rootBusy ? 'running' : rootStatus}`"
+            :disabled="rootBusy"
+            :title="rootStatus === 'pending' ? 'Queued…' : rootStatus === 'running' ? 'Running…' : 'Run test'"
+            @click="onActivateRoot"
+          >
+            <svg v-if="rootStatus === 'idle'" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+            <svg
+              v-else-if="rootBusy"
+              class="tests-panel-root-btn-spinner"
+              :class="{ 'tests-panel-root-btn-spinner-indeterminate': !rootHasProgress }"
+              viewBox="0 0 24 24" width="16" height="16"
+            >
+              <circle
+                cx="12" cy="12" r="10" pathLength="100"
+                fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+                :stroke-dasharray="rootHasProgress ? `${rootProgressPercent} 100` : '50 100'"
+              />
+            </svg>
+            <svg v-else-if="rootStatus === 'ok'" viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="4 13 9 18 20 6" />
+            </svg>
+            <svg v-else-if="rootStatus === 'warning'" viewBox="0 0 24 24" width="10" height="10" fill="currentColor">
+              <path d="M12 3L1 21h22L12 3zm0 5.5l6.6 11.5H5.4L12 8.5zM11 11v4h2v-4h-2zm0 5v2h2v-2h-2z" />
+            </svg>
+            <svg v-else-if="rootStatus === 'fail'" viewBox="0 0 24 24" width="10" height="10" fill="currentColor">
+              <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm3.5 13.1L15.1 16.5 12 13.4l-3.1 3.1-1.4-1.4L10.6 12 7.5 8.9l1.4-1.4L12 10.6l3.1-3.1 1.4 1.4L13.4 12z" />
+            </svg>
+          </button>
+          <button
+            class="tests-panel-reset-btn"
+            title="Reset test cache"
+            :disabled="resettingCache || !anyTestExecuted"
+            @click="onResetCache"
+          >
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+              <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" />
+            </svg>
+          </button>
+        </div>
       </div>
       <p v-if="sessionsLoading || statesLoading || signalsLoading" class="tests-panel-tree-status">Loading…</p>
       <TestsTree
         v-else
-        :project-name="projectName"
         :sessions="sessions"
         :states="projectStates"
         :signals="projectSignals"
@@ -804,6 +852,13 @@ onBeforeUnmount(() => {
   letter-spacing: 0.03em;
 }
 
+.tests-panel-tree-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.tests-panel-root-btn,
 .tests-panel-reset-btn {
   flex: none;
   display: flex;
@@ -819,14 +874,70 @@ onBeforeUnmount(() => {
   padding: 0;
 }
 
+.tests-panel-root-btn:hover:not(:disabled),
 .tests-panel-reset-btn:hover:not(:disabled) {
   background: #4a6fa5;
   color: white;
 }
 
+.tests-panel-root-btn:disabled,
 .tests-panel-reset-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.tests-panel-root-btn-running {
+  border-color: transparent;
+  color: #4a6fa5;
+}
+
+.tests-panel-root-btn-spinner {
+  transform-origin: center;
+  transform: rotate(-90deg);
+  transition: transform 0.2s linear;
+}
+
+.tests-panel-root-btn-spinner circle {
+  transition: stroke-dasharray 0.2s linear;
+}
+
+.tests-panel-root-btn-spinner-indeterminate {
+  animation: tests-panel-root-btn-spin 0.9s linear infinite;
+}
+
+@keyframes tests-panel-root-btn-spin {
+  from { transform: rotate(-90deg); }
+  to { transform: rotate(270deg); }
+}
+
+.tests-panel-root-btn-ok {
+  border-color: #2e7d32;
+  color: #2e7d32;
+}
+
+.tests-panel-root-btn-ok:hover:not(:disabled) {
+  background: #2e7d32;
+  color: white;
+}
+
+.tests-panel-root-btn-warning {
+  border-color: #b26a00;
+  color: #b26a00;
+}
+
+.tests-panel-root-btn-warning:hover:not(:disabled) {
+  background: #b26a00;
+  color: white;
+}
+
+.tests-panel-root-btn-fail {
+  border-color: #c62828;
+  color: #c62828;
+}
+
+.tests-panel-root-btn-fail:hover:not(:disabled) {
+  background: #c62828;
+  color: white;
 }
 
 .tests-panel-tokens-label {

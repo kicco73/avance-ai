@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections import deque
 from typing import TYPE_CHECKING
 
 from logging_factory import LoggerFactory
@@ -28,8 +29,7 @@ class ThrottledJobQueue(JobQueue):
         min_job_interval_ms: int,
     ) -> None:
         self.__throttle_lock = threading.Lock()
-        self.__window_start = time.monotonic()
-        self.__window_count = 0
+        self.__run_times: deque[float] = deque()
         self.__last_run_at: float | None = None
         self.__max_jobs_per_minute = max_jobs_per_minute
         self.__min_job_interval_ms = min_job_interval_ms
@@ -39,13 +39,12 @@ class ThrottledJobQueue(JobQueue):
         while True:
             with self.__throttle_lock:
                 now = time.monotonic()
-                if now - self.__window_start >= 60:
-                    self.__window_start = now
-                    self.__window_count = 0
+                while self.__run_times and now - self.__run_times[0] >= 60:
+                    self.__run_times.popleft()
 
                 wait_seconds = 0.0
-                if self.__window_count >= self.__max_jobs_per_minute:
-                    wait_seconds = max(wait_seconds, self.__window_start + 60 - now)
+                if len(self.__run_times) >= self.__max_jobs_per_minute:
+                    wait_seconds = max(wait_seconds, self.__run_times[0] + 60 - now)
 
                 if self.__last_run_at is not None:
                     elapsed_ms = (now - self.__last_run_at) * 1000
@@ -53,7 +52,7 @@ class ThrottledJobQueue(JobQueue):
                         wait_seconds = max(wait_seconds, (self.__min_job_interval_ms - elapsed_ms) / 1000)
 
                 if wait_seconds <= 0:
-                    self.__window_count += 1
+                    self.__run_times.append(now)
                     self.__last_run_at = now
                     return
             logger.info(f"waiting {wait_seconds}s")

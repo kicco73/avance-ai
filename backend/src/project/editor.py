@@ -63,7 +63,6 @@ class ProjectEditor:
 
         names = self._db.list_archives(project_name)
         names.sort(key=lambda name: (name != "index.yml", name))
-        logger.critical(names)
         return names
 
     def get_project_file(self, project_name: str, file_name: str) -> dict:
