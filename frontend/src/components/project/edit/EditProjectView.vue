@@ -21,6 +21,7 @@ import SettingsMenu from '../../settings/SettingsMenu.vue'
 import ProfileMenu from '../../ProfileMenu.vue'
 import ProjectsMenu from '../../ProjectsMenu.vue'
 import { useLeaveConfirmation } from '../../../composables/useLeaveConfirmation.js'
+import { onProjectChanged } from '../../../projectChangeEvents.js'
 import {
   getProjectFiles,
   putProjectFile,
@@ -863,22 +864,19 @@ function selectFile(fileName) {
   guardedAction(`switch to "${fileName}"`, () => switchFile(fileName))
 }
 
-// Common tail for every Add/edit/delete/reorder handler below: the
-// backend already persisted the change, so both index.yml's dedicated
-// view and the Inspector need to catch up (same as handleFileSaved).
 async function refreshAfterProjectEdit() {
   await indexYmlEditorRef.value?.refresh(false)
   await indexYmlEditorRef.value?.reloadCode()
   if (inspecting.value) await inspectorRef.value?.refresh()
   refreshValidStateKeys()
   refreshProjectRevision()
-  // Keeps the selected state's "Tokens: X" estimate from going stale
-  // after a save — its cache key is content-addressed backend-side, so a
-  // changed prompt naturally recomputes rather than serving a stale hit.
-  // handleFileSaved (a raw YAML "Save") is the other edit tail and does
-  // this too, since it doesn't funnel through here.
   refreshStateTabTokens()
 }
+
+const unsubscribeProjectChanged = onProjectChanged((changedProjectName) => {
+  if (changedProjectName === props.projectName) return refreshAfterProjectEdit()
+})
+onBeforeUnmount(unsubscribeProjectChanged)
 
 // {revision, published_revision} — null while not yet loaded. A save can
 // fork (see Db.save_project_files' fork-on-first-edit-after-publish),
@@ -1020,7 +1018,6 @@ async function handleRevert() {
   try {
     await postRevertProject(props.projectName)
     selectedGraphElement.value = null
-    await refreshAfterProjectEdit()
     await refreshActiveEditorHistory()
   } catch {
     // already surfaced via apiFetch
@@ -1033,7 +1030,6 @@ function handleAddState() {
   guardedAction('add a new state', async () => {
     try {
       const state = await postAddState(props.projectName)
-      await refreshAfterProjectEdit()
       selectedGraphElement.value = indexYmlEditorRef.value?.stateElementFor(state.key) ?? null
       flashRecentlyAdded(`state:${state.key}`)
     } catch {
@@ -1046,7 +1042,6 @@ function handleAddSignal() {
   guardedAction('add a new signal', async () => {
     try {
       const signal = await postAddSignal(props.projectName)
-      await refreshAfterProjectEdit()
       flashRecentlyAdded(`signal:${signal.name}`)
     } catch {
       // already surfaced via apiFetch
@@ -1058,7 +1053,6 @@ function handleAddEnvKey() {
   guardedAction('add a new env key', async () => {
     try {
       const envKey = await postAddEnvKey(props.projectName)
-      await refreshAfterProjectEdit()
       flashRecentlyAdded(`env-key:${envKey.name}`)
     } catch {
       // already surfaced via apiFetch
@@ -1072,7 +1066,6 @@ function handleAddAction() {
   guardedAction('add a new action', async () => {
     try {
       const action = await postAddAction(props.projectName, stateKey)
-      await refreshAfterProjectEdit()
       // Selects the new action itself, not its containing state — selecting
       // the state would flip the Inspector's active tab back to "State" (see the selectedGraphElement watch above).
       selectedGraphElement.value = indexYmlEditorRef.value?.actionsForState(stateKey).find(
@@ -1089,7 +1082,6 @@ function handleSetStateField(stateName, field, value) {
   guardedAction(`edit "${field}"`, async () => {
     try {
       await putStateField(props.projectName, stateName, field, value)
-      await refreshAfterProjectEdit()
       selectedGraphElement.value = indexYmlEditorRef.value?.stateElementFor(stateName) ?? null
     } catch {
       // already surfaced via apiFetch
@@ -1101,7 +1093,6 @@ function handleSetProjectField(field, value) {
   guardedAction(`edit "${field}"`, async () => {
     try {
       await putProjectField(props.projectName, field, value)
-      await refreshAfterProjectEdit()
     } catch {
       // already surfaced via apiFetch
     }
@@ -1119,7 +1110,6 @@ function handleSetActionField(stateName, actionName, field, value) {
       } else {
         await putActionField(props.projectName, stateName, actionName, field, value)
       }
-      await refreshAfterProjectEdit()
       selectedGraphElement.value = indexYmlEditorRef.value?.actionsForState(stateName).find(
         (a) => a.data.actionName === actionName
       ) ?? null
@@ -1133,7 +1123,6 @@ function handleSetSignalField(signalName, field, value) {
   guardedAction(`edit "${field}"`, async () => {
     try {
       const signal = await putSignalField(props.projectName, signalName, field, value)
-      await refreshAfterProjectEdit()
       // Only a ui-label edit can rename the signal — its line in the YAML
       // moves, so re-jump to it off the *new* name the response reported.
       if (field === 'ui-label') await jumpToDefinition({ kind: 'signal', signalName: signal.name }, { silent: true })
@@ -1147,7 +1136,6 @@ function handleSetEnvKeyField(envKeyName, field, value) {
   guardedAction(`edit "${field}"`, async () => {
     try {
       const envKey = await putEnvKeyField(props.projectName, envKeyName, field, value)
-      await refreshAfterProjectEdit()
       // Only a 'name' edit can rename the key — its line in the YAML
       // moves, so re-jump to it off the *new* name the response reported.
       if (field === 'name') await jumpToDefinition({ kind: 'env-key', envKeyName: envKey.name }, { silent: true })
@@ -1162,7 +1150,6 @@ function handleDeleteState(stateName) {
     try {
       await deleteState(props.projectName, stateName)
       selectedGraphElement.value = null
-      await refreshAfterProjectEdit()
     } catch {
       // already surfaced via apiFetch
     }
@@ -1178,7 +1165,6 @@ function handleDeleteAction(stateName, actionName) {
       if (selectedGraphElement.value?.kind === 'action' && selectedGraphElement.value.data.actionName === actionName) {
         selectedGraphElement.value = indexYmlEditorRef.value?.stateElementFor(stateName) ?? null
       }
-      await refreshAfterProjectEdit()
     } catch {
       // already surfaced via apiFetch
     }
@@ -1189,7 +1175,6 @@ function handleDeleteSignal(signalName) {
   guardedAction('delete this signal', async () => {
     try {
       await deleteProjectSignal(props.projectName, signalName)
-      await refreshAfterProjectEdit()
     } catch {
       // already surfaced via apiFetch
     }
@@ -1200,7 +1185,6 @@ function handleDeleteEnvKey(envKeyName) {
   guardedAction('delete this env key', async () => {
     try {
       await deleteProjectEnvKey(props.projectName, envKeyName)
-      await refreshAfterProjectEdit()
     } catch {
       // already surfaced via apiFetch
     }
@@ -1213,29 +1197,14 @@ function handleReorderAction({ actionName, position }) {
   guardedAction('reorder actions', async () => {
     try {
       await putActionOrder(props.projectName, stateKey, actionName, position)
-      await refreshAfterProjectEdit()
     } catch {
       // already surfaced via apiFetch
     }
   })
 }
 
-// Common tail for a successful Save on either kind of editor — re-emitted
-// up plus the same refreshes refreshAfterProjectEdit triggers, minus
-// reloading the buffer that was just the one doing the saving.
-async function handleFileSaved() {
+function handleFileSaved() {
   emit('saved')
-  // A manual Save from the Code segment writes index.yml directly too, so
-  // the Graph segment's cytoscape data needs the same refresh. No-op via
-  // optional chaining when a *different* file was the one just saved.
-  await indexYmlEditorRef.value?.refresh(false)
-  if (inspecting.value) await inspectorRef.value?.refresh()
-  refreshValidStateKeys()
-  refreshProjectRevision()
-  // See refreshAfterProjectEdit's own comment on this — this is the other
-  // edit tail, and a raw YAML save is exactly the "save yml" case that
-  // must also refresh the selected state's token estimate.
-  refreshStateTabTokens()
 }
 
 // The Inspector's "State"/"Actions" tabs share the same selection the
@@ -1316,13 +1285,6 @@ async function createProjectFile(name, content) {
     await putProjectFile(props.projectName, name, content)
     await loadFiles()
     await selectFile(name)
-    // putProjectFile forks the draft revision server-side the same as any
-    // other save (see Db.save_project_file's own _ensure_draft_revision) —
-    // without this, projectRevision stays stale and publishUpToDate keeps
-    // reading true, so the Publish button silently no-ops on a project
-    // whose only unpublished change is a brand-new file (New attachment/
-    // New aspect/New legal all share this tail).
-    refreshProjectRevision()
   } catch {
     // already surfaced via apiFetch
   } finally {

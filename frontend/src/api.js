@@ -1,5 +1,6 @@
 import { setApiError } from './errorStore.js'
 import { requireLogin } from './authStore.js'
+import { emitProjectChanged } from './projectChangeEvents.js'
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 const WS_URL = import.meta.env.VITE_WS_URL ?? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/chat`
@@ -80,6 +81,12 @@ async function apiFetch(url, options, { parse = 'json', onProgress } = {}) {
   if (parse === 'sse') return readSseResult(res, onProgress)
   if (parse === 'response') return res
   return res.json()
+}
+
+async function projectFetch(projectName, url, options, fetchOpts) {
+  const result = await apiFetch(url, options, fetchOpts)
+  await emitProjectChanged(projectName)
+  return result
 }
 
 export function getState(signal) {
@@ -619,7 +626,7 @@ export function activateProject(projectName) {
 // sessions.json/benchmark.json advances.
 export function putProject(projectName, file, onProgress) {
   const contentType = /\.zip$/i.test(file.name) ? 'application/zip' : 'application/x-yaml'
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}`, {
+  return projectFetch(projectName, `${API_URL}/projects/${encodeURIComponent(projectName)}`, {
     method: 'PUT',
     headers: { 'Content-Type': contentType },
     body: file
@@ -666,7 +673,8 @@ export function getStateInputTokens(projectName, stateKey, sessionId) {
 }
 
 export function putProjectField(projectName, field, value) {
-  return apiFetch(
+  return projectFetch(
+    projectName,
     `${API_URL}/projects/${encodeURIComponent(projectName)}/project/${encodeURIComponent(field)}`,
     { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value }) }
   )
@@ -690,7 +698,7 @@ export function getProjectFile(projectName, fileName) {
 }
 
 export function putProjectFile(projectName, fileName, content) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}`, {
+  return projectFetch(projectName, `${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'text/plain; charset=utf-8' },
     body: content
@@ -701,7 +709,7 @@ export function putProjectFile(projectName, fileName, content) {
 // as body with its own Content-Type — the backend validates an image
 // save against the request header, unlike a text save.
 export function putProjectFileBinary(projectName, fileName, file) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}`, {
+  return projectFetch(projectName, `${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}`, {
     method: 'PUT',
     headers: { 'Content-Type': file.type },
     body: file
@@ -734,7 +742,7 @@ export function redoProjectFile(projectName, fileName, content) {
 }
 
 export function deleteProjectFile(projectName, fileName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}`, {
+  return projectFetch(projectName, `${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}`, {
     method: 'DELETE'
   })
 }
@@ -764,33 +772,36 @@ export function postWipeLiveSessions(projectName) {
 // affected object's own payload, never the whole YAML text.
 
 export function postAddState(projectName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/states`, { method: 'POST' })
+  return projectFetch(projectName, `${API_URL}/projects/${encodeURIComponent(projectName)}/states`, { method: 'POST' })
 }
 
 export function postAddSignal(projectName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/signals`, { method: 'POST' })
+  return projectFetch(projectName, `${API_URL}/projects/${encodeURIComponent(projectName)}/signals`, { method: 'POST' })
 }
 
 export function postAddEnvKey(projectName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/env-keys`, { method: 'POST' })
+  return projectFetch(projectName, `${API_URL}/projects/${encodeURIComponent(projectName)}/env-keys`, { method: 'POST' })
 }
 
 export function postAddAction(projectName, stateName) {
-  return apiFetch(
+  return projectFetch(
+    projectName,
     `${API_URL}/projects/${encodeURIComponent(projectName)}/states/${encodeURIComponent(stateName)}/actions`,
     { method: 'POST' }
   )
 }
 
 export function putStateField(projectName, stateName, field, value) {
-  return apiFetch(
+  return projectFetch(
+    projectName,
     `${API_URL}/projects/${encodeURIComponent(projectName)}/states/${encodeURIComponent(stateName)}/${encodeURIComponent(field)}`,
     { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value }) }
   )
 }
 
 export function putActionField(projectName, stateName, actionName, field, value) {
-  return apiFetch(
+  return projectFetch(
+    projectName,
     `${API_URL}/projects/${encodeURIComponent(projectName)}/states/${encodeURIComponent(stateName)}/actions/${encodeURIComponent(actionName)}/${encodeURIComponent(field)}`,
     { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value }) }
   )
@@ -800,21 +811,24 @@ export function putActionField(projectName, stateName, actionName, field, value)
 // putActionField it isn't looked up inside a state's `actions:` list —
 // every editable field goes through this dedicated endpoint instead.
 export function putInitActionField(projectName, field, value) {
-  return apiFetch(
+  return projectFetch(
+    projectName,
     `${API_URL}/projects/${encodeURIComponent(projectName)}/init-action/${encodeURIComponent(field)}`,
     { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value }) }
   )
 }
 
 export function putSignalField(projectName, signalName, field, value) {
-  return apiFetch(
+  return projectFetch(
+    projectName,
     `${API_URL}/projects/${encodeURIComponent(projectName)}/signals/${encodeURIComponent(signalName)}/${encodeURIComponent(field)}`,
     { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value }) }
   )
 }
 
 export function putEnvKeyField(projectName, envKeyName, field, value) {
-  return apiFetch(
+  return projectFetch(
+    projectName,
     `${API_URL}/projects/${encodeURIComponent(projectName)}/env-keys/${encodeURIComponent(envKeyName)}/${encodeURIComponent(field)}`,
     { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value }) }
   )
@@ -823,33 +837,35 @@ export function putEnvKeyField(projectName, envKeyName, field, value) {
 // 0-based index the action should end up at, within its own state's
 // actions list.
 export function putActionOrder(projectName, stateName, actionName, position) {
-  return apiFetch(
+  return projectFetch(
+    projectName,
     `${API_URL}/projects/${encodeURIComponent(projectName)}/states/${encodeURIComponent(stateName)}/actions/${encodeURIComponent(actionName)}/order`,
     { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: position }) }
   )
 }
 
 export function deleteState(projectName, stateName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/states/${encodeURIComponent(stateName)}`, {
+  return projectFetch(projectName, `${API_URL}/projects/${encodeURIComponent(projectName)}/states/${encodeURIComponent(stateName)}`, {
     method: 'DELETE'
   })
 }
 
 export function deleteProjectAction(projectName, stateName, actionName) {
-  return apiFetch(
+  return projectFetch(
+    projectName,
     `${API_URL}/projects/${encodeURIComponent(projectName)}/states/${encodeURIComponent(stateName)}/actions/${encodeURIComponent(actionName)}`,
     { method: 'DELETE' }
   )
 }
 
 export function deleteProjectSignal(projectName, signalName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/signals/${encodeURIComponent(signalName)}`, {
+  return projectFetch(projectName, `${API_URL}/projects/${encodeURIComponent(projectName)}/signals/${encodeURIComponent(signalName)}`, {
     method: 'DELETE'
   })
 }
 
 export function deleteProjectEnvKey(projectName, envKeyName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/env-keys/${encodeURIComponent(envKeyName)}`, {
+  return projectFetch(projectName, `${API_URL}/projects/${encodeURIComponent(projectName)}/env-keys/${encodeURIComponent(envKeyName)}`, {
     method: 'DELETE'
   })
 }
@@ -873,7 +889,7 @@ export function postPublishProject(projectName, remapTo = null) {
 }
 
 export function postRevertProject(projectName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/revert`, { method: 'POST' })
+  return projectFetch(projectName, `${API_URL}/projects/${encodeURIComponent(projectName)}/revert`, { method: 'POST' })
 }
 
 // The "Auto" tab's own replay launch — sessionId null means the
