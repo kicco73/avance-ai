@@ -4,7 +4,7 @@
 // annotationStatus } — this component has no notion of mode of its own.
 import { nextTick, ref, watch } from 'vue'
 import MessageBubble from './MessageBubble.vue'
-import { messageHasAnnotatedSignals } from '../../benchmarkTimeline.js'
+import { messageHasAnnotatedSignals } from '../../testTimeline.js'
 
 const props = defineProps({
   timeline: { type: Array, required: true },

@@ -203,3 +203,36 @@ def test_two_queues_never_share_worker_pools():
 
     block.set()
     assert _wait_until(lambda: job_a.is_done())
+
+
+async def test_wait_for_returns_once_the_job_completes():
+    job_queue = _queue()
+    job = _QuickJob()
+
+    job_queue.submit(job)
+    await job_queue.wait_for(job)
+
+    assert job.is_done()
+    assert job.result == "done"
+
+
+async def test_wait_for_returns_once_the_job_fails():
+    job_queue = _queue()
+    job = _RaisingJob("boom")
+
+    job_queue.submit(job)
+    await job_queue.wait_for(job)
+
+    assert job.is_failed()
+
+
+async def test_wait_for_returns_immediately_when_the_job_is_already_terminal():
+    job_queue = _queue()
+    job = _QuickJob()
+
+    job_queue.submit(job)
+    assert _wait_until(lambda: job.is_done())
+
+    await job_queue.wait_for(job)
+
+    assert job.is_done()

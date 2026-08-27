@@ -38,6 +38,7 @@ class ChatService(object):
 		self,
 		db: Db,
 		ai_service: AiService,
+		ai_test_service: AiService,
 		project_service: ProjectService,
 		session_manager: ChatSessionManager,
 		tracking_service: TrackingService,
@@ -46,12 +47,13 @@ class ChatService(object):
 	) -> None:
 		self._db = db
 		self._ai_service = ai_service
+		self._ai_test_service = ai_test_service
 		self._project_service = project_service
 		self._session_manager = session_manager
 		self._tracking_service = tracking_service
 		self.metric_service = metric_service
-		# Shares job_queue with BenchmarkRunService (see main.py's own
-		# wiring) — never its own private queue.
+		# Shares the general job_queue (see main.py's own wiring) —
+		# never its own private queue.
 		self._session_summary_manager = SessionSummaryManager(db, ai_service, job_queue, session_manager)
 		self.env = PersistedEnv(db, project_service)
 		self._system_facts = SystemFacts()
@@ -95,6 +97,12 @@ class ChatService(object):
 
 	def select_ai_model(self, index: int | None) -> None:
 		self._ai_service.select_model(index)
+
+	def get_test_ai_models_info(self) -> dict:
+		return self._ai_test_service.get_models_info()
+
+	def select_test_ai_model(self, index: int | None) -> None:
+		self._ai_test_service.select_model(index)
 
 	@staticmethod
 	def _now_iso() -> str:
@@ -680,10 +688,14 @@ class ChatService(object):
 		on_metadata: OnMetadata | None = None,
 		extra_prompt: str | None = None,
 	) -> dict:
-		project_name = self._project_name_for_session(session_id)
+		session = self._db.get_chat_session(session_id)
+		if session is None:
+			raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
+		project_name = session["project_name"]
+		ai_service = self._ai_test_service if session["type"] == "test" else self._ai_service
 		_, state = self._project_service.get_automaton_and_state_for_session(session_id)
 		self._require_active_session(session_id, project_name, state.key)
-		reply = await self._tracking_service.process(session_id, text, on_metadata, extra_prompt=extra_prompt)
+		reply = await self._tracking_service._process(session_id, text, ai_service, on_metadata, extra_prompt=extra_prompt)
 		# touch_session wants the plain state key — reply['state'] is the
 		# full StatePayload dict, not a string; passing it whole would
 		# silently store its Python repr as end_state.

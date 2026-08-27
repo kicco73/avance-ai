@@ -29,6 +29,7 @@ class JobQueue(object):
         self._not_empty = threading.Condition(self._lock)
         self._deque: deque[Job] = deque()
         self._dependents: dict[Job, list[Job]] = {}
+        self._waiters: dict[Job, list[threading.Event]] = {}
 
         for i in range(max_concurrent):
             thread = threading.Thread(target=self._worker_loop, name=f"job-worker-{i}", daemon=True)
@@ -43,8 +44,11 @@ class JobQueue(object):
             ]
             for waiter in ready:
                 del self._dependents[waiter]
+            events = self._waiters.pop(job, [])
         for waiter in ready:
             self._submit(waiter)
+        for event in events:
+            event.set()
 
     def _submit(self, job: Job) -> None:
         with self._not_empty:
@@ -119,3 +123,11 @@ class JobQueue(object):
                 del self._dependents[job]
         if ready:
             self._submit(job)
+
+    async def wait_for(self, job: Job) -> None:
+        event = threading.Event()
+        with self._lock:
+            if job.is_done() or job.is_failed():
+                return
+            self._waiters.setdefault(job, []).append(event)
+        await asyncio.to_thread(event.wait)

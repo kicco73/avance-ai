@@ -4,8 +4,8 @@ PersistedEnv/SessionFacts/MetricService/AutomatonNamespace to resolve a
 FIXED automaton/project pair instead of whatever's live right now.
 
 Needed anywhere a caller must stay pinned to a specific, non-active
-context: a benchmark replaying an old revision (metrics/
-benchmark_signal_sources.py, metrics/benchmark_run_service.py), a live
+context: a test replaying an old revision (test/
+signal_sources.py, test/test_service.py), a live
 turn's own already-resolved session automaton (tracking/
 tracking_processor.py), or a cross-project wake-up re-evaluating some
 other user's observer project (tracking/wakeup_service.py). None of

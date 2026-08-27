@@ -1,13 +1,16 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { renderMarkdown } from '../markdown.js'
-import {
-  aiModels,
-  aiModelAuto,
-  aiModelCurrentIndex,
-  aiModelSelectionLoading,
-  selectAiModel
-} from '../chatStore.js'
+import { liveModelStore } from '../chatStore.js'
+
+// `modelStore` bundles the model list/selection state + its own select()
+// — chatStoreFactory.js's liveModelStore (default, ai_live_service) or
+// testModelStore.js's makeTestModelStore(projectName) (ai_test_service).
+// The component itself never knows which context it's in — same object
+// shape either way, just a different one passed in.
+const props = defineProps({
+  modelStore: { type: Object, default: () => liveModelStore }
+})
 
 const VIEWPORT_MARGIN = 8
 
@@ -17,8 +20,15 @@ const btnEl = ref(null)
 const panelEl = ref(null)
 const panelStyle = ref({})
 
-// Reads chatStore.js's shared model state, kept in sync by every chat
-// turn/action response — this component never fetches on its own.
+const aiModels = computed(() => props.modelStore.models.value)
+const aiModelAuto = computed(() => props.modelStore.auto.value)
+const aiModelCurrentIndex = computed(() => props.modelStore.currentIndex.value)
+const aiModelSelectionLoading = computed(() => props.modelStore.selectionLoading.value)
+
+// Reads modelStore's own reactive state, kept in sync by whoever loads/
+// updates it (a chat turn/action response for the live store, an
+// explicit selection for the test store) — this component never fetches
+// on its own.
 const currentModel = computed(() => aiModels.value[aiModelCurrentIndex.value] ?? null)
 const currentLabel = computed(() => currentModel.value?.ui_label ?? 'Model')
 const buttonLabel = computed(() => (aiModelAuto.value ? `Auto: ${currentLabel.value}` : currentLabel.value))
@@ -59,7 +69,7 @@ function close() {
 }
 
 // Called with either `null` (auto) or an aiModels[] index —
-// selectAiModel relays the choice to the backend and refreshes the
+// modelStore.select relays the choice to the backend and refreshes the
 // shared state from its response.
 async function select(index) {
   if (aiModelSelectionLoading.value) return
@@ -67,7 +77,7 @@ async function select(index) {
     close()
     return
   }
-  await selectAiModel(index)
+  await props.modelStore.select(index)
   close()
 }
 

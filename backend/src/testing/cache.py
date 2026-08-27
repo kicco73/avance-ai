@@ -7,7 +7,7 @@ from db import Db
 from jobs import Job
 
 
-class BenchmarkRunCache:
+class TestCache:
 
     def __init__(self, db: Db) -> None:
         self._db = db
@@ -25,7 +25,7 @@ class BenchmarkRunCache:
         # FIXME: caller must hold locked().
         if session_id is None:
             return None
-        run = self._db.find_benchmark_run_by_cache_key(
+        run = self._db.find_test_by_cache_key(
             session_id, strategy, project_draft_edit_count, session_labeling_revision,
         )
         if run is None:
@@ -49,7 +49,7 @@ class BenchmarkRunCache:
         project_draft_edit_count: int, session_labeling_revision: int | None, ai_model_snapshot: dict,
     ) -> dict:
         # FIXME: caller must hold locked().
-        return self._db.create_benchmark_run(
+        return self._db.create_test(
             username, project_name, session_id, strategy,
             project_draft_edit_count, session_labeling_revision, ai_model_snapshot,
         )

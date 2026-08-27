@@ -5,8 +5,8 @@ import os
 import sqlite3
 from datetime import datetime, timezone
 
-from .benchmark_aggregates import BenchmarkAggregateMixin
-from .benchmark_runs import BenchmarkRunMixin
+from .test_aggregates import TestAggregateMixin
+from .tests import TestMixin
 from .history import HistoryMixin
 from .messages import MessageMixin
 from .observability import ObservabilityMixin
@@ -21,8 +21,9 @@ from .tracking import TrackingMixin
 from playhouse.db_url import connect, parse as parse_db_url
 
 from .models import (
-    Archive, BenchmarkAggregateResult, BenchmarkRun, BenchmarkRunObservation, ChatSession, EditHistory, Message,
-    Project, ProjectObserverIndex, Settings, User, SessionSummary, StateRemap, SystemWarning, Tracking, UserProject,
+    Archive, ChatSession, EditHistory, Message,
+    Project, ProjectObserverIndex, Settings, User, SessionSummary, StateRemap, SystemWarning, Test,
+    TestAggregateResult, TestObservation, Tracking, UserProject,
     database,
 )
 
@@ -38,8 +39,8 @@ class Db(
     UserMixin,
     ProjectMixin,
     HistoryMixin,
-    BenchmarkRunMixin,
-    BenchmarkAggregateMixin,
+    TestMixin,
+    TestAggregateMixin,
     SessionSummaryMixin,
     SettingsMixin,
     UserProjectMixin,
@@ -48,7 +49,7 @@ class Db(
     _SQLITE_MAGIC = b"SQLite format 3\x00"
     _MODELS = (
         Project, ChatSession, Message, User, Tracking, Archive, EditHistory, StateRemap,
-        BenchmarkRun, BenchmarkRunObservation, BenchmarkAggregateResult, SessionSummary, SystemWarning,
+        Test, TestObservation, TestAggregateResult, SessionSummary, SystemWarning,
         ProjectObserverIndex, Settings, UserProject,
     )
 

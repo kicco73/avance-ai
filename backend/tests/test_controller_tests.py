@@ -1,6 +1,6 @@
-"""Integration tests for POST/GET /api/projects/{project_name}/benchmark-runs
-— exercises the whole replay pipeline end to end (BenchmarkRunService,
-BenchmarkProcessor, the Job engine) against a real Db and FakeAiService.
+"""Integration tests for POST/GET /api/projects/{project_name}/tests
+— exercises the whole replay pipeline end to end (TestService,
+TestProcessor, the Job engine) against a real Db and FakeAiService.
 """
 from __future__ import annotations
 
@@ -16,11 +16,11 @@ pytestmark = pytest.mark.contract
 def _wait_for_terminal_status(client, project_name, run_id, timeout=5.0, interval=0.05):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        run = client.get(f"/api/projects/{project_name}/benchmark-runs/{run_id}").json()
+        run = client.get(f"/api/projects/{project_name}/tests/{run_id}").json()
         if run["status"] in ("completed", "failed"):
             return run
         time.sleep(interval)
-    return client.get(f"/api/projects/{project_name}/benchmark-runs/{run_id}").json()
+    return client.get(f"/api/projects/{project_name}/tests/{run_id}").json()
 
 
 def _make_labeled_session(client):
@@ -34,7 +34,7 @@ def test_create_run_returns_immediately_pending(client, hello_project):
     session_id = _make_labeled_session(client)
 
     response = client.post(
-        f"/api/projects/{hello_project}/benchmark-runs", json={"session_id": session_id, "strategy": "turn_by_turn"},
+        f"/api/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "turn_by_turn"},
     )
 
     assert response.status_code == 200, response.text
@@ -55,7 +55,7 @@ def test_turn_by_turn_run_completes_and_produces_results(client, hello_project):
     session_id = _make_labeled_session(client)
 
     run = client.post(
-        f"/api/projects/{hello_project}/benchmark-runs", json={"session_id": session_id, "strategy": "turn_by_turn"},
+        f"/api/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "turn_by_turn"},
     ).json()
 
     finished = _wait_for_terminal_status(client, hello_project, run["id"])
@@ -71,7 +71,7 @@ def test_batch_run_completes_and_tracks_batch_segments(client, hello_project):
     session_id = _make_labeled_session(client)
 
     run = client.post(
-        f"/api/projects/{hello_project}/benchmark-runs", json={"session_id": session_id, "strategy": "batch"},
+        f"/api/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "batch"},
     ).json()
 
     finished = _wait_for_terminal_status(client, hello_project, run["id"])
@@ -88,7 +88,7 @@ def test_whole_project_run_scopes_to_labeled_sessions_only(client, hello_project
     client.post(f"/api/chat/sessions/{unlabeled['id']}/messages", json={"message": "hi"})
 
     run = client.post(
-        f"/api/projects/{hello_project}/benchmark-runs", json={"session_id": None, "strategy": "turn_by_turn"},
+        f"/api/projects/{hello_project}/tests", json={"session_id": None, "strategy": "turn_by_turn"},
     ).json()
 
     assert run["session_id"] is None
@@ -100,20 +100,20 @@ def test_whole_project_run_scopes_to_labeled_sessions_only(client, hello_project
 
 
 def test_get_run_404_for_unknown_id(client, hello_project):
-    response = client.get(f"/api/projects/{hello_project}/benchmark-runs/999999")
+    response = client.get(f"/api/projects/{hello_project}/tests/999999")
     assert response.status_code == 404
 
 
 def test_list_runs_defaults_to_whole_project_scope(client, hello_project):
     session_id = _make_labeled_session(client)
     session_run = client.post(
-        f"/api/projects/{hello_project}/benchmark-runs", json={"session_id": session_id, "strategy": "turn_by_turn"},
+        f"/api/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "turn_by_turn"},
     ).json()
     project_run = client.post(
-        f"/api/projects/{hello_project}/benchmark-runs", json={"session_id": None, "strategy": "turn_by_turn"},
+        f"/api/projects/{hello_project}/tests", json={"session_id": None, "strategy": "turn_by_turn"},
     ).json()
 
-    runs = client.get(f"/api/projects/{hello_project}/benchmark-runs").json()
+    runs = client.get(f"/api/projects/{hello_project}/tests").json()
 
     assert [r["id"] for r in runs] == [project_run["id"]]
 
@@ -128,7 +128,7 @@ def test_create_run_rejects_unknown_strategy(client, hello_project):
     session_id = _make_labeled_session(client)
 
     response = client.post(
-        f"/api/projects/{hello_project}/benchmark-runs", json={"session_id": session_id, "strategy": "nonsense"},
+        f"/api/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "nonsense"},
     )
 
     assert response.status_code == 400
@@ -159,7 +159,7 @@ def test_sessions_aggregation_pools_both_live_and_imported_sessions(client, hell
         )
     assert result.status_code == 200, result.text
 
-    export = client.get(f"/api/projects/{hello_project}/benchmark-runs/export").json()
+    export = client.get(f"/api/projects/{hello_project}/tests/export").json()
     sessions_entry = next(entry for entry in export if entry["kind"] == "sessions")
     assert sessions_entry["strategy"] == "turn_by_turn"
     assert sessions_entry["results"]
@@ -167,22 +167,22 @@ def test_sessions_aggregation_pools_both_live_and_imported_sessions(client, hell
     for sid in (live_id, imported_id):
         _wait_for_terminal_status(
             client, hello_project,
-            next(r["id"] for r in client.get(f"/api/projects/{hello_project}/benchmark-runs?session_id={sid}").json()),
+            next(r["id"] for r in client.get(f"/api/projects/{hello_project}/tests?session_id={sid}").json()),
         )
 
 
-def test_delete_benchmark_runs_forces_a_fresh_run_instead_of_a_cache_hit(client, hello_project):
+def test_delete_tests_forces_a_fresh_run_instead_of_a_cache_hit(client, hello_project):
     session_id = _make_labeled_session(client)
     first = client.post(
-        f"/api/projects/{hello_project}/benchmark-runs", json={"session_id": session_id, "strategy": "turn_by_turn"},
+        f"/api/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "turn_by_turn"},
     ).json()
     _wait_for_terminal_status(client, hello_project, first["id"])
 
-    response = client.delete(f"/api/projects/{hello_project}/benchmark-runs")
+    response = client.delete(f"/api/projects/{hello_project}/tests")
     assert response.status_code == 200, response.text
-    assert client.get(f"/api/projects/{hello_project}/benchmark-runs/{first['id']}").status_code == 404
+    assert client.get(f"/api/projects/{hello_project}/tests/{first['id']}").status_code == 404
 
     second = client.post(
-        f"/api/projects/{hello_project}/benchmark-runs", json={"session_id": session_id, "strategy": "turn_by_turn"},
+        f"/api/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "turn_by_turn"},
     ).json()
     _wait_for_terminal_status(client, hello_project, second["id"])

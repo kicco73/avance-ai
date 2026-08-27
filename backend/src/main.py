@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from http import HTTPStatus
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -16,17 +16,16 @@ from auth.auth_middleware import AuthMiddleware
 from auth.auth_service import AuthService
 from chat.chat_service import ChatService
 from chat.session_manager import ChatSessionManager
-from chat.ws_adapter import WsAdapter
 from config import AppConfig
 from controller import AvanceController
 from db import Db
 from error_handlers import register_error_handlers
-from jobs import JobQueue
-from metrics.benchmark_run_service import BenchmarkRunService
+from jobs import JobQueue, ThrottledJobQueue
 from metrics.metric_service import MetricService
-from metrics.queue_progress_broadcaster import QueueProgressBroadcaster
 from project.project_service import ProjectService
 from ai.ai_service import AiService
+from testing.test_service import TestService
+from testing.queue_progress_broadcaster import QueueProgressBroadcaster
 from session import Session
 from tracking.tracking_service import TrackingService
 from tracking.wakeup_service import WakeupService
@@ -38,16 +37,15 @@ __version__ = "1.13.2"
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
+DEFAULT_SEED_PROJECT_ZIP = Path(__file__).resolve().parents[1] / "samples" / "projects" / "Lluna.zip"
+DEFAULT_SEED_PROJECT_NAME = "Lluna"
+
 
 async def _seed_default_project_if_empty(
-    db: Db, project_service: ProjectService, controller: AvanceController,
-    job_queue: JobQueue, broadcaster: QueueProgressBroadcaster,
+    db: Db, project_service: ProjectService, controller: AvanceController, job_queue: JobQueue,
 ) -> None:
     if db.list_projects():
         return
-
-    DEFAULT_SEED_PROJECT_ZIP = Path(__file__).resolve().parents[1] / "samples" / "projects" / "Lluna.zip"
-    DEFAULT_SEED_PROJECT_NAME = "Lluna"
 
     Session().user = "system"
     Session().role = "supervisor"
@@ -58,15 +56,8 @@ async def _seed_default_project_if_empty(
     # Lluna.zip bundles a real sessions.json (unlike create_new_project's
     # "Hello world" template) — the returned job has real work to do, so
     # it must actually run through the real queue, not be dropped.
-    connection = broadcaster.connect(job.username)
     job_queue.submit(job)
-    try:
-        while True:
-            message = await connection.get()
-            if message["status"] in ("completed", "failed"):
-                break
-    finally:
-        broadcaster.disconnect(job.username, connection)
+    await job_queue.wait_for(job)
     project_service.publish_project(DEFAULT_SEED_PROJECT_NAME)
 
 def _build_fallback_app(error: Exception) -> FastAPI:
@@ -101,7 +92,8 @@ def create_app() -> FastAPI:
         # --- STARTUP ---
         logger.info(f"Booting avance headless server v{__version__}.")
         
-        ai_service = AiService.from_config(config.ai_services)
+        ai_live_service = AiService.for_live(config.ai_services)
+        ai_test_service = AiService.for_test(config.ai_services)
         talk_service = TalkService.from_config(config.talk_services) if config.talk_services is not None else None
         listen_service = ListenService.from_config(config.listen_services) if config.listen_services is not None else None
         
@@ -117,10 +109,16 @@ def create_app() -> FastAPI:
         auth_service = AuthService(db, config.auth_providers, config.auth_token_ttl_in_hours)
         app.state.auth_service = auth_service
 
-        test_event_broadcaster = QueueProgressBroadcaster(ai_service)
-        job_queue = JobQueue(max_concurrent=config.jobs_max_concurrent, broadcaster=test_event_broadcaster)
+        test_event_broadcaster = QueueProgressBroadcaster(ai_test_service)
+        job_queue = JobQueue(max_concurrent=config.jobs_shared_max_concurrent, broadcaster=test_event_broadcaster)
+        test_job_queue = ThrottledJobQueue(
+            max_concurrent=config.test_service_max_concurrent_tests,
+            broadcaster=test_event_broadcaster,
+            max_jobs_per_minute=config.test_service_max_tests_per_minute,
+            min_job_interval_ms=config.test_service_min_test_interval_ms,
+        )
 
-        project_service = ProjectService(db, ai_service)
+        project_service = ProjectService(db, ai_live_service)
         session_manager = ChatSessionManager(db, open_window_minutes=config.max_session_duration_in_minutes)
         
         # A leaf service (see metrics/metric_service.py's own module
@@ -134,16 +132,14 @@ def create_app() -> FastAPI:
         # Instantiated once here, not built by ChatService itself (see
         # tracking/tracking_service.py's own module docstring). Both this and
         # ChatService depend on ai_service/metric_service directly, never each other.
-        tracking_service = TrackingService(db, ai_service, project_service, metric_service, talk_enabled=talk_service is not None)
+        tracking_service = TrackingService(db, project_service, metric_service, talk_enabled=talk_service is not None)
         chat_service = ChatService(
-            db, ai_service, project_service, session_manager, tracking_service, metric_service, job_queue,
+            db, ai_live_service, ai_test_service, project_service, session_manager,
+            tracking_service, metric_service, job_queue,
         )
 
-        # Shares job_queue with anything else that submits a job (see
-        # jobs/job_queue.py's own module docstring) — never its own
-        # private queue.
-        benchmark_run_service = BenchmarkRunService(
-            db, ai_service, tracking_service, job_queue,
+        test_service = TestService(
+            db, ai_test_service, tracking_service, test_job_queue,
         )
 
         # Availability cascade (see ProjectService.recompute_availability/
@@ -151,29 +147,18 @@ def create_app() -> FastAPI:
         # forever" shape as WakeupService below.
         project_service.register_availability_cascade()
 
-        chat_ws_adapter = WsAdapter(chat_service, db, auth_service) if config.chat_transport == "websocket" else None
-
         # Cross-project wake-up (see tracking/wakeup_service.py) —
-        # subscribes once for the process lifetime. Built after
-        # chat_ws_adapter: a self-loop wake-up needs it to push the
-        # transition to an already-open connection.
-        WakeupService(db, project_service, job_queue, chat_ws_adapter).register()
+        # subscribes once for the process lifetime.
+        WakeupService(db, project_service, job_queue).register()
 
         controller = AvanceController(
-            chat_service, project_service, talk_service, listen_service, db, tracking_service, benchmark_run_service,
+            chat_service, project_service, talk_service, listen_service, db, tracking_service, test_service,
             auth_service, test_event_broadcaster, job_queue, __version__,
         )
         app.include_router(controller.router)
 
-        await _seed_default_project_if_empty(db, project_service, controller, job_queue, test_event_broadcaster)
+        await _seed_default_project_if_empty(db, project_service, controller, job_queue)
 
-        if chat_ws_adapter is not None:
-            adapter = chat_ws_adapter
-
-            @app.websocket("/ws/chat")
-            async def chat_ws(websocket: WebSocket) -> None:
-                await adapter.chat_loop(websocket)
-            
         logger.info("Boot completed - server ready.")
 
         yield
@@ -181,7 +166,7 @@ def create_app() -> FastAPI:
         # --- SHUTDOWN / CLEANUP ---
         logger.info("Shutting down - cleaning up resources...")
         
-        for service in [db, talk_service, listen_service, ai_service]:
+        for service in [db, talk_service, listen_service, ai_live_service, ai_test_service]:
             if service is not None and hasattr(service, "close") and callable(getattr(service, "close")):
                 close_fn = getattr(service, "close")
                 if inspect.iscoroutinefunction(close_fn):

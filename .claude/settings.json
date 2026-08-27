@@ -37,7 +37,8 @@
       "Bash(.venv/bin/python /private/tmp/claude-501/-Users-enricocarniani-Documents-avance-prototype/268389f9-538e-45ea-8d84-fa4d8e55a944/scratchpad/test_put_model.py)",
       "Bash(python3 -c \"import ast; ast.parse\\(open\\('/Users/enricocarniani/Documents/avance-prototype/backend/main.py'\\).read\\(\\)\\)\")",
       "Bash(python3 -c \"import ast; ast.parse\\(open\\('/Users/enricocarniani/Documents/avance-prototype/backend/models_manager.py'\\).read\\(\\)\\)\")",
-      "Bash(/Users/enricocarniani/Documents/avance-prototype/backend/.venv/bin/python /private/tmp/claude-501/-Users-enricocarniani-Documents-avance-prototype/268389f9-538e-45ea-8d84-fa4d8e55a944/scratchpad/test_delete_model.py)"
+      "Bash(/Users/enricocarniani/Documents/avance-prototype/backend/.venv/bin/python /private/tmp/claude-501/-Users-enricocarniani-Documents-avance-prototype/268389f9-538e-45ea-8d84-fa4d8e55a944/scratchpad/test_delete_model.py)",
+      "Bash(unzip -l /Users/enricocarniani/avance-ai/backend/samples/projects/Lluna.zip)"
     ],
     "deny": [
       "Read(**/.env)",

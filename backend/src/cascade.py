@@ -1,6 +1,9 @@
 """Generic fallback cascade: ordered providers behind a "current" pointer,
 retried in place on transient failure, advanced to the next provider on
-rate limits. Shared by CascadingLLMProvider, CascadingTalkProvider and CascadingListenProvider.
+rate limits — full call_with_retry() policy used by CascadingTalkProvider
+and CascadingListenProvider. AutoLiveLLMProvider/AutoTestLLMProvider (see
+ai/cascading_llm_provider.py) use only the pointer bookkeeping below
+(current/advance/providers) and implement their own retry policy.
 """
 from __future__ import annotations
 

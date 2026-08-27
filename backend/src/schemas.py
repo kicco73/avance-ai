@@ -150,12 +150,12 @@ class PublishProjectRequest(BaseModel):
     remap_to: str | None = None
 
 
-class CreateBenchmarkRunRequest(BaseModel):
+class CreateTestRequest(BaseModel):
     # None = every labeled session of the project, replayed as one run
     # (same session_id=None|int dual as BenchmarkCalculator). See
-    # BenchmarkRunService.create_run.
+    # TestService.create_run.
     session_id: int | None = None
-    # 'turn_by_turn' or 'batch' — see benchmark_run_service.py's own
+    # 'turn_by_turn' or 'batch' — see test_service.py's own
     # VALID_STRATEGIES.
     strategy: str
     # None = the requesting user (Session().user), the default. Set to
@@ -164,8 +164,8 @@ class CreateBenchmarkRunRequest(BaseModel):
 
 
 class StateTestRequest(BaseModel):
-    # See BenchmarkRunService.start_job — same VALID_STRATEGIES as
-    # CreateBenchmarkRunRequest.strategy.
+    # See TestService.start_job — same VALID_STRATEGIES as
+    # CreateTestRequest.strategy.
     strategy: str
 
 

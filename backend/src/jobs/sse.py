@@ -9,7 +9,7 @@ from .job import Job
 from .job_queue import JobQueue
 
 if TYPE_CHECKING:
-    from metrics.queue_progress_broadcaster import QueueProgressBroadcaster
+    from testing.queue_progress_broadcaster import QueueProgressBroadcaster
 
 
 def stream_job_progress(

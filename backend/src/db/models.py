@@ -183,7 +183,7 @@ class SessionSummary(BaseModel):
     class Meta:
         table_name = 'SessionSummary'
 
-class BenchmarkRun(BaseModel):
+class Test(BaseModel):
     id = AutoField()
     username = CharField(null=True)
     # Nullable for the same reason as ChatSession.user above — this run's
@@ -191,12 +191,12 @@ class BenchmarkRun(BaseModel):
     # transcript's synthetic identity. Needed as its own FK (not just
     # reachable via session below) because session is itself null for a
     # project-wide aggregate run — see the comment on it just below.
-    user = ForeignKeyField(User, field='id', column_name='user_id', null=True, backref='benchmark_runs_owned', on_delete='CASCADE')
+    user = ForeignKeyField(User, field='id', column_name='user_id', null=True, backref='tests_owned', on_delete='CASCADE')
     project_name = CharField(index=True)
     # None means "every labeled session of the project", never a single
     # unresolved session — same dual as BenchmarkCalculator(session_id=
     # None|int) (see metrics/metrics_framework/benchmark_metrics/calculator.py).
-    session = ForeignKeyField(ChatSession, null=True, backref='benchmark_runs', on_delete='CASCADE')
+    session = ForeignKeyField(ChatSession, null=True, backref='tests', on_delete='CASCADE')
     strategy = CharField()
     # The project's own draft edit count at the moment this run was
     # created — captured once, up front, regardless of which revision is
@@ -209,20 +209,20 @@ class BenchmarkRun(BaseModel):
     results = TextField(null=True)
 
     class Meta:
-        table_name = 'BenchmarkRun'
+        table_name = 'Test'
         indexes = (
             (('username', 'project_name'), False),
             (('session', 'strategy', 'project_draft_edit_count', 'session_labeling_revision'), True),
         )
 
-class BenchmarkRunObservation(BaseModel):
+class TestObservation(BaseModel):
     """A replay's own signal snapshot/transition — the same shape
     Tracking carries for production, but on its own table so a replay
     can never be mistaken for (or overwrite) real conversation data."""
     id = AutoField()
-    run = ForeignKeyField(BenchmarkRun, null=False, backref='observations', on_delete='CASCADE')
-    session = ForeignKeyField(ChatSession, null=False, backref='benchmark_run_observations', on_delete='CASCADE')
-    message = ForeignKeyField(Message, null=True, backref='benchmark_observations', on_delete='SET NULL')
+    run = ForeignKeyField(Test, null=False, backref='observations', on_delete='CASCADE')
+    session = ForeignKeyField(ChatSession, null=False, backref='test_observations', on_delete='CASCADE')
+    message = ForeignKeyField(Message, null=True, backref='test_observations', on_delete='SET NULL')
     timestamp = DateTimeField(index=True, default=datetime.utcnow)
     values = TextField(null=True)
     old_state = CharField(null=True, index=True)
@@ -230,10 +230,10 @@ class BenchmarkRunObservation(BaseModel):
     new_state = CharField(null=True, index=True)
 
     class Meta:
-        table_name = 'BenchmarkRunObservation'
+        table_name = 'TestObservation'
         indexes = ((('run', 'session'), False),)
 
-class BenchmarkAggregateResult(BaseModel):
+class TestAggregateResult(BaseModel):
     id = AutoField()
     project_name = CharField(index=True)
     revision = IntegerField(null=False)
@@ -245,7 +245,7 @@ class BenchmarkAggregateResult(BaseModel):
     created_at = DateTimeField(default=datetime.utcnow)
 
     class Meta:
-        table_name = 'BenchmarkAggregateResult'
+        table_name = 'TestAggregateResult'
         indexes = (
             (('project_name', 'revision'), False),
             (('project_name', 'revision', 'project_draft_edit_count', 'kind', 'target', 'strategy'), True),
@@ -256,7 +256,7 @@ class SystemWarning(BaseModel):
     that resolved to None at runtime instead of raising — one of three
     failure kinds ('project_not_found', 'no_session', 'env_key_not_declared')."""
     id = AutoField()
-    # Not nullable: unlike ChatSession/BenchmarkRun's own username, this
+    # Not nullable: unlike ChatSession/Test's own username, this
     # is always Session().user (see tracking/automaton_namespace.py's
     # AutomatonNamespace) — a real registered account is the only thing
     # ever authenticated enough to reach this code path at all.

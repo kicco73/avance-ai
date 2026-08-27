@@ -32,7 +32,7 @@ const props = defineProps({
 // SettingsMenu.vue's own emits; profile/logout are the same pass-through
 // of ProfileMenu.vue's own.
 const emit = defineEmits([
-  'new-project', 'upload', 'delete', 'edit', 'benchmark', 'download', 'chat', 'wipe-live-sessions',
+  'new-project', 'upload', 'delete', 'edit', 'label', 'download', 'chat', 'wipe-live-sessions',
   'manage-projects', 'manage-users', 'label-sessions', 'edit-projects', 'about', 'download-backup', 'restore-backup',
   'profile', 'logout'
 ])
@@ -124,8 +124,8 @@ function selectEdit(name) {
   emit('edit', name)
 }
 
-function selectBenchmark(name) {
-  emit('benchmark', name)
+function selectLabelSessions(name) {
+  emit('label', name)
 }
 
 function selectChat(name) {
@@ -210,7 +210,7 @@ defineExpose({ refresh: load })
             <th>Revision</th>
             <th>Published</th>
             <th class="manage-projects-col-chat"></th>
-            <th class="manage-projects-col-benchmark"></th>
+            <th class="manage-projects-col-label"></th>
             <th class="manage-projects-col-download"></th>
             <th class="manage-projects-col-wipe"></th>
             <th class="manage-projects-col-delete"></th>
@@ -256,12 +256,12 @@ defineExpose({ refresh: load })
                 </svg>
               </button>
             </td>
-            <td class="manage-projects-col-benchmark">
+            <td class="manage-projects-col-label">
               <button
                 type="button"
-                class="manage-projects-benchmark-btn"
+                class="manage-projects-label-btn"
                 title="Label sessions"
-                @click="selectBenchmark(row.name)"
+                @click="selectLabelSessions(row.name)"
               >
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
                   <path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.41l9 9c.36.36.86.59 1.41.59s1.05-.23 1.41-.59l7-7c.37-.36.59-.86.59-1.41s-.23-1.06-.59-1.42zM6.5 8C5.67 8 5 7.33 5 6.5S5.67 5 6.5 5 8 5.67 8 6.5 7.33 8 6.5 8z" />
@@ -408,7 +408,7 @@ defineExpose({ refresh: load })
   width: 2.2rem;
 }
 
-.manage-projects-col-benchmark {
+.manage-projects-col-label {
   width: 2.2rem;
 }
 
@@ -560,7 +560,7 @@ defineExpose({ refresh: load })
   background: #f0f4fa;
 }
 
-.manage-projects-benchmark-btn {
+.manage-projects-label-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -574,7 +574,7 @@ defineExpose({ refresh: load })
   cursor: pointer;
 }
 
-.manage-projects-benchmark-btn:hover {
+.manage-projects-label-btn:hover {
   background: #f0f4fa;
 }
 

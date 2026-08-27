@@ -16,8 +16,6 @@ database:
   force-drop-and-create-when-incompatible: false
 
 chat-service:
-  # "websocket" or "rest"
-  transport: websocket
   # Optional, defaults to 60. How long (in minutes) a chat session stays
   # "open" — i.e. still writable — after its last activity (see
   # chat/session_manager.py's ChatSessionManager). The single source of
@@ -25,13 +23,21 @@ chat-service:
   max_session_duration_in_minutes: 60
 
 jobs:
+  # Optional section — can be omitted entirely. Sizes the general
+  # job_queue (see jobs/job_queue.py's JobQueue) shared by chat, wakeup,
+  # session-summary, etc. A job beyond the pool's size just waits its
+  # turn — never rejected.
+  shared_max_concurrent: 2
+
+test-service:
   # Optional section — can be omitted entirely, and each field within it
-  # is independently optional too. Sizes the two fixed worker-thread pools
-  # backing JobQueue (see jobs/job_queue.py): one queue per JobSink
-  # implementation, never shared, so each pool is sized independently.
-  # A job beyond a pool's size just waits its turn — never rejected.
-  max_concurrent_persisted: 2
-  max_concurrent_ephemeral: 4
+  # is independently optional too. Sizes TestService's own throttled
+  # queue (see jobs/throttled_job_queue.py's ThrottledJobQueue).
+  max_concurrent_tests: 4
+  # Caps how many test job steps run per rolling 60s window, and the
+  # minimum spacing (ms) between any two of them.
+  max_tests_per_minute: 15
+  min_test_interval_ms: 0
 
 ai-service:
   providers:

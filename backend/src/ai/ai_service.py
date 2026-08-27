@@ -12,7 +12,7 @@ from ai.llm_provider import (
 	LLMProviderWithSchema,
 	MetadataCallback,
 )
-from ai.cascading_llm_provider import CascadingLLMProvider
+from ai.cascading_llm_provider import AutoLiveLLMProvider, AutoTestLLMProvider
 from ai import gemini_provider_v2, openai_provider_v2, anthropic_provider_v2
 
 class LRUCache(OrderedDict):
@@ -62,13 +62,23 @@ class AiService(object):
 		self._input_tokens_cache_lock = threading.Lock()
 
 	@classmethod
-	def from_config(cls, ai_service_config: list[AIServiceConfig]) -> "AiService":
-		labeled = [
+	def for_live(cls, ai_service_config: list[AIServiceConfig]) -> "AiService":
+		labeled = cls._build_labeled_providers(ai_service_config)
+		selectable = [AutoLiveLLMProvider([entry]) for entry in labeled]
+		return cls(AutoLiveLLMProvider(labeled), selectable_providers=selectable, configs=ai_service_config)
+
+	@classmethod
+	def for_test(cls, ai_service_config: list[AIServiceConfig]) -> "AiService":
+		labeled = cls._build_labeled_providers(ai_service_config)
+		selectable = [AutoLiveLLMProvider([entry]) for entry in labeled]
+		return cls(AutoTestLLMProvider(labeled), selectable_providers=selectable, configs=ai_service_config)
+
+	@classmethod
+	def _build_labeled_providers(cls, ai_service_config: list[AIServiceConfig]) -> list[tuple[str, LLMProvider]]:
+		return [
 			(f"{service.driver}/{service.model}", cls._build_provider(service))
 			for service in ai_service_config
 		]
-		selectable = [CascadingLLMProvider([entry]) for entry in labeled]
-		return cls(CascadingLLMProvider(labeled), selectable_providers=selectable, configs=ai_service_config)
 
 	@staticmethod
 	def _build_provider(service: AIServiceConfig) -> LLMProvider:
@@ -88,9 +98,9 @@ class AiService(object):
 
 	@property
 	def _current_leaf_provider(self) -> LLMProvider:
-		"""The concrete provider a call would actually reach; unwraps a
-		CascadingLLMProvider via getattr since _active_provider isn't
-		guaranteed to be one."""
+		"""The concrete provider a call would actually reach; unwraps an
+		AutoLiveLLMProvider/AutoTestLLMProvider via getattr since
+		_active_provider isn't guaranteed to be one."""
 		return getattr(self._active_provider, "current_provider", self._active_provider)
 
 	@property

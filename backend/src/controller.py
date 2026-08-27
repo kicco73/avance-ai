@@ -11,10 +11,10 @@ from chat.chat_service import ChatService
 from db import Db
 from jobs import JobQueue
 from listen.listen_service import ListenService
-from metrics.benchmark_run_service import BenchmarkRunService
-from metrics.queue_progress_broadcaster import QueueProgressBroadcaster
 from project.project_service import ProjectService
 from talk.talk_service import TalkService
+from testing.test_service import TestService
+from testing.queue_progress_broadcaster import QueueProgressBroadcaster
 from tracking.tracking_service import TrackingService
 
 from controllers.auth_controller import AuthController
@@ -34,7 +34,7 @@ class AvanceController(object):
         listen_service: ListenService | None,
         db: Db,
         tracking_service: TrackingService,
-        benchmark_run_service: BenchmarkRunService,
+        test_service: TestService,
         auth_service: AuthService,
         test_event_broadcaster: QueueProgressBroadcaster,
         job_queue: JobQueue,
@@ -45,7 +45,7 @@ class AvanceController(object):
         self.talk_service = talk_service
         self.listen_service = listen_service
         self.db = db
-        self.benchmark_run_service = benchmark_run_service
+        self.test_service = test_service
         self.tracking_service = tracking_service
         self.auth_service = auth_service
         self.test_event_broadcaster = test_event_broadcaster
@@ -55,7 +55,7 @@ class AvanceController(object):
         self.chat = ChatController(chat_service, project_service, talk_service, listen_service)
         self.edit_project = EditProjectController(chat_service, project_service)
         self.label_project = LabelProjectController(
-            chat_service, project_service, tracking_service, benchmark_run_service, test_event_broadcaster, job_queue,
+            chat_service, project_service, tracking_service, test_service, test_event_broadcaster, job_queue,
         )
         self.settings = SettingsController(
             chat_service, project_service, db, version, test_event_broadcaster, job_queue,

@@ -58,7 +58,7 @@ def _strategy_for(wanted: str):
     """Pins a fresh AiService to the first configured provider whose
     capability matches `wanted`, skipping the test if the local config
     has none matching."""
-    ai_service = AiService.from_config(_APP_CONFIG.ai_services)
+    ai_service = AiService.for_live(_APP_CONFIG.ai_services)
     for index in range(len(_APP_CONFIG.ai_services)):
         ai_service.select_model(index)
         if _classify(ai_service) == wanted:

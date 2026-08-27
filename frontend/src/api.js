@@ -527,6 +527,18 @@ export function postAiModelSelection(index) {
   })
 }
 
+export function getTestChatModels() {
+  return apiFetch(`${API_URL}/ai/models/test`)
+}
+
+export function postTestChatModelSelection(index) {
+  return apiFetch(`${API_URL}/ai/models/test/selection`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ index })
+  })
+}
+
 // "Dev mode: freeze automatic state transitions" — EditProjectView's
 // embedded "Test" chat only, per test session, never global.
 export function getAutoTracking(sessionId) {
@@ -623,7 +635,7 @@ export function activateProject(projectName) {
 // Streams progress SSE-style within this same response, same as
 // postImportSessions — see readSseResult. `onProgress` gets each chunk's
 // `percentage` (0-100) as the queued import of any bundled
-// sessions.json/benchmark.json advances.
+// sessions.json/tests.json advances.
 export function putProject(projectName, file, onProgress) {
   const contentType = /\.zip$/i.test(file.name) ? 'application/zip' : 'application/x-yaml'
   return projectFetch(projectName, `${API_URL}/projects/${encodeURIComponent(projectName)}`, {
@@ -896,32 +908,46 @@ export function postRevertProject(projectName) {
 // whole-project-scope run (every labeled session at once). `username`,
 // when given, scopes that whole-project run to just that user's sessions
 // instead of the requesting user's own.
-export function postBenchmarkRun(projectName, sessionId, strategy, username) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/benchmark-runs`, {
+export function postTest(projectName, sessionId, strategy, username) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/tests`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ session_id: sessionId, strategy, ...(username != null ? { username } : {}) })
   })
 }
 
-export function getBenchmarkRun(projectName, runId) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/benchmark-runs/${encodeURIComponent(runId)}`)
+export function getTest(projectName, testId) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/tests/${encodeURIComponent(testId)}`)
 }
 
-export function getBenchmarkRuns(projectName, sessionId, username) {
+export function getTests(projectName, sessionId, username) {
   const params = new URLSearchParams()
   if (sessionId != null) params.set('session_id', sessionId)
   if (username != null) params.set('username', username)
   const query = params.size ? `?${params}` : ''
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/benchmark-runs${query}`)
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/tests${query}`)
 }
 
-export function deleteBenchmarkRuns(projectName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/benchmark-runs`, { method: 'DELETE' })
+export function deleteTests(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/tests`, { method: 'DELETE' })
 }
 
-export function getBenchmarkMetrics(projectName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/benchmark-metrics`)
+export function getTestMetrics(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/tests/metrics`)
+}
+
+// The Test panel's own ModelMenu — reads/writes ai_test_service's model
+// selection, independent of getAiModels/postAiModelSelection (ai_live_service).
+export function getTestModels(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/tests/models`)
+}
+
+export function postTestModelSelection(projectName, index) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/tests/models/selection`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ index })
+  })
 }
 
 // Every real state key of the project's current draft automaton.

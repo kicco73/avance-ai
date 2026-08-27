@@ -1,11 +1,10 @@
-"""BenchmarkRunService creates/tracks a BenchmarkRun — a replay of one
-annotated session, or every labeled session of a project at once — and
-the aggregations built on top of them (per state, per signal, per user,
-whole-project). Nothing about a job's own execution is persisted: the
-durable state is exclusively BenchmarkRun.results/BenchmarkAggregateResult.
-results, written once a job completes; BenchmarkRunCache's live registry
-is the only place "is this still running" can be answered, and only for
-the lifetime of this process."""
+"""TestService creates/tracks a Test — a replay of one annotated session,
+or every labeled session of a project at once — and the aggregations
+built on top of them (per state, per signal, per user, whole-project).
+Nothing about a job's own execution is persisted: the durable state is
+exclusively Test.results/TestAggregateResult.results, written once a job
+completes; TestCache's live registry is the only place "is this still
+running" can be answered, and only for the lifetime of this process."""
 from __future__ import annotations
 
 import json
@@ -18,14 +17,14 @@ from automaton.automaton import Automaton
 from automaton.automaton_builder import AutomatonBuilder
 from ai.ai_service import AiService
 from db import Db
-from db.benchmark_runs import _USERNAME_UNSPECIFIED
+from db.tests import _USERNAME_UNSPECIFIED
 from jobs import Job, JobQueue
-from metrics.benchmark_errors import BenchmarkServiceError
-from metrics.benchmark_processor import BenchmarkProcessor
-from metrics.benchmark_run_cache import BenchmarkRunCache
-from metrics.benchmark_run_data import build_benchmark_run_data
-from metrics.benchmark_signal_sources import BatchSignalSource, TurnByTurnSignalSource
-from metrics.metric_service import BenchmarkMetricsProvider
+from testing.errors import TestServiceError
+from testing.processor import TestProcessor
+from testing.cache import TestCache
+from testing.data import build_test_data
+from testing.signal_sources import BatchSignalSource, TurnByTurnSignalSource
+from testing.metrics_provider import TestMetricsProvider
 from metrics.metrics_framework.benchmark_metrics.calculator import BenchmarkCalculator
 from metrics.metrics_framework.benchmark_metrics.dto import BenchmarkConfiguration, BenchmarkMetricResult
 from metrics.metrics_framework.benchmark_metrics.metrics import SignalAccuracyMetric
@@ -37,7 +36,7 @@ from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
 from tracking.system_facts import SystemFacts
-from tracking.tracking_engine import BenchmarkRunObservationSink, TrackingEngine
+from tracking.tracking_engine import TestObservationSink, TrackingEngine
 from tracking.tracking_service import TrackingService
 
 VALID_STRATEGIES = ('turn_by_turn', 'batch')
@@ -57,10 +56,10 @@ def _serialize_metric_result(result: BenchmarkMetricResult) -> dict:
     }
 
 
-class BenchmarkReplayJob(Job):
+class TestReplayJob(Job):
 
     def __init__(
-        self, service: "BenchmarkRunService", run: dict, automaton: Automaton,
+        self, service: "TestService", run: dict, automaton: Automaton,
         session_ids: list[int], signal_source_cls: type, total: int,
     ) -> None:
         key = (
@@ -76,7 +75,7 @@ class BenchmarkReplayJob(Job):
         self._pending_session_ids = list(session_ids)
         self._pending_message_ids: list[int] = []
         self._current_session_id: int | None = None
-        self._processor: BenchmarkProcessor | None = None
+        self._processor: TestProcessor | None = None
         self._signal_source = None
         self._warnings: list[str] = []
 
@@ -123,7 +122,7 @@ class BenchmarkReplayJob(Job):
 
     def _close_current_session(self) -> None:
         if isinstance(self._signal_source, BatchSignalSource):
-            self._service._db.add_benchmark_run_batch_segments(self._run['id'], self._signal_source.batch_segments)
+            self._service._db.add_test_batch_segments(self._run['id'], self._signal_source.batch_segments)
         self._current_session_id = None
         self._processor = None
         self._signal_source = None
@@ -140,14 +139,14 @@ class BenchmarkReplayJob(Job):
         env = self._service._build_seed_env(session)
         system_facts = SystemFacts()
         session_facts = SessionFacts(db, FixedProjectContext(project_name=self._run['project_name']))
-        metrics = BenchmarkMetricsProvider(db, self._run['username'], self._run['project_name'], session_id)
+        metrics = TestMetricsProvider(db, self._run['username'], self._run['project_name'], session_id)
         scope_builder = EvaluationScopeBuilder(env, metrics, system_facts, session_facts)
-        sink = BenchmarkRunObservationSink(self._run['id'])
+        sink = TestObservationSink(self._run['id'])
         tracking_engine = TrackingEngine(sink, env, scope_builder)
         self._signal_source = self._signal_source_cls(
             self._service._ai_service, self._service._tracking_service, db, self._automaton, session_id,
         )
-        self._processor = BenchmarkProcessor(
+        self._processor = TestProcessor(
             db, self._automaton, tracking_engine, env, session_facts, metrics, self._signal_source, sink,
         )
         return self._processor.prepare(session_id)
@@ -173,7 +172,7 @@ class _AggregationJob(Job):
     """Common shape for every aggregation job kind: check the cache first,
     compute, persist, return."""
 
-    def __init__(self, service: "BenchmarkRunService", project_name: str, kind: str, target: str | None, strategy: str) -> None:
+    def __init__(self, service: "TestService", project_name: str, kind: str, target: str | None, strategy: str) -> None:
         super().__init__(key=f"{strategy}:{_aggregation_node_id(kind, target)}", username=Session().user)
         self._service = service
         self._project_name = project_name
@@ -208,7 +207,7 @@ class _AggregationJob(Job):
 
     def _cached(self) -> dict | list[dict] | None:
         edit_count = self._service._db.get_project_draft_edit_count(self._project_name)
-        return self._service._db.find_benchmark_aggregate_result(
+        return self._service._db.find_test_aggregate_result(
             self._project_name, self._kind, self._target, self._strategy, edit_count,
         )
 
@@ -230,7 +229,7 @@ class _AggregationJob(Job):
 
 class StateAggregationJob(_AggregationJob):
 
-    def __init__(self, service: "BenchmarkRunService", project_name: str, state_key: str, strategy: str, session_ids: list[int]) -> None:
+    def __init__(self, service: "TestService", project_name: str, state_key: str, strategy: str, session_ids: list[int]) -> None:
         super().__init__(service, project_name, 'state', state_key, strategy)
         self._state_key = state_key
         self._session_ids = session_ids
@@ -246,7 +245,7 @@ class StateAggregationJob(_AggregationJob):
 
 class SignalAggregationJob(_AggregationJob):
 
-    def __init__(self, service: "BenchmarkRunService", project_name: str, signal_name: str, strategy: str, session_ids: list[int]) -> None:
+    def __init__(self, service: "TestService", project_name: str, signal_name: str, strategy: str, session_ids: list[int]) -> None:
         super().__init__(service, project_name, 'signal', signal_name, strategy)
         self._signal_name = signal_name
         self._session_ids = session_ids
@@ -263,7 +262,7 @@ class SignalAggregationJob(_AggregationJob):
 class PooledAggregationJob(_AggregationJob):
 
     def __init__(
-        self, service: "BenchmarkRunService", project_name: str, kind: str, target: str | None, strategy: str,
+        self, service: "TestService", project_name: str, kind: str, target: str | None, strategy: str,
         session_ids: list[int],
     ) -> None:
         super().__init__(service, project_name, kind, target, strategy)
@@ -285,7 +284,7 @@ class UsersAggregationJob(_AggregationJob):
     play button standalone (start_user_sessions_run_job) would."""
 
     def __init__(
-        self, service: "BenchmarkRunService", project_name: str, strategy: str, session_ids_by_user: dict[str, list[int]],
+        self, service: "TestService", project_name: str, strategy: str, session_ids_by_user: dict[str, list[int]],
     ) -> None:
         super().__init__(service, project_name, 'users', None, strategy)
         self._session_ids_by_user = session_ids_by_user
@@ -308,7 +307,7 @@ class AllStatesAggregationJob(_AggregationJob):
     UsersAggregationJob's own docstring for why."""
 
     def __init__(
-        self, service: "BenchmarkRunService", project_name: str, strategy: str, session_ids_by_state: dict[str, list[int]],
+        self, service: "TestService", project_name: str, strategy: str, session_ids_by_state: dict[str, list[int]],
     ) -> None:
         super().__init__(service, project_name, 'all_states', None, strategy)
         self._session_ids_by_state = session_ids_by_state
@@ -332,7 +331,7 @@ class AllSignalsAggregationJob(_AggregationJob):
     UsersAggregationJob's own docstring for why."""
 
     def __init__(
-        self, service: "BenchmarkRunService", project_name: str, strategy: str, session_ids: list[int], signal_names: list[str],
+        self, service: "TestService", project_name: str, strategy: str, session_ids: list[int], signal_names: list[str],
     ) -> None:
         super().__init__(service, project_name, 'all_signals', None, strategy)
         self._session_ids = session_ids
@@ -353,7 +352,7 @@ class AllSignalsAggregationJob(_AggregationJob):
 
 class RootAggregationJob(Job):
 
-    def __init__(self, service: "BenchmarkRunService", strategy: str, branch_jobs: list[Job]) -> None:
+    def __init__(self, service: "TestService", strategy: str, branch_jobs: list[Job]) -> None:
         super().__init__(key=f"{strategy}:root", username=Session().user)
         self._service = service
         self._branch_jobs = tuple(branch_jobs)
@@ -373,7 +372,7 @@ class RootAggregationJob(Job):
         pass
 
 
-class BenchmarkRunService:
+class TestService:
 
     def __init__(
         self, db: Db, ai_service: AiService, tracking_service: TrackingService, job_queue: JobQueue,
@@ -382,7 +381,13 @@ class BenchmarkRunService:
         self._ai_service = ai_service
         self._tracking_service = tracking_service
         self._job_queue = job_queue
-        self._cache = BenchmarkRunCache(db)
+        self._cache = TestCache(db)
+
+    def get_ai_models_info(self) -> dict:
+        return self._ai_service.get_models_info()
+
+    def select_ai_model(self, index: int | None) -> None:
+        self._ai_service.select_model(index)
 
     def create_run(self, username: str | None, project_name: str, session_id: int | None, strategy: str) -> dict:
         run, job = self._construct_run(username, project_name, session_id, strategy)
@@ -394,7 +399,7 @@ class BenchmarkRunService:
         self, username: str | None, project_name: str, session_id: int | None, strategy: str,
     ) -> tuple[dict, Job | None]:
         if strategy not in VALID_STRATEGIES:
-            raise ValueError(f"Unknown benchmark run strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
+            raise ValueError(f"Unknown test strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
 
         automaton = self._load_automaton(project_name)
         project_draft_edit_count = self._db.get_project_draft_edit_count(project_name)
@@ -412,23 +417,23 @@ class BenchmarkRunService:
                     username, project_name, session_id, strategy,
                     project_draft_edit_count, session_labeling_revision, ai_model_snapshot,
                 )
-                job = BenchmarkReplayJob(self, run, automaton, scope_session_ids, signal_source_cls, total)
+                job = TestReplayJob(self, run, automaton, scope_session_ids, signal_source_cls, total)
                 self._cache.track(run['id'], job)
 
         return run, job
 
     def reset_cache(self, project_name: str) -> None:
-        run_ids = self._db.delete_benchmark_runs(project_name)
+        run_ids = self._db.delete_tests(project_name)
         self._cache.untrack_many(run_ids)
-        self._db.delete_benchmark_aggregate_results(project_name)
+        self._db.delete_test_aggregate_results(project_name)
 
     def export_results(self, project_name: str) -> list[dict]:
-        return self._db.list_benchmark_aggregate_results(project_name)
+        return self._db.list_test_aggregate_results(project_name)
 
     def get_run(self, run_id: int) -> dict:
-        run = self._db.get_benchmark_run(run_id)
+        run = self._db.get_test(run_id)
         if run is None:
-            raise BenchmarkServiceError(f"Benchmark run {run_id} not found.", status_code=HTTPStatus.NOT_FOUND)
+            raise TestServiceError(f"Test {run_id} not found.", status_code=HTTPStatus.NOT_FOUND)
         return self._status_for(run)
 
     def list_runs(
@@ -436,7 +441,7 @@ class BenchmarkRunService:
     ) -> list[dict]:
         runs = [
             self._status_for(run)
-            for run in self._db.list_benchmark_runs(project_name, session_id, username)
+            for run in self._db.list_tests(project_name, session_id, username)
         ]
         return sorted(runs, key=lambda run: run['id'], reverse=True)
 
@@ -450,26 +455,26 @@ class BenchmarkRunService:
                 continue
             session_id = int(row['id'])
             labeling_revision = self._db.get_session_labeling_revision(session_id)
-            cached = self._db.find_benchmark_run_by_cache_key(session_id, strategy, edit_count, labeling_revision)
+            cached = self._db.find_test_by_cache_key(session_id, strategy, edit_count, labeling_revision)
             done = cached is not None and cached['results'] is not None
             session_statuses.append({'session_id': session_id, 'status': 'ok' if done else 'idle'})
 
         aggregates = []
         for state_key in self._project_states(project_name):
-            found = self._db.find_benchmark_aggregate_result(project_name, 'state', state_key, strategy, edit_count)
+            found = self._db.find_test_aggregate_result(project_name, 'state', state_key, strategy, edit_count)
             aggregates.append({'kind': 'state', 'target': state_key, 'status': 'ok' if found is not None else 'idle'})
         for signal_name in self._project_signal_names(project_name):
-            found = self._db.find_benchmark_aggregate_result(project_name, 'signal', signal_name, strategy, edit_count)
+            found = self._db.find_test_aggregate_result(project_name, 'signal', signal_name, strategy, edit_count)
             aggregates.append({'kind': 'signal', 'target': signal_name, 'status': 'ok' if found is not None else 'idle'})
         for kind in ('users', 'all_states', 'all_signals'):
-            found = self._db.find_benchmark_aggregate_result(project_name, kind, None, strategy, edit_count)
+            found = self._db.find_test_aggregate_result(project_name, kind, None, strategy, edit_count)
             aggregates.append({'kind': kind, 'target': None, 'status': 'ok' if found is not None else 'idle'})
 
         return {'sessions': session_statuses, 'aggregates': aggregates}
 
     def get_aggregate_result(self, project_name: str, kind: str, target: str | None, strategy: str) -> dict | list[dict] | None:
         edit_count = self._db.get_project_draft_edit_count(project_name)
-        return self._db.find_benchmark_aggregate_result(project_name, kind, target, strategy, edit_count)
+        return self._db.find_test_aggregate_result(project_name, kind, target, strategy, edit_count)
 
     def _load_automaton(self, project_name: str) -> Automaton:
         archives = self._db.get_archives(project_name)
@@ -529,8 +534,8 @@ class BenchmarkRunService:
             return Env(stored=persisted_env.stored(until=until), action_set=persisted_env.action_set(until=until))
 
     def _calculate_and_save_results(self, run: dict) -> None:
-        current_run = self._db.get_benchmark_run(run['id'])
-        data = build_benchmark_run_data(self._db, current_run)
+        current_run = self._db.get_test(run['id'])
+        data = build_test_data(self._db, current_run)
 
         if current_run['session_id'] is not None or current_run['username'] is None:
             calculator = BenchmarkCalculator.from_data(data)
@@ -539,7 +544,7 @@ class BenchmarkRunService:
             calculator = BenchmarkCalculator.from_data(data, metrics=unfiltered_metrics)
 
         results = [_serialize_metric_result(result) for result in calculator.calculate_all()]
-        self._db.set_benchmark_run_results(run['id'], json.dumps(results))
+        self._db.set_test_results(run['id'], json.dumps(results))
 
     def _resolve_or_construct_session_run(self, session_id: int, project_name: str, strategy: str) -> tuple[int, Job | None]:
         candidates = [run for run in self.list_runs(project_name, session_id) if run['strategy'] == strategy]
@@ -566,14 +571,14 @@ class BenchmarkRunService:
     ) -> None:
         revision = self._db.get_project_revision(project_name)
         edit_count = self._db.get_project_draft_edit_count(project_name)
-        self._db.upsert_benchmark_aggregate_result(
+        self._db.upsert_test_aggregate_result(
             project_name, revision, edit_count, kind, target, strategy, json.dumps(result),
         )
 
 
     def start_job(self, project_name: str, state_key: str, strategy: str) -> Job:
         if strategy not in VALID_STRATEGIES:
-            raise ValueError(f"Unknown benchmark run strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
+            raise ValueError(f"Unknown test strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
         session_ids = sorted(self._db.get_session_ids_with_expected_state(project_name, state_key))
         job = StateAggregationJob(self, project_name, state_key, strategy, session_ids)
         self._job_queue.submit(job)
@@ -581,7 +586,7 @@ class BenchmarkRunService:
 
     def start_signal_job(self, project_name: str, signal_name: str, strategy: str) -> Job:
         if strategy not in VALID_STRATEGIES:
-            raise ValueError(f"Unknown benchmark run strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
+            raise ValueError(f"Unknown test strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
         sessions = self._db.list_chat_sessions(None, project_name, type=None)
         session_ids = sorted(int(row['id']) for row in sessions if row['labeled'])
         job = SignalAggregationJob(self, project_name, signal_name, strategy, session_ids)
@@ -590,7 +595,7 @@ class BenchmarkRunService:
 
     def _construct_sessions_run_job(self, project_name: str, strategy: str) -> Job:
         if strategy not in VALID_STRATEGIES:
-            raise ValueError(f"Unknown benchmark run strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
+            raise ValueError(f"Unknown test strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
         sessions = self._db.list_chat_sessions(None, project_name, type=None)
         session_ids = sorted(int(row['id']) for row in sessions if row['labeled'])
         return PooledAggregationJob(self, project_name, 'sessions', None, strategy, session_ids)
@@ -602,7 +607,7 @@ class BenchmarkRunService:
 
     def start_user_sessions_run_job(self, username: str, project_name: str, strategy: str) -> Job:
         if strategy not in VALID_STRATEGIES:
-            raise ValueError(f"Unknown benchmark run strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
+            raise ValueError(f"Unknown test strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
         sessions = self._db.list_chat_sessions(username, project_name, type=None)
         session_ids = sorted(int(row['id']) for row in sessions if row['labeled'])
         job = PooledAggregationJob(self, project_name, 'user_sessions', username, strategy, session_ids)
@@ -611,7 +616,7 @@ class BenchmarkRunService:
 
     def _construct_users_aggregation_job(self, project_name: str, strategy: str) -> Job:
         if strategy not in VALID_STRATEGIES:
-            raise ValueError(f"Unknown benchmark run strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
+            raise ValueError(f"Unknown test strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
         sessions = self._db.list_chat_sessions(None, project_name, type=None)
         usernames = sorted({row['username'] for row in sessions if row['labeled']})
         session_ids_by_user = {
@@ -627,7 +632,7 @@ class BenchmarkRunService:
 
     def _construct_all_states_job(self, project_name: str, strategy: str) -> Job:
         if strategy not in VALID_STRATEGIES:
-            raise ValueError(f"Unknown benchmark run strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
+            raise ValueError(f"Unknown test strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
         session_ids_by_state = {
             state_key: sorted(self._db.get_session_ids_with_expected_state(project_name, state_key))
             for state_key in self._project_states(project_name)
@@ -641,7 +646,7 @@ class BenchmarkRunService:
 
     def _construct_all_signals_job(self, project_name: str, strategy: str) -> Job:
         if strategy not in VALID_STRATEGIES:
-            raise ValueError(f"Unknown benchmark run strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
+            raise ValueError(f"Unknown test strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
         sessions = self._db.list_chat_sessions(None, project_name, type=None)
         session_ids = sorted(int(row['id']) for row in sessions if row['labeled'])
         return AllSignalsAggregationJob(self, project_name, strategy, session_ids, self._project_signal_names(project_name))
@@ -653,7 +658,7 @@ class BenchmarkRunService:
 
     def start_root_job(self, project_name: str, strategy: str) -> Job:
         if strategy not in VALID_STRATEGIES:
-            raise ValueError(f"Unknown benchmark run strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
+            raise ValueError(f"Unknown test strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
         branch_jobs = [
             self._construct_sessions_run_job(project_name, strategy),
             self._construct_all_states_job(project_name, strategy),
@@ -667,8 +672,8 @@ class BenchmarkRunService:
     def _aggregate_signal_accuracy(self, sub_run_ids: list[int], state_key: str) -> dict:
         observations: list = []
         for run_id in sub_run_ids:
-            run = self._db.get_benchmark_run(run_id)
-            data = build_benchmark_run_data(self._db, run)
+            run = self._db.get_test(run_id)
+            data = build_test_data(self._db, run)
             observations.extend(BenchmarkObservationBuilder(BenchmarkConfiguration()).build(data))
 
         filtered = tuple(o for o in observations if o.expected_state == state_key)
@@ -677,8 +682,8 @@ class BenchmarkRunService:
     def _aggregate_signal_name_accuracy(self, sub_run_ids: list[int], signal_name: str) -> dict:
         observations: list = []
         for run_id in sub_run_ids:
-            run = self._db.get_benchmark_run(run_id)
-            data = build_benchmark_run_data(self._db, run)
+            run = self._db.get_test(run_id)
+            data = build_test_data(self._db, run)
             observations.extend(BenchmarkObservationBuilder(BenchmarkConfiguration()).build(data))
 
         values = [o.signal_agreements[signal_name] for o in observations if signal_name in o.signal_agreements]
@@ -703,8 +708,8 @@ class BenchmarkRunService:
     def _aggregate_pooled_runs(self, sub_run_ids: list[int], project_name: str) -> list[dict]:
         if not sub_run_ids:
             return []
-        runs = [self._db.get_benchmark_run(run_id) for run_id in sub_run_ids]
-        frames = [build_benchmark_run_data(self._db, run) for run in runs]
+        runs = [self._db.get_test(run_id) for run_id in sub_run_ids]
+        frames = [build_test_data(self._db, run) for run in runs]
         pooled = BenchmarkData(
             messages=pd.concat([f.messages for f in frames], ignore_index=True),
             sessions=pd.concat([f.sessions for f in frames], ignore_index=True),

@@ -90,11 +90,11 @@ class FakeSchemaAiService:
         yield "Hi!"
 
 
-def _tracking_service(db, automaton: Automaton, signals_json: str = '{"mySignal": 1}') -> TrackingService:
+def _tracking_service(db, automaton: Automaton, signals_json: str = '{"mySignal": 1}') -> tuple[TrackingService, FakeSchemaAiService]:
     ai_service = FakeSchemaAiService(signals_json)
     project_service = FakeProjectService(automaton)
     metrics = MetricService(db, FixedProjectContext(project_name=PROJECT_NAME))
-    return TrackingService(db, ai_service, project_service, metrics)
+    return TrackingService(db, project_service, metrics), ai_service
 
 
 def _session_id(db) -> int:
@@ -115,8 +115,9 @@ def _env(db) -> PersistedEnv:
 async def test_a_fired_actions_env_is_persisted(db):
     automaton = _automaton_with_env("signal.mySignal >= 1", {"reset_counter": "True"})
     session_id = _session_id(db)
+    service, ai_service = _tracking_service(db, automaton, '{"mySignal": 1}')
 
-    result = await _tracking_service(db, automaton, '{"mySignal": 1}').process(session_id, "hello")
+    result = await service._process(session_id, "hello", ai_service)
 
     assert result["state_changed"] is True
     env = _env(db)
@@ -129,8 +130,9 @@ async def test_a_fired_actions_env_is_persisted(db):
 async def test_env_is_not_touched_when_the_trigger_does_not_fire(db):
     automaton = _automaton_with_env("signal.mySignal >= 99", {"reset_counter": "True"})
     session_id = _session_id(db)
+    service, ai_service = _tracking_service(db, automaton, '{"mySignal": 1}')
 
-    result = await _tracking_service(db, automaton, '{"mySignal": 1}').process(session_id, "hello")
+    result = await service._process(session_id, "hello", ai_service)
 
     assert result["state_changed"] is False
     env = _env(db)
@@ -144,8 +146,9 @@ async def test_an_env_expression_can_self_reference_the_previous_stored_value(db
     # Seeded directly in the action-set store as a real int, since that's
     # what simpleeval produces (unlike a model-reported string value).
     env.update_action_set({"number_of_steps": 3})
+    service, ai_service = _tracking_service(db, automaton, '{"mySignal": 1}')
 
-    result = await _tracking_service(db, automaton, '{"mySignal": 1}').process(session_id, "hello")
+    result = await service._process(session_id, "hello", ai_service)
 
     assert result["state_changed"] is True  # a self-loop (target == "a") still counts as fired
     assert env.action_set()["number_of_steps"] == 4
@@ -154,8 +157,9 @@ async def test_an_env_expression_can_self_reference_the_previous_stored_value(db
 async def test_self_referencing_an_env_key_that_was_never_stored_yet_leaves_it_unset(db):
     automaton = _automaton_with_env("signal.mySignal >= 1", {"number_of_steps": "env.number_of_steps + 1"}, target="a")
     session_id = _session_id(db)
+    service, ai_service = _tracking_service(db, automaton, '{"mySignal": 1}')
 
-    await _tracking_service(db, automaton, '{"mySignal": 1}').process(session_id, "hello")
+    await service._process(session_id, "hello", ai_service)
 
     env = _env(db)
     assert env.get("number_of_steps") is None
@@ -164,8 +168,9 @@ async def test_self_referencing_an_env_key_that_was_never_stored_yet_leaves_it_u
 async def test_env_can_reference_a_signal_value_from_this_same_turn(db):
     automaton = _automaton_with_env("signal.mySignal >= 1", {"last_signal": "signal.mySignal"})
     session_id = _session_id(db)
+    service, ai_service = _tracking_service(db, automaton, '{"mySignal": 7}')
 
-    await _tracking_service(db, automaton, '{"mySignal": 7}').process(session_id, "hello")
+    await service._process(session_id, "hello", ai_service)
 
     env = _env(db)
     assert env.get("last_signal") == 7
@@ -174,8 +179,9 @@ async def test_env_can_reference_a_signal_value_from_this_same_turn(db):
 async def test_an_action_with_no_env_field_never_touches_the_action_set_store(db):
     automaton = _automaton_with_env("signal.mySignal >= 1", None)
     session_id = _session_id(db)
+    service, ai_service = _tracking_service(db, automaton, '{"mySignal": 1}')
 
-    result = await _tracking_service(db, automaton, '{"mySignal": 1}').process(session_id, "hello")
+    result = await service._process(session_id, "hello", ai_service)
 
     assert result["state_changed"] is True
     env = _env(db)

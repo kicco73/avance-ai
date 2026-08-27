@@ -7,7 +7,7 @@
 // genuinely changed. onEnterActions.js itself (script → onEnterLocals
 // binding) has its own dedicated tests — see onEnterActions.test.js.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { buildTimeline } from '../src/benchmarkTimeline.js'
+import { buildTimeline } from '../src/testTimeline.js'
 
 vi.mock('../src/onEnterActions.js', () => ({ runOnEnterScript: vi.fn() }))
 vi.mock('../src/api.js', () => ({

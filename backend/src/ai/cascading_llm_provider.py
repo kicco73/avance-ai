@@ -1,23 +1,33 @@
-"""Composite LLMProvider: presents an ordered list of LLMProviders as a
-single provider with the same contract, with retry, backoff, and
-ordered fallback across the list handled underneath (see cascade.py's
-ProviderCascade)."""
+"""LLMProvider fallback wrappers: AutoLiveLLMProvider presents an ordered
+list of LLMProviders as a single transparent provider — one attempt, no
+retry, advances the pointer on failure so the NEXT call reaches the next
+provider. AutoTestLLMProvider reinforces it with in-place backoff retry and
+an exhaustive cascade across every provider before giving up (see
+cascade.py's ProviderCascade for the shared pointer bookkeeping)."""
 from __future__ import annotations
 
+import asyncio
 from typing import AsyncIterator
 
-from cascade import OnRetry, ProviderCascade
+from cascade import BASE_DELAY_SECONDS, MAX_RETRIES, ProviderCascade
 from ai.llm_provider import (
+    AIServiceProviderPermanentError,
     AIServiceProviderRateLimitedError,
     AIServiceProviderUnavailableError,
     LLMProvider,
     MetadataCallback,
 )
 
+_FAILOVER_ERRORS = (
+    AIServiceProviderUnavailableError,
+    AIServiceProviderRateLimitedError,
+    AIServiceProviderPermanentError,
+)
 
-class CascadingLLMProvider(LLMProvider):
+
+class AutoLiveLLMProvider(LLMProvider):
     def __init__(self, providers: list[tuple[str, LLMProvider]]) -> None:
-        self._cascade: ProviderCascade[LLMProvider] = ProviderCascade(providers, kind="AI")
+        self._cascade: ProviderCascade[LLMProvider] = ProviderCascade(providers, kind="AI (live)")
 
     @property
     def current_index(self) -> int:
@@ -36,38 +46,102 @@ class CascadingLLMProvider(LLMProvider):
         return sum(provider.get_total_tokens() for provider in self._cascade.providers)
 
     def get_input_tokens(self, prompt: str) -> int:
-        """Delegates to the cascade's current leaf — AiService itself
-        always calls the leaf provider directly (see its own
-        _current_leaf_provider), so this exists only to satisfy
-        LLMProvider's contract for any other caller."""
         return self.current_provider.get_input_tokens(prompt)
 
-    # No generate() override: the LLMProvider base default calls
-    # self.generate_stream, which resolves polymorphically to the
-    # override below, so it's already cascade/retry-aware.
     async def generate_stream(
         self, system_prompt: str, history: list[dict]
     ) -> AsyncIterator[str]:
+        provider = self._cascade.current
+        try:
+            async for chunk in provider.generate_stream(system_prompt, history):
+                yield chunk
+        except _FAILOVER_ERRORS:
+            self._cascade.advance()
+            raise
 
-        def call(provider: LLMProvider) -> AsyncIterator[str]:
-            return provider.generate_stream(system_prompt, history)
+    async def generate_stream_with_schema(
+        self, system_prompt: str, history: list[dict], schema: dict[str, str]
+    ) -> AsyncIterator[str]:
+        provider = self._cascade.current
+        try:
+            async for chunk in provider.generate_stream_with_schema(system_prompt, history, schema=schema):  # type: ignore
+                yield chunk
+        except _FAILOVER_ERRORS:
+            self._cascade.advance()
+            raise
 
-        stream = await self._cascade.call_with_retry(
-            call,
-            unavailable=AIServiceProviderUnavailableError,
-            rate_limited=AIServiceProviderRateLimitedError,
-        )
-        async for chunk in stream:
-            yield chunk
 
-    async def generate_stream_with_schema(self, system_prompt: str , history: list[dict], schema: dict[str,str]):
-        def call(provider: LLMProvider) -> AsyncIterator[str]:
-            return provider.generate_stream_with_schema(system_prompt, history, schema=schema) # type: ignore
+class AutoTestLLMProvider(AutoLiveLLMProvider):
+    """Exhaustive cascade: retries the current provider with backoff on a
+    transient failure — as long as no output has been sent yet, to never
+    repeat a partial response — otherwise advances to the next provider,
+    until every provider has been tried once or one succeeds. Reports each
+    retry/failover through `on_metadata` as a warning, when given."""
 
-        stream = await self._cascade.call_with_retry(
-            call,
-            unavailable=AIServiceProviderUnavailableError,
-            rate_limited=AIServiceProviderRateLimitedError,
-        )
-        async for chunk in stream:
-            yield chunk
+    async def generate_stream(
+        self, system_prompt: str, history: list[dict], on_metadata: MetadataCallback | None = None
+    ) -> AsyncIterator[str]:
+        last_error: BaseException | None = None
+        for _ in range(len(self._cascade)):
+            provider = self._cascade.current
+            index = self._cascade.current_index
+            attempt = 0
+            yielded = False
+            while True:
+                try:
+                    async for chunk in provider.generate_stream(system_prompt, history):
+                        yielded = True
+                        yield chunk
+                    return
+                except AIServiceProviderUnavailableError as exc:
+                    last_error = exc
+                    if yielded or attempt >= MAX_RETRIES:
+                        break
+                    attempt += 1
+                    if on_metadata is not None:
+                        on_metadata("warning", f"Provider #{index + 1} unavailable, retry {attempt}/{MAX_RETRIES}: {exc}")
+                    await asyncio.sleep(BASE_DELAY_SECONDS * 2 ** (attempt - 1))
+                except (AIServiceProviderRateLimitedError, AIServiceProviderPermanentError) as exc:
+                    last_error = exc
+                    break
+            if on_metadata is not None:
+                on_metadata("warning", f"Switching away from provider #{index + 1}: {last_error}")
+            self._cascade.advance()
+        assert last_error is not None
+        raise last_error
+
+    async def generate_stream_with_schema(
+        self,
+        system_prompt: str,
+        history: list[dict],
+        schema: dict[str, str],
+        on_metadata: MetadataCallback | None = None,
+    ) -> AsyncIterator[str]:
+        last_error: BaseException | None = None
+        for _ in range(len(self._cascade)):
+            provider = self._cascade.current
+            index = self._cascade.current_index
+            attempt = 0
+            yielded = False
+            while True:
+                try:
+                    async for chunk in provider.generate_stream_with_schema(system_prompt, history, schema=schema):  # type: ignore
+                        yielded = True
+                        yield chunk
+                    return
+                except AIServiceProviderUnavailableError as exc:
+                    last_error = exc
+                    if yielded or attempt >= MAX_RETRIES:
+                        break
+                    attempt += 1
+                    if on_metadata is not None:
+                        on_metadata("warning", f"Provider #{index + 1} unavailable, retry {attempt}/{MAX_RETRIES}: {exc}")
+                    await asyncio.sleep(BASE_DELAY_SECONDS * 2 ** (attempt - 1))
+                except (AIServiceProviderRateLimitedError, AIServiceProviderPermanentError) as exc:
+                    last_error = exc
+                    break
+            if on_metadata is not None:
+                on_metadata("warning", f"Switching away from provider #{index + 1}: {last_error}")
+            self._cascade.advance()
+        assert last_error is not None
+        raise last_error

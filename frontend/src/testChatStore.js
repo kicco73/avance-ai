@@ -1,4 +1,8 @@
-import { getCurrentTestSession, postCreateTestSession, getTestSessions, postResetTestSessions } from './api.js'
+import { ref } from 'vue'
+import {
+  getCurrentTestSession, postCreateTestSession, getTestSessions, postResetTestSessions,
+  getTestChatModels, postTestChatModelSelection
+} from './api.js'
 import { createChatStore } from './chatStoreFactory.js'
 
 // EditProjectView's embedded "Run" test chat — its own independent
@@ -34,3 +38,41 @@ export const {
   toggleAudio, handleSend, handleVoiceMessage, handleResend, handleReact, handleAction,
   clearChatUi, handleReset, handleNewSession,
 } = testStore
+
+export const testChatModels = ref([])
+export const testChatModelAuto = ref(true)
+export const testChatModelCurrentIndex = ref(0)
+export const testChatModelSelectionLoading = ref(false)
+
+function applyTestChatModelInfo(info) {
+  testChatModels.value = info.models
+  testChatModelAuto.value = info.auto
+  testChatModelCurrentIndex.value = info.current_index
+}
+
+export async function loadTestChatModels() {
+  try {
+    applyTestChatModelInfo(await getTestChatModels())
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
+async function selectTestChatModel(index) {
+  testChatModelSelectionLoading.value = true
+  try {
+    applyTestChatModelInfo(await postTestChatModelSelection(index))
+  } catch {
+    // already surfaced via apiFetch
+  } finally {
+    testChatModelSelectionLoading.value = false
+  }
+}
+
+export const testChatModelStore = {
+  models: testChatModels,
+  auto: testChatModelAuto,
+  currentIndex: testChatModelCurrentIndex,
+  selectionLoading: testChatModelSelectionLoading,
+  select: selectTestChatModel,
+}

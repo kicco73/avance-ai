@@ -1,6 +1,6 @@
 """Builds the hybrid BenchmarkData a run's metrics are calculated from:
 messages/sessions stay real (untouched by replay), while signals and
-transitions come from BenchmarkRunObservation with expected_values joined in."""
+transitions come from TestObservation with expected_values joined in."""
 from __future__ import annotations
 
 from typing import Any
@@ -14,7 +14,7 @@ from metrics.metrics_framework.benchmark_metrics.observations import BenchmarkDa
 _SIGNALS_COLUMNS = ["id", "message_id", "timestamp", "values", "expected_values", "old_state", "action", "new_state", "session_id"]
 
 
-def build_benchmark_run_data(db: Db, run: dict) -> BenchmarkData:
+def build_test_data(db: Db, run: dict) -> BenchmarkData:
     calculator = BenchmarkCalculator(db, run['username'], run['project_name'], session_id=run['session_id'])
 
     sessions_rows = calculator._load_sessions()
@@ -42,7 +42,7 @@ def _load_run_signals(
         if row['message_id'] is not None
     }
 
-    rows = db.get_benchmark_run_observations(run_id, session_ids)
+    rows = db.get_test_observations(run_id, session_ids)
     if not rows:
         return _empty_signals()
 

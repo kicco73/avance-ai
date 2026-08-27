@@ -86,11 +86,11 @@ class FakeSchemaAiService:
         yield "Hi!"
 
 
-def _tracking_service(db, automaton: Automaton, signals_json: str) -> TrackingService:
+def _tracking_service(db, automaton: Automaton, signals_json: str) -> tuple[TrackingService, FakeSchemaAiService]:
     ai_service = FakeSchemaAiService(signals_json)
     project_service = FakeProjectService(automaton)
     metrics = MetricService(db, FixedProjectContext(project_name=PROJECT_NAME))
-    return TrackingService(db, ai_service, project_service, metrics)
+    return TrackingService(db, project_service, metrics), ai_service
 
 
 def _session_id(db) -> int:
@@ -112,8 +112,9 @@ def _session_id(db) -> int:
 async def test_a_trigger_referencing_only_a_metric_can_fire(db):
     automaton = _automaton_with_trigger("engagement >= 1")
     session_id = _session_id(db)
+    service, ai_service = _tracking_service(db, automaton, '{"mySignal": 1}')
 
-    result = await _tracking_service(db, automaton, '{"mySignal": 1}').process(session_id, "hello")
+    result = await service._process(session_id, "hello", ai_service)
 
     assert result["state_changed"] is True
     assert result["new_state"] == "b"
@@ -122,8 +123,9 @@ async def test_a_trigger_referencing_only_a_metric_can_fire(db):
 async def test_a_metric_referencing_trigger_that_is_not_met_does_not_fire(db):
     automaton = _automaton_with_trigger("engagement >= 99")
     session_id = _session_id(db)
+    service, ai_service = _tracking_service(db, automaton, '{"mySignal": 1}')
 
-    result = await _tracking_service(db, automaton, '{"mySignal": 1}').process(session_id, "hello")
+    result = await service._process(session_id, "hello", ai_service)
 
     assert result["state_changed"] is False
     assert result["new_state"] is None
@@ -135,8 +137,9 @@ async def test_metric_values_used_for_evaluation_are_never_persisted(db):
     # a metric, so an engagement-only trigger would filter it out too.
     automaton = _automaton_with_trigger("signal.mySignal >= 1 and engagement >= 1")
     session_id = _session_id(db)
+    service, ai_service = _tracking_service(db, automaton, '{"mySignal": 42}')
 
-    await _tracking_service(db, automaton, '{"mySignal": 42}').process(session_id, "hello")
+    await service._process(session_id, "hello", ai_service)
 
     persisted = db.get_signals(session_id)
     assert len(persisted) == 1
@@ -148,11 +151,11 @@ async def test_metric_values_used_for_evaluation_are_never_persisted(db):
 async def test_metrics_are_never_computed_when_no_trigger_in_the_state_references_one(db, monkeypatch):
     automaton = _automaton_with_trigger("signal.mySignal >= 1")
     session_id = _session_id(db)
-    tracking_service = _tracking_service(db, automaton, '{"mySignal": 42}')
+    tracking_service, ai_service = _tracking_service(db, automaton, '{"mySignal": 42}')
     calls = []
     monkeypatch.setattr(tracking_service._metrics, "calculate_values", lambda: calls.append(1) or {})
 
-    await tracking_service.process(session_id, "hello")
+    await tracking_service._process(session_id, "hello", ai_service)
 
     assert calls == []
 
@@ -160,8 +163,9 @@ async def test_metrics_are_never_computed_when_no_trigger_in_the_state_reference
 async def test_a_trigger_can_combine_a_signal_and_a_metric(db):
     automaton = _automaton_with_trigger("signal.mySignal >= 40 and engagement >= 1")
     session_id = _session_id(db)
+    service, ai_service = _tracking_service(db, automaton, '{"mySignal": 42}')
 
-    result = await _tracking_service(db, automaton, '{"mySignal": 42}').process(session_id, "hello")
+    result = await service._process(session_id, "hello", ai_service)
 
     assert result["state_changed"] is True
     assert result["new_state"] == "b"

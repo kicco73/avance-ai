@@ -14,7 +14,7 @@ import {
   syntheticSessionStartEntry,
   transitionAnnotationStatus,
   valuesToSignalValues
-} from '../src/benchmarkTimeline.js'
+} from '../src/testTimeline.js'
 
 function message(id, timestamp, role = 'user') {
   return { id, role, content: 'hi', timestamp }

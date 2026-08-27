@@ -57,9 +57,9 @@ import {
 import { clearApiError, setApiError, setApiWarning } from '../../../errorStore.js'
 import { confirmDialog, promptDialog, chooseDialog } from '../../../dialogStore.js'
 import { refreshIdentifierRegistry } from '../../../identifierRegistry.js'
-import { buildTimeline, highlightedStateKeyFor, nearestMessageIdAtOrBefore, resultingStateKeyFor, signalValuesFor } from '../../../benchmarkTimeline.js'
+import { buildTimeline, highlightedStateKeyFor, nearestMessageIdAtOrBefore, resultingStateKeyFor, signalValuesFor } from '../../../testTimeline.js'
 // `sessions` here is the *project's* whole session catalog (loaded by
-// ProjectTestPanel.vue, the benchmark "Test" tab, via the live store) —
+// ProjectTestPanel.vue, the "Test" tab, via the live store) —
 // unrelated to runSessions below, "Run" mode's own draft session pool,
 // which just happens to share the same name in testStore.
 import { sessions } from '../../../chatStore.js'
@@ -510,7 +510,7 @@ const signalValueByName = ref({})
 
 // The live session's Signals event log and starting state — feeds the
 // same clickable message+transition timeline as LabelProjectView.vue's
-// review one (see ChatTimeline.vue/benchmarkTimeline.js), just kept live.
+// review one (see ChatTimeline.vue/testTimeline.js), just kept live.
 const signalsLog = ref([])
 const sessionStartState = ref(null)
 

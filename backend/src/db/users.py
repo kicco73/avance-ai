@@ -83,11 +83,11 @@ class UserMixin:
 
     def erase_user_data(self, email: str) -> None:
         """ProfileView.vue's "Erase all my data" — deleting the User row
-        is now enough on its own: ChatSession.user/BenchmarkRun.user/
+        is now enough on its own: ChatSession.user/Test.user/
         SystemWarning.user_id/EditHistory.user_id are real FKs onto it with
         on_delete='CASCADE' (see models.py), which in turn cascades
-        further to Message/Tracking/SessionSummary/BenchmarkRunObservation
-        via their own existing FKs onto ChatSession/BenchmarkRun.
+        further to Message/Tracking/SessionSummary/TestObservation
+        via their own existing FKs onto ChatSession/Test.
 
         Deleting the User row last would matter if anything above still
         needed to look it up mid-delete — nothing does, so this is just

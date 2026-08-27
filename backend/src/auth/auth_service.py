@@ -29,7 +29,7 @@ _PROVIDER_CLASSES: dict[str, type[AuthProvider]] = {
 
 class AuthService:
     # Takes the specific config value it needs (AppConfig.auth_providers),
-    # not the whole AppConfig object — same shape as AiService.from_config
+    # not the whole AppConfig object — same shape as AiService.for_live
     # (config.ai_services) elsewhere, and easier to construct from a test
     # without a real config.yml.
     def __init__(self, db: Db, providers: list[AuthProviderConfig], token_ttl_in_hours: float) -> None:

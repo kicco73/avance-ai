@@ -39,9 +39,9 @@ def test_erase_user_data_cascades_through_a_chat_session(db, project):
     assert Tracking.get_or_none(Tracking.id == tracking_id) is None
 
 
-def test_erase_user_data_removes_standalone_benchmark_runs_and_system_warnings(db, project):
+def test_erase_user_data_removes_standalone_tests_and_system_warnings(db, project):
     _register(db, "alice@example.com")
-    run = db.create_benchmark_run(
+    run = db.create_test(
         "alice@example.com", project, None, "batch",
         project_draft_edit_count=0, session_labeling_revision=None, ai_model_snapshot={},
     )
@@ -49,10 +49,10 @@ def test_erase_user_data_removes_standalone_benchmark_runs_and_system_warnings(d
 
     db.erase_user_data("alice@example.com")
 
-    assert db.find_benchmark_run_by_cache_key(None, "batch", 0, None) is None
+    assert db.find_test_by_cache_key(None, "batch", 0, None) is None
     assert db.get_system_warnings("alice@example.com", project) == []
-    from db.models import BenchmarkRun
-    assert BenchmarkRun.get_or_none(BenchmarkRun.id == run["id"]) is None
+    from db.models import Test
+    assert Test.get_or_none(Test.id == run["id"]) is None
 
 
 def test_erase_user_data_removes_project_edit_history(db, project):

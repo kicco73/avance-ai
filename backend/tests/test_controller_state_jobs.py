@@ -1,5 +1,5 @@
 """Integration tests for POST /api/projects/{project_name}/states/{state_key}/test,
-exercising BenchmarkRunService.start_job end to end: launching/reusing
+exercising TestService.start_job end to end: launching/reusing
 session-scoped sub-runs and aggregating Signal Accuracy.
 """
 from __future__ import annotations
@@ -55,7 +55,7 @@ def test_state_test_ignores_an_unlabeled_sessions_leftover_annotation(client, he
     result = _wait_for_aggregate_result(client, hello_project, "state", "turn_by_turn", target="Hello")
     assert result.status_code == 200, result.text
     assert result.json()["sample_count"] == 0
-    assert client.get(f"/api/projects/{hello_project}/benchmark-runs?session_id={session_id}").json() == []
+    assert client.get(f"/api/projects/{hello_project}/tests?session_id={session_id}").json() == []
 
 
 def test_state_test_with_no_touching_sessions_still_completes(client, hello_project):

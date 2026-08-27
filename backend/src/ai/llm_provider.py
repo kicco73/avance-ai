@@ -41,6 +41,12 @@ class AIServiceProviderRateLimitedError(ProviderRateLimitedError, AIServiceError
 	message = "The AI service rate limit was exceeded."
 
 
+class AIServiceProviderPermanentError(AIServiceError):
+	"""Permanent provider-level failure (wrong model, invalid credentials,
+	exhausted credit/quota) — never retried in place, cascades immediately."""
+	message = "The AI service rejected the request."
+
+
 def content_to_text(content: Any, provider_name: str = "LLM") -> str:
 	"""Flattens provider-neutral attachment blocks to plain text.
 	Binary (base64) attachments are skipped if unsupported.

@@ -14,6 +14,7 @@ from cascade import OnRetry
 from ai.llm_provider import (
 	AIServiceConfig,
 	AIServiceError,
+	AIServiceProviderPermanentError,
 	AIServiceProviderRateLimitedError,
 	AIServiceProviderUnavailableError,
 	LLMProviderWithSchema,
@@ -41,7 +42,7 @@ def _handle_gemini_errors() -> Generator[None, None, None]:
 			raise AIServiceProviderUnavailableError(
 				f"The Gemini service is temporarily overloaded (status {code}): {message}"
 			) from exc
-		raise AIServiceError(
+		raise AIServiceProviderPermanentError(
 			f"Error from the Gemini API (status {code}): {message}"
 		) from exc
 	except Exception as exc:

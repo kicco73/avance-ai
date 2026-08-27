@@ -31,13 +31,11 @@ class TrackingService(object):
 	def __init__(
 		self,
 		db: Db,
-		ai_service: AiService,
 		project_service: ProjectService,
 		metrics_service: MetricService,
 		talk_enabled: bool = True,
 	) -> None:
 		self._db = db
-		self._ai_service = ai_service
 		self._project_service = project_service
 		self._metrics = metrics_service
 		self._talk_enabled = talk_enabled
@@ -237,10 +235,11 @@ class TrackingService(object):
 		the "Label sessions" view's "Unlabel all" action."""
 		self._db.clear_session_annotations(session_id)
 
-	def process(
+	def _process(
 		self,
 		session_id: int,
 		text: str | None,
+		ai_service: AiService,
 		on_metadata: OnMetadata | None = None,
 		extra_prompt: str | None = None,
 		):
@@ -277,7 +276,7 @@ class TrackingService(object):
 				asyncio.ensure_future(on_metadata(key, value))
 
 		tracking_processor = TrackingProcessor(
-			self._ai_service, scope_builder,
+			ai_service, scope_builder,
 			env, self._db, user_vars,
 			auto_tracking_enabled=self.is_auto_tracking_enabled(session_id) if is_test_session else True,
 			talk_enabled=self._talk_enabled,

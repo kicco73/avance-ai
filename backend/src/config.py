@@ -48,7 +48,6 @@ class ListenServiceConfig:
 
 class AppConfig:
 
-    VALID_TRANSPORTS = ("websocket", "rest")
     CONFIG_PATHS = [
         Path(__file__).resolve().parent / ".config.yml",
         Path('/etc/secrets') / "avance.yml",
@@ -109,6 +108,16 @@ class AppConfig:
         value = sub.get(field, default)
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise ConfigError(f"{path}: '{section}.{field}' must be a positive integer if present.")
+        return value
+
+    @classmethod
+    def _get_optional_non_negative_int(
+        cls, raw: dict, section: str, field: str, path: Path, default: int
+    ) -> int:
+        sub = cls._get_optional_section(raw, section, path)
+        value = sub.get(field, default)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ConfigError(f"{path}: '{section}.{field}' must be a non-negative integer if present.")
         return value
 
     @classmethod
@@ -282,12 +291,6 @@ class AppConfig:
         self.database_force_drop_and_create_when_incompatible = self._get_optional_bool(
             raw, "database", "force-drop-and-create-when-incompatible", path, default=False
         )
-        self.chat_transport = self._require_str(raw, "chat-service", "transport", path)
-        if self.chat_transport not in self.VALID_TRANSPORTS:
-            raise ConfigError(
-                f"{path}: chat-service.transport={self.chat_transport!r} is not "
-                f"valid. Allowed values: {', '.join(self.VALID_TRANSPORTS)}."
-            )
         # The single source of truth for how long a chat session stays
         # "open" (see chat/session_manager.py's ChatSessionManager) — never
         # hardcoded elsewhere.
@@ -295,10 +298,20 @@ class AppConfig:
             raw, "chat-service", "max_session_duration_in_minutes", path, default=60.0
         )
 
-        # One shared worker pool (see jobs/job_queue.py's JobQueue) —
-        # optional, and so is the whole `jobs` section.
-        self.jobs_max_concurrent = self._get_optional_positive_int(
-            raw, "jobs", "max_concurrent", path, default=6
+        # Two separate worker pools (see jobs/job_queue.py's JobQueue and
+        # jobs/throttled_job_queue.py's ThrottledJobQueue) — optional, and
+        # so is the whole `jobs` section.
+        self.jobs_shared_max_concurrent = self._get_optional_positive_int(
+            raw, "jobs", "shared_max_concurrent", path, default=2
+        )
+        self.test_service_max_concurrent_tests = self._get_optional_positive_int(
+            raw, "test-service", "max_concurrent_tests", path, default=4
+        )
+        self.test_service_max_tests_per_minute = self._get_optional_positive_int(
+            raw, "test-service", "max_tests_per_minute", path, default=1_000_000
+        )
+        self.test_service_min_test_interval_ms = self._get_optional_non_negative_int(
+            raw, "test-service", "min_test_interval_ms", path, default=0
         )
 
         self.ai_services = self._parse_ai_services(raw, path)

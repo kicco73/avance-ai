@@ -16,11 +16,11 @@ from db import Db
 from error_handlers import register_error_handlers
 from events.dispatcher import _reset_for_tests as _reset_dispatcher_for_tests
 from jobs import JobQueue
-from metrics.benchmark_run_service import BenchmarkRunService
 from metrics.metric_service import MetricService
-from metrics.queue_progress_broadcaster import QueueProgressBroadcaster
 from project.project_service import ProjectService
 from session import Session
+from testing.test_service import TestService
+from testing.queue_progress_broadcaster import QueueProgressBroadcaster
 from tracking.tracking_service import TrackingService
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
@@ -62,7 +62,7 @@ def db() -> Db:
 
     Seeds a User row for "user" — _default_session_user's own default
     Session().user — since EditHistory.user_id/SystemWarning.user_id/
-    ChatSession.user/BenchmarkRun.user are now real FKs onto User (see
+    ChatSession.user/Test.user are now real FKs onto User (see
     models.py): anything writing one of those under the default session
     identity needs a matching row to reference."""
     instance = Db("sqlite:///:memory:")
@@ -145,12 +145,13 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     test_event_broadcaster = QueueProgressBroadcaster(fake_ai_service)
     job_queue = JobQueue(max_concurrent=1, broadcaster=test_event_broadcaster)
     tracking_service = TrackingService(
-        app_db, fake_ai_service, project_service, metric_service,
+        app_db, project_service, metric_service,
     )
     chat_service = ChatService(
-        app_db, fake_ai_service, project_service, session_manager, tracking_service, metric_service, job_queue,
+        app_db, fake_ai_service, fake_ai_service, project_service, session_manager,
+        tracking_service, metric_service, job_queue,
     )
-    benchmark_run_service = BenchmarkRunService(
+    test_service = TestService(
         app_db, fake_ai_service, tracking_service, job_queue,
     )
     # No real providers: this app fixture never goes through AuthMiddleware
@@ -161,7 +162,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     fastapi_app = FastAPI(title="Avance State Engine (test)")
     register_error_handlers(fastapi_app)
     controller = AvanceController(
-        chat_service, project_service, None, None, app_db, tracking_service, benchmark_run_service,
+        chat_service, project_service, None, None, app_db, tracking_service, test_service,
         auth_service, test_event_broadcaster, job_queue, "test-version",
     )
     fastapi_app.include_router(controller.router)

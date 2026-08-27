@@ -38,7 +38,7 @@ def test_probe_session_play_button_progress(client, hello_project):
     t.start()
     time.sleep(0.3)
 
-    resp = client.post("/api/projects/hello/benchmark-runs", json={"session_id": session_id, "strategy": "batch"})
+    resp = client.post("/api/projects/hello/tests", json={"session_id": session_id, "strategy": "batch"})
     print("POST result:", resp.json())
 
     t.join(timeout=10)

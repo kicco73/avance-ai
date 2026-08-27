@@ -73,11 +73,11 @@ class FakeSchemaAiService:
         yield "Hi!"
 
 
-def _tracking_service(db, automaton: Automaton, signals_json: str = '{"mySignal": 1}') -> TrackingService:
+def _tracking_service(db, automaton: Automaton, signals_json: str = '{"mySignal": 1}') -> tuple[TrackingService, FakeSchemaAiService]:
     ai_service = FakeSchemaAiService(signals_json)
     project_service = FakeProjectService(automaton)
     metrics = MetricService(db, FixedProjectContext(project_name=PROJECT_NAME))
-    return TrackingService(db, ai_service, project_service, metrics)
+    return TrackingService(db, project_service, metrics), ai_service
 
 
 def _session_id(db, *, type: str = "test") -> int:
@@ -94,9 +94,9 @@ def _session_id(db, *, type: str = "test") -> int:
 async def test_a_matching_trigger_fires_when_auto_tracking_is_enabled(db):
     automaton = _automaton("signal.mySignal >= 1")
     session_id = _session_id(db)
-    service = _tracking_service(db, automaton, '{"mySignal": 1}')
+    service, ai_service = _tracking_service(db, automaton, '{"mySignal": 1}')
 
-    result = await service.process(session_id, "hello")
+    result = await service._process(session_id, "hello", ai_service)
 
     assert result["state_changed"] is True
     assert result["new_state"] == "b"
@@ -105,10 +105,10 @@ async def test_a_matching_trigger_fires_when_auto_tracking_is_enabled(db):
 async def test_a_matching_trigger_does_not_fire_when_auto_tracking_is_frozen(db):
     automaton = _automaton("signal.mySignal >= 1")
     session_id = _session_id(db)
-    service = _tracking_service(db, automaton, '{"mySignal": 1}')
+    service, ai_service = _tracking_service(db, automaton, '{"mySignal": 1}')
     service.set_auto_tracking_enabled(session_id, False)
 
-    result = await service.process(session_id, "hello")
+    result = await service._process(session_id, "hello", ai_service)
 
     assert result["state_changed"] is False
     assert result["new_state"] is None
@@ -119,10 +119,10 @@ async def test_signals_are_still_computed_and_logged_while_frozen(db):
     signal computation — the Signals tab still needs something to show."""
     automaton = _automaton("signal.mySignal >= 1")
     session_id = _session_id(db)
-    service = _tracking_service(db, automaton, '{"mySignal": 1}')
+    service, ai_service = _tracking_service(db, automaton, '{"mySignal": 1}')
     service.set_auto_tracking_enabled(session_id, False)
 
-    await service.process(session_id, "hello")
+    await service._process(session_id, "hello", ai_service)
 
     logged = service.get_session_signals(session_id)
     assert len(logged) == 1
@@ -135,10 +135,10 @@ async def test_freezing_a_live_session_has_no_effect(db):
     set_auto_tracking_enabled(session_id, False) was called for it."""
     automaton = _automaton("signal.mySignal >= 1")
     session_id = _session_id(db, type="live")
-    service = _tracking_service(db, automaton, '{"mySignal": 1}')
+    service, ai_service = _tracking_service(db, automaton, '{"mySignal": 1}')
     service.set_auto_tracking_enabled(session_id, False)
 
-    result = await service.process(session_id, "hello")
+    result = await service._process(session_id, "hello", ai_service)
 
     assert result["state_changed"] is True
     assert result["new_state"] == "b"
@@ -160,10 +160,10 @@ async def test_freezing_one_test_session_never_affects_another(db):
     )
     frozen_session_id = db.create_chat_session(**session_kwargs)
     other_session_id = db.create_chat_session(**session_kwargs)
-    service = _tracking_service(db, automaton, '{"mySignal": 1}')
+    service, ai_service = _tracking_service(db, automaton, '{"mySignal": 1}')
     service.set_auto_tracking_enabled(frozen_session_id, False)
 
-    result = await service.process(other_session_id, "hello")
+    result = await service._process(other_session_id, "hello", ai_service)
 
     assert result["state_changed"] is True
     assert result["new_state"] == "b"

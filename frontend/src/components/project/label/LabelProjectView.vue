@@ -22,7 +22,7 @@ import {
 import { sessions, sessionsLoading, loadSessions, refreshSessionsQuietly } from '../../../chatStore.js'
 import {
   buildTimeline, commentForMessage, highlightedStateKeyFor, signalValuesFor
-} from '../../../benchmarkTimeline.js'
+} from '../../../testTimeline.js'
 import { summarizeImportFailures } from '../../../sessionImport.js'
 import { setApiError, clearApiError } from '../../../errorStore.js'
 import { confirmDialog } from '../../../dialogStore.js'
@@ -79,7 +79,7 @@ const inspectorTabs = computed(() => [
 ])
 const inspectorActiveTab = ref('info')
 // Starts open — reviewing a specific session is the point of this view.
-const benchmarkSessionsPanelOpen = ref(true)
+const testSessionsPanelOpen = ref(true)
 const sessionsPanelWidth = ref(240)
 let dragTarget = null
 
@@ -108,9 +108,9 @@ function stopDrag() {
 
 // Independent of the main page's own Sessions panel state
 // (chatStore.js's sessionsPanelOpen) — this overlay has its own panel.
-function toggleBenchmarkSessionsPanel() {
-  benchmarkSessionsPanelOpen.value = !benchmarkSessionsPanelOpen.value
-  if (benchmarkSessionsPanelOpen.value) loadSessions(true, props.projectName)
+function toggleTestSessionsPanel() {
+  testSessionsPanelOpen.value = !testSessionsPanelOpen.value
+  if (testSessionsPanelOpen.value) loadSessions(true, props.projectName)
 }
 
 // This view's Sessions panel reviews imported transcripts alongside live
@@ -321,7 +321,7 @@ watch(currentSessionId, loadTimeline)
 
 // Chronological, merged view of the session's messages and state
 // transitions — real ones, plus any evaluation point an expert annotated
-// even though nothing actually changed there. See benchmarkTimeline.js.
+// even though nothing actually changed there. See testTimeline.js.
 const timeline = computed(() =>
   buildTimeline(rawMessages.value, signalsLog.value, sessionStartState.value, { imported: currentSessionIsImported.value })
 )
@@ -338,7 +338,7 @@ function selectTransition(transition) {
   selected.value = { kind: 'transition', transition }
 }
 
-// See benchmarkTimeline.js — avoids landing one point behind the
+// See testTimeline.js — avoids landing one point behind the
 // current selection's own evaluation.
 const highlightedStateKey = computed(() =>
   highlightedStateKeyFor(selected.value, timeline.value, sessionStartState.value)
@@ -652,11 +652,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="benchmark-overlay">
-    <div class="benchmark-header">
+  <div class="test-overlay">
+    <div class="test-header">
       <button class="back-btn" title="Back" @click="emit('close')">«</button>
       <h2>Label sessions — {{ projectName }}</h2>
-      <div class="benchmark-header-actions">
+      <div class="test-header-actions">
         <ProjectsMenu :selected-name="projectName" @select="(name) => emit('project-select', name)" />
         <SettingsMenu
           :role="role"
@@ -673,10 +673,10 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div class="benchmark-body">
-      <div class="benchmark-chat-pane">
+    <div class="test-body">
+      <div class="test-chat-pane">
         <div class="sessions-panel-wrap">
-          <div class="sessions-panel" :class="{ 'sessions-panel-collapsed': !benchmarkSessionsPanelOpen }" :style="benchmarkSessionsPanelOpen ? { width: sessionsPanelWidth + 'px' } : null">
+          <div class="sessions-panel" :class="{ 'sessions-panel-collapsed': !testSessionsPanelOpen }" :style="testSessionsPanelOpen ? { width: sessionsPanelWidth + 'px' } : null">
             <SessionsTree
               :sessions="sessions"
               :users="users"
@@ -689,8 +689,8 @@ onBeforeUnmount(() => {
               :downloading-all="downloadingSessions"
               :allow-delete-all-imported="true"
               :deleting-all-imported="deletingAllImported"
-              :collapsed="!benchmarkSessionsPanelOpen"
-              @update:collapsed="toggleBenchmarkSessionsPanel"
+              :collapsed="!testSessionsPanelOpen"
+              @update:collapsed="toggleTestSessionsPanel"
               @select="onSelectTreeNode"
               @import="handleImportSession"
               @download-all="handleDownloadSessions"
@@ -700,16 +700,16 @@ onBeforeUnmount(() => {
               @delete-user-sessions="onDeleteUserSessions"
             />
           </div>
-          <div v-if="benchmarkSessionsPanelOpen" class="split-divider" @mousedown="startSessionsDrag"></div>
+          <div v-if="testSessionsPanelOpen" class="split-divider" @mousedown="startSessionsDrag"></div>
         </div>
 
-        <div class="benchmark-chat-content">
-          <div class="benchmark-chat-toolbar">
-            <span class="benchmark-chat-title">Chat</span>
-            <div class="benchmark-chat-toolbar-actions">
+        <div class="test-chat-content">
+          <div class="test-chat-toolbar">
+            <span class="test-chat-title">Chat</span>
+            <div class="test-chat-toolbar-actions">
               <button
                 type="button"
-                class="benchmark-unlabel-all-btn"
+                class="test-unlabel-all-btn"
                 :disabled="!hasAnyAnnotations || unlabelingAll"
                 @click="onUnlabelAll"
               >
@@ -717,8 +717,8 @@ onBeforeUnmount(() => {
               </button>
               <button
                 type="button"
-                class="benchmark-mark-done-btn"
-                :class="{ 'benchmark-mark-done-btn-active': currentSessionLabeled }"
+                class="test-mark-done-btn"
+                :class="{ 'test-mark-done-btn-active': currentSessionLabeled }"
                 :disabled="!currentSessionId || markingDone"
                 @click="onToggleMarkDone"
               >
@@ -727,11 +727,11 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <p v-if="loading" class="benchmark-status">Loading…</p>
-          <p v-else-if="!currentSessionId" class="benchmark-status">
+          <p v-if="loading" class="test-status">Loading…</p>
+          <p v-else-if="!currentSessionId" class="test-status">
             Please select a session.
           </p>
-          <p v-else-if="!timeline.length" class="benchmark-status">This session has no messages yet.</p>
+          <p v-else-if="!timeline.length" class="test-status">This session has no messages yet.</p>
 
           <ChatTimeline
             v-else
@@ -756,8 +756,8 @@ onBeforeUnmount(() => {
       <div class="split-divider inspector-divider" @mousedown="startInspectorDrag"></div>
 
       <div
-        class="benchmark-inspector-panel"
-        :class="{ 'benchmark-inspector-panel-collapsed': inspectorCollapsed }"
+        class="test-inspector-panel"
+        :class="{ 'test-inspector-panel-collapsed': inspectorCollapsed }"
         :style="inspectorCollapsed ? null : { '--inspector-width': inspectorWidth + 'px' }"
       >
         <Inspector
@@ -767,7 +767,7 @@ onBeforeUnmount(() => {
           v-model:collapsed="inspectorCollapsed"
         >
           <template #tab-info>
-            <div v-if="currentSession" class="benchmark-session-info">
+            <div v-if="currentSession" class="test-session-info">
               <InspectorUserInfoCard v-if="sessionUser" :user="sessionUser" />
               <div
                 class="inspector-signal-block inspector-signal-block-clickable"
@@ -794,9 +794,9 @@ onBeforeUnmount(() => {
                     <span v-if="currentSessionIsImported" class="inspector-detail-badge inspector-detail-badge-neutral">Imported</span>
                     <template v-if="currentSessionHasTimestamps">
                       <label class="inspector-signal-form-label">Started</label>
-                      <p class="benchmark-session-info-value">{{ formatSessionTimestamp(currentSession.datetime_start) }}</p>
+                      <p class="test-session-info-value">{{ formatSessionTimestamp(currentSession.datetime_start) }}</p>
                       <label class="inspector-signal-form-label">Ended</label>
-                      <p class="benchmark-session-info-value">{{ formatSessionTimestamp(currentSession.datetime_end) }}</p>
+                      <p class="test-session-info-value">{{ formatSessionTimestamp(currentSession.datetime_end) }}</p>
                     </template>
                     <label class="inspector-signal-form-label">Comment</label>
                     <textarea
@@ -823,10 +823,10 @@ onBeforeUnmount(() => {
                 </Transition>
               </div>
             </div>
-            <div v-else-if="selectedUserProfile" class="benchmark-session-info">
+            <div v-else-if="selectedUserProfile" class="test-session-info">
               <InspectorUserInfoCard :user="selectedUserProfile" />
             </div>
-            <p v-else class="benchmark-session-info-empty">Please select a session.</p>
+            <p v-else class="test-session-info-empty">Please select a session.</p>
           </template>
           <template #tab-states="{ registerTab }">
             <InspectorGraphTab
@@ -861,7 +861,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.benchmark-overlay {
+.test-overlay {
   position: fixed;
   inset: 0;
   background: white;
@@ -871,7 +871,7 @@ onBeforeUnmount(() => {
   font-family: system-ui, -apple-system, sans-serif;
 }
 
-.benchmark-header {
+.test-header {
   display: flex;
   align-items: center;
   gap: 0.6rem;
@@ -879,19 +879,19 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid #ddd;
 }
 
-.benchmark-header h2 {
+.test-header h2 {
   margin: 0;
   font-size: 1.1rem;
 }
 
-.benchmark-header-actions {
+.test-header-actions {
   margin-left: auto;
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
 
-.benchmark-header-actions .projects-menu {
+.test-header-actions .projects-menu {
   max-width: 220px;
 }
 
@@ -939,14 +939,14 @@ onBeforeUnmount(() => {
   background: #3d5c8a;
 }
 
-.benchmark-body {
+.test-body {
   flex: 1;
   display: flex;
   min-height: 0;
   padding: 1rem;
 }
 
-.benchmark-chat-pane {
+.test-chat-pane {
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -980,7 +980,7 @@ onBeforeUnmount(() => {
   width: 2.4rem !important;
 }
 
-.benchmark-chat-content {
+.test-chat-content {
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -988,7 +988,7 @@ onBeforeUnmount(() => {
   flex-direction: column;
 }
 
-.benchmark-chat-toolbar {
+.test-chat-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1000,7 +1000,7 @@ onBeforeUnmount(() => {
 }
 
 /* Same style as Inspector.vue's own .inspector-title. */
-.benchmark-chat-title {
+.test-chat-title {
   font-size: 0.8rem;
   font-weight: 600;
   color: #555;
@@ -1008,13 +1008,13 @@ onBeforeUnmount(() => {
   letter-spacing: 0.03em;
 }
 
-.benchmark-chat-toolbar-actions {
+.test-chat-toolbar-actions {
   display: flex;
   align-items: center;
   gap: 0.4rem;
 }
 
-.benchmark-unlabel-all-btn {
+.test-unlabel-all-btn {
   padding: 0.3rem 0.7rem;
   border-radius: 6px;
   border: 1px solid #c62828;
@@ -1024,18 +1024,18 @@ onBeforeUnmount(() => {
   font-size: 0.78rem;
 }
 
-.benchmark-unlabel-all-btn:hover:not(:disabled) {
+.test-unlabel-all-btn:hover:not(:disabled) {
   background: #c62828;
   color: white;
 }
 
-.benchmark-unlabel-all-btn:disabled {
+.test-unlabel-all-btn:disabled {
   border-color: #ccc;
   color: #ccc;
   cursor: not-allowed;
 }
 
-.benchmark-mark-done-btn {
+.test-mark-done-btn {
   padding: 0.3rem 0.7rem;
   border-radius: 6px;
   border: 1px solid #2e7d32;
@@ -1045,23 +1045,23 @@ onBeforeUnmount(() => {
   font-size: 0.78rem;
 }
 
-.benchmark-mark-done-btn:hover:not(:disabled) {
+.test-mark-done-btn:hover:not(:disabled) {
   background: #2e7d32;
   color: white;
 }
 
-.benchmark-mark-done-btn-active {
+.test-mark-done-btn-active {
   background: #2e7d32;
   color: white;
 }
 
-.benchmark-mark-done-btn:disabled {
+.test-mark-done-btn:disabled {
   border-color: #ccc;
   color: #ccc;
   cursor: not-allowed;
 }
 
-.benchmark-status {
+.test-status {
   margin: auto;
   color: #444;
 }
@@ -1079,7 +1079,7 @@ onBeforeUnmount(() => {
   background: #dbe4f0;
 }
 
-.benchmark-inspector-panel {
+.test-inspector-panel {
   flex-shrink: 0;
   width: var(--inspector-width);
   border: 1px solid #ddd;
@@ -1095,17 +1095,17 @@ onBeforeUnmount(() => {
    bug: an empty docked panel that never actually gave its own space back
    to the timeline/sessions split next to it). Same slim-strip convention
    EditProjectView.vue's own .inspector-panel-collapsed uses. */
-.benchmark-inspector-panel-collapsed {
+.test-inspector-panel-collapsed {
   width: 2.4rem !important;
 }
 
-.benchmark-session-info {
+.test-session-info {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
 }
 
-.benchmark-session-info-label {
+.test-session-info-label {
   display: block;
   margin-top: 20px;
   font-size: 0.68rem;
@@ -1115,14 +1115,14 @@ onBeforeUnmount(() => {
   letter-spacing: 0.02em;
 }
 
-.benchmark-session-info-value {
+.test-session-info-value {
   margin: 0.15rem 0 0;
   font-size: 0.85rem;
   color: #333;
   word-break: break-word;
 }
 
-.benchmark-session-info-empty {
+.test-session-info-empty {
   margin: 0;
   color: #666;
   font-size: 0.85rem;

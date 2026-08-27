@@ -18,7 +18,7 @@ from tracking.session_import import SessionImportManager
 
 from .inspector import ProjectInspector
 from .parsers import AutomatonLoader, decode_text_archives, extract_zip_safely, looks_like_zip
-from .parsers import BENCHMARK_EXPORT_FILENAME, IMAGE_EXTENSIONS, LEGAL_TERMS_FILE_NAME, SESSIONS_EXPORT_FILENAME, TEXT_CONTENT_TYPE_BY_EXTENSION
+from .parsers import TESTS_EXPORT_FILENAME, IMAGE_EXTENSIONS, LEGAL_TERMS_FILE_NAME, SESSIONS_EXPORT_FILENAME, TEXT_CONTENT_TYPE_BY_EXTENSION
 from .project_import_bundle_job import ProjectImportBundleJob
 from .types import CommitCallback
 
@@ -349,7 +349,7 @@ class ProjectManager:
         content with no attachments. Extract -> validate -> persist ->
         commit happen here, synchronously (the last one needs the chat
         lock, which only ever runs safely on the caller's own event loop).
-        The bundled sessions.json/benchmark.json, if any, are returned as
+        The bundled sessions.json/tests.json, if any, are returned as
         an unprepared ProjectImportBundleJob instead of imported inline —
         one entry at a time, so a large re-import reports real progress
         instead of blocking. The caller decides what to do with it: submit
@@ -388,9 +388,9 @@ class ProjectManager:
             raw_sessions = files.pop(SESSIONS_EXPORT_FILENAME, None)
             assert not isinstance(raw_sessions, bytes)  # .json is never in IMAGE_EXTENSIONS, always read as text above
             sessions_to_import = self._parse_sessions_export(raw_sessions)
-            raw_benchmark = files.pop(BENCHMARK_EXPORT_FILENAME, None)
-            assert not isinstance(raw_benchmark, bytes)
-            benchmark_to_import = self._parse_benchmark_export(raw_benchmark)
+            raw_tests = files.pop(TESTS_EXPORT_FILENAME, None)
+            assert not isinstance(raw_tests, bytes)
+            tests_to_import = self._parse_tests_export(raw_tests)
             new_automaton, to_persist = self.prepare_update(project_name, files)
         except (zipfile.BadZipFile, ValueError) as exc:
             raise ValueError(str(exc)) from exc
@@ -418,7 +418,7 @@ class ProjectManager:
         await self.finalize_update(project_name, new_automaton, commit)
 
         job = ProjectImportBundleJob(
-            self._session_import_manager, self._db, project_name, sessions_to_import, benchmark_to_import
+            self._session_import_manager, self._db, project_name, sessions_to_import, tests_to_import
         )
         return {"success": True, "project_name": project_name}, job
 
@@ -437,15 +437,15 @@ class ProjectManager:
         return parsed
 
     @staticmethod
-    def _parse_benchmark_export(raw_benchmark: str | None) -> list[dict]:
-        if raw_benchmark is None:
+    def _parse_tests_export(raw_tests: str | None) -> list[dict]:
+        if raw_tests is None:
             return []
         try:
-            parsed = json.loads(raw_benchmark)
+            parsed = json.loads(raw_tests)
         except json.JSONDecodeError as exc:
-            raise ValueError(f"'{BENCHMARK_EXPORT_FILENAME}' is not valid JSON: {exc}") from exc
+            raise ValueError(f"'{TESTS_EXPORT_FILENAME}' is not valid JSON: {exc}") from exc
         if not isinstance(parsed, list):
-            raise ValueError(f"'{BENCHMARK_EXPORT_FILENAME}' must be a JSON array of benchmark results.")
+            raise ValueError(f"'{TESTS_EXPORT_FILENAME}' must be a JSON array of test results.")
         return parsed
 
     def _unique_project_name(self, base: str) -> str:
@@ -487,9 +487,9 @@ class ProjectManager:
                 session['type'] = 'imported'
             if exported_sessions:
                 zf.writestr(SESSIONS_EXPORT_FILENAME, json.dumps(exported_sessions, indent=2))
-            benchmark_results = self._db.list_benchmark_aggregate_results(project_name)
-            if benchmark_results:
-                zf.writestr(BENCHMARK_EXPORT_FILENAME, json.dumps(benchmark_results, indent=2))
+            test_results = self._db.list_test_aggregate_results(project_name)
+            if test_results:
+                zf.writestr(TESTS_EXPORT_FILENAME, json.dumps(test_results, indent=2))
 
         return buffer.getvalue()
 

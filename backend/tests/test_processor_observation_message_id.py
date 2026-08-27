@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from metrics.benchmark_processor import BenchmarkProcessor
+from testing.processor import TestProcessor
 
 pytestmark = pytest.mark.contract
 
@@ -71,7 +71,7 @@ def _messages():
 
 
 def _processor(autotracking_on_ai_message, engine):
-    return BenchmarkProcessor(
+    return TestProcessor(
         _FakeDb(_messages()), _FakeAutomaton(autotracking_on_ai_message), engine, _FakeEnv(),
         _FakeSessionFacts(), _FakeMetrics(), _FakeSignalSource(), sink=None,
     )

@@ -82,10 +82,11 @@ def _chat_service(db, automaton: Automaton) -> ChatService:
     metric_service = MetricService(db, project_service)
     job_queue = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
     tracking_service = TrackingService(
-        db, ai_service, project_service, metric_service,
+        db, project_service, metric_service,
     )
     return ChatService(
         ai_service=ai_service,
+        ai_test_service=ai_service,
         project_service=project_service,
         db=db,
         session_manager=ChatSessionManager(db),

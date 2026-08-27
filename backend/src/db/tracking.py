@@ -117,7 +117,7 @@ class TrackingMixin:
 
     def get_nearest_tracking_row_by_message(self, session_id: int, message_id: int) -> dict | None:
         """Nearest real (production) Tracking row to `message_id`, by
-        message-id proximity — never by timestamp: a benchmark replay's
+        message-id proximity — never by timestamp: a test replay's
         turns don't share production's timeline."""
         row = (
             Tracking

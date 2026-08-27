@@ -9,6 +9,7 @@ from openai import AsyncOpenAI, APIConnectionError, APIStatusError, RateLimitErr
 from ai.llm_provider import (
     AIServiceConfig,
     AIServiceError,
+    AIServiceProviderPermanentError,
     AIServiceProviderRateLimitedError,
     AIServiceProviderUnavailableError,
     LLMProviderWithSchema,
@@ -150,7 +151,7 @@ class OpenAICompatibleProvider(LLMProviderWithSchema):
                 raise AIServiceProviderUnavailableError(
                     f"Service unavailable ({exc.status_code}): {exc}"
                 ) from exc
-            raise AIServiceError(
+            raise AIServiceProviderPermanentError(
                 f"API error ({exc.status_code}): {exc}"
             ) from exc
         except APIConnectionError as exc:

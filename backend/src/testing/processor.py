@@ -1,5 +1,5 @@
 """The session-replay loop is identical regardless of signal source
-(turn-by-turn or batch): BenchmarkProcessor only ever calls
+(turn-by-turn or batch): TestProcessor only ever calls
 signal_source.get_turn_data(message_id, current_state)."""
 from __future__ import annotations
 
@@ -10,11 +10,11 @@ from automaton.automaton import Automaton
 from db import Db
 from tracking.env import Env
 from tracking.session_facts import SessionFacts
-from tracking.tracking_engine import BenchmarkRunObservationSink, TrackingEngine
-from metrics.metric_service import BenchmarkMetricsProvider
+from tracking.tracking_engine import TestObservationSink, TrackingEngine
+from testing.metrics_provider import TestMetricsProvider
 
 
-class BenchmarkSignalSource(Protocol):
+class TestSignalSource(Protocol):
     async def get_turn_data(self, message_id: int, current_state: str) -> tuple[dict, dict]:
         ...
 
@@ -28,13 +28,13 @@ def _parse_utc(iso_timestamp: str | None) -> datetime | None:
     return datetime.fromisoformat(iso_timestamp).replace(tzinfo=None)
 
 
-class BenchmarkProcessor(object):
+class TestProcessor(object):
     """Extends (tracking_engine, env, metrics, signal_source, sink) with
     `db`/`automaton`, needed to walk session messages and evaluate/apply
     against the automaton, and `session_facts` for replay/transition
     instants. One instance replays exactly one session, one message at a
     time: prepare() sets up the session and hands back its message ids,
-    process_message() advances by exactly one — the caller (BenchmarkReplayJob)
+    process_message() advances by exactly one — the caller (TestReplayJob)
     owns the loop, so it can yield to other jobs between messages."""
 
     def __init__(
@@ -44,9 +44,9 @@ class BenchmarkProcessor(object):
         tracking_engine: TrackingEngine,
         env: Env,
         session_facts: SessionFacts,
-        metrics: BenchmarkMetricsProvider,
-        signal_source: BenchmarkSignalSource,
-        sink: BenchmarkRunObservationSink,
+        metrics: TestMetricsProvider,
+        signal_source: TestSignalSource,
+        sink: TestObservationSink,
     ) -> None:
         self._db = db
         self._automaton = automaton

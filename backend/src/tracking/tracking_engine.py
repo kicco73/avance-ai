@@ -6,7 +6,7 @@ from typing import Protocol
 
 from automaton.automaton import Action, Automaton, State
 from db.db import Db
-from db.models import BenchmarkRunObservation
+from db.models import TestObservation
 from events import EnvChanged, StateChanged, publish
 from tracking.env import Env
 from tracking.evaluation_scope import EvaluationScopeBuilder
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class TrackingSink(Protocol):
     """Whatever TrackingEngine needs to persist a signal snapshot/state
     transition — production writes to the real Db (see DbTrackingSink),
-    while a benchmark-replay sink can satisfy this independently."""
+    while a test-replay sink can satisfy this independently."""
 
     def save_signal_snapshot(self, values: dict, session_id: int, message_id: int | None = None) -> int:
         ...
@@ -62,16 +62,16 @@ class DbTrackingSink:
         )
 
 
-class BenchmarkRunObservationSink:
-    """TrackingSink for a benchmark replay — writes to
-    BenchmarkRunObservation, never to Tracking, so a replay can never be
-    mistaken for (or overwrite) real production data."""
+class TestObservationSink:
+    """TrackingSink for a test replay — writes to TestObservation, never
+    to Tracking, so a replay can never be mistaken for (or overwrite)
+    real production data."""
 
     def __init__(self, run_id: int) -> None:
         self._run_id = run_id
 
     def save_signal_snapshot(self, values: dict, session_id: int, message_id: int | None = None) -> int:
-        row = BenchmarkRunObservation.create(
+        row = TestObservation.create(
             run=self._run_id, session=session_id, message=message_id, values=json.dumps(values),
         )
         return row.id
@@ -88,7 +88,7 @@ class BenchmarkRunObservationSink:
     ) -> int:
         # transition_log_level: received only to satisfy TrackingSink's
         # shared shape — there's no production log to write for a replay.
-        row = BenchmarkRunObservation.create(
+        row = TestObservation.create(
             run=self._run_id, session=session_id, message=message_id,
             old_state=old_state, action=action, new_state=new_state,
             values=json.dumps(signal_values) if signal_values is not None else None,
@@ -135,7 +135,7 @@ class TrackingEngine:
         project_name: str | None = None,
     ) -> int:
         """`username`/`project_name`: optional, defaulting to None meaning
-        "don't publish" — a benchmark replay has no real user/project of
+        "don't publish" — a test replay has no real user/project of
         its own and must never trigger a StateChanged/EnvChanged a wake-up handler could act on."""
         if action is None:
             # No transition fired — just the evaluation itself is worth

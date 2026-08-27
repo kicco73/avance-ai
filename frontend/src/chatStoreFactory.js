@@ -54,6 +54,18 @@ export async function selectAiModel(index) {
   }
 }
 
+// Bundles the live-chat model state + its own select() into one object —
+// ModelMenu.vue's default `modelStore` prop. testModelStore.js exposes the
+// same shape for the Test panel's own run-model menu (ai_test_service),
+// so the component itself never needs to know which context it's in.
+export const liveModelStore = {
+  models: aiModels,
+  auto: aiModelAuto,
+  currentIndex: aiModelCurrentIndex,
+  selectionLoading: aiModelSelectionLoading,
+  select: selectAiModel,
+}
+
 export function toggleSpokenText() {
   spokenTextEnabled.value = !spokenTextEnabled.value
 }
@@ -337,7 +349,7 @@ export function createChatStore({
       })
 
       // Correlate this bubble with its real backend id — needed by
-      // benchmarkTimeline.js's effectiveTimestamp to position a pre-turn
+      // testTimeline.js's effectiveTimestamp to position a pre-turn
       // transition exactly on this message rather than a raw server
       // timestamp. Read directly from assistant_message_id/user_message_id,
       // never from result.reply (always empty for a live turn).

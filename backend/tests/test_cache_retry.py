@@ -6,13 +6,13 @@ import pytest
 
 from db import Db
 from jobs import Job
-from metrics.benchmark_run_cache import BenchmarkRunCache
+from testing.cache import TestCache
 
 pytestmark = pytest.mark.contract
 
 
 class _FakeJob(Job):
-    """A stand-in for a BenchmarkReplayJob, driven through the real
+    """A stand-in for a TestReplayJob, driven through the real
     prepare()/run_next_step() so its terminal state comes from the same
     path any other job's does — never poked into Job's own state directly."""
 
@@ -33,7 +33,7 @@ class _FakeJob(Job):
 
 
 def _make_dead_run(db: Db, session_id: int) -> dict:
-    return db.create_benchmark_run(None, "proj", session_id, "batch", 1, 0, {})
+    return db.create_test(None, "proj", session_id, "batch", 1, 0, {})
 
 
 def _run_to_terminal(job: Job) -> Job:
@@ -50,7 +50,7 @@ def test_find_treats_a_failed_jobs_run_as_a_cache_miss_and_forgets_it(db: Db):
     session_id = db.create_chat_session("user", "proj", revision=0)
     run = _make_dead_run(db, session_id)
 
-    cache = BenchmarkRunCache(db)
+    cache = TestCache(db)
     with cache.locked():
         cache.track(run["id"], _run_to_terminal(_FakeJob(should_fail=True)))
         found = cache.find(session_id, "batch", 1, 0)
@@ -66,7 +66,7 @@ def test_find_still_waits_for_a_job_that_is_genuinely_still_running(db: Db):
     session_id = db.create_chat_session("user", "proj", revision=0)
     run = _make_dead_run(db, session_id)
 
-    cache = BenchmarkRunCache(db)
+    cache = TestCache(db)
     job = _FakeJob(should_fail=False)
     job.prepare()  # prepared but never run — genuinely still in flight
     with cache.locked():
@@ -84,7 +84,7 @@ def test_find_treats_a_row_with_no_tracked_job_at_all_as_a_cache_miss(db: Db):
     session_id = db.create_chat_session("user", "proj", revision=0)
     _make_dead_run(db, session_id)
 
-    cache = BenchmarkRunCache(db)
+    cache = TestCache(db)
     with cache.locked():
         found = cache.find(session_id, "batch", 1, 0)
 
@@ -95,9 +95,9 @@ def test_find_returns_a_completed_run_regardless_of_tracked_job_state(db: Db):
     db.ensure_project("proj")
     session_id = db.create_chat_session("user", "proj", revision=0)
     run = _make_dead_run(db, session_id)
-    db.set_benchmark_run_results(run["id"], "[]")
+    db.set_test_results(run["id"], "[]")
 
-    cache = BenchmarkRunCache(db)
+    cache = TestCache(db)
     with cache.locked():
         found = cache.find(session_id, "batch", 1, 0)
 

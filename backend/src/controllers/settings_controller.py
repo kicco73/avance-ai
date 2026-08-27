@@ -15,7 +15,7 @@ from fastapi import HTTPException, Request, Response
 from chat.chat_service import ChatService
 from db import Db
 from jobs import JobQueue, stream_job_progress
-from metrics.queue_progress_broadcaster import QueueProgressBroadcaster
+from testing.queue_progress_broadcaster import QueueProgressBroadcaster
 from project.project_service import ProjectService
 
 from .base_controller import BaseController, delete, get, post, put
@@ -111,7 +111,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
         """"New project" — same effect as PUT /api/projects/{project_name}
         with backend/samples/Hello world.zip as the body, minus picking a
         name first (see ProjectService.create_new_project). The built-in
-        template bundles no sessions/benchmark results, so there's nothing
+        template bundles no sessions/test results, so there's nothing
         for the returned job to do — no progress worth reporting, plain
         JSON response, unlike a real upload."""
         result, _job = await self.project_service.create_new_project(self._activate_project)
@@ -154,7 +154,7 @@ class SettingsController(BaseController, ProjectCommitMixin):
         project definition itself is staged and committed synchronously
         (fast, and needs the main event loop's chat lock); this same
         response then streams SSE progress for a background Job importing
-        whatever sessions.json/benchmark.json the upload bundled, ending
+        whatever sessions.json/tests.json the upload bundled, ending
         with a chunk carrying the final {success, project_name}."""
         content = await request.body()
         content_type = request.headers.get("content-type")

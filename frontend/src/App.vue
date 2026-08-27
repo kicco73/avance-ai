@@ -46,7 +46,7 @@ import {
 } from './chatStore.js'
 
 const editProjectName = ref(null)
-const benchmarkProjectName = ref(null)
+const labelProjectName = ref(null)
 const liveChatProjectName = ref(null)
 const showProfile = ref(false)
 // Admin only: what's currently pushed over the permanently-mounted
@@ -305,7 +305,7 @@ async function resolveLandingView() {
     return // already surfaced via apiFetch; falls back to the chat-live default
   }
   if (currentUserRole.value === 'supervisor') {
-    benchmarkProjectName.value = await getActiveProjectName()
+    labelProjectName.value = await getActiveProjectName()
   }
   if (currentUserRole.value === 'user') {
     liveChatProjectName.value = await getActiveProjectName()
@@ -483,8 +483,8 @@ async function handleModelEdit(projectName) {
   pushView('edit')
 }
 
-function handleModelBenchmark(projectName) {
-  benchmarkProjectName.value = projectName
+function handleSelectLabelSessions(projectName) {
+  labelProjectName.value = projectName
   pushView('label')
 }
 
@@ -519,7 +519,7 @@ function handleSettingsManageUsers() {
 async function handleSettingsLabelSessions() {
   const projectName = await getActiveProjectName()
   if (!projectName) return
-  benchmarkProjectName.value = projectName
+  labelProjectName.value = projectName
   if (currentUserRole.value === 'admin') pushView('label')
 }
 
@@ -556,9 +556,9 @@ async function handleProjectSwitch(projectName) {
 // leaving the label view. Reuses the same activation as a normal switch,
 // then repoints the view at the new project — its :key below remounts it,
 // same as opening it fresh from Manage projects.
-async function handleBenchmarkProjectSwitch(projectName) {
+async function handleLabelProjectSwitch(projectName) {
   await handleProjectSwitch(projectName)
-  benchmarkProjectName.value = projectName
+  labelProjectName.value = projectName
 }
 
 // Triggers a browser download from the zip blob — standard synthetic-<a>
@@ -703,11 +703,11 @@ onBeforeUnmount(() => {
            project (handleSettingsLabelSessions), never push/pop it. -->
       <LabelProjectView
         v-else-if="currentUserRole === 'supervisor'"
-        :key="benchmarkProjectName"
-        :project-name="benchmarkProjectName"
+        :key="labelProjectName"
+        :project-name="labelProjectName"
         role="supervisor"
         :profile="currentUserProfile"
-        @project-select="handleBenchmarkProjectSwitch"
+        @project-select="handleLabelProjectSwitch"
         @manage-projects="handleSettingsManageProjects"
         @manage-users="handleSettingsManageUsers"
         @label-sessions="handleSettingsLabelSessions"
@@ -739,7 +739,7 @@ onBeforeUnmount(() => {
           @upload="triggerModelUpload"
           @delete="handleModelDelete"
           @edit="handleModelEdit"
-          @benchmark="handleModelBenchmark"
+          @label="handleSelectLabelSessions"
           @chat="handleManageProjectsChat"
           @download="handleModelDownload"
           @wipe-live-sessions="handleManageProjectsWipeLiveSessions"
@@ -776,12 +776,12 @@ onBeforeUnmount(() => {
           />
           <LabelProjectView
             v-else-if="pushedView === 'label'"
-            :key="benchmarkProjectName"
-            :project-name="benchmarkProjectName"
+            :key="labelProjectName"
+            :project-name="labelProjectName"
             role="admin"
             :profile="currentUserProfile"
             @close="popPushedView"
-            @project-select="handleBenchmarkProjectSwitch"
+            @project-select="handleLabelProjectSwitch"
             @manage-projects="handleSettingsManageProjects"
             @manage-users="handleSettingsManageUsers"
             @label-sessions="handleSettingsLabelSessions"

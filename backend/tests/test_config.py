@@ -10,8 +10,7 @@ MINIMAL_CONFIG = """
 database:
   url: "sqlite:///:memory:"
 
-chat-service:
-  transport: rest
+chat-service: {}
 
 ai-service:
   providers:
@@ -76,16 +75,16 @@ class TestMaxSessionDurationInMinutes:
 
     def test_reads_a_custom_value(self, monkeypatch, tmp_path):
         content = MINIMAL_CONFIG.replace(
-            "chat-service:\n  transport: rest",
-            "chat-service:\n  transport: rest\n  max_session_duration_in_minutes: 15",
+            "chat-service: {}",
+            "chat-service:\n  max_session_duration_in_minutes: 15",
         )
         config = _load(monkeypatch, tmp_path, content)
         assert config.max_session_duration_in_minutes == 15.0
 
     def test_rejects_a_non_positive_value(self, monkeypatch, tmp_path):
         content = MINIMAL_CONFIG.replace(
-            "chat-service:\n  transport: rest",
-            "chat-service:\n  transport: rest\n  max_session_duration_in_minutes: 0",
+            "chat-service: {}",
+            "chat-service:\n  max_session_duration_in_minutes: 0",
         )
         with pytest.raises(ConfigError):
             _load(monkeypatch, tmp_path, content)
@@ -187,21 +186,99 @@ class TestGetOptionalPositiveInt:
             AppConfig._get_optional_positive_int({"jobs": "nope"}, "jobs", "max_concurrent", "cfg", default=2)
 
 
-class TestJobsMaxConcurrent:
-    """End-to-end: a real AppConfig() built from a real (temp) config file.
-    The whole `jobs` section is optional, unlike chat-service/database —
-    MINIMAL_CONFIG has none of it at all."""
+class TestGetOptionalNonNegativeInt:
+    """Unit tests against the parsing helper directly — no file I/O."""
 
+    def test_returns_the_default_when_the_field_is_absent(self):
+        raw = {"jobs": {}}
+        value = AppConfig._get_optional_non_negative_int(raw, "jobs", "min_job_interval_ms", "cfg", default=0)
+        assert value == 0
+
+    def test_returns_the_configured_value_when_present(self):
+        raw = {"jobs": {"min_job_interval_ms": 500}}
+        value = AppConfig._get_optional_non_negative_int(raw, "jobs", "min_job_interval_ms", "cfg", default=0)
+        assert value == 500
+
+    def test_accepts_zero(self):
+        raw = {"jobs": {"min_job_interval_ms": 0}}
+        value = AppConfig._get_optional_non_negative_int(raw, "jobs", "min_job_interval_ms", "cfg", default=1)
+        assert value == 0
+
+    @pytest.mark.parametrize("bad_value", [-1, 1.5, "2", True, None])
+    def test_rejects_negative_or_non_integer_values(self, bad_value):
+        raw = {"jobs": {"min_job_interval_ms": bad_value}}
+        with pytest.raises(ConfigError):
+            AppConfig._get_optional_non_negative_int(raw, "jobs", "min_job_interval_ms", "cfg", default=0)
+
+    def test_rejects_a_non_mapping_section(self):
+        with pytest.raises(ConfigError):
+            AppConfig._get_optional_non_negative_int({"jobs": "nope"}, "jobs", "min_job_interval_ms", "cfg", default=0)
+
+
+class TestJobsSharedMaxConcurrent:
     def test_defaults_when_the_jobs_section_is_omitted(self, monkeypatch, tmp_path):
         config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
-        assert config.jobs_max_concurrent == 6
+        assert config.jobs_shared_max_concurrent == 2
 
     def test_reads_a_custom_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\njobs:\n  max_concurrent: 3\n"
+        content = MINIMAL_CONFIG + "\njobs:\n  shared_max_concurrent: 3\n"
         config = _load(monkeypatch, tmp_path, content)
-        assert config.jobs_max_concurrent == 3
+        assert config.jobs_shared_max_concurrent == 3
 
     def test_rejects_a_non_positive_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\njobs:\n  max_concurrent: 0\n"
+        content = MINIMAL_CONFIG + "\njobs:\n  shared_max_concurrent: 0\n"
+        with pytest.raises(ConfigError):
+            _load(monkeypatch, tmp_path, content)
+
+
+class TestServiceMaxConcurrentTests:
+    def test_defaults_when_the_section_is_omitted(self, monkeypatch, tmp_path):
+        config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
+        assert config.test_service_max_concurrent_tests == 4
+
+    def test_reads_a_custom_value(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG + "\ntest-service:\n  max_concurrent_tests: 5\n"
+        config = _load(monkeypatch, tmp_path, content)
+        assert config.test_service_max_concurrent_tests == 5
+
+    def test_rejects_a_non_positive_value(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG + "\ntest-service:\n  max_concurrent_tests: 0\n"
+        with pytest.raises(ConfigError):
+            _load(monkeypatch, tmp_path, content)
+
+
+class TestServiceMaxTestsPerMinute:
+    def test_defaults_when_the_section_is_omitted(self, monkeypatch, tmp_path):
+        config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
+        assert config.test_service_max_tests_per_minute == 1_000_000
+
+    def test_reads_a_custom_value(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG + "\ntest-service:\n  max_tests_per_minute: 30\n"
+        config = _load(monkeypatch, tmp_path, content)
+        assert config.test_service_max_tests_per_minute == 30
+
+    def test_rejects_a_non_positive_value(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG + "\ntest-service:\n  max_tests_per_minute: 0\n"
+        with pytest.raises(ConfigError):
+            _load(monkeypatch, tmp_path, content)
+
+
+class TestServiceMinTestIntervalMs:
+    def test_defaults_when_the_section_is_omitted(self, monkeypatch, tmp_path):
+        config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
+        assert config.test_service_min_test_interval_ms == 0
+
+    def test_reads_a_custom_value(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG + "\ntest-service:\n  min_test_interval_ms: 500\n"
+        config = _load(monkeypatch, tmp_path, content)
+        assert config.test_service_min_test_interval_ms == 500
+
+    def test_accepts_zero(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG + "\ntest-service:\n  min_test_interval_ms: 0\n"
+        config = _load(monkeypatch, tmp_path, content)
+        assert config.test_service_min_test_interval_ms == 0
+
+    def test_rejects_a_negative_value(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG + "\ntest-service:\n  min_test_interval_ms: -1\n"
         with pytest.raises(ConfigError):
             _load(monkeypatch, tmp_path, content)

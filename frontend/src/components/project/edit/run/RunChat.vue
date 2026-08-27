@@ -10,7 +10,7 @@ import SessionsPanel from '../../../chat/SessionsPanel.vue'
 import ModelMenu from '../../../ModelMenu.vue'
 import { spokenTextEnabled } from '../../../../chatStoreFactory.js'
 import { applyAspect } from '../../../../chatSkin.js'
-import { testStore } from '../../../../testChatStore.js'
+import { testStore, testChatModelStore, loadTestChatModels } from '../../../../testChatStore.js'
 
 const {
   autoTrackingEnabled, autoTrackingLoading, toggleAutoTracking, handleReset,
@@ -77,6 +77,7 @@ function stopSessionExplorerDrag() {
 }
 
 onMounted(() => {
+  loadTestChatModels()
   window.addEventListener('mousemove', onSessionExplorerDrag)
   window.addEventListener('mouseup', stopSessionExplorerDrag)
 })
@@ -134,7 +135,7 @@ onBeforeUnmount(() => {
           </label>
         </div>
         <div class="edit-project-chat-toolbar-actions">
-          <ModelMenu />
+          <ModelMenu :model-store="testChatModelStore" />
         </div>
       </div>
       <ChatView hide-sessions-panel theme-mode="manual" :store="testStore">

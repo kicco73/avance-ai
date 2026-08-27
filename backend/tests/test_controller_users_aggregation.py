@@ -1,5 +1,5 @@
 """Integration tests for POST /api/projects/{project_name}/users/aggregation,
-exercising BenchmarkRunService.start_users_aggregation_job end to end:
+exercising TestService.start_users_aggregation_job end to end:
 pooling each distinct annotated user's own labeled-session sub-runs, then
 averaging each user's own pooled result across users.
 """
@@ -17,11 +17,11 @@ pytestmark = pytest.mark.contract
 def _wait_for_terminal_status(client, project_name, run_id, timeout=5.0, interval=0.05):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        run = client.get(f"/api/projects/{project_name}/benchmark-runs/{run_id}").json()
+        run = client.get(f"/api/projects/{project_name}/tests/{run_id}").json()
         if run["status"] in ("completed", "failed"):
             return run
         time.sleep(interval)
-    return client.get(f"/api/projects/{project_name}/benchmark-runs/{run_id}").json()
+    return client.get(f"/api/projects/{project_name}/tests/{run_id}").json()
 
 
 def _wait_for_aggregate_result(client, project_name, kind, strategy, target=None, timeout=5.0, interval=0.05):
@@ -93,7 +93,7 @@ def test_sessions_run_reuses_an_existing_fresh_session_run_instead_of_replaying(
     session_id = _make_labeled_session_for(client, app_db, hello_project, "alice")
 
     leaf_run = client.post(
-        f"/api/projects/{hello_project}/benchmark-runs",
+        f"/api/projects/{hello_project}/tests",
         json={"session_id": session_id, "strategy": "turn_by_turn"},
     ).json()
     _wait_for_terminal_status(client, hello_project, leaf_run["id"])
@@ -103,7 +103,7 @@ def test_sessions_run_reuses_an_existing_fresh_session_run_instead_of_replaying(
     result = _wait_for_aggregate_result(client, hello_project, "sessions", "turn_by_turn")
     assert result.status_code == 200, result.text
 
-    runs = client.get(f"/api/projects/{hello_project}/benchmark-runs?session_id={session_id}").json()
+    runs = client.get(f"/api/projects/{hello_project}/tests?session_id={session_id}").json()
     assert [run["id"] for run in runs] == [leaf_run["id"]]
 
 

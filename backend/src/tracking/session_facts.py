@@ -28,7 +28,7 @@ _UNSET = object()
 
 class SessionFacts(object):
     """Production's own live/unbounded shape — nothing here ever calls
-    set_replay_instant/set_last_transition_instant. A benchmark replay
+    set_replay_instant/set_last_transition_instant. A test replay
     can call those once per turn, scoping every fact to that turn's instant."""
 
     def __init__(self, db: Db, project_service: "ProjectService") -> None:

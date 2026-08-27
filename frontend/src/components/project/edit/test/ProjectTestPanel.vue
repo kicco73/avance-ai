@@ -9,13 +9,14 @@ import DocInfoButton from '../../../DocInfoButton.vue'
 import MetricDetail from '../../../inspector/MetricDetail.vue'
 import ModelMenu from '../../../ModelMenu.vue'
 import {
-  createTestEventsSource, deleteBenchmarkRuns, getAggregateResult, getBenchmarkMetrics,
-  getBenchmarkRuns, getJobsStatus, getProjectSignals, getProjectStates, postBenchmarkRun, postRootAggregation,
+  createTestEventsSource, deleteTests, getAggregateResult, getTestMetrics,
+  getTests, getJobsStatus, getProjectSignals, getProjectStates, postTest, postRootAggregation,
   postSessionsRun, postSignalTest, postSignalsAggregation, postStateTest, postStatesAggregation, postUserSessionsRun,
   postUsersAggregation
 } from '../../../../api.js'
 import { loadSessions, sessions, sessionsLoading } from '../../../../chatStore.js'
 import { confirmDialog } from '../../../../dialogStore.js'
+import { loadTestModels, makeTestModelStore } from '../../../../testModelStore.js'
 
 const props = defineProps({
   projectName: {
@@ -23,6 +24,11 @@ const props = defineProps({
     required: true
   }
 })
+
+// This panel's own ModelMenu controls which model *test runs* use
+// (ai_test_service) — never the chat's own (there is no interactive chat
+// in this panel), so it's bound to the Test-scoped store, not the default.
+const testModelStore = makeTestModelStore(props.projectName)
 
 // Lets EditProjectView.vue mirror this panel's own selection into the
 // Inspector's read-only Info tab — this stays the single source of truth
@@ -108,7 +114,7 @@ const metricDefinitions = ref({})
 
 async function loadMetricDefinitions() {
   try {
-    const metrics = await getBenchmarkMetrics(props.projectName)
+    const metrics = await getTestMetrics(props.projectName)
     metricDefinitions.value = Object.fromEntries(metrics.map((m) => [m.name, m]))
   } catch {
     // already surfaced via apiFetch
@@ -280,7 +286,7 @@ async function activateSessionLeaf(nodeId, activeStrategy) {
   setNodeEvent(key, 'running')
   try {
     const sessionId = Number(nodeId.slice('session:'.length))
-    await postBenchmarkRun(props.projectName, sessionId, activeStrategy)
+    await postTest(props.projectName, sessionId, activeStrategy)
   } catch {
     // already surfaced via apiFetch
     setNodeEvent(key, 'failed')
@@ -415,8 +421,8 @@ async function loadSelectedRun(nodeId) {
   const sessionId = Number(nodeId.slice('session:'.length))
   selectedRunLoading.value = true
   try {
-    const runs = await getBenchmarkRuns(props.projectName, sessionId)
-    // Already most-recent-first (see backend BenchmarkRunService.list_runs)
+    const runs = await getTests(props.projectName, sessionId)
+    // Already most-recent-first (see backend TestService.list_runs)
     // — filtered to the active strategy, since turn_by_turn and batch
     // runs aren't comparable and must never be shown as if they were.
     const run = runs.find((run) => run.strategy === strategy.value) ?? null
@@ -491,7 +497,7 @@ async function onResetCache() {
   }
   resettingCache.value = true
   try {
-    await deleteBenchmarkRuns(props.projectName)
+    await deleteTests(props.projectName)
     nodeEvents.value = {}
     nodeLastResult.value = {}
     selectedRun.value = null
@@ -514,6 +520,7 @@ onMounted(() => {
   onSelect('root')
   loadSessions(true, props.projectName)
   loadMetricDefinitions()
+  loadTestModels(props.projectName)
   hydrateJobsStatus()
   statesLoading.value = true
   getProjectStates(props.projectName).then((states) => {
@@ -603,7 +610,7 @@ onBeforeUnmount(() => {
               </div>
             </Teleport>
           </div>
-          <ModelMenu />
+          <ModelMenu :model-store="testModelStore" />
         </div>
       </div>
       <div class="tests-panel-content">

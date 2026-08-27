@@ -15,6 +15,7 @@ from anthropic.types import (
 from ai.llm_provider import (
 	AIServiceConfig,
 	AIServiceError,
+	AIServiceProviderPermanentError,
 	AIServiceProviderRateLimitedError,
 	AIServiceProviderUnavailableError,
 	LLMProviderWithSchema,
@@ -53,7 +54,7 @@ def _handle_anthropic_errors() -> Generator[None, None, None]:
 				f"(status {status_code})."
 			) from exc
 
-		raise AIServiceError(
+		raise AIServiceProviderPermanentError(
 			f"Error from the Anthropic API "
 			f"(status {status_code}): {exc}"
 		) from exc

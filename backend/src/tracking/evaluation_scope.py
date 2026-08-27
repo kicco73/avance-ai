@@ -35,7 +35,7 @@ class EvaluationScopeBuilder(object):
         self._metrics = metrics
         self._system = system
         self._session = session
-        # Optional — a benchmark replay omits it, so its scope has no
+        # Optional — a test replay omits it, so its scope has no
         # "automaton" namespace: an automaton.* reference there fails to
         # resolve rather than doing real cross-project work during a replay.
         self._automaton_namespace = automaton_namespace

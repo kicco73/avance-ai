@@ -126,8 +126,8 @@ def test_put_expected_signals_is_404_for_an_unknown_message(client, hello_projec
 
 
 @pytest.mark.contract
-def test_get_benchmark_metrics_response_shape(client, hello_project, app_db):
-    response = client.get("/api/projects/hello/benchmark-metrics")
+def test_get_test_metrics_response_shape(client, hello_project, app_db):
+    response = client.get("/api/projects/hello/tests/metrics")
 
     assert response.status_code == 200
     body = response.json()
@@ -146,7 +146,7 @@ def test_get_benchmark_metrics_response_shape(client, hello_project, app_db):
 
 
 @pytest.mark.regression
-def test_get_benchmark_metrics_reflects_annotations(client, hello_project, app_db):
+def test_get_test_metrics_reflects_annotations(client, hello_project, app_db):
     """"Hello world" declares no triggers, so there's no real chat-turn
     path to a linked Tracking row — written directly via app_db."""
     session = client.get("/api/chat/session").json()
@@ -154,26 +154,26 @@ def test_get_benchmark_metrics_reflects_annotations(client, hello_project, app_d
     message_id = turn["assistant_message_id"]
     signal_row_id = app_db.save_signal_snapshot({"foo": 80}, session["id"], message_id=message_id)
 
-    before = {m["name"]: m for m in client.get("/api/projects/hello/benchmark-metrics").json()}
+    before = {m["name"]: m for m in client.get("/api/projects/hello/tests/metrics").json()}
     assert before["state_accuracy"]["sample_count"] == 0
 
     app_db.set_signal_expected_state(signal_row_id, "Hello")  # hello_project's own init_action.target
 
-    after = {m["name"]: m for m in client.get("/api/projects/hello/benchmark-metrics").json()}
+    after = {m["name"]: m for m in client.get("/api/projects/hello/tests/metrics").json()}
     assert after["state_accuracy"]["sample_count"] == 1
     assert after["state_accuracy"]["value"] == 100.0
 
 
 @pytest.mark.contract
-def test_get_benchmark_metrics_can_be_scoped_to_one_session(client, hello_project):
+def test_get_test_metrics_can_be_scoped_to_one_session(client, hello_project):
     session = client.get("/api/chat/session").json()
-    response = client.get(f"/api/projects/hello/benchmark-metrics?session_id={session['id']}")
+    response = client.get(f"/api/projects/hello/tests/metrics?session_id={session['id']}")
     assert response.status_code == 200
 
 
 @pytest.mark.contract
-def test_get_benchmark_metrics_is_404_for_someone_elses_or_unknown_session(client, hello_project):
-    response = client.get("/api/projects/hello/benchmark-metrics?session_id=999999")
+def test_get_test_metrics_is_404_for_someone_elses_or_unknown_session(client, hello_project):
+    response = client.get("/api/projects/hello/tests/metrics?session_id=999999")
     assert response.status_code == 404
 
 

@@ -5,6 +5,7 @@ export {
   audioEnabled, talkAvailable, micAvailable, spokenTextEnabled,
   aiModels, aiModelAuto, aiModelCurrentIndex, aiModelSelectionLoading,
   setCapabilities, loadAiModels, selectAiModel, toggleSpokenText,
+  liveModelStore,
 } from './chatStoreFactory.js'
 export { applyAspect, invalidateSkin, setSkinCss } from './chatSkin.js'
 

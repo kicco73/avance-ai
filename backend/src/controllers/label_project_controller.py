@@ -1,5 +1,5 @@
 """LabelProjectView.vue's own backend surface ("Label sessions") —
-import/export/annotate/review past sessions, and the benchmark-run/
+import/export/annotate/review past sessions, and the test-run/
 state-aggregation machinery its own Performance tab drives.
 """
 from __future__ import annotations
@@ -14,14 +14,15 @@ from fastapi.responses import StreamingResponse
 
 from chat.chat_service import ChatService
 from jobs import JobQueue, stream_job_progress
-from metrics.benchmark_run_service import BenchmarkRunService
-from metrics.queue_progress_broadcaster import QueueProgressBroadcaster
 from project.project_service import ProjectService
 from session import Session
+from testing.test_service import TestService
+from testing.queue_progress_broadcaster import QueueProgressBroadcaster
 from tracking.tracking_service import TrackingService
 from schemas import (
+    AiModelSelectionRequest,
     CommentRequest,
-    CreateBenchmarkRunRequest,
+    CreateTestRequest,
     ExpectedSignalsRequest,
     ExpectedStateRequest,
     ReassignSessionsRequest,
@@ -41,23 +42,35 @@ class LabelProjectController(BaseController):
         chat_service: ChatService,
         project_service: ProjectService,
         tracking_service: TrackingService,
-        benchmark_run_service: BenchmarkRunService,
+        test_service: TestService,
         test_event_broadcaster: QueueProgressBroadcaster,
         job_queue: JobQueue,
     ) -> None:
         self.chat_service = chat_service
         self.project_service = project_service
         self.tracking_service = tracking_service
-        self.benchmark_run_service = benchmark_run_service
+        self.test_service = test_service
         self.test_event_broadcaster = test_event_broadcaster
         self.job_queue = job_queue
 
-    @get("/api/projects/{project_name}/benchmark-metrics", role="supervisor")
-    def get_benchmark_metrics(self, project_name: str, session_id: int | None = None):
+    @get("/api/projects/{project_name}/tests/metrics", role="supervisor")
+    def get_test_metrics(self, project_name: str, session_id: int | None = None):
         """Expert-annotation-vs-actual benchmark metrics for
         `project_name` — every annotated session, or (session_id given)
         just that one. The "Label sessions" view's Performance tab."""
         return self.chat_service.get_benchmark_metrics(project_name=project_name, session_id=session_id)
+
+    @get("/api/projects/{project_name}/tests/models", role="supervisor")
+    def get_test_models(self, project_name: str):
+        """The Test panel's own ModelMenu — reads ai_test_service's
+        models/current selection, independent of the chat's own
+        GET /api/ai/models (ai_live_service)."""
+        return self.test_service.get_ai_models_info()
+
+    @post("/api/projects/{project_name}/tests/models/selection", role="supervisor")
+    def post_test_model_selection(self, project_name: str, req: AiModelSelectionRequest):
+        self.test_service.select_ai_model(req.index)
+        return {"success": True}
 
     @post("/api/projects/{project_name}/sessions/import", role="supervisor")
     async def post_import_sessions(self, project_name: str, files: list[UploadFile]):
@@ -198,61 +211,65 @@ class LabelProjectController(BaseController):
         self.chat_service.clear_session_annotations(session_id)
         return {"success": True}
 
-    @delete("/api/projects/{project_name}/benchmark-runs", role="supervisor")
-    def delete_benchmark_runs(self, project_name: str):
-        self.benchmark_run_service.reset_cache(project_name)
+    @delete("/api/projects/{project_name}/tests", role="supervisor")
+    def delete_tests(self, project_name: str):
+        self.test_service.reset_cache(project_name)
         return {"success": True}
 
-    @post("/api/projects/{project_name}/benchmark-runs", role="supervisor")
-    def post_benchmark_run(self, project_name: str, req: CreateBenchmarkRunRequest):
-        """Creates a BenchmarkRun and submits its replay job, returning
+    @post("/api/projects/{project_name}/tests", role="supervisor")
+    def post_test(self, project_name: str, req: CreateTestRequest):
+        """Creates a Test and submits its replay job, returning
         immediately with status='pending' — or, for a single-session run
         whose exact (project/annotation state, strategy) was already
         replayed to completion, that cached run directly, with no new
-        job submitted. BenchmarkServiceError is handled globally."""
+        job submitted. TestServiceError is handled globally."""
         username = req.username if req.username is not None else Session().user
         try:
-            return self.benchmark_run_service.create_run(
+            return self.test_service.create_run(
                 username, project_name, req.session_id, req.strategy,
             )
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/projects/{project_name}/benchmark-runs/export", role="supervisor")
-    def get_benchmark_export(self, project_name: str):
-        payload = self.benchmark_run_service.export_results(project_name)
+    @get("/api/projects/{project_name}/tests/export", role="supervisor")
+    def get_test_export(self, project_name: str):
+        payload = self.test_service.export_results(project_name)
         content = json.dumps(payload, indent=2).encode("utf-8")
         encoded_project_name = quote(project_name)
         return Response(
             content=content,
             media_type="application/json",
             headers={
-                "Content-Disposition": f"attachment; filename=\"benchmark.json\"; filename*=UTF-8''{encoded_project_name}-benchmark.json"
+                "Content-Disposition": f"attachment; filename=\"tests.json\"; filename*=UTF-8''{encoded_project_name}-tests.json"
             },
         )
 
-    @get("/api/projects/{project_name}/benchmark-runs/{run_id}", role="supervisor")
-    def get_benchmark_run(self, project_name: str, run_id: int):
-        """One BenchmarkRun, its domain data merged with its Job's
-        lifecycle (status/progress/error/timestamps). BenchmarkServiceError
-        (404 for an unknown run_id) is handled globally."""
-        return self.benchmark_run_service.get_run(run_id)
+    # Named get_test_record, not get_test: inspect.getmembers walks routes
+    # alphabetically (see base_controller.py's own docstring), and "get_test"
+    # would sort before — and so shadow — the literal get_test_export/
+    # get_test_metrics/get_test_models routes above.
+    @get("/api/projects/{project_name}/tests/{test_id}", role="supervisor")
+    def get_test_record(self, project_name: str, test_id: int):
+        """One Test, its domain data merged with its Job's
+        lifecycle (status/progress/error/timestamps). TestServiceError
+        (404 for an unknown test_id) is handled globally."""
+        return self.test_service.get_run(test_id)
 
-    @get("/api/projects/{project_name}/benchmark-runs", role="supervisor")
-    def get_benchmark_runs(self, project_name: str, session_id: int | None = None, username: str | None = None):
-        """Every BenchmarkRun for `project_name` with that exact
+    @get("/api/projects/{project_name}/tests", role="supervisor")
+    def get_tests(self, project_name: str, session_id: int | None = None, username: str | None = None):
+        """Every Test for `project_name` with that exact
         session_id — None (the default) means every whole-project-scope
         run, not "no filter". `username`, when given, further narrows to
         that user's runs; omitted, no username filter is applied. Most
         recent first."""
         if username is None:
-            return self.benchmark_run_service.list_runs(project_name, session_id)
-        return self.benchmark_run_service.list_runs(project_name, session_id, username)
+            return self.test_service.list_runs(project_name, session_id)
+        return self.test_service.list_runs(project_name, session_id, username)
 
     @post("/api/projects/{project_name}/states/{state_key}/test", role="supervisor")
     def post_state_test(self, project_name: str, state_key: str, req: StateTestRequest):
         try:
-            self.benchmark_run_service.start_job(project_name, state_key, req.strategy)
+            self.test_service.start_job(project_name, state_key, req.strategy)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"success": True}
@@ -260,7 +277,7 @@ class LabelProjectController(BaseController):
     @post("/api/projects/{project_name}/signals/{signal_name}/test", role="supervisor")
     def post_signal_test(self, project_name: str, signal_name: str, req: StateTestRequest):
         try:
-            self.benchmark_run_service.start_signal_job(project_name, signal_name, req.strategy)
+            self.test_service.start_signal_job(project_name, signal_name, req.strategy)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"success": True}
@@ -268,7 +285,7 @@ class LabelProjectController(BaseController):
     @post("/api/projects/{project_name}/states/aggregation", role="supervisor")
     def post_states_aggregation(self, project_name: str, req: StateTestRequest):
         try:
-            self.benchmark_run_service.start_all_states_job(project_name, req.strategy)
+            self.test_service.start_all_states_job(project_name, req.strategy)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"success": True}
@@ -276,7 +293,7 @@ class LabelProjectController(BaseController):
     @post("/api/projects/{project_name}/signals/aggregation", role="supervisor")
     def post_signals_aggregation(self, project_name: str, req: StateTestRequest):
         try:
-            self.benchmark_run_service.start_all_signals_job(project_name, req.strategy)
+            self.test_service.start_all_signals_job(project_name, req.strategy)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"success": True}
@@ -284,7 +301,7 @@ class LabelProjectController(BaseController):
     @post("/api/projects/{project_name}/root/aggregation", role="supervisor")
     def post_root_aggregation(self, project_name: str, req: StateTestRequest):
         try:
-            self.benchmark_run_service.start_root_job(project_name, req.strategy)
+            self.test_service.start_root_job(project_name, req.strategy)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"success": True}
@@ -292,7 +309,7 @@ class LabelProjectController(BaseController):
     @post("/api/projects/{project_name}/users/aggregation", role="supervisor")
     def post_users_aggregation(self, project_name: str, req: StateTestRequest):
         try:
-            self.benchmark_run_service.start_users_aggregation_job(project_name, req.strategy)
+            self.test_service.start_users_aggregation_job(project_name, req.strategy)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"success": True}
@@ -300,7 +317,7 @@ class LabelProjectController(BaseController):
     @post("/api/projects/{project_name}/sessions/test", role="supervisor")
     def post_sessions_run(self, project_name: str, req: StateTestRequest):
         try:
-            self.benchmark_run_service.start_sessions_run_job(project_name, req.strategy)
+            self.test_service.start_sessions_run_job(project_name, req.strategy)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"success": True}
@@ -308,18 +325,18 @@ class LabelProjectController(BaseController):
     @post("/api/projects/{project_name}/users/{username}/test", role="supervisor")
     def post_user_sessions_run(self, project_name: str, username: str, req: StateTestRequest):
         try:
-            self.benchmark_run_service.start_user_sessions_run_job(username, project_name, req.strategy)
+            self.test_service.start_user_sessions_run_job(username, project_name, req.strategy)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"success": True}
 
     @get("/api/projects/{project_name}/jobs-status", role="supervisor")
     def get_jobs_status(self, project_name: str, strategy: str):
-        return self.benchmark_run_service.get_jobs_status(project_name, strategy)
+        return self.test_service.get_jobs_status(project_name, strategy)
 
     @get("/api/projects/{project_name}/aggregate-result", role="supervisor")
     def get_aggregate_result(self, project_name: str, kind: str, strategy: str, target: str | None = None):
-        result = self.benchmark_run_service.get_aggregate_result(project_name, kind, target, strategy)
+        result = self.test_service.get_aggregate_result(project_name, kind, target, strategy)
         if result is None:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="No aggregate result for this key yet.")
         return result

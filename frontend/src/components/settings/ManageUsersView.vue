@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getMetrics, getProjectGraph, getProjects, getUserLatestSignals, getUsers, putUserRole } from '../../api.js'
-import { valuesToSignalValues } from '../../benchmarkTimeline.js'
+import { valuesToSignalValues } from '../../testTimeline.js'
 import { confirmDialog } from '../../dialogStore.js'
 import { roleSatisfies } from '../../roles.js'
 import DocInfoButton from '../DocInfoButton.vue'
