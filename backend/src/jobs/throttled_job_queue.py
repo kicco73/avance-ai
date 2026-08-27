@@ -4,12 +4,16 @@ import threading
 import time
 from typing import TYPE_CHECKING
 
+from logging_factory import LoggerFactory
+
 from .job import Job
 from .job_queue import JobQueue
 
 if TYPE_CHECKING:
     from testing.queue_progress_broadcaster import QueueProgressBroadcaster
 
+
+logger = LoggerFactory.get_logger(__name__)
 
 class ThrottledJobQueue(JobQueue):
     """
@@ -52,9 +56,10 @@ class ThrottledJobQueue(JobQueue):
                     self.__window_count += 1
                     self.__last_run_at = now
                     return
-
+            logger.info(f"waiting {wait_seconds}s")
             time.sleep(wait_seconds)
 
     def _dequeue(self) -> Job:
+        job = super()._dequeue()
         self._throttle()
-        return super()._dequeue()
+        return job

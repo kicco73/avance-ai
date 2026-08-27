@@ -12,6 +12,26 @@ vi.mock('../src/api.js', () => ({
 }))
 vi.mock('../src/errorStore.js', () => ({ setApiError: vi.fn() }))
 
+// postChatMessage now resolves to a fetch Response streaming the turn as
+// SSE (see sse_turn.py's own event: done\ndata: {...} framing) rather than
+// a plain parsed JSON body — this builds a minimal Response-shaped stub
+// whose one chunk is that single "done" event.
+function fakeSseResponse(turnData) {
+  const chunk = new TextEncoder().encode(`event: done\ndata: ${JSON.stringify(turnData)}\n\n`)
+  let sent = false
+  return {
+    body: {
+      getReader: () => ({
+        read: async () => {
+          if (sent) return { done: true, value: undefined }
+          sent = true
+          return { done: false, value: chunk }
+        }
+      })
+    }
+  }
+}
+
 describe('sendMessage (REST fallback) normalizes the full turn response', () => {
   let chatClient
   let api
@@ -35,7 +55,7 @@ describe('sendMessage (REST fallback) normalizes the full turn response', () => 
   })
 
   it('carries user_message_reaction through from the backend response', async () => {
-    api.postChatMessage.mockResolvedValue({
+    api.postChatMessage.mockResolvedValue(fakeSseResponse({
       reply: [],
       user_message_id: 42,
       user_message_reaction: 'listening',
@@ -43,7 +63,7 @@ describe('sendMessage (REST fallback) normalizes the full turn response', () => 
       state: { key: 'a', ui_label: 'A', actions: [] },
       'on-enter': null,
       session_id: 1
-    })
+    }))
 
     const result = await chatClient.sendMessage('hi', 1)
 

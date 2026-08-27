@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import io
-import logging
 import re
 import zipfile
 from pathlib import Path
@@ -11,8 +10,9 @@ import tinycss2
 from automaton.automaton import Automaton
 from automaton.automaton_builder import AutomatonBuilder
 from db import Db
+from logging_factory import LoggerFactory
 
-logger = logging.getLogger(__name__)
+logger = LoggerFactory.get_logger(__name__)
 
 TEXT_EDITABLE_EXTENSIONS = {".yml", ".yaml", ".txt", ".md", ".csv", ".css"}
 

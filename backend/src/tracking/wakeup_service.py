@@ -4,12 +4,11 @@ ever talked to gets a chance to re-evaluate its triggers. One handler
 serves both event types — neither carries anything the other doesn't."""
 from __future__ import annotations
 
-import logging
-
 from chat.ws_adapter import WsAdapter
 from db.db import Db
 from events import EnvChanged, StateChanged, subscribe
 from jobs import Job, JobQueue
+from logging_factory import LoggerFactory
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
 from session import Session
@@ -21,7 +20,7 @@ from tracking.session_facts import SessionFacts
 from tracking.system_facts import SystemFacts
 from tracking.tracking_engine import DbTrackingSink, TrackingEngine
 
-logger = logging.getLogger(__name__)
+logger = LoggerFactory.get_logger(__name__)
 
 
 class WakeupJob(Job):

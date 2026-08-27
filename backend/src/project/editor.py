@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 
 from automaton.automaton import ActionPayload, Automaton, EnvKeyPayload, ProjectPayload, SignalPayload, StatePayload
 from automaton.automaton_builder import AutomatonBuilder, EXTENSION_TO_MEDIA_TYPE
 from automaton.automaton_yaml_editor import AutomatonYamlEditor
 from db import Db
+from logging_factory import LoggerFactory
 from session import Session
 
 from .inspector import ProjectInspector
@@ -18,7 +18,7 @@ from .parsers import (
 )
 from .types import CommitCallback
 
-logger = logging.getLogger(__name__)
+logger = LoggerFactory.get_logger(__name__)
 
 
 class ProjectEditor:

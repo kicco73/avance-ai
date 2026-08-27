@@ -1,13 +1,13 @@
 
 from dataclasses import dataclass, replace
 from http import HTTPStatus
-import logging
 from typing import AsyncIterator
 
 from db.db import Db
 from ai.ai_service import AiService
 from ai.llm_provider import MetadataCallback, content_to_text
 from automaton.automaton import Action, Automaton, State, StatePayload
+from logging_factory import LoggerFactory
 
 from .env import Env
 from .evaluation_scope import EvaluationScopeBuilder
@@ -21,7 +21,7 @@ from .definitions import Signals
 from .errors import TrackingServiceError
 from .fixed_project_context import FixedProjectContext
 
-logger = logging.getLogger(__name__)
+logger = LoggerFactory.get_logger(__name__)
 
 FIXED_MESSAGE_INSTRUCTIONS = (
 	"You must reply with ONLY a translation of the fixed message below into "

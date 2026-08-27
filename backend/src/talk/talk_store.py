@@ -6,12 +6,13 @@ triggering a duplicate."""
 from __future__ import annotations
 
 import asyncio
-import logging
 import tempfile
 from pathlib import Path
 from typing import AsyncIterator
 
-logger = logging.getLogger(__name__)
+from logging_factory import LoggerFactory
+
+logger = LoggerFactory.get_logger(__name__)
 
 MAX_FILES = 10
 

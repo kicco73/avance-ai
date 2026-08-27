@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import io
 import json
-import logging
 import tempfile
 import zipfile
 from pathlib import Path
@@ -12,6 +11,7 @@ from automaton.automaton import Automaton, trigger_automaton_project_refs
 from automaton.automaton_builder import AutomatonBuilder
 from db import Db
 from events import AvailabilityChanged, publish, subscribe
+from logging_factory import LoggerFactory
 from session import Session
 from tracking.session_export import SessionExportManager
 from tracking.session_import import SessionImportManager
@@ -22,7 +22,7 @@ from .parsers import TESTS_EXPORT_FILENAME, IMAGE_EXTENSIONS, LEGAL_TERMS_FILE_N
 from .project_import_bundle_job import ProjectImportBundleJob
 from .types import CommitCallback
 
-logger = logging.getLogger(__name__)
+logger = LoggerFactory.get_logger(__name__)
 
 # "New project" starts from this sample zip, resolved off this module's own
 # location, not the cwd.

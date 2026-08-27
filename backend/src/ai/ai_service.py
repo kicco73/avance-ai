@@ -9,11 +9,15 @@ import partial_json_parser
 from ai.llm_provider import (
 	LLMProvider,
 	AIServiceConfig,
+	AIServiceProviderOutputTruncatedError,
 	LLMProviderWithSchema,
 	MetadataCallback,
 )
 from ai.cascading_llm_provider import AutoLiveLLMProvider, AutoTestLLMProvider
 from ai import gemini_provider_v2, openai_provider_v2, anthropic_provider_v2
+from logging_factory import LoggerFactory
+
+logger = LoggerFactory.get_logger(__name__)
 
 class LRUCache(OrderedDict):
 	def __init__(self, maxsize: int = 128) -> None:
@@ -120,6 +124,15 @@ class AiService(object):
 			return f"{config.driver}/{config.model}"
 		return type(self._current_leaf_provider).__name__
 
+	def get_max_output_tokens(self) -> int:
+		"""The active provider's configured output-token ceiling (see
+		AIServiceConfig.max_output_tokens) — used by callers that need to
+		size their own request to fit in one call, e.g. BatchSignalSource."""
+		index = self._current_config_index
+		if 0 <= index < len(self._configs):
+			return self._configs[index].max_output_tokens
+		return 4096
+
 	def select_model(self, index: int | None) -> None:
 		if index is not None and not (0 <= index < len(self._selectable_providers)):
 			raise ValueError(f"Invalid model index: {index!r}.")
@@ -195,29 +208,48 @@ class AiService(object):
 
 		response_stream = self._active_provider.generate_stream_with_schema(system_prompt, history, schema=schema) # type: ignore
 
-		async for chunk in response_stream:
-			accumulated_json += chunk
-			parsed = partial_json_parser.parse_json(accumulated_json)
-			if not isinstance(parsed, dict):
-				continue
+		try:
+			async for chunk in response_stream:
+				accumulated_json += chunk
+				parsed = partial_json_parser.parse_json(accumulated_json)
+				if not isinstance(parsed, dict):
+					continue
 
-			if len(parsed):
-				emitting = set(parsed.keys()) - emitted
-				potentially_incomplete = next(reversed(parsed))
-				completed = emitting - {potentially_incomplete}
+				if len(parsed):
+					emitting = set(parsed.keys()) - emitted
+					potentially_incomplete = next(reversed(parsed))
+					completed = emitting - {potentially_incomplete}
 
-				for name in completed:
-					if name != "text":
-						on_metadata(name, parsed[name])
-						emitted.add(name)
+					for name in completed:
+						if name != "text":
+							on_metadata(name, parsed[name])
+							emitted.add(name)
 
-			if "text" in parsed:
-				current_text = str(parsed["text"])
+				if "text" in parsed:
+					current_text = str(parsed["text"])
 
-				if len(current_text) > last_text_length:
-					delta = current_text[last_text_length:]
-					last_text_length = len(current_text)
-					yield delta
+					if len(current_text) > last_text_length:
+						delta = current_text[last_text_length:]
+						last_text_length = len(current_text)
+						yield delta
+		except AIServiceProviderOutputTruncatedError as exc:
+			# The trailing field (whichever key is still last in
+			# accumulated_json) was cut off mid-value — unlike every other
+			# field, it never got a chance to prove itself complete by being
+			# superseded by a later key, so it can't be trusted. Every field
+			# already emitted above is unaffected.
+			logger.critical(f"{exc} -- discarding unterminated trailing field")
+			if "text" not in schema:
+				# Background metadata-only call (batch/turn-by-turn signal
+				# extraction) — no user-visible text to lose, so a logged,
+				# swallowed loss of the trailing field is the whole story.
+				return
+			# A schema with 'text' is always a live chat turn — the user's
+			# own reply may be the very field that got cut short, so this
+			# must surface as a visible error rather than end the stream
+			# quietly (see chat/sse_turn.py's SseChatTurn._run).
+			raise
+
 
 		final_parsed = partial_json_parser.parse_json(accumulated_json)
 		if not isinstance(final_parsed, dict) or not final_parsed:			

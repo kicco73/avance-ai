@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 import tiktoken
@@ -9,16 +8,16 @@ from openai import AsyncOpenAI, APIConnectionError, APIStatusError, RateLimitErr
 from ai.llm_provider import (
     AIServiceConfig,
     AIServiceError,
+    AIServiceProviderOutputTruncatedError,
     AIServiceProviderPermanentError,
     AIServiceProviderRateLimitedError,
     AIServiceProviderUnavailableError,
     LLMProviderWithSchema,
     content_to_text,
 )
+from logging_factory import LoggerFactory
 
-logger = logging.getLogger(__name__)
-
-MAX_OUTPUT_TOKENS: int = 1024
+logger = LoggerFactory.get_logger(__name__)
 
 # Fallback when tiktoken has no encoding for this model name (e.g. a
 # llama.cpp/local model) — the closest OpenAI encoding still gives a
@@ -43,6 +42,7 @@ class OpenAICompatibleProvider(LLMProviderWithSchema):
             api_key=config.key or "lm-studio",
         )
         self._model_name: str = config.model or "default-model"
+        self._max_output_tokens: int = config.max_output_tokens
         # Lazily resolved by get_input_tokens() — sentinel False means
         # "already tried, no encoding available" (see _get_encoding).
         self._encoding: tiktoken.Encoding | None | bool = None
@@ -125,11 +125,12 @@ class OpenAICompatibleProvider(LLMProviderWithSchema):
             }
 
         total_tokens = 0
+        finish_reason: Optional[str] = None
         try:
             stream = await self._client.chat.completions.create(
                 model=self._model_name,
                 messages=messages,  # type: ignore
-                max_tokens=MAX_OUTPUT_TOKENS,
+                max_tokens=self._max_output_tokens,
                 stream=True,
                 stream_options={"include_usage": True},
                 **extra_kwargs,
@@ -138,8 +139,11 @@ class OpenAICompatibleProvider(LLMProviderWithSchema):
             async for chunk in stream:
                 if chunk.usage is not None:
                     total_tokens = chunk.usage.total_tokens
-                if chunk.choices and chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
+                if chunk.choices:
+                    if chunk.choices[0].finish_reason is not None:
+                        finish_reason = chunk.choices[0].finish_reason
+                    if chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
             self._add_tokens(total_tokens)
 
         except RateLimitError as exc:
@@ -158,3 +162,6 @@ class OpenAICompatibleProvider(LLMProviderWithSchema):
             raise AIServiceError(f"Connection error: {exc}") from exc
         except Exception as exc:
             raise AIServiceError(f"Unexpected error: {exc}") from exc
+
+        if finish_reason == "length":
+            raise AIServiceProviderOutputTruncatedError(finish_reason)

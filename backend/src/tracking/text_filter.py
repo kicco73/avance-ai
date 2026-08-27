@@ -1,8 +1,9 @@
 from typing import Callable, Optional
 from abc import ABC, abstractmethod
-import logging
 
-logger = logging.getLogger(__name__)
+from logging_factory import LoggerFactory
+
+logger = LoggerFactory.get_logger(__name__)
 
 
 class Filter(ABC):

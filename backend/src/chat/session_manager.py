@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-import logging
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from chat.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
 from db import Db
+from logging_factory import LoggerFactory
 
 if TYPE_CHECKING:
     from project.project_service import ProjectService
 
-logger = logging.getLogger(__name__)
+logger = LoggerFactory.get_logger(__name__)
 
 # Default open window, in minutes, when the caller doesn't supply one —
 # matches config.yml's chat-service.max_session_duration_in_minutes

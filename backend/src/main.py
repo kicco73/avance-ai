@@ -3,7 +3,6 @@ only. Every endpoint lives on AvanceController (see controller.py)."""
 
 from __future__ import annotations
 import inspect
-import logging
 from contextlib import asynccontextmanager
 from http import HTTPStatus
 from pathlib import Path
@@ -21,6 +20,7 @@ from controller import AvanceController
 from db import Db
 from error_handlers import register_error_handlers
 from jobs import JobQueue, ThrottledJobQueue
+from logging_factory import LoggerFactory
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
 from ai.ai_service import AiService
@@ -32,10 +32,9 @@ from tracking.wakeup_service import WakeupService
 from talk.talk_service import TalkService
 from listen.listen_service import ListenService
 
-__version__ = "1.13.2"
+__version__ = "1.13.3"
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-logger = logging.getLogger(__name__)
+logger = LoggerFactory.get_logger(__name__)
 
 DEFAULT_SEED_PROJECT_ZIP = Path(__file__).resolve().parents[1] / "samples" / "projects" / "Lluna.zip"
 DEFAULT_SEED_PROJECT_NAME = "Lluna"

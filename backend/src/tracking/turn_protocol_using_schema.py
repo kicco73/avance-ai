@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import logging
 from typing import AsyncIterator
 
 from ai.llm_provider import MetadataCallback
+from logging_factory import LoggerFactory
 from tracking.tag_prompt_builder import TagPromptBuilder
 from tracking.turn_protocol import TurnProtocol
 
-logger = logging.getLogger(__name__)
+logger = LoggerFactory.get_logger(__name__)
 
 EMBED_AUDIO_TAG_PROMPT = """
 Definition of audio metadata:
@@ -44,6 +44,42 @@ Always fill in the 'env' field of your structured response:
 Current env memory:
 """
 
+# Batch-only variants (BatchSignalSource, covering several turns in one
+# call) — a single live turn or turn-by-turn replay uses the plain
+# EMBED_SIGNAL_TAG_PROMPT/EMBED_ENV_TAG_PROMPT above instead, since it has
+# no turn-numbering concept at all to get wrong. Keeping the two totally
+# separate (rather than one prompt trying to describe both shapes) is
+# deliberate — the shared version proved unstable across single-turn
+# calls (extra rows, wrong turn numbers, missing turn-number prefix).
+EMBED_SIGNAL_BATCH_TAG_PROMPT = """
+Definition of signals metadata:
+	- a small CSV table, as plain text (not a JSON object).
+	- first row: the signal names, comma-separated, e.g. "mood,engagement".
+	- one data row per turn this response covers, each starting with the turn
+	  number followed by that turn's values, e.g. "1,50.2,70" — numbered 1, 2, 3,
+	  ... always restarting at 1 for THIS response, never the turn's absolute
+	  position in the conversation history.
+	- it is vitally important to always calculate and return a value for each and any signal
+	  specified in the list below, for every turn you are asked to cover.
+
+Always fill in the 'signals' field of your structured response:
+"""
+
+EMBED_ENV_BATCH_TAG_PROMPT = """
+Definition of env metadata:
+	- a persistent, cross-session memory of free-form facts about the
+	  user/conversation (e.g. preferences, ongoing goals) — distinct from
+	  signals, which are re-evaluated fresh every turn.
+
+Always fill in the 'env' field of your structured response:
+	- a JSON object, as plain text, e.g. {"1": {"favorite_color": "blue"}}.
+	- one entry per turn this response covers, keyed "1", "2", "3", ... — always
+	  restarting at "1" for THIS response, never the turn's absolute position in
+	  the conversation history.
+	- each entry's value is an object of only the variable names you are actually
+	  reporting as new or changed that turn — map it to {} when nothing changed.
+"""
+
 EMBED_REACTION_TAG_PROMPT = """
 Definition of reaction metadata:
 	- the key of one reaction from the project's own declared reaction
@@ -66,7 +102,9 @@ class TurnProtocolUsingSchema(TurnProtocol):
 		'audio': EMBED_AUDIO_TAG_PROMPT,
 		'signals': EMBED_SIGNAL_TAG_PROMPT,
 		'reaction': EMBED_REACTION_TAG_PROMPT,
-		'text': ''
+		'text': '',
+		'signals_batch': EMBED_SIGNAL_BATCH_TAG_PROMPT,
+		'env_batch': EMBED_ENV_BATCH_TAG_PROMPT,
 	}
 
 	schema = {
@@ -75,6 +113,8 @@ class TurnProtocolUsingSchema(TurnProtocol):
 		"signals": "JSON dictionary containing required calculated signal values, rendered as text.",
 		"reaction": "The key of a declared reaction to react to the user's last message with, or empty if none fits, rendered as text.",
 		"text": "Normal textual response to the user, in markdown format, rendered as text.",
+		"signals_batch": "CSV table of calculated signal values: header row of signal names, then one row per turn starting with its turn number, e.g. \"mood,engagement\\n1,50.2,70\", rendered as text.",
+		"env_batch": "JSON object of updated memory state: one entry per turn keyed by its 1-based turn number, each entry mapping only the changed keys (an empty object if none), rendered as text.",
 	}
 
 	def _generate_reply(self, prompt: str, chat_history: list[dict], on_metadata: MetadataCallback,) -> AsyncIterator[str]:

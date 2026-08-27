@@ -61,7 +61,7 @@ function scrollToBottom() {
 watch(() => props.timeline, () => { if (props.autoScroll) scrollToBottom() })
 
 function toBubbleMessage(m) {
-  return { role: m.role, content: m.content, audioText: m.audio_text, reaction: m.reaction, timestamp: m.timestamp }
+  return { ...m, audioText: m.audio_text }
 }
 
 function isMessageSelected(message) {

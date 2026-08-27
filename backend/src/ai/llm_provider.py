@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -8,8 +7,9 @@ from typing import Any, AsyncIterator, Callable
 
 
 from cascade import OnRetry, ProviderError, ProviderRateLimitedError, ProviderUnavailableError
+from logging_factory import LoggerFactory
 
-logger = logging.getLogger(__name__)
+logger = LoggerFactory.get_logger(__name__)
 
 # Called synchronously, fire-and-forget — never awaited by a provider.
 # Each metadata key ("audio", "signals", "env", ...) fires at most once
@@ -24,6 +24,7 @@ class AIServiceConfig:
 	# Optional: falls back to `driver` (see AppConfig._parse_ai_services).
 	ui_label: str
 	ui_description: str | None = None
+	max_output_tokens: int = 1024
 
 
 class AIServiceError(ProviderError):
@@ -45,6 +46,20 @@ class AIServiceProviderPermanentError(AIServiceError):
 	"""Permanent provider-level failure (wrong model, invalid credentials,
 	exhausted credit/quota) — never retried in place, cascades immediately."""
 	message = "The AI service rejected the request."
+
+
+class AIServiceProviderOutputTruncatedError(Exception):
+	"""Raised by a provider's generate_stream_with_schema when its own
+	native stop/finish reason confirms the response was cut short by
+	max_output_tokens, rather than completing normally. Never a failover
+	condition (retrying another provider won't raise the same cap), so it
+	deliberately does not subclass AIServiceError/ProviderError — it is
+	meant to be caught once, by AiService.generate_stream_with_metadata,
+	which uses it to discard the unterminated trailing field instead of
+	guessing completeness from partial JSON."""
+	def __init__(self, reason: str) -> None:
+		super().__init__(f"provider output truncated ({reason})")
+		self.reason = reason
 
 
 def content_to_text(content: Any, provider_name: str = "LLM") -> str:

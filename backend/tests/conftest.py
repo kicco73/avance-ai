@@ -38,6 +38,26 @@ def parse_sse_result(response) -> dict:
     return message["result"]
 
 
+def _parse_chat_turn_sse_events(response) -> dict:
+    events = {}
+    for block in response.text.strip().split("\n\n"):
+        event_line, data_line = block.split("\n", 1)
+        events[event_line[len("event: "):]] = json.loads(data_line[len("data: "):])
+    return events
+
+
+def parse_chat_turn_sse(response) -> dict:
+    events = _parse_chat_turn_sse_events(response)
+    assert "error" not in events, events.get("error")
+    return events["done"]
+
+
+def parse_chat_turn_sse_error(response) -> dict:
+    events = _parse_chat_turn_sse_events(response)
+    assert "done" not in events, events.get("done")
+    return events["error"]
+
+
 @pytest.fixture(autouse=True)
 def _reset_dispatcher():
     """events.dispatcher's _subscribers dict is a process-global — cleared

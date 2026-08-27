@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import pytest
 
+from conftest import parse_chat_turn_sse
+
 pytestmark = pytest.mark.contract
 
 PROJECT_YAML = """
@@ -66,9 +68,9 @@ def test_get_state_carries_the_reactions_vocabulary(client, reactions_project):
 def test_chat_turn_response_state_carries_reactions_too(client, reactions_project):
     session = client.get("/api/chat/session").json()
 
-    turn = client.post(
+    turn = parse_chat_turn_sse(client.post(
         f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}
-    ).json()
+    ))
 
     assert turn["state"]["reactions"] == [
         {"key": "supportive", "ui_label": "🙏"},
@@ -78,9 +80,9 @@ def test_chat_turn_response_state_carries_reactions_too(client, reactions_projec
 
 def test_message_list_and_reaction_endpoint_round_trip(client, reactions_project):
     session = client.get("/api/chat/session").json()
-    turn = client.post(
+    turn = parse_chat_turn_sse(client.post(
         f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}
-    ).json()
+    ))
     assistant_id = turn["assistant_message_id"]
 
     # Freshly generated — no reaction set yet, but the field must already
@@ -124,9 +126,9 @@ def test_bots_own_reaction_is_captured_and_persisted_on_the_users_message(client
     fake_ai_service.generate_stream = generate_stream_with_reaction
 
     session = client.get("/api/chat/session").json()
-    turn = client.post(
+    turn = parse_chat_turn_sse(client.post(
         f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}
-    ).json()
+    ))
     user_message_id = turn["user_message_id"]
     assert user_message_id is not None
 

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from conftest import parse_chat_turn_sse_error
 from conftest import parse_sse_result
 from db import Db
 
@@ -138,17 +139,14 @@ def test_manual_new_session_supersedes_the_bootstrap_one(client, hello_project):
 
 
 @pytest.mark.regression
-# Currently failing: ChatService.process_turn() never calls
-# _require_active_session, so a superseded-but-open session's chat turns
-# are not rejected, unlike apply_manual_action.
 def test_chat_turn_rejects_an_open_but_inactive_session(client, hello_project):
     older = client.get("/api/chat/session").json()
     client.post("/api/chat/sessions")  # supersedes `older`
 
     response = client.post(f"/api/chat/sessions/{older['id']}/messages", json={"message": "hi"})
 
-    assert response.status_code == 409
-    assert "not active" in response.json()["error"]["message"].lower()
+    assert response.status_code == 200  # the turn endpoint always streams 200; failures arrive as an SSE `error` event
+    assert "not active" in parse_chat_turn_sse_error(response)["message"].lower()
 
 
 @pytest.mark.regression
@@ -172,8 +170,6 @@ def test_manual_action_rejects_an_open_but_inactive_session(client, hello_projec
 
 
 @pytest.mark.regression
-# Currently failing against the same bug as
-# test_chat_turn_rejects_an_open_but_inactive_session above.
 def test_chat_turn_rejects_a_closed_session_without_auto_rotating(client, hello_project, app_db: Db):
     session = client.get("/api/chat/session").json()
     stale_end = datetime.utcnow() - timedelta(hours=2)
@@ -181,7 +177,8 @@ def test_chat_turn_rejects_a_closed_session_without_auto_rotating(client, hello_
 
     response = client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})
 
-    assert response.status_code == 409
+    assert response.status_code == 200  # the turn endpoint always streams 200; failures arrive as an SSE `error` event
+    parse_chat_turn_sse_error(response)
     # No silent rotation: nothing new was created on the closed session's behalf.
     sessions = client.get("/api/projects/hello/sessions").json()
     assert [s["id"] for s in sessions] == [session["id"]]

@@ -1,11 +1,11 @@
-// Mounts the REAL ChatWindow.vue (not just chatStore.js's bare refs, unlike
+// Mounts the REAL ChatView.vue (not just chatStore.js's bare refs, unlike
 // chatStoreSkin.test.js) to check the theme-mode prop end to end, including
 // the async race a bare-refs test can't reach.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, nextTick } from 'vue'
 
 vi.mock('../src/onEnterActions.js', () => ({ runOnEnterScript: vi.fn() }))
-vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn() }))
+vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn(), connect: vi.fn(), disconnect: vi.fn() }))
 vi.mock('../src/dialogStore.js', () => ({ confirmDialog: vi.fn() }))
 vi.mock('../src/mic.js', () => ({ startRecording: vi.fn(), stopRecording: vi.fn() }))
 vi.mock('../src/audio.js', () => ({ playMessageChime: vi.fn(), playMessageAudio: vi.fn() }))
@@ -24,10 +24,13 @@ vi.mock('../src/api.js', () => ({
   postAutoTracking: vi.fn(),
   getAiModels: vi.fn(),
   postAiModelSelection: vi.fn(),
+  putMessageReaction: vi.fn(),
   messageAudioUrl: vi.fn(),
   postListenTranscribe: vi.fn(),
   postResetTestSessions: vi.fn(),
   postTruncateSession: vi.fn(),
+  getTestChatModels: vi.fn(),
+  postTestChatModelSelection: vi.fn(),
   projectFileContentUrl: vi.fn((projectName, fileName, sessionId) => `/api/projects/${projectName}/files/${fileName}/content?session_id=${sessionId}`)
 }))
 
@@ -35,7 +38,7 @@ function currentSkinStyleTags() {
   return Array.from(document.head.querySelectorAll('style'))
 }
 
-describe('ChatWindow.vue themeMode="manual" end to end (not just the store refs)', () => {
+describe('ChatView.vue themeMode="manual" end to end (not just the store refs)', () => {
   let chatStore
   let fetchMock
   let container
@@ -61,7 +64,7 @@ describe('ChatWindow.vue themeMode="manual" end to end (not just the store refs)
     chatStore.currentSessionId.value = 1
     await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(1))
 
-    const ChatWindow = (await import('../src/components/chat/ChatWindow.vue')).default
+    const ChatWindow = (await import('../src/components/chat/ChatView.vue')).default
     const app = createApp(ChatWindow, { hideSessionsPanel: true, themeMode: 'manual' })
     app.mount(container)
     await vi.waitFor(() => expect(currentSkinStyleTags()).toHaveLength(0))
@@ -78,7 +81,7 @@ describe('ChatWindow.vue themeMode="manual" end to end (not just the store refs)
     api.getCurrentTestSession.mockResolvedValue({ id: 99, project_name: 'test-proj', active: true, state: { key: 'test', ui_label: 'Test', actions: [] } })
     api.getMessages.mockResolvedValue([])
 
-    const ChatWindow = (await import('../src/components/chat/ChatWindow.vue')).default
+    const ChatWindow = (await import('../src/components/chat/ChatView.vue')).default
 
     const liveContainer = document.createElement('div')
     document.body.appendChild(liveContainer)

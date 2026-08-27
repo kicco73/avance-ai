@@ -38,6 +38,11 @@ const sessionExplorerWidth = ref(240)
 const deletingSessionId = ref(null)
 let draggingSessionExplorer = false
 
+const chatViewRef = ref(null)
+defineExpose({
+  focus: () => chatViewRef.value?.focus()
+})
+
 function toggleSessionExplorer() {
   sessionExplorerOpen.value = !sessionExplorerOpen.value
   if (sessionExplorerOpen.value) loadSessions()
@@ -133,7 +138,7 @@ onBeforeUnmount(() => {
           </label>
         </div>
       </div>
-      <ChatView hide-sessions-panel theme-mode="manual" :store="testStore">
+      <ChatView ref="chatViewRef" hide-sessions-panel theme-mode="manual" :store="testStore">
         <template #timeline>
           <ChatTimeline
             :timeline="timeline"

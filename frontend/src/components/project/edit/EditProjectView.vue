@@ -526,12 +526,9 @@ const selected = ref(null)
 // `id: null`, unmatched until it resolves.
 const rawLiveMessages = computed(() =>
   messages.value.map((m) => ({
+    ...m,
     id: m.messageId ?? null,
-    timestamp: m.timestamp,
-    role: m.role,
-    content: m.content,
-    audio_text: m.audioText,
-    reaction: m.reaction
+    audio_text: m.audioText
   }))
 )
 
@@ -676,10 +673,14 @@ const effectiveSignalValues = computed(() =>
 // "Restart from here": both truncate the conversation at this message's
 // timestamp (see testStore's own handleTruncateFrom, which rolls its
 // state back too), then differ in what happens to the text — preloaded, or resent as-is.
+const runChatRef = ref(null)
+
 async function restartAndPrefill(message) {
   await handleTruncateFrom(message.timestamp)
   selected.value = null
   draft.value = message.content
+  await nextTick()
+  runChatRef.value?.focus()
 }
 
 async function restartAndResend(message) {
@@ -1652,6 +1653,7 @@ onBeforeUnmount(() => {
         <Transition name="panel-slide-bottom">
           <RunChat
             v-if="runOpen"
+            ref="runChatRef"
             :timeline="timeline"
             :signals-log="signalsLog"
             :selected="selected"

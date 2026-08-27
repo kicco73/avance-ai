@@ -3,16 +3,16 @@ failures share — registered once, in main.py, via register_error_handlers().
 """
 from __future__ import annotations
 
-import logging
 from http import HTTPStatus
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from ai.llm_provider import AIServiceError
+from logging_factory import LoggerFactory
 from service_error import ServiceError
 
-logger = logging.getLogger(__name__)
+logger = LoggerFactory.get_logger(__name__)
 
 
 def _error_body(message: str, detail: str | None = None) -> dict:

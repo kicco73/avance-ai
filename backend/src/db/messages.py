@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
-import logging
+
+from logging_factory import LoggerFactory
 
 from .models import Message
 from .utils import _utc_iso
 
-logger = logging.getLogger(__name__)
+logger = LoggerFactory.get_logger(__name__)
 
 # Distinguishes "caller didn't pass timestamp" (default=datetime.utcnow
 # applies) from "caller explicitly wants NULL" — None can't be the
@@ -35,7 +36,7 @@ class MessageMixin:
         return self.get_message(message_id)
 
     def delete_message(self, message_id: int) ->  None:
-        logging.warning(f"deleting message id {message_id}")
+        logger.warning(f"deleting message id {message_id}")
         Message.delete().where(Message.id == message_id).execute()
 
     def get_message(self, message_id: int) -> dict | None:

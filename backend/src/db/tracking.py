@@ -6,10 +6,12 @@ from datetime import datetime
 
 from peewee import fn
 
+from logging_factory import LoggerFactory
+
 from .models import ChatSession, Tracking
 from .utils import _utc_iso
 
-logger = logging.getLogger(__name__)
+logger = LoggerFactory.get_logger(__name__)
 
 
 class TrackingMixin:

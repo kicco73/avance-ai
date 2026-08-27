@@ -15,6 +15,7 @@ from anthropic.types import (
 from ai.llm_provider import (
 	AIServiceConfig,
 	AIServiceError,
+	AIServiceProviderOutputTruncatedError,
 	AIServiceProviderPermanentError,
 	AIServiceProviderRateLimitedError,
 	AIServiceProviderUnavailableError,
@@ -23,8 +24,10 @@ from ai.llm_provider import (
 )
 
 CLAUDE_DEFAULT_MODEL: str = "claude-sonnet-5"
-MAX_OUTPUT_TOKENS: int = 1024
 REQUEST_TIMEOUT_SECONDS: float = 30.0
+# stop_reason values meaning the response was cut short rather than
+# completing on its own — see AIServiceProviderOutputTruncatedError.
+_TRUNCATED_STOP_REASONS = ("max_tokens", "model_context_window_exceeded")
 
 CACHE_CONTROL: CacheControlEphemeralParam = {"type": "ephemeral"}
 
@@ -80,6 +83,7 @@ class AnthropicProvider(LLMProviderWithSchema):
 	def __init__(self, config: AIServiceConfig) -> None:
 		super().__init__()
 		self._model_name: str = config.model or CLAUDE_DEFAULT_MODEL
+		self._max_output_tokens: int = config.max_output_tokens
 
 		self._async_client: anthropic.AsyncAnthropic = (
 			anthropic.AsyncAnthropic(
@@ -200,11 +204,12 @@ class AnthropicProvider(LLMProviderWithSchema):
 			schema or {}
 		)
 
+		stop_reason: str | None = None
 		try:
 			with _handle_anthropic_errors():
 				stream_manager = self._async_client.messages.stream(
 					model=self._model_name,
-					max_tokens=MAX_OUTPUT_TOKENS,
+					max_tokens=self._max_output_tokens,
 					system=system_blocks,
 					messages=messages,
 					output_config=output_config,
@@ -217,6 +222,7 @@ class AnthropicProvider(LLMProviderWithSchema):
 				final_message = await stream.get_final_message()
 				usage = final_message.usage
 				self._add_tokens(usage.input_tokens + usage.output_tokens)
+				stop_reason = final_message.stop_reason
 
 		except (
 			AIServiceError,
@@ -228,6 +234,9 @@ class AnthropicProvider(LLMProviderWithSchema):
 		except Exception as exc:
 			with _handle_anthropic_errors():
 				raise exc
+
+		if stop_reason in _TRUNCATED_STOP_REASONS:
+			raise AIServiceProviderOutputTruncatedError(stop_reason)
 
 	def get_input_tokens(self, prompt: str) -> int:
 		with _handle_anthropic_errors():

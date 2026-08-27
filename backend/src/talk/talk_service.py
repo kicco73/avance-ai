@@ -4,11 +4,11 @@ provider, with retry/cascading, caching, and live-generation dedup hidden inside
 from __future__ import annotations
 
 import hashlib
-import logging
 from typing import AsyncIterator
 
 from config import TalkServiceConfig
 from cascade import ProviderError
+from logging_factory import LoggerFactory
 from talk.talk_provider import TalkProvider
 from talk.cascading_talk_provider import CascadingTalkProvider
 from talk.gemini_talk_provider import GeminiTalkProvider
@@ -16,7 +16,7 @@ from talk.piper.piper_talk_provider import PiperTalkProvider
 from talk.talk_store import TalkStore
 from talk.talk_format import DEFAULT_PCM_SAMPLE_RATE, pcm_to_wav, streaming_wav_header
 
-logger = logging.getLogger(__name__)
+logger = LoggerFactory.get_logger(__name__)
 
 
 class TalkServiceNotAvailableError(Exception):

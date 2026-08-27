@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 
 from fastapi.responses import StreamingResponse
 
+from logging_factory import LoggerFactory
 from service_error import ServiceError
 from .chat_service import ChatService
 
-logger = logging.getLogger(__name__)
+logger = LoggerFactory.get_logger(__name__)
 
 
 class SseChatTurn(object):

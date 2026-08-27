@@ -253,6 +253,12 @@ class AppConfig:
     @classmethod
     def _parse_ai_services(cls, raw: dict, path: Path) -> list[AIServiceConfig]:
         entries = cls._get_providers(raw, "ai-service", path)
+        # One cap for every provider in the cascade — the ceiling a single
+        # generate_stream_with_schema call is allowed to reach before the
+        # provider itself reports truncation (see AIServiceProviderOutputTruncatedError).
+        max_output_tokens = cls._get_optional_positive_int(
+            raw, "ai-service", "max_output_tokens", path, default=4096
+        )
 
         services = []
         for i, entry in enumerate(entries):
@@ -275,6 +281,7 @@ class AppConfig:
             services.append(AIServiceConfig(
                 driver=driver, model=model.strip(), key=key, url=url,
                 ui_label=ui_label, ui_description=ui_description,
+                max_output_tokens=max_output_tokens,
             ))
         return services
 

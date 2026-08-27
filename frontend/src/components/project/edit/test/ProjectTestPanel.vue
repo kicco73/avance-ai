@@ -581,9 +581,10 @@ onBeforeUnmount(() => {
 
     <div class="tests-panel-main">
       <div class="tests-panel-toolbar">
-        <div class="tests-panel-toolbar-title"></div>
-        <div class="tests-panel-toolbar-actions">
+        <div class="tests-panel-toolbar-title">
           <span class="tests-panel-tokens-label">Tokens burnt: {{ tokensBurnt }}</span>
+        </div>
+        <div class="tests-panel-toolbar-actions">
           <div class="strategy-menu">
             <button ref="strategyBtnEl" class="strategy-btn" :title="strategyLabel" @click="toggleStrategyMenu">
               <span class="strategy-btn-label">{{ strategyLabel }}</span>

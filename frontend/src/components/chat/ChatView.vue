@@ -75,10 +75,6 @@ const emit = defineEmits(['project-select', 'project-download'])
 
 const projectsMenuRef = ref(null)
 
-defineExpose({
-  refreshProjectsMenu: () => projectsMenuRef.value?.refresh()
-})
-
 // No transcript import here: imported sessions are a separate pool that
 // never shows up in this component's own sessions list, so importing
 // from here would silently succeed and then vanish from view.
@@ -98,6 +94,11 @@ const scrollEl = ref(null)
 const chatInputRef = ref(null)
 const recording = ref(false)
 const deletingSessionId = ref(null)
+
+defineExpose({
+  refreshProjectsMenu: () => projectsMenuRef.value?.refresh(),
+  focus: () => chatInputRef.value?.focus()
+})
 
 async function onDeleteSession(session) {
   deletingSessionId.value = session.id

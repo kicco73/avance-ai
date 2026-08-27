@@ -1,17 +1,17 @@
 from __future__ import annotations
 
 import json
-import logging
 from typing import Protocol
 
 from automaton.automaton import Action, Automaton, State
 from db.db import Db
 from db.models import TestObservation
 from events import EnvChanged, StateChanged, publish
+from logging_factory import LoggerFactory
 from tracking.env import Env
 from tracking.evaluation_scope import EvaluationScopeBuilder
 
-logger = logging.getLogger(__name__)
+logger = LoggerFactory.get_logger(__name__)
 
 
 class TrackingSink(Protocol):

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import logging
 import os
 import sqlite3
 from datetime import datetime, timezone
+
+from logging_factory import LoggerFactory
 
 from .test_aggregates import TestAggregateMixin
 from .tests import TestMixin
@@ -27,7 +28,7 @@ from .models import (
     database,
 )
 
-logger = logging.getLogger(__name__)
+logger = LoggerFactory.get_logger(__name__)
 
 def _utc_iso(dt: datetime | None) -> str | None:
     return dt.replace(tzinfo=timezone.utc).isoformat() if dt is not None else None

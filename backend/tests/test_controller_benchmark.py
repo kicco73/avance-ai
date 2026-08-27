@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import pytest
 
+from conftest import parse_chat_turn_sse
+
 
 @pytest.mark.contract
 def test_get_session_signals_returns_the_full_event_log(client, hello_project):
@@ -38,7 +40,7 @@ def test_get_metrics_without_message_id_is_the_live_current_history(client, hell
 @pytest.mark.contract
 def test_get_metrics_with_message_id_restricts_to_that_points_history(client, hello_project):
     session = client.get("/api/chat/session").json()
-    first_turn = client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "first"}).json()
+    first_turn = parse_chat_turn_sse(client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "first"}))
     first_message_id = first_turn["assistant_message_id"]
 
     # engagement should have grown since, but a lookup pinned to the
@@ -54,7 +56,7 @@ def test_get_metrics_with_message_id_restricts_to_that_points_history(client, he
 @pytest.mark.contract
 def test_get_metrics_response_shape_is_unchanged_by_message_id(client, hello_project):
     session = client.get("/api/chat/session").json()
-    turn = client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}).json()
+    turn = parse_chat_turn_sse(client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}))
     message_id = turn["assistant_message_id"]
 
     response = client.get(f"/api/projects/hello/metrics?message_id={message_id}")
@@ -92,7 +94,7 @@ def test_get_messages_response_shape_has_no_annotation_fields(client, hello_proj
 @pytest.mark.contract
 def test_put_expected_state_is_409_for_a_non_evaluation_point_message(client, hello_project):
     session = client.get("/api/chat/session").json()
-    turn = client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}).json()
+    turn = parse_chat_turn_sse(client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}))
     message_id = turn["assistant_message_id"]
 
     response = client.put(f"/api/chat/messages/{message_id}/expected-state", json={"expected_state": "start"})
@@ -103,7 +105,7 @@ def test_put_expected_state_is_409_for_a_non_evaluation_point_message(client, he
 @pytest.mark.contract
 def test_put_expected_signals_is_409_for_a_non_evaluation_point_message(client, hello_project):
     session = client.get("/api/chat/session").json()
-    turn = client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}).json()
+    turn = parse_chat_turn_sse(client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}))
     message_id = turn["assistant_message_id"]
 
     response = client.put(
@@ -150,7 +152,7 @@ def test_get_test_metrics_reflects_annotations(client, hello_project, app_db):
     """"Hello world" declares no triggers, so there's no real chat-turn
     path to a linked Tracking row — written directly via app_db."""
     session = client.get("/api/chat/session").json()
-    turn = client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}).json()
+    turn = parse_chat_turn_sse(client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}))
     message_id = turn["assistant_message_id"]
     signal_row_id = app_db.save_signal_snapshot({"foo": 80}, session["id"], message_id=message_id)
 
@@ -180,7 +182,7 @@ def test_get_test_metrics_is_404_for_someone_elses_or_unknown_session(client, he
 @pytest.mark.contract
 def test_delete_session_annotations_clears_everything_in_that_session(client, hello_project, app_db):
     session = client.get("/api/chat/session").json()
-    turn = client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}).json()
+    turn = parse_chat_turn_sse(client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}))
     message_id = turn["assistant_message_id"]
     signal_row_id = app_db.save_signal_snapshot({"foo": 80}, session["id"], message_id=message_id)
     app_db.set_signal_expected_state(signal_row_id, "Hello")

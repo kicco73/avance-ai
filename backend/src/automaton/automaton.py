@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import ast
-import logging
 from dataclasses import dataclass, field
 
 import simpleeval
 
-logger = logging.getLogger(__name__)
+from logging_factory import LoggerFactory
+
+logger = LoggerFactory.get_logger(__name__)
 
 from typing_extensions import TypedDict, Literal, Any
 

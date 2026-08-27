@@ -84,11 +84,12 @@ class TurnByTurnSignalSource:
 
 BATCH_TAG_INSTRUCTIONS = (
     "This turn covers multiple messages of the conversation at once, "
-    "numbered in order. Fill in signals1...signalsN and env1...envN, one "
-    "pair per turn, in the exact same order the conversation happened. "
-    "The starting env given below is read-only context from before this "
-    "stretch of the conversation — env1...envN are what you must produce "
-    "as output for each turn, not a repeat of the starting one."
+    "numbered in order. The 'signals' and 'env' fields each already cover "
+    "every one of these turns at once (see their own format above — a "
+    "numbered entry per turn). The starting env given below is read-only "
+    "context from before this stretch of the conversation — the 'env' "
+    "field's own numbered entries are what you must produce as output for "
+    "each turn, not a repeat of the starting one."
 )
 
 
@@ -127,10 +128,12 @@ class BatchSignalSource:
         turn_ids = self._turns_from(message_id)
         signal_definition = Signals(FixedProjectContext(self._automaton), self._db).get_definition(self._signal_names)
 
-        tag_specs: list[tuple[str, str]] = []
-        for i, _turn_id in enumerate(turn_ids, start=1):
-            tag_specs.append((f'signals{i}', 'signals'))
-            tag_specs.append((f'env{i}', 'env'))
+        # Same two tag NAMES as TurnByTurnSignalSource's single turn, but a
+        # different template_key ('signals_batch'/'env_batch') — a separate
+        # prompt and a separate MetadataHandler parser (parse_batch_*),
+        # since the single-turn versions have no turn-numbering concept at
+        # all and the shared attempt at one format for both proved unstable.
+        tag_specs: list[tuple[str, str]] = [('signals', 'signals_batch'), ('env', 'env_batch')]
 
         seed_env = self._seed_env(message_id)
         base_prompt = f"{self._automaton.general_prompt}\n\n{BATCH_TAG_INSTRUCTIONS}"
@@ -143,26 +146,28 @@ class BatchSignalSource:
 
         chat_history = self._build_chat_history(turn_ids[-1])
 
-        tag_kind_by_name = dict(tag_specs)
-        by_index: dict[int, dict] = {}
+        # Index i = turn i+1 (see MetadataHandler.parse_batch_signals/parse_batch_env)
+        # — empty until on_metadata actually fires for that tag, which never
+        # happens if the response was truncated before reaching it (see
+        # AIServiceProviderOutputTruncatedError) — every turn then falls back
+        # to {} below, same as a turn a mismatch check would have rejected.
+        signals_by_turn: list[dict] = []
+        env_by_turn: list[dict] = []
 
         def on_metadata(tag: str, value: str) -> None:
-            kind = tag_kind_by_name.get(tag)
-            if kind is None:
-                return
-            index = int(tag[len(kind):])
-            entry = by_index.setdefault(index, {'signals': {}, 'env': {}})
-            if kind == 'signals':
-                entry['signals'].update(MetadataHandler.parse_raw_signals(value))
-            elif kind == 'env':
-                entry['env'].update(MetadataHandler.parse_raw_env(value))
+            nonlocal signals_by_turn, env_by_turn
+            if tag == 'signals':
+                signals_by_turn = MetadataHandler.parse_batch_signals(value, len(turn_ids))
+            elif tag == 'env':
+                env_by_turn = MetadataHandler.parse_batch_env(value, len(turn_ids))
 
         async for _ in protocol.generate_reply_with_schema(base_prompt, tag_specs, chat_history, on_metadata):
             pass
 
-        for i, turn_id in enumerate(turn_ids, start=1):
-            entry = by_index.get(i, {'signals': {}, 'env': {}})
-            self._covered[turn_id] = (entry['signals'], entry['env'])
+        for i, turn_id in enumerate(turn_ids):
+            signals = signals_by_turn[i] if i < len(signals_by_turn) else {}
+            env = env_by_turn[i] if i < len(env_by_turn) else {}
+            self._covered[turn_id] = (signals, env)
         self.batch_segments += 1
 
     def _seed_env(self, message_id: int) -> dict:

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -25,13 +24,14 @@ from chat.session_summary_manager import SessionSummaryManager
 from chat.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
 from auth.roles import role_satisfies
 from jobs import JobQueue
+from logging_factory import LoggerFactory
 from tracking.tracking_engine import DbTrackingSink, TrackingEngine
 from tracking.turn_callbacks import OnMetadata
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
 from tracking.tracking_service import TrackingService
 
-logger = logging.getLogger(__name__)
+logger = LoggerFactory.get_logger(__name__)
 
 class ChatService(object):
 	def __init__(

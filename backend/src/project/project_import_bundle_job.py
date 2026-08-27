@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import json
-import logging
 import uuid
 
 from db import Db
 from jobs import Job
+from logging_factory import LoggerFactory
 from tracking.session_import import SessionImportManager
 
-logger = logging.getLogger(__name__)
+logger = LoggerFactory.get_logger(__name__)
 
 
 class ProjectImportBundleJob(Job):

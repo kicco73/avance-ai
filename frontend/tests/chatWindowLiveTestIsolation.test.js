@@ -12,7 +12,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createApp, h } from 'vue'
 
 vi.mock('../src/onEnterActions.js', () => ({ runOnEnterScript: vi.fn() }))
-vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn() }))
+vi.mock('../src/chatClient.js', () => ({ sendMessage: vi.fn(), onNotification: vi.fn(), connect: vi.fn(), disconnect: vi.fn() }))
 vi.mock('../src/dialogStore.js', () => ({ confirmDialog: vi.fn() }))
 vi.mock('../src/mic.js', () => ({ startRecording: vi.fn(), stopRecording: vi.fn() }))
 vi.mock('../src/audio.js', () => ({ playMessageChime: vi.fn(), playMessageAudio: vi.fn() }))
@@ -31,18 +31,21 @@ vi.mock('../src/api.js', () => ({
   postAutoTracking: vi.fn(),
   getAiModels: vi.fn(),
   postAiModelSelection: vi.fn(),
+  putMessageReaction: vi.fn(),
   messageAudioUrl: vi.fn(),
   postListenTranscribe: vi.fn(),
   postResetTestSessions: vi.fn(),
   postTruncateSession: vi.fn(),
+  getTestChatModels: vi.fn(),
+  postTestChatModelSelection: vi.fn(),
   projectFileContentUrl: vi.fn((p, f, s) => `/api/projects/${p}/files/${f}/content?session_id=${s}`)
 }))
 
 describe('the live chat and the "Run" test chat are genuinely independent stores', () => {
-  it('each ChatWindow instance shows only its own store\'s content, simultaneously, with no clearing needed', async () => {
+  it('each ChatView instance shows only its own store\'s content, simultaneously, with no clearing needed', async () => {
     const chatStore = await import('../src/chatStore.js')
     const testChatStore = await import('../src/testChatStore.js')
-    const ChatWindow = (await import('../src/components/chat/ChatWindow.vue')).default
+    const ChatWindow = (await import('../src/components/chat/ChatView.vue')).default
 
     chatStore.state.value = { key: 'live-state', ui_label: 'Live', actions: [] }
     chatStore.currentSessionId.value = 7

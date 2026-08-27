@@ -40,6 +40,14 @@ test-service:
   min_test_interval_ms: 0
 
 ai-service:
+  # Optional. Passed as max_tokens/max_output_tokens to
+  # every provider below — the ceiling a single structured-output call
+  # (chat turn, or a test-panel batch call covering several turns at
+  # once) can reach before the provider reports the response as
+  # truncated (see AIServiceProviderOutputTruncatedError in ai/llm_provider.py)
+  # instead of silently handing back a cut-off trailing field.
+  max_output_tokens: 1024
+
   providers:
     # Always a list, even with a single entry. Cascades in order (see
     # ai/ai_service.py's AiService): the first provider is tried first,

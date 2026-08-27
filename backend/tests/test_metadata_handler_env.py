@@ -1,6 +1,17 @@
-"""Tests for MetadataHandler's [env]/[signals]/[audio] parsing (a
-forgiving "key: value"-per-line format, not JSON), and for how those
-values, together with a signal definition, get rendered into a turn's prompt.
+"""Tests for MetadataHandler's [env]/[signals]/[audio] parsing, and for
+how those values, together with a signal definition, get rendered into a
+turn's prompt.
+
+Two separate algorithms live side by side here, deliberately not unified:
+parse_raw_signals/parse_raw_env (a single live turn, or
+TurnByTurnSignalSource's one-call-per-turn replay — a forgiving
+"key: value"-per-line format for env, plain JSON for signals, no turn
+concept at all) and parse_batch_signals/parse_batch_env (BatchSignalSource,
+covering several turns in one call — CSV rows / a JSON object keyed by
+1-based turn number, checked for exact turn coverage). An earlier attempt
+to share one turn-numbered format across both proved unstable for the
+single-turn case (extra rows, wrong turn numbers, missing turn-number
+prefix), so the two stay separate.
 """
 from __future__ import annotations
 
@@ -10,7 +21,7 @@ import pytest
 
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.env import PersistedEnv
-from tracking.metadata_handler import MetadataHandler
+from tracking.metadata_handler import MetadataHandler, MetadataTurnMismatch
 from tracking.turn_protocol import TurnProtocol
 
 pytestmark = pytest.mark.contract
@@ -46,6 +57,75 @@ def test_parse_raw_env_of_empty_content_is_an_empty_dict():
 def test_parse_raw_env_handles_a_colon_inside_the_value():
     result = _handler().parse_raw_env("next_meeting: 14:30")
     assert result == {"next_meeting": "14:30"}
+
+
+def test_parse_batch_env_reads_one_entry_per_turn_in_order():
+    result = _handler().parse_batch_env(
+        '{"1": {"favorite_color": "blue"}, "2": {}, "3": {"mood": "happy"}}', 3
+    )
+    assert result == [{"favorite_color": "blue"}, {}, {"mood": "happy"}]
+
+
+def test_parse_batch_env_a_single_turn_call_reads_index_zero():
+    result = _handler().parse_batch_env('{"1": {"next_meeting": "14:30"}}', 1)
+    assert result[0] == {"next_meeting": "14:30"}
+
+
+def test_parse_batch_env_of_empty_content_raises_turn_mismatch():
+    """No entries at all never degrades to a silent empty result — even
+    turn 1 alone must have an entry (an empty object is fine; a missing
+    key is not), so this is treated the same as any other coverage gap."""
+    with pytest.raises(MetadataTurnMismatch):
+        _handler().parse_batch_env("", 1)
+    with pytest.raises(MetadataTurnMismatch):
+        _handler().parse_batch_env(None, 1)
+
+
+def test_parse_batch_env_malformed_json_raises_turn_mismatch():
+    with pytest.raises(MetadataTurnMismatch):
+        _handler().parse_batch_env("not json at all", 1)
+
+
+def test_parse_batch_env_a_non_object_top_level_raises_turn_mismatch():
+    with pytest.raises(MetadataTurnMismatch):
+        _handler().parse_batch_env("[1, 2, 3]", 1)
+
+
+def test_parse_batch_env_extra_turns_beyond_what_was_expected_raises_turn_mismatch():
+    """The exact bug this check exists for: the model treats the whole
+    chat history as turns to fill in, instead of just the N it was told
+    to cover."""
+    raw = '{"1": {"a": "1"}, "2": {"a": "2"}, "3": {"a": "3"}}'
+    with pytest.raises(MetadataTurnMismatch):
+        _handler().parse_batch_env(raw, 1)
+
+
+def test_parse_batch_env_a_missing_turn_raises_turn_mismatch():
+    raw = '{"1": {}, "3": {"a": "b"}}'
+    with pytest.raises(MetadataTurnMismatch):
+        _handler().parse_batch_env(raw, 3)
+
+
+def test_parse_raw_signals_reads_a_flat_json_object():
+    result = _handler().parse_raw_signals('{"mood": 50.2, "engagement": 70}')
+    assert result == {"mood": 50.2, "engagement": 70}
+
+
+def test_parse_raw_signals_of_empty_content_is_an_empty_dict():
+    assert _handler().parse_raw_signals("") == {}
+    assert _handler().parse_raw_signals(None) == {}
+
+
+def test_parse_batch_signals_reads_one_row_per_turn_in_order():
+    raw = "mood,engagement\n1,50.2,70\n2,52,68"
+    result = _handler().parse_batch_signals(raw, 2)
+    assert result == [{"mood": 50.2, "engagement": 70.0}, {"mood": 52.0, "engagement": 68.0}]
+
+
+def test_parse_batch_signals_a_missing_row_raises_turn_mismatch():
+    raw = "mood,engagement\n1,50.2,70\n3,55.5,71"
+    with pytest.raises(MetadataTurnMismatch):
+        _handler().parse_batch_signals(raw, 3)
 
 
 

@@ -8,11 +8,12 @@ ai/cascading_llm_provider.py) use only the pointer bookkeeping below
 from __future__ import annotations
 
 import asyncio
-import logging
 from http import HTTPStatus
 from typing import Awaitable, Callable, Generic, NamedTuple, TypeVar
 
-logger = logging.getLogger(__name__)
+from logging_factory import LoggerFactory
+
+logger = LoggerFactory.get_logger(__name__)
 
 # Retry/backoff policy before giving up on a transiently unavailable provider.
 MAX_RETRIES = 5

@@ -1,12 +1,12 @@
 from dataclasses import dataclass
-import logging
 
 from automaton.automaton import State
+from logging_factory import LoggerFactory
 from session import Session
 from tracking.tracking_processor import OutVariables, TrackingProcessor
 
 
-logger = logging.getLogger(__name__)
+logger = LoggerFactory.get_logger(__name__)
 
 class TrackingProcessorAfterUserMessage(TrackingProcessor):
 

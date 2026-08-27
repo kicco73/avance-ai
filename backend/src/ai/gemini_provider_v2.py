@@ -4,16 +4,17 @@ import asyncio
 import threading
 from contextlib import contextmanager
 from typing import Any, AsyncIterator, Generator
-import logging
 
 from google import genai
 from google.genai import types
 from google.genai.errors import APIError
 
 from cascade import OnRetry
+from logging_factory import LoggerFactory
 from ai.llm_provider import (
 	AIServiceConfig,
 	AIServiceError,
+	AIServiceProviderOutputTruncatedError,
 	AIServiceProviderPermanentError,
 	AIServiceProviderRateLimitedError,
 	AIServiceProviderUnavailableError,
@@ -21,9 +22,7 @@ from ai.llm_provider import (
 	content_to_text,
 )
 
-logger = logging.getLogger(__name__)
-
-MAX_OUTPUT_TOKENS: int = 1024
+logger = LoggerFactory.get_logger(__name__)
 
 @contextmanager
 def _handle_gemini_errors() -> Generator[None, None, None]:
@@ -56,6 +55,7 @@ class GeminiProvider(LLMProviderWithSchema):
 		self._api_key: str = config.key
 		self._base_url: str | None = config.url
 		self._model_name: str = config.model
+		self._max_output_tokens: int = config.max_output_tokens
 		# genai.Client's async transport lazily binds internal
 		# asyncio.Lock/Event objects to whichever event loop first uses
 		# it. This provider is a single app-wide instance shared by both
@@ -125,7 +125,7 @@ class GeminiProvider(LLMProviderWithSchema):
 
 		gen_config: types.GenerateContentConfig = types.GenerateContentConfig(
 			system_instruction=system_prompt,
-			max_output_tokens=MAX_OUTPUT_TOKENS,
+			max_output_tokens=self._max_output_tokens,
 			response_mime_type="application/json",
 			response_schema=self.build_schema(schema),
 		)
@@ -142,6 +142,7 @@ class GeminiProvider(LLMProviderWithSchema):
 		contents, config = self._format_history_and_config(system_prompt, history, schema or {})
 
 		total_tokens = 0
+		finish_reason: types.FinishReason | None = None
 		with _handle_gemini_errors():
 			response_stream = await self._client().aio.models.generate_content_stream(
 				model=self._model_name,
@@ -153,10 +154,15 @@ class GeminiProvider(LLMProviderWithSchema):
 				usage = chunk.usage_metadata
 				if usage is not None and usage.total_token_count is not None:
 					total_tokens = usage.total_token_count
+				if chunk.candidates and chunk.candidates[0].finish_reason is not None:
+					finish_reason = chunk.candidates[0].finish_reason
 				if not chunk.text:
 					continue
 				yield chunk.text
 		self._add_tokens(total_tokens)
+
+		if finish_reason == types.FinishReason.MAX_TOKENS:
+			raise AIServiceProviderOutputTruncatedError(str(finish_reason))
 
 	def get_input_tokens(self, prompt: str) -> int:
 		with _handle_gemini_errors():

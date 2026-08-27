@@ -4,15 +4,15 @@ tracking/evaluator.py's SignalEvaluator instead — this class never makes
 AI calls itself."""
 from __future__ import annotations
 
-import logging
 from datetime import datetime
 
 from automaton.automaton import Automaton, SignalPayload
 from db import Db
+from logging_factory import LoggerFactory
 from project.project_service import ProjectService
 from session import Session
 
-logger = logging.getLogger(__name__)
+logger = LoggerFactory.get_logger(__name__)
 
 # How many recent history messages to send the model for a signals
 # computation call. Kept even so a slice always starts on a "user" turn
