@@ -185,6 +185,7 @@ class ChatController(BaseController):
             self.chat_service.select_ai_model(req.index)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return self.chat_service.get_ai_models_info()
 
     @get("/api/ai/models/test")
     def get_ai_test_models(self):
@@ -196,6 +197,7 @@ class ChatController(BaseController):
             self.chat_service.select_test_ai_model(req.index)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return self.chat_service.get_test_ai_models_info()
         return self.chat_service.get_ai_models_info()
 
     @get("/api/chat/session")

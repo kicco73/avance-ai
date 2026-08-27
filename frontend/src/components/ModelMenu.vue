@@ -5,9 +5,9 @@ import { liveModelStore } from '../chatStore.js'
 
 // `modelStore` bundles the model list/selection state + its own select()
 // — chatStoreFactory.js's liveModelStore (default, ai_live_service) or
-// testModelStore.js's makeTestModelStore(projectName) (ai_test_service).
-// The component itself never knows which context it's in — same object
-// shape either way, just a different one passed in.
+// testChatStore.js's testChatModelStore (ai_test_service). The component
+// itself never knows which context it's in — same object shape either
+// way, just a different one passed in.
 const props = defineProps({
   modelStore: { type: Object, default: () => liveModelStore }
 })
@@ -24,6 +24,7 @@ const aiModels = computed(() => props.modelStore.models.value)
 const aiModelAuto = computed(() => props.modelStore.auto.value)
 const aiModelCurrentIndex = computed(() => props.modelStore.currentIndex.value)
 const aiModelSelectionLoading = computed(() => props.modelStore.selectionLoading.value)
+const autoLabel = computed(() => props.modelStore.autoLabel ?? 'Auto')
 
 // Reads modelStore's own reactive state, kept in sync by whoever loads/
 // updates it (a chat turn/action response for the live store, an
@@ -31,7 +32,7 @@ const aiModelSelectionLoading = computed(() => props.modelStore.selectionLoading
 // on its own.
 const currentModel = computed(() => aiModels.value[aiModelCurrentIndex.value] ?? null)
 const currentLabel = computed(() => currentModel.value?.ui_label ?? 'Model')
-const buttonLabel = computed(() => (aiModelAuto.value ? `Auto: ${currentLabel.value}` : currentLabel.value))
+const buttonLabel = computed(() => (aiModelAuto.value ? `${autoLabel.value}: ${currentLabel.value}` : currentLabel.value))
 
 const infoOpen = ref(false)
 
@@ -100,6 +101,9 @@ onBeforeUnmount(() => {
 <template>
   <div class="model-menu" ref="rootEl">
     <button ref="btnEl" class="model-btn" :title="buttonLabel" @click="toggle">
+      <svg class="model-btn-icon" viewBox="0 0 24 24" width="17" height="17" fill="currentColor">
+        <path d="M12 3l1.8 5.3L19 10l-5.2 1.7L12 17l-1.8-5.3L5 10l5.2-1.7L12 3z" />
+      </svg>
       <span class="model-btn-label">{{ buttonLabel }}</span>
       <span class="model-btn-caret">▾</span>
     </button>
@@ -139,7 +143,7 @@ onBeforeUnmount(() => {
               @click="select(null)"
             >
               <span class="model-item-check">{{ aiModelAuto ? '✓' : '' }}</span>
-              <span class="model-item-label">Auto ({{ currentLabel }})</span>
+              <span class="model-item-label">{{ autoLabel }} ({{ currentLabel }})</span>
             </button>
           </li>
           <li v-for="(m, i) in aiModels" :key="`${m.driver}/${m.model}`">
@@ -172,13 +176,17 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 0.3rem;
-  padding: 0.4rem 1rem;
+  padding: 0.4rem 1rem 0.4rem 0.55rem;
   border-radius: 6px;
   border: 1px solid #4a6fa5;
   background: white;
   color: #4a6fa5;
   cursor: pointer;
   max-width: 160px;
+}
+
+.model-btn-icon {
+  flex: none;
 }
 
 .model-btn-label {

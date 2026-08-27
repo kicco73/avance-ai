@@ -6,6 +6,7 @@ import { onMounted, ref } from 'vue'
 import { getProjectMetadata, getProjectsRuntimeStatus, putProjectPause, putProjectResume } from '../../api.js'
 import { confirmDialog } from '../../dialogStore.js'
 import ProgressSpinner from '../ProgressSpinner.vue'
+import ModelMenu from '../ModelMenu.vue'
 import SettingsMenu from './SettingsMenu.vue'
 import ProfileMenu from '../ProfileMenu.vue'
 
@@ -181,6 +182,7 @@ defineExpose({ refresh: load })
           <ProgressSpinner v-if="uploading" :progress="uploadProgress" />
           {{ uploading ? (uploadProgress != null ? `Uploading… ${Math.round(uploadProgress)}%` : 'Uploading…') : 'Upload project...' }}
         </button>
+        <ModelMenu />
         <SettingsMenu
           :role="role"
           align="right"

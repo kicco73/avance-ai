@@ -55,15 +55,16 @@ export async function selectAiModel(index) {
 }
 
 // Bundles the live-chat model state + its own select() into one object —
-// ModelMenu.vue's default `modelStore` prop. testModelStore.js exposes the
-// same shape for the Test panel's own run-model menu (ai_test_service),
-// so the component itself never needs to know which context it's in.
+// ModelMenu.vue's default `modelStore` prop. testChatStore.js's
+// testChatModelStore exposes the same shape for ai_test_service, so the
+// component itself never needs to know which context it's in.
 export const liveModelStore = {
   models: aiModels,
   auto: aiModelAuto,
   currentIndex: aiModelCurrentIndex,
   selectionLoading: aiModelSelectionLoading,
   select: selectAiModel,
+  autoLabel: 'Auto-live',
 }
 
 export function toggleSpokenText() {

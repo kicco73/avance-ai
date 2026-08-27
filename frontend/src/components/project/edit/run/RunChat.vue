@@ -7,10 +7,9 @@ import ChatView from '../../../chat/ChatView.vue'
 import ChatTimeline from '../../../chat/ChatTimeline.vue'
 import RestartFromHereButton from '../../../chat/RestartFromHereButton.vue'
 import SessionsPanel from '../../../chat/SessionsPanel.vue'
-import ModelMenu from '../../../ModelMenu.vue'
 import { spokenTextEnabled } from '../../../../chatStoreFactory.js'
 import { applyAspect } from '../../../../chatSkin.js'
-import { testStore, testChatModelStore, loadTestChatModels } from '../../../../testChatStore.js'
+import { testStore } from '../../../../testChatStore.js'
 
 const {
   autoTrackingEnabled, autoTrackingLoading, toggleAutoTracking, handleReset,
@@ -77,7 +76,6 @@ function stopSessionExplorerDrag() {
 }
 
 onMounted(() => {
-  loadTestChatModels()
   window.addEventListener('mousemove', onSessionExplorerDrag)
   window.addEventListener('mouseup', stopSessionExplorerDrag)
 })
@@ -133,9 +131,6 @@ onBeforeUnmount(() => {
             <input type="checkbox" v-model="applyAspect" :disabled="!hasTheme" />
             Apply aspect
           </label>
-        </div>
-        <div class="edit-project-chat-toolbar-actions">
-          <ModelMenu :model-store="testChatModelStore" />
         </div>
       </div>
       <ChatView hide-sessions-panel theme-mode="manual" :store="testStore">

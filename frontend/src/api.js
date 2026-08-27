@@ -936,20 +936,6 @@ export function getTestMetrics(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/tests/metrics`)
 }
 
-// The Test panel's own ModelMenu — reads/writes ai_test_service's model
-// selection, independent of getAiModels/postAiModelSelection (ai_live_service).
-export function getTestModels(projectName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/tests/models`)
-}
-
-export function postTestModelSelection(projectName, index) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/tests/models/selection`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ index })
-  })
-}
-
 // Every real state key of the project's current draft automaton.
 export function getProjectStates(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/states`)

@@ -17,6 +17,7 @@ import InspectorStateTab from '../../inspector/InspectorStateTab.vue'
 import InspectorActionsTab from '../../inspector/InspectorActionsTab.vue'
 import SessionDetailCard from '../../inspector/SessionDetailCard.vue'
 import InspectorUserInfoCard from '../../inspector/InspectorUserInfoCard.vue'
+import ModelMenu from '../../ModelMenu.vue'
 import SettingsMenu from '../../settings/SettingsMenu.vue'
 import ProfileMenu from '../../ProfileMenu.vue'
 import ProjectsMenu from '../../ProjectsMenu.vue'
@@ -64,7 +65,7 @@ import { buildTimeline, highlightedStateKeyFor, nearestMessageIdAtOrBefore, resu
 // which just happens to share the same name in testStore.
 import { sessions } from '../../../chatStore.js'
 import { activeChatMode } from '../../../chatSkin.js'
-import { setTestProject, testStore } from '../../../testChatStore.js'
+import { setTestProject, testStore, testChatModelStore, loadTestChatModels } from '../../../testChatStore.js'
 
 // Aliased: this file already uses "state" for automaton state nodes.
 // `runState` is the "Run" tab's own current conversation state,
@@ -1522,6 +1523,7 @@ const historyCleared = ref(false)
 
 onMounted(async () => {
   loadFiles()
+  loadTestChatModels()
   refreshSessionStartState()
   refreshSignalsLog()
   refreshValidStateKeys()
@@ -1602,6 +1604,7 @@ onBeforeUnmount(() => {
           </template>
         </div>
         <ProjectsMenu :selected-name="projectName" @select="handleProjectMenuSelect" />
+        <ModelMenu :model-store="testChatModelStore" />
         <SettingsMenu
           :role="role"
           align="right"

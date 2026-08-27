@@ -7,7 +7,6 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import TestsTree from './TestsTree.vue'
 import DocInfoButton from '../../../DocInfoButton.vue'
 import MetricDetail from '../../../inspector/MetricDetail.vue'
-import ModelMenu from '../../../ModelMenu.vue'
 import {
   createTestEventsSource, deleteTests, getAggregateResult, getTestMetrics,
   getTests, getJobsStatus, getProjectSignals, getProjectStates, postTest, postRootAggregation,
@@ -16,7 +15,6 @@ import {
 } from '../../../../api.js'
 import { loadSessions, sessions, sessionsLoading } from '../../../../chatStore.js'
 import { confirmDialog } from '../../../../dialogStore.js'
-import { loadTestModels, makeTestModelStore } from '../../../../testModelStore.js'
 
 const props = defineProps({
   projectName: {
@@ -24,11 +22,6 @@ const props = defineProps({
     required: true
   }
 })
-
-// This panel's own ModelMenu controls which model *test runs* use
-// (ai_test_service) — never the chat's own (there is no interactive chat
-// in this panel), so it's bound to the Test-scoped store, not the default.
-const testModelStore = makeTestModelStore(props.projectName)
 
 // Lets EditProjectView.vue mirror this panel's own selection into the
 // Inspector's read-only Info tab — this stays the single source of truth
@@ -520,7 +513,6 @@ onMounted(() => {
   onSelect('root')
   loadSessions(true, props.projectName)
   loadMetricDefinitions()
-  loadTestModels(props.projectName)
   hydrateJobsStatus()
   statesLoading.value = true
   getProjectStates(props.projectName).then((states) => {
@@ -610,7 +602,6 @@ onBeforeUnmount(() => {
               </div>
             </Teleport>
           </div>
-          <ModelMenu :model-store="testModelStore" />
         </div>
       </div>
       <div class="tests-panel-content">

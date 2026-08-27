@@ -75,4 +75,5 @@ export const testChatModelStore = {
   currentIndex: testChatModelCurrentIndex,
   selectionLoading: testChatModelSelectionLoading,
   select: selectTestChatModel,
+  autoLabel: 'Auto-test',
 }

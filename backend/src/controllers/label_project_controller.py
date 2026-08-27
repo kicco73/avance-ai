@@ -20,7 +20,6 @@ from testing.test_service import TestService
 from testing.queue_progress_broadcaster import QueueProgressBroadcaster
 from tracking.tracking_service import TrackingService
 from schemas import (
-    AiModelSelectionRequest,
     CommentRequest,
     CreateTestRequest,
     ExpectedSignalsRequest,
@@ -59,18 +58,6 @@ class LabelProjectController(BaseController):
         `project_name` — every annotated session, or (session_id given)
         just that one. The "Label sessions" view's Performance tab."""
         return self.chat_service.get_benchmark_metrics(project_name=project_name, session_id=session_id)
-
-    @get("/api/projects/{project_name}/tests/models", role="supervisor")
-    def get_test_models(self, project_name: str):
-        """The Test panel's own ModelMenu — reads ai_test_service's
-        models/current selection, independent of the chat's own
-        GET /api/ai/models (ai_live_service)."""
-        return self.test_service.get_ai_models_info()
-
-    @post("/api/projects/{project_name}/tests/models/selection", role="supervisor")
-    def post_test_model_selection(self, project_name: str, req: AiModelSelectionRequest):
-        self.test_service.select_ai_model(req.index)
-        return {"success": True}
 
     @post("/api/projects/{project_name}/sessions/import", role="supervisor")
     async def post_import_sessions(self, project_name: str, files: list[UploadFile]):
@@ -247,7 +234,7 @@ class LabelProjectController(BaseController):
     # Named get_test_record, not get_test: inspect.getmembers walks routes
     # alphabetically (see base_controller.py's own docstring), and "get_test"
     # would sort before — and so shadow — the literal get_test_export/
-    # get_test_metrics/get_test_models routes above.
+    # get_test_metrics routes above.
     @get("/api/projects/{project_name}/tests/{test_id}", role="supervisor")
     def get_test_record(self, project_name: str, test_id: int):
         """One Test, its domain data merged with its Job's

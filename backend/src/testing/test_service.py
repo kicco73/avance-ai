@@ -383,12 +383,6 @@ class TestService:
         self._job_queue = job_queue
         self._cache = TestCache(db)
 
-    def get_ai_models_info(self) -> dict:
-        return self._ai_service.get_models_info()
-
-    def select_ai_model(self, index: int | None) -> None:
-        self._ai_service.select_model(index)
-
     def create_run(self, username: str | None, project_name: str, session_id: int | None, strategy: str) -> dict:
         run, job = self._construct_run(username, project_name, session_id, strategy)
         if job is not None:
