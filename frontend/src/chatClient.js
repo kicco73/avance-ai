@@ -152,9 +152,46 @@ async function sendViaWebsocket(text, sessionId, { onStatus, onChunk } = {}) {
   })
 }
 
-async function sendViaRest(text, sessionId) {
-  const data = await postChatMessage(text, sessionId)
-  return normalizeResult(data)
+async function readSseTurnStream(res, { onChunk } = {}) {
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    let boundary
+    while ((boundary = buffer.indexOf('\n\n')) !== -1) {
+      const block = buffer.slice(0, boundary)
+      buffer = buffer.slice(boundary + 2)
+      let eventType = 'message'
+      const dataLines = []
+      for (const line of block.split('\n')) {
+        if (line.startsWith('event:')) eventType = line.slice(6).trim()
+        else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim())
+      }
+      if (dataLines.length === 0) continue
+      const data = JSON.parse(dataLines.join('\n'))
+
+      if (eventType === 'chunk') {
+        if (data.content && onChunk) onChunk(data.content)
+        continue
+      }
+      if (eventType === 'error') {
+        setApiError(data.message, data.detail)
+        throw new Error(data.message)
+      }
+      if (eventType === 'done') {
+        return normalizeResult(data)
+      }
+    }
+  }
+  throw new Error('Chat stream ended unexpectedly.')
+}
+
+async function sendViaRest(text, sessionId, options = {}) {
+  const res = await postChatMessage(text, sessionId)
+  return readSseTurnStream(res, options)
 }
 
 export async function sendMessage(text, sessionId, options = {}) {
@@ -166,7 +203,7 @@ export async function sendMessage(text, sessionId, options = {}) {
       websocketUnavailable = true
     }
   }
-  return sendViaRest(text, sessionId)
+  return sendViaRest(text, sessionId, options)
 }
 
 export function connect() {

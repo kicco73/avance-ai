@@ -78,6 +78,7 @@ async function apiFetch(url, options, { parse = 'json', onProgress } = {}) {
   if (parse === 'blob') return res.blob()
   if (parse === 'text') return res.text()
   if (parse === 'sse') return readSseResult(res, onProgress)
+  if (parse === 'response') return res
   return res.json()
 }
 
@@ -349,7 +350,7 @@ export function postChatMessage(text, sessionId) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message: text })
-  })
+  }, { parse: 'response' })
 }
 
 export function postListenTranscribe(audioBlob) {
