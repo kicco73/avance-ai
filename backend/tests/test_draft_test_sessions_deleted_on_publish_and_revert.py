@@ -75,6 +75,43 @@ def test_publish_deletes_every_test_session(client):
     assert _test_session_ids(client, "proj") == set()
 
 
+def test_publish_does_not_delete_labeled_test_sessions(client):
+    """Labeling freezes a 'test' session as durable benchmark ground
+    truth — same contract as a labeled 'live' session, which already
+    survives indefinitely. Test.session cascades on delete, so wiping a
+    labeled session here would silently destroy every TestReplayJob
+    result ever computed against it too, not just the session itself."""
+    _upload_activate_and_establish_state(client, "proj")
+    session_id = _create_test_session(client, "proj")
+    assert client.put(f"/api/chat/sessions/{session_id}/labeled", json={"labeled": True}).status_code == 200
+
+    assert client.post("/api/projects/proj/publish", json={}).status_code == 200
+
+    assert session_id in _test_session_ids(client, "proj")
+
+
+def test_publish_still_deletes_unlabeled_test_sessions_alongside_a_labeled_one(client):
+    _upload_activate_and_establish_state(client, "proj")
+    labeled_id = _create_test_session(client, "proj")
+    assert client.put(f"/api/chat/sessions/{labeled_id}/labeled", json={"labeled": True}).status_code == 200
+    unlabeled_id = _create_test_session(client, "proj")
+
+    assert client.post("/api/projects/proj/publish", json={}).status_code == 200
+
+    assert _test_session_ids(client, "proj") == {labeled_id}
+
+
+def test_revert_does_not_delete_labeled_test_sessions(client):
+    _upload_activate_and_establish_state(client, "proj")
+    client.put("/api/projects/proj/files/behaviour/notes.txt", content=b"edited after publish")
+    session_id = _create_test_session(client, "proj")
+    assert client.put(f"/api/chat/sessions/{session_id}/labeled", json={"labeled": True}).status_code == 200
+
+    assert client.post("/api/projects/proj/revert").status_code == 200
+
+    assert session_id in _test_session_ids(client, "proj")
+
+
 def test_a_no_op_publish_still_deletes_test_sessions(client):
     """A double-click publish (nothing actually changed) still clears
     stale Test sessions rather than risking one surviving under a

@@ -38,13 +38,18 @@ def fake_time(monkeypatch):
 
 
 class _TimestampedJob(Job):
-    def __init__(self, key: str, log: list[float], fake_time: _FakeTime) -> None:
+    def __init__(self, key: str, log: list[float], fake_time: _FakeTime, is_background: bool = True) -> None:
         super().__init__(key=key, username="test")
         self._log = log
         self._fake_time = fake_time
+        self._is_background = is_background
 
     def _prepare(self) -> tuple[int, list[Job]]:
         return 1, []
+
+    @property
+    def is_background(self) -> bool:
+        return self._is_background
 
     @property
     def result(self) -> str | None:
@@ -133,3 +138,35 @@ def test_max_jobs_per_minute_is_a_true_sliding_window_across_the_boundary(fake_t
 
     assert len(log) == 3
     assert log[2] - log[0] >= 60
+
+
+def test_non_background_jobs_bypass_the_throttle(fake_time):
+    """An aggregation job (is_background=False) becomes runnable only once
+    every dependency it waits on has finished — it does no AI-call work of
+    its own, so it must not also wait out the same per-minute/interval
+    budget meant to protect the AI provider from real background (batch
+    replay) steps."""
+    log: list[float] = []
+    job_queue = ThrottledJobQueue(
+        max_concurrent=1,
+        broadcaster=NullBroadcaster(),
+        max_jobs_per_minute=1,
+        min_job_interval_ms=100_000,
+    )
+    background_job = _TimestampedJob("background", log, fake_time, is_background=True)
+    job_queue.submit(background_job)
+    assert _wait_until(lambda: background_job.is_done())
+
+    interactive_jobs = [
+        _TimestampedJob(f"interactive-{i}", log, fake_time, is_background=False) for i in range(5)
+    ]
+    for job in interactive_jobs:
+        job_queue.submit(job)
+    assert _wait_until(lambda: all(job.is_done() for job in interactive_jobs))
+
+    assert len(log) == 6
+    # Every non-background job ran right after the throttled background
+    # one, none of them waiting out max_jobs_per_minute=1 or the 100s
+    # min_job_interval_ms — both of which would otherwise force each of
+    # the 5 interactive jobs onto its own new 60s+ window.
+    assert log[-1] - log[0] < 1

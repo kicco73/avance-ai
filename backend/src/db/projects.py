@@ -230,11 +230,17 @@ class ProjectMixin:
         Project.delete().where(Project.name == project_name).execute()
 
     def delete_draft_test_sessions(self, project_name: str) -> None:
-        """Deletes every 'test' session of `project_name` — called by
-        publish_project/revert_to_published, the two moments a Test
-        session's anchored revision stops meaning anything."""
+        """Deletes every unlabeled 'test' session of `project_name` —
+        called by publish_project/revert_to_published, the two moments an
+        ephemeral test session's anchored revision stops meaning anything.
+        A labeled one is excluded: labeling freezes it as durable benchmark
+        ground truth (same contract as a labeled 'live' session, see
+        TestService._resolve_scope's own `if row['labeled']` gate) — and
+        Test.session cascades on delete, so wiping it here would silently
+        destroy every TestReplayJob result ever computed against it too."""
         ChatSession.delete().where(
             (ChatSession.project_name == project_name) & (ChatSession.type == 'test')
+            & (ChatSession.labeled == False)
         ).execute()
 
     def publish_project(self, project_name: str) -> None:

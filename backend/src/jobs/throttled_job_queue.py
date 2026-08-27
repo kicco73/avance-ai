@@ -60,5 +60,13 @@ class ThrottledJobQueue(JobQueue):
 
     def _dequeue(self) -> Job:
         job = super()._dequeue()
-        self._throttle()
+        # Only background jobs (TestReplayJob, one real AI call per step)
+        # need rate-limiting — an aggregation job's own step (see
+        # testing/test_service.py's _AggregationJob/RootAggregationJob,
+        # is_background=False) is pure in-memory/DB bookkeeping once its
+        # dependencies are done, and would otherwise wait out the same
+        # AI-provider budget for no reason, on every node of a project
+        # with many states/signals/users.
+        if job.is_background:
+            self._throttle()
         return job

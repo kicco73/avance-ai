@@ -47,6 +47,11 @@ class BenchmarkMetricResult(object):
     minimum: float | None = None
     maximum: float | None = None
     sample_count: int = 0
+    # Fixed-width histogram over the 0..100 scale every benchmark metric
+    # shares (see _Statistics.DISTRIBUTION_BUCKET_COUNT) — index i is the
+    # count of raw values landing in [i*bucket_width, (i+1)*bucket_width),
+    # last bucket closed on both ends. Empty when there were no values.
+    distribution: tuple[int, ...] = field(default_factory=tuple)
     components: dict[str, float] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
     calculated_at: datetime | None = None

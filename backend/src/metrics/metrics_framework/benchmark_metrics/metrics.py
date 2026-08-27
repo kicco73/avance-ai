@@ -8,9 +8,30 @@ from .interfaces import BenchmarkMetric
 from .normalization import BenchmarkNormalizer
 
 
-class _Statistics(object):
-    @staticmethod
+class Statistics(object):
+    """The framework's one place that turns a raw list of 0..100-scale
+    values into a BenchmarkMetricResult — every BenchmarkMetric.calculate()
+    routes through here, and any other layer (e.g. TestService, computing
+    a single named signal's own accuracy outside the full calculator
+    pipeline) should too, rather than re-deriving mean/median/distribution
+    by hand."""
+
+    # Fixed-width buckets across the shared 0..100 scale — coarse enough
+    # to read as a shape at a glance, fine enough to show a bimodal split.
+    DISTRIBUTION_BUCKET_COUNT = 10
+
+    @classmethod
+    def _distribution(cls, values: list[float]) -> tuple[int, ...]:
+        counts = [0] * cls.DISTRIBUTION_BUCKET_COUNT
+        for value in values:
+            index = int(value / 100.0 * cls.DISTRIBUTION_BUCKET_COUNT)
+            index = min(max(index, 0), cls.DISTRIBUTION_BUCKET_COUNT - 1)
+            counts[index] += 1
+        return tuple(counts)
+
+    @classmethod
     def result(
+        cls,
         name: str,
         values: list[float],
         *,
@@ -35,6 +56,7 @@ class _Statistics(object):
             minimum=min(values),
             maximum=max(values),
             sample_count=len(values),
+            distribution=cls._distribution(values),
             components=components or {},
             metadata=metadata or {},
             calculated_at=datetime.now(timezone.utc),
@@ -64,7 +86,7 @@ class StateAccuracyMetric(BenchmarkMetric):
 
     def calculate(self, observations: tuple[BenchmarkObservation, ...]) -> BenchmarkMetricResult:
         values = [o.state_agreement for o in observations if o.state_agreement is not None]
-        return _Statistics.result(self.name, [float(v) for v in values], metadata={"unit": "percent"})
+        return Statistics.result(self.name, [float(v) for v in values], metadata={"unit": "percent"})
 
 
 class StateAccuracyStableMetric(BenchmarkMetric):
@@ -82,7 +104,7 @@ class StateAccuracyStableMetric(BenchmarkMetric):
 
     def calculate(self, observations: tuple[BenchmarkObservation, ...]) -> BenchmarkMetricResult:
         values = _state_accuracy_values(observations, expected_transition=False)
-        return _Statistics.result(self.name, values, metadata={"unit": "percent"})
+        return Statistics.result(self.name, values, metadata={"unit": "percent"})
 
 
 class StateAccuracyTransitionMetric(BenchmarkMetric):
@@ -100,7 +122,7 @@ class StateAccuracyTransitionMetric(BenchmarkMetric):
 
     def calculate(self, observations: tuple[BenchmarkObservation, ...]) -> BenchmarkMetricResult:
         values = _state_accuracy_values(observations, expected_transition=True)
-        return _Statistics.result(self.name, values, metadata={"unit": "percent"})
+        return Statistics.result(self.name, values, metadata={"unit": "percent"})
 
 
 class SignalAccuracyMetric(BenchmarkMetric):
@@ -127,7 +149,7 @@ class SignalAccuracyMetric(BenchmarkMetric):
             for name, values_for_signal in per_signal.items()
             if values_for_signal
         }
-        return _Statistics.result(self.name, values, components=components, metadata={"unit": "percent"})
+        return Statistics.result(self.name, values, components=components, metadata={"unit": "percent"})
 
 
 class TransitionResponsivenessMetric(BenchmarkMetric):
@@ -149,7 +171,7 @@ class TransitionResponsivenessMetric(BenchmarkMetric):
             for o in observations
             if o.transition_responsiveness is not None
         ]
-        return _Statistics.result(self.name, values, metadata={"unit": "percent"})
+        return Statistics.result(self.name, values, metadata={"unit": "percent"})
 
 
 class BenchmarkAccuracyMetric(BenchmarkMetric):
@@ -184,7 +206,7 @@ class BenchmarkAccuracyMetric(BenchmarkMetric):
                 score = mean(float(v) for v in values)
                 components[name] = score
                 component_values.append(score)
-        return _Statistics.result(self.name, component_values, components=components, metadata={"unit": "percent"})
+        return Statistics.result(self.name, component_values, components=components, metadata={"unit": "percent"})
 
 
 class BenchmarkStabilityMetric(BenchmarkMetric):
@@ -225,7 +247,7 @@ class BenchmarkStabilityMetric(BenchmarkMetric):
             sd = pstdev(errors) if len(errors) > 1 else 0.0
             stability_components[name] = BenchmarkNormalizer.standard_deviation_to_stability(sd, 50.0)
         values = list(stability_components.values())
-        return _Statistics.result(self.name, values, components=stability_components, metadata={"unit": "percent"})
+        return Statistics.result(self.name, values, components=stability_components, metadata={"unit": "percent"})
 
 
 class BenchmarkConsistencyMetric(BenchmarkMetric):
@@ -278,7 +300,7 @@ class BenchmarkConsistencyMetric(BenchmarkMetric):
         if timing_consistency is not None:
             components["transition_timing_consistency"] = timing_consistency
         values = list(components.values())
-        return _Statistics.result(
+        return Statistics.result(
             self.name,
             values,
             components=components,

@@ -6,10 +6,12 @@ averaging each user's own pooled result across users.
 from __future__ import annotations
 
 import time
+from unittest.mock import patch
 
 import pytest
 
 from session import Session
+from testing.test_service import UsersAggregationJob
 
 pytestmark = pytest.mark.contract
 
@@ -116,6 +118,39 @@ def test_users_aggregation_with_no_annotated_users_still_completes(client, hello
     result = _wait_for_aggregate_result(client, hello_project, "users", "turn_by_turn")
     assert result.status_code == 200, result.text
     assert result.json() == []
+
+
+def test_users_aggregation_rerun_skips_dependency_resolution_when_cached(client, app_db, hello_project):
+    """Once 'users' is cached (draft unchanged since), re-running it must
+    resolve straight from that cache in _prepare() itself, before ever
+    calling _resolve_or_construct_dependencies() — never reconstructing
+    its underlying per-user, per-session TestReplayJob dependency tree
+    again just to re-derive an answer it already has."""
+    _make_labeled_session_for(client, app_db, hello_project, "alice")
+
+    original = UsersAggregationJob._resolve_or_construct_dependencies
+    calls = []
+
+    def spy(self):
+        calls.append(1)
+        return original(self)
+
+    with patch.object(UsersAggregationJob, "_resolve_or_construct_dependencies", spy):
+        first = client.post(f"/api/projects/{hello_project}/users/aggregation", json={"strategy": "turn_by_turn"})
+        assert first.status_code == 200, first.text
+        cached = _wait_for_aggregate_result(client, hello_project, "users", "turn_by_turn")
+        assert cached.status_code == 200, cached.text
+        assert len(calls) == 1
+
+        second = client.post(f"/api/projects/{hello_project}/users/aggregation", json={"strategy": "turn_by_turn"})
+        assert second.status_code == 200, second.text
+        recached = _wait_for_aggregate_result(client, hello_project, "users", "turn_by_turn")
+        assert recached.status_code == 200, recached.text
+        assert recached.json() == cached.json()
+
+        # Unchanged: the second run's _prepare() resolved straight from
+        # the cache and never touched dependency resolution at all.
+        assert len(calls) == 1
 
 
 def test_users_aggregation_rejects_unknown_strategy(client, hello_project):

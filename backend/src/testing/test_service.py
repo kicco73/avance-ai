@@ -27,7 +27,7 @@ from testing.signal_sources import BatchSignalSource, TurnByTurnSignalSource, es
 from testing.metrics_provider import TestMetricsProvider
 from metrics.metrics_framework.benchmark_metrics.calculator import BenchmarkCalculator
 from metrics.metrics_framework.benchmark_metrics.dto import BenchmarkConfiguration, BenchmarkMetricResult
-from metrics.metrics_framework.benchmark_metrics.metrics import SignalAccuracyMetric
+from metrics.metrics_framework.benchmark_metrics.metrics import SignalAccuracyMetric, Statistics
 from metrics.metrics_framework.benchmark_metrics.observations import BenchmarkData, BenchmarkObservationBuilder
 from project.parsers import decode_text_archives
 from session import Session
@@ -47,6 +47,15 @@ VALID_STRATEGIES = ('turn_by_turn', 'batch')
 
 
 
+def _job_result(job: Job) -> dict:
+    """job.result is only read here once every dependency Job.is_done()
+    (guaranteed by the job queue before a dependent's _compute() ever
+    runs) — never actually None at this point, just typed that way for
+    a job that hasn't finished yet."""
+    assert job.result is not None, f"{job.key}: dependency finished without a result"
+    return json.loads(job.result)
+
+
 def _serialize_metric_result(result: BenchmarkMetricResult) -> dict:
     return {
         'name': result.name,
@@ -57,6 +66,7 @@ def _serialize_metric_result(result: BenchmarkMetricResult) -> dict:
         'minimum': result.minimum,
         'maximum': result.maximum,
         'sample_count': result.sample_count,
+        'distribution': list(result.distribution),
         'components': result.components,
     }
 
@@ -213,6 +223,15 @@ class _AggregationJob(Job):
         self._result_value: dict | list[dict] | None = None
 
     def _prepare(self) -> tuple[int, tuple[Job, ...]]:
+        # Checked here, before any dependency is even resolved — not just
+        # in _run_next_step() — so an already-cached node needs no
+        # dependencies at all: none of its underlying sessions' (possibly
+        # expensive, real-AI-call) TestReplayJobs get constructed or
+        # re-run just to re-derive an answer this node already has cached.
+        cached = self._cached()
+        if cached is not None:
+            self._result_value = cached
+            return 1, ()
         return 1, self._resolve_or_construct_dependencies()
 
     def _resolve_or_construct_dependencies(self) -> tuple[Job, ...]:
@@ -249,9 +268,10 @@ class _AggregationJob(Job):
         raise NotImplementedError
 
     async def _run_next_step(self) -> None:
-        cached = self._cached()
-        if cached is not None:
-            self._result_value = cached
+        # _prepare() already resolved this from cache when possible (see
+        # above) — self._result_value is only still None here when it
+        # genuinely had to wait on real dependencies.
+        if self._result_value is not None:
             return
         result = await self._compute()
         self._persist(result)
@@ -329,7 +349,7 @@ class UsersAggregationJob(_AggregationJob):
         return tuple(self._user_jobs)
 
     async def _compute(self) -> list[dict]:
-        per_user_results = [json.loads(job.result) for job in self._user_jobs]
+        per_user_results = [_job_result(job) for job in self._user_jobs]
         return self._service._aggregate_across_results(per_user_results)
 
 
@@ -352,7 +372,7 @@ class AllStatesAggregationJob(_AggregationJob):
         return tuple(self._state_jobs)
 
     async def _compute(self) -> dict:
-        per_state_results = [json.loads(job.result) for job in self._state_jobs]
+        per_state_results = [_job_result(job) for job in self._state_jobs]
         return self._service._aggregate_weighted_by_sample_count(per_state_results)
 
 
@@ -377,7 +397,7 @@ class AllSignalsAggregationJob(_AggregationJob):
         return tuple(self._signal_jobs)
 
     async def _compute(self) -> dict:
-        per_signal_results = [json.loads(job.result) for job in self._signal_jobs]
+        per_signal_results = [_job_result(job) for job in self._signal_jobs]
         return self._service._aggregate_weighted_by_sample_count(per_signal_results)
 
 
@@ -581,6 +601,7 @@ class TestService:
 
     def _calculate_and_save_results(self, run: dict) -> None:
         current_run = self._db.get_test(run['id'])
+        assert current_run is not None, f"Test {run['id']}: vanished before its own run could finalize"
         data = build_test_data(self._db, current_run)
 
         if current_run['session_id'] is not None or current_run['username'] is None:
@@ -715,46 +736,30 @@ class TestService:
         self._job_queue.submit(job)
         return job
 
-    def _aggregate_signal_accuracy(self, sub_run_ids: list[int], state_key: str) -> dict:
+    def _observations_for(self, run_ids: list[int]) -> list:
         observations: list = []
-        for run_id in sub_run_ids:
+        for run_id in run_ids:
             run = self._db.get_test(run_id)
+            if run is None:
+                continue
             data = build_test_data(self._db, run)
             observations.extend(BenchmarkObservationBuilder(BenchmarkConfiguration()).build(data))
+        return observations
 
+    def _aggregate_signal_accuracy(self, sub_run_ids: list[int], state_key: str) -> dict:
+        observations = self._observations_for(sub_run_ids)
         filtered = tuple(o for o in observations if o.expected_state == state_key)
         return _serialize_metric_result(SignalAccuracyMetric().calculate(filtered))
 
     def _aggregate_signal_name_accuracy(self, sub_run_ids: list[int], signal_name: str) -> dict:
-        observations: list = []
-        for run_id in sub_run_ids:
-            run = self._db.get_test(run_id)
-            data = build_test_data(self._db, run)
-            observations.extend(BenchmarkObservationBuilder(BenchmarkConfiguration()).build(data))
-
+        observations = self._observations_for(sub_run_ids)
         values = [o.signal_agreements[signal_name] for o in observations if signal_name in o.signal_agreements]
-        if not values:
-            return {
-                'name': signal_name, 'value': 0.0, 'mean': None, 'median': None,
-                'standard_deviation': None, 'minimum': None, 'maximum': None,
-                'sample_count': 0, 'components': {},
-            }
-        return {
-            'name': signal_name,
-            'value': mean(values),
-            'mean': mean(values),
-            'median': median(values),
-            'standard_deviation': pstdev(values) if len(values) > 1 else 0.0,
-            'minimum': min(values),
-            'maximum': max(values),
-            'sample_count': len(values),
-            'components': {},
-        }
+        return _serialize_metric_result(Statistics.result(signal_name, values, metadata={"unit": "percent"}))
 
     def _aggregate_pooled_runs(self, sub_run_ids: list[int], project_name: str) -> list[dict]:
         if not sub_run_ids:
             return []
-        runs = [self._db.get_test(run_id) for run_id in sub_run_ids]
+        runs = [run for run_id in sub_run_ids if (run := self._db.get_test(run_id)) is not None]
         frames = [build_test_data(self._db, run) for run in runs]
         pooled = BenchmarkData(
             messages=pd.concat([f.messages for f in frames], ignore_index=True),

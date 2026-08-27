@@ -7,6 +7,7 @@ from .metrics import (
     BenchmarkStabilityMetric,
     SignalAccuracyMetric,
     StateAccuracyMetric,
+    Statistics,
     TransitionResponsivenessMetric,
 )
 
@@ -22,4 +23,5 @@ __all__ = [
     "BenchmarkAccuracyMetric",
     "BenchmarkStabilityMetric",
     "BenchmarkConsistencyMetric",
+    "Statistics",
 ]
