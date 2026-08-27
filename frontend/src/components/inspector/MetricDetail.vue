@@ -5,6 +5,7 @@ import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 const props = defineProps({
   label: { type: String, required: true },
   value: { type: Number, default: null },
+  median: { type: Number, default: null },
   description: { type: String, default: null },
   badgeLabel: { type: String, default: 'Metric' },
   highlighted: { type: Boolean, default: false },
@@ -12,8 +13,12 @@ const props = defineProps({
 })
 
 const { visible: tooltipVisible, style: tooltipStyle, show: showTooltip, hide: hideTooltip } = useFloatingTooltip()
+const {
+  visible: medianTooltipVisible, style: medianTooltipStyle, show: showMedianTooltip, hide: hideMedianTooltip
+} = useFloatingTooltip()
 
 const formattedValue = computed(() => (typeof props.value === 'number' ? `${props.value.toFixed(2)}%` : '—'))
+const formattedMedian = computed(() => (typeof props.median === 'number' ? `Median: ${props.median.toFixed(2)}%` : ''))
 </script>
 
 <template>
@@ -35,9 +40,17 @@ const formattedValue = computed(() => (typeof props.value === 'number' ? `${prop
         :style="{ width: value + '%' }"
       ></div>
       <div v-else class="metric-detail-bar-fill metric-detail-bar-na"></div>
+      <div
+        v-if="typeof median === 'number'"
+        class="metric-detail-median-marker"
+        :style="{ left: median + '%' }"
+        @mouseenter.stop="showMedianTooltip($event.currentTarget)"
+        @mouseleave.stop="hideMedianTooltip"
+      ></div>
     </div>
     <Teleport to="body">
       <span v-if="tooltipVisible" class="metric-detail-tooltip-floating" :style="tooltipStyle">{{ formattedValue }}</span>
+      <span v-if="medianTooltipVisible" class="metric-detail-tooltip-floating" :style="medianTooltipStyle">{{ formattedMedian }}</span>
     </Teleport>
   </div>
 </template>
@@ -103,6 +116,17 @@ const formattedValue = computed(() => (typeof props.value === 'number' ? `${prop
 .metric-detail-bar-na {
   width: 100%;
   background: repeating-linear-gradient(45deg, #ccc, #ccc 6px, #ddd 6px, #ddd 12px);
+}
+
+.metric-detail-median-marker {
+  position: absolute;
+  top: 0;
+  width: 10px;
+  height: 100%;
+  border-radius: 1.5px;
+  background: #d32f2f;
+  transform: translateX(-50%);
+  cursor: default;
 }
 
 @keyframes metric-detail-bar-flash {

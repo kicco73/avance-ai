@@ -582,11 +582,7 @@ onBeforeUnmount(() => {
 
     <div class="tests-panel-main">
       <div class="tests-panel-toolbar">
-        <div v-if="selectedNodeId" class="tests-panel-toolbar-title">
-          <h3 class="tests-panel-title">{{ selectedNodeLabel }}</h3>
-          <DocInfoButton doc-name="benchmark" title="Benchmark" />
-        </div>
-        <div v-else class="tests-panel-toolbar-title"></div>
+        <div class="tests-panel-toolbar-title"></div>
         <div class="tests-panel-toolbar-actions">
           <span class="tests-panel-tokens-label">Tokens burnt: {{ tokensBurnt }}</span>
           <div class="strategy-menu">
@@ -632,14 +628,12 @@ onBeforeUnmount(() => {
           <table v-if="selectedRun.results && selectedRun.results.length" class="tests-panel-metrics-table">
             <thead>
               <tr>
-                <th>Metric</th><th>Mean</th><th>Median</th><th>Std dev</th><th>Samples</th>
+                <th><span class="tests-panel-metric-header">Metric<DocInfoButton doc-name="benchmark" title="Benchmark" /></span></th><th>Std dev</th><th>Samples</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="metric in selectedRun.results" :key="metric.name" :class="{ 'tests-panel-row-empty': !metric.sample_count }">
-                <td><MetricDetail :label="metricLabel(metric.name)" :description="metricDescription(metric.name)" :value="metric.value" /></td>
-                <td>{{ formatNumber(metric.mean) }}</td>
-                <td>{{ formatNumber(metric.median) }}</td>
+                <td><MetricDetail :label="metricLabel(metric.name)" :description="metricDescription(metric.name)" :value="metric.value" :median="metric.median" /></td>
                 <td>{{ formatNumber(metric.standard_deviation) }}</td>
                 <td>{{ metric.sample_count }}</td>
               </tr>
@@ -656,7 +650,7 @@ onBeforeUnmount(() => {
         <table v-else class="tests-panel-metrics-table">
           <thead>
             <tr>
-              <th>Metric</th><th>Mean</th><th>Median</th><th>Std dev</th><th>Samples</th>
+              <th><span class="tests-panel-metric-header">Metric<DocInfoButton doc-name="benchmark" title="Benchmark" /></span></th><th>Std dev</th><th>Samples</th>
             </tr>
           </thead>
           <tbody>
@@ -664,9 +658,7 @@ onBeforeUnmount(() => {
               v-for="metric in nodeLastResult[selectedCacheKey]" :key="metric.name"
               :class="{ 'tests-panel-row-empty': !metric.sample_count }"
             >
-              <td><MetricDetail :label="metricLabel(metric.name)" :description="metricDescription(metric.name)" :value="metric.value" /></td>
-              <td>{{ formatNumber(metric.mean) }}</td>
-              <td>{{ formatNumber(metric.median) }}</td>
+              <td><MetricDetail :label="metricLabel(metric.name)" :description="metricDescription(metric.name)" :value="metric.value" :median="metric.median" /></td>
               <td>{{ formatNumber(metric.standard_deviation) }}</td>
               <td>{{ metric.sample_count }}</td>
             </tr>
@@ -682,14 +674,12 @@ onBeforeUnmount(() => {
         <table v-else class="tests-panel-metrics-table">
           <thead>
             <tr>
-              <th>Metric</th><th>Mean</th><th>Median</th><th>Std dev</th><th>Samples</th>
+              <th><span class="tests-panel-metric-header">Metric<DocInfoButton doc-name="benchmark" title="Benchmark" /></span></th><th>Std dev</th><th>Samples</th>
             </tr>
           </thead>
           <tbody>
             <tr :class="{ 'tests-panel-row-empty': !nodeLastResult[selectedCacheKey].sample_count }">
-              <td><MetricDetail :label="metricLabel(nodeLastResult[selectedCacheKey].name)" :description="metricDescription(nodeLastResult[selectedCacheKey].name)" :value="nodeLastResult[selectedCacheKey].value" /></td>
-              <td>{{ formatNumber(nodeLastResult[selectedCacheKey].mean) }}</td>
-              <td>{{ formatNumber(nodeLastResult[selectedCacheKey].median) }}</td>
+              <td><MetricDetail :label="metricLabel(nodeLastResult[selectedCacheKey].name)" :description="metricDescription(nodeLastResult[selectedCacheKey].name)" :value="nodeLastResult[selectedCacheKey].value" :median="nodeLastResult[selectedCacheKey].median" /></td>
               <td>{{ formatNumber(nodeLastResult[selectedCacheKey].standard_deviation) }}</td>
               <td>{{ nodeLastResult[selectedCacheKey].sample_count }}</td>
             </tr>
@@ -705,7 +695,7 @@ onBeforeUnmount(() => {
         <table v-else class="tests-panel-metrics-table">
           <thead>
             <tr>
-              <th>Metric</th><th>Mean</th><th>Median</th><th>Std dev</th><th>Samples</th>
+              <th><span class="tests-panel-metric-header">Metric<DocInfoButton doc-name="benchmark" title="Benchmark" /></span></th><th>Std dev</th><th>Samples</th>
             </tr>
           </thead>
           <tbody>
@@ -713,11 +703,9 @@ onBeforeUnmount(() => {
               <td>
                 <MetricDetail
                   :label="metricLabel('signal_accuracy')" :description="metricDescription('signal_accuracy')"
-                  :value="nodeLastResult[selectedCacheKey].value"
+                  :value="nodeLastResult[selectedCacheKey].value" :median="nodeLastResult[selectedCacheKey].median"
                 />
               </td>
-              <td>{{ formatNumber(nodeLastResult[selectedCacheKey].mean) }}</td>
-              <td>{{ formatNumber(nodeLastResult[selectedCacheKey].median) }}</td>
               <td>{{ formatNumber(nodeLastResult[selectedCacheKey].standard_deviation) }}</td>
               <td>{{ nodeLastResult[selectedCacheKey].sample_count }}</td>
             </tr>
@@ -732,11 +720,11 @@ onBeforeUnmount(() => {
         </p>
         <table v-else class="tests-panel-metrics-table">
           <thead>
-            <tr><th>Metric</th><th>Samples</th></tr>
+            <tr><th><span class="tests-panel-metric-header">Metric<DocInfoButton doc-name="benchmark" title="Benchmark" /></span></th><th>Samples</th></tr>
           </thead>
           <tbody>
             <tr :class="{ 'tests-panel-row-empty': !nodeLastResult[selectedCacheKey].sample_count }">
-              <td><MetricDetail label="Overall" :value="nodeLastResult[selectedCacheKey].value" /></td>
+              <td><MetricDetail label="Overall" :value="nodeLastResult[selectedCacheKey].value" :median="nodeLastResult[selectedCacheKey].median" /></td>
               <td>{{ nodeLastResult[selectedCacheKey].sample_count }}</td>
             </tr>
           </tbody>
@@ -750,11 +738,11 @@ onBeforeUnmount(() => {
         </p>
         <table v-else class="tests-panel-metrics-table">
           <thead>
-            <tr><th>Metric</th><th>Samples</th></tr>
+            <tr><th><span class="tests-panel-metric-header">Metric<DocInfoButton doc-name="benchmark" title="Benchmark" /></span></th><th>Samples</th></tr>
           </thead>
           <tbody>
             <tr :class="{ 'tests-panel-row-empty': !nodeLastResult[selectedCacheKey].sample_count }">
-              <td><MetricDetail label="Overall" :value="nodeLastResult[selectedCacheKey].value" /></td>
+              <td><MetricDetail label="Overall" :value="nodeLastResult[selectedCacheKey].value" :median="nodeLastResult[selectedCacheKey].median" /></td>
               <td>{{ nodeLastResult[selectedCacheKey].sample_count }}</td>
             </tr>
           </tbody>
@@ -928,9 +916,10 @@ onBeforeUnmount(() => {
   padding: 1rem;
 }
 
-.tests-panel-title {
-  margin: 0;
-  font-size: 1rem;
+.tests-panel-metric-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .tests-panel-placeholder {

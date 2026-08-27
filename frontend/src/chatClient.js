@@ -3,16 +3,10 @@ import { setApiError } from './errorStore.js'
 
 // INSTRUCTIONS FOR CLAUDE CODE: NEVER TOUCH THIS FILE.
 
-class WebSocketUnavailableError extends Error {}
-
 let websocketUnavailable = false
 let socket = null
 let socketConnectingPromise = null
-let pendingTurn = null // { resolve, reject, onStatus, onChunk }
 
-// A server-pushed cross-project wake-up — never a response to anything
-// this client asked for, so it never touches pendingTurn, and can arrive
-// for a project other than the one currently displayed.
 let notificationHandler = null
 
 export function onNotification(handler) {
@@ -40,55 +34,8 @@ function handleSocketMessage(event) {
   try {
     data = JSON.parse(event.data)
   } catch (e) {
-    if (pendingTurn?.onChunk) {
-      pendingTurn.onChunk(event.data)
-    }
     return
   }
-
-  // Streaming chunk
-  if (data.type === 'chunk' || data.chunk !== undefined || data.delta !== undefined) {
-    const textChunk = data.content ?? data.chunk ?? data.delta ?? ''
-    if (textChunk && pendingTurn?.onChunk) {
-      pendingTurn.onChunk(textChunk)
-    }
-    return
-  }
-
-  // Status / retry
-  if (data.type === 'status' || data.status) {
-    const statusText = data.status ?? data.message
-    if (statusText && pendingTurn?.onStatus) {
-      pendingTurn.onStatus(statusText)
-    }
-    return
-  }
-
-  if (data.type === 'retrying') {
-    const seconds = Math.max(0, Math.ceil(data.retry_in ?? 0))
-    pendingTurn?.onStatus?.(`Service unavailable, retrying (${data.attempt}/${data.max_attempts}) in ${seconds}s...`)
-    return
-  }
-
-  // Error
-  if (data.type === 'error') {
-    setApiError(data.error.message, data.error.detail)
-    pendingTurn?.reject(new Error(data.error.message))
-    pendingTurn = null
-    return
-  }
-
-  // Done: resolves the promise at the end of the stream
-  if (data.type === 'done') {
-    if (!pendingTurn) return
-    const { resolve } = pendingTurn
-    pendingTurn = null
-    resolve(normalizeResult(data))
-    return
-  }
-
-  // Notification: server-pushed cross-project wake-up, never tied to
-  // pendingTurn — it's up to the registered handler to decide how to show it.
   if (data.type === 'notification') {
     notificationHandler?.({
       project_name: data.project_name,
@@ -119,37 +66,11 @@ function connectSocket() {
     ws.onclose = () => {
       socket = null
       socketConnectingPromise = null
-
-      if (!opened) {
-        reject(new WebSocketUnavailableError('Unable to connect to the chat service.'))
-        return
-      }
-
-      if (pendingTurn) {
-        const err = new Error('Chat connection closed unexpectedly.')
-        setApiError(err.message)
-        pendingTurn.reject(err)
-        pendingTurn = null
-      }
+      if (!opened) reject(new Error('Unable to connect to the chat service.'))
     }
   })
 
   return socketConnectingPromise
-}
-
-async function ensureSocket() {
-  if (socket && socket.readyState === WebSocket.OPEN) {
-    return socket
-  }
-  return await connectSocket()
-}
-
-async function sendViaWebsocket(text, sessionId, { onStatus, onChunk } = {}) {
-  const ws = await ensureSocket()
-  return new Promise((resolve, reject) => {
-    pendingTurn = { resolve, reject, onStatus, onChunk }
-    ws.send(JSON.stringify({ message: text, session_id: sessionId }))
-  })
 }
 
 async function readSseTurnStream(res, { onChunk } = {}) {
@@ -189,26 +110,16 @@ async function readSseTurnStream(res, { onChunk } = {}) {
   throw new Error('Chat stream ended unexpectedly.')
 }
 
-async function sendViaRest(text, sessionId, options = {}) {
+export async function sendMessage(text, sessionId, options = {}) {
   const res = await postChatMessage(text, sessionId)
   return readSseTurnStream(res, options)
 }
 
-export async function sendMessage(text, sessionId, options = {}) {
-  if (!websocketUnavailable) {
-    try {
-      return await sendViaWebsocket(text, sessionId, options)
-    } catch (err) {
-      if (!(err instanceof WebSocketUnavailableError)) throw err
-      websocketUnavailable = true
-    }
-  }
-  return sendViaRest(text, sessionId, options)
-}
-
 export function connect() {
   if (websocketUnavailable) return
-  connectSocket().catch(() => {})
+  connectSocket().catch(() => {
+    websocketUnavailable = true
+  })
 }
 
 export function disconnect() {
@@ -217,8 +128,4 @@ export function disconnect() {
     socket = null
   }
   socketConnectingPromise = null
-  if (pendingTurn) {
-    pendingTurn.reject(new Error('Chat connection closed.'))
-    pendingTurn = null
-  }
 }
