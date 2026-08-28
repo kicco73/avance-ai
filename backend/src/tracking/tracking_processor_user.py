@@ -79,18 +79,6 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			self.out.reply = buffered_text_before_signals_resolved
 			self.metadata.on_metadata('chunk', buffered_text_before_signals_resolved)
 
-		if self.metadata.signals:
-			# The trigger is decided from the user's message, so this row
-			# links to it directly — except an opening turn, whose
-			# message_id only points at a placeholder that gets deleted, which would silently orphan an early link.
-			has_real_user_message = not self.user.has_ai_started_conversation
-			self.out.tracking_id = self._tracking_engine.apply_transition(
-				self.user.automaton, self.user.state, self.out.action, self.metadata.signals, self.user.session_id,
-				message_id=self.user.message_id if has_real_user_message else None,
-				username=Session().user, project_name=self.user.project_name,
-			)
-			self.out.tracking_linked_to_message = has_real_user_message
-
 		if self.user.state != self.out.state:
 			# Wrong guess — the async method moved the automaton.
 			# We need to regenerate the answer
@@ -109,5 +97,17 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			):
 				self.out.reply += chunk
 				self.metadata.on_metadata('chunk', chunk)
+
+		if self.metadata.signals:
+			# The trigger is decided from the user's message, so this row
+			# links to it directly — except an opening turn, whose
+			# message_id only points at a placeholder that gets deleted, which would silently orphan an early link.
+			has_real_user_message = not self.user.has_ai_started_conversation
+			self.out.tracking_id = self._tracking_engine.apply_transition(
+				self.user.automaton, self.user.state, self.out.action, self.metadata.signals, self.user.session_id,
+				message_id=self.user.message_id if has_real_user_message else None,
+				username=Session().user, project_name=self.user.project_name,
+			)
+			self.out.tracking_linked_to_message = has_real_user_message
 
 		return self.out

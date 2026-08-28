@@ -18,7 +18,7 @@ from ai.llm_provider import (
 	AIServiceProviderPermanentError,
 	AIServiceProviderRateLimitedError,
 	AIServiceProviderUnavailableError,
-	LLMProviderWithSchema,
+	LLMProvider,
 	content_to_text,
 )
 
@@ -49,7 +49,7 @@ def _handle_gemini_errors() -> Generator[None, None, None]:
 
 	dict[str, tuple[type, str]]
 
-class GeminiProvider(LLMProviderWithSchema):
+class GeminiProvider(LLMProvider):
 	def __init__(self, config: AIServiceConfig) -> None:
 		super().__init__()
 		self._api_key: str = config.key
@@ -160,6 +160,10 @@ class GeminiProvider(LLMProviderWithSchema):
 					continue
 				yield chunk.text
 		self._add_tokens(total_tokens)
+		logger.info(
+			f"Gemini call finished: model={self._model_name} finish_reason={finish_reason} "
+			f"total_tokens={total_tokens} max_output_tokens={self._max_output_tokens}"
+		)
 
 		if finish_reason == types.FinishReason.MAX_TOKENS:
 			raise AIServiceProviderOutputTruncatedError(str(finish_reason))

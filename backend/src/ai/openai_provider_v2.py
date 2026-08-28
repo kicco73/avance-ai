@@ -12,7 +12,7 @@ from ai.llm_provider import (
     AIServiceProviderPermanentError,
     AIServiceProviderRateLimitedError,
     AIServiceProviderUnavailableError,
-    LLMProviderWithSchema,
+    LLMProvider,
     content_to_text,
 )
 from logging_factory import LoggerFactory
@@ -29,7 +29,7 @@ DEFAULT_ENCODING_NAME = "cl100k_base"
 CHARS_PER_TOKEN_ESTIMATE = 4
 
 
-class OpenAICompatibleProvider(LLMProviderWithSchema):
+class OpenAICompatibleProvider(LLMProvider):
 
     def __init__(self, config: AIServiceConfig) -> None:
         super().__init__()
@@ -145,6 +145,10 @@ class OpenAICompatibleProvider(LLMProviderWithSchema):
                     if chunk.choices[0].delta.content:
                         yield chunk.choices[0].delta.content
             self._add_tokens(total_tokens)
+            logger.info(
+                f"OpenAI-compatible call finished: model={self._model_name} finish_reason={finish_reason} "
+                f"total_tokens={total_tokens} max_output_tokens={self._max_output_tokens}"
+            )
 
         except RateLimitError as exc:
             raise AIServiceProviderRateLimitedError(

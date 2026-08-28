@@ -19,9 +19,12 @@ from ai.llm_provider import (
 	AIServiceProviderPermanentError,
 	AIServiceProviderRateLimitedError,
 	AIServiceProviderUnavailableError,
-	LLMProviderWithSchema,
+	LLMProvider,
 	content_to_text,
 )
+from logging_factory import LoggerFactory
+
+logger = LoggerFactory.get_logger(__name__)
 
 CLAUDE_DEFAULT_MODEL: str = "claude-sonnet-5"
 REQUEST_TIMEOUT_SECONDS: float = 30.0
@@ -45,7 +48,7 @@ def _handle_anthropic_errors() -> Generator[None, None, None]:
 
 	except anthropic.RateLimitError as exc:
 		raise AIServiceProviderRateLimitedError(
-			"The Anthropic API rate limit was exceeded (status 429)."
+			f"The Anthropic API rate limit was exceeded (status 429): {exc}"
 		) from exc
 
 	except anthropic.APIStatusError as exc:
@@ -79,7 +82,7 @@ def _handle_anthropic_errors() -> Generator[None, None, None]:
 		) from exc
 
 
-class AnthropicProvider(LLMProviderWithSchema):
+class AnthropicProvider(LLMProvider):
 	def __init__(self, config: AIServiceConfig) -> None:
 		super().__init__()
 		self._model_name: str = config.model or CLAUDE_DEFAULT_MODEL
@@ -223,6 +226,10 @@ class AnthropicProvider(LLMProviderWithSchema):
 				usage = final_message.usage
 				self._add_tokens(usage.input_tokens + usage.output_tokens)
 				stop_reason = final_message.stop_reason
+				logger.info(
+					f"Anthropic call finished: model={self._model_name} stop_reason={stop_reason} "
+					f"output_tokens={usage.output_tokens} max_output_tokens={self._max_output_tokens}"
+				)
 
 		except (
 			AIServiceError,

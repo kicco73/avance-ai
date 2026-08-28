@@ -17,6 +17,9 @@ from ai.llm_provider import (
     LLMProvider,
     MetadataCallback,
 )
+from logging_factory import LoggerFactory
+
+logger = LoggerFactory.get_logger(__name__)
 
 _FAILOVER_ERRORS = (
     AIServiceProviderUnavailableError,
@@ -48,17 +51,6 @@ class AutoLiveLLMProvider(LLMProvider):
     def get_input_tokens(self, prompt: str) -> int:
         return self.current_provider.get_input_tokens(prompt)
 
-    async def generate_stream(
-        self, system_prompt: str, history: list[dict]
-    ) -> AsyncIterator[str]:
-        provider = self._cascade.current
-        try:
-            async for chunk in provider.generate_stream(system_prompt, history):
-                yield chunk
-        except _FAILOVER_ERRORS:
-            self._cascade.advance()
-            raise
-
     async def generate_stream_with_schema(
         self, system_prompt: str, history: list[dict], schema: dict[str, str]
     ) -> AsyncIterator[str]:
@@ -66,49 +58,23 @@ class AutoLiveLLMProvider(LLMProvider):
         try:
             async for chunk in provider.generate_stream_with_schema(system_prompt, history, schema=schema):  # type: ignore
                 yield chunk
-        except _FAILOVER_ERRORS:
+        except _FAILOVER_ERRORS as exc:
+            logger.error(f"AI (live) provider #{self._cascade.current_index + 1} failed: {type(exc).__name__}: {exc}")
             self._cascade.advance()
             raise
 
 
 class AutoTestLLMProvider(AutoLiveLLMProvider):
     """Exhaustive cascade: retries the current provider with backoff on a
-    transient failure — as long as no output has been sent yet, to never
-    repeat a partial response — otherwise advances to the next provider,
-    until every provider has been tried once or one succeeds. Reports each
-    retry/failover through `on_metadata` as a warning, when given."""
-
-    async def generate_stream(
-        self, system_prompt: str, history: list[dict], on_metadata: MetadataCallback | None = None
-    ) -> AsyncIterator[str]:
-        last_error: BaseException | None = None
-        for _ in range(len(self._cascade)):
-            provider = self._cascade.current
-            index = self._cascade.current_index
-            attempt = 0
-            yielded = False
-            while True:
-                try:
-                    async for chunk in provider.generate_stream(system_prompt, history):
-                        yielded = True
-                        yield chunk
-                    return
-                except AIServiceProviderUnavailableError as exc:
-                    last_error = exc
-                    if yielded or attempt >= MAX_RETRIES:
-                        break
-                    attempt += 1
-                    if on_metadata is not None:
-                        on_metadata("warning", f"Provider #{index + 1} unavailable, retry {attempt}/{MAX_RETRIES}: {exc}")
-                    await asyncio.sleep(BASE_DELAY_SECONDS * 2 ** (attempt - 1))
-                except (AIServiceProviderRateLimitedError, AIServiceProviderPermanentError) as exc:
-                    last_error = exc
-                    break
-            if on_metadata is not None:
-                on_metadata("warning", f"Switching away from provider #{index + 1}: {last_error}")
-            self._cascade.advance()
-        assert last_error is not None
-        raise last_error
+    transient failure, advancing to the next provider once every retry on
+    the current one is exhausted — but only as long as nothing has been
+    yielded to the caller yet. Once any chunk has gone out, a second
+    provider's response can never be safely appended after it (two
+    independent generations concatenated into one stream/JSON document is
+    just corruption, not a retry), so any further failure is raised
+    immediately instead of advancing — the caller sees a clean error
+    rather than a spliced, malformed response. Reports each retry/failover
+    through `on_metadata` as a warning, when given."""
 
     async def generate_stream_with_schema(
         self,
@@ -131,7 +97,9 @@ class AutoTestLLMProvider(AutoLiveLLMProvider):
                     return
                 except AIServiceProviderUnavailableError as exc:
                     last_error = exc
-                    if yielded or attempt >= MAX_RETRIES:
+                    if yielded:
+                        raise
+                    if attempt >= MAX_RETRIES:
                         break
                     attempt += 1
                     if on_metadata is not None:
@@ -139,7 +107,10 @@ class AutoTestLLMProvider(AutoLiveLLMProvider):
                     await asyncio.sleep(BASE_DELAY_SECONDS * 2 ** (attempt - 1))
                 except (AIServiceProviderRateLimitedError, AIServiceProviderPermanentError) as exc:
                     last_error = exc
+                    if yielded:
+                        raise
                     break
+            logger.error(f"AI (test) provider #{index + 1} failed: {type(last_error).__name__}: {last_error}")
             if on_metadata is not None:
                 on_metadata("warning", f"Switching away from provider #{index + 1}: {last_error}")
             self._cascade.advance()

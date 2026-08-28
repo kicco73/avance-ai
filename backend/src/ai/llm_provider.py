@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any, AsyncIterator, Callable
 
 
-from cascade import OnRetry, ProviderError, ProviderRateLimitedError, ProviderUnavailableError
+from cascade import ProviderError, ProviderRateLimitedError, ProviderUnavailableError
 from logging_factory import LoggerFactory
 
 logger = LoggerFactory.get_logger(__name__)
@@ -106,33 +106,6 @@ class LLMProvider(TokenCounter, ABC):
 	def __init__(self) -> None:
 		TokenCounter.__init__(self)
 
-	async def generate(
-		self, system_prompt: str, history: list[dict], on_retry: OnRetry | None = None
-	) -> str:
-		chunks: list[str] = []
-		async for chunk in self.generate_stream(system_prompt, history):
-			chunks.append(chunk)
-		return "".join(chunks)
-
-	@abstractmethod
-	async def generate_stream(
-		self, system_prompt: str, history: list[dict], on_retry: OnRetry | None = None
-	) -> AsyncIterator[str]:
-		raise NotImplementedError
-		yield
-
-	@abstractmethod
-	def get_input_tokens(self, prompt: str) -> int:
-		"""Estimated token count `prompt` would cost as input, computed
-		each provider's own way (a real count-tokens API call, or a local
-		tokenizer estimate) — never a network call to actually generate."""
-		raise NotImplementedError
-
-class LLMProviderWithSchema(TokenCounter, ABC):
-
-	def __init__(self) -> None:
-		TokenCounter.__init__(self)
-
 	@abstractmethod
 	async def generate_stream_with_schema(
 		self, system_prompt: str, history: list[dict], schema: dict[str, str]
@@ -142,7 +115,8 @@ class LLMProviderWithSchema(TokenCounter, ABC):
 
 	@abstractmethod
 	def get_input_tokens(self, prompt: str) -> int:
-		"""See LLMProvider.get_input_tokens — same contract, duplicated
-		here since LLMProviderWithSchema doesn't inherit LLMProvider."""
+		"""Estimated token count `prompt` would cost as input, computed
+		each provider's own way (a real count-tokens API call, or a local
+		tokenizer estimate) — never a network call to actually generate."""
 		raise NotImplementedError
 

@@ -1,5 +1,5 @@
 """Abstract interface shared by all STT providers, mirroring
-ai/llm_provider.py's LLMProvider — no cascade knowledge here: retry/
+ai/llm_provider.py's LLMProviderWithSchema — no cascade knowledge here: retry/
 cascading is CascadingListenProvider's responsibility alone (see
 cascading_listen_provider.py).
 """

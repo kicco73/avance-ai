@@ -7,10 +7,9 @@ from typing import Any, AsyncIterator, Sequence
 
 import partial_json_parser
 from ai.llm_provider import (
-	LLMProvider,
 	AIServiceConfig,
 	AIServiceProviderOutputTruncatedError,
-	LLMProviderWithSchema,
+	LLMProvider,
 	MetadataCallback,
 )
 from ai.cascading_llm_provider import AutoLiveLLMProvider, AutoTestLLMProvider
@@ -184,15 +183,13 @@ class AiService(object):
 		system_prompt: str,
 		history: list[dict],
 	) -> AsyncIterator[str]:
-		if self.is_provider_with_schema():
-			return self.generate_stream_with_metadata(
-				system_prompt, history, on_metadata=lambda name, value: None,
-				schema={"text": "Normal textual response, in markdown format, rendered as text."},
-			)
-		return self._active_provider.generate_stream(system_prompt, history)
+		return self.generate_stream_with_metadata(
+			system_prompt, history, on_metadata=lambda name, value: None,
+			schema={"text": "Normal textual response, in markdown format, rendered as text."},
+		)
 
 	def is_provider_with_schema(self) -> bool:
-		return isinstance(self._current_leaf_provider, LLMProviderWithSchema)
+		return isinstance(self._current_leaf_provider, LLMProvider)
 
 	async def generate_stream_with_metadata(
 		self,
@@ -206,6 +203,7 @@ class AiService(object):
 		emitted: set[str] = set()
 		last_text_length = 0
 
+		logger.info(f"generate_stream_with_metadata: provider={self._current_provider_label} fields={list(schema.keys())}")
 		response_stream = self._active_provider.generate_stream_with_schema(system_prompt, history, schema=schema) # type: ignore
 
 		try:
@@ -250,7 +248,7 @@ class AiService(object):
 			# quietly (see chat/sse_turn.py's SseChatTurn._run).
 			raise
 
-
+		logger.info(f"generate_stream_with_metadata: stream ended normally, provider={self._current_provider_label} accumulated_json_length={len(accumulated_json)}")
 		final_parsed = partial_json_parser.parse_json(accumulated_json)
 		if not isinstance(final_parsed, dict) or not final_parsed:			
 			return
