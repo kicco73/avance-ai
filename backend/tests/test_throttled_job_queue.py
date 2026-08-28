@@ -170,3 +170,98 @@ def test_non_background_jobs_bypass_the_throttle(fake_time):
     # min_job_interval_ms — both of which would otherwise force each of
     # the 5 interactive jobs onto its own new 60s+ window.
     assert log[-1] - log[0] < 1
+
+
+class _BlockingTime:
+    """_FakeTime's controlled clock, but sleep() also blocks on a real
+    threading.Event until release() is called — deterministically parks
+    a worker mid-throttle so a test can observe is_paused() during that
+    exact window, with no real wall-clock wait and no flakiness (plain
+    _FakeTime's sleep() returns instantly, leaving nothing to observe).
+    Advancing the clock only once actually released mirrors real time:
+    the throttle loop's next wait_seconds recompute sees the full
+    duration as having elapsed, so it doesn't just spin back into another
+    sleep()."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.now = 0.0
+        self._release = threading.Event()
+        self.entered_sleep = threading.Event()
+
+    def monotonic(self) -> float:
+        with self._lock:
+            return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.entered_sleep.set()
+        self._release.wait()
+        with self._lock:
+            self.now += seconds
+
+    def release(self) -> None:
+        self._release.set()
+
+
+class _NoOpJob(Job):
+    def __init__(self, key: str) -> None:
+        super().__init__(key=key, username="test")
+
+    def _prepare(self) -> tuple[int, list[Job]]:
+        return 1, []
+
+    @property
+    def result(self) -> str | None:
+        return "done"
+
+    async def _run_next_step(self) -> None:
+        pass
+
+
+class _RecordingBroadcaster:
+    """Captures every push() verbatim — NullBroadcaster drops them, so
+    it can't tell us what queue_status a given broadcast actually
+    carried."""
+
+    def __init__(self) -> None:
+        self.pushed: list[tuple[str, dict]] = []
+        self._lock = threading.Lock()
+
+    def push(self, username: str, message: dict) -> None:
+        with self._lock:
+            self.pushed.append((username, message))
+
+    def statuses_for(self, key: str) -> list[str]:
+        with self._lock:
+            return [message["queue_status"] for _, message in self.pushed if message["key"] == key]
+
+
+def test_broadcasts_paused_while_asleep_then_running_once_released(monkeypatch):
+    blocking_time = _BlockingTime()
+    monkeypatch.setattr(throttled_job_queue_module, "time", blocking_time)
+    broadcaster = _RecordingBroadcaster()
+
+    job_queue = ThrottledJobQueue(
+        max_concurrent=1, broadcaster=broadcaster,
+        max_jobs_per_minute=1, min_job_interval_ms=0,
+    )
+    first = _NoOpJob("first")
+    job_queue.submit(first)
+    assert _wait_until(lambda: first.is_done())
+    assert "paused" not in broadcaster.statuses_for("first")
+
+    # The per-minute budget (1) is already spent — this one must now
+    # wait inside _throttle(), giving us a real, observable pause window.
+    second = _NoOpJob("second")
+    job_queue.submit(second)
+
+    assert blocking_time.entered_sleep.wait(timeout=3.0)
+    assert _wait_until(lambda: "paused" in broadcaster.statuses_for("second"))
+    # Not yet "running" — the whole point of fixing _dequeue_and_notify's
+    # ordering was that "running" must never precede the pause it's
+    # waiting out.
+    assert "running" not in broadcaster.statuses_for("second")
+
+    blocking_time.release()
+    assert _wait_until(lambda: second.is_done())
+    assert "running" in broadcaster.statuses_for("second")

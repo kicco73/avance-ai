@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from pathlib import Path
 
 import pytest
@@ -34,7 +35,7 @@ def parse_sse_result(response) -> dict:
     for line in response.text.strip().split("\n"):
         if line.startswith("data: "):
             message = json.loads(line[len("data: "):])
-    assert message is not None and message["status"] == "completed", response.text
+    assert message is not None and message["queue_status"] == "exited" and message["job_status"] == "completed", response.text
     return message["result"]
 
 
@@ -141,12 +142,37 @@ def fake_ai_service() -> FakeAiService:
 
 
 class NullBroadcaster:
-    """Stands in for QueueProgressBroadcaster wherever a JobQueue is built but
-    the test never exercises SSE — every push() lands here and is dropped,
-    since nothing ever connect()s to read it."""
+    """Stands in for QueueProgressBroadcaster wherever a JobQueue is built.
+    Implements the real connect()/disconnect()/push() contract (minus the
+    token-count enrichment, which needs a real AiService) so
+    JobQueue.wait_for() still works for the tests that exercise it —
+    everywhere else, nothing ever connect()s, so push() finds no
+    connections and is dropped exactly as before."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._connections: dict[str, dict[asyncio.Queue, asyncio.AbstractEventLoop]] = {}
+
+    def connect(self, username: str) -> asyncio.Queue:
+        connection: asyncio.Queue = asyncio.Queue()
+        loop = asyncio.get_running_loop()
+        with self._lock:
+            self._connections.setdefault(username, {})[connection] = loop
+        return connection
+
+    def disconnect(self, username: str, connection: asyncio.Queue) -> None:
+        with self._lock:
+            connections = self._connections.get(username)
+            if connections is not None:
+                connections.pop(connection, None)
+                if not connections:
+                    del self._connections[username]
 
     def push(self, username: str, message: dict) -> None:
-        pass
+        with self._lock:
+            connections = list(self._connections.get(username, {}).items())
+        for connection, loop in connections:
+            loop.call_soon_threadsafe(connection.put_nowait, message)
 
 
 @pytest.fixture

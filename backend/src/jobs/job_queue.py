@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 import threading
 from collections import deque
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import ClassVar, TYPE_CHECKING
 
 # Instructions for Claude Code: DO NOT TOUCH THIS FILE
 
@@ -15,13 +16,23 @@ if TYPE_CHECKING:
 
 logger = LoggerFactory.get_logger(__name__)
 
-
 class JobQueue(object):
     """Generic job orchestrator: submit, queue, run on a dedicated thread
     pool. One deque, shared by every worker — a non-background job jumps
     to the head, a background one joins the tail; workers always pop the
     head, so interactive jobs preempt background ones without needing a
     separate queue or thread pool for each."""
+
+    @dataclass(frozen=True)
+    class STATUS:
+        status: str
+        ready: ClassVar["JobQueue.STATUS"]
+        running: ClassVar["JobQueue.STATUS"]
+        exited: ClassVar["JobQueue.STATUS"]
+
+    STATUS.ready = STATUS("ready")
+    STATUS.running = STATUS("running")
+    STATUS.exited = STATUS("exited")
 
     def __init__(self, max_concurrent: int, broadcaster: "QueueProgressBroadcaster") -> None:
         self._broadcaster = broadcaster
@@ -35,7 +46,7 @@ class JobQueue(object):
             thread = threading.Thread(target=self._worker_loop, name=f"job-worker-{i}", daemon=True)
             thread.start()
 
-    def _forget(self, job: Job) -> None:
+    def _forget_and_notify(self, job: Job) -> None:
         with self._lock:
             self._dependents.pop(job, None)
             ready = [
@@ -46,11 +57,13 @@ class JobQueue(object):
                 del self._dependents[waiter]
             events = self._waiters.pop(job, [])
         for waiter in ready:
-            self._submit(waiter)
+            self._submit_and_notify(waiter)
         for event in events:
             event.set()
+        self._broadcast_status(job, self.STATUS.exited)
 
-    def _submit(self, job: Job) -> None:
+    def _submit_and_notify(self, job: Job) -> None:
+        self._broadcast_status(job, self.STATUS.ready)
         with self._not_empty:
             if job.is_background:
                 self._deque.append(job)
@@ -63,14 +76,20 @@ class JobQueue(object):
             while not self._deque:
                 self._not_empty.wait()
             return self._deque.popleft()
+    
+    def _dequeue_and_notify(self) -> Job:
+        job = self._dequeue()
+        self._broadcast_status(job, self.STATUS.running)
+        return job
 
-    def _broadcast_status(self, job: Job) -> None:
+    def _broadcast_status(self, job: Job, queue_status: JobQueue.STATUS) -> None:
         status = {
             "key": job.key,
-            "status": job.status(),
+            "job_status": job.status().value,
             "percentage": job.progress(),
             "result": job.result,
             "error": job.error(),
+            "queue_status": queue_status.status,
         }
         self._broadcaster.push(job.username, status)
 
@@ -78,19 +97,16 @@ class JobQueue(object):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         while True:
-            job = self._dequeue()
+            job = self._dequeue_and_notify()
             try:
-                loop.run_until_complete(job.run_next_step())
-                self._broadcast_status(job)
-                if job.is_done():
-                    self._forget(job)
-                else:
-                    self._submit(job)
+                while True:
+                    loop.run_until_complete(job.run_next_step())
+                    if job.is_done():
+                        break
             except Exception as exc:
                 logger.exception(f"Job {job} failed: {exc}")
-                self._broadcast_status(job)
-                self._forget(job)
-
+            finally:
+                self._forget_and_notify(job)
 
     def submit(self, job: Job) -> None:
         with self._lock:
@@ -104,7 +120,7 @@ class JobQueue(object):
             if not job.is_pending():
                 return
 
-        self._broadcast_status(job)
+        self._broadcast_status(job, self.STATUS.ready)
         dependencies = job.prepare()
 
         with self._lock:
@@ -122,7 +138,7 @@ class JobQueue(object):
             if ready:
                 del self._dependents[job]
         if ready:
-            self._submit(job)
+            self._submit_and_notify(job)
 
     async def wait_for(self, job: Job) -> None:
         connection = self._broadcaster.connect(job.username)

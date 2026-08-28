@@ -13,6 +13,7 @@ from .metrics import (
     StateAccuracyMetric,
     StateAccuracyStableMetric,
     StateAccuracyTransitionMetric,
+    Statistics,
     TransitionResponsivenessMetric,
 )
 from .observations import BenchmarkData, BenchmarkObservationBuilder
@@ -76,6 +77,24 @@ class BenchmarkMetricsTest(unittest.TestCase):
         observations = BenchmarkObservationBuilder(BenchmarkConfiguration()).build(self._data())
         result = SignalAccuracyMetric().calculate(observations)
         self.assertEqual(result.value, 90.0)
+
+    def test_signal_accuracy_distribution_buckets_each_observation(self) -> None:
+        observations = BenchmarkObservationBuilder(BenchmarkConfiguration()).build(self._data())
+        result = SignalAccuracyMetric().calculate(observations)
+        self.assertEqual(len(result.distribution), Statistics.DISTRIBUTION_BUCKET_COUNT)
+        self.assertEqual(sum(result.distribution), result.sample_count)
+        self.assertEqual(result.distribution[8], 1)  # the 80% observation
+        self.assertEqual(result.distribution[9], 1)  # the 100% observation
+
+    def test_distribution_is_empty_with_no_values(self) -> None:
+        result = Statistics.result("empty", [])
+        self.assertEqual(result.distribution, ())
+
+    def test_distribution_boundary_value_lands_in_the_last_bucket(self) -> None:
+        result = Statistics.result("boundary", [0.0, 100.0])
+        self.assertEqual(result.distribution[0], 1)
+        self.assertEqual(result.distribution[-1], 1)
+        self.assertEqual(sum(result.distribution), 2)
 
     def test_transition_responsiveness_is_normalized(self) -> None:
         observations = BenchmarkObservationBuilder(BenchmarkConfiguration()).build(self._data())

@@ -55,6 +55,7 @@ def test_signal_test_completes_with_no_samples_when_never_annotated(client, hell
     assert body["name"] == "foo"
     assert body["sample_count"] == 0
     assert body["mean"] is None
+    assert body["distribution"] == []
 
 
 def test_signal_test_reuses_an_existing_fresh_session_run_instead_of_replaying(client, hello_project):

@@ -5,6 +5,7 @@
 // (alongside TestNodeButton, both in this same test/ folder) stays purely presentational.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import TestsTree from './TestsTree.vue'
+import SignalAccuracyDistributionChart from './SignalAccuracyDistributionChart.vue'
 import DocInfoButton from '../../../DocInfoButton.vue'
 import MetricDetail from '../../../inspector/MetricDetail.vue'
 import {
@@ -155,10 +156,17 @@ function statusFromOutcome(status, error) {
 }
 
 // A node with no event yet falls back to TestsTree's own implicit 'idle'.
+// ready/running/paused/exited are the QUEUE's own view of this job, not
+// the job's (see JobQueue._broadcast_status/ThrottledJobQueue._throttle)
+// — is a worker actively inside its step right now, asleep waiting out
+// the rate limit, or neither? That's exactly the ready-vs-running-vs-
+// paused split the UI shows. job_status (job.status() itself: pending/
+// running/completed/failed) only matters once queue_status says
+// 'exited', to read the real outcome.
 function outcome(message) {
   if (!message) return 'idle'
-  if (message.status === 'pending' || message.status === 'running') return message.status
-  return statusFromOutcome(message.status, message.error)
+  if (message.queue_status === 'exited') return statusFromOutcome(message.job_status, message.error)
+  return message.queue_status
 }
 
 // TestsTree only ever sees the active strategy's own statuses/progress —
@@ -172,11 +180,17 @@ const currentStrategyStatuses = computed(() => {
   return result
 })
 
+// message.percentage tracks the job's own overall progress (steps_done /
+// total_steps) — true regardless of queue_status, so it must stay
+// visible through every 'ready' gap between steps too. Gating this on
+// queue_status === 'running' made the percentage vanish and the ring
+// snap back to an indeterminate spin the instant a job was re-queued for
+// its next step, even though nothing about its actual progress changed.
 const currentStrategyProgress = computed(() => {
   const prefix = `${strategy.value}:`
   const result = {}
   for (const [key, message] of Object.entries(nodeEvents.value)) {
-    if (key.startsWith(prefix) && message.status === 'running' && message.percentage != null) {
+    if (key.startsWith(prefix) && message.percentage != null) {
       result[key.slice(prefix.length)] = message.percentage
     }
   }
@@ -187,10 +201,11 @@ const currentStrategyProgress = computed(() => {
 // header (styled like the reset button next to it), not in TestsTree —
 // 'root' has no row of its own in the tree any more.
 const rootStatus = computed(() => currentStrategyStatuses.value.root ?? 'idle')
-const rootProgress = computed(() => currentStrategyProgress.value.root ?? null)
-const rootBusy = computed(() => rootStatus.value === 'pending' || rootStatus.value === 'running')
-const rootHasProgress = computed(() => rootStatus.value === 'running' && rootProgress.value != null)
-const rootProgressPercent = computed(() => (rootHasProgress.value ? Math.min(100, Math.round(rootProgress.value)) : 0))
+const rootBusy = computed(() => ['pending', 'ready', 'running', 'paused'].includes(rootStatus.value))
+// See TestNodeButton's own buttonState: 'running' (actively being
+// executed right now) is the only busy state that reads green — every
+// other in-flight state ('pending'/'ready'/'paused') stays blue.
+const rootButtonState = computed(() => (rootStatus.value === 'running' ? 'running' : (rootBusy.value ? 'ready' : rootStatus.value)))
 
 const selectedCacheKey = computed(() => (
   selectedNodeId.value ? cacheKey(strategy.value, selectedNodeId.value) : null
@@ -198,14 +213,19 @@ const selectedCacheKey = computed(() => (
 
 const selectedNodeError = computed(() => {
   const message = nodeEvents.value[selectedCacheKey.value]
-  return message?.status === 'failed' ? message.error : null
+  return message?.job_status === 'failed' ? message.error : null
 })
 
 // Writes one node's event as a single, complete replacement — used both
-// for real SSE messages and for the optimistic 'running'/'fail' the
-// activate*() functions below set on click, before the first real one arrives.
-function setNodeEvent(key, status, error = null) {
-  nodeEvents.value = { ...nodeEvents.value, [key]: { key, status, percentage: null, error } }
+// for real SSE messages (job_status/queue_status straight from the
+// backend, see JobQueue._broadcast_status) and for the optimistic
+// 'running'/'completed'/'failed' the activate*() functions below set on
+// click, before the first real one arrives — jobStatus here is simple
+// on purpose, so it's translated into the same two-field shape a real
+// message carries, and outcome() never needs to special-case its origin.
+function setNodeEvent(key, jobStatus, error = null) {
+  const queueStatus = jobStatus === 'completed' || jobStatus === 'failed' ? 'exited' : jobStatus === 'running' ? 'running' : 'ready'
+  nodeEvents.value = { ...nodeEvents.value, [key]: { key, job_status: jobStatus, queue_status: queueStatus, percentage: null, error } }
 }
 
 // nodeId's own {kind, target} in the aggregate-result/jobs-status
@@ -250,7 +270,7 @@ function handleTestEvent(message) {
   if (typeof message.tokens === 'number') tokensBurnt.value = message.tokens
   nodeEvents.value = { ...nodeEvents.value, [message.key]: message }
 
-  const { key, status } = message
+  const { key, job_status: status, queue_status: queueStatus } = message
   const separatorIndex = key.indexOf(':')
   const eventStrategy = key.slice(0, separatorIndex)
   const nodeId = key.slice(separatorIndex + 1)
@@ -258,7 +278,7 @@ function handleTestEvent(message) {
     if (selectedNodeId.value === nodeId && strategy.value === eventStrategy) loadSelectedRun(nodeId)
     return
   }
-  if (status !== 'completed') return
+  if (queueStatus !== 'exited' || status !== 'completed') return
   const target = aggregateKindAndTarget(nodeId)
   if (target == null) return // root — no result of its own
   fetchAggregateResult(key, eventStrategy, target.kind, target.target)
@@ -569,25 +589,28 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="tests-panel-root-btn"
-            :class="`tests-panel-root-btn-${rootBusy ? 'running' : rootStatus}`"
+            :class="`tests-panel-root-btn-${rootButtonState}`"
             :disabled="rootBusy"
-            :title="rootStatus === 'pending' ? 'Queued…' : rootStatus === 'running' ? 'Running…' : 'Run test'"
+            :title="rootStatus === 'pending' || rootStatus === 'ready' ? 'Queued…' : rootStatus === 'paused' ? 'Paused…' : rootStatus === 'running' ? 'Running…' : 'Run test'"
             @click="onActivateRoot"
           >
             <svg v-if="rootStatus === 'idle'" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
               <path d="M8 5v14l11-7z" />
             </svg>
-            <svg
-              v-else-if="rootBusy"
-              class="tests-panel-root-btn-spinner"
-              :class="{ 'tests-panel-root-btn-spinner-indeterminate': !rootHasProgress }"
-              viewBox="0 0 24 24" width="16" height="16"
-            >
-              <circle
-                cx="12" cy="12" r="10" pathLength="100"
-                fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
-                :stroke-dasharray="rootHasProgress ? `${rootProgressPercent} 100` : '50 100'"
-              />
+            <svg v-else-if="rootStatus === 'paused'" viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
+              <rect x="6" y="4" width="4" height="16" rx="1" />
+              <rect x="14" y="4" width="4" height="16" rx="1" />
+            </svg>
+            <!-- 'running': a worker is inside root's own step right now
+                 (root has exactly one — see RootAggregationJob._prepare)
+                 — the lightning marks that instant, not "root is always
+                 high-priority" (queued/'ready' gets the plain spinner
+                 below, same as every other node). -->
+            <svg v-else-if="rootStatus === 'running'" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+              <path d="M11 21v-8H7l6-11v8h4l-6 11z" />
+            </svg>
+            <svg v-else-if="rootBusy" class="tests-panel-root-btn-spinner tests-panel-root-btn-spinner-indeterminate" viewBox="0 0 24 24" width="16" height="16">
+              <circle cx="12" cy="12" r="10" pathLength="100" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="50 100" />
             </svg>
             <svg v-else-if="rootStatus === 'ok'" viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="4 13 9 18 20 6" />
@@ -718,20 +741,25 @@ onBeforeUnmount(() => {
         <p v-else-if="!nodeLastResult[selectedCacheKey]" class="tests-panel-placeholder">
           No test has been run for this state under this strategy yet.
         </p>
-        <table v-else class="tests-panel-metrics-table">
-          <thead>
-            <tr>
-              <th><span class="tests-panel-metric-header">Metric<DocInfoButton doc-name="benchmark" title="Benchmark" /></span></th><th>Std dev</th><th>Samples</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :class="{ 'tests-panel-row-empty': !nodeLastResult[selectedCacheKey].sample_count }">
-              <td><MetricDetail :label="metricLabel(nodeLastResult[selectedCacheKey].name)" :description="metricDescription(nodeLastResult[selectedCacheKey].name)" :value="nodeLastResult[selectedCacheKey].value" :median="nodeLastResult[selectedCacheKey].median" /></td>
-              <td>{{ formatNumber(nodeLastResult[selectedCacheKey].standard_deviation) }}</td>
-              <td>{{ nodeLastResult[selectedCacheKey].sample_count }}</td>
-            </tr>
-          </tbody>
-        </table>
+        <template v-else>
+          <div class="tests-panel-distribution-block">
+            <SignalAccuracyDistributionChart :distribution="nodeLastResult[selectedCacheKey].distribution" />
+          </div>
+          <table class="tests-panel-metrics-table">
+            <thead>
+              <tr>
+                <th><span class="tests-panel-metric-header">Metric<DocInfoButton doc-name="benchmark" title="Benchmark" /></span></th><th>Std dev</th><th>Samples</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :class="{ 'tests-panel-row-empty': !nodeLastResult[selectedCacheKey].sample_count }">
+                <td><MetricDetail :label="metricLabel(nodeLastResult[selectedCacheKey].name)" :description="metricDescription(nodeLastResult[selectedCacheKey].name)" :value="nodeLastResult[selectedCacheKey].value" :median="nodeLastResult[selectedCacheKey].median" /></td>
+                <td>{{ formatNumber(nodeLastResult[selectedCacheKey].standard_deviation) }}</td>
+                <td>{{ nodeLastResult[selectedCacheKey].sample_count }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </template>
       </template>
 
       <template v-else-if="selectedNodeId.startsWith('signal:')">
@@ -739,25 +767,30 @@ onBeforeUnmount(() => {
         <p v-else-if="!nodeLastResult[selectedCacheKey]" class="tests-panel-placeholder">
           No test has been run for this signal under this strategy yet.
         </p>
-        <table v-else class="tests-panel-metrics-table">
-          <thead>
-            <tr>
-              <th><span class="tests-panel-metric-header">Metric<DocInfoButton doc-name="benchmark" title="Benchmark" /></span></th><th>Std dev</th><th>Samples</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :class="{ 'tests-panel-row-empty': !nodeLastResult[selectedCacheKey].sample_count }">
-              <td>
-                <MetricDetail
-                  :label="metricLabel('signal_accuracy')" :description="metricDescription('signal_accuracy')"
-                  :value="nodeLastResult[selectedCacheKey].value" :median="nodeLastResult[selectedCacheKey].median"
-                />
-              </td>
-              <td>{{ formatNumber(nodeLastResult[selectedCacheKey].standard_deviation) }}</td>
-              <td>{{ nodeLastResult[selectedCacheKey].sample_count }}</td>
-            </tr>
-          </tbody>
-        </table>
+        <template v-else>
+          <div class="tests-panel-distribution-block">
+            <SignalAccuracyDistributionChart :distribution="nodeLastResult[selectedCacheKey].distribution" />
+          </div>
+          <table class="tests-panel-metrics-table">
+            <thead>
+              <tr>
+                <th><span class="tests-panel-metric-header">Metric<DocInfoButton doc-name="benchmark" title="Benchmark" /></span></th><th>Std dev</th><th>Samples</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :class="{ 'tests-panel-row-empty': !nodeLastResult[selectedCacheKey].sample_count }">
+                <td>
+                  <MetricDetail
+                    :label="metricLabel('signal_accuracy')" :description="metricDescription('signal_accuracy')"
+                    :value="nodeLastResult[selectedCacheKey].value" :median="nodeLastResult[selectedCacheKey].median"
+                  />
+                </td>
+                <td>{{ formatNumber(nodeLastResult[selectedCacheKey].standard_deviation) }}</td>
+                <td>{{ nodeLastResult[selectedCacheKey].sample_count }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </template>
       </template>
 
       <template v-else-if="selectedNodeId === 'signals-branch'">
@@ -765,17 +798,22 @@ onBeforeUnmount(() => {
         <p v-else-if="!nodeLastResult[selectedCacheKey]" class="tests-panel-placeholder">
           No signal test has been run under this strategy yet.
         </p>
-        <table v-else class="tests-panel-metrics-table">
-          <thead>
-            <tr><th><span class="tests-panel-metric-header">Metric<DocInfoButton doc-name="benchmark" title="Benchmark" /></span></th><th>Samples</th></tr>
-          </thead>
-          <tbody>
-            <tr :class="{ 'tests-panel-row-empty': !nodeLastResult[selectedCacheKey].sample_count }">
-              <td><MetricDetail label="Overall" :value="nodeLastResult[selectedCacheKey].value" :median="nodeLastResult[selectedCacheKey].median" /></td>
-              <td>{{ nodeLastResult[selectedCacheKey].sample_count }}</td>
-            </tr>
-          </tbody>
-        </table>
+        <template v-else>
+          <div class="tests-panel-distribution-block">
+            <SignalAccuracyDistributionChart :distribution="nodeLastResult[selectedCacheKey].distribution" />
+          </div>
+          <table class="tests-panel-metrics-table">
+            <thead>
+              <tr><th><span class="tests-panel-metric-header">Metric<DocInfoButton doc-name="benchmark" title="Benchmark" /></span></th><th>Samples</th></tr>
+            </thead>
+            <tbody>
+              <tr :class="{ 'tests-panel-row-empty': !nodeLastResult[selectedCacheKey].sample_count }">
+                <td><MetricDetail label="Overall" :value="nodeLastResult[selectedCacheKey].value" :median="nodeLastResult[selectedCacheKey].median" /></td>
+                <td>{{ nodeLastResult[selectedCacheKey].sample_count }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </template>
       </template>
 
       <template v-else-if="selectedNodeId === 'states-branch'">
@@ -783,17 +821,22 @@ onBeforeUnmount(() => {
         <p v-else-if="!nodeLastResult[selectedCacheKey]" class="tests-panel-placeholder">
           No state test has been run under this strategy yet.
         </p>
-        <table v-else class="tests-panel-metrics-table">
-          <thead>
-            <tr><th><span class="tests-panel-metric-header">Metric<DocInfoButton doc-name="benchmark" title="Benchmark" /></span></th><th>Samples</th></tr>
-          </thead>
-          <tbody>
-            <tr :class="{ 'tests-panel-row-empty': !nodeLastResult[selectedCacheKey].sample_count }">
-              <td><MetricDetail label="Overall" :value="nodeLastResult[selectedCacheKey].value" :median="nodeLastResult[selectedCacheKey].median" /></td>
-              <td>{{ nodeLastResult[selectedCacheKey].sample_count }}</td>
-            </tr>
-          </tbody>
-        </table>
+        <template v-else>
+          <div class="tests-panel-distribution-block">
+            <SignalAccuracyDistributionChart :distribution="nodeLastResult[selectedCacheKey].distribution" />
+          </div>
+          <table class="tests-panel-metrics-table">
+            <thead>
+              <tr><th><span class="tests-panel-metric-header">Metric<DocInfoButton doc-name="benchmark" title="Benchmark" /></span></th><th>Samples</th></tr>
+            </thead>
+            <tbody>
+              <tr :class="{ 'tests-panel-row-empty': !nodeLastResult[selectedCacheKey].sample_count }">
+                <td><MetricDetail label="Overall" :value="nodeLastResult[selectedCacheKey].value" :median="nodeLastResult[selectedCacheKey].median" /></td>
+                <td>{{ nodeLastResult[selectedCacheKey].sample_count }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </template>
       </template>
 
       <p v-else class="tests-panel-placeholder">{{ selectedNodeLabel }}</p>
@@ -886,19 +929,19 @@ onBeforeUnmount(() => {
   cursor: not-allowed;
 }
 
-.tests-panel-root-btn-running {
+.tests-panel-root-btn-ready {
   border-color: transparent;
   color: #4a6fa5;
+}
+
+.tests-panel-root-btn-running {
+  border-color: transparent;
+  color: #2e7d32;
 }
 
 .tests-panel-root-btn-spinner {
   transform-origin: center;
   transform: rotate(-90deg);
-  transition: transform 0.2s linear;
-}
-
-.tests-panel-root-btn-spinner circle {
-  transition: stroke-dasharray 0.2s linear;
 }
 
 .tests-panel-root-btn-spinner-indeterminate {
@@ -1024,6 +1067,13 @@ onBeforeUnmount(() => {
   min-height: 0;
   overflow-y: auto;
   padding: 1rem;
+}
+
+.tests-panel-distribution-block {
+  width: 100%;
+  height: 200px;
+  max-height: 200px;
+  margin-bottom: 1rem;
 }
 
 .tests-panel-metric-header {

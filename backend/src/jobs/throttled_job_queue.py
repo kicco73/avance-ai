@@ -3,7 +3,7 @@ from __future__ import annotations
 import threading
 import time
 from collections import deque
-from typing import TYPE_CHECKING
+from typing import ClassVar, TYPE_CHECKING
 
 from logging_factory import LoggerFactory
 
@@ -21,6 +21,12 @@ class ThrottledJobQueue(JobQueue):
     Note: this class may introduce a randomness in the order of jobs
     that are being throttled since lock() does not guarantee fairness.
     """
+
+    class STATUS(JobQueue.STATUS):
+        paused: ClassVar["ThrottledJobQueue.STATUS"]
+
+    STATUS.paused = STATUS("paused")
+
     def __init__(
         self,
         max_concurrent: int,
@@ -35,7 +41,7 @@ class ThrottledJobQueue(JobQueue):
         self.__min_job_interval_ms = min_job_interval_ms
         super().__init__(max_concurrent, broadcaster)
 
-    def _throttle(self) -> None:
+    def __wait_until_allowed(self, job: Job) -> None:
         while True:
             with self.__throttle_lock:
                 now = time.monotonic()
@@ -55,18 +61,16 @@ class ThrottledJobQueue(JobQueue):
                     self.__run_times.append(now)
                     self.__last_run_at = now
                     return
+
             logger.info(f"waiting {wait_seconds}s")
+            self._broadcast_status(job, self.STATUS.paused)
             time.sleep(wait_seconds)
 
-    def _dequeue(self) -> Job:
-        job = super()._dequeue()
-        # Only background jobs (TestReplayJob, one real AI call per step)
-        # need rate-limiting — an aggregation job's own step (see
-        # testing/test_service.py's _AggregationJob/RootAggregationJob,
-        # is_background=False) is pure in-memory/DB bookkeeping once its
-        # dependencies are done, and would otherwise wait out the same
-        # AI-provider budget for no reason, on every node of a project
-        # with many states/signals/users.
+    def _dequeue_and_notify(self) -> Job:
+        job = self._dequeue()
+
         if job.is_background:
-            self._throttle()
+            self.__wait_until_allowed(job)
+
+        self._broadcast_status(job, self.STATUS.running)
         return job

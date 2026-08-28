@@ -771,6 +771,21 @@ class TestService:
         calculator = BenchmarkCalculator.from_data(pooled, metrics=unfiltered_metrics)
         return [_serialize_metric_result(result) for result in calculator.calculate_all()]
 
+    @staticmethod
+    def _merge_distributions(results: list[dict]) -> list[int]:
+        """Element-wise sum of each result's own histogram — the correct
+        way to roll several already-binned distributions (e.g. one per
+        sub-group) into the single combined one a branch/root node shows,
+        without ever needing the raw per-observation values again."""
+        bucket_count = max((len(result.get('distribution') or []) for result in results), default=0)
+        if not bucket_count:
+            return []
+        merged = [0] * bucket_count
+        for result in results:
+            for i, count in enumerate(result.get('distribution') or []):
+                merged[i] += count
+        return merged
+
     def _aggregate_across_results(self, per_group_results: list[list[dict]]) -> list[dict]:
         results_by_name: dict[str, list[dict]] = {}
         for results in per_group_results:
@@ -786,7 +801,8 @@ class TestService:
                 aggregated.append({
                     'name': name, 'value': 0.0, 'mean': None, 'median': None,
                     'standard_deviation': None, 'minimum': None, 'maximum': None,
-                    'sample_count': total_sample_count, 'components': {},
+                    'sample_count': total_sample_count, 'distribution': self._merge_distributions(results),
+                    'components': {},
                 })
                 continue
             aggregated.append({
@@ -798,6 +814,7 @@ class TestService:
                 'minimum': min(values),
                 'maximum': max(values),
                 'sample_count': total_sample_count,
+                'distribution': self._merge_distributions(results),
                 'components': with_samples[0]['components'] if len(with_samples) == 1 else {},
             })
         return aggregated
@@ -809,7 +826,8 @@ class TestService:
             return {
                 'name': 'overall', 'value': 0.0, 'mean': None, 'median': None,
                 'standard_deviation': None, 'minimum': None, 'maximum': None,
-                'sample_count': total_sample_count, 'components': {},
+                'sample_count': total_sample_count, 'distribution': self._merge_distributions(results),
+                'components': {},
             }
         weighted_value = sum(
             result['value'] * result['sample_count'] for result in with_samples
@@ -819,5 +837,6 @@ class TestService:
             'value': weighted_value,
             'mean': None, 'median': None, 'standard_deviation': None, 'minimum': None, 'maximum': None,
             'sample_count': total_sample_count,
+            'distribution': self._merge_distributions(results),
             'components': {},
         }

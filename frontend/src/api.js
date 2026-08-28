@@ -24,10 +24,10 @@ async function readSseResult(res, onProgress) {
       if (!chunk.startsWith('data: ')) continue
       const message = JSON.parse(chunk.slice('data: '.length))
       onProgress?.(message)
-      if (message.status === 'completed' || message.status === 'failed') final = message
+      if (message.queue_status === 'exited') final = message
     }
   }
-  if (final?.status === 'failed') {
+  if (final?.job_status === 'failed') {
     const message = final.error || 'Import failed.'
     setApiError(message, '')
     throw new Error(message)

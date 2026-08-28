@@ -27,8 +27,8 @@ def stream_job_progress(
         try:
             while True:
                 message = await connection.get()
-                if message["status"] in ("completed", "failed"):
-                    if message["status"] == "completed" and job.result:
+                if message["queue_status"] == "exited":
+                    if message["job_status"] == "completed" and job.result:
                         message = {**message, "result": json.loads(job.result)}
                     yield f"data: {json.dumps(message)}\n\n"
                     return

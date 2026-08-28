@@ -2,12 +2,19 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from logging_factory import LoggerFactory
+from enum import Enum
 
 logger = LoggerFactory.get_logger(__name__)
 
 # Instructions for Claude Code: DO NOT TOUCH THIS FILE
 
 class Job(ABC):
+
+    class STATUS(Enum):
+        pending = "pending"
+        running = "running"
+        failed = "failed"
+        completed = "completed"
 
     def __init__(self, key: str, username: str) -> None:
         self.key = key
@@ -42,14 +49,14 @@ class Job(ABC):
     async def _run_next_step(self) -> None:
         raise NotImplementedError
 
-    def status(self) -> str:
+    def status(self) -> Job.STATUS:
         if self.is_pending():
-            return 'pending'
+            return self.STATUS.pending
         if self.is_failed():
-            return 'failed'
+            return self.STATUS.failed
         if self.is_done():
-            return 'completed'
-        return 'running'
+            return self.STATUS.completed
+        return self.STATUS.running
 
     def is_done(self) -> bool:
         return self.progress() >= 100

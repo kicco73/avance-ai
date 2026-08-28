@@ -8,7 +8,7 @@ const props = defineProps({
   status: {
     type: String,
     default: 'idle',
-    validator: (value) => ['idle', 'pending', 'running', 'ok', 'warning', 'fail'].includes(value)
+    validator: (value) => ['idle', 'pending', 'ready', 'running', 'paused', 'ok', 'warning', 'fail'].includes(value)
   },
   progress: { type: Number, default: null },
   disabled: { type: Boolean, default: false },
@@ -17,16 +17,28 @@ const props = defineProps({
 
 const emit = defineEmits(['activate'])
 
-// pending (queued, no step has run yet) always spins; running switches to
-// the real percentage the moment its first step reports in, even at 0%.
-const hasProgress = computed(() => props.status === 'running' && props.progress != null)
+// Once any step has reported a real percentage, keep showing it — even
+// while queued between steps ('ready'), not just at the instant a worker
+// is actually inside a step ('running'). A node with no progress yet
+// (still 'pending'/never started) has progress===null and spins
+// indeterminately instead.
+const hasProgress = computed(() => props.progress != null)
 const progressPercent = computed(() => (hasProgress.value ? Math.min(100, Math.round(props.progress)) : 0))
-const isBusy = computed(() => props.status === 'pending' || props.status === 'running')
+const isBusy = computed(() => ['pending', 'ready', 'running', 'paused'].includes(props.status))
+// 'running' — this queue's own view of the job (see JobQueue's
+// ready/running/exited broadcasts, ThrottledJobQueue's added 'paused'),
+// not anything the job tracks itself — means a worker is actively inside
+// its step right now, and is the only busy state that gets the
+// active/green treatment. Every other busy state — 'ready' (queued, no
+// worker has picked it up yet) and 'paused' (throttled) — reads as the
+// same "waiting" blue. With N concurrent workers, at most N buttons are
+// ever green at once; every other in-flight one is blue.
+const buttonState = computed(() => (props.status === 'running' ? 'running' : (isBusy.value ? 'ready' : props.status)))
 
 function onClick() {
-  // pending/running: never clickable (can't re-launch an in-flight test). Any
-  // other status, including a past outcome, is a legitimate click — activate
-  // there means "re-run".
+  // pending/ready/running/paused: never clickable (can't re-launch an
+  // in-flight test). Any other status, including a past outcome, is a
+  // legitimate click — activate there means "re-run".
   if (props.disabled || isBusy.value) return
   emit('activate')
 }
@@ -36,13 +48,24 @@ function onClick() {
   <button
     type="button"
     class="test-node-btn"
-    :class="[`test-node-btn-${isBusy ? 'running' : status}`, { 'test-node-btn-disabled': disabled }]"
+    :class="[`test-node-btn-${buttonState}`, { 'test-node-btn-disabled': disabled }]"
     :disabled="disabled || isBusy"
-    :title="disabled ? disabledReason : (status === 'pending' ? 'Queued…' : status === 'running' ? 'Running…' : 'Run test')"
+    :title="disabled ? disabledReason : (status === 'pending' || status === 'ready' ? 'Queued…' : status === 'paused' ? 'Paused…' : status === 'running' ? 'Running…' : 'Run test')"
     @click="onClick"
   >
     <svg v-if="status === 'idle'" viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
       <path d="M8 5v14l11-7z" />
+    </svg>
+    <svg v-else-if="status === 'paused'" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+      <rect x="6" y="4" width="4" height="16" rx="1" />
+      <rect x="14" y="4" width="4" height="16" rx="1" />
+    </svg>
+    <!-- 'running': a worker is inside this exact job's step right now —
+         the lightning marks that specific instant, not "this kind of
+         node is high-priority" (a priority node just gets picked up
+         sooner; once picked up it runs exactly like any other). -->
+    <svg v-else-if="status === 'running'" viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
+      <path d="M11 21v-8H7l6-11v8h4l-6 11z" />
     </svg>
     <svg
       v-else-if="isBusy"
@@ -99,9 +122,14 @@ function onClick() {
   background: white;
 }
 
-.test-node-btn-running {
+.test-node-btn-ready {
   border-color: transparent;
   color: #4a6fa5;
+}
+
+.test-node-btn-running {
+  border-color: transparent;
+  color: #2e7d32;
 }
 
 .test-node-btn-spinner {
