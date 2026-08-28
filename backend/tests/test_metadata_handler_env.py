@@ -7,11 +7,15 @@ parse_raw_signals/parse_raw_env (a single live turn, or
 TurnByTurnSignalSource's one-call-per-turn replay — a forgiving
 "key: value"-per-line format for env, plain JSON for signals, no turn
 concept at all) and parse_batch_signals/parse_batch_env (BatchSignalSource,
-covering several turns in one call — CSV rows / a JSON object keyed by
-1-based turn number, checked for exact turn coverage). An earlier attempt
-to share one turn-numbered format across both proved unstable for the
-single-turn case (extra rows, wrong turn numbers, missing turn-number
-prefix), so the two stay separate.
+covering several turns in one call — CSV rows / "<turn>:" headers
+followed by "key=value" lines, each ending in a final "[eof]" line/row so
+truncation is provable rather than inferred from turn count alone). Both
+batch parsers are strict, not lenient: any row/line that doesn't fit the
+expected grammar raises immediately, on the spot — there's no
+best-effort mode that salvages a partial result out of a malformed or
+truncated response. An earlier attempt to share one turn-numbered format
+across both proved unstable for the single-turn case (extra rows, wrong
+turn numbers, missing turn-number prefix), so the two stay separate.
 """
 from __future__ import annotations
 
@@ -60,50 +64,79 @@ def test_parse_raw_env_handles_a_colon_inside_the_value():
 
 
 def test_parse_batch_env_reads_one_entry_per_turn_in_order():
-    result = _handler().parse_batch_env(
-        '{"1": {"favorite_color": "blue"}, "2": {}, "3": {"mood": "happy"}}', 3
-    )
+    raw = "1:\nfavorite_color=blue\n2:\n3:\nmood=happy\n[eof]"
+    result = _handler().parse_batch_env(raw, 3)
     assert result == [{"favorite_color": "blue"}, {}, {"mood": "happy"}]
 
 
 def test_parse_batch_env_a_single_turn_call_reads_index_zero():
-    result = _handler().parse_batch_env('{"1": {"next_meeting": "14:30"}}', 1)
+    result = _handler().parse_batch_env("1:\nnext_meeting=14:30\n[eof]", 1)
     assert result[0] == {"next_meeting": "14:30"}
 
 
 def test_parse_batch_env_of_empty_content_raises_turn_mismatch():
     """No entries at all never degrades to a silent empty result — even
     turn 1 alone must have an entry (an empty object is fine; a missing
-    key is not), so this is treated the same as any other coverage gap."""
+    header is not), so this is treated the same as any other coverage gap."""
     with pytest.raises(MetadataTurnMismatch):
         _handler().parse_batch_env("", 1)
     with pytest.raises(MetadataTurnMismatch):
         _handler().parse_batch_env(None, 1)
 
 
-def test_parse_batch_env_malformed_json_raises_turn_mismatch():
+def test_parse_batch_env_garbage_content_raises_turn_mismatch_immediately():
+    """A line that's neither a turn header, a "key=value" pair, nor
+    [eof] raises the instant it's reached — never logged-and-skipped so
+    parsing can keep going and maybe salvage something usable from
+    whatever comes after it."""
     with pytest.raises(MetadataTurnMismatch):
-        _handler().parse_batch_env("not json at all", 1)
+        _handler().parse_batch_env("not the expected format at all", 1)
 
 
-def test_parse_batch_env_a_non_object_top_level_raises_turn_mismatch():
+def test_parse_batch_env_a_malformed_line_mid_stream_raises_on_that_line():
+    """Fails immediately at the first bad line, not deferred to an
+    end-of-parsing coverage check — the exception names the exact line,
+    proving it was caught on the spot rather than inferred afterward
+    from a turn count that didn't add up."""
+    raw = "1:\nfavorite_color=blue\n2:\nthis line has no equals sign\n3:\na=b\n[eof]"
+    with pytest.raises(MetadataTurnMismatch) as excinfo:
+        _handler().parse_batch_env(raw, 3)
+    assert "this line has no equals sign" in str(excinfo.value)
+
+
+def test_parse_batch_env_a_truncated_tail_still_raises_no_partial_result_returned():
+    """A response cut off mid-generation (no closing [eof], turn 3 never
+    started) still raises — parse_batch_env never returns a "best effort"
+    list built from whatever arrived before the cut. The only thing
+    salvaged is the diagnostic in the exception message; nothing is ever
+    handed back to the caller as if it were a valid, complete result."""
+    raw = "1:\nfavorite_color=blue\n2:\nmood=better"
     with pytest.raises(MetadataTurnMismatch):
-        _handler().parse_batch_env("[1, 2, 3]", 1)
+        _handler().parse_batch_env(raw, 3)
 
 
 def test_parse_batch_env_extra_turns_beyond_what_was_expected_raises_turn_mismatch():
     """The exact bug this check exists for: the model treats the whole
     chat history as turns to fill in, instead of just the N it was told
     to cover."""
-    raw = '{"1": {"a": "1"}, "2": {"a": "2"}, "3": {"a": "3"}}'
+    raw = "1:\na=1\n2:\na=2\n3:\na=3\n[eof]"
     with pytest.raises(MetadataTurnMismatch):
         _handler().parse_batch_env(raw, 1)
 
 
 def test_parse_batch_env_a_missing_turn_raises_turn_mismatch():
-    raw = '{"1": {}, "3": {"a": "b"}}'
+    raw = "1:\n3:\na=b\n[eof]"
     with pytest.raises(MetadataTurnMismatch):
         _handler().parse_batch_env(raw, 3)
+
+
+def test_parse_batch_env_every_turn_present_but_no_eof_marker_still_raises():
+    """Turn coverage alone is never trusted — a response cut off right
+    before writing [eof] would otherwise look complete by coincidence."""
+    raw = "1:\nfavorite_color=blue\n2:\n3:\nmood=happy"
+    with pytest.raises(MetadataTurnMismatch) as excinfo:
+        _handler().parse_batch_env(raw, 3)
+    assert "no [eof] marker" in str(excinfo.value)
 
 
 def test_parse_raw_signals_reads_a_flat_json_object():
@@ -117,15 +150,31 @@ def test_parse_raw_signals_of_empty_content_is_an_empty_dict():
 
 
 def test_parse_batch_signals_reads_one_row_per_turn_in_order():
-    raw = "mood,engagement\n1,50.2,70\n2,52,68"
+    raw = "mood,engagement\n1,50.2,70\n2,52,68\n[eof]"
     result = _handler().parse_batch_signals(raw, 2)
     assert result == [{"mood": 50.2, "engagement": 70.0}, {"mood": 52.0, "engagement": 68.0}]
 
 
 def test_parse_batch_signals_a_missing_row_raises_turn_mismatch():
-    raw = "mood,engagement\n1,50.2,70\n3,55.5,71"
+    raw = "mood,engagement\n1,50.2,70\n3,55.5,71\n[eof]"
     with pytest.raises(MetadataTurnMismatch):
         _handler().parse_batch_signals(raw, 3)
+
+
+def test_parse_batch_signals_a_non_numeric_row_raises_immediately():
+    """Strict like parse_batch_env: a row that doesn't parse is never
+    logged-and-skipped so the rows around it can still be salvaged."""
+    raw = "mood,engagement\n1,50.2,70\nnot-a-turn,1,2\n[eof]"
+    with pytest.raises(MetadataTurnMismatch) as excinfo:
+        _handler().parse_batch_signals(raw, 2)
+    assert "not-a-turn" in str(excinfo.value)
+
+
+def test_parse_batch_signals_every_row_present_but_no_eof_row_still_raises():
+    raw = "mood,engagement\n1,50.2,70\n2,52,68"
+    with pytest.raises(MetadataTurnMismatch) as excinfo:
+        _handler().parse_batch_signals(raw, 2)
+    assert "no [eof] marker" in str(excinfo.value)
 
 
 

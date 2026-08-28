@@ -51,16 +51,20 @@ Always add a [signals]...[/signals] tag at the end of every response.
     - Write the content inside it as a small CSV table, as plain text (not a JSON object).
     - First row: the signal names, comma-separated, e.g. "mood,engagement".
     - One data row per turn, each starting with that turn's own number — the same
-      number shown on its "[Turn N/Total]" marker in the conversation transcript —
+      number shown on its "[Turn N]" marker in the conversation transcript —
       followed by that turn's values. The transcript's turn numbers always run
-      1, 2, 3, ... with no gaps, so with 3 marked turns you write exactly 3 rows:
+      1, 2, 3, ... with no gaps, so with 3 marked turns you write exactly 3 rows.
+    - it is vitally important to always calculate and return a value for each and any
+      signal specified in the list below, for every turn marked in the transcript —
+      never skip one, never merge two into one row.
+    - after the last turn's row, write one final row whose only cell is the
+      text [eof], exactly:
       mood,engagement
       1,50.2,70
       2,52.0,68
       3,60.0,75
-    - it is vitally important to always calculate and return a value for each and any
-      signal specified in the list below, for every turn marked in the transcript —
-      never skip one, never merge two into one row.
+      [eof]
+    - never write that [eof] row before every turn has its own row above it.
 """
 
 EMBED_ENV_BATCH_TAG_PROMPT = """"
@@ -70,15 +74,24 @@ Definition of env metadata:
       signals, which are re-evaluated fresh every turn.
 
 Always add a [env]...[/env] tag at the end of every response:
-    - Write a JSON object, as plain text, keyed by each turn's own number — the
-      same number shown on its "[Turn N/Total]" marker in the conversation transcript.
-      The transcript's turn numbers always run 1, 2, 3, ... with no gaps, so with
-      3 marked turns you write exactly 3 entries:
-      {"1": {"favorite_color": "blue"}, "2": {}, "3": {"mood": "better"}}
-    - Each entry's value is an object of only the variable names you are actually
-      reporting as new or changed that turn — map it to {} when nothing changed.
-    - One entry per turn marked in the transcript — never skip one, never merge
-      two into one entry.
+    - Write plain text, not JSON. One line per turn holding just that turn's
+      own number followed by a colon — the same number shown on its "[Turn N]"
+      marker in the conversation transcript — then, on the following lines,
+      one "key=value" pair per line for each variable you are actually
+      reporting as new or changed that turn (zero of them when nothing
+      changed). The transcript's turn numbers always run 1, 2, 3, ... with no
+      gaps, so with 3 marked turns you write exactly 3 turn headers:
+      1:
+      favorite_color=blue
+      2:
+      3:
+      mood=better
+      [eof]
+    - One header per turn marked in the transcript — never skip one, never
+      merge two into one header.
+    - After the last turn's header (and its key=value lines, if any), write
+      one final line containing only the text [eof], exactly as shown above —
+      never write it before every turn has its own header above it.
     - Never invent values for the keys shown to you below — those are inputs supplied to you.
 """
 
