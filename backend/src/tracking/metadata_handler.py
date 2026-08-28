@@ -6,18 +6,23 @@ import json
 from typing import Any
 
 from logging_factory import LoggerFactory
+from try_again_error import TryAgainError
 
 logger = LoggerFactory.get_logger(__name__)
 
 
-class MetadataTurnMismatch(Exception):
+class MetadataTurnMismatch(TryAgainError):
     """Raised when a parsed batch signals/env value's turn numbers don't
     match the turns that batch call was actually asked to cover — e.g.
     the model treated the whole chat history as turns to fill in,
-    instead of just the N it was told to. A model mistake, not a
-    truncation (that's caught earlier, before parsing even runs, by
-    AIServiceProviderOutputTruncatedError) — surfaced the same way:
-    loudly, rather than silently keeping only the expected turns and
+    instead of just the N it was told to, or the model declared its own
+    output complete (a normal stop/finish reason) while the JSON itself
+    is objectively incomplete — a case AIServiceProviderOutputTruncatedError
+    never catches, since that only fires on the provider's own truncation
+    signal, not on whether the content actually parses. Always a model
+    mistake, always worth another attempt (TryAgainError): none of these
+    failure modes are guaranteed to repeat on a fresh sample. Surfaced
+    loudly rather than silently keeping only the expected turns and
     discarding the rest. Batch-only: the single-turn parsers below have
     no turn concept at all, so nothing to mismatch."""
     def __init__(self, kind: str, expected_turns: int, actual: set[int]) -> None:

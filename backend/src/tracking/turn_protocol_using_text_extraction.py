@@ -51,7 +51,7 @@ Always add a [signals]...[/signals] tag at the end of every response.
     - Write the content inside it as a small CSV table, as plain text (not a JSON object).
     - First row: the signal names, comma-separated, e.g. "mood,engagement".
     - One data row per turn, each starting with that turn's own number — the same
-      number shown on its "[Turn N]" marker in the conversation transcript —
+      number shown on its "[Turn N/Total]" marker in the conversation transcript —
       followed by that turn's values. The transcript's turn numbers always run
       1, 2, 3, ... with no gaps, so with 3 marked turns you write exactly 3 rows:
       mood,engagement
@@ -71,7 +71,7 @@ Definition of env metadata:
 
 Always add a [env]...[/env] tag at the end of every response:
     - Write a JSON object, as plain text, keyed by each turn's own number — the
-      same number shown on its "[Turn N]" marker in the conversation transcript.
+      same number shown on its "[Turn N/Total]" marker in the conversation transcript.
       The transcript's turn numbers always run 1, 2, 3, ... with no gaps, so with
       3 marked turns you write exactly 3 entries:
       {"1": {"favorite_color": "blue"}, "2": {}, "3": {"mood": "better"}}

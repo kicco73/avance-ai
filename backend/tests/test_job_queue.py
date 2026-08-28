@@ -7,6 +7,7 @@ import pytest
 
 from conftest import NullBroadcaster
 from jobs import Job, JobQueue
+from try_again_error import TryAgainError
 
 pytestmark = pytest.mark.contract
 
@@ -79,6 +80,39 @@ class _WaiterJob(Job):
 
     async def _run_next_step(self) -> None:
         self._result = "done"
+
+
+class _FlakyJob(Job):
+    """Raises TryAgainError on its first `fail_times` attempts, then
+    succeeds — records its own key into `order` (if given) only on the
+    attempt that actually succeeds."""
+
+    def __init__(self, background: bool, fail_times: int, key: str, order: list[str] | None = None) -> None:
+        super().__init__(key=key, username="test")
+        self._background = background
+        self._fail_times = fail_times
+        self._attempts = 0
+        self._order = order
+        self._result: str | None = None
+
+    def _prepare(self) -> tuple[int, list[Job]]:
+        return 1, []
+
+    @property
+    def is_background(self) -> bool:
+        return self._background
+
+    @property
+    def result(self) -> str | None:
+        return self._result
+
+    async def _run_next_step(self) -> None:
+        self._attempts += 1
+        if self._attempts <= self._fail_times:
+            raise TryAgainError(f"attempt {self._attempts}")
+        self._result = "done"
+        if self._order is not None:
+            self._order.append(self.key)
 
 
 class _BlockingJob(Job):
@@ -236,3 +270,45 @@ async def test_wait_for_returns_immediately_when_the_job_is_already_terminal():
     await job_queue.wait_for(job)
 
     assert job.is_done()
+
+
+def test_try_again_error_requeues_instead_of_failing_the_job():
+    """A transient failure (e.g. the AI provider cascade being exhausted)
+    must not kill the job outright the way any other exception does — it
+    gets another turn instead, and the job only reaches a terminal state
+    once it actually succeeds."""
+    job_queue = _queue()
+    job = _FlakyJob(background=True, fail_times=2, key="flaky")
+
+    job_queue.submit(job)
+
+    assert _wait_until(lambda: job.is_done())
+    assert not job.is_failed()
+    assert job.result == "done"
+
+
+def test_try_again_error_forces_tail_even_for_a_priority_job():
+    """A non-background job normally jumps straight to the head of the
+    deque on resubmission, preempting background work. A TryAgainError
+    retry must never get that treatment — it goes to the tail like
+    anything else, so a background job already queued behind it still
+    gets its turn first, rather than being starved by an interactive job
+    stuck retrying the same transient failure."""
+    started = threading.Event()
+    release = threading.Event()
+    job_queue = _queue(max_concurrent=1)
+    completion_order: list[str] = []
+
+    blocker = _BlockingJob(started, release)
+    job_queue.submit(blocker)
+    assert started.wait(timeout=2.0)
+
+    flaky = _FlakyJob(background=False, fail_times=1, key="flaky", order=completion_order)
+    background_job = _FlakyJob(background=True, fail_times=0, key="background", order=completion_order)
+    job_queue.submit(flaky)
+    job_queue.submit(background_job)
+
+    release.set()
+
+    assert _wait_until(lambda: flaky.is_done() and background_job.is_done())
+    assert completion_order == ["background", "flaky"]

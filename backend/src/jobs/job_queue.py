@@ -9,6 +9,7 @@ from typing import ClassVar, TYPE_CHECKING
 # Instructions for Claude Code: DO NOT TOUCH THIS FILE
 
 from logging_factory import LoggerFactory
+from try_again_error import TryAgainError
 from .job import Job
 
 if TYPE_CHECKING:
@@ -57,16 +58,16 @@ class JobQueue(object):
                 del self._dependents[waiter]
             events = self._waiters.pop(job, [])
         for waiter in ready:
-            status = self._submit(waiter)
+            status = self._submit(waiter, waiter.is_background)
             self._broadcast_status(waiter, status)
         for event in events:
             event.set()
 
         return self.STATUS.exited
 
-    def _submit(self, job: Job) -> STATUS:
+    def _submit(self, job: Job, low_priority : bool) -> STATUS:
         with self._not_empty:
-            if job.is_background:
+            if low_priority:
                 self._deque.append(job)
             else:
                 self._deque.appendleft(job)
@@ -103,15 +104,19 @@ class JobQueue(object):
         while not job.is_done():
             self._continue(job)
             self._broadcast_status(job, self.STATUS.running)
-                
+
             try:
                 loop.run_until_complete(job.run_next_step())
+            except TryAgainError:
+                # Don't broadcast state update (it's failed now)
+                self._submit(job, True)
+                return
             except Exception as exc:
                 logger.exception(f"Job {job} failed: {exc}")
                 break
 
             if not job.is_done() and (not job.is_background or self._has_priority_work_waiting()):
-                status = self._submit(job)
+                status = self._submit(job, job.is_background)
                 self._broadcast_status(job, status)
                 return
 
@@ -149,7 +154,7 @@ class JobQueue(object):
             if ready:
                 del self._dependents[job]
         if ready:
-            status = self._submit(job)
+            status = self._submit(job, job.is_background)
             self._broadcast_status(job, status)
 
     async def wait_for(self, job: Job) -> None:

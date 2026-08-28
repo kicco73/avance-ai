@@ -8,6 +8,7 @@ from typing import Any, AsyncIterator, Callable
 
 from cascade import ProviderError, ProviderRateLimitedError, ProviderUnavailableError
 from logging_factory import LoggerFactory
+from try_again_error import TryAgainError
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -32,12 +33,12 @@ class AIServiceError(ProviderError):
 	message = "AI service error."
 
 
-class AIServiceProviderUnavailableError(ProviderUnavailableError, AIServiceError):
+class AIServiceProviderUnavailableError(TryAgainError, ProviderUnavailableError, AIServiceError):
 	"""Transient upstream overload (HTTP 503) — worth retrying."""
 	message = "AI service unavailable after every retry."
 
 
-class AIServiceProviderRateLimitedError(ProviderRateLimitedError, AIServiceError):
+class AIServiceProviderRateLimitedError(TryAgainError, ProviderRateLimitedError, AIServiceError):
 	"""The upstream model API rejected the request for rate limiting (HTTP 429)."""
 	message = "The AI service rate limit was exceeded."
 

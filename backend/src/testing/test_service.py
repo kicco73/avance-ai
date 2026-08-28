@@ -138,11 +138,12 @@ class TestReplayJob(Job):
             # ids was decided upfront by _prepare_session (see
             # _chunk_into_batches), so a single BatchSignalSource call
             # covers the whole group before any of its turns are applied.
-            batch = self._pending_batches.pop(0)
+            batch = self._pending_batches[0]
             if isinstance(self._signal_source, BatchSignalSource):
                 await self._signal_source.prepare_batch(batch)
             for message_id in batch:
                 await self._processor.process_message(self._current_session_id, message_id)
+            self._pending_batches.pop(0)
             # Never finalize here even if this was the last batch — the
             # next call's while loop above finds nothing left and finalizes
             # on its own dedicated step (see _prepare()'s +1).

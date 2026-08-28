@@ -74,7 +74,11 @@ class AutoTestLLMProvider(AutoLiveLLMProvider):
     just corruption, not a retry), so any further failure is raised
     immediately instead of advancing — the caller sees a clean error
     rather than a spliced, malformed response. Reports each retry/failover
-    through `on_metadata` as a warning, when given."""
+    through `on_metadata` as a warning, when given. Once every provider has
+    been tried once and none succeeded, there is no "next" left within this
+    call — the failure is raised as AIServiceProviderPermanentError rather
+    than TryAgainError, so a caller that reschedules on TryAgainError alone
+    doesn't loop forever re-hitting the same exhausted cascade."""
 
     async def generate_stream_with_schema(
         self,
@@ -115,4 +119,6 @@ class AutoTestLLMProvider(AutoLiveLLMProvider):
                 on_metadata("warning", f"Switching away from provider #{index + 1}: {last_error}")
             self._cascade.advance()
         assert last_error is not None
-        raise last_error
+        raise AIServiceProviderPermanentError(
+            f"Every provider in the cascade failed; last error: {last_error}"
+        ) from last_error

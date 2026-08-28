@@ -10,6 +10,7 @@ from ai.llm_provider import (
     AIServiceProviderRateLimitedError,
     AIServiceProviderUnavailableError,
 )
+from try_again_error import TryAgainError
 
 
 class _FakeProvider:
@@ -34,6 +35,12 @@ class _FakeProvider:
 
 async def _drain(provider: AutoTestLLMProvider) -> list[str]:
     return [chunk async for chunk in provider.generate_stream_with_schema("prompt", [], {"text": "..."})]
+
+
+def test_transient_errors_are_try_again_errors_but_permanent_is_not() -> None:
+    assert isinstance(AIServiceProviderRateLimitedError("x"), TryAgainError)
+    assert isinstance(AIServiceProviderUnavailableError("x"), TryAgainError)
+    assert not isinstance(AIServiceProviderPermanentError("x"), TryAgainError)
 
 
 @pytest.mark.asyncio
@@ -83,6 +90,28 @@ async def test_every_provider_failing_before_output_raises_the_last_error() -> N
 
     assert first.calls == 1
     assert second.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_a_fully_exhausted_cascade_is_not_a_try_again_error() -> None:
+    """Regression test: AIServiceProviderRateLimitedError/UnavailableError
+    are TryAgainError so a job can reschedule itself on a transient
+    failure — but only while the cascade still had another provider left
+    to try. Once every provider has been tried once and all of them were
+    rate limited, there is no "next" left within this call: reporting that
+    as TryAgainError too would let a job reschedule itself forever,
+    re-hitting the same exhausted cascade every time. It must surface as
+    AIServiceProviderPermanentError instead, even though every individual
+    failure was itself a rate limit."""
+    first = _FakeProvider([], error=AIServiceProviderRateLimitedError("first rate limited"))
+    second = _FakeProvider([], error=AIServiceProviderRateLimitedError("second rate limited"))
+    provider = AutoTestLLMProvider([("first", first), ("second", second)])
+
+    with pytest.raises(AIServiceProviderPermanentError) as excinfo:
+        await _drain(provider)
+
+    assert not isinstance(excinfo.value, TryAgainError)
+    assert isinstance(excinfo.value.__cause__, AIServiceProviderRateLimitedError)
 
 
 @pytest.mark.asyncio

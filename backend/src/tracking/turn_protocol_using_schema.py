@@ -55,7 +55,7 @@ Definition of signals metadata:
 	- a small CSV table, as plain text (not a JSON object).
 	- first row: the signal names, comma-separated, e.g. "mood,engagement".
 	- one data row per turn, each starting with that turn's own number — the same
-	  number shown on its "[Turn N]" marker in the conversation transcript —
+	  number shown on its "[Turn N/Total]" marker in the conversation transcript —
 	  followed by that turn's values. The transcript's turn numbers always run
 	  1, 2, 3, ... with no gaps, so with 3 marked turns you write exactly 3 rows:
 	  mood,engagement
@@ -77,7 +77,7 @@ Definition of env metadata:
 
 Always fill in the 'env' field of your structured response:
 	- a JSON object, as plain text, keyed by each turn's own number — the same
-	  number shown on its "[Turn N]" marker in the conversation transcript. The
+	  number shown on its "[Turn N/Total]" marker in the conversation transcript. The
 	  transcript's turn numbers always run 1, 2, 3, ... with no gaps, so with 3
 	  marked turns you write exactly 3 entries:
 	  {"1": {"favorite_color": "blue"}, "2": {}, "3": {"mood": "better"}}
@@ -120,8 +120,8 @@ class TurnProtocolUsingSchema(TurnProtocol):
 		"signals": "JSON dictionary containing required calculated signal values, rendered as text.",
 		"reaction": "The key of a declared reaction to react to the user's last message with, or empty if none fits, rendered as text.",
 		"text": "Normal textual response to the user, in markdown format, rendered as text.",
-		"signals_batch": "CSV table of calculated signal values: header row of signal names, then one row per turn marked in the transcript, each starting with that turn's own [Turn N] number (always 1, 2, 3, ... with no gaps), e.g. \"mood,engagement\\n1,50.2,70\\n2,52.0,68\", rendered as text.",
-		"env_batch": "JSON object of updated memory state: one entry per turn marked in the transcript, keyed by that turn's own [Turn N] number (always 1, 2, 3, ... with no gaps), each entry mapping only the changed keys (an empty object if none), e.g. {\"1\": {...}, \"2\": {}}, rendered as text.",
+		"signals_batch": "CSV table of calculated signal values: header row of signal names, then one row per turn marked in the transcript, each starting with the N from that turn's own [Turn N/Total] label (always 1, 2, 3, ... with no gaps, up to Total), e.g. \"mood,engagement\\n1,50.2,70\\n2,52.0,68\", rendered as text.",
+		"env_batch": "JSON object of updated memory state: one entry per turn marked in the transcript, keyed by the N from that turn's own [Turn N/Total] label (always 1, 2, 3, ... with no gaps, up to Total), each entry mapping only the changed keys (an empty object if none), e.g. {\"1\": {...}, \"2\": {}}, rendered as text.",
 	}
 
 	def _generate_reply(self, prompt: str, chat_history: list[dict], on_metadata: MetadataCallback,) -> AsyncIterator[str]:
