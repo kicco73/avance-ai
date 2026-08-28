@@ -42,7 +42,7 @@ function toggleExpanded(key) {
   expanded.value[key] = !isExpanded(key)
 }
 function isUserExpanded(username) {
-  return expandedUsers.value[username] !== false
+  return expandedUsers.value[username] === true
 }
 function toggleUserExpanded(username) {
   expandedUsers.value[username] = !isUserExpanded(username)
@@ -433,7 +433,7 @@ function onRightArrowKey() {
 .tests-tree-item {
   display: flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.2rem;
   flex: 1;
   min-width: 0;
 }
@@ -446,7 +446,7 @@ function onRightArrowKey() {
   align-items: flex-start;
   gap: 0.1rem;
   text-align: left;
-  padding: 0.35rem 0.5rem;
+  padding: 0.35rem 0.5rem 0.35rem 0.3rem;
   border: none;
   border-radius: 6px;
   background: none;

@@ -402,9 +402,13 @@ class SignalAggregationJob(_AggregationJob):
     """Unlike its siblings, this one doesn't inherit _AggregationJob's
     single-step _compute() — gathering observations is its slowest part,
     and it scales with session count, so it's spread one run id per step
-    (+1 final step for the actual statistics) instead of running as one
-    opaque step. Gives real incremental progress and lets a worker yield
-    between run ids instead of holding the whole aggregation."""
+    (+1 final step to combine and persist) instead of running as one
+    opaque step. Each per-run-id step also folds that session's values
+    straight into a running Statistics.Accumulator, so the sum/min/max/
+    distribution work is spread across those steps too — the final step
+    only sorts the retained values for the exact median and persists.
+    Gives real incremental progress and lets a worker yield between run
+    ids instead of holding the whole aggregation."""
 
     def __init__(self, service: "TestService", project_name: str, signal_name: str, strategy: str, session_ids: list[int]) -> None:
         super().__init__(service, project_name, 'signal', signal_name, strategy)
@@ -412,7 +416,7 @@ class SignalAggregationJob(_AggregationJob):
         self._session_ids = session_ids
         self._sub_run_ids: list[int] = []
         self._pending_run_ids: list[int] = []
-        self._observations: list = []
+        self._accumulator = Statistics.Accumulator()
 
     def _resolve_or_construct_dependencies(self) -> tuple[Job, ...]:
         self._sub_run_ids, dependencies = self._resolve_session_ids(self._session_ids)
@@ -432,17 +436,13 @@ class SignalAggregationJob(_AggregationJob):
             return
         if self._pending_run_ids:
             run_id = self._pending_run_ids.pop(0)
-            self._observations.extend(self._observations_for_run(run_id))
+            for observation in self._observations_for_run(run_id):
+                if self._signal_name in observation.signal_agreements:
+                    self._accumulator.add(observation.signal_agreements[self._signal_name])
             return
-        result = self._finalize_signal_name_accuracy()
+        result = _serialize_metric_result(self._accumulator.result(self._signal_name, metadata={"unit": "percent"}))
         self._persist(result)
         self._result_value = result
-
-    def _finalize_signal_name_accuracy(self) -> dict:
-        values = [
-            o.signal_agreements[self._signal_name] for o in self._observations if self._signal_name in o.signal_agreements
-        ]
-        return _serialize_metric_result(Statistics.result(self._signal_name, values, metadata={"unit": "percent"}))
 
 
 class PooledAggregationJob(_AggregationJob):

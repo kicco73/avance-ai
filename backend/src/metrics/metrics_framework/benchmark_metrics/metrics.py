@@ -21,13 +21,75 @@ class Statistics(object):
     DISTRIBUTION_BUCKET_COUNT = 10
 
     @classmethod
+    def _bucket_index(cls, value: float) -> int:
+        index = int(value / 100.0 * cls.DISTRIBUTION_BUCKET_COUNT)
+        return min(max(index, 0), cls.DISTRIBUTION_BUCKET_COUNT - 1)
+
+    @classmethod
     def _distribution(cls, values: list[float]) -> tuple[int, ...]:
         counts = [0] * cls.DISTRIBUTION_BUCKET_COUNT
         for value in values:
-            index = int(value / 100.0 * cls.DISTRIBUTION_BUCKET_COUNT)
-            index = min(max(index, 0), cls.DISTRIBUTION_BUCKET_COUNT - 1)
-            counts[index] += 1
+            counts[cls._bucket_index(value)] += 1
         return tuple(counts)
+
+    class Accumulator:
+        """Same output as Statistics.result(), built by add()-ing one
+        value at a time instead of handing over the whole list at once —
+        lets a caller with a lot of values (and a step-based progress
+        bar) spread the O(n) work across steps instead of paying it all
+        in one opaque call. Only the median still needs a full pass over
+        the retained values at result() time — mean, standard deviation,
+        min/max and the distribution are combined from running totals."""
+
+        def __init__(self) -> None:
+            self._values: list[float] = []
+            self._sum = 0.0
+            self._sum_of_squares = 0.0
+            self._minimum: float | None = None
+            self._maximum: float | None = None
+            self._distribution = [0] * Statistics.DISTRIBUTION_BUCKET_COUNT
+
+        def add(self, value: float) -> None:
+            self._values.append(value)
+            self._sum += value
+            self._sum_of_squares += value * value
+            self._minimum = value if self._minimum is None else min(self._minimum, value)
+            self._maximum = value if self._maximum is None else max(self._maximum, value)
+            self._distribution[Statistics._bucket_index(value)] += 1
+
+        def result(
+            self,
+            name: str,
+            *,
+            components: dict[str, float] | None = None,
+            metadata: dict[str, object] | None = None,
+        ) -> BenchmarkMetricResult:
+            if not self._values:
+                return BenchmarkMetricResult(
+                    name=name,
+                    value=0.0,
+                    sample_count=0,
+                    components=components or {},
+                    metadata=metadata or {},
+                    calculated_at=datetime.now(timezone.utc),
+                )
+            count = len(self._values)
+            value = self._sum / count
+            variance = self._sum_of_squares / count - value * value if count > 1 else 0.0
+            return BenchmarkMetricResult(
+                name=name,
+                value=value,
+                mean=value,
+                median=median(self._values),
+                standard_deviation=variance ** 0.5,
+                minimum=self._minimum,
+                maximum=self._maximum,
+                sample_count=count,
+                distribution=tuple(self._distribution),
+                components=components or {},
+                metadata=metadata or {},
+                calculated_at=datetime.now(timezone.utc),
+            )
 
     @classmethod
     def result(
@@ -38,29 +100,10 @@ class Statistics(object):
         components: dict[str, float] | None = None,
         metadata: dict[str, object] | None = None,
     ) -> BenchmarkMetricResult:
-        if not values:
-            return BenchmarkMetricResult(
-                name=name,
-                value=0.0,
-                sample_count=0,
-                components=components or {},
-                metadata=metadata or {},
-                calculated_at=datetime.now(timezone.utc),
-            )
-        return BenchmarkMetricResult(
-            name=name,
-            value=mean(values),
-            mean=mean(values),
-            median=median(values),
-            standard_deviation=pstdev(values) if len(values) > 1 else 0.0,
-            minimum=min(values),
-            maximum=max(values),
-            sample_count=len(values),
-            distribution=cls._distribution(values),
-            components=components or {},
-            metadata=metadata or {},
-            calculated_at=datetime.now(timezone.utc),
-        )
+        accumulator = cls.Accumulator()
+        for value in values:
+            accumulator.add(value)
+        return accumulator.result(name, components=components, metadata=metadata)
 
 
 def _state_accuracy_values(observations: tuple[BenchmarkObservation, ...], expected_transition: bool) -> list[float]:

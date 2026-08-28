@@ -162,10 +162,15 @@ function statusFromOutcome(status, error) {
 // the rate limit, or neither? That's exactly the ready-vs-running-vs-
 // paused split the UI shows. job_status (job.status() itself: pending/
 // running/completed/failed) only matters once queue_status says
-// 'exited', to read the real outcome.
+// 'exited' (to read the real outcome), or while it's still 'pending' —
+// the one instant before Job.prepare() runs, when nothing (not even a
+// step count) is known yet, which needs its own distinct spin instead of
+// reading as an ordinary queued 'ready' (which usually already has a
+// real, worth-persisting percentage behind it).
 function outcome(message) {
   if (!message) return 'idle'
   if (message.queue_status === 'exited') return statusFromOutcome(message.job_status, message.error)
+  if (message.job_status === 'pending') return 'pending'
   return message.queue_status
 }
 
@@ -594,26 +599,38 @@ onBeforeUnmount(() => {
             :title="rootStatus === 'pending' || rootStatus === 'ready' ? 'Queued…' : rootStatus === 'paused' ? 'Paused…' : rootStatus === 'running' ? 'Running…' : 'Run test'"
             @click="onActivateRoot"
           >
-            <svg v-if="rootStatus === 'idle'" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+            <!-- Idle/ok/warning/fail: same chrome as the reset button next
+                 to it (bordered square, plain icon) — the ring only earns
+                 its place while something is actually in flight. -->
+            <svg v-if="rootStatus === 'idle'" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
               <path d="M8 5v14l11-7z" />
             </svg>
-            <svg v-else-if="rootStatus === 'paused'" viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
-              <rect x="6" y="4" width="4" height="16" rx="1" />
-              <rect x="14" y="4" width="4" height="16" rx="1" />
-            </svg>
-            <!-- 'running': a worker is inside root's own step right now
-                 (root has exactly one — see RootAggregationJob._prepare)
-                 — the lightning marks that instant, not "root is always
-                 high-priority" (queued/'ready' gets the plain spinner
-                 below, same as every other node). -->
-            <svg v-else-if="rootStatus === 'running'" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-              <path d="M11 21v-8H7l6-11v8h4l-6 11z" />
-            </svg>
-            <svg v-else-if="rootBusy" class="tests-panel-root-btn-spinner tests-panel-root-btn-spinner-indeterminate" viewBox="0 0 24 24" width="16" height="16">
-              <circle cx="12" cy="12" r="10" pathLength="100" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="50 100" />
+            <svg v-else-if="rootBusy" viewBox="0 0 24 24" width="16" height="16">
+              <circle
+                class="tests-panel-root-btn-ring"
+                :class="{ 'tests-panel-root-btn-spinner-indeterminate': rootStatus !== 'running' }"
+                cx="12" cy="12" r="10" pathLength="100" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"
+                :stroke-dasharray="rootStatus === 'running' ? '8 100' : '50 100'"
+              />
+              <g v-if="rootStatus === 'paused'" transform="translate(12 12) scale(0.6) translate(-12 -12)">
+                <rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" />
+                <rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" />
+              </g>
+              <!-- 'running': a worker is inside root's own step right now
+                   (root has exactly one — see RootAggregationJob._prepare)
+                   — the lightning marks that instant, not "root is always
+                   high-priority". Drawn inside the same ring as the spinner,
+                   not swapped in place of it, so the ring stays visible. -->
+              <path
+                v-else-if="rootStatus === 'running'"
+                class="tests-panel-root-btn-lightning"
+                d="M11 21v-8H7l6-11v8h4l-6 11z"
+                transform="translate(12 12) scale(0.75) translate(-12 -12)"
+                fill="currentColor"
+              />
             </svg>
             <svg v-else-if="rootStatus === 'ok'" viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="4 13 9 18 20 6" />
+              <polyline class="tests-panel-root-btn-check" points="4 13 9 18 20 6" pathLength="100" />
             </svg>
             <svg v-else-if="rootStatus === 'warning'" viewBox="0 0 24 24" width="10" height="10" fill="currentColor">
               <path d="M12 3L1 21h22L12 3zm0 5.5l6.6 11.5H5.4L12 8.5zM11 11v4h2v-4h-2zm0 5v2h2v-2h-2z" />
@@ -910,11 +927,15 @@ onBeforeUnmount(() => {
   width: 1.6rem;
   height: 1.6rem;
   border-radius: 6px;
-  border: 1px solid #4a6fa5;
   background: white;
   color: #4a6fa5;
   cursor: pointer;
   padding: 0;
+}
+
+.tests-panel-root-btn,
+.tests-panel-reset-btn {
+  border: 1px solid #4a6fa5;
 }
 
 .tests-panel-root-btn:hover:not(:disabled),
@@ -931,20 +952,32 @@ onBeforeUnmount(() => {
 
 .tests-panel-root-btn-ready {
   border-color: transparent;
+  background: none;
   color: #4a6fa5;
 }
 
 .tests-panel-root-btn-running {
   border-color: transparent;
+  background: none;
   color: #2e7d32;
 }
 
-.tests-panel-root-btn-spinner {
-  transform-origin: center;
-  transform: rotate(-90deg);
+.tests-panel-root-btn-lightning {
+  animation: tests-panel-root-btn-glow 0.9s ease-in-out infinite alternate;
 }
 
-.tests-panel-root-btn-spinner-indeterminate {
+@keyframes tests-panel-root-btn-glow {
+  from { opacity: 1; }
+  to { opacity: 0.3; }
+}
+
+.tests-panel-root-btn-ring {
+  transform-origin: center;
+  transform: rotate(-90deg);
+  transition: stroke-dasharray 0.2s linear;
+}
+
+.tests-panel-root-btn-ring.tests-panel-root-btn-spinner-indeterminate {
   animation: tests-panel-root-btn-spin 0.9s linear infinite;
 }
 
@@ -958,13 +991,29 @@ onBeforeUnmount(() => {
   color: #2e7d32;
 }
 
+.tests-panel-root-btn-check {
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: tests-panel-root-btn-check-draw 0.4s ease-out forwards;
+}
+
+@keyframes tests-panel-root-btn-check-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tests-panel-root-btn-check {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+}
+
 .tests-panel-root-btn-ok:hover:not(:disabled) {
   background: #2e7d32;
   color: white;
 }
 
 .tests-panel-root-btn-warning {
-  border-color: #b26a00;
   color: #b26a00;
 }
 
@@ -974,7 +1023,6 @@ onBeforeUnmount(() => {
 }
 
 .tests-panel-root-btn-fail {
-  border-color: #c62828;
   color: #c62828;
 }
 

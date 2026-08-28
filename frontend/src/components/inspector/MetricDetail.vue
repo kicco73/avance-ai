@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 
 const props = defineProps({
@@ -19,6 +19,24 @@ const {
 
 const formattedValue = computed(() => (typeof props.value === 'number' ? `${props.value.toFixed(2)}%` : '—'))
 const formattedMedian = computed(() => (typeof props.median === 'number' ? `Median: ${props.median.toFixed(2)}%` : ''))
+
+const trackEl = ref(null)
+
+// The median marker sits inside the track's own bounding box, so entering
+// it never fires the track's mouseleave (mouseenter/mouseleave don't
+// bubble) — without this, both tooltips would stack. Hide the track's
+// while the marker's own is up, and hand it back when the pointer returns
+// to the track (the track's mouseleave still fires normally once the
+// pointer actually exits the whole bar).
+function onMedianEnter(event) {
+  hideTooltip()
+  showMedianTooltip(event.currentTarget)
+}
+
+function onMedianLeave() {
+  hideMedianTooltip()
+  if (trackEl.value) showTooltip(trackEl.value)
+}
 </script>
 
 <template>
@@ -29,6 +47,7 @@ const formattedMedian = computed(() => (typeof props.median === 'number' ? `Medi
     </div>
     <span v-if="description" class="metric-detail-description">{{ description }}</span>
     <div
+      ref="trackEl"
       class="metric-detail-bar-track"
       @mouseenter="showTooltip($event.currentTarget)"
       @mouseleave="hideTooltip"
@@ -44,8 +63,8 @@ const formattedMedian = computed(() => (typeof props.median === 'number' ? `Medi
         v-if="typeof median === 'number'"
         class="metric-detail-median-marker"
         :style="{ left: median + '%' }"
-        @mouseenter.stop="showMedianTooltip($event.currentTarget)"
-        @mouseleave.stop="hideMedianTooltip"
+        @mouseenter.stop="onMedianEnter"
+        @mouseleave.stop="onMedianLeave"
       ></div>
     </div>
     <Teleport to="body">
