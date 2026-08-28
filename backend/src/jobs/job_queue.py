@@ -43,10 +43,10 @@ class JobQueue(object):
         self._waiters: dict[Job, list[threading.Event]] = {}
 
         for i in range(max_concurrent):
-            thread = threading.Thread(target=self._worker_loop, name=f"job-worker-{i}", daemon=True)
+            thread = threading.Thread(target=self.__worker_loop, name=f"job-worker-{i}", daemon=True)
             thread.start()
 
-    def _forget_and_notify(self, job: Job) -> None:
+    def __forget(self, job: Job) -> STATUS:
         with self._lock:
             self._dependents.pop(job, None)
             ready = [
@@ -57,30 +57,35 @@ class JobQueue(object):
                 del self._dependents[waiter]
             events = self._waiters.pop(job, [])
         for waiter in ready:
-            self._submit_and_notify(waiter)
+            status = self._submit(waiter)
+            self._broadcast_status(waiter, status)
         for event in events:
             event.set()
-        self._broadcast_status(job, self.STATUS.exited)
 
-    def _submit_and_notify(self, job: Job) -> None:
-        self._broadcast_status(job, self.STATUS.ready)
+        return self.STATUS.exited
+
+    def _submit(self, job: Job) -> STATUS:
         with self._not_empty:
             if job.is_background:
                 self._deque.append(job)
             else:
                 self._deque.appendleft(job)
             self._not_empty.notify()
+        return self.STATUS.ready
 
-    def _dequeue(self) -> Job:
+    def __dequeue(self) -> Job:
         with self._not_empty:
             while not self._deque:
                 self._not_empty.wait()
             return self._deque.popleft()
-    
-    def _dequeue_and_notify(self) -> Job:
-        job = self._dequeue()
-        self._broadcast_status(job, self.STATUS.running)
-        return job
+
+    def _continue(self, job: Job) -> None:
+        """Called when a worker would begin to run step."""
+        return
+
+    def _has_priority_work_waiting(self) -> bool:
+        with self._not_empty:
+            return bool(self._deque) and not self._deque[0].is_background
 
     def _broadcast_status(self, job: Job, queue_status: JobQueue.STATUS) -> None:
         status = {
@@ -93,30 +98,36 @@ class JobQueue(object):
         }
         self._broadcaster.push(job.username, status)
 
-    def _worker_loop(self) -> None:
+    def __execute_job_step(self, job: Job, loop: asyncio.AbstractEventLoop) -> None:
+
+        while not job.is_done():
+            self._continue(job)
+            self._broadcast_status(job, self.STATUS.running)
+                
+            try:
+                loop.run_until_complete(job.run_next_step())
+            except Exception as exc:
+                logger.exception(f"Job {job} failed: {exc}")
+                break
+
+            if not job.is_done() and (not job.is_background or self._has_priority_work_waiting()):
+                status = self._submit(job)
+                self._broadcast_status(job, status)
+                return
+
+        status = self.__forget(job)
+        self._broadcast_status(job, status)
+
+
+    def __worker_loop(self) -> None:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         while True:
-            job = self._dequeue_and_notify()
-            try:
-                while True:
-                    loop.run_until_complete(job.run_next_step())
-                    if job.is_done():
-                        break
-            except Exception as exc:
-                logger.exception(f"Job {job} failed: {exc}")
-            finally:
-                self._forget_and_notify(job)
+            job = self.__dequeue()
+            self.__execute_job_step(job, loop)
 
     def submit(self, job: Job) -> None:
         with self._lock:
-            # Already prepared — some other waiter got to this exact job
-            # object first (a dependency shared across two different
-            # parents, e.g. the same session under both "sessions" and
-            # "users" when root runs everything at once). is_pending() is
-            # true only before prepare() has ever run, so this catches a
-            # job that's still in flight AND one that already finished
-            # (possibly before this second parent even got here) alike.
             if not job.is_pending():
                 return
 
@@ -138,7 +149,8 @@ class JobQueue(object):
             if ready:
                 del self._dependents[job]
         if ready:
-            self._submit_and_notify(job)
+            status = self._submit(job)
+            self._broadcast_status(job, status)
 
     async def wait_for(self, job: Job) -> None:
         connection = self._broadcaster.connect(job.username)

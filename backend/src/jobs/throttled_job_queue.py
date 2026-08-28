@@ -41,7 +41,7 @@ class ThrottledJobQueue(JobQueue):
         self.__min_job_interval_ms = min_job_interval_ms
         super().__init__(max_concurrent, broadcaster)
 
-    def __wait_until_allowed(self, job: Job) -> None:
+    def __eventually_wait_required_time_and_notify(self, job: Job) -> None:
         while True:
             with self.__throttle_lock:
                 now = time.monotonic()
@@ -65,12 +65,9 @@ class ThrottledJobQueue(JobQueue):
             logger.info(f"waiting {wait_seconds}s")
             self._broadcast_status(job, self.STATUS.paused)
             time.sleep(wait_seconds)
+            self._broadcast_status(job, self.STATUS.running)
 
-    def _dequeue_and_notify(self) -> Job:
-        job = self._dequeue()
-
+    def _continue(self, job: Job) -> None:
         if job.is_background:
-            self.__wait_until_allowed(job)
-
-        self._broadcast_status(job, self.STATUS.running)
-        return job
+            self.__eventually_wait_required_time_and_notify(job)
+        super()._continue(job)

@@ -20,9 +20,10 @@ const emit = defineEmits(['activate'])
 // Once any step has reported a real percentage, keep showing it — even
 // while queued between steps ('ready'), not just at the instant a worker
 // is actually inside a step ('running'). A node with no progress yet
-// (still 'pending'/never started) has progress===null and spins
-// indeterminately instead.
-const hasProgress = computed(() => props.progress != null)
+// (still 'pending'/never started, or queued but never picked up — both
+// report percentage===0, indistinguishable from "genuinely just began")
+// spins indeterminately instead.
+const hasProgress = computed(() => props.progress != null && props.progress > 0)
 const progressPercent = computed(() => (hasProgress.value ? Math.min(100, Math.round(props.progress)) : 0))
 const isBusy = computed(() => ['pending', 'ready', 'running', 'paused'].includes(props.status))
 // 'running' — this queue's own view of the job (see JobQueue's

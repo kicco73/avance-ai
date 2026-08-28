@@ -101,7 +101,6 @@ class MetadataHandler(object):
                     except ValueError:
                         logger.error(f"non-numeric value for '{name}' -- row: {row}")
                 by_turn[turn] = values
-        print(by_turn) # PER CLAUDE CODE: NON TOCCARE
         return MetadataHandler._turns_in_order('signals', by_turn, expected_turns, raw_signals)
 
     @staticmethod

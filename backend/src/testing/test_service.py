@@ -155,15 +155,30 @@ class TestReplayJob(Job):
         self._signal_source = None
 
     def _finalize(self) -> None:
-        self._service._calculate_and_save_results(self._run)
+        self._calculate_and_save_results()
         self._service._cache.untrack_many([self._run['id']])
+
+    def _calculate_and_save_results(self) -> None:
+        db = self._service._db
+        current_run = db.get_test(self._run['id'])
+        assert current_run is not None, f"Test {self._run['id']}: vanished before its own run could finalize"
+        data = build_test_data(db, current_run)
+
+        if current_run['session_id'] is not None or current_run['username'] is None:
+            calculator = BenchmarkCalculator.from_data(data)
+        else:
+            unfiltered_metrics = BenchmarkCalculator(db, current_run['username'], current_run['project_name']).default_metrics()
+            calculator = BenchmarkCalculator.from_data(data, metrics=unfiltered_metrics)
+
+        results = [_serialize_metric_result(result) for result in calculator.calculate_all()]
+        db.set_test_results(self._run['id'], json.dumps(results))
 
     def _prepare_session(self, session_id: int) -> tuple[list[list[int]], str | None]:
         db = self._service._db
         session = db.get_chat_session(session_id)
         if session is None:
             return [], f"session {session_id}: not found, skipped"
-        env = self._service._build_seed_env(session)
+        env = self._build_seed_env(session)
         system_facts = SystemFacts()
         session_facts = SessionFacts(db, FixedProjectContext(project_name=self._run['project_name']))
         metrics = TestMetricsProvider(db, self._run['username'], self._run['project_name'], session_id)
@@ -180,6 +195,17 @@ class TestReplayJob(Job):
         if warning is not None:
             return [], warning
         return self._chunk_into_batches(message_ids), None
+
+    def _build_seed_env(self, session: dict) -> Env:
+        if session['datetime_start'] is None:
+            return Env()
+        # PersistedEnv now reads Session().user itself — pinned to this
+        # historical session's own username for the two calls that need
+        # it, then restored (see FixedProjectContext's own docstring).
+        with Session().impersonate(session['username']):
+            persisted_env = PersistedEnv(self._service._db, FixedProjectContext(project_name=session['project_name']))
+            until = session['datetime_start']
+            return Env(stored=persisted_env.stored(until=until), action_set=persisted_env.action_set(until=until))
 
     def _chunk_into_batches(self, message_ids: list[int]) -> list[list[int]]:
         if self._signal_source_cls is not BatchSignalSource:
@@ -241,11 +267,83 @@ class _AggregationJob(Job):
         run_ids = []
         dependencies = []
         for session_id in session_ids:
-            run_id, job = self._service._resolve_or_construct_session_run(session_id, self._project_name, self._strategy)
+            run_id, job = self._resolve_or_construct_session_run(session_id)
             run_ids.append(run_id)
             if job is not None:
                 dependencies.append(job)
         return run_ids, tuple(dependencies)
+
+    def _resolve_or_construct_session_run(self, session_id: int) -> tuple[int, Job | None]:
+        candidates = [
+            run for run in self._service.list_runs(self._project_name, session_id) if run['strategy'] == self._strategy
+        ]
+        candidate = candidates[0] if candidates and not candidates[0]['stale'] else None
+        if candidate is not None:
+            # 'running' — some other branch of the same root click already
+            # claimed this exact session — must still be depended on here
+            # too, not silently treated as "nothing to wait for" just
+            # because a (still in-flight) row already exists.
+            if candidate['status'] == 'running':
+                live_job = self._service._cache.live_job_for(candidate['id'])
+                assert live_job is not None
+                return candidate['id'], live_job
+            if candidate['status'] == 'completed':
+                return candidate['id'], None
+            # 'failed' — a dead attempt; fall through to retry below.
+        session = self._service._db.get_chat_session(session_id)
+        assert session is not None
+        run, job = self._service._construct_run(session['username'], self._project_name, session_id, self._strategy)
+        return run['id'], job
+
+    def _observations_for_run(self, run_id: int) -> list:
+        run = self._service._db.get_test(run_id)
+        if run is None:
+            return []
+        data = build_test_data(self._service._db, run)
+        return BenchmarkObservationBuilder(BenchmarkConfiguration()).build(data)
+
+    def _observations_for(self, run_ids: list[int]) -> list:
+        observations: list = []
+        for run_id in run_ids:
+            observations.extend(self._observations_for_run(run_id))
+        return observations
+
+    @staticmethod
+    def _merge_distributions(results: list[dict]) -> list[int]:
+        """Element-wise sum of each result's own histogram — the correct
+        way to roll several already-binned distributions (e.g. one per
+        sub-group) into the single combined one a branch/root node shows,
+        without ever needing the raw per-observation values again."""
+        bucket_count = max((len(result.get('distribution') or []) for result in results), default=0)
+        if not bucket_count:
+            return []
+        merged = [0] * bucket_count
+        for result in results:
+            for i, count in enumerate(result.get('distribution') or []):
+                merged[i] += count
+        return merged
+
+    def _aggregate_weighted_by_sample_count(self, results: list[dict]) -> dict:
+        total_sample_count = sum(result['sample_count'] for result in results)
+        with_samples = [result for result in results if result['sample_count']]
+        if not with_samples:
+            return {
+                'name': 'overall', 'value': 0.0, 'mean': None, 'median': None,
+                'standard_deviation': None, 'minimum': None, 'maximum': None,
+                'sample_count': total_sample_count, 'distribution': self._merge_distributions(results),
+                'components': {},
+            }
+        weighted_value = sum(
+            result['value'] * result['sample_count'] for result in with_samples
+        ) / total_sample_count
+        return {
+            'name': 'overall',
+            'value': weighted_value,
+            'mean': None, 'median': None, 'standard_deviation': None, 'minimum': None, 'maximum': None,
+            'sample_count': total_sample_count,
+            'distribution': self._merge_distributions(results),
+            'components': {},
+        }
 
     @property
     def is_background(self) -> bool:
@@ -262,7 +360,11 @@ class _AggregationJob(Job):
         )
 
     def _persist(self, result: dict | list[dict]) -> None:
-        self._service._persist_aggregate_result(self._project_name, self._kind, self._target, self._strategy, result)
+        revision = self._service._db.get_project_revision(self._project_name)
+        edit_count = self._service._db.get_project_draft_edit_count(self._project_name)
+        self._service._db.upsert_test_aggregate_result(
+            self._project_name, revision, edit_count, self._kind, self._target, self._strategy, json.dumps(result),
+        )
 
     async def _compute(self) -> dict | list[dict]:
         raise NotImplementedError
@@ -291,23 +393,56 @@ class StateAggregationJob(_AggregationJob):
         return dependencies
 
     async def _compute(self) -> dict:
-        return self._service._aggregate_signal_accuracy(self._sub_run_ids, self._state_key)
+        observations = self._observations_for(self._sub_run_ids)
+        filtered = tuple(o for o in observations if o.expected_state == self._state_key)
+        return _serialize_metric_result(SignalAccuracyMetric().calculate(filtered))
 
 
 class SignalAggregationJob(_AggregationJob):
+    """Unlike its siblings, this one doesn't inherit _AggregationJob's
+    single-step _compute() — gathering observations is its slowest part,
+    and it scales with session count, so it's spread one run id per step
+    (+1 final step for the actual statistics) instead of running as one
+    opaque step. Gives real incremental progress and lets a worker yield
+    between run ids instead of holding the whole aggregation."""
 
     def __init__(self, service: "TestService", project_name: str, signal_name: str, strategy: str, session_ids: list[int]) -> None:
         super().__init__(service, project_name, 'signal', signal_name, strategy)
         self._signal_name = signal_name
         self._session_ids = session_ids
         self._sub_run_ids: list[int] = []
+        self._pending_run_ids: list[int] = []
+        self._observations: list = []
 
     def _resolve_or_construct_dependencies(self) -> tuple[Job, ...]:
         self._sub_run_ids, dependencies = self._resolve_session_ids(self._session_ids)
         return dependencies
 
-    async def _compute(self) -> dict:
-        return self._service._aggregate_signal_name_accuracy(self._sub_run_ids, self._signal_name)
+    def _prepare(self) -> tuple[int, tuple[Job, ...]]:
+        cached = self._cached()
+        if cached is not None:
+            self._result_value = cached
+            return 1, ()
+        dependencies = self._resolve_or_construct_dependencies()
+        self._pending_run_ids = list(self._sub_run_ids)
+        return len(self._pending_run_ids) + 1, dependencies
+
+    async def _run_next_step(self) -> None:
+        if self._result_value is not None:
+            return
+        if self._pending_run_ids:
+            run_id = self._pending_run_ids.pop(0)
+            self._observations.extend(self._observations_for_run(run_id))
+            return
+        result = self._finalize_signal_name_accuracy()
+        self._persist(result)
+        self._result_value = result
+
+    def _finalize_signal_name_accuracy(self) -> dict:
+        values = [
+            o.signal_agreements[self._signal_name] for o in self._observations if self._signal_name in o.signal_agreements
+        ]
+        return _serialize_metric_result(Statistics.result(self._signal_name, values, metadata={"unit": "percent"}))
 
 
 class PooledAggregationJob(_AggregationJob):
@@ -325,7 +460,20 @@ class PooledAggregationJob(_AggregationJob):
         return dependencies
 
     async def _compute(self) -> list[dict]:
-        return self._service._aggregate_pooled_runs(self._sub_run_ids, self._project_name)
+        if not self._sub_run_ids:
+            return []
+        db = self._service._db
+        runs = [run for run_id in self._sub_run_ids if (run := db.get_test(run_id)) is not None]
+        frames = [build_test_data(db, run) for run in runs]
+        pooled = BenchmarkData(
+            messages=pd.concat([f.messages for f in frames], ignore_index=True),
+            sessions=pd.concat([f.sessions for f in frames], ignore_index=True),
+            signals=pd.concat([f.signals for f in frames], ignore_index=True),
+            transitions=pd.concat([f.transitions for f in frames], ignore_index=True),
+        )
+        unfiltered_metrics = BenchmarkCalculator(db, None, self._project_name).default_metrics()
+        calculator = BenchmarkCalculator.from_data(pooled, metrics=unfiltered_metrics)
+        return [_serialize_metric_result(result) for result in calculator.calculate_all()]
 
 
 class UsersAggregationJob(_AggregationJob):
@@ -350,7 +498,40 @@ class UsersAggregationJob(_AggregationJob):
 
     async def _compute(self) -> list[dict]:
         per_user_results = [_job_result(job) for job in self._user_jobs]
-        return self._service._aggregate_across_results(per_user_results)
+        return self._aggregate_across_results(per_user_results)
+
+    def _aggregate_across_results(self, per_group_results: list[list[dict]]) -> list[dict]:
+        results_by_name: dict[str, list[dict]] = {}
+        for results in per_group_results:
+            for result in results:
+                results_by_name.setdefault(result['name'], []).append(result)
+
+        aggregated = []
+        for name, results in results_by_name.items():
+            total_sample_count = sum(result['sample_count'] for result in results)
+            with_samples = [result for result in results if result['sample_count']]
+            values = [result['value'] for result in with_samples]
+            if not values:
+                aggregated.append({
+                    'name': name, 'value': 0.0, 'mean': None, 'median': None,
+                    'standard_deviation': None, 'minimum': None, 'maximum': None,
+                    'sample_count': total_sample_count, 'distribution': self._merge_distributions(results),
+                    'components': {},
+                })
+                continue
+            aggregated.append({
+                'name': name,
+                'value': mean(values),
+                'mean': mean(values),
+                'median': median(values),
+                'standard_deviation': pstdev(values) if len(values) > 1 else 0.0,
+                'minimum': min(values),
+                'maximum': max(values),
+                'sample_count': total_sample_count,
+                'distribution': self._merge_distributions(results),
+                'components': with_samples[0]['components'] if len(with_samples) == 1 else {},
+            })
+        return aggregated
 
 
 class AllStatesAggregationJob(_AggregationJob):
@@ -373,7 +554,7 @@ class AllStatesAggregationJob(_AggregationJob):
 
     async def _compute(self) -> dict:
         per_state_results = [_job_result(job) for job in self._state_jobs]
-        return self._service._aggregate_weighted_by_sample_count(per_state_results)
+        return self._aggregate_weighted_by_sample_count(per_state_results)
 
 
 class AllSignalsAggregationJob(_AggregationJob):
@@ -398,7 +579,7 @@ class AllSignalsAggregationJob(_AggregationJob):
 
     async def _compute(self) -> dict:
         per_signal_results = [_job_result(job) for job in self._signal_jobs]
-        return self._service._aggregate_weighted_by_sample_count(per_signal_results)
+        return self._aggregate_weighted_by_sample_count(per_signal_results)
 
 
 class RootAggregationJob(Job):
@@ -588,61 +769,6 @@ class TestService:
             'stale': stale,
         }
 
-    def _build_seed_env(self, session: dict) -> Env:
-        if session['datetime_start'] is None:
-            return Env()
-        # PersistedEnv now reads Session().user itself — pinned to this
-        # historical session's own username for the two calls that need
-        # it, then restored (see FixedProjectContext's own docstring).
-        with Session().impersonate(session['username']):
-            persisted_env = PersistedEnv(self._db, FixedProjectContext(project_name=session['project_name']))
-            until = session['datetime_start']
-            return Env(stored=persisted_env.stored(until=until), action_set=persisted_env.action_set(until=until))
-
-    def _calculate_and_save_results(self, run: dict) -> None:
-        current_run = self._db.get_test(run['id'])
-        assert current_run is not None, f"Test {run['id']}: vanished before its own run could finalize"
-        data = build_test_data(self._db, current_run)
-
-        if current_run['session_id'] is not None or current_run['username'] is None:
-            calculator = BenchmarkCalculator.from_data(data)
-        else:
-            unfiltered_metrics = BenchmarkCalculator(self._db, current_run['username'], current_run['project_name']).default_metrics()
-            calculator = BenchmarkCalculator.from_data(data, metrics=unfiltered_metrics)
-
-        results = [_serialize_metric_result(result) for result in calculator.calculate_all()]
-        self._db.set_test_results(run['id'], json.dumps(results))
-
-    def _resolve_or_construct_session_run(self, session_id: int, project_name: str, strategy: str) -> tuple[int, Job | None]:
-        candidates = [run for run in self.list_runs(project_name, session_id) if run['strategy'] == strategy]
-        candidate = candidates[0] if candidates and not candidates[0]['stale'] else None
-        if candidate is not None:
-            # 'running' — some other branch of the same root click already
-            # claimed this exact session — must still be depended on here
-            # too, not silently treated as "nothing to wait for" just
-            # because a (still in-flight) row already exists.
-            if candidate['status'] == 'running':
-                live_job = self._cache.live_job_for(candidate['id'])
-                assert live_job is not None
-                return candidate['id'], live_job
-            if candidate['status'] == 'completed':
-                return candidate['id'], None
-            # 'failed' — a dead attempt; fall through to retry below.
-        session = self._db.get_chat_session(session_id)
-        assert session is not None
-        run, job = self._construct_run(session['username'], project_name, session_id, strategy)
-        return run['id'], job
-
-    def _persist_aggregate_result(
-        self, project_name: str, kind: str, target: str | None, strategy: str, result: dict | list[dict],
-    ) -> None:
-        revision = self._db.get_project_revision(project_name)
-        edit_count = self._db.get_project_draft_edit_count(project_name)
-        self._db.upsert_test_aggregate_result(
-            project_name, revision, edit_count, kind, target, strategy, json.dumps(result),
-        )
-
-
     def start_job(self, project_name: str, state_key: str, strategy: str) -> Job:
         if strategy not in VALID_STRATEGIES:
             raise ValueError(f"Unknown test strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
@@ -736,107 +862,3 @@ class TestService:
         self._job_queue.submit(job)
         return job
 
-    def _observations_for(self, run_ids: list[int]) -> list:
-        observations: list = []
-        for run_id in run_ids:
-            run = self._db.get_test(run_id)
-            if run is None:
-                continue
-            data = build_test_data(self._db, run)
-            observations.extend(BenchmarkObservationBuilder(BenchmarkConfiguration()).build(data))
-        return observations
-
-    def _aggregate_signal_accuracy(self, sub_run_ids: list[int], state_key: str) -> dict:
-        observations = self._observations_for(sub_run_ids)
-        filtered = tuple(o for o in observations if o.expected_state == state_key)
-        return _serialize_metric_result(SignalAccuracyMetric().calculate(filtered))
-
-    def _aggregate_signal_name_accuracy(self, sub_run_ids: list[int], signal_name: str) -> dict:
-        observations = self._observations_for(sub_run_ids)
-        values = [o.signal_agreements[signal_name] for o in observations if signal_name in o.signal_agreements]
-        return _serialize_metric_result(Statistics.result(signal_name, values, metadata={"unit": "percent"}))
-
-    def _aggregate_pooled_runs(self, sub_run_ids: list[int], project_name: str) -> list[dict]:
-        if not sub_run_ids:
-            return []
-        runs = [run for run_id in sub_run_ids if (run := self._db.get_test(run_id)) is not None]
-        frames = [build_test_data(self._db, run) for run in runs]
-        pooled = BenchmarkData(
-            messages=pd.concat([f.messages for f in frames], ignore_index=True),
-            sessions=pd.concat([f.sessions for f in frames], ignore_index=True),
-            signals=pd.concat([f.signals for f in frames], ignore_index=True),
-            transitions=pd.concat([f.transitions for f in frames], ignore_index=True),
-        )
-        unfiltered_metrics = BenchmarkCalculator(self._db, None, project_name).default_metrics()
-        calculator = BenchmarkCalculator.from_data(pooled, metrics=unfiltered_metrics)
-        return [_serialize_metric_result(result) for result in calculator.calculate_all()]
-
-    @staticmethod
-    def _merge_distributions(results: list[dict]) -> list[int]:
-        """Element-wise sum of each result's own histogram — the correct
-        way to roll several already-binned distributions (e.g. one per
-        sub-group) into the single combined one a branch/root node shows,
-        without ever needing the raw per-observation values again."""
-        bucket_count = max((len(result.get('distribution') or []) for result in results), default=0)
-        if not bucket_count:
-            return []
-        merged = [0] * bucket_count
-        for result in results:
-            for i, count in enumerate(result.get('distribution') or []):
-                merged[i] += count
-        return merged
-
-    def _aggregate_across_results(self, per_group_results: list[list[dict]]) -> list[dict]:
-        results_by_name: dict[str, list[dict]] = {}
-        for results in per_group_results:
-            for result in results:
-                results_by_name.setdefault(result['name'], []).append(result)
-
-        aggregated = []
-        for name, results in results_by_name.items():
-            total_sample_count = sum(result['sample_count'] for result in results)
-            with_samples = [result for result in results if result['sample_count']]
-            values = [result['value'] for result in with_samples]
-            if not values:
-                aggregated.append({
-                    'name': name, 'value': 0.0, 'mean': None, 'median': None,
-                    'standard_deviation': None, 'minimum': None, 'maximum': None,
-                    'sample_count': total_sample_count, 'distribution': self._merge_distributions(results),
-                    'components': {},
-                })
-                continue
-            aggregated.append({
-                'name': name,
-                'value': mean(values),
-                'mean': mean(values),
-                'median': median(values),
-                'standard_deviation': pstdev(values) if len(values) > 1 else 0.0,
-                'minimum': min(values),
-                'maximum': max(values),
-                'sample_count': total_sample_count,
-                'distribution': self._merge_distributions(results),
-                'components': with_samples[0]['components'] if len(with_samples) == 1 else {},
-            })
-        return aggregated
-
-    def _aggregate_weighted_by_sample_count(self, results: list[dict]) -> dict:
-        total_sample_count = sum(result['sample_count'] for result in results)
-        with_samples = [result for result in results if result['sample_count']]
-        if not with_samples:
-            return {
-                'name': 'overall', 'value': 0.0, 'mean': None, 'median': None,
-                'standard_deviation': None, 'minimum': None, 'maximum': None,
-                'sample_count': total_sample_count, 'distribution': self._merge_distributions(results),
-                'components': {},
-            }
-        weighted_value = sum(
-            result['value'] * result['sample_count'] for result in with_samples
-        ) / total_sample_count
-        return {
-            'name': 'overall',
-            'value': weighted_value,
-            'mean': None, 'median': None, 'standard_deviation': None, 'minimum': None, 'maximum': None,
-            'sample_count': total_sample_count,
-            'distribution': self._merge_distributions(results),
-            'components': {},
-        }

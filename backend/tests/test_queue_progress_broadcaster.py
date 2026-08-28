@@ -21,7 +21,7 @@ class _FakeAiServiceForTokens:
 
 async def test_push_enriches_the_message_with_the_current_token_total():
     ai_service = _FakeAiServiceForTokens(total=42)
-    broadcaster = QueueProgressBroadcaster(ai_service)
+    broadcaster = QueueProgressBroadcaster(ai_service, batch_window_seconds=0.01)
     connection = broadcaster.connect("user")
 
     broadcaster.push("user", {"key": "batch:session:1", "status": "running"})
@@ -30,25 +30,39 @@ async def test_push_enriches_the_message_with_the_current_token_total():
     assert message == {"key": "batch:session:1", "status": "running", "tokens": 42}
 
 
-async def test_push_reflects_the_latest_total_on_every_call():
+async def test_push_does_not_deliver_instantly():
     ai_service = _FakeAiServiceForTokens(total=1)
-    broadcaster = QueueProgressBroadcaster(ai_service)
+    broadcaster = QueueProgressBroadcaster(ai_service, batch_window_seconds=0.20)
     connection = broadcaster.connect("user")
 
     broadcaster.push("user", {"status": "running"})
-    ai_service.total = 7
-    broadcaster.push("user", {"status": "completed"})
 
-    first = await asyncio.wait_for(connection.get(), timeout=1.0)
-    second = await asyncio.wait_for(connection.get(), timeout=1.0)
-    assert first["tokens"] == 1
-    assert second["tokens"] == 7
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(connection.get(), timeout=0.05)
+    await asyncio.wait_for(connection.get(), timeout=1.0)
+
+
+async def test_pushes_within_the_batch_window_are_merged_into_one_message():
+    ai_service = _FakeAiServiceForTokens(total=1)
+    broadcaster = QueueProgressBroadcaster(ai_service, batch_window_seconds=0.05)
+    connection = broadcaster.connect("user")
+
+    broadcaster.push("user", {"key": "job:1", "status": "running"})
+    ai_service.total = 7
+    broadcaster.push("user", {"key": "job:1", "status": "completed"})
+
+    message = await asyncio.wait_for(connection.get(), timeout=1.0)
+    assert message == {"key": "job:1", "status": "completed", "tokens": 7}
+    assert ai_service.calls == 1
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(connection.get(), timeout=0.1)
 
 
 async def test_push_skips_the_ai_service_call_when_nobody_is_connected():
     ai_service = _FakeAiServiceForTokens(total=99)
-    broadcaster = QueueProgressBroadcaster(ai_service)
+    broadcaster = QueueProgressBroadcaster(ai_service, batch_window_seconds=0.01)
 
     broadcaster.push("nobody-connected", {"status": "running"})
 
+    await asyncio.sleep(0.05)
     assert ai_service.calls == 0
