@@ -17,7 +17,7 @@ class QueueProgressBroadcaster:
         self._batch_window_seconds = batch_window_seconds
         self._lock = threading.Lock()
         self._connections: dict[str, dict[asyncio.Queue, asyncio.AbstractEventLoop]] = {}
-        self._pending: dict[str, dict] = {}
+        self._pending: dict[str, dict[object, dict]] = {}
 
     def connect(self, username: str) -> asyncio.Queue:
         connection: asyncio.Queue = asyncio.Queue()
@@ -36,21 +36,27 @@ class QueueProgressBroadcaster:
 
     def push(self, username: str, message: dict) -> None:
         with self._lock:
-            pending = self._pending.get(username)
-            if pending is not None:
-                pending.update(message)
+            bucket = self._pending.setdefault(username, {})
+            key = message.get("key")
+            entry = bucket.get(key)
+            if entry is not None:
+                entry.update(message)
                 return
-            self._pending[username] = dict(message)
+            bucket[key] = dict(message)
+            if len(bucket) > 1:
+                return
             timer = threading.Timer(self._batch_window_seconds, self.__flush, args=(username,))
             timer.daemon = True
             timer.start()
 
     def __flush(self, username: str) -> None:
         with self._lock:
-            message = self._pending.pop(username, None)
+            bucket = self._pending.pop(username, None)
             connections = list(self._connections.get(username, {}).items())
-        if message is None or not connections:
+        if not bucket or not connections:
             return
-        enriched = {**message, "tokens": self._ai_service.get_total_tokens()}
-        for connection, loop in connections:
-            loop.call_soon_threadsafe(connection.put_nowait, enriched)
+        tokens = self._ai_service.get_total_tokens()
+        for message in bucket.values():
+            enriched = {**message, "tokens": tokens}
+            for connection, loop in connections:
+                loop.call_soon_threadsafe(connection.put_nowait, enriched)

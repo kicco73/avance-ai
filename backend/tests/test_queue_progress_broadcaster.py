@@ -58,6 +58,24 @@ async def test_pushes_within_the_batch_window_are_merged_into_one_message():
         await asyncio.wait_for(connection.get(), timeout=0.1)
 
 
+async def test_concurrent_jobs_do_not_clobber_each_others_updates():
+    ai_service = _FakeAiServiceForTokens(total=3)
+    broadcaster = QueueProgressBroadcaster(ai_service, batch_window_seconds=0.05)
+    connection = broadcaster.connect("user")
+
+    broadcaster.push("user", {"key": "batch:session:1", "status": "running"})
+    broadcaster.push("user", {"key": "batch:session:2", "status": "running"})
+    broadcaster.push("user", {"key": "batch:session:1", "status": "completed"})
+
+    first = await asyncio.wait_for(connection.get(), timeout=1.0)
+    second = await asyncio.wait_for(connection.get(), timeout=1.0)
+    delivered = {first["key"]: first, second["key"]: second}
+    assert delivered["batch:session:1"]["status"] == "completed"
+    assert delivered["batch:session:2"]["status"] == "running"
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(connection.get(), timeout=0.1)
+
+
 async def test_push_skips_the_ai_service_call_when_nobody_is_connected():
     ai_service = _FakeAiServiceForTokens(total=99)
     broadcaster = QueueProgressBroadcaster(ai_service, batch_window_seconds=0.01)
