@@ -3,7 +3,7 @@
 // Two columns: TestsTree on the left (Sessions/States), a node's results on
 // the right. Owns all data fetching/launching/polling — TestsTree itself
 // (alongside TestNodeButton, both in this same test/ folder) stays purely presentational.
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import TestsTree from './TestsTree.vue'
 import SignalAccuracyDistributionChart from './SignalAccuracyDistributionChart.vue'
 import DocInfoButton from '../../../DocInfoButton.vue'
@@ -16,6 +16,8 @@ import {
 } from '../../../../api.js'
 import { loadSessions, sessions, sessionsLoading } from '../../../../chatStore.js'
 import { confirmDialog } from '../../../../dialogStore.js'
+import { useResizablePanel } from '../../../../composables/useResizablePanel.js'
+import { useFloatingMenu } from '../../../../composables/useFloatingMenu.js'
 
 const props = defineProps({
   projectName: {
@@ -33,10 +35,10 @@ const emit = defineEmits(['select'])
 const strategy = ref('batch')
 const strategyLabels = { batch: 'Batch', turn_by_turn: 'Turn-by-turn' }
 
-const strategyOpen = ref(false)
-const strategyBtnEl = ref(null)
-const strategyPanelEl = ref(null)
-const strategyPanelStyle = ref({})
+const {
+  open: strategyOpen, triggerRef: strategyBtnEl, panelRef: strategyPanelEl, style: strategyPanelStyle,
+  toggle: toggleStrategyMenu, close: closeStrategyMenu
+} = useFloatingMenu()
 const strategyLabel = computed(() => strategyLabels[strategy.value])
 
 // Running total of AI tokens consumed so far — piggybacked onto every
@@ -44,54 +46,12 @@ const strategyLabel = computed(() => strategyLabels[strategy.value])
 // AiService.get_total_tokens), not fetched separately.
 const tokensBurnt = ref(0)
 
-async function positionStrategyPanel() {
-  await nextTick()
-  const btn = strategyBtnEl.value
-  if (!btn) return
-  const btnRect = btn.getBoundingClientRect()
-  strategyPanelStyle.value = { left: `${btnRect.left}px`, top: `${btnRect.bottom + 4}px` }
-}
-
-async function toggleStrategyMenu() {
-  strategyOpen.value = !strategyOpen.value
-  if (strategyOpen.value) await positionStrategyPanel()
-}
-
-function closeStrategyMenu() {
-  strategyOpen.value = false
-}
-
 function selectStrategy(value) {
   strategy.value = value
   closeStrategyMenu()
 }
 
-function handleStrategyClickOutside(event) {
-  if (!strategyOpen.value) return
-  if (strategyBtnEl.value?.contains(event.target)) return
-  if (strategyPanelEl.value?.contains(event.target)) return
-  closeStrategyMenu()
-}
-document.addEventListener('click', handleStrategyClickOutside, true)
-window.addEventListener('resize', closeStrategyMenu)
-window.addEventListener('scroll', closeStrategyMenu, true)
-
-const treeWidth = ref(280)
-let draggingTree = false
-
-function startTreeDrag(event) {
-  draggingTree = true
-  event.preventDefault()
-}
-
-function onTreeDrag(event) {
-  if (!draggingTree) return
-  treeWidth.value = Math.min(480, Math.max(200, treeWidth.value + event.movementX))
-}
-
-function stopTreeDrag() {
-  draggingTree = false
-}
+const { width: treeWidth, startDrag: startTreeDrag } = useResizablePanel(280, { min: 200, max: 480 })
 
 const projectStates = ref([])
 const statesLoading = ref(false)
@@ -571,17 +531,10 @@ onMounted(() => {
   })
   testEventSource = createTestEventsSource(props.projectName)
   testEventSource.onmessage = (event) => handleTestEvent(JSON.parse(event.data))
-  window.addEventListener('mousemove', onTreeDrag)
-  window.addEventListener('mouseup', stopTreeDrag)
 })
 
 onBeforeUnmount(() => {
   testEventSource?.close()
-  window.removeEventListener('mousemove', onTreeDrag)
-  window.removeEventListener('mouseup', stopTreeDrag)
-  document.removeEventListener('click', handleStrategyClickOutside, true)
-  window.removeEventListener('resize', closeStrategyMenu)
-  window.removeEventListener('scroll', closeStrategyMenu, true)
 })
 </script>
 

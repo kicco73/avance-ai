@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import threading
 from logging_factory import LoggerFactory
+from try_again_error import TryAgainError
 from enum import Enum
 
 logger = LoggerFactory.get_logger(__name__)
@@ -14,6 +15,7 @@ class Job(ABC):
     class STATUS(Enum):
         pending = "pending"
         running = "running"
+        requeued = "requeued"
         completed = "completed"
         failed = "failed"
         aborted = "aborted"
@@ -25,6 +27,8 @@ class Job(ABC):
         self.__total_steps: int | None = None
         self.__is_failed = False
         self.__is_aborted = False
+        self.__try_again = False
+        self.__children_settled = False
         self.__error: str | None = None
         self.__children: list["Job"] = []
         self.__parents: list["Job"] = []
@@ -44,9 +48,30 @@ class Job(ABC):
             self.__parents.append(parent_job or self)
         return children
 
-    def _add_parent_job(self, job: Job) -> None:
+    @property
+    def children(self) -> tuple["Job", ...]:
+        return tuple(self.__children)
+
+    @property
+    def parents(self) -> tuple["Job", ...]:
+        return tuple(self.__parents)
+
+    def _dependency_resolved(self, dep: "Job") -> bool:
+        with self.__lock:
+            if dep not in self.__children:
+                return False
+            self.__children.remove(dep)
+            return self.__children_settled and not self.__children
+
+    def _children_registered(self) -> bool:
+        with self.__lock:
+            self.__children_settled = True
+            return not self.__children
+
+    def _add_parent_job(self, job: Job) -> bool:
         with self.__lock:
             self.__parents.append(job)
+            return self.is_done() or self.is_failed()
 
     def _remove_parent_job(self, job: Job) -> None:
         with self.__lock:
@@ -81,6 +106,8 @@ class Job(ABC):
             return self.STATUS.failed
         if self.is_done():
             return self.STATUS.completed
+        if self.__try_again:
+            return self.STATUS.requeued
         return self.STATUS.running
 
     def is_done(self) -> bool:
@@ -111,23 +138,31 @@ class Job(ABC):
             while self.__parents:
                 self._remove_parent_job(self.__parents[0])
 
+    def _fail(self, error: str) -> None:
+        with self.__lock:
+            if self.__is_failed:
+                return
+            self.__is_failed = True
+            self.__error = error
+            parents = list(self.__parents)
+        for p in parents:
+            if p is not self:
+                p._fail(f"dependency {self.key} failed")
 
     async def run_next_step(self) -> None:
         if not self.__total_steps:
             raise ValueError(f"Job {self} not prepared")
         if self.__is_aborted:
             raise ValueError(f"Job {self} is aborted")
+        if self.__is_failed:
+            raise ValueError(f"Job {self} is failed")
+        self.__try_again = False
         try:
-            self.__is_failed = False
-            failed = [dep for dep in self.__children if dep.is_failed()]
-            if failed:
-                raise RuntimeError(
-                    f"{len(failed)} of {len(self.__children)} "
-                    f"dependencies failed: {', '.join(dep.key for dep in failed)}"
-                )
             await self._run_next_step()
+        except TryAgainError:
+            self.__try_again = True
+            raise
         except Exception as exc:
-            self.__is_failed = True
-            self.__error = str(exc)
+            self._fail(str(exc))
             raise
         self.__steps_done += 1

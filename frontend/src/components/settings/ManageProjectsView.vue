@@ -3,12 +3,13 @@
 // status (see backend ProjectService._project_status) and revision info.
 // The status dot toggles running <-> manually_paused only; 'paused' needs an external fix.
 import { onMounted, ref } from 'vue'
-import { getProjectMetadata, getProjectsRuntimeStatus, putProjectPause, putProjectResume } from '../../api.js'
+import { getProjectMetadata, getProjectsRuntimeStatus, projectFileContentUrl, putProjectPause, putProjectResume } from '../../api.js'
 import { confirmDialog } from '../../dialogStore.js'
 import ProgressSpinner from '../ProgressSpinner.vue'
 import ModelMenu from '../ModelMenu.vue'
 import SettingsMenu from './SettingsMenu.vue'
 import ProfileMenu from '../ProfileMenu.vue'
+import avanceLogoUrl from '../../assets/avance-logo.png'
 
 const props = defineProps({
   uploading: { type: Boolean, default: false },
@@ -46,6 +47,9 @@ const togglingProject = ref(null)
 // name -> { id, ui_label, ui_description }, filled in after the runtime-status
 // list loads — the project detail card's own content (title/id/description).
 const metadataByName = ref({})
+// name -> true once that project's icon.png request has failed (missing file),
+// same fallback idiom as ProfileMenu.vue's avatar image.
+const iconFailedByName = ref({})
 
 async function loadMetadata(names) {
   const results = await Promise.allSettled(names.map((name) => getProjectMetadata(name)))
@@ -69,11 +73,6 @@ async function load() {
 
 function projectTitle(name) {
   return metadataByName.value[name]?.ui_label || name
-}
-
-function projectId(name) {
-  const id = metadataByName.value[name]?.id
-  return id && id !== name ? id : null
 }
 
 function projectDescription(name) {
@@ -203,49 +202,45 @@ defineExpose({ refresh: load })
       <p v-else-if="!rows.length" class="manage-projects-status">No projects yet.</p>
 
       <table v-else class="manage-projects-table">
-        <thead>
-          <tr>
-            <th class="manage-projects-col-status"></th>
-            <th>Project</th>
-            <th>Status</th>
-            <th>Reason</th>
-            <th>Revision</th>
-            <th>Published</th>
-            <th class="manage-projects-col-chat"></th>
-            <th class="manage-projects-col-label"></th>
-            <th class="manage-projects-col-download"></th>
-            <th class="manage-projects-col-wipe"></th>
-            <th class="manage-projects-col-delete"></th>
-          </tr>
-        </thead>
         <tbody>
           <tr v-for="row in rows" :key="row.name">
-            <td class="manage-projects-col-status">
-              <button
-                type="button"
-                class="manage-projects-icon-btn"
-                :class="`manage-projects-icon-${row.status}`"
-                :disabled="row.status === 'paused' || togglingProject === row.name"
-                :title="statusTitle(row)"
-                @click="toggleStatus(row)"
-              >
-                <span class="manage-projects-dot"></span>
-              </button>
-            </td>
             <td class="manage-projects-name">
               <button type="button" class="project-card" title="Edit project" @click="selectEdit(row.name)">
-                <span class="project-card-badge">Project</span>
+                <img
+                  v-if="!iconFailedByName[row.name]"
+                  :src="projectFileContentUrl(row.name, 'aspect/icon.png')"
+                  class="project-card-icon"
+                  alt=""
+                  @error="iconFailedByName[row.name] = true"
+                />
+                <img v-else :src="avanceLogoUrl" class="project-card-fallback-logo" alt="" />
                 <span class="project-card-body">
-                  <span class="project-card-title">{{ projectTitle(row.name) }}</span>
-                  <code v-if="projectId(row.name)" class="project-card-id">{{ projectId(row.name) }}</code>
+                  <span class="project-card-title-row">
+                    <span class="project-card-title">{{ projectTitle(row.name) }}</span>
+                    <span v-if="row.published_revision != null" class="project-card-rev">rev. {{ row.published_revision }}</span>
+                  </span>
                   <span v-if="projectDescription(row.name)" class="project-card-desc">{{ projectDescription(row.name) }}</span>
                 </span>
               </button>
             </td>
-            <td>{{ statusLabel(row.status) }}</td>
-            <td class="manage-projects-reason">{{ row.paused_reason ?? '—' }}</td>
-            <td>{{ row.revision }}</td>
-            <td>{{ row.published_revision ?? '—' }}</td>
+            <td class="manage-projects-col-status">
+              <span class="manage-projects-status-cell">
+                <button
+                  type="button"
+                  class="manage-projects-icon-btn"
+                  :class="`manage-projects-icon-${row.status}`"
+                  :disabled="row.status === 'paused' || togglingProject === row.name"
+                  :title="statusTitle(row)"
+                  @click="toggleStatus(row)"
+                >
+                  <svg v-if="row.status === 'manually_paused'" class="manage-projects-play-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                  <span v-else class="manage-projects-dot"></span>
+                </button>
+                {{ statusLabel(row.status) }}
+              </span>
+            </td>
             <td class="manage-projects-col-chat">
               <button
                 type="button"
@@ -253,7 +248,7 @@ defineExpose({ refresh: load })
                 title="Open chat"
                 @click="selectChat(row.name)"
               >
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
                   <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" />
                 </svg>
               </button>
@@ -265,7 +260,7 @@ defineExpose({ refresh: load })
                 title="Label sessions"
                 @click="selectLabelSessions(row.name)"
               >
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
                   <path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.41l9 9c.36.36.86.59 1.41.59s1.05-.23 1.41-.59l7-7c.37-.36.59-.86.59-1.41s-.23-1.06-.59-1.42zM6.5 8C5.67 8 5 7.33 5 6.5S5.67 5 6.5 5 8 5.67 8 6.5 7.33 8 6.5 8z" />
                 </svg>
               </button>
@@ -277,7 +272,7 @@ defineExpose({ refresh: load })
                 title="Download project"
                 @click="selectDownload(row.name)"
               >
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
                   <path d="M12 3a1 1 0 0 1 1 1v9.59l2.3-2.3a1 1 0 1 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.42l2.3 2.3V4a1 1 0 0 1 1-1zM5 19a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1z" />
                 </svg>
               </button>
@@ -289,7 +284,7 @@ defineExpose({ refresh: load })
                 title="Wipe live sessions"
                 @click="selectWipeLiveSessions(row.name)"
               >
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
                   <path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
                 </svg>
               </button>
@@ -382,18 +377,9 @@ defineExpose({ refresh: load })
 
 .manage-projects-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 0.88rem;
-}
-
-.manage-projects-table th {
-  text-align: left;
-  padding: 0.5rem 0.75rem;
-  border-bottom: 2px solid #ddd;
-  color: #555;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
 }
 
 .manage-projects-table td {
@@ -403,27 +389,35 @@ defineExpose({ refresh: load })
 }
 
 .manage-projects-col-status {
-  width: 2.2rem;
+  width: 11rem;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.manage-projects-status-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .manage-projects-col-chat {
-  width: 2.2rem;
+  width: 3.24rem;
 }
 
 .manage-projects-col-label {
-  width: 2.2rem;
+  width: 3.24rem;
 }
 
 .manage-projects-col-download {
-  width: 2.2rem;
+  width: 3.24rem;
 }
 
 .manage-projects-col-wipe {
-  width: 2.2rem;
+  width: 3.24rem;
 }
 
 .manage-projects-col-delete {
-  width: 2.2rem;
+  width: 3.24rem;
 }
 
 .project-card {
@@ -446,16 +440,20 @@ defineExpose({ refresh: load })
   background: #f3f6fb;
 }
 
-.project-card-badge {
+.project-card-icon {
   flex-shrink: 0;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
-  background: #6a1b9a;
-  color: white;
-  font-size: 0.65rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
+  width: 65px;
+  height: 65px;
+  border-radius: 15px;
+  object-fit: cover;
+}
+
+.project-card-fallback-logo {
+  flex-shrink: 0;
+  width: 65px;
+  height: 65px;
+  object-fit: contain;
+  opacity: 0.25;
 }
 
 .project-card-body {
@@ -465,7 +463,15 @@ defineExpose({ refresh: load })
   gap: 0.1rem;
 }
 
+.project-card-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
 .project-card-title {
+  min-width: 0;
   font-size: 0.85rem;
   font-weight: 600;
   color: #333;
@@ -474,25 +480,23 @@ defineExpose({ refresh: load })
   text-overflow: ellipsis;
 }
 
-.project-card-id {
-  font-size: 0.7rem;
+.project-card-rev {
+  flex-shrink: 0;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: #eee;
   color: #888;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 0.65rem;
+  font-weight: 500;
 }
 
 .project-card-desc {
   font-size: 0.75rem;
   color: #777;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.manage-projects-reason {
-  color: #666;
-  max-width: 320px;
 }
 
 .manage-projects-icon-btn {
@@ -544,12 +548,16 @@ defineExpose({ refresh: load })
   background: #607d8b;
 }
 
+.manage-projects-play-icon {
+  color: #607d8b;
+}
+
 .manage-projects-chat-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 1.6rem;
-  height: 1.6rem;
+  width: 2.88rem;
+  height: 2.88rem;
   padding: 0;
   border: none;
   border-radius: 6px;
@@ -566,8 +574,8 @@ defineExpose({ refresh: load })
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 1.6rem;
-  height: 1.6rem;
+  width: 2.88rem;
+  height: 2.88rem;
   padding: 0;
   border: none;
   border-radius: 6px;
@@ -584,8 +592,8 @@ defineExpose({ refresh: load })
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 1.6rem;
-  height: 1.6rem;
+  width: 2.88rem;
+  height: 2.88rem;
   padding: 0;
   border: none;
   border-radius: 6px;
@@ -602,8 +610,8 @@ defineExpose({ refresh: load })
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 1.6rem;
-  height: 1.6rem;
+  width: 2.88rem;
+  height: 2.88rem;
   padding: 0;
   border: none;
   border-radius: 6px;
@@ -617,15 +625,15 @@ defineExpose({ refresh: load })
 }
 
 .manage-projects-delete-btn {
-  width: 1.6rem;
-  height: 1.6rem;
+  width: 2.88rem;
+  height: 2.88rem;
   line-height: 1;
   border: none;
   border-radius: 6px;
   background: none;
   color: #c62828;
   cursor: pointer;
-  font-size: 1rem;
+  font-size: 1.4rem;
 }
 
 .manage-projects-delete-btn:hover {

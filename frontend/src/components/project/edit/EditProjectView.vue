@@ -22,6 +22,8 @@ import SettingsMenu from '../../settings/SettingsMenu.vue'
 import ProfileMenu from '../../ProfileMenu.vue'
 import ProjectsMenu from '../../ProjectsMenu.vue'
 import { useLeaveConfirmation } from '../../../composables/useLeaveConfirmation.js'
+import { useResizablePanel } from '../../../composables/useResizablePanel.js'
+import { findActionLine, findAttachmentLine, findEnvKeyLine, findInitActionLine, findSignalLine, findStateLine } from '../../../indexYmlLineFinder.js'
 import { onProjectChanged } from '../../../projectChangeEvents.js'
 import {
   getProjectFiles,
@@ -143,132 +145,6 @@ const INDEX_CSS_SKELETON = `.chat-header {
 // branch instead of grouping it with the Behavior attachments.
 const LEGAL_TERMS_FILE_NAME = 'legal/terms.md'
 
-function lineIndent(line) {
-  const m = line.match(/^[ \t]*/)
-  return m ? m[0].length : 0
-}
-
-function isBlankOrComment(trimmed) {
-  return !trimmed || trimmed.startsWith('#')
-}
-
-// Best-effort line lookup for a top-level block's direct child key (e.g.
-// `states:` -> a state name). A heuristic indentation scan, not a real
-// YAML parse — relies on this app's own consistent 2-space indentation.
-function findTopLevelChildLine(lines, topKey, childKey) {
-  const topPattern = new RegExp(`^${topKey}\\s*:\\s*(#.*)?$`)
-  let inBlock = false
-  let childIndent = null
-  for (let i = 0; i < lines.length; i++) {
-    const raw = lines[i]
-    const trimmed = raw.trim()
-    if (!inBlock) {
-      if (lineIndent(raw) === 0 && topPattern.test(trimmed)) inBlock = true
-      continue
-    }
-    if (isBlankOrComment(trimmed)) continue
-    const indent = lineIndent(raw)
-    if (indent === 0) break // left the block
-    if (childIndent === null) childIndent = indent
-    if (indent !== childIndent) continue // a nested field, not a direct child key
-    const m = trimmed.match(/^(['"]?)([^:'"]+)\1\s*:\s*(#.*)?$/)
-    if (m && m[2] === childKey) return i
-  }
-  return null
-}
-
-function findStateLine(lines, stateKey) {
-  return findTopLevelChildLine(lines, 'states', stateKey)
-}
-
-function findSignalLine(lines, signalName) {
-  return findTopLevelChildLine(lines, 'signals', signalName)
-}
-
-function findEnvKeyLine(lines, envKeyName) {
-  return findTopLevelChildLine(lines, 'env', envKeyName)
-}
-
-// Finds the `attachments:` list item naming fileName within stateKey's
-// block — a plain scalar list (`- filename`), unlike actions' own
-// `- name: ...` mappings (see findActionLine).
-function findAttachmentLine(lines, stateKey, fileName) {
-  const stateLine = findStateLine(lines, stateKey)
-  if (stateLine === null) return null
-  const stateIndent = lineIndent(lines[stateLine])
-  let inAttachments = false
-  let attachmentsIndent = null
-  for (let i = stateLine + 1; i < lines.length; i++) {
-    const raw = lines[i]
-    const trimmed = raw.trim()
-    if (isBlankOrComment(trimmed)) continue
-    const indent = lineIndent(raw)
-    if (indent <= stateIndent) break // left the state's own block
-    if (!inAttachments) {
-      if (/^attachments\s*:\s*(#.*)?$/.test(trimmed)) {
-        inAttachments = true
-        attachmentsIndent = indent
-      }
-      continue
-    }
-    if (indent <= attachmentsIndent) break // left the attachments: list
-    const m = trimmed.match(/^-\s*(['"]?)(.*)\1\s*$/)
-    if (m && m[2] === fileName) return i
-  }
-  return null
-}
-
-// The init-action has no source state to search under (see
-// InspectorGraphTab.vue's isInitEdge) — a bare top-level key, not a
-// states: child, so findActionLine's state-block scan doesn't apply.
-function findInitActionLine(lines) {
-  const idx = lines.findIndex((line) => lineIndent(line) === 0 && /^init-action\s*:\s*(#.*)?$/.test(line.trim()))
-  return idx === -1 ? null : idx
-}
-
-// Within stateKey's block, finds the line starting the action list item
-// (the `- name: ...` line, wherever `name:` actually falls inside it)
-// whose name matches actionName.
-function findActionLine(lines, stateKey, actionName) {
-  const stateLine = findStateLine(lines, stateKey)
-  if (stateLine === null) return null
-  const stateIndent = lineIndent(lines[stateLine])
-  let inActions = false
-  let itemStart = null
-  let itemMatches = false
-
-  const flushItem = () => (itemStart !== null && itemMatches ? itemStart : null)
-
-  for (let i = stateLine + 1; i <= lines.length; i++) {
-    const atEnd = i === lines.length
-    const raw = atEnd ? '' : lines[i]
-    const trimmed = raw.trim()
-    const skippable = isBlankOrComment(trimmed)
-    const indent = skippable ? null : lineIndent(raw)
-
-    const leavingState = atEnd || (!skippable && indent <= stateIndent)
-    const startsNewItem = !skippable && !leavingState && trimmed.startsWith('- ')
-
-    if (leavingState || startsNewItem) {
-      const found = flushItem()
-      if (found !== null) return found
-      if (leavingState) return null
-      itemStart = i
-      itemMatches = false
-    }
-
-    if (!skippable && !leavingState) {
-      if (!inActions) {
-        if (/^actions\s*:\s*(#.*)?$/.test(trimmed)) inActions = true
-      } else if (itemStart !== null) {
-        const m = trimmed.match(/^-?\s*name\s*:\s*(['"]?)(.*?)\1\s*(#.*)?$/)
-        if (m && m[2] === actionName) itemMatches = true
-      }
-    }
-  }
-  return null
-}
-
 const filesLoading = ref(true)
 const files = ref([])
 const currentFileName = ref('index.yml')
@@ -324,7 +200,9 @@ const activeEditorIsDirty = computed(() => {
 // metrics. `inspectorRef` drives reload-after-save, Metrics refresh, and graph resize on drag.
 const inspecting = ref(true)
 const inspectorRef = ref(null)
-const inspectorWidth = ref(360)
+const { width: inspectorWidth, startDrag: startInspectorDrag } = useResizablePanel(360, {
+  min: 240, max: 560, invert: true, onResize: () => inspectorRef.value?.resize()
+})
 // The Graph/State-tab/Actions-tab shared selection ({kind, data} | null),
 // same shape (see InspectorGraph.vue's 'select' emit) whether it came from
 // index.yml's own dedicated graph or the Inspector's "States" tab.
@@ -731,11 +609,7 @@ function setMode(next) {
 
 onBeforeUnmount(() => { activeChatMode.value = 'live' })
 
-// Left panel width in px, adjusted by dragging the split divider.
-const explorerWidth = ref(220)
-// Which divider (if any) is currently being dragged — 'explorer' or
-// 'inspector' — read by the single shared onDrag/stopDrag pair below.
-let dragTarget = null
+const { width: explorerWidth, startDrag: startExplorerDrag } = useResizablePanel(220, { min: 160, max: 420 })
 
 function activeEditor() {
   if (currentFileName.value === 'index.yml') return indexYmlEditorRef.value
@@ -1440,31 +1314,6 @@ function handleInspectorCollapsedChange(collapsed) {
   if (inspecting.value) openInspect()
 }
 
-function startExplorerDrag(event) {
-  dragTarget = 'explorer'
-  event.preventDefault()
-}
-
-function startInspectorDrag(event) {
-  dragTarget = 'inspector'
-  event.preventDefault()
-}
-
-function onDrag(event) {
-  if (dragTarget === 'explorer') {
-    explorerWidth.value = Math.min(420, Math.max(160, explorerWidth.value + event.movementX))
-  } else if (dragTarget === 'inspector') {
-    // The inspector's divider sits on its left edge, so dragging it left
-    // (negative movementX) needs to grow the panel, not shrink it.
-    inspectorWidth.value = Math.min(560, Math.max(240, inspectorWidth.value - event.movementX))
-    inspectorRef.value?.resize()
-  }
-}
-
-function stopDrag() {
-  dragTarget = null
-}
-
 // The graph box's own size changes with the inspector panel's width (drag)
 // and with the viewport (narrow-screen full-takeover breakpoint, window
 // resize) — Cytoscape needs an explicit nudge to notice either.
@@ -1525,8 +1374,6 @@ onMounted(async () => {
     setApiWarning(projectRevision.value.paused_reason || `Project '${props.projectName}' is currently paused.`)
   }
   if (inspecting.value) openInspect()
-  window.addEventListener('mousemove', onDrag)
-  window.addEventListener('mouseup', stopDrag)
   window.addEventListener('resize', handleWindowResize)
   // A fresh editing session starts with a clean undo/redo slate — cleared
   // here (entry), not on Back.
@@ -1539,8 +1386,6 @@ onMounted(async () => {
   }
 })
 onBeforeUnmount(() => {
-  window.removeEventListener('mousemove', onDrag)
-  window.removeEventListener('mouseup', stopDrag)
   window.removeEventListener('resize', handleWindowResize)
 })
 </script>

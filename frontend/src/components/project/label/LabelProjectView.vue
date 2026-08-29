@@ -26,6 +26,7 @@ import {
 import { summarizeImportFailures } from '../../../sessionImport.js'
 import { setApiError, clearApiError } from '../../../errorStore.js'
 import { confirmDialog } from '../../../dialogStore.js'
+import { useResizablePanel } from '../../../composables/useResizablePanel.js'
 
 const props = defineProps({
   projectName: {
@@ -70,7 +71,9 @@ const signalsLog = ref([])
 const sessionStartState = ref(null)
 
 const inspectorRef = ref(null)
-const inspectorWidth = ref(360)
+const { width: inspectorWidth, startDrag: startInspectorDrag } = useResizablePanel(360, {
+  min: 240, max: 560, invert: true, onResize: () => inspectorRef.value?.resize()
+})
 const inspectorCollapsed = ref(false)
 const inspectorTabs = computed(() => [
   { id: 'info', label: 'Info' },
@@ -80,31 +83,7 @@ const inspectorTabs = computed(() => [
 const inspectorActiveTab = ref('info')
 // Starts open — reviewing a specific session is the point of this view.
 const testSessionsPanelOpen = ref(true)
-const sessionsPanelWidth = ref(240)
-let dragTarget = null
-
-function startInspectorDrag(event) {
-  dragTarget = 'inspector'
-  event.preventDefault()
-}
-
-function startSessionsDrag(event) {
-  dragTarget = 'sessions'
-  event.preventDefault()
-}
-
-function onDrag(event) {
-  if (dragTarget === 'inspector') {
-    inspectorWidth.value = Math.min(560, Math.max(240, inspectorWidth.value - event.movementX))
-    inspectorRef.value?.resize()
-  } else if (dragTarget === 'sessions') {
-    sessionsPanelWidth.value = Math.min(420, Math.max(160, sessionsPanelWidth.value + event.movementX))
-  }
-}
-
-function stopDrag() {
-  dragTarget = null
-}
+const { width: sessionsPanelWidth, startDrag: startSessionsDrag } = useResizablePanel(240, { min: 160, max: 420 })
 
 // Independent of the main page's own Sessions panel state
 // (chatStore.js's sessionsPanelOpen) — this overlay has its own panel.
@@ -640,13 +619,9 @@ onMounted(async () => {
     // a currentSessionId already null would never clear `loading`.
     loadTimeline()
   }
-  window.addEventListener('mousemove', onDrag)
-  window.addEventListener('mouseup', stopDrag)
   window.addEventListener('resize', handleWindowResize)
 })
 onBeforeUnmount(() => {
-  window.removeEventListener('mousemove', onDrag)
-  window.removeEventListener('mouseup', stopDrag)
   window.removeEventListener('resize', handleWindowResize)
 })
 </script>

@@ -40,7 +40,6 @@ class JobQueue(object):
         self._lock = threading.RLock()
         self._not_empty = threading.Condition(self._lock)
         self._deque: deque[Job] = deque()
-        self._dependents: dict[Job, list[Job]] = {}
         self._waiters: dict[Job, list[threading.Event]] = {}
 
         for i in range(max_concurrent):
@@ -48,14 +47,8 @@ class JobQueue(object):
             thread.start()
 
     def __forget(self, job: Job) -> STATUS:
+        ready = [p for p in job.parents if p is not job and p._dependency_resolved(job)]
         with self._lock:
-            self._dependents.pop(job, None)
-            ready = [
-                waiter for waiter, deps in self._dependents.items()
-                if job in deps and all(dep.is_done() or dep.is_failed() for dep in deps)
-            ]
-            for waiter in ready:
-                del self._dependents[waiter]
             events = self._waiters.pop(job, [])
         for waiter in ready:
             status = self._submit(waiter, waiter.is_background)
@@ -108,8 +101,8 @@ class JobQueue(object):
             try:
                 loop.run_until_complete(job.run_next_step())
             except TryAgainError:
-                # Don't broadcast state update (it's failed now)
-                self._submit(job, True)
+                status = self._submit(job, True)
+                self._broadcast_status(job, status)
                 return
             except Exception as exc:
                 logger.exception(f"Job {job} failed: {exc}")
@@ -134,24 +127,18 @@ class JobQueue(object):
     def submit(self, job: Job, parent: Job | None = None) -> None:
         with self._lock:
             if not job.is_pending():
-                if parent is not None:
-                    job._add_parent_job(parent)
+                if parent is not None and job._add_parent_job(parent) and parent._dependency_resolved(job):
+                    status = self._submit(parent, parent.is_background)
+                    self._broadcast_status(parent, status)
                 return
 
         self._broadcast_status(job, self.STATUS.ready)
         dependencies = job.prepare(parent)
 
-        with self._lock:
-            self._dependents[job] = list(dependencies)
-
         for dependency in dependencies:
             self.submit(dependency, parent=job)
 
-        with self._lock:
-            ready = job in self._dependents and all(dep.is_done() or dep.is_failed() for dep in self._dependents[job])
-            if ready:
-                del self._dependents[job]
-        if ready:
+        if job._children_registered():
             status = self._submit(job, job.is_background)
             self._broadcast_status(job, status)
 
