@@ -9,7 +9,7 @@ import SignalAccuracyDistributionChart from './SignalAccuracyDistributionChart.v
 import DocInfoButton from '../../../DocInfoButton.vue'
 import MetricDetail from '../../../inspector/MetricDetail.vue'
 import {
-  createTestEventsSource, deleteTests, getAggregateResult, getTestMetrics,
+  createTestEventsSource, deleteTestJob, deleteTests, getAggregateResult, getTestMetrics,
   getTests, getJobsStatus, getProjectSignals, getProjectStates, postTest, postRootAggregation,
   postSessionsRun, postSignalTest, postSignalsAggregation, postStateTest, postStatesAggregation, postUserSessionsRun,
   postUsersAggregation
@@ -111,6 +111,7 @@ const selectedRunLoading = ref(false)
 // never a threshold on the metrics themselves. failed -> fail.
 function statusFromOutcome(status, error) {
   if (status === 'failed') return 'fail'
+  if (status === 'aborted') return 'aborted'
   if (status === 'completed') return error ? 'warning' : 'ok'
   return 'running'
 }
@@ -131,6 +132,7 @@ function outcome(message) {
   if (!message) return 'idle'
   if (message.queue_status === 'exited') return statusFromOutcome(message.job_status, message.error)
   if (message.job_status === 'pending') return 'pending'
+  if (message.job_status === 'requeued') return 'requeued'
   return message.queue_status
 }
 
@@ -171,6 +173,10 @@ const rootBusy = computed(() => ['pending', 'ready', 'running', 'paused'].includ
 // executed right now) is the only busy state that reads green — every
 // other in-flight state ('pending'/'ready'/'paused') stays blue.
 const rootButtonState = computed(() => (rootStatus.value === 'running' ? 'running' : (rootBusy.value ? 'ready' : rootStatus.value)))
+// See TestNodeButton's own showCancel: hovering any in-flight root swaps
+// its icon for a cancel affordance instead of disabling the button outright.
+const isHoveringRoot = ref(false)
+const showCancelRoot = computed(() => isHoveringRoot.value && rootBusy.value)
 
 const selectedCacheKey = computed(() => (
   selectedNodeId.value ? cacheKey(strategy.value, selectedNodeId.value) : null
@@ -404,7 +410,22 @@ async function onActivate(nodeId) {
   }
 }
 
+// The running job's own key already matches cacheKey(strategy, nodeId)
+// verbatim (see JobQueue._broadcast_status's "key") -- no per-node-kind
+// dispatch needed here, unlike onActivate above.
+async function onAbort(nodeId) {
+  try {
+    await deleteTestJob(props.projectName, cacheKey(strategy.value, nodeId))
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+
 function onActivateRoot() {
+  if (showCancelRoot.value) {
+    onAbort('root')
+    return
+  }
   if (rootBusy.value) return
   onActivate('root')
 }
@@ -547,10 +568,11 @@ onBeforeUnmount(() => {
           <button
             type="button"
             class="tests-panel-root-btn"
-            :class="`tests-panel-root-btn-${rootButtonState}`"
-            :disabled="rootBusy"
-            :title="rootStatus === 'pending' || rootStatus === 'ready' ? 'Queued…' : rootStatus === 'paused' ? 'Paused…' : rootStatus === 'running' ? 'Running…' : 'Run test'"
+            :class="[`tests-panel-root-btn-${rootButtonState}`, { 'tests-panel-root-btn-cancel': showCancelRoot }]"
+            :title="showCancelRoot ? 'Cancel' : rootStatus === 'pending' || rootStatus === 'ready' ? 'Queued…' : rootStatus === 'paused' ? 'Paused…' : rootStatus === 'running' ? 'Running…' : 'Run test'"
             @click="onActivateRoot"
+            @mouseenter="isHoveringRoot = true"
+            @mouseleave="isHoveringRoot = false"
           >
             <!-- Idle/ok/warning/fail: same chrome as the reset button next
                  to it (bordered square, plain icon) — the ring only earns
@@ -565,7 +587,13 @@ onBeforeUnmount(() => {
                 cx="12" cy="12" r="10" pathLength="100" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"
                 :stroke-dasharray="rootStatus === 'running' ? '8 100' : '50 100'"
               />
-              <g v-if="rootStatus === 'paused'" transform="translate(12 12) scale(0.6) translate(-12 -12)">
+              <path
+                v-if="showCancelRoot"
+                d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+                transform="translate(12 12) scale(0.6) translate(-12 -12)"
+                fill="currentColor"
+              />
+              <g v-else-if="rootStatus === 'paused'" transform="translate(12 12) scale(0.6) translate(-12 -12)">
                 <rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" />
                 <rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" />
               </g>
@@ -591,6 +619,9 @@ onBeforeUnmount(() => {
             <svg v-else-if="rootStatus === 'fail'" viewBox="0 0 24 24" width="10" height="10" fill="currentColor">
               <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm3.5 13.1L15.1 16.5 12 13.4l-3.1 3.1-1.4-1.4L10.6 12 7.5 8.9l1.4-1.4L12 10.6l3.1-3.1 1.4 1.4L13.4 12z" />
             </svg>
+            <svg v-else-if="rootStatus === 'aborted'" viewBox="0 0 24 24" width="10" height="10" fill="currentColor">
+              <rect x="4" y="4" width="16" height="16" rx="2" />
+            </svg>
           </button>
           <button
             class="tests-panel-reset-btn"
@@ -615,6 +646,7 @@ onBeforeUnmount(() => {
         :selected-node-id="selectedNodeId"
         @select="onSelect"
         @activate="onActivate"
+        @abort="onAbort"
       />
     </div>
 
@@ -891,7 +923,7 @@ onBeforeUnmount(() => {
   border: 1px solid #4a6fa5;
 }
 
-.tests-panel-root-btn:hover:not(:disabled),
+.tests-panel-root-btn:hover:not(:disabled):not(.tests-panel-root-btn-cancel),
 .tests-panel-reset-btn:hover:not(:disabled) {
   background: #4a6fa5;
   color: white;
@@ -982,6 +1014,25 @@ onBeforeUnmount(() => {
 .tests-panel-root-btn-fail:hover:not(:disabled) {
   background: #c62828;
   color: white;
+}
+
+.tests-panel-root-btn-aborted {
+  color: #757575;
+}
+
+.tests-panel-root-btn-aborted:hover:not(:disabled) {
+  background: #757575;
+  color: white;
+}
+
+.tests-panel-root-btn-cancel {
+  border-color: transparent;
+  background: #c62828;
+  color: white;
+}
+
+.tests-panel-root-btn-cancel .tests-panel-root-btn-ring {
+  display: none;
 }
 
 .tests-panel-tokens-label {

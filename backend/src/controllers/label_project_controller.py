@@ -203,6 +203,14 @@ class LabelProjectController(BaseController):
         self.test_service.reset_cache(project_name)
         return {"success": True}
 
+    @delete("/api/projects/{project_name}/tests/jobs/{job_key}", role="supervisor")
+    def delete_test_job(self, project_name: str, job_key: str):
+        """Aborts the running job for job_key (the same "<strategy>:<node_id>"
+        string the frontend already computes as its SSE cache key) — a
+        no-op if nothing is currently tracked under that key."""
+        self.test_service.abort_job(job_key)
+        return {"success": True}
+
     @post("/api/projects/{project_name}/tests", role="supervisor")
     def post_test(self, project_name: str, req: CreateTestRequest):
         """Creates a Test and submits its replay job, returning

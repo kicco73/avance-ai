@@ -47,11 +47,22 @@ class TestService:
         self._tracking_service = tracking_service
         self._job_queue = job_queue
         self._cache = TestCache(db)
+        self._jobs_by_key: dict[str, CancelableJob] = {}
+
+    def _submit(self, job: CancelableJob) -> CancelableJob:
+        self._jobs_by_key[job.key] = job
+        self._job_queue.submit(job)
+        return job
+
+    def abort_job(self, key: str) -> None:
+        job = self._jobs_by_key.get(key)
+        if job is not None:
+            job.abort()
 
     def create_run(self, username: str | None, project_name: str, session_id: int | None, strategy: str) -> dict:
         run, job = self._construct_run(username, project_name, session_id, strategy)
         if job is not None:
-            self._job_queue.submit(job)
+            self._submit(job)
         return self._status_for(run)
 
     def _construct_run(
@@ -207,7 +218,7 @@ class TestService:
             raise ValueError(f"Unknown test strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
         session_ids = sorted(self._db.get_session_ids_with_expected_state(project_name, state_key))
         job = StateAggregationJob(self, project_name, state_key, strategy, session_ids)
-        self._job_queue.submit(job)
+        self._submit(job)
         return job
 
     def start_signal_job(self, project_name: str, signal_name: str, strategy: str) -> CancelableJob:
@@ -216,7 +227,7 @@ class TestService:
         sessions = self._db.list_chat_sessions(None, project_name, type=None)
         session_ids = sorted(int(row['id']) for row in sessions if row['labeled'])
         job = SignalAggregationJob(self, project_name, signal_name, strategy, session_ids)
-        self._job_queue.submit(job)
+        self._submit(job)
         return job
 
     def _construct_sessions_run_job(self, project_name: str, strategy: str) -> CancelableJob:
@@ -228,7 +239,7 @@ class TestService:
 
     def start_sessions_run_job(self, project_name: str, strategy: str) -> CancelableJob:
         job = self._construct_sessions_run_job(project_name, strategy)
-        self._job_queue.submit(job)
+        self._submit(job)
         return job
 
     def start_user_sessions_run_job(self, username: str, project_name: str, strategy: str) -> CancelableJob:
@@ -237,7 +248,7 @@ class TestService:
         sessions = self._db.list_chat_sessions(username, project_name, type=None)
         session_ids = sorted(int(row['id']) for row in sessions if row['labeled'])
         job = PooledAggregationJob(self, project_name, 'user_sessions', username, strategy, session_ids)
-        self._job_queue.submit(job)
+        self._submit(job)
         return job
 
     def _construct_users_aggregation_job(self, project_name: str, strategy: str) -> CancelableJob:
@@ -253,7 +264,7 @@ class TestService:
 
     def start_users_aggregation_job(self, project_name: str, strategy: str) -> CancelableJob:
         job = self._construct_users_aggregation_job(project_name, strategy)
-        self._job_queue.submit(job)
+        self._submit(job)
         return job
 
     def _construct_all_states_job(self, project_name: str, strategy: str) -> CancelableJob:
@@ -267,7 +278,7 @@ class TestService:
 
     def start_all_states_job(self, project_name: str, strategy: str) -> CancelableJob:
         job = self._construct_all_states_job(project_name, strategy)
-        self._job_queue.submit(job)
+        self._submit(job)
         return job
 
     def _construct_all_signals_job(self, project_name: str, strategy: str) -> CancelableJob:
@@ -279,7 +290,7 @@ class TestService:
 
     def start_all_signals_job(self, project_name: str, strategy: str) -> CancelableJob:
         job = self._construct_all_signals_job(project_name, strategy)
-        self._job_queue.submit(job)
+        self._submit(job)
         return job
 
     def start_root_job(self, project_name: str, strategy: str) -> CancelableJob:
@@ -292,5 +303,5 @@ class TestService:
             self._construct_all_signals_job(project_name, strategy),
         ]
         job = RootAggregationJob(self, strategy, branch_jobs)
-        self._job_queue.submit(job)
+        self._submit(job)
         return job

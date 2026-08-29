@@ -2,20 +2,20 @@
 // Play/status control shared by every level of the "Test" tab's tree —
 // root and the two branch nodes run every test in their scope at once,
 // same gesture as a single leaf. Purely presentational — only emits.
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 const props = defineProps({
   status: {
     type: String,
     default: 'idle',
-    validator: (value) => ['idle', 'pending', 'ready', 'running', 'paused', 'ok', 'warning', 'fail'].includes(value)
+    validator: (value) => ['idle', 'pending', 'ready', 'running', 'paused', 'requeued', 'ok', 'warning', 'fail', 'aborted'].includes(value)
   },
   progress: { type: Number, default: null },
   disabled: { type: Boolean, default: false },
   disabledReason: { type: String, default: 'No test for this node' }
 })
 
-const emit = defineEmits(['activate'])
+const emit = defineEmits(['activate', 'abort'])
 
 // Once any step has reported a real percentage, keep showing it — even
 // while queued between steps ('ready'), not just at the instant a worker
@@ -36,7 +36,7 @@ const progressPercent = computed(() => {
   const percent = Math.min(100, Math.round(props.progress))
   return props.status === 'running' ? Math.max(percent, 8) : percent
 })
-const isBusy = computed(() => ['pending', 'ready', 'running', 'paused'].includes(props.status))
+const isBusy = computed(() => ['pending', 'ready', 'running', 'paused', 'requeued'].includes(props.status))
 // One ring, always — idle/ok/warning/fail draw it fully closed (same
 // <circle>, same radius, same stroke as every busy state), so there is
 // never a second, separately-sized shape (a CSS border) standing in for
@@ -55,7 +55,19 @@ const ringDasharray = computed(() => {
 // ever green at once; every other in-flight one is blue.
 const buttonState = computed(() => (props.status === 'running' ? 'running' : (isBusy.value ? 'ready' : props.status)))
 
+// Any in-flight job can be cancelled — queued or actually running —
+// hovering it swaps its icon for a cancel affordance instead of
+// disabling the button outright, so the hover can actually be observed
+// (a genuinely disabled native <button> doesn't reliably fire mouse
+// events across browsers).
+const isHovering = ref(false)
+const showCancel = computed(() => isHovering.value && isBusy.value)
+
 function onClick() {
+  if (showCancel.value) {
+    emit('abort')
+    return
+  }
   // pending/ready/running/paused: never clickable (can't re-launch an
   // in-flight test). Any other status, including a past outcome, is a
   // legitimate click — activate there means "re-run".
@@ -68,10 +80,12 @@ function onClick() {
   <button
     type="button"
     class="test-node-btn"
-    :class="[`test-node-btn-${buttonState}`, { 'test-node-btn-disabled': disabled }]"
-    :disabled="disabled || isBusy"
-    :title="disabled ? disabledReason : (status === 'pending' || status === 'ready' ? 'Queued…' : status === 'paused' ? 'Paused…' : status === 'running' ? 'Running…' : 'Run test')"
+    :class="[`test-node-btn-${buttonState}`, { 'test-node-btn-disabled': disabled, 'test-node-btn-cancel': showCancel }]"
+    :disabled="disabled"
+    :title="showCancel ? 'Cancel' : disabled ? disabledReason : (status === 'pending' || status === 'ready' ? 'Queued…' : status === 'paused' ? 'Paused…' : status === 'running' ? 'Running…' : status === 'requeued' ? 'Retrying…' : 'Run test')"
     @click="onClick"
+    @mouseenter="isHovering = true"
+    @mouseleave="isHovering = false"
   >
     <svg viewBox="0 0 24 24" width="100%" height="100%">
       <circle
@@ -82,7 +96,13 @@ function onClick() {
         :stroke-dasharray="ringDasharray"
       />
       <path
-        v-if="status === 'idle'"
+        v-if="showCancel"
+        d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+        transform="translate(12 12) scale(0.6) translate(-12 -12)"
+        fill="currentColor"
+      />
+      <path
+        v-else-if="status === 'idle'"
         d="M8 5v14l11-7z"
         transform="translate(12 12) scale(0.7) translate(-12 -12)"
         fill="currentColor"
@@ -102,6 +122,12 @@ function onClick() {
         class="test-node-btn-lightning"
         d="M11 21v-8H7l6-11v8h4l-6 11z"
         transform="translate(12 12) scale(0.75) translate(-12 -12)"
+        fill="currentColor"
+      />
+      <path
+        v-else-if="status === 'requeued'"
+        d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-0.82 2.33-3.04 4-5.65 4c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14 0.69 4.22 1.78L13 11h7V4L17.65 6.35z"
+        transform="translate(12 12) scale(0.7) translate(-12 -12)"
         fill="currentColor"
       />
       <polyline
@@ -124,6 +150,12 @@ function onClick() {
         transform="translate(12 12) scale(0.6) translate(-12 -12)"
         fill="currentColor"
       />
+      <rect
+        v-else-if="status === 'aborted'"
+        x="7" y="7" width="10" height="10" rx="1.5"
+        transform="translate(12 12) scale(0.85) translate(-12 -12)"
+        fill="currentColor"
+      />
     </svg>
   </button>
 </template>
@@ -144,7 +176,7 @@ function onClick() {
   padding: 0;
 }
 
-.test-node-btn:hover:not(:disabled) {
+.test-node-btn:hover:not(:disabled):not(.test-node-btn-cancel) {
   background: #4a6fa5;
   color: white;
 }
@@ -158,7 +190,7 @@ function onClick() {
    avoid clipping), so drawn on top of the fill it reads as a second,
    not-quite-matching circle. Simplest fix: let the fill alone stand once
    hovered, no ring competing with it. */
-.test-node-btn:hover:not(:disabled) .test-node-btn-ring {
+.test-node-btn:hover:not(:disabled):not(.test-node-btn-cancel) .test-node-btn-ring {
   display: none;
 }
 
@@ -243,5 +275,27 @@ function onClick() {
 .test-node-btn-fail:hover:not(:disabled) {
   background: #c62828;
   color: white;
+}
+
+.test-node-btn-aborted {
+  color: #757575;
+}
+
+.test-node-btn-aborted:hover:not(:disabled) {
+  background: #757575;
+  color: white;
+}
+
+/* Hovering a running job: red fill covers the button's own circular
+   shape completely (it's already border-radius: 50%), white X on top —
+   no ring competing with it, same treatment idle/ok/warning/fail get
+   on hover, just red instead of blue/green/orange. */
+.test-node-btn-cancel {
+  background: #c62828;
+  color: white;
+}
+
+.test-node-btn-cancel .test-node-btn-ring {
+  display: none;
 }
 </style>

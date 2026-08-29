@@ -30,6 +30,10 @@ export function deleteTests(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/tests`, { method: 'DELETE' })
 }
 
+export function deleteTestJob(projectName, jobKey) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/tests/jobs/${encodeURIComponent(jobKey)}`, { method: 'DELETE' })
+}
+
 export function getTestMetrics(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/tests/metrics`)
 }

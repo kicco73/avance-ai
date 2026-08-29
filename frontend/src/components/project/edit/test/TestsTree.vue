@@ -30,7 +30,7 @@ const props = defineProps({
   selectedNodeId: { type: String, default: null }
 })
 
-const emit = defineEmits(['select', 'activate'])
+const emit = defineEmits(['select', 'activate', 'abort'])
 
 const expanded = ref({ sessions: false, states: false, users: false, signals: false })
 const expandedUsers = ref({})
@@ -162,7 +162,7 @@ function onRightArrowKey() {
           <div class="tests-tree-node-row">
             <button class="tests-tree-caret" :class="{ 'tests-tree-caret-open': isExpanded('sessions') }" title="Toggle" @click="toggleExpanded('sessions')">▸</button>
             <div class="tests-tree-item">
-              <TestNodeButton :status="statusFor('sessions-branch')" :progress="progressFor('sessions-branch')" @activate="emit('activate', 'sessions-branch')" />
+              <TestNodeButton :status="statusFor('sessions-branch')" :progress="progressFor('sessions-branch')" @activate="emit('activate', 'sessions-branch')" @abort="emit('abort', 'sessions-branch')" />
               <button
                 type="button"
                 class="tests-tree-row"
@@ -186,6 +186,7 @@ function onRightArrowKey() {
                   :disabled="sessionButtonDisabled(session)"
                   :disabled-reason="FINAL_SESSION_REASON"
                   @activate="emit('activate', `session:${session.id}`)"
+                  @abort="emit('abort', `session:${session.id}`)"
                 />
                 <button
                   type="button"
@@ -207,7 +208,7 @@ function onRightArrowKey() {
           <div class="tests-tree-node-row">
             <button class="tests-tree-caret" :class="{ 'tests-tree-caret-open': isExpanded('states') }" title="Toggle" @click="toggleExpanded('states')">▸</button>
             <div class="tests-tree-item">
-              <TestNodeButton :status="statusFor('states-branch')" :progress="progressFor('states-branch')" @activate="emit('activate', 'states-branch')" />
+              <TestNodeButton :status="statusFor('states-branch')" :progress="progressFor('states-branch')" @activate="emit('activate', 'states-branch')" @abort="emit('abort', 'states-branch')" />
               <button
                 type="button"
                 class="tests-tree-row"
@@ -229,6 +230,7 @@ function onRightArrowKey() {
                   :status="statusFor(`state:${stateKey}`)"
                   :progress="progressFor(`state:${stateKey}`)"
                   @activate="emit('activate', `state:${stateKey}`)"
+                  @abort="emit('abort', `state:${stateKey}`)"
                 />
                 <button
                   type="button"
@@ -249,7 +251,7 @@ function onRightArrowKey() {
           <div class="tests-tree-node-row">
             <button class="tests-tree-caret" :class="{ 'tests-tree-caret-open': isExpanded('users') }" title="Toggle" @click="toggleExpanded('users')">▸</button>
             <div class="tests-tree-item">
-              <TestNodeButton :status="statusFor('users-branch')" :progress="progressFor('users-branch')" @activate="emit('activate', 'users-branch')" />
+              <TestNodeButton :status="statusFor('users-branch')" :progress="progressFor('users-branch')" @activate="emit('activate', 'users-branch')" @abort="emit('abort', 'users-branch')" />
               <button
                 type="button"
                 class="tests-tree-row"
@@ -273,6 +275,7 @@ function onRightArrowKey() {
                     :status="statusFor(`user:${user.username}`)"
                     :progress="progressFor(`user:${user.username}`)"
                     @activate="emit('activate', `user:${user.username}`)"
+                    @abort="emit('abort', `user:${user.username}`)"
                   />
                   <button
                     type="button"
@@ -296,6 +299,7 @@ function onRightArrowKey() {
                       :disabled="sessionButtonDisabled(session)"
                       :disabled-reason="FINAL_SESSION_REASON"
                       @activate="emit('activate', `session:${session.id}`)"
+                      @abort="emit('abort', `session:${session.id}`)"
                     />
                     <button
                       type="button"
@@ -320,7 +324,7 @@ function onRightArrowKey() {
           <div class="tests-tree-node-row">
             <button class="tests-tree-caret" :class="{ 'tests-tree-caret-open': isExpanded('signals') }" title="Toggle" @click="toggleExpanded('signals')">▸</button>
             <div class="tests-tree-item">
-              <TestNodeButton :status="statusFor('signals-branch')" :progress="progressFor('signals-branch')" @activate="emit('activate', 'signals-branch')" />
+              <TestNodeButton :status="statusFor('signals-branch')" :progress="progressFor('signals-branch')" @activate="emit('activate', 'signals-branch')" @abort="emit('abort', 'signals-branch')" />
               <button
                 type="button"
                 class="tests-tree-row"
@@ -342,6 +346,7 @@ function onRightArrowKey() {
                   :status="statusFor(`signal:${signal.name}`)"
                   :progress="progressFor(`signal:${signal.name}`)"
                   @activate="emit('activate', `signal:${signal.name}`)"
+                  @abort="emit('abort', `signal:${signal.name}`)"
                 />
                 <button
                   type="button"
