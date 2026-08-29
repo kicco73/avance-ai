@@ -68,12 +68,15 @@ class Job(ABC):
             return self.STATUS.failed
         if self.is_done():
             return self.STATUS.completed
-        if self.__try_again:
+        if self.is_requeued():
             return self.STATUS.requeued
         return self.STATUS.running
 
     def is_done(self) -> bool:
         return self.progress() >= 100
+
+    def is_requeued(self) -> bool:
+        return self.__try_again
 
     def is_failed(self) -> bool:
         return self.__is_failed
@@ -104,7 +107,7 @@ class Job(ABC):
             await self._run_next_step()
         except TryAgainError:
             self.__try_again = True
-            raise
+            return
         except Exception as exc:
             self._fail(str(exc))
             raise

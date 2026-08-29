@@ -19,9 +19,7 @@ from testing.errors import TestServiceError
 from testing.cache import TestCache
 from testing.signal_sources import BatchSignalSource, TurnByTurnSignalSource, estimate_max_turns_per_call
 from project.archive.layout import ArchiveLayout
-from tracking.tracking_service import TrackingService
-
-from .jobs import (
+from testing.jobs import (
     AllSignalsAggregationJob,
     AllStatesAggregationJob,
     PooledAggregationJob,
@@ -31,6 +29,7 @@ from .jobs import (
     TestReplayJob,
     UsersAggregationJob,
 )
+from tracking.tracking_service import TrackingService
 
 from logging_factory import LoggerFactory
 logger = LoggerFactory.get_logger(__name__)

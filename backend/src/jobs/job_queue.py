@@ -9,7 +9,6 @@ from typing import ClassVar, TYPE_CHECKING
 # Instructions for Claude Code: DO NOT TOUCH THIS FILE
 
 from logging_factory import LoggerFactory
-from try_again_error import TryAgainError
 from .job import DependentJob
 
 if TYPE_CHECKING:
@@ -81,6 +80,11 @@ class JobQueue(object):
         with self._not_empty:
             return bool(self._deque) and not self._deque[0].is_background
 
+    def _should_requeue(self, job: DependentJob) -> bool:
+        return job.is_requeued() or (
+            not job.is_done() and (not job.is_background or self._has_priority_work_waiting())
+        )
+
     def _broadcast_status(self, job: DependentJob, queue_status: JobQueue.STATUS) -> None:
         status = {
             "key": job.key,
@@ -100,16 +104,12 @@ class JobQueue(object):
 
             try:
                 loop.run_until_complete(job.run_next_step())
-            except TryAgainError:
-                status = self._submit(job, True)
-                self._broadcast_status(job, status)
-                return
             except Exception as exc:
                 logger.exception(f"Job {job} failed: {exc}")
                 break
 
-            if not job.is_done() and (not job.is_background or self._has_priority_work_waiting()):
-                status = self._submit(job, job.is_background)
+            if self._should_requeue(job):
+                status = self._submit(job, job.is_requeued() or job.is_background)
                 self._broadcast_status(job, status)
                 return
 
