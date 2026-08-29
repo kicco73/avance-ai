@@ -34,6 +34,7 @@ import {
   getSessions,
   getProjectGraph,
   getStateInputTokens,
+  postAddLegalTerms,
   postAddState,
   postAddSignal,
   postAddEnvKey,
@@ -141,27 +142,6 @@ const INDEX_CSS_SKELETON = `.chat-header {
 // way to create it; the file explorer shows it under its own "Legal"
 // branch instead of grouping it with the Behavior attachments.
 const LEGAL_TERMS_FILE_NAME = 'legal/terms.md'
-
-// "New legal" seeds legal/terms.md with a placeholder the project owner
-// fills in — per-app terms shown once, on top of the platform's own
-// general Terms of Service (see backend/src/docs/TERMS.md).
-const LEGAL_TERMS_SKELETON = `# Condiciones de esta aplicación
-
-Estas son las condiciones específicas de esta aplicación, además de las
-Condiciones de Uso y la Política de Privacidad generales de la plataforma.
-
-## Qué hace esta aplicación con sus datos
-
-[Describa aquí qué datos recoge esta aplicación y para qué los usa.]
-
-## Permisos que solicita
-
-[Describa aquí los permisos específicos que esta aplicación necesita, si los hay.]
-
-## Conservación
-
-[Indique aquí durante cuánto tiempo se conservan los datos de esta aplicación.]
-`
 
 function lineIndent(line) {
   const m = line.match(/^[ \t]*/)
@@ -1321,7 +1301,17 @@ async function handleNewAspect() {
 
 async function handleNewLegal() {
   if (hasLegalTerms.value) return
-  await createProjectFile(LEGAL_TERMS_FILE_NAME, LEGAL_TERMS_SKELETON)
+  creatingFile.value = true
+  clearApiError()
+  try {
+    await postAddLegalTerms(props.projectName)
+    await loadFiles()
+    await selectFile(LEGAL_TERMS_FILE_NAME)
+  } catch {
+    // already surfaced via apiFetch
+  } finally {
+    creatingFile.value = false
+  }
 }
 
 // index.yml is protected server-side too (delete_project_file rejects it) —

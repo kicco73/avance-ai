@@ -29,7 +29,7 @@ from metrics.metrics_framework.benchmark_metrics.calculator import BenchmarkCalc
 from metrics.metrics_framework.benchmark_metrics.dto import BenchmarkConfiguration, BenchmarkMetricResult
 from metrics.metrics_framework.benchmark_metrics.metrics import SignalAccuracyMetric, Statistics
 from metrics.metrics_framework.benchmark_metrics.observations import BenchmarkData, BenchmarkObservationBuilder
-from project.parsers import decode_text_archives
+from project.archive.layout import ArchiveLayout
 from session import Session
 from tracking.env import Env, PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
@@ -716,7 +716,7 @@ class TestService:
         archives = self._db.get_archives(project_name)
         if not archives or 'index.yml' not in archives:
             raise ValueError(f"Project '{project_name}' does not exist or has no index.yml.")
-        return AutomatonBuilder().build(decode_text_archives(archives))
+        return AutomatonBuilder().build(ArchiveLayout.decode_text(archives))
 
     def _project_states(self, project_name: str) -> list[str]:
         automaton = self._load_automaton(project_name)

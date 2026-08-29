@@ -1,9 +1,9 @@
 """Composition root for the project subsystem — wires AutomatonLoader
-(project/parsers.py), ProjectInspector (project/inspector.py), ProjectManager
-(project/manager.py), and ProjectEditor (project/editor.py), then exposes
-every one of their public methods under a single facade so no external
-caller (chat/, tracking/, controllers/) needs to know which collaborator
-actually does the work."""
+(project/archive/automaton_loader.py), ProjectInspector (project/inspector.py),
+ProjectManager (project/manager.py), and ProjectEditor (project/editor.py),
+then exposes every one of their public methods under a single facade so no
+external caller (chat/, tracking/, controllers/) needs to know which
+collaborator actually does the work."""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -18,7 +18,7 @@ from tracking.session_import import SessionImportManager
 from .editor import ProjectEditor
 from .inspector import ProjectInspector
 from .manager import ProjectManager
-from .parsers import AutomatonLoader
+from .archive.automaton_loader import AutomatonLoader
 from .project_import_bundle_job import ProjectImportBundleJob
 from .types import CommitCallback
 
@@ -196,6 +196,9 @@ class ProjectService(object):
         commit: CommitCallback,
     ) -> dict:
         return await self._editor.put_project_file(project_name, file_name, content, content_type_header, commit)
+
+    async def add_legal_terms(self, project_name: str, commit: CommitCallback) -> dict:
+        return await self._editor.add_legal_terms(project_name, commit)
 
     async def add_state(self, project_name: str, commit: CommitCallback) -> StatePayload:
         return await self._editor.add_state(project_name, commit)

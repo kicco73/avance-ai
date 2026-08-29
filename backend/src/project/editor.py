@@ -11,9 +11,10 @@ from session import Session
 
 from .inspector import ProjectInspector
 from .manager import ProjectManager
-from .parsers import AutomatonLoader, canonical_archive_name, css_referenced_basenames, css_syntax_errors, missing_css_references
-from .parsers import (
-    ASPECT_DIR, IMAGE_CONTENT_TYPE_BY_EXTENSION,
+from .archive.automaton_loader import AutomatonLoader
+from .archive.css_validator import CssValidator
+from .archive.layout import (
+    ASPECT_DIR, ArchiveLayout, IMAGE_CONTENT_TYPE_BY_EXTENSION, LEGAL_TERMS_FILE_NAME, LEGAL_TERMS_SKELETON,
     MAX_IMAGE_UPLOAD_BYTES, TEXT_CONTENT_TYPE_BY_EXTENSION, TEXT_EDITABLE_EXTENSIONS,
 )
 from .types import CommitCallback
@@ -116,13 +117,13 @@ class ProjectEditor:
             text_content = content.decode("utf-8") if isinstance(content, bytes) else content
             content_type = TEXT_CONTENT_TYPE_BY_EXTENSION.get(extension, "text/plain")
             if file_name == "index.css":
-                syntax_errors = css_syntax_errors(text_content)
+                syntax_errors = CssValidator.syntax_errors(text_content)
                 if syntax_errors:
                     raise ValueError(
                         f"index.css has invalid syntax: {'; '.join(syntax_errors)}."
                     )
                 known_names = {Path(name).name for name in existing_names if name.startswith(f"{ASPECT_DIR}/")}
-                missing = missing_css_references(text_content, known_names)
+                missing = CssValidator.missing_references(text_content, known_names)
                 if missing:
                     raise ValueError(
                         f"index.css references missing file(s): {', '.join(sorted(missing))}."
@@ -155,6 +156,17 @@ class ProjectEditor:
         await self._manager.finalize_update(project_name, new_automaton, commit)
 
         return {"success": True, "project_name": project_name, **self._file_undo_redo_info(project_name, file_name)}
+
+    async def add_legal_terms(self, project_name: str, commit: CommitCallback) -> dict:
+        """Seeds a fresh legal/terms.md with LEGAL_TERMS_SKELETON — the
+        "New legal" file-explorer action. Rejects if the file already
+        exists, since put_project_file would otherwise silently overwrite
+        whatever the project owner already wrote there."""
+        if project_name not in self._db.list_projects():
+            raise FileNotFoundError(f"Project '{project_name}' does not exist.")
+        if LEGAL_TERMS_FILE_NAME in self._db.list_archives(project_name):
+            raise ValueError(f"'{LEGAL_TERMS_FILE_NAME}' already exists.")
+        return await self.put_project_file(project_name, LEGAL_TERMS_FILE_NAME, LEGAL_TERMS_SKELETON, None, commit)
 
     async def _edit_index_yml(self, project_name: str, commit: CommitCallback, operation):
         """Runs `operation(editor: AutomatonYamlEditor) -> T` against
@@ -300,7 +312,7 @@ class ProjectEditor:
         if not file_name or file_name in (".", "..") or file_name.startswith("."):
             raise ValueError(f"Invalid file name: '{file_name}'.")
         try:
-            canonical = canonical_archive_name(file_name)
+            canonical = ArchiveLayout.canonicalize_name(file_name)
         except ValueError as exc:
             raise ValueError(f"Invalid file name: '{file_name}' — {exc}") from exc
         if canonical != file_name:
@@ -328,7 +340,7 @@ class ProjectEditor:
                 file_name = matches[0]
         if file_name.startswith(f"{ASPECT_DIR}/"):
             index_css = archives.get("index.css")
-            if index_css is not None and Path(file_name).name in css_referenced_basenames(index_css.decode("utf-8")):
+            if index_css is not None and Path(file_name).name in CssValidator.referenced_basenames(index_css.decode("utf-8")):
                 raise ValueError(
                     f"'{file_name}' is still referenced by index.css — remove the reference "
                     f"there first (or delete index.css itself, which takes its assets with it)."

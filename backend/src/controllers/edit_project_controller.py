@@ -248,6 +248,19 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"success": True}
 
+    @post("/api/projects/{project_name}/legal-terms", role="admin")
+    async def post_add_legal_terms(self, project_name: str):
+        """The file explorer's "New legal" action — seeds a fresh
+        legal/terms.md with the platform's skeleton text server-side (see
+        ProjectEditor.add_legal_terms), rather than the client crafting
+        placeholder content itself."""
+        try:
+            return await self.project_service.add_legal_terms(project_name, self._activate_project)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
     # ------------------------------------------------------------------
     # index.yml structural editing, reusing put_project_file's own path.
     # ------------------------------------------------------------------

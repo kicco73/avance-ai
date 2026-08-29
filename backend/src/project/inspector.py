@@ -8,7 +8,8 @@ from db import Db
 from session import Session
 from tracking.tracking_engine import TrackingEngine
 
-from .parsers import AutomatonLoader, LEGAL_TERMS_FILE_NAME
+from .archive.automaton_loader import AutomatonLoader
+from .archive.layout import LEGAL_TERMS_FILE_NAME
 
 if TYPE_CHECKING:
     from ai.ai_service import AiService

@@ -783,6 +783,10 @@ export function postWipeLiveSessions(projectName) {
 // and signals without hand-writing YAML. Each call returns just the
 // affected object's own payload, never the whole YAML text.
 
+export function postAddLegalTerms(projectName) {
+  return projectFetch(projectName, `${API_URL}/projects/${encodeURIComponent(projectName)}/legal-terms`, { method: 'POST' })
+}
+
 export function postAddState(projectName) {
   return projectFetch(projectName, `${API_URL}/projects/${encodeURIComponent(projectName)}/states`, { method: 'POST' })
 }

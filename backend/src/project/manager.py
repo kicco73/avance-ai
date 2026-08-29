@@ -17,8 +17,12 @@ from tracking.session_export import SessionExportManager
 from tracking.session_import import SessionImportManager
 
 from .inspector import ProjectInspector
-from .parsers import AutomatonLoader, decode_text_archives, extract_zip_safely, looks_like_zip
-from .parsers import TESTS_EXPORT_FILENAME, IMAGE_EXTENSIONS, LEGAL_TERMS_FILE_NAME, SESSIONS_EXPORT_FILENAME, TEXT_CONTENT_TYPE_BY_EXTENSION
+from .archive.automaton_loader import AutomatonLoader
+from .archive.layout import (
+    ArchiveLayout, IMAGE_EXTENSIONS, LEGAL_TERMS_FILE_NAME, SESSIONS_EXPORT_FILENAME, TESTS_EXPORT_FILENAME,
+    TEXT_CONTENT_TYPE_BY_EXTENSION,
+)
+from .archive.zip_importer import ZipImporter
 from .project_import_bundle_job import ProjectImportBundleJob
 from .types import CommitCallback
 
@@ -207,7 +211,7 @@ class ProjectManager:
         """Builds+validates the Automaton for `files` merged onto
         `project_name`'s current files. Read-only. Returns (automaton,
         to_persist), where to_persist is None if nothing actually changed."""
-        existing = decode_text_archives(self._db.get_archives(project_name))
+        existing = ArchiveLayout.decode_text(self._db.get_archives(project_name))
         merged = {**existing, **files}
 
         automaton = AutomatonBuilder().build(merged, self._automaton_loader.known_projects_env_keys(project_name))
@@ -361,16 +365,16 @@ class ProjectManager:
             raise ValueError(f"Invalid project name: '{project_name}'.")
 
         try:
-            if looks_like_zip(content_type, content):
+            if ZipImporter.looks_like_zip(content_type, content):
                 with tempfile.TemporaryDirectory() as tmp:
                     staging_dir = Path(tmp)
-                    extract_zip_safely(content, staging_dir)
+                    ZipImporter.extract_safely(content, staging_dir)
                     # Everything export_project_zip can produce is UTF-8 text
                     # except image assets — read_text() on those (e.g. a PNG's
                     # magic bytes) raised a UnicodeDecodeError, so import/export
                     # was never actually round-trippable for a project with
                     # any Theme asset in it. rglob (not iterdir) since
-                    # extract_zip_safely lets LEGAL_TERMS_FILE_NAME stay
+                    # extract_safely lets LEGAL_TERMS_FILE_NAME stay
                     # nested one level — every other file is still flat, so
                     # this is a no-op change for them.
                     files = {
