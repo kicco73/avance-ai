@@ -18,7 +18,7 @@ from chat.session_manager import ChatSessionManager
 from config import AppConfig
 from controller import AvanceController
 from db import Db
-from error_handlers import register_error_handlers
+from error_handlers import ApiErrorHandlers
 from jobs import JobQueue, ThrottledJobQueue
 from logging_factory import LoggerFactory
 from metrics.metric_service import MetricService
@@ -189,7 +189,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    register_error_handlers(app)
+    ApiErrorHandlers.register(app)
     
     return app
 

@@ -35,50 +35,12 @@ from session import Session
 ALLOWED_PATHS = frozenset({"/docs", "/redoc", "/openapi.json"})
 
 
-def _unauthenticated_response() -> JSONResponse:
-    return JSONResponse(
-        status_code=HTTPStatus.UNAUTHORIZED,
-        content={"error": {"message": "Not authenticated.", "detail": None}},
-    )
-
-
-def _forbidden_response() -> JSONResponse:
-    return JSONResponse(
-        status_code=HTTPStatus.FORBIDDEN,
-        content={"error": {"message": "Not authorized for this action.", "detail": None}},
-    )
-
-
-def _flatten_routes(routes):
-    # FastAPI may wrap an included APIRouter's routes behind a private
-    # `_IncludedRouter` proxy (no `.endpoint`/no direct `.matches()`
-    # semantics of its own) rather than exposing them flat on
-    # request.app.routes — recurse through `.original_router.routes`
-    # (present on that proxy, absent on a plain Route) until only
-    # actual matchable routes are left, so this keeps working whether
-    # or not the installed Starlette/FastAPI wraps routes this way.
-    for candidate_route in routes:
-        original_router = getattr(candidate_route, "original_router", None)
-        if original_router is not None:
-            yield from _flatten_routes(original_router.routes)
-        else:
-            yield candidate_route
-
-
-def _matched_route_for(request: Request):
-    for candidate_route in _flatten_routes(request.app.routes):
-        match, _ = candidate_route.matches(request.scope)
-        if match == Match.FULL:
-            return candidate_route
-    return None
-
-
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if request.url.path in ALLOWED_PATHS:
             return await call_next(request)
 
-        matched_route = _matched_route_for(request)
+        matched_route = self._matched_route_for(request)
         required_role = getattr(matched_route.endpoint, "__required_role__", "user") if matched_route else "user"
         if required_role is None:
             return await call_next(request)
@@ -87,11 +49,49 @@ class AuthMiddleware(BaseHTTPMiddleware):
         token = request.cookies.get(SESSION_COOKIE_NAME)
         identity = auth_service.verify_token(token) if token else None
         if identity is None:
-            return _unauthenticated_response()
+            return self._unauthenticated_response()
 
         if not role_satisfies(identity.role, required_role):
-            return _forbidden_response()
+            return self._forbidden_response()
 
         Session().user = identity.email
         Session().role = identity.role
         return await call_next(request)
+
+    @staticmethod
+    def _unauthenticated_response() -> JSONResponse:
+        return JSONResponse(
+            status_code=HTTPStatus.UNAUTHORIZED,
+            content={"error": {"message": "Not authenticated.", "detail": None}},
+        )
+
+    @staticmethod
+    def _forbidden_response() -> JSONResponse:
+        return JSONResponse(
+            status_code=HTTPStatus.FORBIDDEN,
+            content={"error": {"message": "Not authorized for this action.", "detail": None}},
+        )
+
+    @classmethod
+    def _flatten_routes(cls, routes):
+        # FastAPI may wrap an included APIRouter's routes behind a private
+        # `_IncludedRouter` proxy (no `.endpoint`/no direct `.matches()`
+        # semantics of its own) rather than exposing them flat on
+        # request.app.routes — recurse through `.original_router.routes`
+        # (present on that proxy, absent on a plain Route) until only
+        # actual matchable routes are left, so this keeps working whether
+        # or not the installed Starlette/FastAPI wraps routes this way.
+        for candidate_route in routes:
+            original_router = getattr(candidate_route, "original_router", None)
+            if original_router is not None:
+                yield from cls._flatten_routes(original_router.routes)
+            else:
+                yield candidate_route
+
+    @classmethod
+    def _matched_route_for(cls, request: Request):
+        for candidate_route in cls._flatten_routes(request.app.routes):
+            match, _ = candidate_route.matches(request.scope)
+            if match == Match.FULL:
+                return candidate_route
+        return None

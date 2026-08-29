@@ -14,7 +14,7 @@ from chat.chat_service import ChatService
 from chat.session_manager import ChatSessionManager
 from controller import AvanceController
 from db import Db
-from error_handlers import register_error_handlers
+from error_handlers import ApiErrorHandlers
 from events.dispatcher import _reset_for_tests as _reset_dispatcher_for_tests
 from jobs import JobQueue
 from metrics.metric_service import MetricService
@@ -209,7 +209,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     auth_service = AuthService(app_db, [], token_ttl_in_hours=24 * 7)
 
     fastapi_app = FastAPI(title="Avance State Engine (test)")
-    register_error_handlers(fastapi_app)
+    ApiErrorHandlers.register(fastapi_app)
     controller = AvanceController(
         chat_service, project_service, None, None, app_db, tracking_service, test_service,
         auth_service, test_event_broadcaster, job_queue, "test-version",

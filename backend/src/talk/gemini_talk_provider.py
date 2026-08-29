@@ -8,7 +8,7 @@ from google import genai
 from google.genai import errors as genai_errors
 from google.genai import types
 
-from talk.talk_format import pcm_sample_rate
+from talk.talk_format import PcmWavCodec
 from talk.talk_provider import BufferedTalkProvider
 from cascade import ProviderError, ProviderRateLimitedError, ProviderUnavailableError
 
@@ -47,7 +47,7 @@ class GeminiTalkProvider(BufferedTalkProvider):
                 inline_data = response.candidates[0].content.parts[0].inline_data
                 if inline_data is None or inline_data.data is None:
                     continue
-                yield inline_data.data, pcm_sample_rate(inline_data.mime_type or "")
+                yield inline_data.data, PcmWavCodec.sample_rate_from_mime(inline_data.mime_type or "")
         except genai_errors.ClientError as exc:
             if exc.code == HTTPStatus.TOO_MANY_REQUESTS:
                 raise ProviderRateLimitedError(

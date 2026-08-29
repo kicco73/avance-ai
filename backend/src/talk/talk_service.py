@@ -14,7 +14,7 @@ from talk.cascading_talk_provider import CascadingTalkProvider
 from talk.gemini_talk_provider import GeminiTalkProvider
 from talk.piper.piper_talk_provider import PiperTalkProvider
 from talk.talk_store import TalkStore
-from talk.talk_format import DEFAULT_PCM_SAMPLE_RATE, pcm_to_wav, streaming_wav_header
+from talk.talk_format import PcmWavCodec
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -77,7 +77,7 @@ class TalkService(TalkProvider):
 
         live = self._store.start_live_generation(key)
         pcm_chunks: list[bytes] = []
-        sample_rate = DEFAULT_PCM_SAMPLE_RATE
+        sample_rate = PcmWavCodec.DEFAULT_SAMPLE_RATE
         header_sent = False
         try:
             async for pcm_chunk, chunk_sample_rate in self._provider.generate(text):
@@ -85,7 +85,7 @@ class TalkService(TalkProvider):
                 pcm_chunks.append(pcm_chunk)
                 if not header_sent:
                     header_sent = True
-                    header = streaming_wav_header(sample_rate)
+                    header = PcmWavCodec.streaming_header(sample_rate)
                     live.push(header)
                     yield header
                 live.push(pcm_chunk)
@@ -95,5 +95,5 @@ class TalkService(TalkProvider):
         finally:
             live.finish()
             if pcm_chunks:
-                self._store.save(key, pcm_to_wav(b"".join(pcm_chunks), sample_rate))
+                self._store.save(key, PcmWavCodec.to_wav(b"".join(pcm_chunks), sample_rate))
             self._store.finish_live_generation(key)

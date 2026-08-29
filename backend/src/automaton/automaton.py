@@ -1,12 +1,13 @@
 """YAML parsing for the DFA definition and in-memory data structures."""
 from __future__ import annotations
 
-import ast
 from dataclasses import dataclass, field
 
 import simpleeval
 
 from logging_factory import LoggerFactory
+
+from .trigger_expression_analyzer import TriggerExpressionAnalyzer
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -157,194 +158,6 @@ class ProjectPayload(TypedDict):
     talk_enabled: bool
     signal_tracking_on_ai_message: bool
 
-# Reserved namespaces a trigger/env expression resolves against. `automaton`
-# has no entry in _NAMESPACE_PATHS below since automaton.<project>.state/
-# env.<key> is a dynamic, per-project chain static-tuple matching can't express.
-RESERVED_NAMESPACES = ("signal", "env", "system", "session", "metric", "automaton")
-
-# Dotted sub-namespaces nested one level under a reserved namespace above —
-# each entry matches as a *whole* path, so `session.metric.<attr>` and plain
-# `session.<attr>` resolve to different namespaces.
-NESTED_NAMESPACES = (("session", "metric"),)
-
-_NAMESPACE_PATHS: tuple[tuple[str, ...], ...] = tuple((ns,) for ns in RESERVED_NAMESPACES) + NESTED_NAMESPACES
-
-
-def _maximal_attribute_nodes(tree: ast.AST) -> list[ast.Attribute]:
-    """Every ast.Attribute node in `tree` not nested inside a longer
-    attribute chain, so a dotted chain is matched against its full,
-    longest namespace path (see _namespace_path_of), never a shorter prefix."""
-    nested_value_ids = {id(node.value) for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
-    return [node for node in ast.walk(tree) if isinstance(node, ast.Attribute) and id(node) not in nested_value_ids]
-
-
-def _namespace_path_of(node: ast.Attribute) -> tuple[tuple[str, ...], str] | None:
-    """(namespace_path, leaf_attr) for `node` if its full dotted chain,
-    root to leaf, is exactly one of _NAMESPACE_PATHS plus one more
-    attribute (e.g. `signal.mood` -> (("signal",), "mood")) — None otherwise."""
-    attrs = [node.attr]
-    cur = node.value
-    while isinstance(cur, ast.Attribute):
-        attrs.append(cur.attr)
-        cur = cur.value
-    if not isinstance(cur, ast.Name):
-        return None
-    chain = (cur.id, *reversed(attrs))
-    path, leaf = chain[:-1], chain[-1]
-    return (path, leaf) if path in _NAMESPACE_PATHS else None
-
-
-def _namespace_attrs(tree: ast.AST, *namespace: str) -> set[str]:
-    refs = (_namespace_path_of(node) for node in _maximal_attribute_nodes(tree))
-    return {ref[1] for ref in refs if ref is not None and ref[0] == namespace}
-
-
-def trigger_signal_names(expression: str) -> set[str]:
-    """Every `signal.<name>` referenced in a trigger/env expression, e.g.
-    "signal.daysSinceLastEvent >= 85" -> {"daysSinceLastEvent"}."""
-    tree = ast.parse(expression, mode="eval")
-    return _namespace_attrs(tree, "signal")
-
-
-def trigger_bare_names(expression: str) -> set[str]:
-    """Every identifier referenced *outside* one of the reserved
-    namespaces (see RESERVED_NAMESPACES) — in practice a core metric name.
-    A nested-namespace root (see NESTED_NAMESPACES) is excluded too."""
-    tree = ast.parse(expression, mode="eval")
-    namespace_bases = {
-        node.value.id for node in ast.walk(tree)
-        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id in RESERVED_NAMESPACES
-    }
-    return {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)} - namespace_bases
-
-
-def trigger_automaton_project_refs(expression: str) -> set[str]:
-    """Every project name referenced as `automaton.<project>...` in
-    `expression`. Walks every Attribute node (not just maximal ones),
-    since a reference is meaningful at any depth in the chain."""
-    tree = ast.parse(expression, mode="eval").body
-    return {
-        node.attr for node in ast.walk(tree)
-        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "automaton"
-    }
-
-
-def trigger_automaton_env_refs(expression: str) -> dict[str, set[str]]:
-    """Every `automaton.<project>.env.<key>` reference in `expression`,
-    grouped by project. Only matches the specific 4-level chain, unlike
-    the broader trigger_automaton_project_refs."""
-    tree = ast.parse(expression, mode="eval").body
-    refs: dict[str, set[str]] = {}
-    for node in ast.walk(tree):
-        if not (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Attribute)):
-            continue
-        env_node = node.value
-        if env_node.attr != "env" or not isinstance(env_node.value, ast.Attribute):
-            continue
-        project_node = env_node.value
-        if not isinstance(project_node.value, ast.Name) or project_node.value.id != "automaton":
-            continue
-        refs.setdefault(project_node.attr, set()).add(node.attr)
-    return refs
-
-
-def trigger_namespace_refs(expression: str) -> dict[str, set[str]]:
-    """Every namespace attribute reference in `expression`, keyed by its
-    dotted path (e.g. "session.metric"), one entry per namespace actually
-    used — a namespace nothing references is absent, never an empty set."""
-    tree = ast.parse(expression, mode="eval")
-    refs: dict[str, set[str]] = {}
-    for node in _maximal_attribute_nodes(tree):
-        ref = _namespace_path_of(node)
-        if ref is None:
-            continue
-        path, leaf = ref
-        refs.setdefault(".".join(path), set()).add(leaf)
-    return refs
-
-
-# Every identifier whose runtime *type* is fixed by its own contract, well
-# enough to check statically. `env.*` is absent: it's a free-form store any
-# expression can set to anything, so its type is treated as unknown.
-_KIND_NUMBER = "number"
-_KIND_STRING = "string"
-_KIND_BOOL = "bool"
-# A kind counts as "number-like" for ordering purposes: Python itself
-# treats bool as an int subtype (`True >= 0.5` is legal), so mixing the
-# two is never actually a runtime error.
-_NUMERIC_KINDS = (_KIND_NUMBER, _KIND_BOOL)
-
-_FIXED_IDENTIFIER_KIND: dict[tuple[str, ...], dict[str, str]] = {
-    ("system",): {"today": _KIND_STRING, "time": _KIND_STRING},
-    ("session",): {
-        "current_session_duration_in_minutes": _KIND_NUMBER,
-        "last_user_session_datetime": _KIND_STRING,
-        "number_of_user_sessions": _KIND_NUMBER,
-        "state_duration_in_minutes": _KIND_NUMBER,
-    },
-}
-# Every identifier under these namespaces is always a number, no per-name
-# exceptions to look up — signals by contract, metrics because
-# BaseMetric.result always clamps into [0, 100] as a float.
-_ALWAYS_NUMERIC_NAMESPACES = (("signal",), ("session", "metric"), ("metric",))
-
-_ORDERING_OPS: dict[type, str] = {ast.Lt: "<", ast.LtE: "<=", ast.Gt: ">", ast.GtE: ">="}
-
-
-def _leaf_kind(node: ast.AST) -> str | None:
-    """`node`'s statically-known kind ('number'/'string'/'bool'), or None
-    (unknown, never "wrong") for a bare name, `env.*` reference, or
-    sub-expression whose type isn't knowable ahead of a real turn."""
-    if isinstance(node, ast.Call):
-        return _leaf_kind(node.func)
-    if isinstance(node, ast.Attribute):
-        ref = _namespace_path_of(node)
-        if ref is None:
-            return None
-        path, leaf = ref
-        fixed = _FIXED_IDENTIFIER_KIND.get(path, {}).get(leaf)
-        if fixed is not None:
-            return fixed
-        return _KIND_NUMBER if path in _ALWAYS_NUMERIC_NAMESPACES else None
-    if isinstance(node, ast.Constant):
-        if isinstance(node.value, bool):
-            return _KIND_BOOL
-        if isinstance(node.value, (int, float)):
-            return _KIND_NUMBER
-        if isinstance(node.value, str):
-            return _KIND_STRING
-        return None
-    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
-        inner = _leaf_kind(node.operand)
-        return inner if inner in _NUMERIC_KINDS else None
-    return None
-
-
-def trigger_type_violations(expression: str) -> list[str]:
-    """Every ordering comparison (`<`/`<=`/`>`/`>=`, never `==`/`!=`) in
-    `expression` between operands whose statically-known kinds (see
-    _leaf_kind) are incompatible, e.g. `system.today() >= 5`. Returns messages, never raises."""
-    tree = ast.parse(expression, mode="eval").body
-    violations = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Compare):
-            continue
-        operands = [node.left, *node.comparators]
-        for left, op, right in zip(operands, node.ops, operands[1:]):
-            symbol = _ORDERING_OPS.get(type(op))
-            if symbol is None:
-                continue
-            left_kind, right_kind = _leaf_kind(left), _leaf_kind(right)
-            if left_kind is None or right_kind is None:
-                continue
-            if left_kind == right_kind or (left_kind in _NUMERIC_KINDS and right_kind in _NUMERIC_KINDS):
-                continue
-            violations.append(
-                f"'{ast.unparse(left)} {symbol} {ast.unparse(right)}' compares a {left_kind} "
-                f"with a {right_kind} — this will raise a TypeError as soon as it's evaluated"
-            )
-    return violations
-
 
 class Automaton(object):
 
@@ -472,7 +285,7 @@ class Automaton(object):
         name. Lets a caller skip resolving an expensive value set when nothing needs it."""
         state = self.states[state_key]
         return any(
-            action.trigger and trigger_bare_names(action.trigger) & names for action in state.actions
+            action.trigger and TriggerExpressionAnalyzer.bare_names(action.trigger) & names for action in state.actions
         )
 
     def triggerable_signal_names(self, state_key: str) -> set[str]:
@@ -480,10 +293,10 @@ class Automaton(object):
         referenced: set[str] = set()
         for action in state.actions:
             if action.trigger:
-                referenced |= trigger_signal_names(action.trigger)
+                referenced |= TriggerExpressionAnalyzer.signal_names(action.trigger)
             if action.env:
                 for expression in action.env.values():
-                    referenced |= trigger_signal_names(expression)
+                    referenced |= TriggerExpressionAnalyzer.signal_names(expression)
         return referenced & {s.name for s in self.signals}
 
     def all_triggerable_signal_names(self) -> set[str]:
@@ -531,7 +344,7 @@ class Automaton(object):
         computed yet) short-circuits to False silently instead."""
         try:
             signal_values = scope.get("signal", {})
-            if any(signal_values.get(name) is None for name in trigger_signal_names(expression)):
+            if any(signal_values.get(name) is None for name in TriggerExpressionAnalyzer.signal_names(expression)):
                 return False
             return bool(simpleeval.simple_eval(expression, names=scope))
         except Exception as exc:

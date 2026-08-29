@@ -1,9 +1,6 @@
-from automaton.automaton import (
-    Action, EnvKey, MemoryArchive, Automaton, Reaction, Signal, SourceDict, State,
-    trigger_automaton_env_refs, trigger_automaton_project_refs, trigger_bare_names, trigger_namespace_refs,
-    trigger_type_violations,
-)
-from automaton.identifier_registry import build_registry
+from automaton.automaton import Action, EnvKey, MemoryArchive, Automaton, Reaction, Signal, SourceDict, State
+from automaton.identifier_registry import IdentifierRegistry
+from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from automaton.on_enter_script import OnEnterScriptError, OnEnterScriptSignatureParser
 from typing import Any
 from metrics.metrics_framework import metric_names
@@ -212,8 +209,8 @@ class AutomatonBuilder(object):
         `trigger:` and an action's `env:` expressions. Any bare
         identifier left over must be a core metric."""
         try:
-            namespace_refs = trigger_namespace_refs(expression)
-            bare_names = trigger_bare_names(expression)
+            namespace_refs = TriggerExpressionAnalyzer.namespace_refs(expression)
+            bare_names = TriggerExpressionAnalyzer.bare_names(expression)
         except SyntaxError as exc:
             raise ValueError(f"{context} ('{expression}') is not a valid expression: {exc}") from exc
 
@@ -230,7 +227,7 @@ class AutomatonBuilder(object):
         """Only for `trigger:`, never `env:` — `env:` allows any simple
         value, not a boolean condition, so it has no comparison shape to
         type-check. Catches comparisons between statically-incompatible types."""
-        violations = trigger_type_violations(expression)
+        violations = TriggerExpressionAnalyzer.type_violations(expression)
         if violations:
             raise ValueError(f"{context} ('{expression}'): {'; '.join(violations)}")
 
@@ -247,7 +244,7 @@ class AutomatonBuilder(object):
                 f"{context} references automaton.{', automaton.'.join(sorted(unknown_projects))} — "
                 "not a known project.id."
             )
-        for project_id, env_keys in trigger_automaton_env_refs(expression).items():
+        for project_id, env_keys in TriggerExpressionAnalyzer.automaton_env_refs(expression).items():
             declared = known_projects.get(project_id)
             if declared is None:
                 continue  # already reported above as an unknown project
@@ -278,7 +275,7 @@ class AutomatonBuilder(object):
                 self._validate_trigger_types(
                     action.trigger, f"State {key}, action '{action.name}': trigger",
                 )
-                referenced_projects = trigger_automaton_project_refs(action.trigger)
+                referenced_projects = TriggerExpressionAnalyzer.automaton_project_refs(action.trigger)
                 if referenced_projects and action.target != state.key:
                     raise ValueError(
                         f"State {key}, action '{action.name}': trigger references automaton.* but this "
@@ -460,7 +457,7 @@ class AutomatonBuilder(object):
         # Pass 2: build the identifier registry, the single source
         # _actions_sanity_check validates every trigger/env: expression
         # against below.
-        registry = build_registry(list(signals.values()), list(env_keys.values()))
+        registry = IdentifierRegistry.build(list(signals.values()), list(env_keys.values()))
         for key, state in states.items():
             context_key = init_action.name if key == "" else key
             self._actions_sanity_check(context_key, state, set(raw_states.keys()), registry, known_projects)

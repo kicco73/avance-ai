@@ -11,7 +11,8 @@ import re
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
-from automaton.automaton import ActionPayload, EnvKeyPayload, ProjectPayload, SignalPayload, StatePayload, _namespace_attrs
+from automaton.automaton import ActionPayload, EnvKeyPayload, ProjectPayload, SignalPayload, StatePayload
+from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 
 
 class InitActionTargetError(Exception):
@@ -443,7 +444,7 @@ class AutomatonYamlEditor:
                 if not trigger:
                     continue
                 tree = ast.parse(trigger, mode="eval").body
-                if name not in _namespace_attrs(tree, namespace):
+                if name not in TriggerExpressionAnalyzer.namespace_attrs(tree, namespace):
                     continue
                 new_node = transform(tree)
                 if new_node is None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from automaton.automaton import Action, Automaton, ProjectPayload, State, StatePayload
-from automaton.identifier_registry import build_registry
+from automaton.identifier_registry import IdentifierRegistry
 from db import Db
 from session import Session
 from tracking.tracking_engine import TrackingEngine
@@ -226,7 +226,7 @@ class ProjectInspector:
         reference, plus an "automaton.<id>"/"automaton.<id>.env" entry per
         *other* project with a project.id."""
         automaton = self.get_automaton(project_name, self.get_published_revision(project_name))
-        registry = build_registry(automaton.signals, automaton.env_keys)
+        registry = IdentifierRegistry.build(automaton.signals, automaton.env_keys)
         registry["automaton"] = {}
         for name in self._db.list_projects():
             if name == project_name:

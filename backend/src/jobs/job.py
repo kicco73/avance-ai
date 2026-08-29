@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import threading
 from logging_factory import LoggerFactory
 from enum import Enum
 
@@ -13,8 +14,9 @@ class Job(ABC):
     class STATUS(Enum):
         pending = "pending"
         running = "running"
-        failed = "failed"
         completed = "completed"
+        failed = "failed"
+        aborted = "aborted"
 
     def __init__(self, key: str, username: str) -> None:
         self.key = key
@@ -22,19 +24,40 @@ class Job(ABC):
         self.__steps_done: int = 0
         self.__total_steps: int | None = None
         self.__is_failed = False
+        self.__is_aborted = False
         self.__error: str | None = None
-        self.__dependencies: tuple["Job", ...] = ()
+        self.__children: list["Job"] = []
+        self.__parents: list["Job"] = []
+        self.__lock = threading.RLock()
 
     @abstractmethod
     def _prepare(self) -> tuple[int, tuple["Job"]]:
         raise NotImplementedError
 
-    def prepare(self) -> tuple["Job"]:
+    def prepare(self, parent_job: Job | None = None) -> tuple["Job", ...]:
         if self.__total_steps is not None:
             raise ValueError(f"Job {self} is already prepared")
-        self.__total_steps, self.__dependencies = self._prepare()
-        logger.critical(f'job {self} has {self.__total_steps} steps')
-        return self.__dependencies
+        self.__total_steps, children = self._prepare()
+        self.__children = list(children)
+        assert (self.__total_steps)
+        with self.__lock:
+            self.__parents.append(parent_job or self)
+        return children
+
+    def _add_parent_job(self, job: Job) -> None:
+        with self.__lock:
+            self.__parents.append(job)
+
+    def _remove_parent_job(self, job: Job) -> None:
+        with self.__lock:
+            self.__parents.remove(job)
+            if not self.__parents:
+                # I have no father depending on myself, I'm orphan.
+                # Aborting.
+                self.__is_aborted = True
+                # removing myself from my children, they are no more needed.
+                for dep in self.__children:
+                    dep._remove_parent_job(self)
 
     @property
     def is_background(self) -> bool:
@@ -52,6 +75,8 @@ class Job(ABC):
     def status(self) -> Job.STATUS:
         if self.is_pending():
             return self.STATUS.pending
+        if self.is_aborted():
+            return self.STATUS.aborted
         if self.is_failed():
             return self.STATUS.failed
         if self.is_done():
@@ -60,6 +85,9 @@ class Job(ABC):
 
     def is_done(self) -> bool:
         return self.progress() >= 100
+
+    def is_aborted(self) -> bool:
+        return self.__is_aborted
 
     def is_failed(self) -> bool:
         return self.__is_failed
@@ -73,15 +101,28 @@ class Job(ABC):
     def progress(self) -> float:
         return self.__steps_done * 100.0 / self.__total_steps if self.__total_steps else 0.0
 
+    def abort(self) -> None:
+        with self.__lock:
+            parents = list(self.__parents)
+        for p in parents:
+            if p is not self:
+                p.abort()
+        with self.__lock:
+            while self.__parents:
+                self._remove_parent_job(self.__parents[0])
+
+
     async def run_next_step(self) -> None:
         if not self.__total_steps:
             raise ValueError(f"Job {self} not prepared")
+        if self.__is_aborted:
+            raise ValueError(f"Job {self} is aborted")
         try:
             self.__is_failed = False
-            failed = [dep for dep in self.__dependencies if dep.is_failed()]
+            failed = [dep for dep in self.__children if dep.is_failed()]
             if failed:
                 raise RuntimeError(
-                    f"{len(failed)} of {len(self.__dependencies)} "
+                    f"{len(failed)} of {len(self.__children)} "
                     f"dependencies failed: {', '.join(dep.key for dep in failed)}"
                 )
             await self._run_next_step()

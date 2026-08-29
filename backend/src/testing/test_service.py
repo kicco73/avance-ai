@@ -22,7 +22,7 @@ from jobs import Job, JobQueue
 from testing.errors import TestServiceError
 from testing.processor import TestProcessor
 from testing.cache import TestCache
-from testing.data import build_test_data
+from testing.data import TestDataBuilder
 from testing.signal_sources import BatchSignalSource, TurnByTurnSignalSource, estimate_max_turns_per_call
 from testing.metrics_provider import TestMetricsProvider
 from metrics.metrics_framework.benchmark_metrics.calculator import BenchmarkCalculator
@@ -163,7 +163,7 @@ class TestReplayJob(Job):
         db = self._service._db
         current_run = db.get_test(self._run['id'])
         assert current_run is not None, f"Test {self._run['id']}: vanished before its own run could finalize"
-        data = build_test_data(db, current_run)
+        data = TestDataBuilder.build(db, current_run)
 
         if current_run['session_id'] is not None or current_run['username'] is None:
             calculator = BenchmarkCalculator.from_data(data)
@@ -306,7 +306,7 @@ class _AggregationJob(Job):
         run = self._service._db.get_test(run_id)
         if run is None:
             return []
-        data = build_test_data(self._service._db, run)
+        data = TestDataBuilder.build(self._service._db, run)
         return BenchmarkObservationBuilder(BenchmarkConfiguration()).build(data)
 
     def _observations_for(self, run_ids: list[int]) -> list:
@@ -471,7 +471,7 @@ class PooledAggregationJob(_AggregationJob):
             return []
         db = self._service._db
         runs = [run for run_id in self._sub_run_ids if (run := db.get_test(run_id)) is not None]
-        frames = [build_test_data(db, run) for run in runs]
+        frames = [TestDataBuilder.build(db, run) for run in runs]
         pooled = BenchmarkData(
             messages=pd.concat([f.messages for f in frames], ignore_index=True),
             sessions=pd.concat([f.sessions for f in frames], ignore_index=True),

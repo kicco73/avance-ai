@@ -7,7 +7,8 @@ import zipfile
 from pathlib import Path
 from typing import Mapping
 
-from automaton.automaton import Automaton, trigger_automaton_project_refs
+from automaton.automaton import Automaton
+from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from automaton.automaton_builder import AutomatonBuilder
 from db import Db
 from events import AvailabilityChanged, publish, subscribe
@@ -53,7 +54,7 @@ class ProjectManager:
         for state in automaton.states.values():
             for action in state.actions:
                 if action.trigger and action.target == state.key:
-                    refs |= trigger_automaton_project_refs(action.trigger)
+                    refs |= TriggerExpressionAnalyzer.automaton_project_refs(action.trigger)
         return refs
 
     def _resolve_automaton_project_refs(self, project_ids: set[str]) -> set[str]:

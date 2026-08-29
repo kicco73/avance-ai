@@ -7,7 +7,7 @@ from __future__ import annotations
 import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
-from automaton.identifier_registry import SESSION, SYSTEM
+from automaton.identifier_registry import IdentifierRegistry
 
 pytestmark = pytest.mark.contract
 
@@ -28,14 +28,14 @@ states:
 """
 
 
-@pytest.mark.parametrize("attr", sorted(SYSTEM))
+@pytest.mark.parametrize("attr", sorted(IdentifierRegistry.SYSTEM))
 def test_a_trigger_may_reference_any_system_attr(attr):
     content = _project(f"system.{attr}() != None")
     automaton = AutomatonBuilder().build({"index.yml": content})
     assert automaton.states["a"].actions[0].trigger == f"system.{attr}() != None"
 
 
-@pytest.mark.parametrize("attr", sorted(SESSION))
+@pytest.mark.parametrize("attr", sorted(IdentifierRegistry.SESSION))
 def test_a_trigger_may_reference_any_session_attr(attr):
     content = _project(f"session.{attr}() != None")
     automaton = AutomatonBuilder().build({"index.yml": content})

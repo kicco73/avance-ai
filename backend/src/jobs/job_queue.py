@@ -131,31 +131,30 @@ class JobQueue(object):
             job = self.__dequeue()
             self.__execute_job_step(job, loop)
 
-    def submit(self, job: Job) -> None:
+    def submit(self, job: Job, parent: Job | None = None) -> None:
         with self._lock:
             if not job.is_pending():
+                if parent is not None:
+                    job._add_parent_job(parent)
                 return
 
         self._broadcast_status(job, self.STATUS.ready)
-        dependencies = job.prepare()
+        dependencies = job.prepare(parent)
 
         with self._lock:
             self._dependents[job] = list(dependencies)
 
         for dependency in dependencies:
-            self.submit(dependency)
+            self.submit(dependency, parent=job)
 
         with self._lock:
-            # Every dependency may already be terminal by now — including
-            # one that finished before this loop even started, which would
-            # otherwise never get another chance to notify this waiter (its
-            # own _forget() already ran, once, before this entry existed).
             ready = job in self._dependents and all(dep.is_done() or dep.is_failed() for dep in self._dependents[job])
             if ready:
                 del self._dependents[job]
         if ready:
             status = self._submit(job, job.is_background)
             self._broadcast_status(job, status)
+
 
     async def wait_for(self, job: Job) -> None:
         connection = self._broadcaster.connect(job.username)
