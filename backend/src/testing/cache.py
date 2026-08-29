@@ -11,7 +11,7 @@ class TestCache:
 
     def __init__(self, db: Db) -> None:
         self._db = db
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._live_jobs: dict[int, Job] = {}
 
     @contextmanager

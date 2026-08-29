@@ -215,6 +215,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
         auth_service, test_event_broadcaster, job_queue, "test-version",
     )
     fastapi_app.include_router(controller.router)
+    fastapi_app.state.test_service = test_service
     return fastapi_app
 
 
