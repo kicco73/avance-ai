@@ -56,8 +56,26 @@ class TestService:
 
     def abort_job(self, key: str) -> None:
         job = self._jobs_by_key.get(key)
-        if job is not None:
-            job.abort()
+        if job is None:
+            return
+        job.abort()
+        self._nudge_aborted(job, set())
+
+    def _nudge_aborted(self, job: CancelableJob, seen: set[CancelableJob]) -> None:
+        # abort() severs the parent-link on every child immediately,
+        # before any child has actually finished -- a job that was still
+        # waiting on live children (never yet pushed into the runnable
+        # queue) loses the one thing (a child's own _dependency_resolved
+        # notification) that would ever have submitted it. Forcing it
+        # into the queue directly is safe: is_aborted() is checked before
+        # any real work runs, so a redundant push onto an already-handled
+        # job is just an immediate no-op raise.
+        if job in seen or not job.is_aborted():
+            return
+        seen.add(job)
+        self._job_queue._submit(job, True)
+        for neighbor in (*job.parents, *job.children):
+            self._nudge_aborted(neighbor, seen)
 
     def create_run(self, username: str | None, project_name: str, session_id: int | None, strategy: str) -> dict:
         run, job = self._construct_run(username, project_name, session_id, strategy)

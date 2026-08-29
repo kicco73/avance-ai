@@ -24,6 +24,8 @@ import ProjectsMenu from '../../ProjectsMenu.vue'
 import { useLeaveConfirmation } from '../../../composables/useLeaveConfirmation.js'
 import { useResizablePanel } from '../../../composables/useResizablePanel.js'
 import { useProjectFiles } from '../../../composables/useProjectFiles.js'
+import { useProjectPublishing } from '../../../composables/useProjectPublishing.js'
+import { useIndexYmlEditing } from '../../../composables/useIndexYmlEditing.js'
 import { onProjectChanged } from '../../../projectChangeEvents.js'
 import {
   clearProjectHistory,
@@ -32,25 +34,6 @@ import {
   getSessions,
   getProjectGraph,
   getStateInputTokens,
-  postAddState,
-  postAddSignal,
-  postAddEnvKey,
-  postAddAction,
-  putStateField,
-  putActionField,
-  putInitActionField,
-  putProjectField,
-  putSignalField,
-  putEnvKeyField,
-  putActionOrder,
-  deleteState,
-  deleteProjectAction,
-  deleteProjectSignal,
-  deleteProjectEnvKey,
-  getProjectRevision,
-  getPublishPreview,
-  postPublishProject,
-  postRevertProject,
   getUsers
 } from '../../../api.js'
 import { setApiWarning } from '../../../errorStore.js'
@@ -541,330 +524,21 @@ const unsubscribeProjectChanged = onProjectChanged((changedProjectName) => {
 })
 onBeforeUnmount(unsubscribeProjectChanged)
 
-// {revision, published_revision} — null while not yet loaded. A save can
-// fork (see Db.save_project_files' fork-on-first-edit-after-publish),
-// bumping `revision` — refreshed after every save and every publish.
-const projectRevision = ref(null)
-const publishing = ref(false)
-// Set only while ProjectService.preview_publish reported needs_remap —
-// the modal below is shown exactly while this is non-null. Cleared on
-// both confirm and cancel.
-const publishRemapPrompt = ref(null)
-const publishRemapChoice = ref('')
-// Set only while leaveEditProject's "publish before leaving?" confirm was
-// accepted — holds whatever navigation was actually requested (Back, or
-// one of the Settings-menu items), so handlePublish's success paths can
-// carry it out once the publish actually lands. Every other exit clears
-// this instead, so a later, unrelated Publish click never navigates away too.
-const pendingLeaveAction = ref(null)
+const {
+  projectRevision, publishing, publishRemapPrompt, publishRemapChoice, pendingLeaveAction,
+  refreshProjectRevision, publishUpToDate,
+  handlePublish, confirmPublishRemap, cancelPublishRemap,
+  canRevert, publishMenuOpen, closePublishMenu, handleRevert,
+} = useProjectPublishing(props.projectName, currentFileName, activeEditor, selectedGraphElement)
 
-async function refreshProjectRevision() {
-  try {
-    projectRevision.value = await getProjectRevision(props.projectName)
-  } catch {
-    // already surfaced via apiFetch
-  }
-}
-
-const publishUpToDate = computed(
-  () => projectRevision.value != null && projectRevision.value.revision === projectRevision.value.published_revision
+const {
+  handleAddState, handleAddSignal, handleAddEnvKey, handleAddAction,
+  handleSetStateField, handleSetProjectField, handleSetActionField, handleSetSignalField, handleSetEnvKeyField,
+  handleDeleteState, handleDeleteAction, handleDeleteSignal, handleDeleteEnvKey,
+  handleReorderAction,
+} = useIndexYmlEditing(
+  props.projectName, guardedAction, indexYmlEditorRef, jumpToDefinition, selectedGraphElement, selectedStateKey, flashRecentlyAdded
 )
-
-// A real publish/revert invalidates every user's undo/redo history
-// server-side; refreshAfterProjectEdit already re-pulls index.yml's
-// buffer, so this only matters when a *different* file is open.
-async function refreshActiveEditorHistory() {
-  if (currentFileName.value === 'index.yml') return
-  await activeEditor()?.reload?.()
-}
-
-// Carries out whatever navigation leaveEditProject asked for once a
-// publish it required actually lands (see pendingLeaveAction) — called
-// by both handlePublish's direct-success path and confirmPublishRemap's.
-function runPendingLeaveAction() {
-  if (!pendingLeaveAction.value) return
-  const action = pendingLeaveAction.value
-  pendingLeaveAction.value = null
-  action()
-}
-
-function resetPendingLeaveAction() {
-  pendingLeaveAction.value = null
-}
-
-async function handlePublish() {
-  if (publishUpToDate.value || publishing.value) {
-    resetPendingLeaveAction()
-    return
-  }
-  publishing.value = true
-  try {
-    const preview = await getPublishPreview(props.projectName)
-    if (preview.needs_remap) {
-      publishRemapChoice.value = ''
-      publishRemapPrompt.value = preview
-      return
-    }
-    // Only ask when it's actually consequential — a live conversation
-    // still running on the currently published revision.
-    if (preview.has_active_sessions) {
-      const ok = await confirmDialog({
-        title: 'Publish',
-        body: `Publish revision ${projectRevision.value?.revision}? There's an active session on the currently published revision — it will stay frozen there; this one becomes the new one.`,
-        okLabel: 'Publish',
-        danger: true
-      })
-      if (!ok) {
-        resetPendingLeaveAction()
-        return
-      }
-    }
-    projectRevision.value = await postPublishProject(props.projectName)
-    await refreshActiveEditorHistory()
-    runPendingLeaveAction()
-  } catch {
-    // already surfaced via apiFetch
-    resetPendingLeaveAction()
-  } finally {
-    publishing.value = false
-  }
-}
-
-async function confirmPublishRemap(stateKey) {
-  publishing.value = true
-  try {
-    projectRevision.value = await postPublishProject(props.projectName, stateKey)
-    publishRemapPrompt.value = null
-    await refreshActiveEditorHistory()
-    runPendingLeaveAction()
-  } catch {
-    // already surfaced via apiFetch — leave the modal open so the user
-    // can pick a different state or cancel
-  } finally {
-    publishing.value = false
-  }
-}
-
-function cancelPublishRemap() {
-  publishRemapPrompt.value = null
-  publishing.value = false
-  resetPendingLeaveAction()
-}
-
-// The "Rev. X" split button's dropdown arrow — only rendered when
-// there's both a draft ahead of the published revision and a prior
-// publication to revert to.
-const canRevert = computed(
-  () => !publishUpToDate.value && projectRevision.value?.published_revision != null
-)
-const publishMenuOpen = ref(false)
-function closePublishMenu() {
-  publishMenuOpen.value = false
-}
-function handleDocumentClickForPublishMenu(event) {
-  if (publishMenuOpen.value && !event.target.closest('.publish-split-btn')) closePublishMenu()
-}
-onMounted(() => document.addEventListener('click', handleDocumentClickForPublishMenu))
-onBeforeUnmount(() => document.removeEventListener('click', handleDocumentClickForPublishMenu))
-
-async function handleRevert() {
-  if (!canRevert.value || publishing.value) return
-  const targetRevision = projectRevision.value.published_revision
-  const ok = await confirmDialog({
-    title: 'Revert',
-    body: `Revert to rev. ${targetRevision}? This permanently discards every unpublished change on rev. ${projectRevision.value.revision} — there's no undo for this.`,
-    okLabel: 'Revert',
-    danger: true
-  })
-  if (!ok) return
-  publishing.value = true
-  try {
-    await postRevertProject(props.projectName)
-    selectedGraphElement.value = null
-    await refreshActiveEditorHistory()
-  } catch {
-    // already surfaced via apiFetch
-  } finally {
-    publishing.value = false
-  }
-}
-
-function handleAddState() {
-  guardedAction('add a new state', async () => {
-    try {
-      const state = await postAddState(props.projectName)
-      selectedGraphElement.value = indexYmlEditorRef.value?.stateElementFor(state.key) ?? null
-      flashRecentlyAdded(`state:${state.key}`)
-    } catch {
-      // already surfaced via apiFetch
-    }
-  })
-}
-
-function handleAddSignal() {
-  guardedAction('add a new signal', async () => {
-    try {
-      const signal = await postAddSignal(props.projectName)
-      flashRecentlyAdded(`signal:${signal.name}`)
-    } catch {
-      // already surfaced via apiFetch
-    }
-  })
-}
-
-function handleAddEnvKey() {
-  guardedAction('add a new env key', async () => {
-    try {
-      const envKey = await postAddEnvKey(props.projectName)
-      flashRecentlyAdded(`env-key:${envKey.name}`)
-    } catch {
-      // already surfaced via apiFetch
-    }
-  })
-}
-
-function handleAddAction() {
-  const stateKey = selectedStateKey.value
-  if (!stateKey) return
-  guardedAction('add a new action', async () => {
-    try {
-      const action = await postAddAction(props.projectName, stateKey)
-      // Selects the new action itself, not its containing state — selecting
-      // the state would flip the Inspector's active tab back to "State" (see the selectedGraphElement watch above).
-      selectedGraphElement.value = indexYmlEditorRef.value?.actionsForState(stateKey).find(
-        (a) => a.data.actionName === action.name
-      ) ?? null
-      flashRecentlyAdded(`action:${stateKey}/${action.name}`)
-    } catch {
-      // already surfaced via apiFetch
-    }
-  })
-}
-
-function handleSetStateField(stateName, field, value) {
-  guardedAction(`edit "${field}"`, async () => {
-    try {
-      await putStateField(props.projectName, stateName, field, value)
-      selectedGraphElement.value = indexYmlEditorRef.value?.stateElementFor(stateName) ?? null
-    } catch {
-      // already surfaced via apiFetch
-    }
-  })
-}
-
-function handleSetProjectField(field, value) {
-  guardedAction(`edit "${field}"`, async () => {
-    try {
-      await putProjectField(props.projectName, field, value)
-    } catch {
-      // already surfaced via apiFetch
-    }
-  })
-}
-
-function handleSetActionField(stateName, actionName, field, value) {
-  guardedAction(`edit "${field}"`, async () => {
-    try {
-      // The init-action (stateName '') lives outside `states:` entirely,
-      // so putActionField's state/action lookup can't reach it — its
-      // fields go through the dedicated endpoint instead.
-      if (stateName === '') {
-        await putInitActionField(props.projectName, field, value)
-      } else {
-        await putActionField(props.projectName, stateName, actionName, field, value)
-      }
-      selectedGraphElement.value = indexYmlEditorRef.value?.actionsForState(stateName).find(
-        (a) => a.data.actionName === actionName
-      ) ?? null
-    } catch {
-      // already surfaced via apiFetch
-    }
-  })
-}
-
-function handleSetSignalField(signalName, field, value) {
-  guardedAction(`edit "${field}"`, async () => {
-    try {
-      const signal = await putSignalField(props.projectName, signalName, field, value)
-      // Only a ui-label edit can rename the signal — its line in the YAML
-      // moves, so re-jump to it off the *new* name the response reported.
-      if (field === 'ui-label') await jumpToDefinition({ kind: 'signal', signalName: signal.name }, { silent: true })
-    } catch {
-      // already surfaced via apiFetch
-    }
-  })
-}
-
-function handleSetEnvKeyField(envKeyName, field, value) {
-  guardedAction(`edit "${field}"`, async () => {
-    try {
-      const envKey = await putEnvKeyField(props.projectName, envKeyName, field, value)
-      // Only a 'name' edit can rename the key — its line in the YAML
-      // moves, so re-jump to it off the *new* name the response reported.
-      if (field === 'name') await jumpToDefinition({ kind: 'env-key', envKeyName: envKey.name }, { silent: true })
-    } catch {
-      // already surfaced via apiFetch
-    }
-  })
-}
-
-function handleDeleteState(stateName) {
-  guardedAction('delete this state', async () => {
-    try {
-      await deleteState(props.projectName, stateName)
-      selectedGraphElement.value = null
-    } catch {
-      // already surfaced via apiFetch
-    }
-  })
-}
-
-function handleDeleteAction(stateName, actionName) {
-  guardedAction('delete this action', async () => {
-    try {
-      await deleteProjectAction(props.projectName, stateName, actionName)
-      // The containing state is still selected — only the action itself
-      // (if it happened to be the literal selection) is now gone.
-      if (selectedGraphElement.value?.kind === 'action' && selectedGraphElement.value.data.actionName === actionName) {
-        selectedGraphElement.value = indexYmlEditorRef.value?.stateElementFor(stateName) ?? null
-      }
-    } catch {
-      // already surfaced via apiFetch
-    }
-  })
-}
-
-function handleDeleteSignal(signalName) {
-  guardedAction('delete this signal', async () => {
-    try {
-      await deleteProjectSignal(props.projectName, signalName)
-    } catch {
-      // already surfaced via apiFetch
-    }
-  })
-}
-
-function handleDeleteEnvKey(envKeyName) {
-  guardedAction('delete this env key', async () => {
-    try {
-      await deleteProjectEnvKey(props.projectName, envKeyName)
-    } catch {
-      // already surfaced via apiFetch
-    }
-  })
-}
-
-function handleReorderAction({ actionName, position }) {
-  const stateKey = selectedStateKey.value
-  if (!stateKey) return
-  guardedAction('reorder actions', async () => {
-    try {
-      await putActionOrder(props.projectName, stateKey, actionName, position)
-    } catch {
-      // already surfaced via apiFetch
-    }
-  })
-}
 
 // The Inspector's "State"/"Actions" tabs share the same selection the
 // Graph drives, but a row click here only emits 'select' — this is the

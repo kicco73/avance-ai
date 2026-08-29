@@ -1,0 +1,290 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createApp, ref } from 'vue'
+
+vi.mock('../src/api.js', () => ({
+  getState: vi.fn(),
+  getMe: vi.fn(),
+  getProjects: vi.fn(),
+  postAcceptTerms: vi.fn(),
+  postLogout: vi.fn(),
+}))
+vi.mock('../src/chatClient.js', () => ({
+  disconnect: vi.fn(),
+}))
+vi.mock('../src/errorStore.js', () => ({
+  clearApiError: vi.fn(),
+}))
+vi.mock('../src/authStore.js', () => ({
+  requireLogin: vi.fn(),
+}))
+vi.mock('../src/dialogStore.js', () => ({
+  confirmDialog: vi.fn(),
+}))
+vi.mock('../src/chatStore.js', () => ({
+  setCapabilities: vi.fn(),
+  handleStateChange: vi.fn(),
+  loadMessages: vi.fn(),
+  loadAiModels: vi.fn(),
+}))
+
+import { getState, getMe, getProjects, postAcceptTerms, postLogout } from '../src/api.js'
+import { disconnect as disconnectChat } from '../src/chatClient.js'
+import { clearApiError } from '../src/errorStore.js'
+import { requireLogin } from '../src/authStore.js'
+import { confirmDialog } from '../src/dialogStore.js'
+import { setCapabilities, handleStateChange, loadMessages, loadAiModels } from '../src/chatStore.js'
+import { useAppBoot } from '../src/composables/useAppBoot.js'
+
+function mountComposable(setup) {
+  let result
+  const container = document.createElement('div')
+  const app = createApp({ setup: () => { result = setup(); return () => null } })
+  app.mount(container)
+  return { result, unmount: () => app.unmount() }
+}
+
+describe('useAppBoot', () => {
+  let unmount, currentUserProfile, currentUserRole, labelProjectName, liveChatProjectName,
+    pushedView, showProfile, navDirection
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    currentUserProfile = ref(null)
+    currentUserRole = ref(null)
+    labelProjectName = ref(null)
+    liveChatProjectName = ref(null)
+    pushedView = ref('chat')
+    showProfile = ref(true)
+    navDirection = ref('back')
+  })
+
+  afterEach(() => {
+    unmount?.()
+    vi.useRealTimers()
+  })
+
+  function mount() {
+    const mounted = mountComposable(() => useAppBoot(
+      currentUserProfile, currentUserRole, labelProjectName, liveChatProjectName,
+      pushedView, showProfile, navDirection
+    ))
+    unmount = mounted.unmount
+    return mounted.result
+  }
+
+  describe('getActiveProjectName', () => {
+    it('prefers the reported active project', async () => {
+      getProjects.mockResolvedValue({ active: 'proj-a', projects: [{ name: 'proj-b' }] })
+      const s = mount()
+      expect(await s.getActiveProjectName()).toBe('proj-a')
+    })
+
+    it('falls back to the first project when none is active', async () => {
+      getProjects.mockResolvedValue({ active: null, projects: [{ name: 'proj-b' }] })
+      const s = mount()
+      expect(await s.getActiveProjectName()).toBe('proj-b')
+    })
+
+    it('resolves null on a totally empty install or a fetch failure', async () => {
+      getProjects.mockResolvedValue({ active: null, projects: [] })
+      const s = mount()
+      expect(await s.getActiveProjectName()).toBeNull()
+
+      getProjects.mockRejectedValue(new Error('boom'))
+      expect(await s.getActiveProjectName()).toBeNull()
+    })
+  })
+
+  describe('startBootSequence -> runPingAttempt', () => {
+    it('a ready backend resolves the landing view and flips bootStatus to ready', async () => {
+      getState.mockResolvedValue({ talk_enabled: true, listen_enabled: true })
+      getMe.mockResolvedValue({ role: 'user' })
+      const s = mount()
+
+      s.startBootSequence()
+      await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
+
+      expect(setCapabilities).toHaveBeenCalledWith({ talkAvailable: true, micAvailable: true })
+      expect(handleStateChange).toHaveBeenCalled()
+      expect(clearApiError).toHaveBeenCalled()
+      expect(loadMessages).toHaveBeenCalled() // role === 'user'
+      expect(loadAiModels).toHaveBeenCalled()
+    })
+
+    it('resets the navigation stack before resolving who is landing where', async () => {
+      getState.mockResolvedValue({})
+      getMe.mockResolvedValue({ role: 'admin' })
+      const s = mount()
+
+      s.startBootSequence()
+      await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
+
+      expect(pushedView.value).toBeNull()
+      expect(showProfile.value).toBe(false)
+      expect(navDirection.value).toBe('forward')
+      expect(loadMessages).not.toHaveBeenCalled() // admin, not user
+    })
+
+    it("a supervisor's landing view resolves their active project into labelProjectName", async () => {
+      getState.mockResolvedValue({})
+      getMe.mockResolvedValue({ role: 'supervisor' })
+      getProjects.mockResolvedValue({ active: 'proj-x', projects: [] })
+      const s = mount()
+
+      s.startBootSequence()
+      await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
+
+      expect(labelProjectName.value).toBe('proj-x')
+      expect(liveChatProjectName.value).toBeNull()
+    })
+
+    it('a 403 (pending registration) sets needsTerms instead of proceeding', async () => {
+      getState.mockRejectedValue({ status: 403 })
+      const s = mount()
+
+      s.startBootSequence()
+      await vi.waitFor(() => expect(s.needsTerms.value).toBe(true))
+
+      expect(s.bootStatus.value).toBe('checking') // never touched
+      expect(getMe).not.toHaveBeenCalled()
+    })
+
+    it('a 401 just stops — apiFetch already triggered the login screen', async () => {
+      getState.mockRejectedValue({ status: 401 })
+      const s = mount()
+
+      s.startBootSequence()
+      await vi.runOnlyPendingTimersAsync()
+
+      expect(s.bootStatus.value).toBe('checking')
+    })
+
+    it('a transient failure retries on an interval, then flips ready once the backend comes up', async () => {
+      getState.mockRejectedValueOnce({}).mockRejectedValueOnce({}).mockResolvedValue({})
+      getMe.mockResolvedValue({ role: 'admin' })
+      const s = mount()
+
+      s.startBootSequence()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(s.bootStatus.value).toBe('waiting')
+
+      await vi.advanceTimersByTimeAsync(800)
+      await vi.advanceTimersByTimeAsync(800)
+      expect(s.bootStatus.value).toBe('ready')
+    })
+
+    it('gives up after the retry budget is exhausted', async () => {
+      getState.mockRejectedValue({})
+      const s = mount()
+
+      s.startBootSequence()
+      await vi.advanceTimersByTimeAsync(800 * 31)
+
+      expect(s.bootStatus.value).toBe('failed')
+    })
+
+    it('calling startBootSequence again supersedes a still-pending retry loop', async () => {
+      getState.mockRejectedValueOnce({}).mockResolvedValue({})
+      getMe.mockResolvedValue({ role: 'admin' })
+      const s = mount()
+
+      s.startBootSequence() // 1st sequence: will fail once, then schedule a retry
+      await vi.advanceTimersByTimeAsync(0)
+      expect(s.bootStatus.value).toBe('waiting')
+
+      s.startBootSequence() // 2nd sequence supersedes it — bootStatus resets
+      expect(s.bootStatus.value).toBe('checking')
+      await vi.advanceTimersByTimeAsync(0)
+      expect(s.bootStatus.value).toBe('ready')
+
+      // The superseded 1st sequence's own scheduled retry, if it still fired,
+      // must not have clobbered anything — advancing further stays 'ready'.
+      await vi.advanceTimersByTimeAsync(800)
+      expect(s.bootStatus.value).toBe('ready')
+    })
+  })
+
+  it('resolveLandingView leaves currentUserRole alone if getMe() fails', async () => {
+    getMe.mockRejectedValue(new Error('boom'))
+    const s = mount()
+
+    await s.resolveLandingView()
+
+    expect(currentUserRole.value).toBeNull()
+  })
+
+  describe('handleLoggedIn', () => {
+    it('restarts the boot sequence', async () => {
+      getState.mockResolvedValue({})
+      getMe.mockResolvedValue({ role: 'admin' })
+      const s = mount()
+
+      s.handleLoggedIn()
+
+      await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
+    })
+  })
+
+  describe('handleTermsAccept', () => {
+    it('accepts, clears needsTerms, and restarts booting on success', async () => {
+      postAcceptTerms.mockResolvedValue()
+      getState.mockResolvedValue({})
+      getMe.mockResolvedValue({ role: 'admin' })
+      const s = mount()
+      s.needsTerms.value = true
+
+      await s.handleTermsAccept()
+      await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
+
+      expect(s.needsTerms.value).toBe(false)
+    })
+
+    it('stays on the terms screen if accepting fails', async () => {
+      postAcceptTerms.mockRejectedValue(new Error('boom'))
+      const s = mount()
+      s.needsTerms.value = true
+
+      await s.handleTermsAccept()
+
+      expect(s.needsTerms.value).toBe(true)
+    })
+  })
+
+  describe('handleTermsReject', () => {
+    it('logs out cleanly without ever having registered', async () => {
+      postLogout.mockResolvedValue()
+      const s = mount()
+      s.needsTerms.value = true
+
+      await s.handleTermsReject()
+
+      expect(disconnectChat).toHaveBeenCalled()
+      expect(s.needsTerms.value).toBe(false)
+      expect(requireLogin).toHaveBeenCalled()
+    })
+  })
+
+  describe('handleLogout', () => {
+    it('does nothing without confirmation', async () => {
+      confirmDialog.mockResolvedValue(false)
+      const s = mount()
+
+      await s.handleLogout()
+
+      expect(postLogout).not.toHaveBeenCalled()
+      expect(requireLogin).not.toHaveBeenCalled()
+    })
+
+    it('logs out on confirmation, even if the server call fails', async () => {
+      confirmDialog.mockResolvedValue(true)
+      postLogout.mockRejectedValue(new Error('boom'))
+      const s = mount()
+
+      await s.handleLogout()
+
+      expect(disconnectChat).toHaveBeenCalled()
+      expect(requireLogin).toHaveBeenCalled()
+    })
+  })
+})

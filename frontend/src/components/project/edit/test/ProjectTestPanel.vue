@@ -3,21 +3,16 @@
 // Two columns: TestsTree on the left (Sessions/States), a node's results on
 // the right. Owns all data fetching/launching/polling — TestsTree itself
 // (alongside TestNodeButton, both in this same test/ folder) stays purely presentational.
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import TestsTree from './TestsTree.vue'
 import SignalAccuracyDistributionChart from './SignalAccuracyDistributionChart.vue'
 import DocInfoButton from '../../../DocInfoButton.vue'
 import MetricDetail from '../../../inspector/MetricDetail.vue'
-import {
-  createTestEventsSource, deleteTestJob, deleteTests, getAggregateResult, getTestMetrics,
-  getTests, getJobsStatus, getProjectSignals, getProjectStates, postTest, postRootAggregation,
-  postSessionsRun, postSignalTest, postSignalsAggregation, postStateTest, postStatesAggregation, postUserSessionsRun,
-  postUsersAggregation
-} from '../../../../api.js'
+import { getTestMetrics, getProjectSignals, getProjectStates } from '../../../../api.js'
 import { loadSessions, sessions, sessionsLoading } from '../../../../chatStore.js'
-import { confirmDialog } from '../../../../dialogStore.js'
 import { useResizablePanel } from '../../../../composables/useResizablePanel.js'
 import { useFloatingMenu } from '../../../../composables/useFloatingMenu.js'
+import { useTestExecutionTree } from '../../../../composables/useTestExecutionTree.js'
 
 const props = defineProps({
   projectName: {
@@ -40,11 +35,6 @@ const {
   toggle: toggleStrategyMenu, close: closeStrategyMenu
 } = useFloatingMenu()
 const strategyLabel = computed(() => strategyLabels[strategy.value])
-
-// Running total of AI tokens consumed so far — piggybacked onto every
-// SSE test-event message by the backend's QueueProgressBroadcaster (see
-// AiService.get_total_tokens), not fetched separately.
-const tokensBurnt = ref(0)
 
 function selectStrategy(value) {
   strategy.value = value
@@ -83,457 +73,22 @@ function metricDescription(name) {
   return metricDefinitions.value[name]?.ui_description ?? null
 }
 
-// Every cache below is keyed by `${strategy}:${nodeId}`, never nodeId
-// alone — turn_by_turn and batch results aren't comparable, so switching
-// strategy must never show the other strategy's cached status/result for
-// the same node.
-function cacheKey(strategyName, nodeId) {
-  return `${strategyName}:${nodeId}`
-}
-
-// One raw snapshot per event key (`${strategy}:${nodeId}`) — the last
-// status message received for that node, kept whole. Displayed status,
-// error, and progress are all derived from it on read (see outcome()
-// below), never split into separate stores that could drift apart from
-// one another as new events arrive.
-const nodeEvents = ref({})
-// A node's own most recent aggregate result payload — fetched over REST
-// once its job completes, a genuinely different piece of data (and a
-// different source) from the SSE status stream above, so it stays separate.
-const nodeLastResult = ref({})
-
-const selectedNodeId = ref(null)
-const selectedRun = ref(null)
-const selectedRunLoading = ref(false)
-
-// completed with no error -> ok; completed but error carries text (one
-// or more sessions skipped, e.g. no known starting state) -> warning,
-// never a threshold on the metrics themselves. failed -> fail.
-function statusFromOutcome(status, error) {
-  if (status === 'failed') return 'fail'
-  if (status === 'aborted') return 'aborted'
-  if (status === 'completed') return error ? 'warning' : 'ok'
-  return 'running'
-}
-
-// A node with no event yet falls back to TestsTree's own implicit 'idle'.
-// ready/running/paused/exited are the QUEUE's own view of this job, not
-// the job's (see JobQueue._broadcast_status/ThrottledJobQueue._throttle)
-// — is a worker actively inside its step right now, asleep waiting out
-// the rate limit, or neither? That's exactly the ready-vs-running-vs-
-// paused split the UI shows. job_status (job.status() itself: pending/
-// running/completed/failed) only matters once queue_status says
-// 'exited' (to read the real outcome), or while it's still 'pending' —
-// the one instant before Job.prepare() runs, when nothing (not even a
-// step count) is known yet, which needs its own distinct spin instead of
-// reading as an ordinary queued 'ready' (which usually already has a
-// real, worth-persisting percentage behind it).
-function outcome(message) {
-  if (!message) return 'idle'
-  if (message.queue_status === 'exited') return statusFromOutcome(message.job_status, message.error)
-  if (message.job_status === 'pending') return 'pending'
-  if (message.job_status === 'requeued') return 'requeued'
-  return message.queue_status
-}
-
-// TestsTree only ever sees the active strategy's own statuses/progress —
-// a node from the other strategy must never leak through.
-const currentStrategyStatuses = computed(() => {
-  const prefix = `${strategy.value}:`
-  const result = {}
-  for (const [key, message] of Object.entries(nodeEvents.value)) {
-    if (key.startsWith(prefix)) result[key.slice(prefix.length)] = outcome(message)
-  }
-  return result
-})
-
-// message.percentage tracks the job's own overall progress (steps_done /
-// total_steps) — true regardless of queue_status, so it must stay
-// visible through every 'ready' gap between steps too. Gating this on
-// queue_status === 'running' made the percentage vanish and the ring
-// snap back to an indeterminate spin the instant a job was re-queued for
-// its next step, even though nothing about its actual progress changed.
-const currentStrategyProgress = computed(() => {
-  const prefix = `${strategy.value}:`
-  const result = {}
-  for (const [key, message] of Object.entries(nodeEvents.value)) {
-    if (key.startsWith(prefix) && message.percentage != null) {
-      result[key.slice(prefix.length)] = message.percentage
-    }
-  }
-  return result
-})
-
-// The project-wide "run everything" control lives in this panel's own
-// header (styled like the reset button next to it), not in TestsTree —
-// 'root' has no row of its own in the tree any more.
-const rootStatus = computed(() => currentStrategyStatuses.value.root ?? 'idle')
-const rootBusy = computed(() => ['pending', 'ready', 'running', 'paused'].includes(rootStatus.value))
-// See TestNodeButton's own buttonState: 'running' (actively being
-// executed right now) is the only busy state that reads green — every
-// other in-flight state ('pending'/'ready'/'paused') stays blue.
-const rootButtonState = computed(() => (rootStatus.value === 'running' ? 'running' : (rootBusy.value ? 'ready' : rootStatus.value)))
-// See TestNodeButton's own showCancel: hovering any in-flight root swaps
-// its icon for a cancel affordance instead of disabling the button outright.
-const isHoveringRoot = ref(false)
-const showCancelRoot = computed(() => isHoveringRoot.value && rootBusy.value)
-
-const selectedCacheKey = computed(() => (
-  selectedNodeId.value ? cacheKey(strategy.value, selectedNodeId.value) : null
-))
-
-const selectedNodeError = computed(() => {
-  const message = nodeEvents.value[selectedCacheKey.value]
-  return message?.job_status === 'failed' ? message.error : null
-})
-
-// Writes one node's event as a single, complete replacement — used both
-// for real SSE messages (job_status/queue_status straight from the
-// backend, see JobQueue._broadcast_status) and for the optimistic
-// 'running'/'completed'/'failed' the activate*() functions below set on
-// click, before the first real one arrives — jobStatus here is simple
-// on purpose, so it's translated into the same two-field shape a real
-// message carries, and outcome() never needs to special-case its origin.
-function setNodeEvent(key, jobStatus, error = null) {
-  const queueStatus = jobStatus === 'completed' || jobStatus === 'failed' ? 'exited' : jobStatus === 'running' ? 'running' : 'ready'
-  nodeEvents.value = { ...nodeEvents.value, [key]: { key, job_status: jobStatus, queue_status: queueStatus, percentage: null, error } }
-}
-
-// nodeId's own {kind, target} in the aggregate-result/jobs-status
-// vocabulary — null for 'session:*' and 'root', neither of which is one.
-function aggregateKindAndTarget(nodeId) {
-  if (nodeId.startsWith('state:')) return { kind: 'state', target: nodeId.slice('state:'.length) }
-  if (nodeId.startsWith('signal:')) return { kind: 'signal', target: nodeId.slice('signal:'.length) }
-  if (nodeId.startsWith('user:')) return { kind: 'user_sessions', target: nodeId.slice('user:'.length) }
-  if (nodeId === 'sessions-branch') return { kind: 'sessions', target: null }
-  if (nodeId === 'users-branch') return { kind: 'users', target: null }
-  if (nodeId === 'states-branch') return { kind: 'all_states', target: null }
-  if (nodeId === 'signals-branch') return { kind: 'all_signals', target: null }
-  return null
-}
-
-function nodeIdFor(kind, target) {
-  if (kind === 'state') return `state:${target}`
-  if (kind === 'signal') return `signal:${target}`
-  if (kind === 'user_sessions') return `user:${target}`
-  if (kind === 'sessions') return 'sessions-branch'
-  if (kind === 'users') return 'users-branch'
-  if (kind === 'all_states') return 'states-branch'
-  if (kind === 'all_signals') return 'signals-branch'
-  return null
-}
-
-async function fetchAggregateResult(key, eventStrategy, kind, target) {
-  try {
-    const result = await getAggregateResult(props.projectName, kind, target, eventStrategy)
-    nodeLastResult.value = { ...nodeLastResult.value, [key]: result }
-  } catch {
-    // already surfaced via apiFetch
-  }
-}
-
-// The single live-update channel for every node's status/progress/result
-// — connected once in onMounted, replacing all per-node polling. Each
-// message replaces its node's whole event record in one write (see
-// nodeEvents/setNodeEvent above), so a fresh 'pending'/'running' for a
-// re-run can never leave a stale error behind from the previous attempt.
-function handleTestEvent(message) {
-  if (typeof message.tokens === 'number') tokensBurnt.value = message.tokens
-  nodeEvents.value = { ...nodeEvents.value, [message.key]: message }
-
-  const { key, job_status: status, queue_status: queueStatus } = message
-  const separatorIndex = key.indexOf(':')
-  const eventStrategy = key.slice(0, separatorIndex)
-  const nodeId = key.slice(separatorIndex + 1)
-  if (nodeId.startsWith('session:')) {
-    if (selectedNodeId.value === nodeId && strategy.value === eventStrategy) loadSelectedRun(nodeId)
-    return
-  }
-  if (queueStatus !== 'exited' || status !== 'completed') return
-  const target = aggregateKindAndTarget(nodeId)
-  if (target == null) return // root — no result of its own
-  fetchAggregateResult(key, eventStrategy, target.kind, target.target)
-}
-
-async function hydrateJobsStatus() {
-  let jobsStatus = null
-  try {
-    jobsStatus = await getJobsStatus(props.projectName, strategy.value)
-  } catch {
-    return
-  }
-  for (const { session_id, status } of jobsStatus.sessions) {
-    if (status === 'ok') setNodeEvent(cacheKey(strategy.value, `session:${session_id}`), 'completed')
-  }
-  for (const { kind, target, status } of jobsStatus.aggregates) {
-    if (status !== 'ok') continue
-    const nodeId = nodeIdFor(kind, target)
-    const key = cacheKey(strategy.value, nodeId)
-    setNodeEvent(key, 'completed')
-    fetchAggregateResult(key, strategy.value, kind, target)
-  }
-}
-
-async function activateSessionLeaf(nodeId, activeStrategy) {
-  const key = cacheKey(activeStrategy, nodeId)
-  setNodeEvent(key, 'running')
-  try {
-    const sessionId = Number(nodeId.slice('session:'.length))
-    await postTest(props.projectName, sessionId, activeStrategy)
-  } catch {
-    // already surfaced via apiFetch
-    setNodeEvent(key, 'failed')
-  }
-}
-
-async function activateStateLeaf(nodeId, activeStrategy) {
-  const key = cacheKey(activeStrategy, nodeId)
-  setNodeEvent(key, 'running')
-  try {
-    const stateKey = nodeId.slice('state:'.length)
-    await postStateTest(props.projectName, stateKey, activeStrategy)
-  } catch {
-    // already surfaced via apiFetch
-    setNodeEvent(key, 'failed')
-  }
-}
-
-async function activateSessionsRun(activeStrategy) {
-  const key = cacheKey(activeStrategy, 'sessions-branch')
-  setNodeEvent(key, 'running')
-  try {
-    await postSessionsRun(props.projectName, activeStrategy)
-  } catch {
-    // already surfaced via apiFetch
-    setNodeEvent(key, 'failed')
-  }
-}
-
-async function activateAllStates(activeStrategy) {
-  const key = cacheKey(activeStrategy, 'states-branch')
-  setNodeEvent(key, 'running')
-  try {
-    await postStatesAggregation(props.projectName, activeStrategy)
-  } catch {
-    // already surfaced via apiFetch
-    setNodeEvent(key, 'failed')
-  }
-}
-
-async function activateSignalLeaf(nodeId, activeStrategy) {
-  const key = cacheKey(activeStrategy, nodeId)
-  setNodeEvent(key, 'running')
-  try {
-    const signalName = nodeId.slice('signal:'.length)
-    await postSignalTest(props.projectName, signalName, activeStrategy)
-  } catch {
-    // already surfaced via apiFetch
-    setNodeEvent(key, 'failed')
-  }
-}
-
-async function activateAllSignals(activeStrategy) {
-  const key = cacheKey(activeStrategy, 'signals-branch')
-  setNodeEvent(key, 'running')
-  try {
-    await postSignalsAggregation(props.projectName, activeStrategy)
-  } catch {
-    // already surfaced via apiFetch
-    setNodeEvent(key, 'failed')
-  }
-}
-
-function signalLabel(name) {
-  return projectSignals.value.find((signal) => signal.name === name)?.ui_label || name
-}
-
-async function activateUserLeaf(nodeId, activeStrategy) {
-  const key = cacheKey(activeStrategy, nodeId)
-  setNodeEvent(key, 'running')
-  try {
-    const username = nodeId.slice('user:'.length)
-    await postUserSessionsRun(props.projectName, username, activeStrategy)
-  } catch {
-    // already surfaced via apiFetch
-    setNodeEvent(key, 'failed')
-  }
-}
-
-async function activateUsersAggregation(activeStrategy) {
-  const key = cacheKey(activeStrategy, 'users-branch')
-  setNodeEvent(key, 'running')
-  try {
-    await postUsersAggregation(props.projectName, activeStrategy)
-  } catch {
-    // already surfaced via apiFetch
-    setNodeEvent(key, 'failed')
-  }
-}
-
-async function activateRoot(activeStrategy) {
-  const key = cacheKey(activeStrategy, 'root')
-  setNodeEvent(key, 'running')
-  try {
-    await postRootAggregation(props.projectName, activeStrategy)
-  } catch {
-    // already surfaced via apiFetch
-    setNodeEvent(key, 'failed')
-  }
-}
-
-async function onActivate(nodeId) {
-  // Pressing play selects the node it belongs to, same as clicking its
-  // row — the results panel should already be pointed at it once the
-  // run/job(s) finish.
-  onSelect(nodeId)
-  // Snapshot the strategy at launch time — every job this dispatches is
-  // pinned to it regardless of whether the dropdown changes before they finish.
-  const activeStrategy = strategy.value
-  if (nodeId.startsWith('session:')) {
-    await activateSessionLeaf(nodeId, activeStrategy)
-  } else if (nodeId.startsWith('state:')) {
-    await activateStateLeaf(nodeId, activeStrategy)
-  } else if (nodeId.startsWith('user:')) {
-    await activateUserLeaf(nodeId, activeStrategy)
-  } else if (nodeId.startsWith('signal:')) {
-    await activateSignalLeaf(nodeId, activeStrategy)
-  } else if (nodeId === 'sessions-branch') {
-    await activateSessionsRun(activeStrategy)
-  } else if (nodeId === 'states-branch') {
-    await activateAllStates(activeStrategy)
-  } else if (nodeId === 'users-branch') {
-    await activateUsersAggregation(activeStrategy)
-  } else if (nodeId === 'signals-branch') {
-    await activateAllSignals(activeStrategy)
-  } else if (nodeId === 'root') {
-    await activateRoot(activeStrategy)
-  }
-}
-
-// The running job's own key already matches cacheKey(strategy, nodeId)
-// verbatim (see JobQueue._broadcast_status's "key") -- no per-node-kind
-// dispatch needed here, unlike onActivate above.
-async function onAbort(nodeId) {
-  try {
-    await deleteTestJob(props.projectName, cacheKey(strategy.value, nodeId))
-  } catch {
-    // already surfaced via apiFetch
-  }
-}
-
-function onActivateRoot() {
-  if (showCancelRoot.value) {
-    onAbort('root')
-    return
-  }
-  if (rootBusy.value) return
-  onActivate('root')
-}
-
-async function loadSelectedRun(nodeId) {
-  const sessionId = Number(nodeId.slice('session:'.length))
-  selectedRunLoading.value = true
-  try {
-    const runs = await getTests(props.projectName, sessionId)
-    // Already most-recent-first (see backend TestService.list_runs)
-    // — filtered to the active strategy, since turn_by_turn and batch
-    // runs aren't comparable and must never be shown as if they were.
-    const run = runs.find((run) => run.strategy === strategy.value) ?? null
-    selectedRun.value = run
-    if (run != null && run.status !== 'pending' && run.status !== 'running') {
-      setNodeEvent(cacheKey(strategy.value, nodeId), run.status, run.error)
-    }
-  } catch {
-    selectedRun.value = null
-  } finally {
-    selectedRunLoading.value = false
-  }
-}
-
-function isRunNode(nodeId) {
-  return nodeId.startsWith('session:')
-}
-
-async function onSelect(nodeId) {
-  selectedNodeId.value = nodeId
-  emit('select', nodeId)
-  selectedRun.value = null
-  if (!isRunNode(nodeId)) return
-  await loadSelectedRun(nodeId)
-}
-
-// Switching strategy must refresh whatever's on screen for the currently
-// selected node — otherwise it would keep showing the other strategy's
-// last-fetched run.
-watch(strategy, () => {
-  if (selectedNodeId.value && isRunNode(selectedNodeId.value)) {
-    loadSelectedRun(selectedNodeId.value)
-  }
-})
-
-const selectedNodeLabel = computed(() => {
-  const nodeId = selectedNodeId.value
-  if (!nodeId) return ''
-  if (nodeId === 'root') return props.projectName
-  if (nodeId === 'sessions-branch') return 'Sessions'
-  if (nodeId === 'states-branch') return 'Stats'
-  if (nodeId === 'users-branch') return 'Users'
-  if (nodeId === 'signals-branch') return 'Signals'
-  if (nodeId.startsWith('session:')) {
-    const id = Number(nodeId.slice('session:'.length))
-    const session = sessions.value.find((s) => s.id === id)
-    return session ? (session.title || session.end_state || `Session ${id}`) : `Session ${id}`
-  }
-  if (nodeId.startsWith('state:')) return nodeId.slice('state:'.length)
-  if (nodeId.startsWith('user:')) return nodeId.slice('user:'.length)
-  if (nodeId.startsWith('signal:')) return signalLabel(nodeId.slice('signal:'.length))
-  return nodeId
-})
-
 function formatNumber(value) {
   return typeof value === 'number' ? value.toFixed(2) : '—'
 }
 
-const resettingCache = ref(false)
-
-const anyTestExecuted = computed(() => Object.keys(nodeEvents.value).length > 0)
-
-async function onResetCache() {
-  if (strategy.value === 'turn_by_turn') {
-    const ok = await confirmDialog({
-      title: 'Reset test cache',
-      body: 'Turn-by-turn tests replay one AI call per message — resetting the cache forces every test to run again from scratch, which can be expensive. Continue?',
-      okLabel: 'Reset',
-      danger: true
-    })
-    if (!ok) return
-  }
-  resettingCache.value = true
-  try {
-    await deleteTests(props.projectName)
-    nodeEvents.value = {}
-    nodeLastResult.value = {}
-    selectedRun.value = null
-    if (selectedNodeId.value && isRunNode(selectedNodeId.value)) {
-      await loadSelectedRun(selectedNodeId.value)
-    }
-  } catch {
-    // already surfaced via apiFetch
-  } finally {
-    resettingCache.value = false
-  }
-}
-
-let testEventSource = null
+const {
+  tokensBurnt, nodeLastResult, selectedNodeId, selectedRun, selectedRunLoading,
+  currentStrategyStatuses, currentStrategyProgress,
+  rootStatus, rootBusy, rootButtonState, isHoveringRoot, showCancelRoot,
+  selectedCacheKey, selectedNodeError, selectedNodeLabel, anyTestExecuted,
+  onActivate, onAbort, onActivateRoot, onSelect,
+  resettingCache, onResetCache,
+} = useTestExecutionTree(props.projectName, strategy, sessions, projectSignals, emit)
 
 onMounted(() => {
-  // selectedNodeId always starts null on a fresh mount (this tab isn't
-  // kept alive while closed — see EditProjectView.vue's autoOpen v-if),
-  // so there's never anything already selected to defer to here.
-  onSelect('root')
   loadSessions(true, props.projectName)
   loadMetricDefinitions()
-  hydrateJobsStatus()
   statesLoading.value = true
   getProjectStates(props.projectName).then((states) => {
     projectStates.value = states
@@ -550,12 +105,6 @@ onMounted(() => {
   }).finally(() => {
     signalsLoading.value = false
   })
-  testEventSource = createTestEventsSource(props.projectName)
-  testEventSource.onmessage = (event) => handleTestEvent(JSON.parse(event.data))
-})
-
-onBeforeUnmount(() => {
-  testEventSource?.close()
 })
 </script>
 
