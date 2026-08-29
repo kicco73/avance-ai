@@ -130,32 +130,35 @@ onMounted(() => {
               <path d="M8 5v14l11-7z" />
             </svg>
             <svg v-else-if="rootBusy" viewBox="0 0 24 24" width="16" height="16">
-              <circle
-                class="tests-panel-root-btn-ring"
-                :class="{ 'tests-panel-root-btn-spinner-indeterminate': rootStatus !== 'running' }"
-                cx="12" cy="12" r="10" pathLength="100" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"
-                :stroke-dasharray="rootStatus === 'running' ? '8 100' : '50 100'"
-              />
+              <g class="tests-panel-root-btn-content" :class="{ 'tests-panel-root-btn-content-hidden': showCancelRoot }">
+                <circle
+                  class="tests-panel-root-btn-ring"
+                  :class="{ 'tests-panel-root-btn-spinner-indeterminate': rootStatus !== 'running' }"
+                  cx="12" cy="12" r="10" pathLength="100" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"
+                  :stroke-dasharray="rootStatus === 'running' ? '8 100' : '50 100'"
+                />
+                <g v-if="rootStatus === 'paused'" transform="translate(12 12) scale(0.6) translate(-12 -12)">
+                  <rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" />
+                  <rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" />
+                </g>
+                <!-- 'running': a worker is inside root's own step right now
+                     (root has exactly one — see RootAggregationJob._prepare)
+                     — the lightning marks that instant, not "root is always
+                     high-priority". Drawn inside the same ring as the spinner,
+                     not swapped in place of it, so the ring stays visible. -->
+                <path
+                  v-else-if="rootStatus === 'running'"
+                  class="tests-panel-root-btn-lightning"
+                  d="M11 21v-8H7l6-11v8h4l-6 11z"
+                  transform="translate(12 12) scale(0.75) translate(-12 -12)"
+                  fill="currentColor"
+                />
+              </g>
               <path
-                v-if="showCancelRoot"
+                class="tests-panel-root-btn-cancel-icon"
+                :class="{ 'tests-panel-root-btn-cancel-icon-visible': showCancelRoot }"
                 d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
                 transform="translate(12 12) scale(0.6) translate(-12 -12)"
-                fill="currentColor"
-              />
-              <g v-else-if="rootStatus === 'paused'" transform="translate(12 12) scale(0.6) translate(-12 -12)">
-                <rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" />
-                <rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" />
-              </g>
-              <!-- 'running': a worker is inside root's own step right now
-                   (root has exactly one — see RootAggregationJob._prepare)
-                   — the lightning marks that instant, not "root is always
-                   high-priority". Drawn inside the same ring as the spinner,
-                   not swapped in place of it, so the ring stays visible. -->
-              <path
-                v-else-if="rootStatus === 'running'"
-                class="tests-panel-root-btn-lightning"
-                d="M11 21v-8H7l6-11v8h4l-6 11z"
-                transform="translate(12 12) scale(0.75) translate(-12 -12)"
                 fill="currentColor"
               />
             </svg>
@@ -467,6 +470,10 @@ onMounted(() => {
   padding: 0;
 }
 
+.tests-panel-root-btn {
+  transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease;
+}
+
 .tests-panel-root-btn,
 .tests-panel-reset-btn {
   border: 1px solid #4a6fa5;
@@ -580,8 +587,22 @@ onMounted(() => {
   color: white;
 }
 
-.tests-panel-root-btn-cancel .tests-panel-root-btn-ring {
-  display: none;
+.tests-panel-root-btn-content {
+  opacity: 1;
+  transition: opacity 0.25s ease;
+}
+
+.tests-panel-root-btn-content-hidden {
+  opacity: 0;
+}
+
+.tests-panel-root-btn-cancel-icon {
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.tests-panel-root-btn-cancel-icon-visible {
+  opacity: 1;
 }
 
 .tests-panel-tokens-label {

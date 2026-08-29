@@ -88,72 +88,75 @@ function onClick() {
     @mouseleave="isHovering = false"
   >
     <svg viewBox="0 0 24 24" width="100%" height="100%">
-      <circle
-        class="test-node-btn-ring"
-        :class="{ 'test-node-btn-spinner-indeterminate': isBusy && !hasProgress }"
-        cx="12" cy="12" r="10.9" pathLength="100"
-        fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"
-        :stroke-dasharray="ringDasharray"
-      />
+      <g class="test-node-btn-content" :class="{ 'test-node-btn-content-hidden': showCancel }">
+        <circle
+          class="test-node-btn-ring"
+          :class="{ 'test-node-btn-spinner-indeterminate': isBusy && !hasProgress }"
+          cx="12" cy="12" r="10.9" pathLength="100"
+          fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"
+          :stroke-dasharray="ringDasharray"
+        />
+        <path
+          v-if="status === 'idle'"
+          d="M8 5v14l11-7z"
+          transform="translate(12 12) scale(0.7) translate(-12 -12)"
+          fill="currentColor"
+        />
+        <g v-else-if="status === 'paused'" transform="translate(12 12) scale(0.6) translate(-12 -12)">
+          <rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" />
+          <rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" />
+        </g>
+        <!-- 'running': a worker is inside this exact job's step right now —
+             the lightning marks that specific instant, not "this kind of
+             node is high-priority" (a priority node just gets picked up
+             sooner; once picked up it runs exactly like any other). Drawn
+             inside the same ring as the progress arc, not swapped in place
+             of it, so the percentage stays visible while it's running too. -->
+        <path
+          v-else-if="status === 'running'"
+          class="test-node-btn-lightning"
+          d="M11 21v-8H7l6-11v8h4l-6 11z"
+          transform="translate(12 12) scale(0.75) translate(-12 -12)"
+          fill="currentColor"
+        />
+        <path
+          v-else-if="status === 'requeued'"
+          d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-0.82 2.33-3.04 4-5.65 4c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14 0.69 4.22 1.78L13 11h7V4L17.65 6.35z"
+          transform="translate(12 12) scale(0.7) translate(-12 -12)"
+          fill="currentColor"
+        />
+        <polyline
+          v-else-if="status === 'ok'"
+          class="test-node-btn-check"
+          points="4 13 9 18 20 6"
+          pathLength="100"
+          transform="translate(12 12) scale(0.6) translate(-12 -12)"
+          fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"
+        />
+        <path
+          v-else-if="status === 'warning'"
+          d="M12 3L1 21h22L12 3zm0 5.5l6.6 11.5H5.4L12 8.5zM11 11v4h2v-4h-2zm0 5v2h2v-2h-2z"
+          transform="translate(12 12) scale(0.5) translate(-12 -12)"
+          fill="currentColor"
+        />
+        <path
+          v-else-if="status === 'fail'"
+          d="M12 2a10 10 0 100 20 10 10 0 000-20zm3.5 13.1L15.1 16.5 12 13.4l-3.1 3.1-1.4-1.4L10.6 12 7.5 8.9l1.4-1.4L12 10.6l3.1-3.1 1.4 1.4L13.4 12z"
+          transform="translate(12 12) scale(0.6) translate(-12 -12)"
+          fill="currentColor"
+        />
+        <rect
+          v-else-if="status === 'aborted'"
+          x="7" y="7" width="10" height="10" rx="1.5"
+          transform="translate(12 12) scale(0.85) translate(-12 -12)"
+          fill="currentColor"
+        />
+      </g>
       <path
-        v-if="showCancel"
+        class="test-node-btn-cancel-icon"
+        :class="{ 'test-node-btn-cancel-icon-visible': showCancel }"
         d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
         transform="translate(12 12) scale(0.6) translate(-12 -12)"
-        fill="currentColor"
-      />
-      <path
-        v-else-if="status === 'idle'"
-        d="M8 5v14l11-7z"
-        transform="translate(12 12) scale(0.7) translate(-12 -12)"
-        fill="currentColor"
-      />
-      <g v-else-if="status === 'paused'" transform="translate(12 12) scale(0.6) translate(-12 -12)">
-        <rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" />
-        <rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" />
-      </g>
-      <!-- 'running': a worker is inside this exact job's step right now —
-           the lightning marks that specific instant, not "this kind of
-           node is high-priority" (a priority node just gets picked up
-           sooner; once picked up it runs exactly like any other). Drawn
-           inside the same ring as the progress arc, not swapped in place
-           of it, so the percentage stays visible while it's running too. -->
-      <path
-        v-else-if="status === 'running'"
-        class="test-node-btn-lightning"
-        d="M11 21v-8H7l6-11v8h4l-6 11z"
-        transform="translate(12 12) scale(0.75) translate(-12 -12)"
-        fill="currentColor"
-      />
-      <path
-        v-else-if="status === 'requeued'"
-        d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-0.82 2.33-3.04 4-5.65 4c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14 0.69 4.22 1.78L13 11h7V4L17.65 6.35z"
-        transform="translate(12 12) scale(0.7) translate(-12 -12)"
-        fill="currentColor"
-      />
-      <polyline
-        v-else-if="status === 'ok'"
-        class="test-node-btn-check"
-        points="4 13 9 18 20 6"
-        pathLength="100"
-        transform="translate(12 12) scale(0.6) translate(-12 -12)"
-        fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"
-      />
-      <path
-        v-else-if="status === 'warning'"
-        d="M12 3L1 21h22L12 3zm0 5.5l6.6 11.5H5.4L12 8.5zM11 11v4h2v-4h-2zm0 5v2h2v-2h-2z"
-        transform="translate(12 12) scale(0.5) translate(-12 -12)"
-        fill="currentColor"
-      />
-      <path
-        v-else-if="status === 'fail'"
-        d="M12 2a10 10 0 100 20 10 10 0 000-20zm3.5 13.1L15.1 16.5 12 13.4l-3.1 3.1-1.4-1.4L10.6 12 7.5 8.9l1.4-1.4L12 10.6l3.1-3.1 1.4 1.4L13.4 12z"
-        transform="translate(12 12) scale(0.6) translate(-12 -12)"
-        fill="currentColor"
-      />
-      <rect
-        v-else-if="status === 'aborted'"
-        x="7" y="7" width="10" height="10" rx="1.5"
-        transform="translate(12 12) scale(0.85) translate(-12 -12)"
         fill="currentColor"
       />
     </svg>
@@ -174,6 +177,7 @@ function onClick() {
   color: #4a6fa5;
   cursor: pointer;
   padding: 0;
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
 .test-node-btn:hover:not(:disabled):not(.test-node-btn-cancel) {
@@ -295,7 +299,21 @@ function onClick() {
   color: white;
 }
 
-.test-node-btn-cancel .test-node-btn-ring {
-  display: none;
+.test-node-btn-content {
+  opacity: 1;
+  transition: opacity 0.25s ease;
+}
+
+.test-node-btn-content-hidden {
+  opacity: 0;
+}
+
+.test-node-btn-cancel-icon {
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.test-node-btn-cancel-icon-visible {
+  opacity: 1;
 }
 </style>

@@ -13,6 +13,8 @@ logger = LoggerFactory.get_logger(__name__)
 
 class Job(ABC):
 
+    MAX_RETRIES = 3
+
     @dataclass(frozen=True)
     class STATUS:
         value: str
@@ -35,6 +37,7 @@ class Job(ABC):
         self.__total_steps: int | None = None
         self.__is_failed = False
         self.__try_again = False
+        self.__retry_count = 0
         self.__error: str | None = None
 
     @abstractmethod
@@ -105,12 +108,17 @@ class Job(ABC):
         self.__try_again = False
         try:
             await self._run_next_step()
-        except TryAgainError:
+        except TryAgainError as exc:
+            self.__retry_count += 1
+            if self.__retry_count >= self.MAX_RETRIES:
+                self._fail(str(exc))
+                return
             self.__try_again = True
             return
         except Exception as exc:
             self._fail(str(exc))
             raise
+        self.__retry_count = 0
         self.__steps_done += 1
 
 

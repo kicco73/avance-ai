@@ -287,6 +287,20 @@ def test_try_again_error_requeues_instead_of_failing_the_job():
     assert job.result == "done"
 
 
+def test_try_again_error_becomes_a_permanent_failure_after_max_retries():
+    """A transient failure that never clears (e.g. the AI provider staying
+    down) must not retry forever — after Job.MAX_RETRIES attempts it turns
+    into an ordinary permanent failure instead of requeuing again."""
+    job_queue = _queue()
+    job = _FlakyJob(background=True, fail_times=10, key="flaky")
+
+    job_queue.submit(job)
+
+    assert _wait_until(lambda: job.is_failed())
+    assert not job.is_done()
+    assert job.error() == "attempt 3"
+
+
 def test_try_again_error_forces_tail_even_for_a_priority_job():
     """A non-background job normally jumps straight to the head of the
     deque on resubmission, preempting background work. A TryAgainError

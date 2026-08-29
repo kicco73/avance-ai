@@ -83,3 +83,24 @@ def test_signal_test_rejects_unknown_strategy(client, hello_project):
         f"/api/projects/{hello_project}/signals/foo/test", json={"strategy": "nonsense"},
     )
     assert response.status_code == 400
+
+
+def test_signal_test_picks_up_a_session_labeled_after_the_shared_sessions_job_was_cached(client, hello_project):
+    _make_labeled_session(client)
+
+    response = client.post(
+        f"/api/projects/{hello_project}/signals/foo/test", json={"strategy": "turn_by_turn"},
+    )
+    assert response.status_code == 200, response.text
+    result = _wait_for_aggregate_result(client, hello_project, "signal", "turn_by_turn", target="foo")
+    assert result.status_code == 200, result.text
+
+    _make_labeled_session(client)
+
+    response = client.post(
+        f"/api/projects/{hello_project}/signals/bar/test", json={"strategy": "turn_by_turn"},
+    )
+    assert response.status_code == 200, response.text
+    result = _wait_for_aggregate_result(client, hello_project, "signal", "turn_by_turn", target="bar")
+    assert result.status_code == 200, result.text
+    assert result.json()["sample_count"] == 0

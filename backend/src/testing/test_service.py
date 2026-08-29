@@ -8,6 +8,7 @@ running" can be answered, and only for the lifetime of this process."""
 from __future__ import annotations
 
 from http import HTTPStatus
+from typing import cast
 
 from automaton.automaton import Automaton
 from automaton.automaton_builder import AutomatonBuilder
@@ -56,26 +57,8 @@ class TestService:
 
     def abort_job(self, key: str) -> None:
         job = self._jobs_by_key.get(key)
-        if job is None:
-            return
-        job.abort()
-        self._nudge_aborted(job, set())
-
-    def _nudge_aborted(self, job: CancelableJob, seen: set[CancelableJob]) -> None:
-        # abort() severs the parent-link on every child immediately,
-        # before any child has actually finished -- a job that was still
-        # waiting on live children (never yet pushed into the runnable
-        # queue) loses the one thing (a child's own _dependency_resolved
-        # notification) that would ever have submitted it. Forcing it
-        # into the queue directly is safe: is_aborted() is checked before
-        # any real work runs, so a redundant push onto an already-handled
-        # job is just an immediate no-op raise.
-        if job in seen or not job.is_aborted():
-            return
-        seen.add(job)
-        self._job_queue._submit(job, True)
-        for neighbor in (*job.parents, *job.children):
-            self._nudge_aborted(neighbor, seen)
+        if job is not None:
+            job.abort()
 
     def create_run(self, username: str | None, project_name: str, session_id: int | None, strategy: str) -> dict:
         run, job = self._construct_run(username, project_name, session_id, strategy)
@@ -157,7 +140,7 @@ class TestService:
         for signal_name in self._project_signal_names(project_name):
             found = self._db.find_test_aggregate_result(project_name, 'signal', signal_name, strategy, edit_count)
             aggregates.append({'kind': 'signal', 'target': signal_name, 'status': 'ok' if found is not None else 'idle'})
-        for kind in ('users', 'all_states', 'all_signals'):
+        for kind in ('sessions', 'users', 'all_states', 'all_signals'):
             found = self._db.find_test_aggregate_result(project_name, kind, None, strategy, edit_count)
             aggregates.append({'kind': kind, 'target': None, 'status': 'ok' if found is not None else 'idle'})
 
@@ -239,25 +222,36 @@ class TestService:
         self._submit(job)
         return job
 
+    def _labeled_session_ids(self, project_name: str) -> list[int]:
+        sessions = self._db.list_chat_sessions(None, project_name, type=None)
+        return sorted(int(row['id']) for row in sessions if row['labeled'])
+
     def start_signal_job(self, project_name: str, signal_name: str, strategy: str) -> CancelableJob:
         if strategy not in VALID_STRATEGIES:
             raise ValueError(f"Unknown test strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
-        sessions = self._db.list_chat_sessions(None, project_name, type=None)
-        session_ids = sorted(int(row['id']) for row in sessions if row['labeled'])
+        session_ids = self._labeled_session_ids(project_name)
         job = SignalAggregationJob(self, project_name, signal_name, strategy, session_ids)
         self._submit(job)
         return job
 
-    def _construct_sessions_run_job(self, project_name: str, strategy: str) -> CancelableJob:
+    def start_sessions_run_job(self, project_name: str, strategy: str) -> CancelableJob:
         if strategy not in VALID_STRATEGIES:
             raise ValueError(f"Unknown test strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
-        sessions = self._db.list_chat_sessions(None, project_name, type=None)
-        session_ids = sorted(int(row['id']) for row in sessions if row['labeled'])
-        return PooledAggregationJob(self, project_name, 'sessions', None, strategy, session_ids)
-
-    def start_sessions_run_job(self, project_name: str, strategy: str) -> CancelableJob:
-        job = self._construct_sessions_run_job(project_name, strategy)
+        job = self._sessions_job(project_name, strategy)
         self._submit(job)
+        return job
+
+    def _sessions_job(self, project_name: str, strategy: str) -> PooledAggregationJob:
+        key = f"{strategy}:sessions-branch"
+        session_ids = self._labeled_session_ids(project_name)
+        existing = self._jobs_by_key.get(key)
+        if (
+            existing is not None and not existing.is_aborted() and not existing.is_failed()
+            and cast(PooledAggregationJob, existing).session_ids == session_ids
+        ):
+            return cast(PooledAggregationJob, existing)
+        job = PooledAggregationJob(self, project_name, 'sessions', None, strategy, session_ids)
+        self._jobs_by_key[key] = job
         return job
 
     def start_user_sessions_run_job(self, username: str, project_name: str, strategy: str) -> CancelableJob:
@@ -302,8 +296,7 @@ class TestService:
     def _construct_all_signals_job(self, project_name: str, strategy: str) -> CancelableJob:
         if strategy not in VALID_STRATEGIES:
             raise ValueError(f"Unknown test strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
-        sessions = self._db.list_chat_sessions(None, project_name, type=None)
-        session_ids = sorted(int(row['id']) for row in sessions if row['labeled'])
+        session_ids = self._labeled_session_ids(project_name)
         return AllSignalsAggregationJob(self, project_name, strategy, session_ids, self._project_signal_names(project_name))
 
     def start_all_signals_job(self, project_name: str, strategy: str) -> CancelableJob:
@@ -315,7 +308,7 @@ class TestService:
         if strategy not in VALID_STRATEGIES:
             raise ValueError(f"Unknown test strategy: {strategy!r}. Must be one of {VALID_STRATEGIES}.")
         branch_jobs = [
-            self._construct_sessions_run_job(project_name, strategy),
+            self._sessions_job(project_name, strategy),
             self._construct_all_states_job(project_name, strategy),
             self._construct_users_aggregation_job(project_name, strategy),
             self._construct_all_signals_job(project_name, strategy),

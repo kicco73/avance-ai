@@ -6,6 +6,7 @@ from jobs import CancelableJob
 from metrics.metrics_framework.benchmark_metrics.metrics import Statistics
 
 from .base import _AggregationJob
+from .pooled_aggregation_job import PooledAggregationJob
 from .serialization import _serialize_metric_result
 
 if TYPE_CHECKING:
@@ -28,13 +29,13 @@ class SignalAggregationJob(_AggregationJob):
         super().__init__(service, project_name, 'signal', signal_name, strategy)
         self._signal_name = signal_name
         self._session_ids = session_ids
-        self._sub_run_ids: list[int] = []
+        self._sessions_job: PooledAggregationJob | None = None
         self._pending_run_ids: list[int] = []
         self._accumulator = Statistics.Accumulator()
 
     def _resolve_or_construct_dependencies(self) -> tuple[CancelableJob, ...]:
-        self._sub_run_ids, dependencies = self._resolve_session_ids(self._session_ids)
-        return dependencies
+        self._sessions_job = self._service._sessions_job(self._project_name, self._strategy)
+        return (self._sessions_job,)
 
     def _prepare(self) -> tuple[int, tuple[CancelableJob, ...]]:
         cached = self._cached()
@@ -42,12 +43,15 @@ class SignalAggregationJob(_AggregationJob):
             self._result_value = cached
             return 1, ()
         dependencies = self._resolve_or_construct_dependencies()
-        self._pending_run_ids = list(self._sub_run_ids)
-        return len(self._pending_run_ids) + 1, dependencies
+        return len(self._session_ids) + 1, dependencies
 
     async def _run_next_step(self) -> None:
         if self._result_value is not None:
             return
+        if self._sessions_job is not None:
+            run_ids_by_session = self._sessions_job.run_ids
+            self._pending_run_ids = [run_ids_by_session[sid] for sid in self._session_ids]
+            self._sessions_job = None
         if self._pending_run_ids:
             run_id = self._pending_run_ids.pop(0)
             for observation in self._observations_for_run(run_id):

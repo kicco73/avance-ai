@@ -57,6 +57,14 @@ class _AggregationJob(CancelableJob):
     def _resolve_or_construct_dependencies(self) -> tuple[CancelableJob, ...]:
         raise NotImplementedError
 
+    @property
+    def session_ids(self) -> list[int]:
+        return self._session_ids
+
+    @property
+    def run_ids(self) -> dict[int, int]:
+        return dict(zip(self._session_ids, self._sub_run_ids))
+
     def _resolve_session_ids(self, session_ids: list[int]) -> tuple[list[int], tuple[CancelableJob, ...]]:
         run_ids = []
         dependencies = []
