@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from fastapi.responses import StreamingResponse
 
-from .job import Job
+from .job import DependentJob
 from .job_queue import JobQueue
 
 if TYPE_CHECKING:
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 
 def stream_job_progress(
-    job_queue: JobQueue, broadcaster: "QueueProgressBroadcaster", job: Job
+    job_queue: JobQueue, broadcaster: "QueueProgressBroadcaster", job: DependentJob
 ) -> StreamingResponse:
     """Submits `job` (already carrying its own key/username, see Job.__init__)
     and streams its progress back as SSE on this same response — one

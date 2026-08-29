@@ -6,12 +6,12 @@ import uuid
 from pydantic import ValidationError
 
 from db import Db
-from jobs import Job
+from jobs import CancelableJob
 from schemas import SessionImportJsonRequest
 from tracking.session_import import SessionImportManager
 
 
-class SessionImportJob(Job):
+class SessionImportJob(CancelableJob):
 
     def __init__(
         self, manager: SessionImportManager, db: Db, project_name: str, uploads: list[tuple[str, bytes]],
@@ -26,7 +26,7 @@ class SessionImportJob(Job):
         self._last_session_id: int | None = None
         self._transcript_test_user: str | None = None
 
-    def _prepare(self) -> tuple[int, tuple[Job, ...]]:
+    def _prepare(self) -> tuple[int, tuple[CancelableJob, ...]]:
         for filename, content in self._uploads:
             if (filename or '').lower().endswith('.json'):
                 self._pending.extend(self._parse_json_upload(filename, content))

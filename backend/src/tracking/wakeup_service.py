@@ -7,7 +7,7 @@ from __future__ import annotations
 from chat.ws_adapter import WsAdapter
 from db.db import Db
 from events import EnvChanged, StateChanged, subscribe
-from jobs import Job, JobQueue
+from jobs import CancelableJob, JobQueue
 from logging_factory import LoggerFactory
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
@@ -23,7 +23,7 @@ from tracking.tracking_engine import DbTrackingSink, TrackingEngine
 logger = LoggerFactory.get_logger(__name__)
 
 
-class WakeupJob(Job):
+class WakeupJob(CancelableJob):
 
     def __init__(self, service: "WakeupService", username: str, observer_project_name: str) -> None:
         super().__init__(key=f"wakeup:{observer_project_name}:{username}", username="system")
@@ -31,7 +31,7 @@ class WakeupJob(Job):
         self._username = username
         self._observer_project_name = observer_project_name
 
-    def _prepare(self) -> tuple[int, tuple[Job, ...]]:
+    def _prepare(self) -> tuple[int, tuple[CancelableJob, ...]]:
         return 1, ()
 
     @property

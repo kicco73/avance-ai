@@ -7,7 +7,7 @@ from __future__ import annotations
 from ai.ai_service import AiService
 from chat.session_manager import ChatSessionManager
 from db import Db
-from jobs import Job, JobQueue
+from jobs import CancelableJob, JobQueue
 
 SUMMARY_PROMPT = (
     "Summarize the salient points of the following conversation in a few "
@@ -17,7 +17,7 @@ SUMMARY_PROMPT = (
 )
 
 
-class SessionSummaryJob(Job):
+class SessionSummaryJob(CancelableJob):
 
     def __init__(self, db: Db, ai_service: AiService, session_id: int, summary_id: int) -> None:
         super().__init__(key=f"session-summary:{session_id}", username="system")
@@ -26,7 +26,7 @@ class SessionSummaryJob(Job):
         self._session_id = session_id
         self._summary_id = summary_id
 
-    def _prepare(self) -> tuple[int, tuple[Job, ...]]:
+    def _prepare(self) -> tuple[int, tuple[CancelableJob, ...]]:
         return 1, ()
 
     @property

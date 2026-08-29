@@ -6,7 +6,7 @@ import time
 import pytest
 
 from conftest import NullBroadcaster
-from jobs import Job, ThrottledJobQueue
+from jobs import CancelableJob, ThrottledJobQueue
 from jobs import throttled_job_queue as throttled_job_queue_module
 
 pytestmark = pytest.mark.contract
@@ -37,14 +37,14 @@ def fake_time(monkeypatch):
     return fake
 
 
-class _TimestampedJob(Job):
+class _TimestampedJob(CancelableJob):
     def __init__(self, key: str, log: list[float], fake_time: _FakeTime, is_background: bool = True) -> None:
         super().__init__(key=key, username="test")
         self._log = log
         self._fake_time = fake_time
         self._is_background = is_background
 
-    def _prepare(self) -> tuple[int, list[Job]]:
+    def _prepare(self) -> tuple[int, list[CancelableJob]]:
         return 1, []
 
     @property
@@ -203,11 +203,11 @@ class _BlockingTime:
         self._release.set()
 
 
-class _NoOpJob(Job):
+class _NoOpJob(CancelableJob):
     def __init__(self, key: str) -> None:
         super().__init__(key=key, username="test")
 
-    def _prepare(self) -> tuple[int, list[Job]]:
+    def _prepare(self) -> tuple[int, list[CancelableJob]]:
         return 1, []
 
     @property

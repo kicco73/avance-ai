@@ -7,7 +7,7 @@ from typing import ClassVar, TYPE_CHECKING
 
 from logging_factory import LoggerFactory
 
-from .job import Job
+from .job import DependentJob
 from .job_queue import JobQueue
 
 if TYPE_CHECKING:
@@ -41,7 +41,7 @@ class ThrottledJobQueue(JobQueue):
         self.__min_job_interval_ms = min_job_interval_ms
         super().__init__(max_concurrent, broadcaster)
 
-    def __eventually_wait_required_time_and_notify(self, job: Job) -> None:
+    def __eventually_wait_required_time_and_notify(self, job: DependentJob) -> None:
         while True:
             with self.__throttle_lock:
                 now = time.monotonic()
@@ -67,7 +67,7 @@ class ThrottledJobQueue(JobQueue):
             time.sleep(wait_seconds)
             self._broadcast_status(job, self.STATUS.running)
 
-    def _continue(self, job: Job) -> None:
+    def _continue(self, job: DependentJob) -> None:
         if job.is_background:
             self.__eventually_wait_required_time_and_notify(job)
         super()._continue(job)

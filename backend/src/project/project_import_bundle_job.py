@@ -4,14 +4,14 @@ import json
 import uuid
 
 from db import Db
-from jobs import Job
+from jobs import CancelableJob
 from logging_factory import LoggerFactory
 from tracking.session_import import SessionImportManager
 
 logger = LoggerFactory.get_logger(__name__)
 
 
-class ProjectImportBundleJob(Job):
+class ProjectImportBundleJob(CancelableJob):
     """ProjectManager.put_project's own returned job: once a project
     upload's definition itself is staged and committed, imports whatever
     sessions.json/tests.json its zip bundled — one entry at a time
@@ -33,7 +33,7 @@ class ProjectImportBundleJob(Job):
         self._edit_count: int | None = None
         self._pending: list[tuple] = []
 
-    def _prepare(self) -> tuple[int, tuple[Job, ...]]:
+    def _prepare(self) -> tuple[int, tuple[CancelableJob, ...]]:
         if self._sessions:
             self._db.publish_project(self._project_name)
         if self._test_entries:

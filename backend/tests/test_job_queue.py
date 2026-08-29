@@ -6,7 +6,7 @@ import time
 import pytest
 
 from conftest import NullBroadcaster
-from jobs import Job, JobQueue
+from jobs import CancelableJob, JobQueue
 from try_again_error import TryAgainError
 
 pytestmark = pytest.mark.contract
@@ -25,13 +25,13 @@ def _wait_until(predicate, timeout=2.0, interval=0.01) -> bool:
     return predicate()
 
 
-class _QuickJob(Job):
+class _QuickJob(CancelableJob):
     def __init__(self, started: threading.Event | None = None) -> None:
         super().__init__(key="quick", username="test")
         self._started = started
         self._result: str | None = None
 
-    def _prepare(self) -> tuple[int, list[Job]]:
+    def _prepare(self) -> tuple[int, list[CancelableJob]]:
         return 1, []
 
     @property
@@ -44,12 +44,12 @@ class _QuickJob(Job):
         self._result = "done"
 
 
-class _RaisingJob(Job):
+class _RaisingJob(CancelableJob):
     def __init__(self, message: str) -> None:
         super().__init__(key="raising", username="test")
         self._message = message
 
-    def _prepare(self) -> tuple[int, list[Job]]:
+    def _prepare(self) -> tuple[int, list[CancelableJob]]:
         return 1, []
 
     @property
@@ -60,18 +60,18 @@ class _RaisingJob(Job):
         raise ValueError(self._message)
 
 
-class _WaiterJob(Job):
+class _WaiterJob(CancelableJob):
     """Stands in for an aggregation job: its own _run_next_step would
     otherwise always succeed, regardless of whether the dependency it
     waited on failed — mirrors an aggregation reading whatever partial
     data is left behind, with no exception of its own."""
 
-    def __init__(self, dependency: Job, key: str = "waiter") -> None:
+    def __init__(self, dependency: CancelableJob, key: str = "waiter") -> None:
         super().__init__(key=key, username="test")
         self._dependency = dependency
         self._result: str | None = None
 
-    def _prepare(self) -> tuple[int, list[Job]]:
+    def _prepare(self) -> tuple[int, list[CancelableJob]]:
         return 1, [self._dependency]
 
     @property
@@ -82,7 +82,7 @@ class _WaiterJob(Job):
         self._result = "done"
 
 
-class _FlakyJob(Job):
+class _FlakyJob(CancelableJob):
     """Raises TryAgainError on its first `fail_times` attempts, then
     succeeds — records its own key into `order` (if given) only on the
     attempt that actually succeeds."""
@@ -95,7 +95,7 @@ class _FlakyJob(Job):
         self._order = order
         self._result: str | None = None
 
-    def _prepare(self) -> tuple[int, list[Job]]:
+    def _prepare(self) -> tuple[int, list[CancelableJob]]:
         return 1, []
 
     @property
@@ -115,13 +115,13 @@ class _FlakyJob(Job):
             self._order.append(self.key)
 
 
-class _BlockingJob(Job):
+class _BlockingJob(CancelableJob):
     def __init__(self, started: threading.Event, release: threading.Event) -> None:
         super().__init__(key="blocking", username="test")
         self._started = started
         self._release = release
 
-    def _prepare(self) -> tuple[int, list[Job]]:
+    def _prepare(self) -> tuple[int, list[CancelableJob]]:
         return 1, []
 
     @property

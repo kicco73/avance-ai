@@ -10,7 +10,7 @@ from typing import ClassVar, TYPE_CHECKING
 
 from logging_factory import LoggerFactory
 from try_again_error import TryAgainError
-from .job import Job
+from .job import DependentJob
 
 if TYPE_CHECKING:
     from metrics.queue_progress_broadcaster import QueueProgressBroadcaster
@@ -26,7 +26,7 @@ class JobQueue(object):
 
     @dataclass(frozen=True)
     class STATUS:
-        status: str
+        value: str
         ready: ClassVar["JobQueue.STATUS"]
         running: ClassVar["JobQueue.STATUS"]
         exited: ClassVar["JobQueue.STATUS"]
@@ -35,18 +35,18 @@ class JobQueue(object):
     STATUS.running = STATUS("running")
     STATUS.exited = STATUS("exited")
 
-    def __init__(self, max_concurrent: int, broadcaster: "QueueProgressBroadcaster") -> None:
+    def __init__(self, max_concurrent: int, broadcaster: QueueProgressBroadcaster) -> None:
         self._broadcaster = broadcaster
         self._lock = threading.RLock()
         self._not_empty = threading.Condition(self._lock)
-        self._deque: deque[Job] = deque()
-        self._waiters: dict[Job, list[threading.Event]] = {}
+        self._deque: deque[DependentJob] = deque()
+        self._waiters: dict[DependentJob, list[threading.Event]] = {}
 
         for i in range(max_concurrent):
             thread = threading.Thread(target=self.__worker_loop, name=f"job-worker-{i}", daemon=True)
             thread.start()
 
-    def __forget(self, job: Job) -> STATUS:
+    def __forget(self, job: DependentJob) -> STATUS:
         ready = [p for p in job.parents if p is not job and p._dependency_resolved(job)]
         with self._lock:
             events = self._waiters.pop(job, [])
@@ -58,7 +58,7 @@ class JobQueue(object):
 
         return self.STATUS.exited
 
-    def _submit(self, job: Job, low_priority : bool) -> STATUS:
+    def _submit(self, job: DependentJob, low_priority : bool) -> STATUS:
         with self._not_empty:
             if low_priority:
                 self._deque.append(job)
@@ -67,13 +67,13 @@ class JobQueue(object):
             self._not_empty.notify()
         return self.STATUS.ready
 
-    def __dequeue(self) -> Job:
+    def __dequeue(self) -> DependentJob:
         with self._not_empty:
             while not self._deque:
                 self._not_empty.wait()
             return self._deque.popleft()
 
-    def _continue(self, job: Job) -> None:
+    def _continue(self, job: DependentJob) -> None:
         """Called when a worker would begin to run step."""
         return
 
@@ -81,18 +81,18 @@ class JobQueue(object):
         with self._not_empty:
             return bool(self._deque) and not self._deque[0].is_background
 
-    def _broadcast_status(self, job: Job, queue_status: JobQueue.STATUS) -> None:
+    def _broadcast_status(self, job: DependentJob, queue_status: JobQueue.STATUS) -> None:
         status = {
             "key": job.key,
             "job_status": job.status().value,
             "percentage": job.progress(),
             "result": job.result,
             "error": job.error(),
-            "queue_status": queue_status.status,
+            "queue_status": queue_status.value,
         }
         self._broadcaster.push(job.username, status)
 
-    def __execute_job_step(self, job: Job, loop: asyncio.AbstractEventLoop) -> None:
+    def __execute_job_step(self, job: DependentJob, loop: asyncio.AbstractEventLoop) -> None:
 
         while not job.is_done():
             self._continue(job)
@@ -124,7 +124,7 @@ class JobQueue(object):
             job = self.__dequeue()
             self.__execute_job_step(job, loop)
 
-    def submit(self, job: Job, parent: Job | None = None) -> None:
+    def submit(self, job: DependentJob, parent: DependentJob | None = None) -> None:
         with self._lock:
             if not job.is_pending():
                 if parent is not None and job._add_parent_job(parent) and parent._dependency_resolved(job):
@@ -143,7 +143,7 @@ class JobQueue(object):
             self._broadcast_status(job, status)
 
 
-    async def wait_for(self, job: Job) -> None:
+    async def wait_for(self, job: DependentJob) -> None:
         connection = self._broadcaster.connect(job.username)
         try:
             while not (job.is_done() or job.is_failed()):
