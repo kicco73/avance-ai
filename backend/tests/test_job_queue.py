@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import threading
 import time
 
@@ -326,3 +327,36 @@ def test_try_again_error_forces_tail_even_for_a_priority_job():
 
     assert _wait_until(lambda: flaky.is_done() and background_job.is_done())
     assert completion_order == ["background", "flaky"]
+
+
+async def test_abort_broadcasts_a_parent_left_only_waiting_on_a_child():
+    """A parent job that's just waiting on a still-running child — no
+    worker loop ever revisits it — used to get silently orphaned by
+    cancel(): the child would eventually broadcast its own cancellation,
+    but nothing ever told the parent's own waiters it was done too. See
+    JobQueue.cancel(): it now broadcasts every job the cascade actually
+    aborts, not just whichever ones a worker happens to step through."""
+    started = threading.Event()
+    release = threading.Event()
+    broadcaster = NullBroadcaster()
+    job_queue = JobQueue(max_concurrent=1, broadcaster=broadcaster)
+    connection = broadcaster.connect("test")
+
+    blocking = _BlockingJob(started, release)
+    waiter = _WaiterJob(blocking)
+    job_queue.submit(waiter)
+    assert started.wait(timeout=2.0)
+
+    job_queue.cancel(waiter)
+
+    messages = []
+    try:
+        while True:
+            messages.append(await asyncio.wait_for(connection.get(), timeout=1.0))
+    except asyncio.TimeoutError:
+        pass
+
+    release.set()
+
+    assert any(m["key"] == waiter.key and m["job_status"] == "aborted" for m in messages), messages
+    assert any(m["key"] == blocking.key and m["job_status"] == "aborted" for m in messages), messages

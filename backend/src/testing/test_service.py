@@ -58,7 +58,7 @@ class TestService:
     def abort_job(self, key: str) -> None:
         job = self._jobs_by_key.get(key)
         if job is not None:
-            job.abort()
+            self._job_queue.cancel(job)
 
     def create_run(self, username: str | None, project_name: str, session_id: int | None, strategy: str) -> dict:
         run, job = self._construct_run(username, project_name, session_id, strategy)

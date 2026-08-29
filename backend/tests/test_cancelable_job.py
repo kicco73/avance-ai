@@ -41,7 +41,7 @@ def test_abort_on_a_standalone_job_marks_it_aborted():
     a = _Node("a")
     _link(a)
 
-    a.abort()
+    a.cancel()
 
     assert a.is_aborted()
 
@@ -50,7 +50,7 @@ def test_status_reports_aborted_after_abort():
     a = _Node("a")
     _link(a)
 
-    a.abort()
+    a.cancel()
 
     assert a.status() is CancelableJob.STATUS.aborted
 
@@ -60,7 +60,7 @@ def test_aborting_a_root_cascades_to_its_only_dependency():
     a = _Node("a", [b])
     _link(a)
 
-    a.abort()
+    a.cancel()
 
     assert a.is_aborted()
     assert b.is_aborted()
@@ -74,7 +74,7 @@ def test_an_independently_launched_dependency_survives_its_only_dependent_being_
     a = _Node("a", [b])
     _link(a)
 
-    a.abort()
+    a.cancel()
 
     assert a.is_aborted()
     assert not b.is_aborted()
@@ -88,7 +88,7 @@ def test_a_shared_dependency_survives_while_another_root_still_needs_it():
     _link(a)
     _link(c)
 
-    a.abort()
+    a.cancel()
 
     assert a.is_aborted()
     assert not b.is_aborted()
@@ -102,8 +102,8 @@ def test_a_shared_dependency_aborts_once_every_root_that_needs_it_is_gone():
     _link(a)
     _link(c)
 
-    a.abort()
-    c.abort()
+    a.cancel()
+    c.cancel()
 
     assert a.is_aborted()
     assert c.is_aborted()
@@ -120,7 +120,7 @@ def test_force_aborting_a_shared_dependency_cascades_upward_to_every_root_that_n
     _link(a)
     _link(c)
 
-    b.abort()
+    b.cancel()
 
     assert b.is_aborted()
     assert a.is_aborted()
@@ -134,7 +134,7 @@ def test_a_diamond_shaped_graph_cascades_fully_when_the_root_aborts():
     a = _Node("a", [x, y])
     _link(a)
 
-    a.abort()
+    a.cancel()
 
     assert a.is_aborted()
     assert x.is_aborted()
@@ -146,7 +146,7 @@ async def test_run_next_step_refuses_to_run_an_aborted_job():
     a = _Node("a")
     _link(a)
 
-    a.abort()
+    a.cancel()
 
     with pytest.raises(ValueError):
         await a.run_next_step()

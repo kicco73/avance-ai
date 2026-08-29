@@ -113,6 +113,7 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
   // its icon for a cancel affordance instead of disabling the button outright.
   const isHoveringRoot = ref(false)
   const showCancelRoot = computed(() => isHoveringRoot.value && rootBusy.value)
+  const showPlayOnHoverRoot = computed(() => isHoveringRoot.value && rootStatus.value === 'aborted')
 
   const selectedCacheKey = computed(() => (
     selectedNodeId.value ? cacheKey(strategy.value, selectedNodeId.value) : null
@@ -475,7 +476,7 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
   return {
     tokensBurnt, nodeEvents, nodeLastResult, selectedNodeId, selectedRun, selectedRunLoading,
     currentStrategyStatuses, currentStrategyProgress,
-    rootStatus, rootBusy, rootButtonState, isHoveringRoot, showCancelRoot,
+    rootStatus, rootBusy, rootButtonState, isHoveringRoot, showCancelRoot, showPlayOnHoverRoot,
     selectedCacheKey, selectedNodeError, selectedNodeLabel, signalLabel, anyTestExecuted,
     handleTestEvent, hydrateJobsStatus,
     onActivate, onAbort, onActivateRoot, onSelect,

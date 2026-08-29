@@ -80,7 +80,7 @@ function formatNumber(value) {
 const {
   tokensBurnt, nodeLastResult, selectedNodeId, selectedRun, selectedRunLoading,
   currentStrategyStatuses, currentStrategyProgress,
-  rootStatus, rootBusy, rootButtonState, isHoveringRoot, showCancelRoot,
+  rootStatus, rootBusy, rootButtonState, isHoveringRoot, showCancelRoot, showPlayOnHoverRoot,
   selectedCacheKey, selectedNodeError, selectedNodeLabel, anyTestExecuted,
   onActivate, onAbort, onActivateRoot, onSelect,
   resettingCache, onResetCache,
@@ -172,7 +172,8 @@ onMounted(() => {
               <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm3.5 13.1L15.1 16.5 12 13.4l-3.1 3.1-1.4-1.4L10.6 12 7.5 8.9l1.4-1.4L12 10.6l3.1-3.1 1.4 1.4L13.4 12z" />
             </svg>
             <svg v-else-if="rootStatus === 'aborted'" viewBox="0 0 24 24" width="10" height="10" fill="currentColor">
-              <rect x="4" y="4" width="16" height="16" rx="2" />
+              <path v-if="showPlayOnHoverRoot" d="M8 5v14l11-7z" />
+              <rect v-else x="4" y="4" width="16" height="16" rx="2" />
             </svg>
           </button>
           <button

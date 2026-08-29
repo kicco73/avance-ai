@@ -62,6 +62,7 @@ const buttonState = computed(() => (props.status === 'running' ? 'running' : (is
 // events across browsers).
 const isHovering = ref(false)
 const showCancel = computed(() => isHovering.value && isBusy.value)
+const showPlayOnHover = computed(() => isHovering.value && props.status === 'aborted')
 
 function onClick() {
   if (showCancel.value) {
@@ -143,6 +144,12 @@ function onClick() {
           v-else-if="status === 'fail'"
           d="M12 2a10 10 0 100 20 10 10 0 000-20zm3.5 13.1L15.1 16.5 12 13.4l-3.1 3.1-1.4-1.4L10.6 12 7.5 8.9l1.4-1.4L12 10.6l3.1-3.1 1.4 1.4L13.4 12z"
           transform="translate(12 12) scale(0.6) translate(-12 -12)"
+          fill="currentColor"
+        />
+        <path
+          v-else-if="status === 'aborted' && showPlayOnHover"
+          d="M8 5v14l11-7z"
+          transform="translate(12 12) scale(0.7) translate(-12 -12)"
           fill="currentColor"
         />
         <rect

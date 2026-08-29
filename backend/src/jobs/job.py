@@ -217,21 +217,26 @@ class CancelableJob(DependentJob):
             return self.STATUS.aborted
         return super().status()
 
-    def abort(self) -> None:
+    def cancel(self) -> tuple["CancelableJob", ...]:
+        aborted: tuple[CancelableJob, ...] = ()
         for p in self.parents:
             if p is not self:
-                p.abort()
+                aborted += p.cancel()
         while self.parents:
-            self._remove_parent_job(self.parents[0])
+            aborted += self._remove_parent_job(self.parents[0])
+        return aborted
 
-    def _remove_parent_job(self, job: CancelableJob) -> None:
-        if self._remove_parent(job):
-            # I have no father depending on myself, I'm orphan.
-            # Aborting.
-            self.__is_aborted = True
-            # removing myself from my children, they are no more needed.
-            for dep in self.children:
-                dep._remove_parent_job(self)
+    def _remove_parent_job(self, job: CancelableJob) -> tuple["CancelableJob", ...]:
+        if not self._remove_parent(job):
+            return ()
+        # I have no father depending on myself, I'm orphan.
+        # Aborting.
+        self.__is_aborted = True
+        # removing myself from my children, they are no more needed.
+        aborted: tuple[CancelableJob, ...] = (self,)
+        for dep in self.children:
+            aborted += dep._remove_parent_job(self)
+        return aborted
 
     async def run_next_step(self) -> None:
         if self.is_aborted():

@@ -9,7 +9,7 @@ from typing import ClassVar, TYPE_CHECKING
 # Instructions for Claude Code: DO NOT TOUCH THIS FILE
 
 from logging_factory import LoggerFactory
-from .job import DependentJob
+from .job import CancelableJob, DependentJob
 
 if TYPE_CHECKING:
     from metrics.queue_progress_broadcaster import QueueProgressBroadcaster
@@ -141,6 +141,10 @@ class JobQueue(object):
         if job._children_registered():
             status = self._submit(job, job.is_background)
             self._broadcast_status(job, status)
+
+    def cancel(self, job: CancelableJob) -> None:
+        for canceled_job in job.cancel():
+            self._broadcast_status(canceled_job, self.STATUS.exited)
 
 
     async def wait_for(self, job: DependentJob) -> None:
