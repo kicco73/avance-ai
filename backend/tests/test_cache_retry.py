@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from db import Db
-from jobs import Job
+from jobs import CancelableJob, Job
 from testing.cache import TestCache
 
 pytestmark = pytest.mark.contract
@@ -30,6 +30,21 @@ class _FakeJob(Job):
     async def _run_next_step(self) -> None:
         if self._should_fail:
             raise RuntimeError("boom")
+
+
+class _FakeCancelableJob(CancelableJob):
+    def __init__(self) -> None:
+        super().__init__(key="fake", username="test")
+
+    def _prepare(self) -> tuple[int, tuple[CancelableJob, ...]]:
+        return 1, ()
+
+    @property
+    def result(self) -> str | None:
+        return None
+
+    async def _run_next_step(self) -> None:
+        return
 
 
 def _make_dead_run(db: Db, session_id: int) -> dict:
@@ -89,6 +104,23 @@ def test_find_treats_a_row_with_no_tracked_job_at_all_as_a_cache_miss(db: Db):
         found = cache.find(session_id, "batch", 1, 0)
 
     assert found is None
+
+
+def test_find_treats_an_aborted_jobs_run_as_a_cache_miss_and_forgets_it(db: Db):
+    db.ensure_project("proj")
+    session_id = db.create_chat_session("user", "proj", revision=0)
+    run = _make_dead_run(db, session_id)
+
+    cache = TestCache(db)
+    job = _FakeCancelableJob()
+    job.prepare()
+    job.cancel()
+    with cache.locked():
+        cache.track(run["id"], job)
+        found = cache.find(session_id, "batch", 1, 0)
+
+    assert found is None
+    assert cache.live_job_for(run["id"]) is None
 
 
 def test_find_returns_a_completed_run_regardless_of_tracked_job_state(db: Db):

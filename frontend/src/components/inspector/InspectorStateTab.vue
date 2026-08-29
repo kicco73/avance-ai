@@ -94,6 +94,7 @@ onMounted(loadProjectMetadata)
 <template>
   <div class="inspector-state-tab">
     <InspectorProjectCard
+      v-if="!readOnly"
       :project="projectMetadata"
       :editable="!readOnly"
       @set-field="(field, value) => emit('set-project-field', field, value)"

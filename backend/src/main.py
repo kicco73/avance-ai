@@ -138,7 +138,7 @@ def create_app() -> FastAPI:
         )
 
         test_service = TestService(
-            db, ai_test_service, tracking_service, test_job_queue,
+            db, ai_test_service, tracking_service, test_job_queue, project_service,
         )
 
         # Availability cascade (see ProjectService.recompute_availability/

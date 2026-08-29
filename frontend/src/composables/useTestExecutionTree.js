@@ -1,6 +1,6 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
-  createTestEventsSource, deleteTestJob, deleteTests, getAggregateResult, getTests, getJobsStatus,
+  createTestEventsSource, deleteAllTestJobs, deleteTestJob, deleteTests, getAggregateResult, getTests, getJobsStatus,
   postTest, postRootAggregation, postSessionsRun, postSignalTest, postSignalsAggregation,
   postStateTest, postStatesAggregation, postUserSessionsRun, postUsersAggregation,
 } from '../api.js'
@@ -100,21 +100,6 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
     return result
   })
 
-  // The project-wide "run everything" control lives in this panel's own
-  // header (styled like the reset button next to it), not in TestsTree —
-  // 'root' has no row of its own in the tree any more.
-  const rootStatus = computed(() => currentStrategyStatuses.value.root ?? 'idle')
-  const rootBusy = computed(() => ['pending', 'ready', 'running', 'paused'].includes(rootStatus.value))
-  // See TestNodeButton's own buttonState: 'running' (actively being
-  // executed right now) is the only busy state that reads green — every
-  // other in-flight state ('pending'/'ready'/'paused') stays blue.
-  const rootButtonState = computed(() => (rootStatus.value === 'running' ? 'running' : (rootBusy.value ? 'ready' : rootStatus.value)))
-  // See TestNodeButton's own showCancel: hovering any in-flight root swaps
-  // its icon for a cancel affordance instead of disabling the button outright.
-  const isHoveringRoot = ref(false)
-  const showCancelRoot = computed(() => isHoveringRoot.value && rootBusy.value)
-  const showPlayOnHoverRoot = computed(() => isHoveringRoot.value && rootStatus.value === 'aborted')
-
   const selectedCacheKey = computed(() => (
     selectedNodeId.value ? cacheKey(strategy.value, selectedNodeId.value) : null
   ))
@@ -132,7 +117,10 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
   // on purpose, so it's translated into the same two-field shape a real
   // message carries, and outcome() never needs to special-case its origin.
   function setNodeEvent(key, jobStatus, error = null) {
-    const queueStatus = jobStatus === 'completed' || jobStatus === 'failed' ? 'exited' : jobStatus === 'running' ? 'running' : 'ready'
+    const queueStatus = (
+      jobStatus === 'completed' || jobStatus === 'failed' || jobStatus === 'aborted' ? 'exited'
+      : jobStatus === 'running' ? 'running' : 'ready'
+    )
     nodeEvents.value = { ...nodeEvents.value, [key]: { key, job_status: jobStatus, queue_status: queueStatus, percentage: null, error } }
   }
 
@@ -358,12 +346,15 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
     }
   }
 
-  function onActivateRoot() {
-    if (showCancelRoot.value) {
-      onAbort('root')
+  async function onActivateRoot() {
+    if (anyJobBusy.value) {
+      try {
+        await deleteAllTestJobs(projectName)
+      } catch {
+        // already surfaced via apiFetch
+      }
       return
     }
-    if (rootBusy.value) return
     onActivate('root')
   }
 
@@ -431,6 +422,16 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
 
   const anyTestExecuted = computed(() => Object.keys(nodeEvents.value).length > 0)
 
+  // reset_cache() wipes every test row project-wide, both strategies at
+  // once — a job still in flight under either one must be stopped or let
+  // finish first, so this checks every tracked node's raw status, not
+  // just the currently selected strategy's own view of them.
+  const anyJobBusy = computed(() => (
+    Object.values(nodeEvents.value).some((message) => (
+      ['pending', 'ready', 'running', 'paused', 'requeued'].includes(outcome(message))
+    ))
+  ))
+
   async function onResetCache() {
     if (strategy.value === 'turn_by_turn') {
       const ok = await confirmDialog({
@@ -446,6 +447,7 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
       await deleteTests(projectName)
       nodeEvents.value = {}
       nodeLastResult.value = {}
+      tokensBurnt.value = 0
       selectedRun.value = null
       if (selectedNodeId.value && isRunNode(selectedNodeId.value)) {
         await loadSelectedRun(selectedNodeId.value)
@@ -476,8 +478,7 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
   return {
     tokensBurnt, nodeEvents, nodeLastResult, selectedNodeId, selectedRun, selectedRunLoading,
     currentStrategyStatuses, currentStrategyProgress,
-    rootStatus, rootBusy, rootButtonState, isHoveringRoot, showCancelRoot, showPlayOnHoverRoot,
-    selectedCacheKey, selectedNodeError, selectedNodeLabel, signalLabel, anyTestExecuted,
+    selectedCacheKey, selectedNodeError, selectedNodeLabel, signalLabel, anyTestExecuted, anyJobBusy,
     handleTestEvent, hydrateJobsStatus,
     onActivate, onAbort, onActivateRoot, onSelect,
     resettingCache, onResetCache,

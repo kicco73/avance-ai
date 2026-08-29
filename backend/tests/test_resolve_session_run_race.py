@@ -77,3 +77,26 @@ def test_resolve_or_construct_session_run_serializes_racing_callers(monkeypatch,
 
     runs = [run for run in app_db.list_tests(hello_project, session_id) if run["strategy"] == "turn_by_turn"]
     assert len(runs) == 1, f"expected exactly one run for the shared session, got {len(runs)}"
+
+
+def test_resolve_or_construct_session_run_treats_an_aborted_run_as_retryable(client, app_db, hello_project):
+    """An aborted run must not be handed back as if it were still live —
+    see TestService._status_for() and TestCache.find(): before those knew
+    about is_aborted(), a cancelled TestReplayJob kept reporting 'running'
+    forever, so the next click got back that same dead job instead of a
+    fresh one, and nothing new ever ran."""
+    session_id = _make_labeled_session(client, app_db, hello_project, "alice")
+    test_service = client.app.state.test_service
+    Session().user = "user"
+
+    job = PooledAggregationJob(test_service, hello_project, 'sessions', None, 'turn_by_turn', [session_id])
+    first_run_id, first_job = job._resolve_or_construct_session_run(session_id)
+    assert first_job is not None
+    first_job.prepare()
+    first_job.cancel()
+
+    _, second_job = job._resolve_or_construct_session_run(session_id)
+
+    assert second_job is not None
+    assert second_job is not first_job
+    assert not second_job.is_aborted()

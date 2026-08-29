@@ -31,7 +31,7 @@ def _build(app_db: Db) -> tuple[ProjectService, AvanceController, JobQueue, Queu
         app_db, fake_ai_service, fake_ai_service, project_service, session_manager,
         tracking_service, metric_service, job_queue,
     )
-    test_service = TestService(app_db, fake_ai_service, tracking_service, job_queue)
+    test_service = TestService(app_db, fake_ai_service, tracking_service, job_queue, project_service)
     auth_service = AuthService(app_db, [], token_ttl_in_hours=24 * 7)
     controller = AvanceController(
         chat_service, project_service, None, None, app_db, tracking_service, test_service,

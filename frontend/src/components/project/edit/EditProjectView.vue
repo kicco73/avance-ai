@@ -17,6 +17,7 @@ import InspectorStateTab from '../../inspector/InspectorStateTab.vue'
 import InspectorActionsTab from '../../inspector/InspectorActionsTab.vue'
 import SessionDetailCard from '../../inspector/SessionDetailCard.vue'
 import InspectorUserInfoCard from '../../inspector/InspectorUserInfoCard.vue'
+import InspectorSignalDetailCard from '../../inspector/InspectorSignalDetailCard.vue'
 import ModelMenu from '../../ModelMenu.vue'
 import SettingsMenu from '../../settings/SettingsMenu.vue'
 import ProfileMenu from '../../ProfileMenu.vue'
@@ -33,6 +34,7 @@ import {
   getSessionSignals,
   getSessions,
   getProjectGraph,
+  getProjectSignals,
   getStateInputTokens,
   getUsers
 } from '../../../api.js'
@@ -205,6 +207,29 @@ const autoSelectedUser = computed(() => {
 const autoSelectedElement = computed(() => {
   const key = autoSelectedStateKey.value
   return key == null ? null : (indexYmlEditorRef.value?.stateElementFor(key) ?? null)
+})
+
+// The Test tree's per-signal leaves — resolved against signalsList (loaded
+// lazily, same shape as usersList above) for the read-only detail card
+// (see InspectorSignalDetailCard.vue).
+const signalsList = ref([])
+let signalsListLoaded = false
+async function ensureSignalsList() {
+  if (signalsListLoaded) return
+  signalsListLoaded = true
+  try {
+    signalsList.value = (await getProjectSignals(props.projectName, null, null)).signals
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+const autoSelectedSignalName = computed(() => {
+  const id = autoSelectedNodeId.value
+  return id && id.startsWith('signal:') ? id.slice('signal:'.length) : null
+})
+const autoSelectedSignal = computed(() => {
+  const name = autoSelectedSignalName.value
+  return name == null ? null : (signalsList.value.find((s) => s.signal.name === name)?.signal ?? null)
 })
 
 // A selected session's own start/end state — same resolution as
@@ -503,7 +528,10 @@ function setMode(next) {
   // Only chatSkin.js's own skin routing reads this — see its own docstring.
   activeChatMode.value = next === 'run' ? 'test' : 'live'
   if (next === 'run') ensureDraftChatSession()
-  if (next === 'test') ensureUsersList()
+  if (next === 'test') {
+    ensureUsersList()
+    ensureSignalsList()
+  }
 }
 
 onBeforeUnmount(() => { activeChatMode.value = 'live' })
@@ -875,7 +903,13 @@ onBeforeUnmount(() => {
               />
             </template>
             <template #tab-state="{ registerTab }">
+              <InspectorSignalDetailCard
+                v-if="mode === 'test' && autoSelectedSignalName != null"
+                :ref="registerTab('state')"
+                :signal="autoSelectedSignal"
+              />
               <InspectorStateTab
+                v-else
                 :ref="registerTab('state')"
                 :project-name="projectName"
                 :selected-element="mode === 'test' ? autoSelectedElement : stateTabElement"

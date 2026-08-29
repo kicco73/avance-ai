@@ -9,6 +9,7 @@ import TriggerEditor from './TriggerEditor.vue'
 import OnEnterEditor from './OnEnterEditor.vue'
 import { handleEnterNext } from './enterToNextField.js'
 import { useFloatingTooltip } from '../../useFloatingTooltip.js'
+import { useTokensBar } from '../../composables/useTokensBar.js'
 
 const props = defineProps({
   selectedElement: { type: Object, default: null }, // { kind: 'state' | 'action', data } | null
@@ -52,19 +53,10 @@ const emit = defineEmits(['select-attachment', 'jump-to-attachment', 'close', 's
 
 const showEditForm = computed(() => props.editable && props.open)
 
-// stateTokens' own bar: green under 750, orange under 1000, red at/above
-// it — the fill itself is capped at 1000 (never overflows the track)
-// even when the real count is higher; the exact number stays available
-// on hover via the floating tooltip below.
+// stateTokens' own bar — see useTokensBar.js. The exact number stays
+// available on hover via the floating tooltip below.
 const TOKENS_BAR_MAX = 1000
-const TOKENS_ORANGE_FROM = 750
-const TOKENS_RED_FROM = 1000
-const tokensBarWidth = computed(() => `${Math.min(props.stateTokens ?? 0, TOKENS_BAR_MAX) / TOKENS_BAR_MAX * 100}%`)
-const tokensBarLevel = computed(() => {
-  if (props.stateTokens >= TOKENS_RED_FROM) return 'red'
-  if (props.stateTokens >= TOKENS_ORANGE_FROM) return 'orange'
-  return 'green'
-})
+const { width: tokensBarWidth, level: tokensBarLevel } = useTokensBar(computed(() => props.stateTokens), TOKENS_BAR_MAX)
 const {
   visible: tokensTooltipVisible, style: tokensTooltipStyle, show: showTokensTooltip, hide: hideTokensTooltip
 } = useFloatingTooltip()

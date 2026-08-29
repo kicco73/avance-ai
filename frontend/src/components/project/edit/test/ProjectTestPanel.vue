@@ -12,6 +12,8 @@ import { getTestMetrics, getProjectSignals, getProjectStates } from '../../../..
 import { loadSessions, sessions, sessionsLoading } from '../../../../chatStore.js'
 import { useResizablePanel } from '../../../../composables/useResizablePanel.js'
 import { useFloatingMenu } from '../../../../composables/useFloatingMenu.js'
+import { useFloatingTooltip } from '../../../../useFloatingTooltip.js'
+import { useTokensBar } from '../../../../composables/useTokensBar.js'
 import { useTestExecutionTree } from '../../../../composables/useTestExecutionTree.js'
 
 const props = defineProps({
@@ -80,11 +82,16 @@ function formatNumber(value) {
 const {
   tokensBurnt, nodeLastResult, selectedNodeId, selectedRun, selectedRunLoading,
   currentStrategyStatuses, currentStrategyProgress,
-  rootStatus, rootBusy, rootButtonState, isHoveringRoot, showCancelRoot, showPlayOnHoverRoot,
-  selectedCacheKey, selectedNodeError, selectedNodeLabel, anyTestExecuted,
+  selectedCacheKey, selectedNodeError, selectedNodeLabel, anyTestExecuted, anyJobBusy,
   onActivate, onAbort, onActivateRoot, onSelect,
   resettingCache, onResetCache,
 } = useTestExecutionTree(props.projectName, strategy, sessions, projectSignals, emit)
+
+const TEST_BUDGET = 300000
+const { width: tokensBarWidth, level: tokensBarLevel } = useTokensBar(tokensBurnt, TEST_BUDGET)
+const {
+  visible: tokensTooltipVisible, style: tokensTooltipStyle, show: showTokensTooltip, hide: hideTokensTooltip
+} = useFloatingTooltip()
 
 onMounted(() => {
   loadSessions(true, props.projectName)
@@ -117,69 +124,21 @@ onMounted(() => {
           <button
             type="button"
             class="tests-panel-root-btn"
-            :class="[`tests-panel-root-btn-${rootButtonState}`, { 'tests-panel-root-btn-cancel': showCancelRoot }]"
-            :title="showCancelRoot ? 'Cancel' : rootStatus === 'pending' || rootStatus === 'ready' ? 'Queued…' : rootStatus === 'paused' ? 'Paused…' : rootStatus === 'running' ? 'Running…' : 'Run test'"
+            :class="anyJobBusy ? 'tests-panel-root-btn-busy' : 'tests-panel-root-btn-idle'"
+            :title="anyJobBusy ? 'Stop all' : 'Run all suite'"
             @click="onActivateRoot"
-            @mouseenter="isHoveringRoot = true"
-            @mouseleave="isHoveringRoot = false"
           >
-            <!-- Idle/ok/warning/fail: same chrome as the reset button next
-                 to it (bordered square, plain icon) — the ring only earns
-                 its place while something is actually in flight. -->
-            <svg v-if="rootStatus === 'idle'" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+            <svg v-if="anyJobBusy" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+              <rect x="7" y="7" width="10" height="10" rx="1.5" />
+            </svg>
+            <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
               <path d="M8 5v14l11-7z" />
-            </svg>
-            <svg v-else-if="rootBusy" viewBox="0 0 24 24" width="16" height="16">
-              <g class="tests-panel-root-btn-content" :class="{ 'tests-panel-root-btn-content-hidden': showCancelRoot }">
-                <circle
-                  class="tests-panel-root-btn-ring"
-                  :class="{ 'tests-panel-root-btn-spinner-indeterminate': rootStatus !== 'running' }"
-                  cx="12" cy="12" r="10" pathLength="100" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"
-                  :stroke-dasharray="rootStatus === 'running' ? '8 100' : '50 100'"
-                />
-                <g v-if="rootStatus === 'paused'" transform="translate(12 12) scale(0.6) translate(-12 -12)">
-                  <rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" />
-                  <rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" />
-                </g>
-                <!-- 'running': a worker is inside root's own step right now
-                     (root has exactly one — see RootAggregationJob._prepare)
-                     — the lightning marks that instant, not "root is always
-                     high-priority". Drawn inside the same ring as the spinner,
-                     not swapped in place of it, so the ring stays visible. -->
-                <path
-                  v-else-if="rootStatus === 'running'"
-                  class="tests-panel-root-btn-lightning"
-                  d="M11 21v-8H7l6-11v8h4l-6 11z"
-                  transform="translate(12 12) scale(0.75) translate(-12 -12)"
-                  fill="currentColor"
-                />
-              </g>
-              <path
-                class="tests-panel-root-btn-cancel-icon"
-                :class="{ 'tests-panel-root-btn-cancel-icon-visible': showCancelRoot }"
-                d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
-                transform="translate(12 12) scale(0.6) translate(-12 -12)"
-                fill="currentColor"
-              />
-            </svg>
-            <svg v-else-if="rootStatus === 'ok'" viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
-              <polyline class="tests-panel-root-btn-check" points="4 13 9 18 20 6" pathLength="100" />
-            </svg>
-            <svg v-else-if="rootStatus === 'warning'" viewBox="0 0 24 24" width="10" height="10" fill="currentColor">
-              <path d="M12 3L1 21h22L12 3zm0 5.5l6.6 11.5H5.4L12 8.5zM11 11v4h2v-4h-2zm0 5v2h2v-2h-2z" />
-            </svg>
-            <svg v-else-if="rootStatus === 'fail'" viewBox="0 0 24 24" width="10" height="10" fill="currentColor">
-              <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm3.5 13.1L15.1 16.5 12 13.4l-3.1 3.1-1.4-1.4L10.6 12 7.5 8.9l1.4-1.4L12 10.6l3.1-3.1 1.4 1.4L13.4 12z" />
-            </svg>
-            <svg v-else-if="rootStatus === 'aborted'" viewBox="0 0 24 24" width="10" height="10" fill="currentColor">
-              <path v-if="showPlayOnHoverRoot" d="M8 5v14l11-7z" />
-              <rect v-else x="4" y="4" width="16" height="16" rx="2" />
             </svg>
           </button>
           <button
             class="tests-panel-reset-btn"
-            title="Reset test cache"
-            :disabled="resettingCache || !anyTestExecuted"
+            :title="anyJobBusy ? 'Stop or wait for running tests before resetting' : 'Reset test cache'"
+            :disabled="resettingCache || !anyTestExecuted || anyJobBusy"
             @click="onResetCache"
           >
             <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
@@ -208,7 +167,23 @@ onMounted(() => {
     <div class="tests-panel-main">
       <div class="tests-panel-toolbar">
         <div class="tests-panel-toolbar-title">
-          <span class="tests-panel-tokens-label">Tokens burnt: {{ tokensBurnt }}</span>
+          <div
+            class="tests-panel-tokens-bar"
+            @mouseenter="showTokensTooltip($event.currentTarget)"
+            @mouseleave="hideTokensTooltip"
+          >
+            <span class="tests-panel-tokens-icon">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zM11.5 9.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>
+            </span>
+            <span class="tests-panel-tokens-label">Tokens</span>
+            <div class="tests-panel-tokens-bar-track">
+              <div
+                class="tests-panel-tokens-bar-fill"
+                :class="`tests-panel-tokens-bar-fill-${tokensBarLevel}`"
+                :style="{ width: tokensBarWidth }"
+              ></div>
+            </div>
+          </div>
         </div>
         <div class="tests-panel-toolbar-actions">
           <div class="strategy-menu">
@@ -397,6 +372,9 @@ onMounted(() => {
       <p v-else class="tests-panel-placeholder">{{ selectedNodeLabel }}</p>
       </div>
     </div>
+    <Teleport to="body">
+      <span v-if="tokensTooltipVisible" class="tests-panel-tokens-tooltip-floating" :style="tokensTooltipStyle">Token burnt: {{ tokensBurnt }}</span>
+    </Teleport>
   </div>
 </template>
 
@@ -419,6 +397,45 @@ onMounted(() => {
   min-height: 0;
   border-right: 1px solid #ddd;
   background: #f9fafb;
+}
+
+.tests-panel-tokens-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 160px;
+}
+
+.tests-panel-tokens-icon {
+  flex-shrink: 0;
+  display: flex;
+  color: #4a6fa5;
+}
+
+.tests-panel-tokens-bar-track {
+  width: 240px;
+  height: 8px;
+  border-radius: 999px;
+  background: #eee;
+  overflow: hidden;
+}
+
+.tests-panel-tokens-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.tests-panel-tokens-bar-fill-green {
+  background: #2e7d32;
+}
+
+.tests-panel-tokens-bar-fill-orange {
+  background: #f5a623;
+}
+
+.tests-panel-tokens-bar-fill-red {
+  background: #c62828;
 }
 
 .tests-panel-split-divider {
@@ -480,7 +497,7 @@ onMounted(() => {
   border: 1px solid #4a6fa5;
 }
 
-.tests-panel-root-btn:hover:not(:disabled):not(.tests-panel-root-btn-cancel),
+.tests-panel-root-btn:hover:not(:disabled),
 .tests-panel-reset-btn:hover:not(:disabled) {
   background: #4a6fa5;
   color: white;
@@ -490,120 +507,6 @@ onMounted(() => {
 .tests-panel-reset-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-
-.tests-panel-root-btn-ready {
-  border-color: transparent;
-  background: none;
-  color: #4a6fa5;
-}
-
-.tests-panel-root-btn-running {
-  border-color: transparent;
-  background: none;
-  color: #2e7d32;
-}
-
-.tests-panel-root-btn-lightning {
-  animation: tests-panel-root-btn-glow 0.9s ease-in-out infinite alternate;
-}
-
-@keyframes tests-panel-root-btn-glow {
-  from { opacity: 1; }
-  to { opacity: 0.3; }
-}
-
-.tests-panel-root-btn-ring {
-  transform-origin: center;
-  transform: rotate(-90deg);
-  transition: stroke-dasharray 0.2s linear;
-}
-
-.tests-panel-root-btn-ring.tests-panel-root-btn-spinner-indeterminate {
-  animation: tests-panel-root-btn-spin 0.9s linear infinite;
-}
-
-@keyframes tests-panel-root-btn-spin {
-  from { transform: rotate(-90deg); }
-  to { transform: rotate(270deg); }
-}
-
-.tests-panel-root-btn-ok {
-  border-color: #2e7d32;
-  color: #2e7d32;
-}
-
-.tests-panel-root-btn-check {
-  stroke-dasharray: 100;
-  stroke-dashoffset: 100;
-  animation: tests-panel-root-btn-check-draw 0.4s ease-out forwards;
-}
-
-@keyframes tests-panel-root-btn-check-draw {
-  to { stroke-dashoffset: 0; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .tests-panel-root-btn-check {
-    animation: none;
-    stroke-dashoffset: 0;
-  }
-}
-
-.tests-panel-root-btn-ok:hover:not(:disabled) {
-  background: #2e7d32;
-  color: white;
-}
-
-.tests-panel-root-btn-warning {
-  color: #b26a00;
-}
-
-.tests-panel-root-btn-warning:hover:not(:disabled) {
-  background: #b26a00;
-  color: white;
-}
-
-.tests-panel-root-btn-fail {
-  color: #c62828;
-}
-
-.tests-panel-root-btn-fail:hover:not(:disabled) {
-  background: #c62828;
-  color: white;
-}
-
-.tests-panel-root-btn-aborted {
-  color: #757575;
-}
-
-.tests-panel-root-btn-aborted:hover:not(:disabled) {
-  background: #757575;
-  color: white;
-}
-
-.tests-panel-root-btn-cancel {
-  border-color: transparent;
-  background: #c62828;
-  color: white;
-}
-
-.tests-panel-root-btn-content {
-  opacity: 1;
-  transition: opacity 0.25s ease;
-}
-
-.tests-panel-root-btn-content-hidden {
-  opacity: 0;
-}
-
-.tests-panel-root-btn-cancel-icon {
-  opacity: 0;
-  transition: opacity 0.25s ease;
-}
-
-.tests-panel-root-btn-cancel-icon-visible {
-  opacity: 1;
 }
 
 .tests-panel-tokens-label {
@@ -759,5 +662,25 @@ onMounted(() => {
 
 .tests-panel-row-empty td {
   color: #aaa;
+}
+</style>
+
+<style>
+/* Unscoped: teleported to <body> (see InspectorDetailCard.vue's own
+   tokens bar tooltip), outside this component's normal DOM subtree. */
+.tests-panel-tokens-tooltip-floating {
+  position: fixed;
+  width: max-content;
+  max-width: 200px;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  background: #333;
+  color: white;
+  font-size: 0.72rem;
+  font-weight: 400;
+  line-height: 1.3;
+  text-align: left;
+  pointer-events: none;
+  z-index: 1000;
 }
 </style>

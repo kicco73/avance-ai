@@ -97,7 +97,7 @@ class _AggregationJob(CancelableJob):
                     return candidate['id'], live_job
                 if candidate['status'] == 'completed':
                     return candidate['id'], None
-                # 'failed' — a dead attempt; fall through to retry below.
+                # 'failed' or 'aborted' — a dead attempt; fall through to retry below.
             session = self._service._db.get_chat_session(session_id)
             assert session is not None
             run, job = self._service._construct_run(session['username'], self._project_name, session_id, self._strategy)

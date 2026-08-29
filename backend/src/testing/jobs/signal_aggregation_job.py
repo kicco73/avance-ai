@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from typing import TYPE_CHECKING
 
 from jobs import CancelableJob
@@ -11,6 +12,32 @@ from .serialization import _serialize_metric_result
 
 if TYPE_CHECKING:
     from testing.test_service import TestService
+
+
+class SharedObservationsCache:
+    """Coalesces concurrent SignalAggregationJob siblings (see
+    AllSignalsAggregationJob) asking for the same run id's observations at
+    the same time — a plain dict cache alone doesn't help there: with
+    several worker threads racing, every one of them can see a miss and
+    rebuild before any of them finishes writing. A per-run-id lock makes
+    the first caller build it once while the rest wait for that exact
+    result, instead of each redoing the same work in parallel."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._locks: dict[int, threading.Lock] = {}
+        self._data: dict[int, list] = {}
+
+    def get_or_build(self, run_id: int, job: "_AggregationJob") -> list:
+        with self._lock:
+            run_lock = self._locks.setdefault(run_id, threading.Lock())
+        with run_lock:
+            cached = self._data.get(run_id)
+            if cached is not None:
+                return cached
+            observations = job._observations_for_run(run_id)
+            self._data[run_id] = observations
+            return observations
 
 
 class SignalAggregationJob(_AggregationJob):
@@ -25,13 +52,22 @@ class SignalAggregationJob(_AggregationJob):
     Gives real incremental progress and lets a worker yield between run
     ids instead of holding the whole aggregation."""
 
-    def __init__(self, service: "TestService", project_name: str, signal_name: str, strategy: str, session_ids: list[int]) -> None:
+    def __init__(
+        self, service: "TestService", project_name: str, signal_name: str, strategy: str, session_ids: list[int],
+        observations_cache: SharedObservationsCache | None = None,
+    ) -> None:
         super().__init__(service, project_name, 'signal', signal_name, strategy)
         self._signal_name = signal_name
         self._session_ids = session_ids
         self._sessions_job: PooledAggregationJob | None = None
         self._pending_run_ids: list[int] = []
         self._accumulator = Statistics.Accumulator()
+        # Shared across every signal's own job by AllSignalsAggregationJob
+        # (all resolving the very same run ids) so gathering one run's
+        # observations — its slowest part, see the class docstring — happens
+        # once total instead of once per signal. A standalone signal click
+        # gets its own private, single-use cache, same cost as before.
+        self._observations_cache = observations_cache if observations_cache is not None else SharedObservationsCache()
 
     def _resolve_or_construct_dependencies(self) -> tuple[CancelableJob, ...]:
         self._sessions_job = self._service._sessions_job(self._project_name, self._strategy)
@@ -54,7 +90,8 @@ class SignalAggregationJob(_AggregationJob):
             self._sessions_job = None
         if self._pending_run_ids:
             run_id = self._pending_run_ids.pop(0)
-            for observation in self._observations_for_run(run_id):
+            observations = self._observations_cache.get_or_build(run_id, self)
+            for observation in observations:
                 if self._signal_name in observation.signal_agreements:
                     self._accumulator.add(observation.signal_agreements[self._signal_name])
             return

@@ -53,7 +53,9 @@ const ringDasharray = computed(() => {
 // worker has picked it up yet) and 'paused' (throttled) — reads as the
 // same "waiting" blue. With N concurrent workers, at most N buttons are
 // ever green at once; every other in-flight one is blue.
-const buttonState = computed(() => (props.status === 'running' ? 'running' : (isBusy.value ? 'ready' : props.status)))
+const buttonState = computed(() => (
+  props.status === 'running' ? 'running' : (props.status === 'requeued' ? 'requeued' : (isBusy.value ? 'ready' : props.status))
+))
 
 // Any in-flight job can be cancelled — queued or actually running —
 // hovering it swaps its icon for a cancel affordance instead of
@@ -123,7 +125,7 @@ function onClick() {
         <path
           v-else-if="status === 'requeued'"
           d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-0.82 2.33-3.04 4-5.65 4c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14 0.69 4.22 1.78L13 11h7V4L17.65 6.35z"
-          transform="translate(12 12) scale(0.7) translate(-12 -12)"
+          transform="translate(12 12) scale(0.9) translate(-12 -12)"
           fill="currentColor"
         />
         <polyline
@@ -142,8 +144,8 @@ function onClick() {
         />
         <path
           v-else-if="status === 'fail'"
-          d="M12 2a10 10 0 100 20 10 10 0 000-20zm3.5 13.1L15.1 16.5 12 13.4l-3.1 3.1-1.4-1.4L10.6 12 7.5 8.9l1.4-1.4L12 10.6l3.1-3.1 1.4 1.4L13.4 12z"
-          transform="translate(12 12) scale(0.6) translate(-12 -12)"
+          d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+          transform="translate(12 12) scale(1.2) translate(-12 -12)"
           fill="currentColor"
         />
         <path
@@ -152,18 +154,18 @@ function onClick() {
           transform="translate(12 12) scale(0.7) translate(-12 -12)"
           fill="currentColor"
         />
-        <rect
+        <path
           v-else-if="status === 'aborted'"
-          x="7" y="7" width="10" height="10" rx="1.5"
-          transform="translate(12 12) scale(0.85) translate(-12 -12)"
+          d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+          transform="translate(12 12) scale(0.7) translate(-12 -12)"
           fill="currentColor"
         />
       </g>
-      <path
+      <rect
         class="test-node-btn-cancel-icon"
         :class="{ 'test-node-btn-cancel-icon-visible': showCancel }"
-        d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
-        transform="translate(12 12) scale(0.6) translate(-12 -12)"
+        x="7" y="7" width="10" height="10" rx="1.5"
+        transform="translate(12 12) scale(0.7) translate(-12 -12)"
         fill="currentColor"
       />
     </svg>
@@ -218,6 +220,11 @@ function onClick() {
 .test-node-btn-running {
   background: none;
   color: #2e7d32;
+}
+
+.test-node-btn-requeued {
+  background: none;
+  color: #FFBF00;
 }
 
 .test-node-btn-lightning {
@@ -289,18 +296,18 @@ function onClick() {
 }
 
 .test-node-btn-aborted {
-  color: #757575;
+  color: #c62828;
 }
 
 .test-node-btn-aborted:hover:not(:disabled) {
-  background: #757575;
+  background: #c62828;
   color: white;
 }
 
 /* Hovering a running job: red fill covers the button's own circular
-   shape completely (it's already border-radius: 50%), white X on top —
-   no ring competing with it, same treatment idle/ok/warning/fail get
-   on hover, just red instead of blue/green/orange. */
+   shape completely (it's already border-radius: 50%), white stop square
+   on top — no ring competing with it, same treatment idle/ok/warning/fail
+   get on hover, just red instead of blue/green/orange. */
 .test-node-btn-cancel {
   background: #c62828;
   color: white;

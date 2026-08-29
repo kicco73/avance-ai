@@ -201,7 +201,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
         tracking_service, metric_service, job_queue,
     )
     test_service = TestService(
-        app_db, fake_ai_service, tracking_service, job_queue,
+        app_db, fake_ai_service, tracking_service, job_queue, project_service,
     )
     # No real providers: this app fixture never goes through AuthMiddleware
     # (that's only wired in main.py's create_app(), not here) or exercises

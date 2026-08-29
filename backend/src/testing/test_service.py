@@ -11,15 +11,14 @@ from http import HTTPStatus
 from typing import cast
 
 from automaton.automaton import Automaton
-from automaton.automaton_builder import AutomatonBuilder
 from ai.ai_service import AiService
 from db import Db
 from db.tests import _USERNAME_UNSPECIFIED
 from jobs import CancelableJob, JobQueue
+from project.project_service import ProjectService
 from testing.errors import TestServiceError
 from testing.cache import TestCache
 from testing.signal_sources import BatchSignalSource, TurnByTurnSignalSource, estimate_max_turns_per_call
-from project.archive.layout import ArchiveLayout
 from testing.jobs import (
     AllSignalsAggregationJob,
     AllStatesAggregationJob,
@@ -42,11 +41,13 @@ class TestService:
 
     def __init__(
         self, db: Db, ai_service: AiService, tracking_service: TrackingService, job_queue: JobQueue,
+        project_service: ProjectService,
     ) -> None:
         self._db = db
         self._ai_service = ai_service
         self._tracking_service = tracking_service
         self._job_queue = job_queue
+        self._project_service = project_service
         self._cache = TestCache(db)
         self._jobs_by_key: dict[str, CancelableJob] = {}
 
@@ -59,6 +60,11 @@ class TestService:
         job = self._jobs_by_key.get(key)
         if job is not None:
             self._job_queue.cancel(job)
+
+    def abort_all_jobs(self) -> None:
+        for job in list(self._jobs_by_key.values()):
+            if not job.is_done() and not job.is_failed() and not job.is_aborted():
+                self._job_queue.cancel(job)
 
     def create_run(self, username: str | None, project_name: str, session_id: int | None, strategy: str) -> dict:
         run, job = self._construct_run(username, project_name, session_id, strategy)
@@ -151,10 +157,8 @@ class TestService:
         return self._db.find_test_aggregate_result(project_name, kind, target, strategy, edit_count)
 
     def _load_automaton(self, project_name: str) -> Automaton:
-        archives = self._db.get_archives(project_name)
-        if not archives or 'index.yml' not in archives:
-            raise ValueError(f"Project '{project_name}' does not exist or has no index.yml.")
-        return AutomatonBuilder().build(ArchiveLayout.decode_text(archives))
+        revision = self._db.get_project_revision(project_name)
+        return self._project_service.get_automaton(project_name, revision)
 
     def _project_states(self, project_name: str) -> list[str]:
         automaton = self._load_automaton(project_name)
@@ -202,6 +206,8 @@ class TestService:
         job = self._cache.live_job_for(run['id'])
         if run['results'] is not None:
             status, error = 'completed', None
+        elif job is not None and cast(CancelableJob, job).is_aborted():
+            status, error = 'aborted', None
         elif job is not None:
             status = 'failed' if job.is_failed() else ('completed' if job.is_done() else 'running')
             error = job.error() if status == 'failed' else None

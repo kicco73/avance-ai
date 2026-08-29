@@ -211,6 +211,13 @@ class LabelProjectController(BaseController):
         self.test_service.abort_job(job_key)
         return {"success": True}
 
+    @delete("/api/projects/{project_name}/tests/jobs", role="supervisor")
+    def delete_all_test_jobs(self, project_name: str):
+        """Aborts every currently tracked, still in-flight job across every
+        node — the square "run all" button's own stop action."""
+        self.test_service.abort_all_jobs()
+        return {"success": True}
+
     @post("/api/projects/{project_name}/tests", role="supervisor")
     def post_test(self, project_name: str, req: CreateTestRequest):
         """Creates a Test and submits its replay job, returning

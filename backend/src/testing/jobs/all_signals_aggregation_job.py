@@ -6,7 +6,7 @@ from jobs import CancelableJob
 
 from .base import _AggregationJob
 from .serialization import _job_result
-from .signal_aggregation_job import SignalAggregationJob
+from .signal_aggregation_job import SharedObservationsCache, SignalAggregationJob
 
 if TYPE_CHECKING:
     from testing.test_service import TestService
@@ -25,8 +25,12 @@ class AllSignalsAggregationJob(_AggregationJob):
         self._signal_jobs: list[SignalAggregationJob] = []
 
     def _resolve_or_construct_dependencies(self) -> tuple[CancelableJob, ...]:
+        observations_cache = SharedObservationsCache()
         self._signal_jobs = [
-            SignalAggregationJob(self._service, self._project_name, signal_name, self._strategy, self._session_ids)
+            SignalAggregationJob(
+                self._service, self._project_name, signal_name, self._strategy, self._session_ids,
+                observations_cache=observations_cache,
+            )
             for signal_name in self._signal_names
         ]
         return tuple(self._signal_jobs)
