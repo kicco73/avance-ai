@@ -1,6 +1,6 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
-  createTestEventsSource, deleteAllTestJobs, deleteTestJob, deleteTests, getAggregateResult, getTests, getJobsStatus,
+  createTestEventsSource, deleteAllTestJobs, deleteTestJob, deleteTests, getAggregateResult, getTests,
   postTest, postRootAggregation, postSessionsRun, postSignalTest, postSignalsAggregation,
   postStateTest, postStatesAggregation, postUserSessionsRun, postUsersAggregation,
 } from '../api.js'
@@ -124,8 +124,8 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
     nodeEvents.value = { ...nodeEvents.value, [key]: { key, job_status: jobStatus, queue_status: queueStatus, percentage: null, error } }
   }
 
-  // nodeId's own {kind, target} in the aggregate-result/jobs-status
-  // vocabulary — null for 'session:*' and 'root', neither of which is one.
+  // nodeId's own {kind, target} in the aggregate-result vocabulary — null
+  // for 'session:*' and 'root', neither of which is one.
   function aggregateKindAndTarget(nodeId) {
     if (nodeId.startsWith('state:')) return { kind: 'state', target: nodeId.slice('state:'.length) }
     if (nodeId.startsWith('signal:')) return { kind: 'signal', target: nodeId.slice('signal:'.length) }
@@ -134,17 +134,6 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
     if (nodeId === 'users-branch') return { kind: 'users', target: null }
     if (nodeId === 'states-branch') return { kind: 'all_states', target: null }
     if (nodeId === 'signals-branch') return { kind: 'all_signals', target: null }
-    return null
-  }
-
-  function nodeIdFor(kind, target) {
-    if (kind === 'state') return `state:${target}`
-    if (kind === 'signal') return `signal:${target}`
-    if (kind === 'user_sessions') return `user:${target}`
-    if (kind === 'sessions') return 'sessions-branch'
-    if (kind === 'users') return 'users-branch'
-    if (kind === 'all_states') return 'states-branch'
-    if (kind === 'all_signals') return 'signals-branch'
     return null
   }
 
@@ -178,25 +167,6 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
     const target = aggregateKindAndTarget(nodeId)
     if (target == null) return // root — no result of its own
     fetchAggregateResult(key, eventStrategy, target.kind, target.target)
-  }
-
-  async function hydrateJobsStatus() {
-    let jobsStatus = null
-    try {
-      jobsStatus = await getJobsStatus(projectName, strategy.value)
-    } catch {
-      return
-    }
-    for (const { session_id, status } of jobsStatus.sessions) {
-      if (status === 'ok') setNodeEvent(cacheKey(strategy.value, `session:${session_id}`), 'completed')
-    }
-    for (const { kind, target, status } of jobsStatus.aggregates) {
-      if (status !== 'ok') continue
-      const nodeId = nodeIdFor(kind, target)
-      const key = cacheKey(strategy.value, nodeId)
-      setNodeEvent(key, 'completed')
-      fetchAggregateResult(key, strategy.value, kind, target)
-    }
   }
 
   async function activateSessionLeaf(nodeId, activeStrategy) {
@@ -466,7 +436,10 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
     // kept alive while closed — see EditProjectView.vue's autoOpen v-if),
     // so there's never anything already selected to defer to here.
     onSelect('root')
-    hydrateJobsStatus()
+    // The connection's own first messages are a full snapshot of every
+    // node the backend currently knows about (see LastStatusBroadcaster/
+    // get_test_events) — handleTestEvent needs no special-casing for
+    // them, they're shaped exactly like a live update.
     testEventSource = createTestEventsSource(projectName)
     testEventSource.onmessage = (event) => handleTestEvent(JSON.parse(event.data))
   })
@@ -479,7 +452,7 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
     tokensBurnt, nodeEvents, nodeLastResult, selectedNodeId, selectedRun, selectedRunLoading,
     currentStrategyStatuses, currentStrategyProgress,
     selectedCacheKey, selectedNodeError, selectedNodeLabel, signalLabel, anyTestExecuted, anyJobBusy,
-    handleTestEvent, hydrateJobsStatus,
+    handleTestEvent,
     onActivate, onAbort, onActivateRoot, onSelect,
     resettingCache, onResetCache,
   }

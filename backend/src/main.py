@@ -26,13 +26,14 @@ from project.project_service import ProjectService
 from ai.ai_service import AiService
 from testing.test_service import TestService
 from testing.queue_progress_broadcaster import QueueProgressBroadcaster
+from testing.last_status_broadcaster import LastStatusBroadcaster
 from session import Session
 from tracking.tracking_service import TrackingService
 from tracking.wakeup_service import WakeupService
 from talk.talk_service import TalkService
 from listen.listen_service import ListenService
 
-__version__ = "1.15.0"
+__version__ = "1.15.1"
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -108,7 +109,7 @@ def create_app() -> FastAPI:
         auth_service = AuthService(db, config.auth_providers, config.auth_token_ttl_in_hours)
         app.state.auth_service = auth_service
 
-        test_event_broadcaster = QueueProgressBroadcaster(ai_test_service)
+        test_event_broadcaster = LastStatusBroadcaster(QueueProgressBroadcaster(ai_test_service))
         job_queue = JobQueue(max_concurrent=config.jobs_shared_max_concurrent, broadcaster=test_event_broadcaster)
         test_job_queue = ThrottledJobQueue(
             max_concurrent=config.test_service_max_concurrent_tests,
@@ -138,7 +139,7 @@ def create_app() -> FastAPI:
         )
 
         test_service = TestService(
-            db, ai_test_service, tracking_service, test_job_queue, project_service,
+            db, ai_test_service, tracking_service, test_job_queue, project_service, test_event_broadcaster,
         )
 
         # Availability cascade (see ProjectService.recompute_availability/

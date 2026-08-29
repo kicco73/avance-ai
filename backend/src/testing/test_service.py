@@ -18,6 +18,7 @@ from jobs import CancelableJob, JobQueue
 from project.project_service import ProjectService
 from testing.errors import TestServiceError
 from testing.cache import TestCache
+from testing.last_status_broadcaster import LastStatusBroadcaster
 from testing.signal_sources import BatchSignalSource, TurnByTurnSignalSource, estimate_max_turns_per_call
 from testing.jobs import (
     AllSignalsAggregationJob,
@@ -41,19 +42,28 @@ class TestService:
 
     def __init__(
         self, db: Db, ai_service: AiService, tracking_service: TrackingService, job_queue: JobQueue,
-        project_service: ProjectService,
+        project_service: ProjectService, status_broadcaster: LastStatusBroadcaster,
     ) -> None:
         self._db = db
         self._ai_service = ai_service
         self._tracking_service = tracking_service
         self._job_queue = job_queue
         self._project_service = project_service
+        self._status_broadcaster = status_broadcaster
         self._cache = TestCache(db)
         self._jobs_by_key: dict[str, CancelableJob] = {}
 
     def _submit(self, job: CancelableJob) -> CancelableJob:
         self._jobs_by_key[job.key] = job
         self._job_queue.submit(job)
+        return job
+
+    def _track(self, job: CancelableJob) -> CancelableJob:
+        # For a job that's one of several dependencies job_queue.submit()
+        # will recurse into on its own (never separately submitted here) —
+        # still needs a _jobs_by_key entry, otherwise get_jobs_status() has
+        # no way to ever see it as anything but idle while it runs.
+        self._jobs_by_key[job.key] = job
         return job
 
     def abort_job(self, key: str) -> None:
@@ -106,6 +116,11 @@ class TestService:
         run_ids = self._db.delete_tests(project_name)
         self._cache.untrack_many(run_ids)
         self._db.delete_test_aggregate_results(project_name)
+        # Otherwise an already-completed job's last broadcast (or its
+        # object, for _sessions_job()'s own reuse check) lingers forever —
+        # reporting stale 'completed' status for data just deleted above.
+        self._jobs_by_key.clear()
+        self._status_broadcaster.clear()
 
     def export_results(self, project_name: str) -> list[dict]:
         return self._db.list_test_aggregate_results(project_name)
@@ -124,33 +139,6 @@ class TestService:
             for run in self._db.list_tests(project_name, session_id, username)
         ]
         return sorted(runs, key=lambda run: run['id'], reverse=True)
-
-    def get_jobs_status(self, project_name: str, strategy: str) -> dict:
-        edit_count = self._db.get_project_draft_edit_count(project_name)
-
-        sessions = self._db.list_chat_sessions(None, project_name, type=None)
-        session_statuses = []
-        for row in sessions:
-            if not row['labeled']:
-                continue
-            session_id = int(row['id'])
-            labeling_revision = self._db.get_session_labeling_revision(session_id)
-            cached = self._db.find_test_by_cache_key(session_id, strategy, edit_count, labeling_revision)
-            done = cached is not None and cached['results'] is not None
-            session_statuses.append({'session_id': session_id, 'status': 'ok' if done else 'idle'})
-
-        aggregates = []
-        for state_key in self._project_states(project_name):
-            found = self._db.find_test_aggregate_result(project_name, 'state', state_key, strategy, edit_count)
-            aggregates.append({'kind': 'state', 'target': state_key, 'status': 'ok' if found is not None else 'idle'})
-        for signal_name in self._project_signal_names(project_name):
-            found = self._db.find_test_aggregate_result(project_name, 'signal', signal_name, strategy, edit_count)
-            aggregates.append({'kind': 'signal', 'target': signal_name, 'status': 'ok' if found is not None else 'idle'})
-        for kind in ('sessions', 'users', 'all_states', 'all_signals'):
-            found = self._db.find_test_aggregate_result(project_name, kind, None, strategy, edit_count)
-            aggregates.append({'kind': kind, 'target': None, 'status': 'ok' if found is not None else 'idle'})
-
-        return {'sessions': session_statuses, 'aggregates': aggregates}
 
     def get_aggregate_result(self, project_name: str, kind: str, target: str | None, strategy: str) -> dict | list[dict] | None:
         edit_count = self._db.get_project_draft_edit_count(project_name)

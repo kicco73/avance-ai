@@ -22,6 +22,7 @@ from project.project_service import ProjectService
 from session import Session
 from testing.test_service import TestService
 from testing.queue_progress_broadcaster import QueueProgressBroadcaster
+from testing.last_status_broadcaster import LastStatusBroadcaster
 from tracking.tracking_service import TrackingService
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
@@ -191,7 +192,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     project_service = ProjectService(app_db, fake_ai_service)
     session_manager = ChatSessionManager(app_db)
     metric_service = MetricService(app_db, project_service)
-    test_event_broadcaster = QueueProgressBroadcaster(fake_ai_service)
+    test_event_broadcaster = LastStatusBroadcaster(QueueProgressBroadcaster(fake_ai_service))
     job_queue = JobQueue(max_concurrent=1, broadcaster=test_event_broadcaster)
     tracking_service = TrackingService(
         app_db, project_service, metric_service,
@@ -201,7 +202,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
         tracking_service, metric_service, job_queue,
     )
     test_service = TestService(
-        app_db, fake_ai_service, tracking_service, job_queue, project_service,
+        app_db, fake_ai_service, tracking_service, job_queue, project_service, test_event_broadcaster,
     )
     # No real providers: this app fixture never goes through AuthMiddleware
     # (that's only wired in main.py's create_app(), not here) or exercises

@@ -41,8 +41,8 @@ def _wait_until(predicate, timeout=5.0, interval=0.02):
 
 
 def test_root_click_waits_for_a_session_shared_across_branches(client, app_db, hello_project):
-    _make_labeled_session(client, app_db, hello_project, "alice")
-    _make_labeled_session(client, app_db, hello_project, "bob")
+    alice_session_id = _make_labeled_session(client, app_db, hello_project, "alice")
+    bob_session_id = _make_labeled_session(client, app_db, hello_project, "bob")
 
     response = client.post(f"/api/projects/{hello_project}/root/aggregation", json={"strategy": "batch"})
     assert response.status_code == 200, response.text
@@ -55,7 +55,7 @@ def test_root_click_waits_for_a_session_shared_across_branches(client, app_db, h
 
     assert _wait_until(users_result_ready)
 
-    sessions_status = client.get(
-        f"/api/projects/{hello_project}/jobs-status", params={"strategy": "batch"},
-    ).json()
-    assert all(row["status"] == "ok" for row in sessions_status["sessions"])
+    for session_id in (alice_session_id, bob_session_id):
+        runs = client.get(f"/api/projects/{hello_project}/tests", params={"session_id": session_id}).json()
+        batch_runs = [run for run in runs if run["strategy"] == "batch"]
+        assert batch_runs and all(run["status"] == "completed" for run in batch_runs)

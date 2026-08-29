@@ -27,10 +27,10 @@ class AllSignalsAggregationJob(_AggregationJob):
     def _resolve_or_construct_dependencies(self) -> tuple[CancelableJob, ...]:
         observations_cache = SharedObservationsCache()
         self._signal_jobs = [
-            SignalAggregationJob(
+            self._service._track(SignalAggregationJob(
                 self._service, self._project_name, signal_name, self._strategy, self._session_ids,
                 observations_cache=observations_cache,
-            )
+            ))
             for signal_name in self._signal_names
         ]
         return tuple(self._signal_jobs)

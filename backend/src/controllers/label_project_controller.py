@@ -17,7 +17,7 @@ from jobs import JobQueue, stream_job_progress
 from project.project_service import ProjectService
 from session import Session
 from testing.test_service import TestService
-from testing.queue_progress_broadcaster import QueueProgressBroadcaster
+from testing.last_status_broadcaster import LastStatusBroadcaster
 from tracking.tracking_service import TrackingService
 from schemas import (
     CommentRequest,
@@ -42,7 +42,7 @@ class LabelProjectController(BaseController):
         project_service: ProjectService,
         tracking_service: TrackingService,
         test_service: TestService,
-        test_event_broadcaster: QueueProgressBroadcaster,
+        test_event_broadcaster: LastStatusBroadcaster,
         job_queue: JobQueue,
     ) -> None:
         self.chat_service = chat_service
@@ -332,10 +332,6 @@ class LabelProjectController(BaseController):
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
         return {"success": True}
 
-    @get("/api/projects/{project_name}/jobs-status", role="supervisor")
-    def get_jobs_status(self, project_name: str, strategy: str):
-        return self.test_service.get_jobs_status(project_name, strategy)
-
     @get("/api/projects/{project_name}/aggregate-result", role="supervisor")
     def get_aggregate_result(self, project_name: str, kind: str, strategy: str, target: str | None = None):
         result = self.test_service.get_aggregate_result(project_name, kind, target, strategy)
@@ -350,6 +346,8 @@ class LabelProjectController(BaseController):
 
         async def events():
             try:
+                for message in self.test_event_broadcaster.snapshot():
+                    yield f"data: {json.dumps(message)}\n\n"
                 while not await request.is_disconnected():
                     try:
                         message = await asyncio.wait_for(connection.get(), timeout=1.0)

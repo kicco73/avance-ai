@@ -25,7 +25,7 @@ class AllStatesAggregationJob(_AggregationJob):
 
     def _resolve_or_construct_dependencies(self) -> tuple[CancelableJob, ...]:
         self._state_jobs = [
-            StateAggregationJob(self._service, self._project_name, state_key, self._strategy, session_ids)
+            self._service._track(StateAggregationJob(self._service, self._project_name, state_key, self._strategy, session_ids))
             for state_key, session_ids in self._session_ids_by_state.items()
         ]
         return tuple(self._state_jobs)

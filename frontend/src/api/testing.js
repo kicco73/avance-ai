@@ -55,10 +55,6 @@ export function postStateTest(projectName, stateKey, strategy) {
   })
 }
 
-export function getJobsStatus(projectName, strategy) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/jobs-status?strategy=${encodeURIComponent(strategy)}`)
-}
-
 export function getAggregateResult(projectName, kind, target, strategy) {
   const params = new URLSearchParams({ kind, strategy })
   if (target != null) params.set('target', target)

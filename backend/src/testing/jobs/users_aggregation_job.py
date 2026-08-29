@@ -28,7 +28,9 @@ class UsersAggregationJob(_AggregationJob):
 
     def _resolve_or_construct_dependencies(self) -> tuple[CancelableJob, ...]:
         self._user_jobs = [
-            PooledAggregationJob(self._service, self._project_name, 'user_sessions', username, self._strategy, session_ids)
+            self._service._track(
+                PooledAggregationJob(self._service, self._project_name, 'user_sessions', username, self._strategy, session_ids)
+            )
             for username, session_ids in self._session_ids_by_user.items()
         ]
         return tuple(self._user_jobs)
