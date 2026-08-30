@@ -584,9 +584,15 @@ watch(
    opening anyway). */
 .sessions-panel-wrap {
   position: absolute;
-  top: 0;
+  /* Not top: 0 — this overlay sits inside .chat-window, a *sibling* of
+     .chat-header (the element that actually reserves the notch, see its
+     own comment), not a descendant of it, so it never inherited that
+     padding: it invaded the notch itself, right where its own project
+     menu/close button became unreachable. Same for the bottom edge and
+     the home indicator. */
+  top: var(--safe-area-top);
   left: 0;
-  bottom: 0;
+  bottom: var(--safe-area-bottom);
   z-index: 35;
   display: flex;
   flex-direction: row;

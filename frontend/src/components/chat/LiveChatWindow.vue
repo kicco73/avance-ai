@@ -101,7 +101,7 @@ defineExpose({
      elements a project's skin actually paints, so reserving the notch
      there lets a dark skin's own background extend behind it instead of
      showing this white fallback through a color-mismatched gap. */
-  height: var(--real-viewport-height, 100vh);
+  height: calc(var(--real-viewport-height, 100vh) + var(--safe-area-bottom));
   box-sizing: border-box;
   padding-left: var(--safe-area-left);
   padding-right: var(--safe-area-right);

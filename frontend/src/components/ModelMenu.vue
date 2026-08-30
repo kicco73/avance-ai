@@ -242,7 +242,7 @@ onBeforeUnmount(() => {
   right: 0;
   /* height, not bottom: 0 (i.e. not inset: 0) — see SplashScreen.vue's
      own .splash for why. */
-  height: var(--real-viewport-height, 100vh);
+  height: calc(var(--real-viewport-height, 100vh) + var(--safe-area-bottom));
   background: rgba(0, 0, 0, 0.35);
   z-index: 1001;
   display: flex;

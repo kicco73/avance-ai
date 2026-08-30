@@ -74,7 +74,7 @@ const emit = defineEmits(['retry'])
      window.innerHeight itself (see App.vue's own
      updateRealViewportHeight comment for why that's trustworthy where
      the CSS viewport units apparently aren't). */
-  height: var(--real-viewport-height, 100vh);
+  height: calc(var(--real-viewport-height, 100vh) + var(--safe-area-bottom));
   display: flex;
   align-items: center;
   justify-content: center;

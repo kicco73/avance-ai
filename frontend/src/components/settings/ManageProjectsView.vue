@@ -520,7 +520,7 @@ defineExpose({ refresh: load })
      behind the notch/home indicator rather than showing this white
      fallback through a gap. box-sizing so the padding shrinks the box
      instead of sitting outside it. */
-  height: var(--real-viewport-height, 100vh);
+  height: calc(var(--real-viewport-height, 100vh) + var(--safe-area-bottom));
   box-sizing: border-box;
   padding-left: var(--safe-area-left);
   padding-right: var(--safe-area-right);

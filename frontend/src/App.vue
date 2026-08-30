@@ -716,7 +716,7 @@ body {
      trustworthy here than any CSS viewport unit; 100vh is the fallback
      for a browser without JS (never true in this SPA, but keeps the
      rule meaningful on its own). */
-  height: var(--real-viewport-height, 100vh);
+  height: calc(var(--real-viewport-height, 100vh) + var(--safe-area-bottom));
   font-family: system-ui, -apple-system, sans-serif;
   /* none/none, not scale(1)/blur(0): those compute to the same visuals
      but (per spec) still establish a containing block for position:fixed
