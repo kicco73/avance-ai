@@ -93,12 +93,11 @@ defineExpose({ focus: () => inputRef.value?.focus() })
   display: flex;
   gap: 0.5rem;
   padding: 0.75rem 1rem;
-  /* Home indicator (iOS) / gesture nav bar (Android) sits right under
-     this row otherwise — env() resolves to 0 on a device with neither.
-     This is the chat's actual footer edge, so it's the one place that
-     reserves the bottom safe area — see LiveChatWindow.vue's own
-     top/left/right padding for the rest. */
-  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  /* Bottom safe area (home indicator / gesture nav bar) is reserved by
+     the parent .chat-footer instead (see ChatView.vue) — a project's
+     skin paints that element's background, so reserving it there lets
+     a dark skin extend behind the home indicator instead of showing
+     this row's own background through a color-mismatched gap. */
   border-top: 1px solid #ddd;
 }
 

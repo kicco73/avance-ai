@@ -82,15 +82,18 @@ defineExpose({
 .live-chat-window {
   position: fixed;
   inset: 0;
-  /* Reserves the notch/status bar and side edges — a device rendering
-     edge-to-edge (see index.html's viewport-fit=cover) would otherwise
-     put the header under the notch/Dynamic Island. Bottom isn't
-     reserved here: only the footer touches that edge (see ChatInput.vue's
-     own input-row), so reserving it twice would waste vertical space
-     everywhere else in the window. box-sizing so the padding shrinks the
-     box instead of sitting outside it. */
+  /* Side edges only — a device rendering edge-to-edge (see index.html's
+     viewport-fit=cover) would otherwise clip content under a landscape
+     notch/rounded corner. box-sizing so the padding shrinks the box
+     instead of sitting outside it. Top and bottom are deliberately NOT
+     reserved here: SplashScreen/TermsView are their own
+     position: fixed, centered overlays that never touch that edge
+     anyway, and ChatView's .chat-header/.chat-footer reserve it
+     themselves instead (see their own comments) — those are the
+     elements a project's skin actually paints, so reserving the notch
+     there lets a dark skin's own background extend behind it instead of
+     showing this white fallback through a color-mismatched gap. */
   box-sizing: border-box;
-  padding-top: env(safe-area-inset-top);
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
   z-index: 100;

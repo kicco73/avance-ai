@@ -699,12 +699,30 @@ watch(
   flex-shrink: 0;
   height: 70px;
   position: relative;
+  /* Reserves the notch/status bar — content-box on purpose (not
+     border-box): this should *add* to the 70px a project's skin already
+     sizes its own icon/content against, not eat into it. Left/right too,
+     for a landscape notch/rounded corner. Living here rather than on
+     LiveChatWindow.vue's own wrapper means this element's own
+     background — the one a skin actually paints (see the .chat-header
+     hook in that file's comment) — extends behind the notch instead of
+     leaving a color-mismatched gap above it. */
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
 .chat-footer {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  /* Same reasoning as .chat-header above, for the opposite edge — the
+     home indicator (iOS) / gesture nav bar (Android). ChatInput.vue's
+     own .input-row no longer reserves this itself (see its own
+     comment), so this is the only place it's reserved now. */
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
 /* While the sessions panel is open, the chat behind it is inert — dimmed
