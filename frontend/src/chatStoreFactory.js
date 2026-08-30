@@ -5,7 +5,7 @@ import {
   getAiModels, postAiModelSelection
 } from './api.js'
 import { sendMessage as sendChatMessage, onNotification } from './chatClient.js'
-import { playMessageChime, playMessageAudio, playReactionChime } from './audio.js'
+import { playMessageChime, playMessageAudio, playReactionChime, unlockAudioPlayback } from './audio.js'
 import { runOnEnterScript } from './onEnterActions.js'
 import { clearApiError, setApiError } from './errorStore.js'
 import { confirmDialog } from './dialogStore.js'
@@ -314,6 +314,9 @@ export function createChatStore({
   function toggleAudio() {
     audioEnabled.value = !audioEnabled.value
     if (audioEnabled.value) {
+      // Inside this same click gesture — every narration from here on,
+      // including the one about to play below, happens well outside one.
+      unlockAudioPlayback()
       const lastAssistant = [...messages.value].reverse().find((m) => m.role === 'assistant' && m.messageId != null)
       if (lastAssistant) playMessageAudio(messageAudioUrl(lastAssistant.messageId))
     }

@@ -24,6 +24,7 @@ import SplashScreen from '../SplashScreen.vue'
 import { setApiError } from '../../errorStore.js'
 import { connect as connectChat, disconnect as disconnectChat } from '../../chatClient.js'
 import { startRecording, stopRecording } from '../../mic.js'
+import { unlockAudioPlayback } from '../../audio.js'
 import { liveStore } from '../../chatStore.js'
 import {
   audioEnabled,
@@ -246,6 +247,9 @@ onBeforeUnmount(() => {
 function submit() {
   const text = draft.value.trim()
   if (!text || chatLoading.value || chatDisabled.value) return
+  // Inside this same click/submit gesture — narration for the reply this
+  // triggers plays moments later, well outside any gesture of its own.
+  unlockAudioPlayback()
   handleSend(text)
   draft.value = ''
 }
@@ -258,6 +262,10 @@ function resend(i) {
 async function startPtt(event) {
   if (event?.pointerType === 'mouse' && event.button !== 0) return
   if (recording.value || chatLoading.value || chatDisabled.value) return
+  // Inside this same pointerdown gesture — the voice message this
+  // eventually sends gets a reply whose own narration plays well outside
+  // any gesture of its own.
+  unlockAudioPlayback()
   // getUserMedia only exists in a secure context (https, or localhost) —
   // over plain http on a LAN it's simply undefined, which otherwise
   // surfaces as the same "access was denied" message a real permission
