@@ -134,7 +134,8 @@ def create_app() -> FastAPI:
         # ChatService depend on ai_service/metric_service directly, never each other.
         tracking_service = TrackingService(
             db, project_service, metric_service, talk_enabled=talk_service is not None,
-            input_token_budget_per_session=config.input_token_budget_per_session,
+            input_token_budget_per_turn=config.input_token_budget_per_turn,
+            total_token_budget_per_session=config.total_token_budget_per_session,
         )
         chat_service = ChatService(
             db, ai_live_service, ai_test_service, project_service, session_manager,

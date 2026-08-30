@@ -31,7 +31,7 @@ const props = defineProps({
   // chatStore.js's sessions rows.
   selectedSession: { type: Object, default: null },
   sessionInputTokens: { type: Number, default: null },
-  inputTokenBudgetPerSession: { type: Number, default: null },
+  totalTokenBudgetPerSession: { type: Number, default: null },
   sessionStartElement: { type: Object, default: null },
   sessionEndElement: { type: Object, default: null },
   // Test mode only: no edit form, no delete, no "+ Add state" — this tab
@@ -114,7 +114,7 @@ onMounted(loadProjectMetadata)
         :session="selectedSession"
         :editable="false"
         :session-input-tokens="sessionInputTokens"
-        :input-token-budget-per-session="inputTokenBudgetPerSession"
+        :total-token-budget-per-session="totalTokenBudgetPerSession"
       />
       <InspectorDetailCard
         v-if="sessionStartIsEnd"

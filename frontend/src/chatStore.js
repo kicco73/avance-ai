@@ -2,9 +2,9 @@ import { getCurrentSession, postCreateSession, getSessions } from './api.js'
 import { createChatStore } from './chatStoreFactory.js'
 
 export {
-  audioEnabled, talkAvailable, micAvailable, spokenTextEnabled, inputTokenBudgetPerSession,
+  audioEnabled, talkAvailable, micAvailable, spokenTextEnabled, inputTokenBudgetPerTurn, totalTokenBudgetPerSession,
   aiModels, aiModelAuto, aiModelCurrentIndex, aiModelSelectionLoading,
-  setCapabilities, setInputTokenBudgetPerSession, loadAiModels, selectAiModel, toggleSpokenText,
+  setCapabilities, setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, loadAiModels, selectAiModel, toggleSpokenText,
   liveModelStore,
 } from './chatStoreFactory.js'
 export { applyAspect, invalidateSkin, setSkinCss } from './chatSkin.js'

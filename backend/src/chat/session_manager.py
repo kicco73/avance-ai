@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 logger = LoggerFactory.get_logger(__name__)
 
 # Default open window, in minutes, when the caller doesn't supply one —
-# matches config.yml's chat-service.max_session_duration_in_minutes
+# matches config.yml's chat-service.max-session-duration-in-minutes
 # default, kept here too so tests/direct constructions don't need it.
 DEFAULT_OPEN_WINDOW_MINUTES = 60.0
 

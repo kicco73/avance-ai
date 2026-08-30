@@ -257,7 +257,7 @@ class AppConfig:
         # generate_stream_with_schema call is allowed to reach before the
         # provider itself reports truncation (see AIServiceProviderOutputTruncatedError).
         max_output_tokens = cls._get_optional_positive_int(
-            raw, "ai-service", "max_output_tokens", path, default=4096
+            raw, "ai-service", "max-output-tokens", path, default=4096
         )
 
         services = []
@@ -302,28 +302,35 @@ class AppConfig:
         # "open" (see chat/session_manager.py's ChatSessionManager) — never
         # hardcoded elsewhere.
         self.max_session_duration_in_minutes = self._get_optional_positive_float(
-            raw, "chat-service", "max_session_duration_in_minutes", path, default=60.0
+            raw, "chat-service", "max-session-duration-in-minutes", path, default=60.0
         )
         # FIXME: 16000 mirrored in TrackingService/TrackingProcessor's own
         # constructor defaults — keep in sync.
-        self.input_token_budget_per_session = self._get_optional_positive_int(
-            raw, "chat-service", "input-token-budget-per-session", path, default=16000
+        self.input_token_budget_per_turn = self._get_optional_positive_int(
+            raw, "chat-service", "input-token-budget-per-turn", path, default=16000
+        )
+        # FIXME: 200000 mirrored in TrackingService's own constructor
+        # default — keep in sync. Display-only (see SessionDetailCard.vue's
+        # tokens bar): the max reference the bar is drawn against, nothing
+        # in the backend trims history against it.
+        self.total_token_budget_per_session = self._get_optional_positive_int(
+            raw, "chat-service", "total-token-budget-per-session", path, default=200000
         )
 
         # Two separate worker pools (see jobs/job_queue.py's JobQueue and
         # jobs/throttled_job_queue.py's ThrottledJobQueue) — optional, and
         # so is the whole `jobs` section.
         self.jobs_shared_max_concurrent = self._get_optional_positive_int(
-            raw, "jobs", "shared_max_concurrent", path, default=2
+            raw, "jobs", "shared-max-concurrent", path, default=2
         )
         self.test_service_max_concurrent_tests = self._get_optional_positive_int(
-            raw, "test-service", "max_concurrent_tests", path, default=4
+            raw, "test-service", "max-concurrent-tests", path, default=4
         )
         self.test_service_max_tests_per_minute = self._get_optional_positive_int(
-            raw, "test-service", "max_tests_per_minute", path, default=1_000_000
+            raw, "test-service", "max-tests-per-minute", path, default=1_000_000
         )
         self.test_service_min_test_interval_ms = self._get_optional_non_negative_int(
-            raw, "test-service", "min_test_interval_ms", path, default=0
+            raw, "test-service", "min-test-interval-ms", path, default=0
         )
 
         self.ai_services = self._parse_ai_services(raw, path)

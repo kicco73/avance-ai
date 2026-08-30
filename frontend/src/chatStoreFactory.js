@@ -21,7 +21,9 @@ export const spokenTextEnabled = ref(false)
 // FIXME: null until GET /api/state resolves; kept separate from
 // chatStoreFactory's `state` ref, which handleStateChange overwrites with
 // a differently-shaped payload on every chat turn.
-export const inputTokenBudgetPerSession = ref(null)
+export const inputTokenBudgetPerTurn = ref(null)
+// Same null-until-boot shape as inputTokenBudgetPerTurn above.
+export const totalTokenBudgetPerSession = ref(null)
 
 export const aiModels = ref([])
 export const aiModelAuto = ref(true)
@@ -33,8 +35,12 @@ export function setCapabilities({ talkAvailable: talk, micAvailable: mic }) {
   micAvailable.value = mic
 }
 
-export function setInputTokenBudgetPerSession(value) {
-  inputTokenBudgetPerSession.value = value
+export function setInputTokenBudgetPerTurn(value) {
+  inputTokenBudgetPerTurn.value = value
+}
+
+export function setTotalTokenBudgetPerSession(value) {
+  totalTokenBudgetPerSession.value = value
 }
 
 function applyAiModelInfo(info) {

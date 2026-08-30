@@ -12,7 +12,7 @@ const props = defineProps({
   editable: { type: Boolean, default: true },
   deletable: { type: Boolean, default: false },
   sessionInputTokens: { type: Number, default: null },
-  inputTokenBudgetPerSession: { type: Number, default: null }
+  totalTokenBudgetPerSession: { type: Number, default: null }
 })
 
 const emit = defineEmits(['updated', 'delete'])
@@ -59,7 +59,7 @@ async function onUpdateComment() {
 }
 
 const { width: tokensBarWidth, level: tokensBarLevel } = useTokensBar(
-  computed(() => props.sessionInputTokens), computed(() => props.inputTokenBudgetPerSession)
+  computed(() => props.sessionInputTokens), computed(() => props.totalTokenBudgetPerSession)
 )
 const {
   visible: tokensTooltipVisible, style: tokensTooltipStyle, show: showTokensTooltip, hide: hideTokensTooltip
@@ -118,7 +118,7 @@ const {
         </div>
         <span v-if="isImported" class="session-detail-badge session-detail-badge-neutral">Imported</span>
         <span v-if="session.comment" class="session-detail-comment-preview">{{ session.comment }}</span>
-        <div v-if="sessionInputTokens != null && inputTokenBudgetPerSession != null" class="session-detail-tokens">
+        <div v-if="sessionInputTokens != null && totalTokenBudgetPerSession != null" class="session-detail-tokens">
           <span class="session-detail-tokens-label">Input tokens</span>
           <div
             class="session-detail-tokens-bar-track"
@@ -139,7 +139,7 @@ const {
         v-if="tokensTooltipVisible"
         class="session-detail-tokens-tooltip-floating"
         :style="tokensTooltipStyle"
-      >{{ sessionInputTokens }} / {{ inputTokenBudgetPerSession }} input tokens</span>
+      >{{ sessionInputTokens }} / {{ totalTokenBudgetPerSession }} input tokens</span>
     </Teleport>
   </div>
 </template>

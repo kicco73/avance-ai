@@ -20,31 +20,36 @@ chat-service:
   # "open" — i.e. still writable — after its last activity (see
   # chat/session_manager.py's ChatSessionManager). The single source of
   # truth for this duration; nothing else hardcodes it.
-  max_session_duration_in_minutes: 60
-  # Optional, defaults to 8000. Caps how much of a session's own message
+  max-session-duration-in-minutes: 60
+  # Optional, defaults to 16000. Caps how much of a session's own message
   # history a turn's prompt can carry: walking backward from the latest
   # message, as many messages as fit within this many cumulative tokens
   # (see Message.tokens) are sent — combined with a project state's own
   # history-cutoff (index.yml), never a replacement for it (see
   # db/messages.py's get_turn_history).
-  input-token-budget-per-session: 16000
+  input-token-budget-per-turn: 16000
+  # Optional, defaults to 200000. Display-only: the max reference the
+  # session detail's tokens bar is drawn against (see
+  # SessionDetailCard.vue) — nothing in the backend trims history
+  # against it.
+  total-token-budget-per-session: 200000
 
 jobs:
   # Optional section — can be omitted entirely. Sizes the general
   # job_queue (see jobs/job_queue.py's JobQueue) shared by chat, wakeup,
   # session-summary, etc. A job beyond the pool's size just waits its
   # turn — never rejected.
-  shared_max_concurrent: 2
+  shared-max-concurrent: 2
 
 test-service:
   # Optional section — can be omitted entirely, and each field within it
   # is independently optional too. Sizes TestService's own throttled
   # queue (see jobs/throttled_job_queue.py's ThrottledJobQueue).
-  max_concurrent_tests: 4
+  max-concurrent-tests: 4
   # Caps how many test job steps run per rolling 60s window, and the
   # minimum spacing (ms) between any two of them.
-  max_tests_per_minute: 15
-  min_test_interval_ms: 0
+  max-tests-per-minute: 15
+  min-test-interval-ms: 0
 
 ai-service:
   # Optional. Passed as max_tokens/max_output_tokens to
@@ -53,7 +58,7 @@ ai-service:
   # once) can reach before the provider reports the response as
   # truncated (see AIServiceProviderOutputTruncatedError in ai/llm_provider.py)
   # instead of silently handing back a cut-off trailing field.
-  max_output_tokens: 1024
+  max-output-tokens: 1024
 
   providers:
     # Always a list, even with a single entry. Cascades in order (see

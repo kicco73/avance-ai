@@ -22,7 +22,8 @@ vi.mock('../src/dialogStore.js', () => ({
 }))
 vi.mock('../src/chatStore.js', () => ({
   setCapabilities: vi.fn(),
-  setInputTokenBudgetPerSession: vi.fn(),
+  setInputTokenBudgetPerTurn: vi.fn(),
+  setTotalTokenBudgetPerSession: vi.fn(),
   handleStateChange: vi.fn(),
   loadMessages: vi.fn(),
   loadAiModels: vi.fn(),
@@ -33,7 +34,7 @@ import { disconnect as disconnectChat } from '../src/chatClient.js'
 import { clearApiError } from '../src/errorStore.js'
 import { requireLogin } from '../src/authStore.js'
 import { confirmDialog } from '../src/dialogStore.js'
-import { setCapabilities, setInputTokenBudgetPerSession, handleStateChange, loadMessages, loadAiModels } from '../src/chatStore.js'
+import { setCapabilities, setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateChange, loadMessages, loadAiModels } from '../src/chatStore.js'
 import { useAppBoot } from '../src/composables/useAppBoot.js'
 
 function mountComposable(setup) {
@@ -107,7 +108,8 @@ describe('useAppBoot', () => {
       await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
 
       expect(setCapabilities).toHaveBeenCalledWith({ talkAvailable: true, micAvailable: true })
-      expect(setInputTokenBudgetPerSession).toHaveBeenCalledWith(null)
+      expect(setInputTokenBudgetPerTurn).toHaveBeenCalledWith(null)
+      expect(setTotalTokenBudgetPerSession).toHaveBeenCalledWith(null)
       expect(handleStateChange).toHaveBeenCalled()
       expect(clearApiError).toHaveBeenCalled()
       expect(loadMessages).toHaveBeenCalled() // role === 'user'
@@ -115,14 +117,25 @@ describe('useAppBoot', () => {
     })
 
     it('passes the backend-reported input token budget through, when present', async () => {
-      getState.mockResolvedValue({ talk_enabled: true, listen_enabled: true, input_token_budget_per_session: 8000 })
+      getState.mockResolvedValue({ talk_enabled: true, listen_enabled: true, input_token_budget_per_turn: 8000 })
       getMe.mockResolvedValue({ role: 'user' })
       const s = mount()
 
       s.startBootSequence()
       await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
 
-      expect(setInputTokenBudgetPerSession).toHaveBeenCalledWith(8000)
+      expect(setInputTokenBudgetPerTurn).toHaveBeenCalledWith(8000)
+    })
+
+    it('passes the backend-reported total token budget through, when present', async () => {
+      getState.mockResolvedValue({ talk_enabled: true, listen_enabled: true, total_token_budget_per_session: 200000 })
+      getMe.mockResolvedValue({ role: 'user' })
+      const s = mount()
+
+      s.startBootSequence()
+      await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
+
+      expect(setTotalTokenBudgetPerSession).toHaveBeenCalledWith(200000)
     })
 
     it('resets the navigation stack before resolving who is landing where', async () => {

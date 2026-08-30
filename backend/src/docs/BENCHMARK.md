@@ -19,7 +19,7 @@ All metric values use `0..100`, where **100 means perfect behavior**.
 
 ```yaml
 chat-service:
-  max_session_duration_in_minutes: 60
+  max-session-duration-in-minutes: 60
 ```
 
 No hardcoded 60-minute value should exist in application session management.

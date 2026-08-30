@@ -82,7 +82,7 @@ function formatNumber(value) {
 const {
   tokensBurnt, nodeLastResult, selectedNodeId, selectedRun, selectedRunLoading,
   currentStrategyStatuses, currentStrategyProgress,
-  selectedCacheKey, selectedNodeError, selectedNodeLabel, anyTestExecuted, anyJobBusy,
+  selectedCacheKey, selectedNodeError, selectedNodeLabel, anyTestExecuted, anyJobBusy, currentStrategyBusy,
   onActivate, onAbort, onActivateRoot, onSelect,
   resettingCache, onResetCache,
 } = useTestExecutionTree(props.projectName, strategy, sessions, projectSignals, emit)
@@ -124,11 +124,11 @@ onMounted(() => {
           <button
             type="button"
             class="tests-panel-root-btn"
-            :class="anyJobBusy ? 'tests-panel-root-btn-busy' : 'tests-panel-root-btn-idle'"
-            :title="anyJobBusy ? 'Stop all' : 'Run all suite'"
+            :class="currentStrategyBusy ? 'tests-panel-root-btn-busy' : 'tests-panel-root-btn-idle'"
+            :title="currentStrategyBusy ? 'Stop all' : 'Run all suite'"
             @click="onActivateRoot"
           >
-            <svg v-if="anyJobBusy" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+            <svg v-if="currentStrategyBusy" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
               <rect x="7" y="7" width="10" height="10" rx="1.5" />
             </svg>
             <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="currentColor">

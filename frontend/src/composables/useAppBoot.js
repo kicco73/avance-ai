@@ -4,7 +4,7 @@ import { disconnect as disconnectChat } from '../chatClient.js'
 import { clearApiError } from '../errorStore.js'
 import { requireLogin } from '../authStore.js'
 import { confirmDialog } from '../dialogStore.js'
-import { setCapabilities, setInputTokenBudgetPerSession, handleStateChange, loadMessages, loadAiModels } from '../chatStore.js'
+import { setCapabilities, setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateChange, loadMessages, loadAiModels } from '../chatStore.js'
 
 // App.vue's own boot sequence: the backend-readiness ping loop, resolving
 // which view a freshly-booted session lands on, and every navigate-away
@@ -63,7 +63,8 @@ export function useAppBoot(
     try {
       const newState = await getState(controller.signal)
       setCapabilities({ talkAvailable: newState.talk_enabled ?? true, micAvailable: newState.listen_enabled ?? true })
-      setInputTokenBudgetPerSession(newState.input_token_budget_per_session ?? null)
+      setInputTokenBudgetPerTurn(newState.input_token_budget_per_turn ?? null)
+      setTotalTokenBudgetPerSession(newState.total_token_budget_per_session ?? null)
       handleStateChange(newState)
       return 'ready'
     } catch (err) {

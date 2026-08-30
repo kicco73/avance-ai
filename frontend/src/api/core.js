@@ -32,7 +32,7 @@ async function readSseResult(res, onProgress) {
   return final?.result ?? null
 }
 
-export async function apiFetch(url, options, { parse = 'json', onProgress } = {}) {
+export async function apiFetch(url, options, { parse = 'json', onProgress, onCommitted } = {}) {
   let res
   try {
     // The session cookie is httpOnly and, in dev, often cross-origin
@@ -69,6 +69,8 @@ export async function apiFetch(url, options, { parse = 'json', onProgress } = {}
     err.detail = detail
     throw err
   }
+
+  onCommitted?.()
 
   // A 204 has no body — res.json() on an empty response throws, regardless
   // of the requested `parse` mode.

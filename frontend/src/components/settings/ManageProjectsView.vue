@@ -2,11 +2,10 @@
 // Settings > Manage projects: one row per project with its three-state
 // status (see backend ProjectService._project_status) and revision info.
 // The status dot toggles running <-> manually_paused only; 'paused' needs an external fix.
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getProjectMetadata, getProjectsRuntimeStatus, projectFileContentUrl, putProjectPause, putProjectResume } from '../../api.js'
 import { confirmDialog } from '../../dialogStore.js'
 import { liveModelStore } from '../../chatStore.js'
-import ProgressSpinner from '../ProgressSpinner.vue'
 import ModelMenu from '../ModelMenu.vue'
 import SettingsMenu from './SettingsMenu.vue'
 import ProfileMenu from '../ProfileMenu.vue'
@@ -18,6 +17,8 @@ const props = defineProps({
   // 0-100, or null before the first progress chunk has arrived — see
   // SessionsTree.vue's identical importProgress for the same reasoning.
   uploadProgress: { type: Number, default: null },
+  uploadProjectName: { type: String, default: null },
+  uploadIconReady: { type: Boolean, default: false },
   // This is an admin's own landing page now (see App.vue's role-based
   // routing) — no Back button to fall back on, so its own Settings menu
   // (same one the main chat screen shows) is how it reaches every other
@@ -169,6 +170,24 @@ function projectDescription(name) {
   return metadataByName.value[name]?.ui_description || null
 }
 
+const uploadRowTitle = computed(() => (props.uploadProgress == null ? 'Uploading' : 'Installing'))
+
+const uploadIconFailed = ref(false)
+const uploadIconLoaded = ref(false)
+watch(() => props.uploading, (value) => {
+  if (value) {
+    uploadIconFailed.value = false
+    uploadIconLoaded.value = false
+  }
+})
+watch(() => props.uploadIconReady, (ready) => {
+  if (!ready || !props.uploadProjectName) return
+  const preload = new Image()
+  preload.onload = () => { uploadIconLoaded.value = true }
+  preload.onerror = () => { uploadIconFailed.value = true }
+  preload.src = projectFileContentUrl(props.uploadProjectName, 'aspect/icon.png')
+})
+
 function replaceRow(updated) {
   const idx = rows.value.findIndex((r) => r.name === updated.name)
   if (idx !== -1) rows.value[idx] = updated
@@ -288,12 +307,9 @@ defineExpose({ refresh: load })
           <button
             type="button"
             class="manage-projects-action-btn"
-            :class="{ 'manage-projects-action-btn-busy': uploading }"
-            :disabled="uploading"
             @click="toggleAddMenu"
           >
-            <ProgressSpinner v-if="uploading" :progress="uploadProgress" />
-            {{ uploading ? (uploadProgress != null ? `Uploading… ${Math.round(uploadProgress)}%` : 'Uploading…') : 'Add' }}
+            Add
           </button>
           <Transition name="manage-projects-add-panel">
             <div v-if="addMenuOpen" class="manage-projects-add-panel">
@@ -335,7 +351,7 @@ defineExpose({ refresh: load })
 
     <div class="manage-projects-body" ref="bodyEl">
       <p v-if="loading" class="manage-projects-status">Loading…</p>
-      <p v-else-if="!rows.length" class="manage-projects-status">No projects yet.</p>
+      <p v-else-if="!rows.length && !uploading" class="manage-projects-status">No projects yet.</p>
 
       <table v-else class="manage-projects-table">
         <tbody>
@@ -453,6 +469,33 @@ defineExpose({ refresh: load })
               </div>
             </td>
           </tr>
+          <tr v-if="uploading">
+            <td class="manage-projects-name">
+              <div class="project-card project-card-placeholder">
+                <span class="project-card-icon-wrap">
+                  <img :src="avanceLogoUrl" class="project-card-fallback-logo manage-projects-upload-icon-glow" alt="" />
+                  <Transition name="manage-projects-upload-icon">
+                    <img
+                      v-if="uploadIconLoaded && !uploadIconFailed"
+                      :src="projectFileContentUrl(uploadProjectName, 'aspect/icon.png')"
+                      class="project-card-icon manage-projects-upload-icon-glow"
+                      alt=""
+                    />
+                  </Transition>
+                </span>
+                <span class="project-card-body">
+                  <span class="project-card-title-row">
+                    <span class="project-card-title">{{ uploadRowTitle }}</span>
+                  </span>
+                  <span class="manage-projects-upload-bar-track">
+                    <span class="manage-projects-upload-bar-fill" :style="{ width: `${uploadProgress ?? 0}%` }"></span>
+                  </span>
+                </span>
+              </div>
+            </td>
+            <td class="manage-projects-col-spacer"></td>
+            <td class="manage-projects-col-status-actions"></td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -518,16 +561,6 @@ defineExpose({ refresh: load })
 .manage-projects-action-btn:hover {
   background: #4a6fa5;
   color: white;
-}
-
-.manage-projects-action-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.7;
-}
-
-.manage-projects-action-btn-busy:hover {
-  background: white;
-  color: #4a6fa5;
 }
 
 .manage-projects-add-menu {
@@ -596,7 +629,7 @@ defineExpose({ refresh: load })
 
 .manage-projects-status {
   margin: 0;
-  padding: 0.75rem 0;
+  padding: 0.75rem 0 0.75rem 20px;
   font-size: 0.9rem;
   color: #666;
 }
@@ -640,6 +673,7 @@ defineExpose({ refresh: load })
 }
 
 .project-card {
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 0.6rem;
@@ -676,6 +710,7 @@ defineExpose({ refresh: load })
 }
 
 .project-card-body {
+  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -716,6 +751,63 @@ defineExpose({ refresh: load })
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.project-card-placeholder {
+  cursor: default;
+  pointer-events: none;
+}
+
+.project-card-icon-wrap {
+  position: relative;
+  flex-shrink: 0;
+  width: 65px;
+  height: 65px;
+}
+
+.project-card-icon-wrap .project-card-fallback-logo,
+.project-card-icon-wrap .project-card-icon {
+  position: absolute;
+  inset: 0;
+}
+
+.manage-projects-upload-icon-enter-active {
+  transition: opacity 0.4s ease;
+}
+
+.manage-projects-upload-icon-enter-from {
+  opacity: 0;
+}
+
+.manage-projects-upload-icon-glow {
+  animation: manage-projects-upload-icon-glow-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes manage-projects-upload-icon-glow-pulse {
+  0%, 100% {
+    filter: drop-shadow(0 0 2px rgba(74, 111, 165, 0.35));
+  }
+  50% {
+    filter: drop-shadow(0 0 10px rgba(74, 111, 165, 0.9));
+  }
+}
+
+.manage-projects-upload-bar-track {
+  display: block;
+  width: 100%;
+  margin-top: 0.3rem;
+  height: 8px;
+  border-radius: 999px;
+  background: #eee;
+  overflow: hidden;
+}
+
+.manage-projects-upload-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: #4a6fa5;
+  transition: width 0.3s ease;
 }
 
 .manage-projects-status-btn {

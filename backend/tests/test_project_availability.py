@@ -193,6 +193,41 @@ def test_depending_on_a_project_that_does_not_exist_at_all_is_not_itself_blockin
     assert db.get_project_availability("dependent") == (False, None)
 
 
+def test_a_newly_created_projects_arrival_wakes_up_a_previously_dangling_dependent(db, project_service):
+    """"dependent" references "dep" before "dep" exists at all — not
+    blocking, and not even recorded in the observer index yet (see the
+    test above). Once "dep" is actually created, "dependent" must pick
+    up the dependency on its own — nothing ever re-saves "dependent"."""
+    _publish_project(db, project_service, "dependent", _yml_observing("dep"))
+    project_service.register_availability_cascade()
+    assert db.get_observed_projects("dependent") == []
+
+    _publish_project(db, project_service, "dep", VALID_YML)
+
+    assert db.get_observed_projects("dependent") == ["dep"]
+
+    project_service.set_manually_paused("dep")
+
+    is_paused, reason = db.get_project_availability("dependent")
+    assert is_paused is True
+    assert "dep" in reason
+
+
+def test_changing_a_projects_id_pauses_observers_of_the_stale_old_id(db, project_service):
+    """"dependent" observes "dep" via its declared id ("old_id"). Renaming
+    that id out from under it (a real re-save, not a manual DB flip) must
+    pause "dependent" immediately — without "dependent" itself being touched."""
+    _publish_project(db, project_service, "dep", "project:\n  id: old_id\n" + VALID_YML)
+    _publish_project(db, project_service, "dependent", _yml_observing("old_id"))
+    assert db.get_project_availability("dependent") == (False, None)
+
+    _publish_project(db, project_service, "dep", "project:\n  id: new_id\n" + VALID_YML)
+
+    is_paused, reason = db.get_project_availability("dependent")
+    assert is_paused is True
+    assert "old_id" in reason
+
+
 # --- Manual pause/resume -----------------------------------------------
 
 

@@ -119,6 +119,43 @@ class ProjectManager:
         project_id = self._db.get_project_id(project_name)
         return self._db.get_observers(project_id) if project_id else []
 
+    def _recheck_dependents_of_changed_id(
+        self, project_name: str, old_project_id: str | None, new_project_id: str | None,
+    ) -> None:
+        """`project_name` just stopped answering to one id and/or started
+        answering to another (a brand new project's id counts as
+        "started", coming from None).
+
+        A project observing the *old* id is already correctly indexed —
+        that reference just became unresolvable, so a plain recompute is
+        enough (same as a delete). A project merely waiting on the *new*
+        one was never indexed at all if the id didn't resolve to anything
+        until now (see _filter_resolvable_project_ids silently dropping
+        it) — those can only be found by re-scanning every project's raw
+        triggers directly, and need their own observer-index row
+        refreshed before a recompute of theirs means anything."""
+        affected: set[str] = set()
+        if old_project_id is not None:
+            affected |= set(self._db.get_observers(old_project_id))
+
+        if new_project_id is not None:
+            for other_name in self._db.list_projects():
+                if other_name == project_name:
+                    continue
+                try:
+                    other_automaton = self._automaton_loader.load(other_name)
+                except Exception:  # noqa: BLE001 — a broken build has nothing to refresh
+                    continue
+                other_refs = self._automaton_project_refs(other_automaton)
+                if new_project_id not in other_refs:
+                    continue
+                self._db.set_project_observers(other_name, self._filter_resolvable_project_ids(other_refs))
+                affected.add(other_name)
+
+        affected.discard(project_name)
+        for observer in affected:
+            self.recompute_availability(observer)
+
     def register_availability_cascade(self) -> None:
         """Subscribed once, for the process's lifetime. Recursive by
         construction: recompute_availability's write-only-on-change guard
@@ -260,6 +297,11 @@ class ProjectManager:
         Refreshes the automaton cache and resets the active project's live
         conversation only when its current state no longer exists."""
 
+        # Captured before set_project_metadata overwrites it, so a changed
+        # (or brand new, previously None) id can be told apart from an
+        # unchanged one below.
+        old_project_id = self._db.get_project_id(project_name)
+
         # Synced first: this project's own project_id must be current
         # before any *other* project's build can resolve a reference to it.
         self._db.set_project_metadata(
@@ -274,6 +316,8 @@ class ProjectManager:
         observed_project_ids = self._filter_resolvable_project_ids(self._automaton_project_refs(automaton))
         self._db.set_project_observers(project_name, observed_project_ids)
         self.recompute_availability(project_name)
+        if automaton.project_id != old_project_id:
+            self._recheck_dependents_of_changed_id(project_name, old_project_id, automaton.project_id)
         if project_name == self._inspector.get_active_project_name():
             current_state_key = self._db.get_current_state(project_name)
             if current_state_key is None or current_state_key not in automaton.states:
@@ -381,6 +425,8 @@ class ProjectManager:
 
         if not self._automaton_loader.is_safe_project_name(project_name):
             raise ValueError(f"Invalid project name: '{project_name}'.")
+        if project_name in self._db.list_projects():
+            raise ValueError(f"A project named '{project_name}' already exists.")
 
         try:
             if ZipImporter.looks_like_zip(content_type, content):
@@ -523,14 +569,14 @@ class ProjectManager:
         # back None, so checking afterwards could never see a match.
         was_active = project_name == self._inspector.get_active_project_name()
         self._db.reset_project(project_name)
-        observers = self._observers_of(project_name)
+        old_project_id = self._db.get_project_id(project_name)
         self._db.delete_archives(project_name)
         self._automaton_loader.invalidate_cache(project_name)
         # No AvailabilityChanged fires for a deletion (the project isn't
         # merely unavailable, it's gone), so its observers would otherwise
-        # never notice their dependency vanished — recompute them directly.
-        for observer in observers:
-            self.recompute_availability(observer)
+        # never notice their dependency vanished — recompute them directly,
+        # same cascade a live id change triggers (see finalize_update).
+        self._recheck_dependents_of_changed_id(project_name, old_project_id, None)
 
         if was_active:
             # Falls back to whatever's left, or nothing at all (the

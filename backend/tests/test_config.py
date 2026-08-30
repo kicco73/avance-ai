@@ -42,28 +42,28 @@ class TestGetOptionalPositiveFloat:
 
     def test_returns_the_default_when_the_field_is_absent(self):
         raw = {"chat-service": {"transport": "rest"}}
-        value = AppConfig._get_optional_positive_float(raw, "chat-service", "max_session_duration_in_minutes", "cfg", default=60.0)
+        value = AppConfig._get_optional_positive_float(raw, "chat-service", "max-session-duration-in-minutes", "cfg", default=60.0)
         assert value == 60.0
 
     def test_returns_the_configured_value_when_present(self):
-        raw = {"chat-service": {"max_session_duration_in_minutes": 30}}
-        value = AppConfig._get_optional_positive_float(raw, "chat-service", "max_session_duration_in_minutes", "cfg", default=60.0)
+        raw = {"chat-service": {"max-session-duration-in-minutes": 30}}
+        value = AppConfig._get_optional_positive_float(raw, "chat-service", "max-session-duration-in-minutes", "cfg", default=60.0)
         assert value == 30.0
 
     def test_accepts_a_float_value(self):
-        raw = {"chat-service": {"max_session_duration_in_minutes": 12.5}}
-        value = AppConfig._get_optional_positive_float(raw, "chat-service", "max_session_duration_in_minutes", "cfg", default=60.0)
+        raw = {"chat-service": {"max-session-duration-in-minutes": 12.5}}
+        value = AppConfig._get_optional_positive_float(raw, "chat-service", "max-session-duration-in-minutes", "cfg", default=60.0)
         assert value == 12.5
 
     @pytest.mark.parametrize("bad_value", [0, -5, "60", True, None])
     def test_rejects_non_positive_or_non_numeric_values(self, bad_value):
-        raw = {"chat-service": {"max_session_duration_in_minutes": bad_value}}
+        raw = {"chat-service": {"max-session-duration-in-minutes": bad_value}}
         with pytest.raises(ConfigError):
-            AppConfig._get_optional_positive_float(raw, "chat-service", "max_session_duration_in_minutes", "cfg", default=60.0)
+            AppConfig._get_optional_positive_float(raw, "chat-service", "max-session-duration-in-minutes", "cfg", default=60.0)
 
     def test_raises_if_the_section_itself_is_missing(self):
         with pytest.raises(ConfigError):
-            AppConfig._get_optional_positive_float({}, "chat-service", "max_session_duration_in_minutes", "cfg", default=60.0)
+            AppConfig._get_optional_positive_float({}, "chat-service", "max-session-duration-in-minutes", "cfg", default=60.0)
 
 
 class TestMaxSessionDurationInMinutes:
@@ -76,7 +76,7 @@ class TestMaxSessionDurationInMinutes:
     def test_reads_a_custom_value(self, monkeypatch, tmp_path):
         content = MINIMAL_CONFIG.replace(
             "chat-service: {}",
-            "chat-service:\n  max_session_duration_in_minutes: 15",
+            "chat-service:\n  max-session-duration-in-minutes: 15",
         )
         config = _load(monkeypatch, tmp_path, content)
         assert config.max_session_duration_in_minutes == 15.0
@@ -84,31 +84,55 @@ class TestMaxSessionDurationInMinutes:
     def test_rejects_a_non_positive_value(self, monkeypatch, tmp_path):
         content = MINIMAL_CONFIG.replace(
             "chat-service: {}",
-            "chat-service:\n  max_session_duration_in_minutes: 0",
+            "chat-service:\n  max-session-duration-in-minutes: 0",
         )
         with pytest.raises(ConfigError):
             _load(monkeypatch, tmp_path, content)
 
 
-class TestInputTokenBudgetPerSession:
+class TestInputTokenBudgetPerTurn:
     """End-to-end: a real AppConfig() built from a real (temp) config file."""
 
     def test_defaults_to_16000_when_omitted(self, monkeypatch, tmp_path):
         config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
-        assert config.input_token_budget_per_session == 16000
+        assert config.input_token_budget_per_turn == 16000
 
     def test_reads_a_custom_value(self, monkeypatch, tmp_path):
         content = MINIMAL_CONFIG.replace(
             "chat-service: {}",
-            "chat-service:\n  input-token-budget-per-session: 4000",
+            "chat-service:\n  input-token-budget-per-turn: 4000",
         )
         config = _load(monkeypatch, tmp_path, content)
-        assert config.input_token_budget_per_session == 4000
+        assert config.input_token_budget_per_turn == 4000
 
     def test_rejects_a_non_positive_value(self, monkeypatch, tmp_path):
         content = MINIMAL_CONFIG.replace(
             "chat-service: {}",
-            "chat-service:\n  input-token-budget-per-session: 0",
+            "chat-service:\n  input-token-budget-per-turn: 0",
+        )
+        with pytest.raises(ConfigError):
+            _load(monkeypatch, tmp_path, content)
+
+
+class TestTotalTokenBudgetPerSession:
+    """End-to-end: a real AppConfig() built from a real (temp) config file."""
+
+    def test_defaults_to_200000_when_omitted(self, monkeypatch, tmp_path):
+        config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
+        assert config.total_token_budget_per_session == 200000
+
+    def test_reads_a_custom_value(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG.replace(
+            "chat-service: {}",
+            "chat-service:\n  total-token-budget-per-session: 50000",
+        )
+        config = _load(monkeypatch, tmp_path, content)
+        assert config.total_token_budget_per_session == 50000
+
+    def test_rejects_a_non_positive_value(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG.replace(
+            "chat-service: {}",
+            "chat-service:\n  total-token-budget-per-session: 0",
         )
         with pytest.raises(ConfigError):
             _load(monkeypatch, tmp_path, content)
@@ -245,12 +269,12 @@ class TestJobsSharedMaxConcurrent:
         assert config.jobs_shared_max_concurrent == 2
 
     def test_reads_a_custom_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\njobs:\n  shared_max_concurrent: 3\n"
+        content = MINIMAL_CONFIG + "\njobs:\n  shared-max-concurrent: 3\n"
         config = _load(monkeypatch, tmp_path, content)
         assert config.jobs_shared_max_concurrent == 3
 
     def test_rejects_a_non_positive_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\njobs:\n  shared_max_concurrent: 0\n"
+        content = MINIMAL_CONFIG + "\njobs:\n  shared-max-concurrent: 0\n"
         with pytest.raises(ConfigError):
             _load(monkeypatch, tmp_path, content)
 
@@ -261,12 +285,12 @@ class TestServiceMaxConcurrentTests:
         assert config.test_service_max_concurrent_tests == 4
 
     def test_reads_a_custom_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\ntest-service:\n  max_concurrent_tests: 5\n"
+        content = MINIMAL_CONFIG + "\ntest-service:\n  max-concurrent-tests: 5\n"
         config = _load(monkeypatch, tmp_path, content)
         assert config.test_service_max_concurrent_tests == 5
 
     def test_rejects_a_non_positive_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\ntest-service:\n  max_concurrent_tests: 0\n"
+        content = MINIMAL_CONFIG + "\ntest-service:\n  max-concurrent-tests: 0\n"
         with pytest.raises(ConfigError):
             _load(monkeypatch, tmp_path, content)
 
@@ -277,12 +301,12 @@ class TestServiceMaxTestsPerMinute:
         assert config.test_service_max_tests_per_minute == 1_000_000
 
     def test_reads_a_custom_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\ntest-service:\n  max_tests_per_minute: 30\n"
+        content = MINIMAL_CONFIG + "\ntest-service:\n  max-tests-per-minute: 30\n"
         config = _load(monkeypatch, tmp_path, content)
         assert config.test_service_max_tests_per_minute == 30
 
     def test_rejects_a_non_positive_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\ntest-service:\n  max_tests_per_minute: 0\n"
+        content = MINIMAL_CONFIG + "\ntest-service:\n  max-tests-per-minute: 0\n"
         with pytest.raises(ConfigError):
             _load(monkeypatch, tmp_path, content)
 
@@ -293,16 +317,16 @@ class TestServiceMinTestIntervalMs:
         assert config.test_service_min_test_interval_ms == 0
 
     def test_reads_a_custom_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\ntest-service:\n  min_test_interval_ms: 500\n"
+        content = MINIMAL_CONFIG + "\ntest-service:\n  min-test-interval-ms: 500\n"
         config = _load(monkeypatch, tmp_path, content)
         assert config.test_service_min_test_interval_ms == 500
 
     def test_accepts_zero(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\ntest-service:\n  min_test_interval_ms: 0\n"
+        content = MINIMAL_CONFIG + "\ntest-service:\n  min-test-interval-ms: 0\n"
         config = _load(monkeypatch, tmp_path, content)
         assert config.test_service_min_test_interval_ms == 0
 
     def test_rejects_a_negative_value(self, monkeypatch, tmp_path):
-        content = MINIMAL_CONFIG + "\ntest-service:\n  min_test_interval_ms: -1\n"
+        content = MINIMAL_CONFIG + "\ntest-service:\n  min-test-interval-ms: -1\n"
         with pytest.raises(ConfigError):
             _load(monkeypatch, tmp_path, content)

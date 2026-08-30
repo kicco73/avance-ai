@@ -17,7 +17,8 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
   // Running total of AI tokens consumed so far — piggybacked onto every
   // SSE test-event message by the backend's QueueProgressBroadcaster (see
   // AiService.get_total_tokens), not fetched separately.
-  const tokensBurnt = ref(0)
+  const tokensBurntByStrategy = ref({})
+  const tokensBurnt = computed(() => tokensBurntByStrategy.value[strategy.value] ?? 0)
 
   // Every cache below is keyed by `${strategy}:${nodeId}`, never nodeId
   // alone — turn_by_turn and batch results aren't comparable, so switching
@@ -152,13 +153,16 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
   // nodeEvents/setNodeEvent above), so a fresh 'pending'/'running' for a
   // re-run can never leave a stale error behind from the previous attempt.
   function handleTestEvent(message) {
-    if (typeof message.tokens === 'number') tokensBurnt.value = message.tokens
     nodeEvents.value = { ...nodeEvents.value, [message.key]: message }
 
     const { key, job_status: status, queue_status: queueStatus } = message
     const separatorIndex = key.indexOf(':')
     const eventStrategy = key.slice(0, separatorIndex)
     const nodeId = key.slice(separatorIndex + 1)
+
+    if (typeof message.tokens === 'number') {
+      tokensBurntByStrategy.value = { ...tokensBurntByStrategy.value, [eventStrategy]: message.tokens }
+    }
     if (nodeId.startsWith('session:')) {
       if (selectedNodeId.value === nodeId && strategy.value === eventStrategy) loadSelectedRun(nodeId)
       return
@@ -317,7 +321,7 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
   }
 
   async function onActivateRoot() {
-    if (anyJobBusy.value) {
+    if (currentStrategyBusy.value) {
       try {
         await deleteAllTestJobs(projectName)
       } catch {
@@ -390,7 +394,9 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
 
   const resettingCache = ref(false)
 
-  const anyTestExecuted = computed(() => Object.keys(nodeEvents.value).length > 0)
+  const anyTestExecuted = computed(() => (
+    Object.keys(nodeEvents.value).some((key) => key.startsWith(`${strategy.value}:`))
+  ))
 
   // reset_cache() wipes every test row project-wide, every strategy at
   // once — a job still in flight under any of them must be stopped or let
@@ -399,6 +405,12 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
   const anyJobBusy = computed(() => (
     Object.values(nodeEvents.value).some((message) => (
       ['pending', 'ready', 'running', 'paused', 'requeued'].includes(outcome(message))
+    ))
+  ))
+
+  const currentStrategyBusy = computed(() => (
+    Object.entries(nodeEvents.value).some(([key, message]) => (
+      key.startsWith(`${strategy.value}:`) && ['pending', 'ready', 'running', 'paused', 'requeued'].includes(outcome(message))
     ))
   ))
 
@@ -417,7 +429,7 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
       await deleteTests(projectName)
       nodeEvents.value = {}
       nodeLastResult.value = {}
-      tokensBurnt.value = 0
+      tokensBurntByStrategy.value = {}
       selectedRun.value = null
       if (selectedNodeId.value && isRunNode(selectedNodeId.value)) {
         await loadSelectedRun(selectedNodeId.value)
@@ -451,7 +463,7 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
   return {
     tokensBurnt, nodeEvents, nodeLastResult, selectedNodeId, selectedRun, selectedRunLoading,
     currentStrategyStatuses, currentStrategyProgress,
-    selectedCacheKey, selectedNodeError, selectedNodeLabel, signalLabel, anyTestExecuted, anyJobBusy,
+    selectedCacheKey, selectedNodeError, selectedNodeLabel, signalLabel, anyTestExecuted, anyJobBusy, currentStrategyBusy,
     handleTestEvent,
     onActivate, onAbort, onActivateRoot, onSelect,
     resettingCache, onResetCache,

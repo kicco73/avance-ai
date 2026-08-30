@@ -90,7 +90,7 @@ class TrackingProcessor(object):
 			  user_variables: UserVariables,
 			  auto_tracking_enabled: bool = True,
 			  talk_enabled: bool = True,
-			  input_token_budget_per_session: int | None = 16000,
+			  input_token_budget_per_turn: int | None = 16000,
 		):
 		self.ai_service = ai_service
 
@@ -98,7 +98,7 @@ class TrackingProcessor(object):
 		self.db = db
 		self.user = user_variables
 		self.talk_enabled = talk_enabled
-		self.input_token_budget_per_session = input_token_budget_per_session
+		self.input_token_budget_per_turn = input_token_budget_per_turn
 		self._tracking_engine = TrackingEngine(DbTrackingSink(db), env, scope_builder, auto_tracking_enabled)
 		# Set per-turn by process() — appended to base_prompt after the
 		# state's own contextual_prompt (see __build_turn_prompt_parts).
@@ -186,7 +186,7 @@ class TrackingProcessor(object):
 		priming_messages = build_priming_messages(turn_attachments)
 		since = self.db.history_cutoff_for_session(self.user.session_id, self.user.state.history_cutoff)
 		return priming_messages + self._strip_timestamps(
-			self.db.get_turn_history(self.user.session_id, since, self.input_token_budget_per_session)
+			self.db.get_turn_history(self.user.session_id, since, self.input_token_budget_per_turn)
 		)
 
 	def build_turn_protocol(self) -> TurnProtocol:

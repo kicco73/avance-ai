@@ -35,13 +35,17 @@ class TrackingService(object):
 		metrics_service: MetricService,
 		talk_enabled: bool = True,
 		# FIXME: mirrors AppConfig's own default (config.py) — keep in sync.
-		input_token_budget_per_session: int | None = 16000,
+		input_token_budget_per_turn: int | None = 16000,
+		# FIXME: mirrors AppConfig's own default (config.py) — keep in sync.
+		# Display-only — see get_total_token_budget_per_session.
+		total_token_budget_per_session: int | None = 200000,
 	) -> None:
 		self._db = db
 		self._project_service = project_service
 		self._metrics = metrics_service
 		self._talk_enabled = talk_enabled
-		self._input_token_budget_per_session = input_token_budget_per_session
+		self._input_token_budget_per_turn = input_token_budget_per_turn
+		self._total_token_budget_per_session = total_token_budget_per_session
 		self._session_import_manager = SessionImportManager(db)
 		self._session_export_manager = SessionExportManager(db)
 		# "Dev mode: freeze automatic state transitions" toggle — per
@@ -49,8 +53,11 @@ class TrackingService(object):
 		# always auto-tracked. Absent = enabled.
 		self._disabled_test_sessions: set[int] = set()
 
-	def get_input_token_budget_per_session(self) -> int | None:
-		return self._input_token_budget_per_session
+	def get_input_token_budget_per_turn(self) -> int | None:
+		return self._input_token_budget_per_turn
+
+	def get_total_token_budget_per_session(self) -> int | None:
+		return self._total_token_budget_per_session
 
 	def is_auto_tracking_enabled(self, session_id: int) -> bool:
 		return session_id not in self._disabled_test_sessions
@@ -286,7 +293,7 @@ class TrackingService(object):
 			env, self._db, user_vars,
 			auto_tracking_enabled=self.is_auto_tracking_enabled(session_id) if is_test_session else True,
 			talk_enabled=self._talk_enabled,
-			input_token_budget_per_session=self._input_token_budget_per_session,
+			input_token_budget_per_turn=self._input_token_budget_per_turn,
 		)
 
 		return tracking_processor.process(text, on_metadata=on_metadata_sync_to_async, extra_prompt=extra_prompt)

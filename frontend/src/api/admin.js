@@ -70,13 +70,13 @@ export function activateProject(projectName) {
 // postImportSessions — see readSseResult. `onProgress` gets each chunk's
 // `percentage` (0-100) as the queued import of any bundled
 // sessions.json/tests.json advances.
-export function putProject(projectName, file, onProgress) {
+export function putProject(projectName, file, onProgress, onCommitted) {
   const contentType = /\.zip$/i.test(file.name) ? 'application/zip' : 'application/x-yaml'
   return projectFetch(projectName, `${API_URL}/projects/${encodeURIComponent(projectName)}`, {
     method: 'PUT',
     headers: { 'Content-Type': contentType },
     body: file
-  }, { parse: 'sse', onProgress })
+  }, { parse: 'sse', onProgress, onCommitted })
 }
 
 export function deleteProject(projectName) {

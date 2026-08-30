@@ -102,6 +102,8 @@ const uploadingProject = ref(false)
 // 0-100, or null before the first progress chunk has arrived — see
 // SessionsTree.vue's identical importProgress for the same reasoning.
 const uploadProgress = ref(null)
+const uploadProjectName = ref(null)
+const uploadIconReady = ref(false)
 // Fetched once, up front (see resolveLandingView) — the role-based
 // landing routing needs it before the very first render, and ProfileMenu.vue's
 // own avatar reuses the same fetch instead of a second, redundant
@@ -119,6 +121,7 @@ const {
 )
 
 function triggerModelUpload() {
+  if (uploadingProject.value) return
   modelUploadInput.value?.click()
 }
 
@@ -161,9 +164,13 @@ async function handleModelUploadChange(event) {
   clearChatUi()
   uploadingProject.value = true
   uploadProgress.value = null
+  uploadProjectName.value = projectName
+  uploadIconReady.value = false
   try {
     await putProject(projectName, file, (message) => {
       uploadProgress.value = message.percentage
+    }, () => {
+      uploadIconReady.value = true
     })
     // A freshly uploaded project has never been published — nothing can
     // chat with it yet (see db.create_chat_session, which requires a
@@ -177,6 +184,8 @@ async function handleModelUploadChange(event) {
   } finally {
     uploadingProject.value = false
     uploadProgress.value = null
+    uploadProjectName.value = null
+    uploadIconReady.value = false
   }
 }
 
@@ -454,6 +463,8 @@ onBeforeUnmount(() => {
           }"
           :uploading="uploadingProject"
           :upload-progress="uploadProgress"
+          :upload-project-name="uploadProjectName"
+          :upload-icon-ready="uploadIconReady"
           role="admin"
           :profile="currentUserProfile"
           @new-project="handleNewProject"

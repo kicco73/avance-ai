@@ -47,7 +47,7 @@ import { buildTimeline, highlightedStateKeyFor, nearestMessageIdAtOrBefore, resu
 // ProjectTestPanel.vue, the "Test" tab, via the live store) —
 // unrelated to runSessions below, "Run" mode's own draft session pool,
 // which just happens to share the same name in testStore.
-import { sessions, inputTokenBudgetPerSession } from '../../../chatStore.js'
+import { sessions, totalTokenBudgetPerSession } from '../../../chatStore.js'
 import { activeChatMode } from '../../../chatSkin.js'
 import { setTestProject, testStore, testChatModelStore, loadTestChatModels } from '../../../testChatStore.js'
 
@@ -928,7 +928,7 @@ onBeforeUnmount(() => {
                 :state-tokens="stateTabTokens"
                 :selected-session="mode === 'test' ? autoSelectedSession : null"
                 :session-input-tokens="mode === 'test' ? autoSessionInputTokens : null"
-                :input-token-budget-per-session="inputTokenBudgetPerSession"
+                :total-token-budget-per-session="totalTokenBudgetPerSession"
                 :session-start-element="mode === 'test' ? autoSessionStartElement : null"
                 :session-end-element="mode === 'test' ? autoSessionEndElement : null"
                 :read-only="mode === 'test'"

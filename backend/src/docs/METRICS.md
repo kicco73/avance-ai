@@ -82,7 +82,7 @@ The application should supply the unified system setting:
 
 ```yaml
 chat-service:
-  max_session_duration_in_minutes: 60
+  max-session-duration-in-minutes: 60
 ```
 
 The benchmark framework does not access Peewee directly. Its DB facade must expose

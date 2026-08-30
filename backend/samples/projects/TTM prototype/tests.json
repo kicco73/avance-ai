@@ -1,0 +1,5157 @@
+[
+  {
+    "kind": "sessions",
+    "target": null,
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 32.0,
+        "mean": 32.0,
+        "median": 0.0,
+        "standard_deviation": 46.647615158762406,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 100,
+        "distribution": [
+          68,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          32
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 53.333333333333336,
+        "mean": 53.333333333333336,
+        "median": 100.0,
+        "standard_deviation": 49.888765156985876,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 60,
+        "distribution": [
+          28,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          32
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 40,
+        "distribution": [
+          40,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 43.39331092712517,
+        "mean": 43.39331092712517,
+        "median": 48.0,
+        "standard_deviation": 43.852046231609414,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 24398,
+        "distribution": [
+          11854,
+          8,
+          68,
+          115,
+          266,
+          782,
+          1133,
+          1718,
+          2265,
+          6189
+        ],
+        "components": {
+          "allianceStrength": 0.0,
+          "encounterRisk": 93.828,
+          "detectRisk": 57.242,
+          "problemRecognition": 83.32858936793637,
+          "planConcreteness": 67.3754075454122,
+          "decisionalBalanceShift": 83.62453183520599,
+          "copingRepertoire": 0.0,
+          "stabilityConfidence": 76.8455205811138,
+          "emotionalRegulation": 0.0,
+          "cravingPressure": 0.0,
+          "situationalSelfEfficacy": 0.0
+        }
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 5.899370270578747,
+        "mean": 5.899370270578747,
+        "median": 0.0,
+        "standard_deviation": 21.324296027079885,
+        "minimum": 0.0,
+        "maximum": 93.02118260562017,
+        "sample_count": 40,
+        "distribution": [
+          37,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          2
+        ],
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 27.097560399234638,
+        "mean": 27.097560399234638,
+        "median": 32.0,
+        "standard_deviation": 15.694464672160068,
+        "minimum": 5.899370270578747,
+        "maximum": 43.39331092712517,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          0,
+          0,
+          1,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {
+          "state_accuracy": 32.0,
+          "signal_accuracy": 43.39331092712517,
+          "transition_responsiveness": 5.899370270578747
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 25.450695055032188,
+        "mean": 25.450695055032188,
+        "median": 12.29590753678117,
+        "standard_deviation": 22.672403457842567,
+        "minimum": 6.704769682475186,
+        "maximum": 57.351407945840215,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {
+          "state_error": 6.704769682475186,
+          "signal_error": 12.29590753678117,
+          "transition_error": 57.351407945840215
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 90.4136702809329,
+        "mean": 90.4136702809329,
+        "median": 94.67134831460675,
+        "standard_deviation": 9.251054321884617,
+        "minimum": 71.02608290638099,
+        "maximum": 99.99826361111111,
+        "sample_count": 7,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          1,
+          5
+        ],
+        "components": {
+          "encounterRisk": 93.988,
+          "problemRecognition": 94.86144830473002,
+          "planConcreteness": 71.02608290638099,
+          "decisionalBalanceShift": 94.67134831460675,
+          "stabilityConfidence": 82.94721549636803,
+          "detectRisk": 95.40333333333334,
+          "transition_timing_consistency": 99.99826361111111
+        }
+      }
+    ]
+  },
+  {
+    "kind": "signal",
+    "target": "encounterRisk",
+    "strategy": "batch",
+    "results": {
+      "name": "encounterRisk",
+      "value": 93.828,
+      "mean": 93.828,
+      "median": 100.0,
+      "standard_deviation": 23.724805921229343,
+      "minimum": 0.0,
+      "maximum": 100.0,
+      "sample_count": 2500,
+      "distribution": [
+        149,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        11,
+        10,
+        2330
+      ],
+      "components": {}
+    }
+  },
+  {
+    "kind": "signal",
+    "target": "reengagementSignal",
+    "strategy": "batch",
+    "results": {
+      "name": "reengagementSignal",
+      "value": 0.0,
+      "mean": null,
+      "median": null,
+      "standard_deviation": null,
+      "minimum": null,
+      "maximum": null,
+      "sample_count": 0,
+      "distribution": [],
+      "components": {}
+    }
+  },
+  {
+    "kind": "signal",
+    "target": "stabilityConfidence",
+    "strategy": "batch",
+    "results": {
+      "name": "stabilityConfidence",
+      "value": 76.8455205811138,
+      "mean": 76.8455205811138,
+      "median": 78.0,
+      "standard_deviation": 13.568974029232734,
+      "minimum": 10.0,
+      "maximum": 100.0,
+      "sample_count": 2065,
+      "distribution": [
+        0,
+        4,
+        2,
+        3,
+        63,
+        157,
+        321,
+        574,
+        573,
+        368
+      ],
+      "components": {}
+    }
+  },
+  {
+    "kind": "signal",
+    "target": "detectRisk",
+    "strategy": "batch",
+    "results": {
+      "name": "detectRisk",
+      "value": 57.242,
+      "mean": 57.242,
+      "median": 100.0,
+      "standard_deviation": 48.84816717134841,
+      "minimum": 0.0,
+      "maximum": 100.0,
+      "sample_count": 2500,
+      "distribution": [
+        1044,
+        4,
+        1,
+        1,
+        1,
+        5,
+        2,
+        26,
+        25,
+        1391
+      ],
+      "components": {}
+    }
+  },
+  {
+    "kind": "signal",
+    "target": "planConcreteness",
+    "strategy": "batch",
+    "results": {
+      "name": "planConcreteness",
+      "value": 67.3754075454122,
+      "mean": 67.3754075454122,
+      "median": 66.0,
+      "standard_deviation": 17.17887782360208,
+      "minimum": 24.0,
+      "maximum": 100.0,
+      "sample_count": 2147,
+      "distribution": [
+        0,
+        0,
+        61,
+        90,
+        95,
+        453,
+        439,
+        417,
+        337,
+        255
+      ],
+      "components": {}
+    }
+  },
+  {
+    "kind": "signal",
+    "target": "decisionalBalanceShift",
+    "strategy": "batch",
+    "results": {
+      "name": "decisionalBalanceShift",
+      "value": 83.62453183520599,
+      "mean": 83.62453183520599,
+      "median": 86.0,
+      "standard_deviation": 12.471181659002246,
+      "minimum": 40.0,
+      "maximum": 100.0,
+      "sample_count": 2136,
+      "distribution": [
+        0,
+        0,
+        0,
+        0,
+        51,
+        58,
+        178,
+        327,
+        690,
+        832
+      ],
+      "components": {}
+    }
+  },
+  {
+    "kind": "signal",
+    "target": "problemRecognition",
+    "strategy": "batch",
+    "results": {
+      "name": "problemRecognition",
+      "value": 83.32858936793637,
+      "mean": 83.32858936793637,
+      "median": 88.0,
+      "standard_deviation": 14.068942508270984,
+      "minimum": 24.0,
+      "maximum": 100.0,
+      "sample_count": 2389,
+      "distribution": [
+        0,
+        0,
+        4,
+        21,
+        56,
+        109,
+        193,
+        363,
+        630,
+        1013
+      ],
+      "components": {}
+    }
+  },
+  {
+    "kind": "all_signals",
+    "target": null,
+    "strategy": "batch",
+    "results": {
+      "name": "overall",
+      "value": 77.06995705030211,
+      "mean": null,
+      "median": null,
+      "standard_deviation": null,
+      "minimum": null,
+      "maximum": null,
+      "sample_count": 13737,
+      "distribution": [
+        1193,
+        8,
+        68,
+        115,
+        266,
+        782,
+        1133,
+        1718,
+        2265,
+        6189
+      ],
+      "components": {}
+    }
+  },
+  {
+    "kind": "user_sessions",
+    "target": "youssef@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 20.0,
+        "mean": 20.0,
+        "median": 0.0,
+        "standard_deviation": 40.0,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "distribution": [
+          4,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 33.333333333333336,
+        "mean": 33.333333333333336,
+        "median": 0.0,
+        "standard_deviation": 47.14045207910317,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 39.97793380140421,
+        "mean": 39.97793380140421,
+        "median": 0.0,
+        "standard_deviation": 42.482629815629195,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 997,
+        "distribution": [
+          514,
+          0,
+          0,
+          0,
+          15,
+          16,
+          52,
+          148,
+          82,
+          170
+        ],
+        "components": {
+          "allianceStrength": 0.0,
+          "encounterRisk": 94.4,
+          "detectRisk": 20.0,
+          "problemRecognition": 78.38095238095238,
+          "planConcreteness": 69.87,
+          "emotionalRegulation": 0.0,
+          "cravingPressure": 0.0,
+          "decisionalBalanceShift": 80.6987951807229,
+          "situationalSelfEfficacy": 0.0,
+          "stabilityConfidence": 70.0576923076923,
+          "copingRepertoire": 0.0
+        }
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 19.992644600468072,
+        "mean": 19.992644600468072,
+        "median": 20.0,
+        "standard_deviation": 16.32092395942074,
+        "minimum": 0.0,
+        "maximum": 39.97793380140421,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          0,
+          1,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {
+          "state_accuracy": 20.0,
+          "signal_accuracy": 39.97793380140421,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 45.01158012291387,
+        "mean": 45.01158012291387,
+        "median": 19.999999999999996,
+        "standard_deviation": 38.93548673755509,
+        "minimum": 15.034740368741629,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "components": {
+          "state_error": 19.999999999999996,
+          "signal_error": 15.034740368741629,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 91.41597702163966,
+        "mean": 91.41597702163966,
+        "median": 94.98095238095237,
+        "standard_deviation": 9.95018376783512,
+        "minimum": 70.05769230769229,
+        "maximum": 100.0,
+        "sample_count": 6,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          5
+        ],
+        "components": {
+          "encounterRisk": 94.39999999999999,
+          "problemRecognition": 95.56190476190476,
+          "planConcreteness": 90.91,
+          "decisionalBalanceShift": 97.56626506024097,
+          "stabilityConfidence": 70.05769230769229,
+          "detectRisk": 100.0
+        }
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "toni@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 5,
+        "distribution": [
+          5,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 3,
+        "distribution": [
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 51.98773507767784,
+        "mean": 51.98773507767784,
+        "median": 64.0,
+        "standard_deviation": 43.94137564857219,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 1223,
+        "distribution": [
+          485,
+          0,
+          0,
+          0,
+          2,
+          71,
+          82,
+          50,
+          120,
+          413
+        ],
+        "components": {
+          "allianceStrength": 0.0,
+          "encounterRisk": 99.2,
+          "detectRisk": 99.2,
+          "problemRecognition": 87.29838709677419,
+          "planConcreteness": 66.62096774193549,
+          "copingRepertoire": 0.0,
+          "stabilityConfidence": 76.76422764227642,
+          "situationalSelfEfficacy": 0.0,
+          "decisionalBalanceShift": 86.15966386554622,
+          "emotionalRegulation": 0.0
+        }
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 17.329245025892615,
+        "mean": 17.329245025892615,
+        "median": 0.0,
+        "standard_deviation": 24.50725334130383,
+        "minimum": 0.0,
+        "maximum": 51.98773507767784,
+        "sample_count": 3,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {
+          "state_accuracy": 0.0,
+          "signal_accuracy": 51.98773507767784,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 70.70574956761854,
+        "mean": 70.70574956761854,
+        "median": 100.0,
+        "standard_deviation": 41.42832626102776,
+        "minimum": 12.11724870285562,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2
+        ],
+        "components": {
+          "state_error": 100.0,
+          "signal_error": 12.11724870285562,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 91.5619639725809,
+        "mean": 91.5619639725809,
+        "median": 95.9858919177427,
+        "standard_deviation": 10.801040397112034,
+        "minimum": 68.68548387096773,
+        "maximum": 99.2,
+        "sample_count": 6,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          5
+        ],
+        "components": {
+          "encounterRisk": 99.2,
+          "detectRisk": 99.2,
+          "problemRecognition": 90.31451612903226,
+          "planConcreteness": 68.68548387096773,
+          "stabilityConfidence": 99.08943089430893,
+          "decisionalBalanceShift": 92.88235294117648
+        }
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "sergi@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 5,
+        "distribution": [
+          5,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 3,
+        "distribution": [
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 44.8946117274168,
+        "mean": 44.8946117274168,
+        "median": 54.0,
+        "standard_deviation": 45.3163119926445,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 1262,
+        "distribution": [
+          620,
+          0,
+          0,
+          2,
+          4,
+          48,
+          23,
+          57,
+          99,
+          409
+        ],
+        "components": {
+          "problemRecognition": 83.536,
+          "allianceStrength": 0.0,
+          "encounterRisk": 96.8,
+          "detectRisk": 60.0,
+          "cravingPressure": 0.0,
+          "emotionalRegulation": 0.0,
+          "decisionalBalanceShift": 88.09649122807018,
+          "copingRepertoire": 0.0,
+          "stabilityConfidence": 86.21698113207547,
+          "situationalSelfEfficacy": 0.0,
+          "planConcreteness": 73.5940594059406
+        }
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 26.315585675073102,
+        "mean": 26.315585675073102,
+        "median": 26.315585675073102,
+        "standard_deviation": 26.315585675073102,
+        "minimum": 0.0,
+        "maximum": 52.631171350146204,
+        "sample_count": 2,
+        "distribution": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 23.736732467496637,
+        "mean": 23.736732467496637,
+        "median": 26.315585675073102,
+        "standard_deviation": 18.418639172290444,
+        "minimum": 0.0,
+        "maximum": 44.8946117274168,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {
+          "state_accuracy": 0.0,
+          "signal_accuracy": 44.8946117274168,
+          "transition_responsiveness": 26.315585675073102
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 52.245401554854936,
+        "mean": 52.245401554854936,
+        "median": 47.3688286498538,
+        "standard_deviation": 37.160945943181076,
+        "minimum": 9.367376014711004,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "components": {
+          "state_error": 100.0,
+          "signal_error": 9.367376014711004,
+          "transition_error": 47.3688286498538
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 93.98286585277687,
+        "mean": 93.98286585277687,
+        "median": 98.4,
+        "standard_deviation": 7.556691981080451,
+        "minimum": 78.00990099009901,
+        "maximum": 100.0,
+        "sample_count": 7,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          1,
+          5
+        ],
+        "components": {
+          "problemRecognition": 88.896,
+          "encounterRisk": 98.4,
+          "detectRisk": 100.0,
+          "decisionalBalanceShift": 99.13157894736842,
+          "stabilityConfidence": 93.4433962264151,
+          "planConcreteness": 78.00990099009901,
+          "transition_timing_consistency": 99.99918480555556
+        }
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "roser@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 40.0,
+        "mean": 40.0,
+        "median": 0.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "distribution": [
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 66.66666666666667,
+        "mean": 66.66666666666667,
+        "median": 100.0,
+        "standard_deviation": 47.14045207910316,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 45.084912812736924,
+        "mean": 45.084912812736924,
+        "median": 60.0,
+        "standard_deviation": 43.12527803485741,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 1319,
+        "distribution": [
+          604,
+          0,
+          3,
+          2,
+          11,
+          38,
+          85,
+          130,
+          141,
+          305
+        ],
+        "components": {
+          "planConcreteness": 67.568,
+          "allianceStrength": 0.0,
+          "encounterRisk": 99.2,
+          "detectRisk": 79.8,
+          "decisionalBalanceShift": 83.46774193548387,
+          "problemRecognition": 73.29268292682927,
+          "situationalSelfEfficacy": 0.0,
+          "stabilityConfidence": 77.99159663865547,
+          "copingRepertoire": 0.0,
+          "emotionalRegulation": 0.0,
+          "cravingPressure": 0.0
+        }
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 28.36163760424564,
+        "mean": 28.36163760424564,
+        "median": 40.0,
+        "standard_deviation": 20.16186086441766,
+        "minimum": 0.0,
+        "maximum": 45.084912812736924,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {
+          "state_accuracy": 40.0,
+          "signal_accuracy": 45.084912812736924,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 38.58995140631935,
+        "mean": 38.58995140631935,
+        "median": 13.749443930285166,
+        "standard_deviation": 43.686673091841804,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 13.749443930285166,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 84.09717440262231,
+        "mean": 84.09717440262231,
+        "median": 81.85063702900514,
+        "standard_deviation": 12.105303989669896,
+        "minimum": 67.696,
+        "maximum": 99.75,
+        "sample_count": 6,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          2,
+          1,
+          2
+        ],
+        "components": {
+          "planConcreteness": 67.696,
+          "encounterRisk": 99.2,
+          "detectRisk": 99.75,
+          "decisionalBalanceShift": 85.70967741935483,
+          "problemRecognition": 74.23577235772359,
+          "stabilityConfidence": 77.99159663865545
+        }
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "ramon@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 60.0,
+        "mean": 60.0,
+        "median": 100.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          3
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 100.0,
+        "mean": 100.0,
+        "median": 100.0,
+        "standard_deviation": 0.0,
+        "minimum": 100.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          3
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 49.48751950078003,
+        "mean": 49.48751950078003,
+        "median": 71.0,
+        "standard_deviation": 45.048702197356995,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 1282,
+        "distribution": [
+          558,
+          0,
+          0,
+          20,
+          16,
+          19,
+          25,
+          78,
+          154,
+          412
+        ],
+        "components": {
+          "emotionalRegulation": 0.0,
+          "allianceStrength": 0.0,
+          "encounterRisk": 99.2,
+          "detectRisk": 100.0,
+          "problemRecognition": 88.94354838709677,
+          "decisionalBalanceShift": 88.7258064516129,
+          "planConcreteness": 65.5,
+          "copingRepertoire": 0.0,
+          "stabilityConfidence": 80.04424778761062,
+          "cravingPressure": 0.0,
+          "situationalSelfEfficacy": 0.0
+        }
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 36.495839833593344,
+        "mean": 36.495839833593344,
+        "median": 49.48751950078003,
+        "standard_deviation": 26.160884355988355,
+        "minimum": 0.0,
+        "maximum": 60.0,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          0,
+          0,
+          0,
+          1,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        "components": {
+          "state_accuracy": 60.0,
+          "signal_accuracy": 49.48751950078003,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 37.307668631319636,
+        "mean": 37.307668631319636,
+        "median": 9.902595605286024,
+        "standard_deviation": 44.446811064249786,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 9.902595605286024,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 92.56248608127036,
+        "mean": 92.56248608127036,
+        "median": 96.2000785041393,
+        "standard_deviation": 10.979690140392858,
+        "minimum": 68.30701754385964,
+        "maximum": 100.0,
+        "sample_count": 6,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          5
+        ],
+        "components": {
+          "encounterRisk": 99.2,
+          "detectRisk": 100.0,
+          "problemRecognition": 96.79838709677419,
+          "decisionalBalanceShift": 95.46774193548387,
+          "planConcreteness": 68.30701754385964,
+          "stabilityConfidence": 95.60176991150442
+        }
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "pol@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 20.0,
+        "mean": 20.0,
+        "median": 0.0,
+        "standard_deviation": 40.0,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "distribution": [
+          4,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 33.333333333333336,
+        "mean": 33.333333333333336,
+        "median": 0.0,
+        "standard_deviation": 47.14045207910317,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 41.710217755443885,
+        "mean": 41.710217755443885,
+        "median": 0.0,
+        "standard_deviation": 43.79038442734079,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 1194,
+        "distribution": [
+          602,
+          0,
+          0,
+          1,
+          43,
+          13,
+          62,
+          69,
+          104,
+          300
+        ],
+        "components": {
+          "allianceStrength": 0.0,
+          "encounterRisk": 97.6,
+          "detectRisk": 54.72,
+          "problemRecognition": 87.54098360655738,
+          "copingRepertoire": 0.0,
+          "stabilityConfidence": 66.37288135593221,
+          "situationalSelfEfficacy": 0.0,
+          "cravingPressure": 0.0,
+          "emotionalRegulation": 0.0,
+          "decisionalBalanceShift": 87.0379746835443,
+          "planConcreteness": 70.71052631578948
+        }
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 20.57007258514796,
+        "mean": 20.57007258514796,
+        "median": 20.0,
+        "standard_deviation": 17.032895689731077,
+        "minimum": 0.0,
+        "maximum": 41.710217755443885,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {
+          "state_accuracy": 20.0,
+          "signal_accuracy": 41.710217755443885,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 44.139743715106135,
+        "mean": 44.139743715106135,
+        "median": 19.999999999999996,
+        "standard_deviation": 39.62022369335763,
+        "minimum": 12.41923114531841,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "components": {
+          "state_error": 19.999999999999996,
+          "signal_error": 12.41923114531841,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 87.04324352133001,
+        "mean": 87.04324352133001,
+        "median": 92.52622950819672,
+        "standard_deviation": 12.13947211244871,
+        "minimum": 69.25423728813558,
+        "maximum": 99.0632911392405,
+        "sample_count": 6,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          1,
+          0,
+          4
+        ],
+        "components": {
+          "encounterRisk": 97.6,
+          "problemRecognition": 93.85245901639344,
+          "stabilityConfidence": 69.25423728813558,
+          "decisionalBalanceShift": 99.0632911392405,
+          "planConcreteness": 71.28947368421052,
+          "detectRisk": 91.2
+        }
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "pilar@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 40.0,
+        "mean": 40.0,
+        "median": 0.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "distribution": [
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 100.0,
+        "mean": 100.0,
+        "median": 100.0,
+        "standard_deviation": 0.0,
+        "minimum": 100.0,
+        "maximum": 100.0,
+        "sample_count": 2,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 3,
+        "distribution": [
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 45.68354430379747,
+        "mean": 45.68354430379747,
+        "median": 48.0,
+        "standard_deviation": 44.32364644183793,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 1343,
+        "distribution": [
+          604,
+          0,
+          52,
+          2,
+          45,
+          25,
+          32,
+          30,
+          176,
+          377
+        ],
+        "components": {
+          "problemRecognition": 84.944,
+          "planConcreteness": 51.44,
+          "allianceStrength": 0.0,
+          "encounterRisk": 98.4,
+          "detectRisk": 98.4,
+          "decisionalBalanceShift": 75.94354838709677,
+          "cravingPressure": 0.0,
+          "copingRepertoire": 0.0,
+          "stabilityConfidence": 86.45378151260505,
+          "situationalSelfEfficacy": 0.0,
+          "emotionalRegulation": 0.0
+        }
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 3,
+        "distribution": [
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 28.56118143459916,
+        "mean": 28.56118143459916,
+        "median": 40.0,
+        "standard_deviation": 20.328657648229434,
+        "minimum": 0.0,
+        "maximum": 45.68354430379747,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {
+          "state_accuracy": 40.0,
+          "signal_accuracy": 45.68354430379747,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 37.791039134999004,
+        "mean": 37.791039134999004,
+        "median": 11.352707116324122,
+        "standard_deviation": 44.153059916214694,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 11.352707116324122,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 85.00016580825879,
+        "mean": 85.00016580825879,
+        "median": 89.88833613445378,
+        "standard_deviation": 15.199746756346347,
+        "minimum": 54.384,
+        "maximum": 98.4,
+        "sample_count": 6,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          1,
+          1,
+          3
+        ],
+        "components": {
+          "problemRecognition": 88.096,
+          "planConcreteness": 54.384,
+          "encounterRisk": 98.4,
+          "detectRisk": 98.4,
+          "decisionalBalanceShift": 79.04032258064517,
+          "stabilityConfidence": 91.68067226890756
+        }
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "oscar@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 5,
+        "distribution": [
+          5,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 3,
+        "distribution": [
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 46.88974556669237,
+        "mean": 46.88974556669237,
+        "median": 58.0,
+        "standard_deviation": 44.72333553544058,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 1297,
+        "distribution": [
+          598,
+          0,
+          0,
+          0,
+          6,
+          48,
+          65,
+          89,
+          99,
+          392
+        ],
+        "components": {
+          "planConcreteness": 70.96,
+          "allianceStrength": 0.0,
+          "encounterRisk": 98.4,
+          "detectRisk": 79.2,
+          "decisionalBalanceShift": 86.20161290322581,
+          "problemRecognition": 88.54471544715447,
+          "cravingPressure": 0.0,
+          "emotionalRegulation": 0.0,
+          "copingRepertoire": 0.0,
+          "situationalSelfEfficacy": 0.0,
+          "stabilityConfidence": 77.77142857142857
+        }
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 15.629915188897456,
+        "mean": 15.629915188897456,
+        "median": 0.0,
+        "standard_deviation": 22.10403803888002,
+        "minimum": 0.0,
+        "maximum": 46.88974556669237,
+        "sample_count": 3,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {
+          "state_accuracy": 0.0,
+          "signal_accuracy": 46.88974556669237,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 70.18444297637295,
+        "mean": 70.18444297637295,
+        "median": 100.0,
+        "standard_deviation": 42.16556511252176,
+        "minimum": 10.553328929118821,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2
+        ],
+        "components": {
+          "state_error": 100.0,
+          "signal_error": 10.553328929118821,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 93.06726753087808,
+        "mean": 93.06726753087808,
+        "median": 98.61056910569106,
+        "standard_deviation": 8.932533482962942,
+        "minimum": 75.536,
+        "maximum": 99.4274193548387,
+        "sample_count": 6,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          1,
+          4
+        ],
+        "components": {
+          "planConcreteness": 75.536,
+          "encounterRisk": 98.4,
+          "detectRisk": 99.0,
+          "decisionalBalanceShift": 99.4274193548387,
+          "problemRecognition": 98.8211382113821,
+          "stabilityConfidence": 87.21904761904761
+        }
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "nuria@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 20.0,
+        "mean": 20.0,
+        "median": 0.0,
+        "standard_deviation": 40.0,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "distribution": [
+          4,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 33.333333333333336,
+        "mean": 33.333333333333336,
+        "median": 0.0,
+        "standard_deviation": 47.14045207910317,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 40.05511022044088,
+        "mean": 40.05511022044088,
+        "median": 0.0,
+        "standard_deviation": 43.21366462774239,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 998,
+        "distribution": [
+          524,
+          0,
+          0,
+          0,
+          3,
+          23,
+          51,
+          139,
+          54,
+          204
+        ],
+        "components": {
+          "allianceStrength": 0.0,
+          "encounterRisk": 84.8,
+          "detectRisk": 34.4,
+          "emotionalRegulation": 0.0,
+          "problemRecognition": 77.29347826086956,
+          "decisionalBalanceShift": 83.44186046511628,
+          "planConcreteness": 75.03947368421052,
+          "cravingPressure": 0.0,
+          "copingRepertoire": 0.0,
+          "stabilityConfidence": 71.61971830985915,
+          "situationalSelfEfficacy": 0.0
+        }
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 20.018370073480295,
+        "mean": 20.018370073480295,
+        "median": 20.0,
+        "standard_deviation": 16.352435431001638,
+        "minimum": 0.0,
+        "maximum": 40.05511022044088,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {
+          "state_accuracy": 20.0,
+          "signal_accuracy": 40.05511022044088,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 44.524223581505076,
+        "mean": 44.524223581505076,
+        "median": 19.999999999999996,
+        "standard_deviation": 39.31495870756007,
+        "minimum": 13.572670744515225,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "components": {
+          "state_error": 19.999999999999996,
+          "signal_error": 13.572670744515225,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 84.94645864829407,
+        "mean": 84.94645864829407,
+        "median": 85.4,
+        "standard_deviation": 8.480120331008958,
+        "minimum": 71.61971830985917,
+        "maximum": 99.81395348837209,
+        "sample_count": 6,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          3,
+          1
+        ],
+        "components": {
+          "encounterRisk": 84.8,
+          "detectRisk": 86.0,
+          "problemRecognition": 87.51086956521739,
+          "decisionalBalanceShift": 99.81395348837209,
+          "planConcreteness": 79.9342105263158,
+          "stabilityConfidence": 71.61971830985917
+        }
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "montse@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 60.0,
+        "mean": 60.0,
+        "median": 100.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          3
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 100.0,
+        "mean": 100.0,
+        "median": 100.0,
+        "standard_deviation": 0.0,
+        "minimum": 100.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          3
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 39.26182136602452,
+        "mean": 39.26182136602452,
+        "median": 0.0,
+        "standard_deviation": 42.772365288927155,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 1142,
+        "distribution": [
+          604,
+          0,
+          0,
+          0,
+          10,
+          14,
+          87,
+          79,
+          135,
+          213
+        ],
+        "components": {
+          "problemRecognition": 81.136,
+          "allianceStrength": 0.0,
+          "encounterRisk": 95.76,
+          "detectRisk": 20.0,
+          "emotionalRegulation": 0.0,
+          "cravingPressure": 0.0,
+          "decisionalBalanceShift": 83.25274725274726,
+          "planConcreteness": 71.61627906976744,
+          "copingRepertoire": 0.0,
+          "stabilityConfidence": 75.46511627906976,
+          "situationalSelfEfficacy": 0.0
+        }
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 33.08727378867484,
+        "mean": 33.08727378867484,
+        "median": 39.26182136602452,
+        "standard_deviation": 24.880967000751344,
+        "minimum": 0.0,
+        "maximum": 60.0,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        "components": {
+          "state_accuracy": 60.0,
+          "signal_accuracy": 39.26182136602452,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 38.825226570272854,
+        "mean": 38.825226570272854,
+        "median": 14.455269422145678,
+        "standard_deviation": 43.55395970173983,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 14.455269422145678,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 90.16783422778771,
+        "mean": 90.16783422778771,
+        "median": 95.512,
+        "standard_deviation": 10.043032724252269,
+        "minimum": 75.31395348837209,
+        "maximum": 100.0,
+        "sample_count": 6,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          4
+        ],
+        "components": {
+          "problemRecognition": 95.26400000000001,
+          "encounterRisk": 95.76,
+          "detectRisk": 100.0,
+          "decisionalBalanceShift": 97.6923076923077,
+          "planConcreteness": 75.31395348837209,
+          "stabilityConfidence": 76.97674418604652
+        }
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "marc@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 60.0,
+        "mean": 60.0,
+        "median": 100.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          3
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 100.0,
+        "mean": 100.0,
+        "median": 100.0,
+        "standard_deviation": 0.0,
+        "minimum": 100.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          3
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 40.50852483320978,
+        "mean": 40.50852483320978,
+        "median": 30.0,
+        "standard_deviation": 42.48314672135263,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 1349,
+        "distribution": [
+          660,
+          0,
+          9,
+          63,
+          15,
+          29,
+          44,
+          140,
+          101,
+          288
+        ],
+        "components": {
+          "problemRecognition": 81.976,
+          "emotionalRegulation": 0.0,
+          "allianceStrength": 0.0,
+          "encounterRisk": 79.2,
+          "detectRisk": 79.8,
+          "planConcreteness": 49.36065573770492,
+          "copingRepertoire": 0.0,
+          "stabilityConfidence": 75.4672131147541,
+          "decisionalBalanceShift": 76.81818181818181,
+          "situationalSelfEfficacy": 0.0,
+          "cravingPressure": 0.0
+        }
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 46.510591302810084,
+        "mean": 46.510591302810084,
+        "median": 46.510591302810084,
+        "standard_deviation": 46.510591302810084,
+        "minimum": 0.0,
+        "maximum": 93.02118260562017,
+        "sample_count": 2,
+        "distribution": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 49.00637204533996,
+        "mean": 49.00637204533996,
+        "median": 46.510591302810084,
+        "standard_deviation": 8.150709260773455,
+        "minimum": 40.50852483320978,
+        "maximum": 60.0,
+        "sample_count": 3,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        "components": {
+          "state_accuracy": 60.0,
+          "signal_accuracy": 40.50852483320978,
+          "transition_responsiveness": 46.510591302810084
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 8.010978080115818,
+        "mean": 8.010978080115818,
+        "median": 6.978817394379833,
+        "standard_deviation": 5.362554534586174,
+        "minimum": 2.0204102886728803,
+        "maximum": 15.033706557294735,
+        "sample_count": 3,
+        "distribution": [
+          2,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 15.033706557294735,
+          "transition_error": 6.978817394379833
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 83.39985548413074,
+        "mean": 83.39985548413074,
+        "median": 79.82644628099173,
+        "standard_deviation": 15.838302158396912,
+        "minimum": 52.24590163934426,
+        "maximum": 99.99585358333334,
+        "sample_count": 7,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          3,
+          0,
+          3
+        ],
+        "components": {
+          "problemRecognition": 96.248,
+          "encounterRisk": 79.2,
+          "planConcreteness": 52.24590163934426,
+          "stabilityConfidence": 76.5327868852459,
+          "decisionalBalanceShift": 79.82644628099173,
+          "detectRisk": 99.75,
+          "transition_timing_consistency": 99.99585358333334
+        }
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "manel@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 60.0,
+        "mean": 60.0,
+        "median": 100.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          3
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 100.0,
+        "mean": 100.0,
+        "median": 100.0,
+        "standard_deviation": 0.0,
+        "minimum": 100.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          3
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 40.29037267080745,
+        "mean": 40.29037267080745,
+        "median": 0.0,
+        "standard_deviation": 42.752950214400755,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 1288,
+        "distribution": [
+          650,
+          0,
+          1,
+          5,
+          18,
+          94,
+          86,
+          67,
+          46,
+          321
+        ],
+        "components": {
+          "problemRecognition": 81.496,
+          "allianceStrength": 0.0,
+          "encounterRisk": 95.2,
+          "detectRisk": 48.6,
+          "emotionalRegulation": 0.0,
+          "cravingPressure": 0.0,
+          "decisionalBalanceShift": 80.22222222222223,
+          "copingRepertoire": 0.0,
+          "stabilityConfidence": 70.81739130434782,
+          "situationalSelfEfficacy": 0.0,
+          "planConcreteness": 61.40594059405941
+        }
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 45.161228433691754,
+        "mean": 45.161228433691754,
+        "median": 45.161228433691754,
+        "standard_deviation": 45.161228433691754,
+        "minimum": 0.0,
+        "maximum": 90.32245686738351,
+        "sample_count": 2,
+        "distribution": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 48.48386703483306,
+        "mean": 48.48386703483306,
+        "median": 45.161228433691754,
+        "standard_deviation": 8.38241404446476,
+        "minimum": 40.29037267080745,
+        "maximum": 60.0,
+        "sample_count": 3,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          2,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        "components": {
+          "state_accuracy": 60.0,
+          "signal_accuracy": 40.29037267080745,
+          "transition_responsiveness": 45.161228433691754
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 8.73068433082929,
+        "mean": 8.73068433082929,
+        "median": 9.677543132616496,
+        "standard_deviation": 5.136187773835119,
+        "minimum": 2.0204102886728803,
+        "maximum": 14.494099571198493,
+        "sample_count": 3,
+        "distribution": [
+          2,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 14.494099571198493,
+          "transition_error": 9.677543132616496
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 82.58264758510768,
+        "mean": 82.58264758510768,
+        "median": 81.0,
+        "standard_deviation": 11.28589994268041,
+        "minimum": 64.57425742574256,
+        "maximum": 99.99975244444444,
+        "sample_count": 7,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          1,
+          3,
+          2
+        ],
+        "components": {
+          "problemRecognition": 83.992,
+          "encounterRisk": 95.19999999999999,
+          "detectRisk": 81.0,
+          "decisionalBalanceShift": 80.52991452991454,
+          "stabilityConfidence": 72.78260869565217,
+          "planConcreteness": 64.57425742574256,
+          "transition_timing_consistency": 99.99975244444444
+        }
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "jordi@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 5,
+        "distribution": [
+          5,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 3,
+        "distribution": [
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 41.2689756816507,
+        "mean": 41.2689756816507,
+        "median": 0.0,
+        "standard_deviation": 43.53088523058244,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 1357,
+        "distribution": [
+          690,
+          2,
+          0,
+          0,
+          28,
+          62,
+          28,
+          110,
+          117,
+          320
+        ],
+        "components": {
+          "problemRecognition": 83.864,
+          "planConcreteness": 69.936,
+          "allianceStrength": 0.0,
+          "encounterRisk": 98.4,
+          "detectRisk": 40.0,
+          "cravingPressure": 0.0,
+          "copingRepertoire": 0.0,
+          "stabilityConfidence": 73.73170731707317,
+          "situationalSelfEfficacy": 0.0,
+          "decisionalBalanceShift": 86.01652892561984,
+          "emotionalRegulation": 0.0
+        }
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 13.7563252272169,
+        "mean": 13.7563252272169,
+        "median": 0.0,
+        "standard_deviation": 19.45438170474529,
+        "minimum": 0.0,
+        "maximum": 41.2689756816507,
+        "sample_count": 3,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {
+          "state_accuracy": 0.0,
+          "signal_accuracy": 41.2689756816507,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 70.97940984627837,
+        "mean": 70.97940984627837,
+        "median": 100.0,
+        "standard_deviation": 41.04131218346422,
+        "minimum": 12.938229538835099,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2
+        ],
+        "components": {
+          "state_error": 100.0,
+          "signal_error": 12.938229538835099,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 90.59686837331184,
+        "mean": 90.59686837331184,
+        "median": 95.30621487603305,
+        "standard_deviation": 10.566111629689592,
+        "minimum": 71.92,
+        "maximum": 100.0,
+        "sample_count": 6,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          1,
+          4
+        ],
+        "components": {
+          "problemRecognition": 93.22399999999999,
+          "planConcreteness": 71.92,
+          "encounterRisk": 100.0,
+          "detectRisk": 100.0,
+          "stabilityConfidence": 81.04878048780488,
+          "decisionalBalanceShift": 97.38842975206612
+        }
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "encarna@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 60.0,
+        "mean": 60.0,
+        "median": 100.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          3
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 75.0,
+        "mean": 75.0,
+        "median": 100.0,
+        "standard_deviation": 43.30127018922193,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 4,
+        "distribution": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          3
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 1,
+        "distribution": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 45.06445497630332,
+        "mean": 45.06445497630332,
+        "median": 54.0,
+        "standard_deviation": 45.347542789276076,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 1055,
+        "distribution": [
+          520,
+          0,
+          0,
+          0,
+          4,
+          16,
+          19,
+          88,
+          88,
+          320
+        ],
+        "components": {
+          "allianceStrength": 0.0,
+          "encounterRisk": 93.6,
+          "detectRisk": 59.2,
+          "emotionalRegulation": 0.0,
+          "planConcreteness": 75.34020618556701,
+          "situationalSelfEfficacy": 0.0,
+          "stabilityConfidence": 87.16842105263157,
+          "problemRecognition": 85.44705882352942,
+          "copingRepertoire": 0.0,
+          "cravingPressure": 0.0,
+          "decisionalBalanceShift": 84.71212121212122
+        }
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 1,
+        "distribution": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 35.02148499210111,
+        "mean": 35.02148499210111,
+        "median": 45.06445497630332,
+        "standard_deviation": 25.503541382556914,
+        "minimum": 0.0,
+        "maximum": 60.0,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          0,
+          0,
+          0,
+          1,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        "components": {
+          "state_accuracy": 60.0,
+          "signal_accuracy": 45.06445497630332,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 37.10844157004025,
+        "mean": 37.10844157004025,
+        "median": 9.304914421447863,
+        "standard_deviation": 44.570372008221526,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 9.304914421447863,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 91.85800768851583,
+        "mean": 91.85800768851583,
+        "median": 93.55,
+        "standard_deviation": 6.891388613499332,
+        "minimum": 77.44329896907216,
+        "maximum": 98.66666666666667,
+        "sample_count": 6,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          5
+        ],
+        "components": {
+          "encounterRisk": 93.6,
+          "planConcreteness": 77.44329896907216,
+          "stabilityConfidence": 91.1263157894737,
+          "problemRecognition": 96.81176470588235,
+          "detectRisk": 98.66666666666667,
+          "decisionalBalanceShift": 93.5
+        }
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "ferran@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 40.0,
+        "mean": 40.0,
+        "median": 0.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "distribution": [
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 66.66666666666667,
+        "mean": 66.66666666666667,
+        "median": 100.0,
+        "standard_deviation": 47.14045207910316,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 49.81907894736842,
+        "mean": 49.81907894736842,
+        "median": 68.0,
+        "standard_deviation": 43.91514130677218,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 1216,
+        "distribution": [
+          514,
+          0,
+          0,
+          0,
+          2,
+          40,
+          60,
+          78,
+          176,
+          346
+        ],
+        "components": {
+          "allianceStrength": 0.0,
+          "encounterRisk": 98.4,
+          "detectRisk": 76.36,
+          "problemRecognition": 87.62903225806451,
+          "planConcreteness": 72.30645161290323,
+          "decisionalBalanceShift": 82.75409836065573,
+          "copingRepertoire": 0.0,
+          "stabilityConfidence": 80.79816513761467,
+          "emotionalRegulation": 0.0,
+          "cravingPressure": 0.0,
+          "situationalSelfEfficacy": 0.0
+        }
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 29.939692982456137,
+        "mean": 29.939692982456137,
+        "median": 40.0,
+        "standard_deviation": 21.54673199902116,
+        "minimum": 0.0,
+        "maximum": 49.81907894736842,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {
+          "state_accuracy": 40.0,
+          "signal_accuracy": 49.81907894736842,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 38.06337589170951,
+        "mean": 38.06337589170951,
+        "median": 12.169717386455659,
+        "standard_deviation": 43.99137160163744,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 12.169717386455659,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 92.02618928062593,
+        "mean": 92.02618928062593,
+        "median": 94.08565573770491,
+        "standard_deviation": 6.610768299885375,
+        "minimum": 78.45161290322581,
+        "maximum": 98.4,
+        "sample_count": 6,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          5
+        ],
+        "components": {
+          "encounterRisk": 98.4,
+          "problemRecognition": 96.75806451612902,
+          "planConcreteness": 78.45161290322581,
+          "decisionalBalanceShift": 92.72131147540983,
+          "stabilityConfidence": 90.37614678899082,
+          "detectRisk": 95.45
+        }
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "dani@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 40.0,
+        "mean": 40.0,
+        "median": 0.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "distribution": [
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 66.66666666666667,
+        "mean": 66.66666666666667,
+        "median": 100.0,
+        "standard_deviation": 47.14045207910316,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 45.43283582089552,
+        "mean": 45.43283582089552,
+        "median": 60.0,
+        "standard_deviation": 44.11382447764148,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 1139,
+        "distribution": [
+          537,
+          0,
+          0,
+          1,
+          2,
+          20,
+          68,
+          106,
+          97,
+          308
+        ],
+        "components": {
+          "allianceStrength": 0.0,
+          "encounterRisk": 100.0,
+          "detectRisk": 63.72,
+          "problemRecognition": 83.7983193277311,
+          "emotionalRegulation": 0.0,
+          "cravingPressure": 0.0,
+          "planConcreteness": 72.72164948453609,
+          "situationalSelfEfficacy": 0.0,
+          "stabilityConfidence": 77.67021276595744,
+          "copingRepertoire": 0.0,
+          "decisionalBalanceShift": 84.82926829268293
+        }
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 28.477611940298505,
+        "mean": 28.477611940298505,
+        "median": 40.0,
+        "standard_deviation": 20.258491431675026,
+        "minimum": 0.0,
+        "maximum": 45.43283582089552,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {
+          "state_accuracy": 40.0,
+          "signal_accuracy": 45.43283582089552,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 37.93092044446331,
+        "mean": 37.93092044446331,
+        "median": 11.772351044717045,
+        "standard_deviation": 44.06966503753654,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 11.772351044717045,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 86.88861191848059,
+        "mean": 86.88861191848059,
+        "median": 86.0810975609756,
+        "standard_deviation": 10.585375655331465,
+        "minimum": 72.92783505154638,
+        "maximum": 100.0,
+        "sample_count": 6,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          3,
+          0,
+          3
+        ],
+        "components": {
+          "encounterRisk": 100.0,
+          "detectRisk": 79.65,
+          "problemRecognition": 98.57142857142858,
+          "planConcreteness": 72.92783505154638,
+          "stabilityConfidence": 77.67021276595744,
+          "decisionalBalanceShift": 92.51219512195121
+        }
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "clara@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 40.0,
+        "mean": 40.0,
+        "median": 0.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "distribution": [
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 66.66666666666667,
+        "mean": 66.66666666666667,
+        "median": 100.0,
+        "standard_deviation": 47.14045207910316,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 36.905948553054664,
+        "mean": 36.905948553054664,
+        "median": 0.0,
+        "standard_deviation": 42.366852107995484,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 1244,
+        "distribution": [
+          683,
+          0,
+          0,
+          7,
+          3,
+          93,
+          18,
+          77,
+          109,
+          254
+        ],
+        "components": {
+          "problemRecognition": 85.72,
+          "allianceStrength": 0.0,
+          "encounterRisk": 96.8,
+          "detectRisk": 0.0,
+          "cravingPressure": 0.0,
+          "emotionalRegulation": 0.0,
+          "decisionalBalanceShift": 87.23008849557522,
+          "planConcreteness": 58.198019801980195,
+          "copingRepertoire": 0.0,
+          "situationalSelfEfficacy": 0.0,
+          "stabilityConfidence": 72.88118811881188
+        }
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 25.635316184351552,
+        "mean": 25.635316184351552,
+        "median": 36.905948553054664,
+        "standard_deviation": 18.170862490864213,
+        "minimum": 0.0,
+        "maximum": 40.0,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          0,
+          0,
+          1,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {
+          "state_accuracy": 40.0,
+          "signal_accuracy": 36.905948553054664,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 39.09556869089397,
+        "mean": 39.09556869089397,
+        "median": 15.266295784009031,
+        "standard_deviation": 43.40411413259577,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 15.266295784009031,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 84.30416360290897,
+        "mean": 84.30416360290897,
+        "median": 92.69911504424779,
+        "standard_deviation": 13.720586719337954,
+        "minimum": 63.14851485148514,
+        "maximum": 96.8,
+        "sample_count": 5,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          1,
+          0,
+          3
+        ],
+        "components": {
+          "problemRecognition": 95.992,
+          "encounterRisk": 96.8,
+          "decisionalBalanceShift": 92.69911504424779,
+          "planConcreteness": 63.14851485148514,
+          "stabilityConfidence": 72.88118811881188
+        }
+      }
+    ]
+  },
+  {
+    "kind": "state",
+    "target": "Crisis",
+    "strategy": "batch",
+    "results": {
+      "name": "signal_accuracy",
+      "value": 0.0,
+      "mean": null,
+      "median": null,
+      "standard_deviation": null,
+      "minimum": null,
+      "maximum": null,
+      "sample_count": 0,
+      "distribution": [],
+      "components": {}
+    }
+  },
+  {
+    "kind": "state",
+    "target": "Relapse",
+    "strategy": "batch",
+    "results": {
+      "name": "signal_accuracy",
+      "value": 0.0,
+      "mean": null,
+      "median": null,
+      "standard_deviation": null,
+      "minimum": null,
+      "maximum": null,
+      "sample_count": 0,
+      "distribution": [],
+      "components": {}
+    }
+  },
+  {
+    "kind": "state",
+    "target": "Maintenance",
+    "strategy": "batch",
+    "results": {
+      "name": "signal_accuracy",
+      "value": 0.0,
+      "mean": null,
+      "median": null,
+      "standard_deviation": null,
+      "minimum": null,
+      "maximum": null,
+      "sample_count": 0,
+      "distribution": [],
+      "components": {}
+    }
+  },
+  {
+    "kind": "user_sessions",
+    "target": "amparo@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 20.0,
+        "mean": 20.0,
+        "median": 0.0,
+        "standard_deviation": 40.0,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "distribution": [
+          4,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 33.333333333333336,
+        "mean": 33.333333333333336,
+        "median": 0.0,
+        "standard_deviation": 47.14045207910317,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 43.3956442831216,
+        "mean": 43.3956442831216,
+        "median": 48.0,
+        "standard_deviation": 43.69428003834681,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 1102,
+        "distribution": [
+          530,
+          4,
+          1,
+          1,
+          16,
+          36,
+          85,
+          61,
+          90,
+          278
+        ],
+        "components": {
+          "allianceStrength": 0.0,
+          "encounterRisk": 89.6,
+          "detectRisk": 71.44,
+          "problemRecognition": 79.66666666666667,
+          "emotionalRegulation": 0.0,
+          "cravingPressure": 0.0,
+          "decisionalBalanceShift": 81.51190476190476,
+          "planConcreteness": 66.12345679012346,
+          "copingRepertoire": 0.0,
+          "situationalSelfEfficacy": 0.0,
+          "stabilityConfidence": 74.86842105263158
+        }
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 21.1318814277072,
+        "mean": 21.1318814277072,
+        "median": 20.0,
+        "standard_deviation": 17.734267250375236,
+        "minimum": 0.0,
+        "maximum": 43.3956442831216,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {
+          "state_accuracy": 20.0,
+          "signal_accuracy": 43.3956442831216,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 44.20381330776879,
+        "mean": 44.20381330776879,
+        "median": 19.999999999999996,
+        "standard_deviation": 39.56899916220161,
+        "minimum": 12.611439923306378,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "components": {
+          "state_error": 19.999999999999996,
+          "signal_error": 12.611439923306378,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 84.70142910347232,
+        "mean": 84.70142910347232,
+        "median": 89.025,
+        "standard_deviation": 9.758590436776608,
+        "minimum": 68.5925925925926,
+        "maximum": 97.09756097560975,
+        "sample_count": 6,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          1,
+          3,
+          1
+        ],
+        "components": {
+          "encounterRisk": 89.60000000000001,
+          "detectRisk": 89.3,
+          "problemRecognition": 97.09756097560975,
+          "decisionalBalanceShift": 88.75,
+          "planConcreteness": 68.5925925925926,
+          "stabilityConfidence": 74.86842105263159
+        }
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "aleix@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 40.0,
+        "mean": 40.0,
+        "median": 0.0,
+        "standard_deviation": 48.98979485566356,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "distribution": [
+          3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 66.66666666666667,
+        "mean": 66.66666666666667,
+        "median": 100.0,
+        "standard_deviation": 47.14045207910316,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 38.07000795544948,
+        "mean": 38.07000795544948,
+        "median": 0.0,
+        "standard_deviation": 42.32991460052154,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 1257,
+        "distribution": [
+          675,
+          1,
+          2,
+          3,
+          18,
+          15,
+          79,
+          88,
+          163,
+          213
+        ],
+        "components": {
+          "problemRecognition": 82.336,
+          "allianceStrength": 0.0,
+          "encounterRisk": 68.8,
+          "detectRisk": 20.0,
+          "decisionalBalanceShift": 80.04878048780488,
+          "planConcreteness": 74.0327868852459,
+          "cravingPressure": 0.0,
+          "emotionalRegulation": 0.0,
+          "copingRepertoire": 0.0,
+          "stabilityConfidence": 75.08910891089108,
+          "situationalSelfEfficacy": 0.0
+        }
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 26.023335985149828,
+        "mean": 26.023335985149828,
+        "median": 38.07000795544948,
+        "standard_deviation": 18.418138327384455,
+        "minimum": 0.0,
+        "maximum": 40.0,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          0,
+          0,
+          1,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {
+          "state_accuracy": 40.0,
+          "signal_accuracy": 38.07000795544948,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 39.1201936958766,
+        "mean": 39.1201936958766,
+        "median": 15.34017079895692,
+        "standard_deviation": 43.39060663886841,
+        "minimum": 2.0204102886728803,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "components": {
+          "state_error": 2.0204102886728803,
+          "signal_error": 15.34017079895692,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 83.9390599087098,
+        "mean": 83.9390599087098,
+        "median": 82.9847862835064,
+        "standard_deviation": 10.988878604107176,
+        "minimum": 68.8,
+        "maximum": 100.0,
+        "sample_count": 6,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          2,
+          1,
+          2
+        ],
+        "components": {
+          "problemRecognition": 94.83200000000001,
+          "encounterRisk": 68.8,
+          "decisionalBalanceShift": 86.04878048780488,
+          "planConcreteness": 74.03278688524591,
+          "stabilityConfidence": 79.92079207920793,
+          "detectRisk": 100.0
+        }
+      }
+    ]
+  },
+  {
+    "kind": "user_sessions",
+    "target": "berta@corpus.lluna",
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 20.0,
+        "mean": 20.0,
+        "median": 0.0,
+        "standard_deviation": 40.0,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 5,
+        "distribution": [
+          4,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 33.333333333333336,
+        "mean": 33.333333333333336,
+        "median": 0.0,
+        "standard_deviation": 47.14045207910317,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 41.17016491754123,
+        "mean": 41.17016491754123,
+        "median": 0.0,
+        "standard_deviation": 43.79910499797315,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 1334,
+        "distribution": [
+          682,
+          1,
+          0,
+          8,
+          5,
+          62,
+          82,
+          34,
+          114,
+          346
+        ],
+        "components": {
+          "problemRecognition": 82.12,
+          "planConcreteness": 71.72,
+          "allianceStrength": 0.0,
+          "encounterRisk": 92.8,
+          "detectRisk": 40.0,
+          "cravingPressure": 0.0,
+          "emotionalRegulation": 0.0,
+          "decisionalBalanceShift": 86.21848739495799,
+          "situationalSelfEfficacy": 0.0,
+          "stabilityConfidence": 75.47863247863248,
+          "copingRepertoire": 0.0
+        }
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 2,
+        "distribution": [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 20.39005497251374,
+        "mean": 20.39005497251374,
+        "median": 20.0,
+        "standard_deviation": 16.809912293952692,
+        "minimum": 0.0,
+        "maximum": 41.17016491754123,
+        "sample_count": 3,
+        "distribution": [
+          1,
+          0,
+          1,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {
+          "state_accuracy": 20.0,
+          "signal_accuracy": 41.17016491754123,
+          "transition_responsiveness": 0.0
+        }
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 44.133930001351224,
+        "mean": 44.133930001351224,
+        "median": 19.999999999999996,
+        "standard_deviation": 39.624878814587085,
+        "minimum": 12.401790004053693,
+        "maximum": 100.0,
+        "sample_count": 3,
+        "distribution": [
+          0,
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "components": {
+          "state_error": 19.999999999999996,
+          "signal_error": 12.401790004053693,
+          "transition_error": 100.0
+        }
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 88.5587317867318,
+        "mean": 88.5587317867318,
+        "median": 90.292,
+        "standard_deviation": 7.989012579704748,
+        "minimum": 75.048,
+        "maximum": 100.0,
+        "sample_count": 6,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          2,
+          3
+        ],
+        "components": {
+          "problemRecognition": 87.78399999999999,
+          "planConcreteness": 75.048,
+          "encounterRisk": 92.8,
+          "detectRisk": 100.0,
+          "decisionalBalanceShift": 92.85714285714286,
+          "stabilityConfidence": 82.86324786324786
+        }
+      }
+    ]
+  },
+  {
+    "kind": "users",
+    "target": null,
+    "strategy": "batch",
+    "results": [
+      {
+        "name": "state_accuracy",
+        "value": 32.0,
+        "mean": 32.0,
+        "median": 40.0,
+        "standard_deviation": 21.354156504062622,
+        "minimum": 0.0,
+        "maximum": 60.0,
+        "sample_count": 100,
+        "distribution": [
+          68,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          32
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_stable",
+        "value": 53.75,
+        "mean": 53.75,
+        "median": 66.66666666666667,
+        "standard_deviation": 35.79212747084041,
+        "minimum": 0.0,
+        "maximum": 100.0,
+        "sample_count": 60,
+        "distribution": [
+          28,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          32
+        ],
+        "components": {}
+      },
+      {
+        "name": "state_accuracy_transition",
+        "value": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "standard_deviation": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.0,
+        "sample_count": 40,
+        "distribution": [
+          40,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "signal_accuracy",
+        "value": 43.34795803859085,
+        "mean": 43.34795803859085,
+        "median": 42.55293101928274,
+        "standard_deviation": 4.014536772920416,
+        "minimum": 36.905948553054664,
+        "maximum": 51.98773507767784,
+        "sample_count": 24398,
+        "distribution": [
+          11854,
+          8,
+          68,
+          115,
+          266,
+          782,
+          1133,
+          1718,
+          2265,
+          6189
+        ],
+        "components": {}
+      },
+      {
+        "name": "transition_responsiveness",
+        "value": 5.899370270578747,
+        "mean": 5.899370270578747,
+        "median": 0.0,
+        "standard_deviation": 14.490048851904309,
+        "minimum": 0.0,
+        "maximum": 46.510591302810084,
+        "sample_count": 40,
+        "distribution": [
+          37,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          2
+        ],
+        "components": {}
+      },
+      {
+        "name": "benchmark_accuracy",
+        "value": 27.0824427697232,
+        "mean": 27.0824427697232,
+        "median": 25.82932608475069,
+        "standard_deviation": 9.43760121583288,
+        "minimum": 13.7563252272169,
+        "maximum": 49.00637204533996,
+        "sample_count": 60,
+        "distribution": [
+          21,
+          0,
+          6,
+          4,
+          23,
+          1,
+          5,
+          0,
+          0,
+          0
+        ],
+        "components": {}
+      },
+      {
+        "name": "benchmark_stability",
+        "value": 42.33511715603048,
+        "mean": 42.33511715603048,
+        "median": 39.10788119338528,
+        "standard_deviation": 15.790177677046918,
+        "minimum": 8.010978080115818,
+        "maximum": 70.97940984627837,
+        "sample_count": 60,
+        "distribution": [
+          16,
+          22,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          21
+        ],
+        "components": {}
+      },
+      {
+        "name": "benchmark_consistency",
+        "value": 88.13505008997171,
+        "mean": 88.13505008997171,
+        "median": 87.8009876540309,
+        "standard_deviation": 3.717361269736897,
+        "minimum": 82.58264758510768,
+        "maximum": 93.98286585277687,
+        "sample_count": 122,
+        "distribution": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          8,
+          26,
+          17,
+          69
+        ],
+        "components": {}
+      }
+    ]
+  },
+  {
+    "kind": "state",
+    "target": "Action",
+    "strategy": "batch",
+    "results": {
+      "name": "signal_accuracy",
+      "value": 48.275862068965516,
+      "mean": 48.275862068965516,
+      "median": 74.0,
+      "standard_deviation": 46.187695444390094,
+      "minimum": 0.0,
+      "maximum": 100.0,
+      "sample_count": 87,
+      "distribution": [
+        41,
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        3,
+        11,
+        30
+      ],
+      "components": {
+        "problemRecognition": 92.5,
+        "decisionalBalanceShift": 93.125,
+        "planConcreteness": 86.875,
+        "copingRepertoire": 0.0,
+        "situationalSelfEfficacy": 0.0,
+        "emotionalRegulation": 0.0,
+        "allianceStrength": 0.0,
+        "stabilityConfidence": 77.5,
+        "encounterRisk": 100.0,
+        "detectRisk": 75.0,
+        "cravingPressure": 0.0
+      }
+    }
+  },
+  {
+    "kind": "state",
+    "target": "Precontemplation",
+    "strategy": "batch",
+    "results": {
+      "name": "signal_accuracy",
+      "value": 43.71264367816092,
+      "mean": 43.71264367816092,
+      "median": 42.0,
+      "standard_deviation": 44.623304062168664,
+      "minimum": 0.0,
+      "maximum": 100.0,
+      "sample_count": 87,
+      "distribution": [
+        43,
+        0,
+        0,
+        0,
+        2,
+        2,
+        5,
+        1,
+        9,
+        25
+      ],
+      "components": {
+        "problemRecognition": 79.18181818181819,
+        "decisionalBalanceShift": 76.8,
+        "planConcreteness": 81.33333333333333,
+        "copingRepertoire": 0.0,
+        "allianceStrength": 0.0,
+        "stabilityConfidence": 76.0,
+        "encounterRisk": 92.3076923076923,
+        "detectRisk": 31.076923076923077,
+        "emotionalRegulation": 0.0,
+        "situationalSelfEfficacy": 0.0,
+        "cravingPressure": 0.0
+      }
+    }
+  },
+  {
+    "kind": "state",
+    "target": "Preparation",
+    "strategy": "batch",
+    "results": {
+      "name": "signal_accuracy",
+      "value": 46.333333333333336,
+      "mean": 46.333333333333336,
+      "median": 56.0,
+      "standard_deviation": 44.68365639279253,
+      "minimum": 0.0,
+      "maximum": 100.0,
+      "sample_count": 231,
+      "distribution": [
+        107,
+        0,
+        1,
+        2,
+        1,
+        7,
+        8,
+        10,
+        26,
+        69
+      ],
+      "components": {
+        "problemRecognition": 87.5,
+        "decisionalBalanceShift": 88.66666666666667,
+        "planConcreteness": 75.0,
+        "copingRepertoire": 0.0,
+        "situationalSelfEfficacy": 0.0,
+        "cravingPressure": 0.0,
+        "emotionalRegulation": 0.0,
+        "allianceStrength": 0.0,
+        "stabilityConfidence": 72.5909090909091,
+        "encounterRisk": 95.45454545454545,
+        "detectRisk": 71.31818181818181
+      }
+    }
+  }
+]
