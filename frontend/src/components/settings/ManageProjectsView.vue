@@ -644,6 +644,15 @@ defineExpose({ refresh: load })
   min-height: 0;
   overflow-y: auto;
   padding-top: 20px;
+  /* Reserves the home indicator / gesture nav bar for the *scrollable
+     content*, not the outer box — this is the flex:1 middle section,
+     sized by flex distribution rather than its own content, so a
+     content-box padding here doesn't grow past what flex already gave
+     it. What it does do is keep the last table row (or the "Add" panel
+     dropdown) from sitting bottom-flush against that edge, reachable
+     only by scrolling past it, once the list is long enough to scroll
+     at all. */
+  padding-bottom: var(--safe-area-bottom);
 }
 
 .manage-projects-status {

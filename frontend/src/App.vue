@@ -441,7 +441,7 @@ onBeforeUnmount(() => {
   <div v-else-if="bootStatus === 'ready'" class="app" :class="{ 'app-dialog-open': dialogOpen }">
     <ErrorBanner />
 
-    <div class="app-body">
+    <div class="app-body" :class="{ 'app-body-flip-space': currentUserRole === 'admin' }">
       <!-- Plain user: chat is the entire app, no stack, no transition. -->
       <LiveChatWindow
         v-if="currentUserRole === 'user'"
@@ -687,8 +687,19 @@ body {
      vh doesn't even apply here. */
   height: 100vh;
   font-family: system-ui, -apple-system, sans-serif;
-  transform: scale(1);
-  filter: blur(0);
+  /* none/none, not scale(1)/blur(0): those compute to the same visuals
+     but (per spec) still establish a containing block for position:fixed
+     descendants — LiveChatWindow.vue's/ManageProjectsView.vue's/
+     SplashScreen.vue's own full-viewport position:fixed;inset:0 would
+     then resolve against *this* box's own 100vh instead of the true
+     viewport directly, inheriting whatever measurement quirk affects vh
+     units in a standalone home-screen webapp on this iOS version instead
+     of whatever (probably more reliable) code path the engine uses to
+     size position:fixed against the real viewport. Only .app-dialog-open
+     below needs the real transform, and only while a dialog is actually
+     open. */
+  transform: none;
+  filter: none;
   transition: transform 0.2s ease-in-out, filter 0.2s ease-in-out;
 }
 
@@ -706,8 +717,18 @@ body {
   display: flex;
   min-height: 0;
   overflow: hidden;
-  perspective: 1300px;
   --flip-duration: 500ms;
+}
+
+/* perspective (any value but none) establishes a containing block for
+   position:fixed descendants, same as .app's own transform/filter above
+   — LiveChatWindow.vue's plain-user .live-chat-window (position:fixed;
+   inset:0) would then resolve against *this* box instead of the true
+   viewport. Scoped to the admin role, the only one that ever renders
+   the 3D-flipping subtree below (.view-flip-base / the pushed 'chat'
+   overlay) and so the only one that actually needs it. */
+.app-body-flip-space {
+  perspective: 1300px;
 }
 
 /* iOS-style 3D flip — chat only (see .app-body's perspective above).

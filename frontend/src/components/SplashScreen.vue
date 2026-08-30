@@ -69,6 +69,15 @@ const emit = defineEmits(['retry'])
   background: var(--app-base-gradient);
   font-family: system-ui, -apple-system, sans-serif;
   z-index: 1000;
+  /* Explicit safe-area-bottom reservation on this element's own
+     background, rather than trusting inset:0 alone to reach the true
+     bottom edge under the home indicator — same fix as
+     ChatView.vue's .chat-footer / ManageProjectsView.vue's
+     .manage-projects-body, applied here too since this screen renders
+     before either of those exist (it's shown pre-boot, outside .app
+     entirely) and so can't inherit a fix from either one. */
+  padding-bottom: var(--safe-area-bottom);
+  box-sizing: border-box;
 }
 
 /* Embedded: fills whatever flex slot it's given, alongside the

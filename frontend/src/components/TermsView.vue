@@ -86,7 +86,15 @@ function reject() {
   background: var(--app-base-gradient);
   font-family: system-ui, -apple-system, sans-serif;
   z-index: 1000;
-  padding: 2rem;
+  /* Same shared --safe-area-* custom properties (see html, body in
+     App.vue) as ChatView.vue's own .chat-header/.chat-footer — adds to
+     this screen's own 2rem base padding instead of eating into it, so
+     the panel clears the notch/home indicator on every edge instead of
+     trusting inset:0 alone to stop short of them. */
+  padding-top: calc(2rem + var(--safe-area-top));
+  padding-right: calc(2rem + var(--safe-area-right));
+  padding-bottom: calc(2rem + var(--safe-area-bottom));
+  padding-left: calc(2rem + var(--safe-area-left));
   opacity: 1;
   transform: scale(1);
   transition: opacity 0.3s ease-in, transform 0.3s ease-in;
