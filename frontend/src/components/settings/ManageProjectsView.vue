@@ -6,6 +6,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getProjectMetadata, getProjectsRuntimeStatus, projectFileContentUrl, putProjectPause, putProjectResume } from '../../api.js'
 import { confirmDialog } from '../../dialogStore.js'
 import { liveModelStore } from '../../chatStore.js'
+import { setCanvasColor, restoreCanvasColor } from '../../canvasColor.js'
 import ModelMenu from '../ModelMenu.vue'
 import SettingsMenu from './SettingsMenu.vue'
 import ProfileMenu from '../ProfileMenu.vue'
@@ -264,8 +265,16 @@ function statusTitle(row) {
   return row.paused_reason ?? 'Paused'
 }
 
+// Every view this screen can push over itself (Edit, Label sessions,
+// Manage users, Profile) is white too, so this one setCanvasColor covers
+// all of them — the sole exception is the chat, which restores its own
+// prior value on unmount (see LiveChatWindow.vue), leaving this one
+// intact underneath rather than fighting it.
+let previousCanvasColor = ''
+
 onMounted(() => {
   load()
+  previousCanvasColor = setCanvasColor('#ffffff')
   bodyResizeObserver = new ResizeObserver((entries) => {
     bodyWidth.value = entries[0].contentRect.width
   })
@@ -278,6 +287,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  restoreCanvasColor(previousCanvasColor)
   bodyResizeObserver?.disconnect()
   headerResizeObserver?.disconnect()
   document.removeEventListener('click', handleDocumentClick)

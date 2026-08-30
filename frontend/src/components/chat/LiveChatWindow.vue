@@ -5,12 +5,14 @@
 // and participate in the admin push/pop flip transition; ChatView itself
 // carries no opinion about that at all, since RunChat.vue's embedded Test
 // chat uses the exact same ChatView as a normal contained flex item.
-import { ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ChatView from './ChatView.vue'
 import TermsView from '../TermsView.vue'
 import SplashScreen from '../SplashScreen.vue'
 import { getLegalTermsStatus, postAcceptProjectTerms } from '../../api.js'
 import { loadMessages } from '../../chatStore.js'
+import { onLiveSkinApplied } from '../../chatSkin.js'
+import { setCanvasColor, restoreCanvasColor } from '../../canvasColor.js'
 
 const props = defineProps({
   // null for a plain user whose account has no project to land on at all
@@ -64,13 +66,71 @@ async function acceptTerms() {
 
 watch(() => props.projectName, checkTerms, { immediate: true })
 
+// Canvas-color sync (see canvasColor.js's own comment for why this
+// exists at all): keeps <html>'s background-color matching .chat-footer's
+// own, so the iOS strip WebKit paints with that color under the home
+// indicator reads as a continuation of the skinned footer instead of a
+// mismatched gap. Re-run on: mount, a live skin (re)applying (see
+// chatSkin.js's onLiveSkinApplied), .chat-footer's own background-color
+// transition finishing (not every intermediate frame — see
+// onFooterTransitionEnd), and any DOM change inside this window
+// (childList catches .chat-footer appearing once terms resolve;
+// attributes/data-state catches an automaton state change, since a
+// project's skin can key its footer color off .chat-window-shell's own
+// [data-state]).
+const rootEl = ref(null)
+let previousCanvasColor = ''
+let observedFooterEl = null
+let unregisterSkinApplied = null
+let domObserver = null
+
+function onFooterTransitionEnd(event) {
+  if (event.propertyName === 'background-color') syncCanvasColor()
+}
+
+function syncCanvasColor() {
+  const footerEl = rootEl.value?.querySelector('.chat-footer')
+  if (!footerEl) return
+  if (footerEl !== observedFooterEl) {
+    observedFooterEl?.removeEventListener('transitionend', onFooterTransitionEnd)
+    footerEl.addEventListener('transitionend', onFooterTransitionEnd)
+    observedFooterEl = footerEl
+  }
+  const color = getComputedStyle(footerEl).backgroundColor
+  // A skin that never sets .chat-footer's own background computes as
+  // transparent — #ffffff is what the footer actually shows by default
+  // in that case (see ChatView.vue's own .chat-footer, which sets no
+  // background of its own either).
+  setCanvasColor(color === 'rgba(0, 0, 0, 0)' ? '#ffffff' : color)
+}
+
+onMounted(() => {
+  previousCanvasColor = document.documentElement.style.backgroundColor
+  syncCanvasColor()
+  unregisterSkinApplied = onLiveSkinApplied(syncCanvasColor)
+  domObserver = new MutationObserver(syncCanvasColor)
+  domObserver.observe(rootEl.value, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['data-state']
+  })
+})
+
+onBeforeUnmount(() => {
+  domObserver?.disconnect()
+  unregisterSkinApplied?.()
+  observedFooterEl?.removeEventListener('transitionend', onFooterTransitionEnd)
+  restoreCanvasColor(previousCanvasColor)
+})
+
 defineExpose({
   refreshProjectsMenu: () => chatViewRef.value?.refreshProjectsMenu()
 })
 </script>
 
 <template>
-  <div class="live-chat-window">
+  <div class="live-chat-window" ref="rootEl">
     <SplashScreen v-if="!projectName" variant="no-project" />
     <SplashScreen v-else-if="checkFailed" variant="failed" @retry="checkTerms" />
     <SplashScreen v-else-if="termsPending === null" variant="connecting" />

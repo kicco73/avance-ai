@@ -673,11 +673,19 @@ body {
      one truly global stylesheet, so every screen stays in sync with
      whichever screen was fixed most recently instead of drifting apart
      the way ChatView.vue's .chat-header and
-     ManageProjectsView.vue's .manage-projects-header did before this. */
-  --safe-area-top: env(safe-area-inset-top);
-  --safe-area-right: env(safe-area-inset-right);
-  --safe-area-bottom: env(safe-area-inset-bottom);
-  --safe-area-left: env(safe-area-inset-left);
+     ManageProjectsView.vue's .manage-projects-header did before this.
+     max(env(...), var(--safe-area-*-fallback, 0px)): index.html's own
+     viewport meta deliberately omits viewport-fit=cover now (see its
+     comment) — env(safe-area-inset-*) is spec'd to read 0 without that
+     token, which would collapse every one of these reservations back to
+     nothing. The *-fallback custom properties are unset (0px) unless
+     useVisualViewport.js's own installSafeAreaFallback() finds a real
+     env() reading of 0 on standalone iOS and sets them — max() picks
+     whichever of the two is actually the larger, real inset. */
+  --safe-area-top: max(env(safe-area-inset-top), var(--safe-area-top-fallback, 0px));
+  --safe-area-right: max(env(safe-area-inset-right), var(--safe-area-right-fallback, 0px));
+  --safe-area-bottom: max(env(safe-area-inset-bottom), var(--safe-area-bottom-fallback, 0px));
+  --safe-area-left: max(env(safe-area-inset-left), var(--safe-area-left-fallback, 0px));
 }
 
 #app {

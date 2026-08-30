@@ -38,6 +38,23 @@ function clearSkin() {
   skinStyleEl = null
 }
 
+// Registrable hook for "the live skin's own CSS was just (re)written" —
+// LiveChatWindow.vue's own canvas-color sync (see its comment) needs to
+// re-read .chat-footer's computed background right after that happens,
+// but this module can't import that component directly (it's the other
+// way around: chat stores register themselves here, not the reverse) —
+// a plain callback list keeps the dependency one-directional. Returns an
+// unregister function, since LiveChatWindow.vue's own instance can mount
+// and unmount many times across a single admin session (push/pop 'chat').
+const liveSkinAppliedCallbacks = []
+export function onLiveSkinApplied(callback) {
+  liveSkinAppliedCallbacks.push(callback)
+  return () => {
+    const index = liveSkinAppliedCallbacks.indexOf(callback)
+    if (index !== -1) liveSkinAppliedCallbacks.splice(index, 1)
+  }
+}
+
 // Writes `css` into the one shared skin element, creating it on first use.
 // Shared by loadSkin's own fetched-and-saved skin below and by
 // ChatPreview.vue's live draft — both go through this single function so
@@ -98,6 +115,9 @@ async function loadSkin() {
   // background-image etc. actually loads instead of silently 404ing
   // against whatever origin this page happens to be running on.
   setSkinCss(css, projectName, sessionId)
+  if (activeChatMode.value === 'live') {
+    for (const callback of liveSkinAppliedCallbacks) callback()
+  }
 }
 
 // Module-level, not inside any component, so it never needs an

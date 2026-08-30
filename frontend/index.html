@@ -2,17 +2,32 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- viewport-fit=cover: renders edge-to-edge on a notched/rounded-corner
-         device instead of confining content to the safe area on its own —
-         individual screens reserve the unsafe edges themselves with
-         env(safe-area-inset-*) padding (see App.vue's own --safe-area-*
-         custom properties). iOS standalone home-screen webapps (see the
-         apple-mobile-web-app-* meta tags below) have a long-documented
-         WebKit bug where the layout viewport shrinks the first time the
-         keyboard opens and never resets when it closes — see
-         useVisualViewport.js's own installViewportRecovery(), called from
-         main.js, for the actual fix for that. -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- No viewport-fit=cover, deliberately: on iOS 26 in standalone
+         (home-screen) mode it does the opposite of its own spec — instead
+         of extending the layout viewport edge-to-edge under the home
+         indicator, it stops the viewport *above* it, leaving a strip
+         outside the viewport entirely that no CSS on the page can ever
+         paint (WebKit bug #301108, still open as of Safari 26.5/26.6's
+         own release notes). Without the token, standalone mode is already
+         full-bleed on its own (true since iOS 16, independent of this meta
+         tag) — content reaches the true physical bottom edge, which is
+         exactly what was missing. Do not re-add this token until that
+         WebKit bug is actually fixed.
+
+         The tradeoff: env(safe-area-inset-*) can read 0 without
+         viewport-fit=cover (the spec ties it to that token) — every
+         existing safe-area reservation (App.vue's own --safe-area-* custom
+         properties) would collapse and the input row would land back on
+         the rounded corners/home indicator. useVisualViewport.js's own
+         installSafeAreaFallback(), called from main.js, covers exactly
+         that: on standalone iOS, if env() measures 0, it substitutes fixed
+         fallback insets instead. iOS standalone home-screen webapps (see
+         the apple-mobile-web-app-* meta tags below) also have a
+         long-documented, separate WebKit bug where the layout viewport
+         shrinks the first time the keyboard opens and never resets when
+         it closes — see that same module's installViewportRecovery() for
+         the fix for that one. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/x-icon" href="/src/assets/favicon.ico" />
     <link rel="apple-touch-icon" href="/src/assets/avance-logo.png" />
     <meta name="theme-color" content="#4a6fa5" />
