@@ -13,7 +13,12 @@ import { getLegalTermsStatus, postAcceptProjectTerms } from '../../api.js'
 import { loadMessages } from '../../chatStore.js'
 
 const props = defineProps({
-  projectName: { type: String, required: true },
+  // null for a plain user whose account has no project to land on at all
+  // (see useAppBoot.js's own resolveLandingView — this is what
+  // getActiveProjectName resolves to when the system has zero projects).
+  // Real, always non-null for the admin's own pushed 'chat' instance,
+  // which only ever opens from an explicit row click.
+  projectName: { type: String, default: null },
   hideSessionsPanel: { type: Boolean, default: false }
 })
 
@@ -25,6 +30,12 @@ const termsContent = ref('')
 const checkFailed = ref(false)
 
 async function checkTerms() {
+  // No project to check terms for at all — see the projectName prop's
+  // own comment. Leaves termsPending/checkFailed alone (both still their
+  // initial null/false), so none of the other branches below render
+  // either; the template's own !projectName check is what actually shows
+  // something for this case.
+  if (!props.projectName) return
   termsPending.value = null
   checkFailed.value = false
   try {
@@ -60,7 +71,8 @@ defineExpose({
 
 <template>
   <div class="live-chat-window">
-    <SplashScreen v-if="checkFailed" variant="failed" @retry="checkTerms" />
+    <SplashScreen v-if="!projectName" variant="no-project" />
+    <SplashScreen v-else-if="checkFailed" variant="failed" @retry="checkTerms" />
     <SplashScreen v-else-if="termsPending === null" variant="connecting" />
     <TermsView
       v-if="termsPending"
