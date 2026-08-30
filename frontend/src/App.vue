@@ -385,28 +385,6 @@ function openProfile() {
   showProfile.value = true
 }
 
-// vh/dvh/position:fixed;inset:0 all resolve against the browser's own
-// notion of "the viewport", and that notion has repeatedly proven
-// unreliable in exactly this app's real deployment target — a
-// home-screen standalone webapp on iOS — where a documented, active
-// WebKit bug already showed 100dvh leaving a gap (see .app's own height
-// comment below), and 100vh/inset:0 have shown the same symptom on this
-// same setup even with nothing else on the page (SplashScreen: no
-// scrolling, no keyboard, no JS-driven layout at all). window.innerHeight
-// is a much older, more consistently implemented API across engines and
-// versions than any of the CSS viewport units, so this measures it
-// directly instead and mirrors it as a plain px custom property every
-// full-viewport screen's own height reads from. Not a keyboard/zoom
-// tracker (see useVisualViewport.js's own removal earlier) — orientation
-// change and window resize are the only two things a device does that
-// actually change this value; the keyboard opening is deliberately left
-// alone, since chasing that dynamically is exactly what broke this app
-// for real earlier tonight.
-function updateRealViewportHeight() {
-  document.documentElement.style.setProperty('--real-viewport-height', `${window.innerHeight}px`)
-}
-updateRealViewportHeight()
-
 // Belt-and-suspenders for the html/body touch-action: pan-x pan-y rule
 // above (see that rule's own comment) — CSS touch-action is supposed to
 // suppress pinch-zoom outright, but was still observed reachable on some
@@ -434,14 +412,10 @@ onMounted(() => {
   document.addEventListener('touchmove', preventMultiTouchZoom, { passive: false })
   document.addEventListener('gesturestart', preventGestureZoom)
   document.addEventListener('gesturechange', preventGestureZoom)
-  window.addEventListener('resize', updateRealViewportHeight)
-  window.addEventListener('orientationchange', updateRealViewportHeight)
 })
 onBeforeUnmount(() => {
   disconnectChat()
   if (pingTimeoutHandle) clearTimeout(pingTimeoutHandle)
-  window.removeEventListener('resize', updateRealViewportHeight)
-  window.removeEventListener('orientationchange', updateRealViewportHeight)
   document.removeEventListener('touchmove', preventMultiTouchZoom)
   document.removeEventListener('gesturestart', preventGestureZoom)
   document.removeEventListener('gesturechange', preventGestureZoom)
@@ -678,7 +652,18 @@ body {
      same custom property, defined here since it's the only truly global
      stylesheet in the app). */
   --app-base-gradient: linear-gradient(160deg, #e4e7eb, #9aa1ac);
-  background: var(--app-base-gradient);
+  /* Trailing #9aa1ac (not just the gradient alone) sets background-color
+     within the same shorthand — the background shorthand resets any
+     sub-property it doesn't mention back to its initial value, so a
+     separate background-color declaration before or after this one would
+     just get overwritten/ignored, not layered with it. WebKit paints any
+     area outside every element's own box (e.g. a viewport stuck short by
+     the standalone-webapp bug useVisualViewport.js works around) with the
+     document canvas's own background-color, which was never set at all
+     before this: default transparent, showing as stark white. #9aa1ac is
+     --app-base-gradient's own darker end, so if that ever shows through
+     for a moment it reads as part of the gradient, not as a gap. */
+  background: var(--app-base-gradient) #9aa1ac;
   /* One shared source for the four safe-area insets (notch/Dynamic
      Island, home indicator, rounded corners in landscape) — every
      top-level screen's own header/footer reserves space with
@@ -704,19 +689,17 @@ body {
 .app {
   display: flex;
   flex-direction: column;
-  /* var(--real-viewport-height), not 100vh/100dvh: iOS has an active,
-     confirmed bug in recent releases (see the Apple Developer Forums,
-     "New IOS Safari CSS Issue with DVH & VH") where 100dvh leaves a gap
-     at the bottom instead of covering the full screen — and 100vh
-     showed the exact same symptom on this app's real deployment target
-     (a standalone home-screen webapp), even on a screen with nothing
-     dynamic on it at all (SplashScreen). The custom property is
-     window.innerHeight itself, kept live by App.vue's own
-     updateRealViewportHeight() — see its comment for why that's more
-     trustworthy here than any CSS viewport unit; 100vh is the fallback
-     for a browser without JS (never true in this SPA, but keeps the
-     rule meaningful on its own). */
-  height: calc(var(--real-viewport-height, 100vh) + var(--safe-area-bottom));
+  /* 100vh, not 100dvh: iOS has an active, confirmed bug in recent
+     releases (see the Apple Developer Forums, "New IOS Safari CSS Issue
+     with DVH & VH") where 100dvh leaves a gap at the bottom instead of
+     covering the full screen — visible mainly in a standalone home-screen
+     webapp like this one, which has no browser toolbar to dynamically
+     shrink for in the first place, so dvh's whole reason to exist over
+     vh doesn't even apply here. The real fix for the bottom gap is
+     useVisualViewport.js's installViewportRecovery() — see its own
+     comment — since the actual cause is a stuck-shrunk layout viewport
+     after the keyboard's first use, which no CSS unit can see past. */
+  height: 100vh;
   font-family: system-ui, -apple-system, sans-serif;
   /* none/none, not scale(1)/blur(0): those compute to the same visuals
      but (per spec) still establish a containing block for position:fixed

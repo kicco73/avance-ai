@@ -2,13 +2,17 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- interactive-widget=resizes-content: on browsers that support it
-         (Chrome/Android), the on-screen keyboard resizes the layout
-         viewport itself instead of just the visual one, so the two stay
-         in sync natively; useVisualViewport.js covers the rest (iOS,
-         pinch-zoom, older browsers). Unsupported browsers just ignore the
-         unknown token. -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+    <!-- viewport-fit=cover: renders edge-to-edge on a notched/rounded-corner
+         device instead of confining content to the safe area on its own —
+         individual screens reserve the unsafe edges themselves with
+         env(safe-area-inset-*) padding (see App.vue's own --safe-area-*
+         custom properties). iOS standalone home-screen webapps (see the
+         apple-mobile-web-app-* meta tags below) have a long-documented
+         WebKit bug where the layout viewport shrinks the first time the
+         keyboard opens and never resets when it closes — see
+         useVisualViewport.js's own installViewportRecovery(), called from
+         main.js, for the actual fix for that. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <link rel="icon" type="image/x-icon" href="/src/assets/favicon.ico" />
     <link rel="apple-touch-icon" href="/src/assets/avance-logo.png" />
     <meta name="theme-color" content="#4a6fa5" />

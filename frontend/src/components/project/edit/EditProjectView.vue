@@ -1032,12 +1032,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .edit-project-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  /* height, not bottom: 0 (i.e. not inset: 0) — see SplashScreen.vue's
-     own .splash for why. */
-  height: calc(var(--real-viewport-height, 100vh) + var(--safe-area-bottom));
+  inset: 0;
   background: white;
   z-index: 100;
   display: flex;
@@ -1318,12 +1313,7 @@ onBeforeUnmount(() => {
 
 .inspector-panel {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  /* height, not bottom: 0 (i.e. not inset: 0) — see SplashScreen.vue's
-     own .splash for why. */
-  height: calc(var(--real-viewport-height, 100vh) + var(--safe-area-bottom));
+  inset: 0;
   background: white;
   z-index: 150;
   display: flex;
@@ -1365,12 +1355,7 @@ onBeforeUnmount(() => {
 
 .switch-dialog-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  /* height, not bottom: 0 (i.e. not inset: 0) — see SplashScreen.vue's
-     own .splash for why. */
-  height: calc(var(--real-viewport-height, 100vh) + var(--safe-area-bottom));
+  inset: 0;
   background: rgba(0, 0, 0, 0.35);
   z-index: 200;
   display: flex;

@@ -98,12 +98,7 @@ onMounted(async () => {
 <style scoped>
 .login-view {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  /* height, not bottom: 0 (i.e. not inset: 0) — see SplashScreen.vue's
-     own .splash for why. */
-  height: calc(var(--real-viewport-height, 100vh) + var(--safe-area-bottom));
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;

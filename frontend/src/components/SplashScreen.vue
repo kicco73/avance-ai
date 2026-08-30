@@ -62,19 +62,7 @@ const emit = defineEmits(['retry'])
 <style scoped>
 .splash {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  /* height, not bottom: 0 (i.e. not inset: 0) — this screen showed a
-     real, large (not safe-area-sized) gap at the bottom on this app's
-     real deployment target (a standalone home-screen webapp on iOS)
-     even with zero dynamic content, zero scrolling, zero JS-driven
-     layout — position: fixed's own inset: 0 genuinely doesn't reach the
-     true bottom of the screen there. var(--real-viewport-height) is
-     window.innerHeight itself (see App.vue's own
-     updateRealViewportHeight comment for why that's trustworthy where
-     the CSS viewport units apparently aren't). */
-  height: calc(var(--real-viewport-height, 100vh) + var(--safe-area-bottom));
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;

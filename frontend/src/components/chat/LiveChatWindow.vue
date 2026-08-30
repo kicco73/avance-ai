@@ -81,27 +81,18 @@ defineExpose({
 <style scoped>
 .live-chat-window {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  /* height, not bottom: 0 (i.e. not inset: 0) — position: fixed's own
-     inset: 0 doesn't reach the true bottom of the screen on this app's
-     real deployment target (a standalone home-screen webapp on iOS);
-     see SplashScreen.vue's own .splash, where this was first proven with
-     nothing else on the page to blame. var(--real-viewport-height) is
-     window.innerHeight itself, kept live by App.vue's own
-     updateRealViewportHeight(). Side edges are padding — a device
-     rendering edge-to-edge (see index.html's viewport-fit=cover) would
-     otherwise clip content under a landscape notch/rounded corner.
-     box-sizing so the padding shrinks the box instead of sitting outside
-     it. Top and bottom aren't reserved here: SplashScreen/TermsView are
-     their own position: fixed, centered overlays that never touch that
-     edge anyway, and ChatView's .chat-header/.chat-footer reserve it
-     themselves instead (see their own comments) — those are the
-     elements a project's skin actually paints, so reserving the notch
-     there lets a dark skin's own background extend behind it instead of
-     showing this white fallback through a color-mismatched gap. */
-  height: calc(var(--real-viewport-height, 100vh) + var(--safe-area-bottom));
+  inset: 0;
+  /* Side edges only — a device rendering edge-to-edge (see index.html's
+     viewport-fit=cover) would otherwise clip content under a landscape
+     notch/rounded corner. box-sizing so the padding shrinks the box
+     instead of sitting outside it. Top and bottom aren't reserved here:
+     SplashScreen/TermsView are their own position: fixed, centered
+     overlays that never touch that edge anyway, and ChatView's
+     .chat-header/.chat-footer reserve it themselves instead (see their
+     own comments) — those are the elements a project's skin actually
+     paints, so reserving the notch there lets a dark skin's own
+     background extend behind it instead of showing this white fallback
+     through a color-mismatched gap. */
   box-sizing: border-box;
   padding-left: var(--safe-area-left);
   padding-right: var(--safe-area-right);
