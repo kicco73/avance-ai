@@ -147,10 +147,17 @@ export async function playMessageAudio(url) {
   currentAbortController = controller
 
   try {
-    // Same origin as the app itself — the session cookie travels on
-    // fetch's own default 'same-origin' credentials mode, no explicit
-    // option needed.
-    const response = await fetch(url, { signal: controller.signal })
+    // credentials: 'include' — see api/core.js's own apiFetch: the
+    // session cookie is httpOnly and, in dev especially, this app's
+    // frontend/backend often sit on different origins (VITE_API_URL
+    // pointing at a separate port), so the browser's own default
+    // credentials mode ('same-origin') silently drops the cookie there.
+    // Without this, the request 401s — indistinguishable, from in here,
+    // from "no narration for this message" (see the !response.ok check
+    // below), which is exactly how the previous version of this file
+    // went silently wrong on every platform, not just iOS: it assumed
+    // same-origin and never sent the cookie at all.
+    const response = await fetch(url, { signal: controller.signal, credentials: 'include' })
     audioDebug(`fetch ${response.status}`) // TEMP audiodebug
     if (!response.ok || generation !== currentGeneration) return
 
