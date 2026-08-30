@@ -418,7 +418,7 @@ onBeforeUnmount(() => {
   <div v-else-if="bootStatus === 'ready'" class="app" :class="{ 'app-dialog-open': dialogOpen }">
     <ErrorBanner />
 
-    <div class="app-body">
+    <div class="app-body" :class="{ 'app-body-flip-space': currentUserRole === 'admin' }">
       <!-- Plain user: chat is the entire app, no stack, no transition. -->
       <LiveChatWindow
         v-if="currentUserRole === 'user'"
@@ -635,8 +635,17 @@ body {
      above; 100dvh is the fallback for a browser without that API. */
   height: var(--visual-viewport-height, 100dvh);
   font-family: system-ui, -apple-system, sans-serif;
-  transform: scale(1);
-  filter: blur(0);
+  /* none/none, not scale(1)/blur(0): those compute to the same visuals
+     but (per spec) still establish a containing block for position:fixed
+     descendants — LiveChatWindow.vue's own fixed window would then be
+     anchored to *this* box instead of the true viewport, breaking its
+     useVisualViewport-driven top/height (see its own comment) the moment
+     the on-screen keyboard opens. Only .app-dialog-open below needs the
+     real transform, and only while a dialog is actually open — chat
+     input is never focused at the same time (focus moves to the
+     dialog), so that brief exception doesn't reach this bug. */
+  transform: none;
+  filter: none;
   transition: transform 0.2s ease-in-out, filter 0.2s ease-in-out;
 }
 
@@ -654,8 +663,16 @@ body {
   display: flex;
   min-height: 0;
   overflow: hidden;
-  perspective: 1300px;
   --flip-duration: 500ms;
+}
+
+/* perspective (any value but none) is the same kind of containing-block
+   trap as .app's transform/filter above — scoped to the admin role,
+   which is the only one that ever renders the 3D-flipping subtree below
+   (.view-flip-base / LiveChatWindow's pushed 'chat' overlay), so plain
+   users' LiveChatWindow keeps a true-viewport-relative fixed position. */
+.app-body-flip-space {
+  perspective: 1300px;
 }
 
 /* iOS-style 3D flip — chat only (see .app-body's perspective above).
