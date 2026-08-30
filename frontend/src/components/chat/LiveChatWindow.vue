@@ -1,10 +1,10 @@
 <script setup>
-// The live chat's own full-viewport window — App.vue's one instance,
-// shown either as a plain user's whole app or an admin's pushed 'chat'.
-// Fixed/full-viewport so it can sit inside .app-body's shared perspective
-// and participate in the admin push/pop flip transition; ChatView itself
-// carries no opinion about that at all, since RunChat.vue's embedded Test
-// chat uses the exact same ChatView as a normal contained flex item.
+// The live chat's own window — App.vue's one instance, shown either as a
+// plain user's whole app (a normal contained flex item, same as
+// RunChat.vue's own embedded Test chat) or an admin's pushed 'chat' (App.vue
+// wraps it in its own .chat-flip-layer there for the fixed/full-viewport
+// treatment the 3D push/pop flip needs — see that class's own comment).
+// ChatView itself carries no opinion about either usage at all.
 import { ref, watch } from 'vue'
 import ChatView from './ChatView.vue'
 import TermsView from '../TermsView.vue'
@@ -80,34 +80,39 @@ defineExpose({
 
 <style scoped>
 .live-chat-window {
-  position: fixed;
-  left: 0;
-  right: 0;
-  /* top/height (not inset: 0): a fixed element's inset tracks the
-     *layout* viewport, which doesn't shrink or pan for the on-screen
-     keyboard or a pinch-zoom — the window then sat partly behind the
-     keyboard, or off past a zoomed edge with html/body's own overflow:
-     hidden leaving no way to scroll it back (iOS also doesn't reliably
-     reset pageScale on blur, so this stuck until a reload). The custom
-     properties are window.visualViewport's own offset/height, kept live
-     by App.vue's useVisualViewport() call; 100dvh/0px are the fallback
-     for a browser without that API. */
-  top: var(--visual-viewport-offset-top, 0px);
-  height: var(--visual-viewport-height, 100dvh);
-  /* Padding (not the height/top above) reserves the safe area — it must
-     shrink the usable box, not sit outside the height already computed
-     from the visual viewport, so border-box is required here. Bottom is
-     deliberately not reserved here too: only the footer actually touches
-     that edge (see ChatInput.vue's own input-row), so reserving it twice
-     would waste vertical space everywhere else in the window. */
+  /* Not position: fixed — a plain flex item that just takes whatever
+     space its parent gives it. An earlier version pinned this to
+     window.visualViewport's own offset/height (top/height custom
+     properties kept live by useVisualViewport()) specifically to dodge
+     the on-screen keyboard: position: fixed tracks the *layout* viewport,
+     which doesn't shrink or pan for the keyboard, stranding part of the
+     window behind it. But that fix depended on visualViewport.offsetTop,
+     which iOS has an active bug around (WebKit #259770 — it doesn't
+     reliably settle right as the keyboard opens/closes), and on this
+     element's containing block actually *being* the true viewport, which
+     any transformed/perspective ancestor silently breaks — together they
+     left a stray gap the keyboard-focus scroll could still open up.
+     A plain flow element sidesteps all of that: nothing here needs
+     repositioning when its own height changes, and the browser's own
+     native keyboard-avoidance (shrinking the layout viewport on Android,
+     scrolling the page on iOS) just carries it along like any other
+     content instead of fighting it. The admin push/pop flip still needs
+     a fixed, full-viewport layer to 3D-rotate — see .chat-flip-layer in
+     App.vue, which wraps this component for that one usage only. */
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  /* Padding (not an explicit height) reserves the safe area — it must
+     shrink the usable box, not sit outside whatever height flex gives
+     it, so border-box is required here. Bottom is deliberately not
+     reserved here too: only the footer actually touches that edge (see
+     ChatInput.vue's own input-row), so reserving it twice would waste
+     vertical space everywhere else in the window. */
   box-sizing: border-box;
   padding-top: env(safe-area-inset-top);
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
-  z-index: 100;
-  display: flex;
-  min-height: 0;
-  min-width: 0;
   background: white;
 }
 </style>

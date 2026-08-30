@@ -60,18 +60,6 @@ function onKeydown(event) {
   event.preventDefault()
   emit('submit')
 }
-
-// iOS Safari sometimes scrolls the *document* to bring a newly-focused
-// input above the keyboard, even with html/body's overflow: hidden (see
-// App.vue) — a real, finger-draggable scroll, not a rendering glitch.
-// LiveChatWindow.vue's own fixed positioning already tracks the visual
-// viewport for sizing, but that scroll needs cancelling outright; it
-// can land a frame or more after focus, hence the retries.
-function onFocus() {
-  window.scrollTo(0, 0)
-  requestAnimationFrame(() => window.scrollTo(0, 0))
-  setTimeout(() => window.scrollTo(0, 0), 300)
-}
 </script>
 
 <template>
@@ -87,7 +75,6 @@ function onFocus() {
       autocomplete="off"
       spellcheck="true"
       @keydown="onKeydown"
-      @focus="onFocus"
     ></textarea>
 
     <button

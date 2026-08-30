@@ -548,13 +548,14 @@ onBeforeUnmount(() => {
           @before-leave="onChatBeforeLeave"
           @leave="onChatLeave"
         >
-          <LiveChatWindow
-            v-if="pushedView === 'chat'"
-            ref="chatWindowRef"
-            :project-name="liveChatProjectName"
-            @project-select="handleLiveChatProjectSelect"
-            @project-download="handleModelDownload"
-          />
+          <div v-if="pushedView === 'chat'" class="chat-flip-layer">
+            <LiveChatWindow
+              ref="chatWindowRef"
+              :project-name="liveChatProjectName"
+              @project-select="handleLiveChatProjectSelect"
+              @project-download="handleModelDownload"
+            />
+          </div>
         </Transition>
       </template>
 
@@ -679,10 +680,36 @@ body {
 /* perspective (any value but none) is the same kind of containing-block
    trap as .app's transform/filter above — scoped to the admin role,
    which is the only one that ever renders the 3D-flipping subtree below
-   (.view-flip-base / LiveChatWindow's pushed 'chat' overlay), so plain
-   users' LiveChatWindow keeps a true-viewport-relative fixed position. */
+   (.view-flip-base / .chat-flip-layer). Plain users' LiveChatWindow isn't
+   position: fixed at all (see its own comment), so this doesn't affect
+   it either way — the scoping is about not creating a containing block
+   this role tree never needed in the first place. */
 .app-body-flip-space {
   perspective: 1300px;
+}
+
+/* Only the admin's pushed 'chat' overlay needs this: a fixed,
+   full-viewport layer for LiveChatWindow (itself a plain flex item now,
+   see its own comment) to 3D-rotate against .app-body-flip-space's
+   perspective above. top/height (not inset: 0) track
+   window.visualViewport's own offset/height (kept live by
+   useVisualViewport()) because a fixed element's inset tracks the
+   *layout* viewport, which doesn't shrink or pan for the on-screen
+   keyboard or a pinch-zoom; 100dvh/0px are the fallback for a browser
+   without that API. Admin's flip is a much shorter-lived, actively
+   animated overlay than the plain-user chat this same bug was reported
+   against, so the tradeoff of keeping the older, JS-dependent technique
+   here is deliberate rather than something to chase right now. */
+.chat-flip-layer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: var(--visual-viewport-offset-top, 0px);
+  height: var(--visual-viewport-height, 100dvh);
+  z-index: 100;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
 }
 
 /* iOS-style 3D flip — chat only (see .app-body's perspective above).

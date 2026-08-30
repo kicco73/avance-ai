@@ -30,40 +30,20 @@ function update() {
   root.setProperty('--visual-viewport-offset-top', `${vv.offsetTop}px`)
 }
 
-// iOS 26 has an active WebKit bug where visualViewport.height/offsetTop
-// don't settle to their correct values right as the keyboard opens or
-// closes (https://bugs.webkit.org/show_bug.cgi?id=259770 and multiple
-// open reports) — a 'resize' event fires, but reading the viewport right
-// then can still give the stale pre-transition numbers, which is what
-// stranded a visible gap above LiveChatWindow.vue's own fixed window
-// until the user dragged the screen. The empirically reliable nudge
-// (used as a workaround elsewhere for this same bug) is a 1px scroll and
-// back, which forces Safari to recompute; doing that a frame after every
-// resize and re-reading afterward gets the real, settled numbers without
-// requiring the user's own manual scroll to trigger it.
-function settle() {
-  update()
-  requestAnimationFrame(() => {
-    window.scrollBy(0, 1)
-    window.scrollBy(0, -1)
-    update()
-  })
-}
-
 export function useVisualViewport() {
   onMounted(() => {
     listenerCount++
     if (listenerCount > 1 || !window.visualViewport) return
-    window.visualViewport.addEventListener('resize', settle)
-    window.visualViewport.addEventListener('scroll', settle)
+    window.visualViewport.addEventListener('resize', update)
+    window.visualViewport.addEventListener('scroll', update)
     update()
   })
 
   onBeforeUnmount(() => {
     listenerCount--
     if (listenerCount > 0 || !window.visualViewport) return
-    window.visualViewport.removeEventListener('resize', settle)
-    window.visualViewport.removeEventListener('scroll', settle)
+    window.visualViewport.removeEventListener('resize', update)
+    window.visualViewport.removeEventListener('scroll', update)
   })
 
   return { height, offsetTop }
