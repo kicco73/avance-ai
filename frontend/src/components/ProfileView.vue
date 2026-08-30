@@ -111,7 +111,12 @@ async function eraseAllData() {
 <style scoped>
 .profile-view-overlay {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  /* height, not bottom: 0 (i.e. not inset: 0) — see SplashScreen.vue's
+     own .splash for why. */
+  height: var(--real-viewport-height, 100vh);
   background: #f7f8fa;
   z-index: 100;
   display: flex;

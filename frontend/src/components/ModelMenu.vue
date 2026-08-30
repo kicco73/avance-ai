@@ -237,7 +237,12 @@ onBeforeUnmount(() => {
    selector would never match it. */
 .model-info-overlay {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  /* height, not bottom: 0 (i.e. not inset: 0) — see SplashScreen.vue's
+     own .splash for why. */
+  height: var(--real-viewport-height, 100vh);
   background: rgba(0, 0, 0, 0.35);
   z-index: 1001;
   display: flex;

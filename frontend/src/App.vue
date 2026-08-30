@@ -385,6 +385,28 @@ function openProfile() {
   showProfile.value = true
 }
 
+// vh/dvh/position:fixed;inset:0 all resolve against the browser's own
+// notion of "the viewport", and that notion has repeatedly proven
+// unreliable in exactly this app's real deployment target — a
+// home-screen standalone webapp on iOS — where a documented, active
+// WebKit bug already showed 100dvh leaving a gap (see .app's own height
+// comment below), and 100vh/inset:0 have shown the same symptom on this
+// same setup even with nothing else on the page (SplashScreen: no
+// scrolling, no keyboard, no JS-driven layout at all). window.innerHeight
+// is a much older, more consistently implemented API across engines and
+// versions than any of the CSS viewport units, so this measures it
+// directly instead and mirrors it as a plain px custom property every
+// full-viewport screen's own height reads from. Not a keyboard/zoom
+// tracker (see useVisualViewport.js's own removal earlier) — orientation
+// change and window resize are the only two things a device does that
+// actually change this value; the keyboard opening is deliberately left
+// alone, since chasing that dynamically is exactly what broke this app
+// for real earlier tonight.
+function updateRealViewportHeight() {
+  document.documentElement.style.setProperty('--real-viewport-height', `${window.innerHeight}px`)
+}
+updateRealViewportHeight()
+
 // Belt-and-suspenders for the html/body touch-action: pan-x pan-y rule
 // above (see that rule's own comment) — CSS touch-action is supposed to
 // suppress pinch-zoom outright, but was still observed reachable on some
@@ -412,10 +434,14 @@ onMounted(() => {
   document.addEventListener('touchmove', preventMultiTouchZoom, { passive: false })
   document.addEventListener('gesturestart', preventGestureZoom)
   document.addEventListener('gesturechange', preventGestureZoom)
+  window.addEventListener('resize', updateRealViewportHeight)
+  window.addEventListener('orientationchange', updateRealViewportHeight)
 })
 onBeforeUnmount(() => {
   disconnectChat()
   if (pingTimeoutHandle) clearTimeout(pingTimeoutHandle)
+  window.removeEventListener('resize', updateRealViewportHeight)
+  window.removeEventListener('orientationchange', updateRealViewportHeight)
   document.removeEventListener('touchmove', preventMultiTouchZoom)
   document.removeEventListener('gesturestart', preventGestureZoom)
   document.removeEventListener('gesturechange', preventGestureZoom)
@@ -678,14 +704,19 @@ body {
 .app {
   display: flex;
   flex-direction: column;
-  /* 100vh, not 100dvh: iOS has an active, confirmed bug in recent
-     releases (see the Apple Developer Forums, "New IOS Safari CSS Issue
-     with DVH & VH") where 100dvh leaves a gap at the bottom instead of
-     covering the full screen — visible mainly in a standalone home-screen
-     webapp like this one, which has no browser toolbar to dynamically
-     shrink for in the first place, so dvh's whole reason to exist over
-     vh doesn't even apply here. */
-  height: 100vh;
+  /* var(--real-viewport-height), not 100vh/100dvh: iOS has an active,
+     confirmed bug in recent releases (see the Apple Developer Forums,
+     "New IOS Safari CSS Issue with DVH & VH") where 100dvh leaves a gap
+     at the bottom instead of covering the full screen — and 100vh
+     showed the exact same symptom on this app's real deployment target
+     (a standalone home-screen webapp), even on a screen with nothing
+     dynamic on it at all (SplashScreen). The custom property is
+     window.innerHeight itself, kept live by App.vue's own
+     updateRealViewportHeight() — see its comment for why that's more
+     trustworthy here than any CSS viewport unit; 100vh is the fallback
+     for a browser without JS (never true in this SPA, but keeps the
+     rule meaningful on its own). */
+  height: var(--real-viewport-height, 100vh);
   font-family: system-ui, -apple-system, sans-serif;
   /* none/none, not scale(1)/blur(0): those compute to the same visuals
      but (per spec) still establish a containing block for position:fixed

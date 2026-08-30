@@ -505,13 +505,22 @@ defineExpose({ refresh: load })
 <style scoped>
 .manage-projects-overlay {
   position: fixed;
-  inset: 0;
-  /* Side edges only — same split as LiveChatWindow.vue's own
-     .live-chat-window (see its comment): top/bottom are reserved by
-     .manage-projects-header/its own footer instead, the elements whose
-     background actually needs to extend behind the notch/home indicator
-     rather than showing this white fallback through a gap. box-sizing
-     so the padding shrinks the box instead of sitting outside it. */
+  top: 0;
+  left: 0;
+  right: 0;
+  /* height, not bottom: 0 (i.e. not inset: 0) — see LiveChatWindow.vue's
+     own .live-chat-window / SplashScreen.vue's own .splash: position:
+     fixed's inset: 0 doesn't reach the true bottom of the screen on this
+     app's real deployment target (a standalone home-screen webapp on
+     iOS). var(--real-viewport-height) is window.innerHeight itself, kept
+     live by App.vue's own updateRealViewportHeight(). Side edges are
+     padding — same split as .live-chat-window (see its comment):
+     top/bottom are reserved by .manage-projects-header/.manage-projects-body
+     instead, the elements whose background actually needs to extend
+     behind the notch/home indicator rather than showing this white
+     fallback through a gap. box-sizing so the padding shrinks the box
+     instead of sitting outside it. */
+  height: var(--real-viewport-height, 100vh);
   box-sizing: border-box;
   padding-left: var(--safe-area-left);
   padding-right: var(--safe-area-right);
