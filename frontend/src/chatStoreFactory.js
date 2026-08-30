@@ -18,6 +18,10 @@ export const audioEnabled = ref(false)
 export const talkAvailable = ref(true)
 export const micAvailable = ref(true)
 export const spokenTextEnabled = ref(false)
+// FIXME: null until GET /api/state resolves; kept separate from
+// chatStoreFactory's `state` ref, which handleStateChange overwrites with
+// a differently-shaped payload on every chat turn.
+export const inputTokenBudgetPerSession = ref(null)
 
 export const aiModels = ref([])
 export const aiModelAuto = ref(true)
@@ -27,6 +31,10 @@ export const aiModelSelectionLoading = ref(false)
 export function setCapabilities({ talkAvailable: talk, micAvailable: mic }) {
   talkAvailable.value = talk
   micAvailable.value = mic
+}
+
+export function setInputTokenBudgetPerSession(value) {
+  inputTokenBudgetPerSession.value = value
 }
 
 function applyAiModelInfo(info) {

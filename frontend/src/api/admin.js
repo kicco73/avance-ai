@@ -1,4 +1,4 @@
-import { apiFetch } from './core.js'
+import { apiFetch, projectFetch } from './core.js'
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 

@@ -64,6 +64,8 @@ class SessionExportManager:
             'timestamp': message['timestamp'],
             'audio_text': message['audio_text'],
         }
+        if message['tokens'] is not None:
+            entry['tokens'] = message['tokens']
         if tracking is None:
             return entry
         entry.update({

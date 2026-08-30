@@ -52,11 +52,11 @@ class AutoLiveLLMProvider(LLMProvider):
         return self.current_provider.get_input_tokens(prompt)
 
     async def generate_stream_with_schema(
-        self, system_prompt: str, history: list[dict], schema: dict[str, str]
+        self, system_prompt: str, history: list[dict], schema: dict[str, str], on_metadata: MetadataCallback | None = None,
     ) -> AsyncIterator[str]:
         provider = self._cascade.current
         try:
-            async for chunk in provider.generate_stream_with_schema(system_prompt, history, schema=schema):  # type: ignore
+            async for chunk in provider.generate_stream_with_schema(system_prompt, history, schema=schema, on_metadata=on_metadata):  # type: ignore
                 yield chunk
         except _FAILOVER_ERRORS as exc:
             logger.error(f"AI (live) provider #{self._cascade.current_index + 1} failed: {type(exc).__name__}: {exc}")
@@ -95,7 +95,7 @@ class AutoTestLLMProvider(AutoLiveLLMProvider):
             yielded = False
             while True:
                 try:
-                    async for chunk in provider.generate_stream_with_schema(system_prompt, history, schema=schema):  # type: ignore
+                    async for chunk in provider.generate_stream_with_schema(system_prompt, history, schema=schema, on_metadata=on_metadata):  # type: ignore
                         yielded = True
                         yield chunk
                     return

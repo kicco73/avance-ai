@@ -1,6 +1,8 @@
-"""Two interchangeable sources of (signal_values, stored_env) per turn:
+"""Interchangeable sources of (signal_values, stored_env) per turn:
 TurnByTurnSignalSource asks the AI once per message (high fidelity);
-BatchSignalSource batches per session for fewer calls, less context."""
+BatchSignalSource batches per session for fewer calls, less context;
+BatchLiteSignalSource is the same batching with an even lighter,
+one-sided transcript (see its own docstring)."""
 from __future__ import annotations
 
 from db import Db
@@ -14,6 +16,7 @@ from tracking.metadata_handler import MetadataHandler
 from tracking.tracking_service import TrackingService
 from tracking.turn_protocol_using_schema import TurnProtocolUsingSchema
 from tracking.turn_protocol_using_text_extraction import TurnProcotolUsingTextExtraction
+from testing.replay_messages import next_assistant_message_id
 
 
 class TurnByTurnSignalSource:
@@ -177,7 +180,7 @@ class BatchSignalSource(object):
         tag_specs: list[tuple[str, str]] = [('signals', 'signals_batch'), ('env', 'env_batch')]
 
         seed_env = self._seed_env(turn_ids[0])
-        base_prompt = f"{self._automaton.general_prompt}\n\n{BATCH_TAG_INSTRUCTIONS}"
+        base_prompt = f"{self._automaton.general_prompt}\n\n{self._tag_instructions()}"
         base_prompt = f"{base_prompt}\n\nStarting env (read-only context):\n{Env(stored=seed_env).serialise_as_text()}"
         if signal_definition:
             base_prompt = f"{base_prompt}\n\n{signal_definition}"
@@ -239,31 +242,115 @@ class BatchSignalSource(object):
     def _user_message_ids(self) -> list[int]:
         return [m['id'] for m in self._db.get_messages(self._session_id) if m['role'] == 'user']
 
+    def _tag_instructions(self) -> str:
+        """Framing instructions prepended before the transcript — a hook
+        so a subclass whose transcript departs from "both sides, in full"
+        (see _transcript_role/_anchor_message_id below) can describe that
+        shape accurately instead of inheriting a description that no
+        longer matches what the model is actually shown."""
+        return BATCH_TAG_INSTRUCTIONS
+
+    def _transcript_role(self) -> str | None:
+        """Which message role _build_conversation_text keeps — None (the
+        default) keeps both, the full back-and-forth."""
+        return None
+
+    def _anchor_message_id(self, user_message_id: int, ordered_ids: list[int], by_id: dict) -> int | None:
+        """Which message's id gets a turn's own "[Turn N]" label — the
+        user's message itself by default, which is always present since
+        the default _transcript_role keeps both roles. A subclass that
+        drops the user's side entirely must instead point this at whatever
+        message of its own kept role actually stands in for that turn."""
+        return user_message_id
+
     def _build_conversation_text(self, turn_ids: list[int]) -> str:
-        """Full session history up to and including the last turn this
-        call covers, flattened into plain text — not passed as the
-        provider's own native multi-turn message array. A real multi-turn
-        history primes a chat model to reply to the latest message; this
-        call needs the opposite framing (analyze N independent turns as
-        data, produce no reply at all), so the whole transcript is
-        embedded directly in the prompt as a document to read, with the
-        actual API call carrying only a one-line trigger message (see
-        _call_from). Each turn actually being numbered in this call's
-        'signals'/'env' output gets an explicit "[Turn N]" label right
-        before it. Without this, the model has to infer its own local
-        1-based numbering from a (possibly much longer) history that
-        already carries its own absolute position, and reliably gets the
-        two confused; with it, the model reads the number straight off
-        the transcript instead of counting."""
-        turn_number_by_message_id = {mid: i for i, mid in enumerate(turn_ids, start=1)}
+        """Session history up to and including the last turn this call
+        covers, flattened into plain text — not passed as the provider's
+        own native multi-turn message array. A real multi-turn history
+        primes a chat model to reply to the latest message; this call
+        needs the opposite framing (analyze N independent turns as data,
+        produce no reply at all), so the whole transcript is embedded
+        directly in the prompt as a document to read, with the actual API
+        call carrying only a one-line trigger message (see _call_from).
+        Each turn actually being numbered in this call's 'signals'/'env'
+        output gets an explicit "[Turn N]" label right before whichever
+        message _anchor_message_id resolves it to. Without this, the model
+        has to infer its own local 1-based numbering from a (possibly much
+        longer) history that already carries its own absolute position,
+        and reliably gets the two confused; with it, the model reads the
+        number straight off the transcript instead of counting.
+        _transcript_role, when not None, drops the other role's messages
+        from what's shown entirely (not just at the anchor) — the default
+        keeps both, so the loop below reduces to the original per-role-
+        agnostic behaviour in that case."""
         messages = self._db.get_messages(self._session_id)
+        by_id = {m['id']: m for m in messages}
+        ordered_ids = sorted(by_id.keys())
+
+        turn_number_by_anchor_id: dict[int, int] = {}
+        cutoff_id = turn_ids[-1]
+        for turn_number, user_message_id in enumerate(turn_ids, start=1):
+            anchor_id = self._anchor_message_id(user_message_id, ordered_ids, by_id)
+            if anchor_id is None:
+                continue
+            turn_number_by_anchor_id[anchor_id] = turn_number
+            cutoff_id = max(cutoff_id, anchor_id)
+
+        role = self._transcript_role()
         lines = []
         for m in messages:
-            if m["id"] > turn_ids[-1]:
+            if m["id"] > cutoff_id:
                 continue
-            turn_number = turn_number_by_message_id.get(m["id"])
+            if role is not None and m["role"] != role:
+                continue
+            turn_number = turn_number_by_anchor_id.get(m["id"])
             if turn_number is not None:
                 lines.append(f"[Turn {turn_number}]")
             role_label = "User" if m["role"] == "user" else "Assistant"
             lines.append(f"{role_label}: {m['content']}")
         return "\n".join(lines)
+
+
+BATCH_LITE_TAG_INSTRUCTIONS_TEMPLATE = (
+    "Below is a conversation transcript to analyze, not a conversation to "
+    "reply to — do not write a reply to it, only fill in the 'signals' and "
+    "'env' fields, following their own format definitions (a numbered row/entry "
+    "per turn, one field format each). To save space, only the {shown_role}'s "
+    "own messages are included below — the {other_role}'s messages have been "
+    "left out entirely, not merely hidden per turn — so judge each turn from "
+    "the {shown_role} content shown and the surrounding {shown_role} context "
+    "alone. Each turn you are being asked to cover is marked with its own "
+    "'[Turn N]' label in the transcript, numbered 1, 2, 3, ... with no gaps — "
+    "use that exact number when numbering the corresponding row/entry in "
+    "'signals' and 'env'; read it off the label, don't count turns or infer it "
+    "yourself. The starting env given below is read-only context from before "
+    "this stretch of the conversation — the 'env' field's own numbered entries "
+    "are what you must produce as output for each turn, not a repeat of the "
+    "starting one."
+)
+
+
+class BatchLiteSignalSource(BatchSignalSource):
+    """Same batching/grouping/protocol as BatchSignalSource — only the
+    transcript handed to the AI differs. Rather than the full back-and-
+    forth, it carries just one side of the conversation: whichever side
+    this project's own live auto-tracking actually evaluates against (see
+    Automaton.autotracking_on_ai_message) — the user's messages when it
+    evaluates before the AI's reply, the assistant's when it evaluates
+    after (typically because the model self-reports signals inline in
+    that reply — see PROJECT_SPECS.md §4.3). Roughly halves transcript
+    input tokens versus BatchSignalSource without dropping the side that
+    actually drives the signals it's mimicking."""
+
+    def _tag_instructions(self) -> str:
+        shown_role = self._transcript_role()
+        other_role = 'user' if shown_role == 'assistant' else 'assistant'
+        return BATCH_LITE_TAG_INSTRUCTIONS_TEMPLATE.format(shown_role=shown_role, other_role=other_role)
+
+    def _transcript_role(self) -> str:
+        return 'assistant' if self._automaton.autotracking_on_ai_message else 'user'
+
+    def _anchor_message_id(self, user_message_id: int, ordered_ids: list[int], by_id: dict) -> int | None:
+        if not self._automaton.autotracking_on_ai_message:
+            return user_message_id
+        return next_assistant_message_id(ordered_ids, by_id, user_message_id)

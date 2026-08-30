@@ -21,6 +21,13 @@ chat-service:
   # chat/session_manager.py's ChatSessionManager). The single source of
   # truth for this duration; nothing else hardcodes it.
   max_session_duration_in_minutes: 60
+  # Optional, defaults to 8000. Caps how much of a session's own message
+  # history a turn's prompt can carry: walking backward from the latest
+  # message, as many messages as fit within this many cumulative tokens
+  # (see Message.tokens) are sent — combined with a project state's own
+  # history-cutoff (index.yml), never a replacement for it (see
+  # db/messages.py's get_turn_history).
+  input-token-budget-per-session: 8000
 
 jobs:
   # Optional section — can be omitted entirely. Sizes the general

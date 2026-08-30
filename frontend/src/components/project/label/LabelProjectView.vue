@@ -10,10 +10,8 @@ import Inspector from '../../inspector/Inspector.vue'
 import InspectorGraphTab from '../../inspector/InspectorGraphTab.vue'
 import InspectorSignalsTab from '../../inspector/InspectorSignalsTab.vue'
 import InspectorUserInfoCard from '../../inspector/InspectorUserInfoCard.vue'
-import CardMenu from '../../inspector/CardMenu.vue'
-import { vAutosize } from '../../inspector/textareaAutosize.js'
-import { handleEnterNext } from '../../inspector/enterToNextField.js'
-import { getProjectGraph, putSessionLabeled, putSessionTitle, putSessionComment, getUsers } from '../../../api.js'
+import SessionDetailCard from '../../inspector/SessionDetailCard.vue'
+import { getProjectGraph, putSessionLabeled, getUsers } from '../../../api.js'
 import { sessions, sessionsLoading, loadSessions, refreshSessionsQuietly } from '../../../chatStore.js'
 import { commentForMessage } from '../../../testTimeline.js'
 import { useResizablePanel } from '../../../composables/useResizablePanel.js'
@@ -175,20 +173,6 @@ const selectedUserProfile = computed(() => {
   return users.value.find((u) => u.id === selectedUserNode.value) ?? null
 })
 
-// Same fallback convention as SessionsPanel.vue's own
-// formatSessionTimestamp, which isn't exported so is reimplemented here.
-function formatSessionTimestamp(iso) {
-  if (!iso) return '—'
-  const date = new Date(iso)
-  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString()
-}
-
-// An imported session has neither — no real conversation window to show,
-// rather than a pair of em dashes implying one just wasn't recorded.
-const currentSessionHasTimestamps = computed(() =>
-  currentSession.value?.datetime_start != null || currentSession.value?.datetime_end != null
-)
-
 // The persisted "reviewed" flag, read off the Sessions panel's list —
 // unlike hasAnyAnnotations above, "is there anything to clear" is a
 // different question than "has an expert signed off".
@@ -208,53 +192,6 @@ async function onToggleMarkDone() {
     // already surfaced via apiFetch
   } finally {
     markingDone.value = false
-  }
-}
-
-// The Info tab's Name/Comment fields — local buffers synced from
-// currentSession on every session switch, committed on blur only if
-// actually changed.
-const editSessionTitle = ref('')
-const editSessionComment = ref('')
-watch(currentSession, (session) => {
-  editSessionTitle.value = session?.title ?? ''
-  editSessionComment.value = session?.comment ?? ''
-}, { immediate: true })
-
-// Click-to-open, click-to-close, same as InspectorSignalsTab.vue's own
-// toggle. Collapses back on session switch so editing session A's
-// name/comment never carries over into session B's still-open form.
-const sessionInfoExpanded = ref(false)
-const sessionNameInputRef = ref(null)
-watch(currentSessionId, () => { sessionInfoExpanded.value = false })
-
-async function toggleSessionInfo() {
-  sessionInfoExpanded.value = !sessionInfoExpanded.value
-  if (sessionInfoExpanded.value) {
-    await nextTick()
-    sessionNameInputRef.value?.focus()
-  }
-}
-
-async function onUpdateSessionTitle() {
-  const sessionId = currentSessionId.value
-  if (!sessionId || editSessionTitle.value === (currentSession.value?.title ?? '')) return
-  try {
-    await putSessionTitle(sessionId, editSessionTitle.value)
-    await refreshSessionsQuietly(true, props.projectName)
-  } catch {
-    // already surfaced via apiFetch
-  }
-}
-
-async function onUpdateSessionComment() {
-  const sessionId = currentSessionId.value
-  if (!sessionId || editSessionComment.value === (currentSession.value?.comment ?? '')) return
-  try {
-    await putSessionComment(sessionId, editSessionComment.value)
-    await refreshSessionsQuietly(true, props.projectName)
-  } catch {
-    // already surfaced via apiFetch
   }
 }
 
@@ -400,59 +337,12 @@ onBeforeUnmount(() => {
           <template #tab-info>
             <div v-if="currentSession" class="test-session-info">
               <InspectorUserInfoCard v-if="sessionUser" :user="sessionUser" />
-              <div
-                class="inspector-signal-block inspector-signal-block-clickable"
-                title="Click to open"
-                @click="toggleSessionInfo"
-              >
-                <Transition name="crossfade" mode="out-in">
-                  <div v-if="sessionInfoExpanded" key="edit" class="inspector-signal-form">
-                    <div class="inspector-signal-header">
-                      <span class="inspector-detail-badge inspector-detail-badge-session">Session</span>
-                      <input
-                        ref="sessionNameInputRef"
-                        v-model="editSessionTitle"
-                        class="inspector-signal-label-input"
-                        placeholder="Untitled session"
-                        @click.stop
-                        @blur="onUpdateSessionTitle"
-                        @keydown.enter.prevent="handleEnterNext"
-                      />
-                      <CardMenu v-if="currentSessionIsImported">
-                        <button type="button" class="card-menu-item-danger" @click="handleDeleteSession(currentSession)">Delete</button>
-                      </CardMenu>
-                    </div>
-                    <span v-if="currentSessionIsImported" class="inspector-detail-badge inspector-detail-badge-neutral">Imported</span>
-                    <template v-if="currentSessionHasTimestamps">
-                      <label class="inspector-signal-form-label">Started</label>
-                      <p class="test-session-info-value">{{ formatSessionTimestamp(currentSession.datetime_start) }}</p>
-                      <label class="inspector-signal-form-label">Ended</label>
-                      <p class="test-session-info-value">{{ formatSessionTimestamp(currentSession.datetime_end) }}</p>
-                    </template>
-                    <label class="inspector-signal-form-label">Comment</label>
-                    <textarea
-                      v-model="editSessionComment"
-                      v-autosize
-                      class="inspector-signal-textarea"
-                      rows="3"
-                      placeholder="No comment yet."
-                      @click.stop
-                      @blur="onUpdateSessionComment"
-                    ></textarea>
-                  </div>
-                  <div v-else key="readonly" class="inspector-signal-readonly">
-                    <div class="inspector-signal-header">
-                      <span class="inspector-detail-badge inspector-detail-badge-session">Session</span>
-                      <span class="inspector-signal-name">{{ currentSession.title || currentSession.end_state || 'Untitled session' }}</span>
-                      <CardMenu v-if="currentSessionIsImported">
-                        <button type="button" class="card-menu-item-danger" @click="handleDeleteSession(currentSession)">Delete</button>
-                      </CardMenu>
-                    </div>
-                    <span v-if="currentSessionIsImported" class="inspector-detail-badge inspector-detail-badge-neutral">Imported</span>
-                    <span v-if="currentSession.comment" class="inspector-signal-ui_description">{{ currentSession.comment }}</span>
-                  </div>
-                </Transition>
-              </div>
+              <SessionDetailCard
+                :session="currentSession"
+                deletable
+                @updated="refreshSessionsQuietly(true, props.projectName)"
+                @delete="handleDeleteSession"
+              />
             </div>
             <div v-else-if="selectedUserProfile" class="test-session-info">
               <InspectorUserInfoCard :user="selectedUserProfile" />
@@ -757,121 +647,5 @@ onBeforeUnmount(() => {
   margin: 0;
   color: #666;
   font-size: 0.85rem;
-}
-
-/* The session card itself — unified with InspectorSignalsTab.vue/
-   InspectorEnvKeysTab.vue's own read-only/editable block (same classes,
-   copied here since Vue's scoped styles never cross component files):
-   a badge + title/name row, click to open into an editable form,
-   CardMenu for Delete (imported sessions only — see currentSessionIsImported). */
-.inspector-signal-block {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  padding: 0.6rem 0.75rem;
-  border-radius: 8px;
-  border: 1px solid #eee;
-  background: #fafafa;
-}
-
-.inspector-signal-block-clickable {
-  cursor: pointer;
-}
-
-.inspector-signal-block-clickable:hover {
-  border-color: #c9d6e8;
-  background: #f0f4fa;
-}
-
-.inspector-signal-header {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.inspector-detail-badge {
-  flex-shrink: 0;
-  font-size: 0.68rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
-  color: white;
-}
-
-.inspector-detail-badge-session {
-  background: #455a64;
-}
-
-.inspector-detail-badge-neutral {
-  background: #4a6fa5;
-}
-
-.inspector-signal-name {
-  flex: 1;
-  min-width: 0;
-  font-weight: 600;
-  font-size: 0.85rem;
-  color: #333;
-}
-
-.inspector-signal-label-input {
-  flex: 1;
-  min-width: 0;
-  font-weight: 600;
-  font-size: 0.85rem;
-  color: #333;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  padding: 0.1rem 0.3rem;
-  background: transparent;
-}
-
-.inspector-signal-label-input:hover,
-.inspector-signal-label-input:focus {
-  border-color: #ccc;
-  background: white;
-}
-
-.inspector-signal-form-label {
-  display: block;
-  margin: 20px 0 0.15rem;
-  font-size: 0.68rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  color: #777;
-}
-
-.inspector-signal-textarea {
-  display: block;
-  width: 100%;
-  box-sizing: border-box;
-  resize: vertical;
-  font: inherit;
-  font-size: 0.78rem;
-  line-height: 1.54;
-  padding: 0.35rem 0.5rem;
-  border-radius: 6px;
-  border: 1px solid #ccc;
-}
-
-.inspector-signal-ui_description {
-  display: block;
-  margin-top: 0.3rem;
-  font-size: 0.78rem;
-  color: #666;
-  line-height: 1.4;
-}
-
-.crossfade-enter-active,
-.crossfade-leave-active {
-  transition: opacity 0.15s ease;
-}
-
-.crossfade-enter-from,
-.crossfade-leave-to {
-  opacity: 0;
 }
 </style>

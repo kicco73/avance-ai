@@ -9,6 +9,7 @@ import { getProjectMetadata } from '../../api.js'
 import InspectorDetailCard from './InspectorDetailCard.vue'
 import InspectorProjectCard from './InspectorProjectCard.vue'
 import InspectorFileCard from './InspectorFileCard.vue'
+import SessionDetailCard from './SessionDetailCard.vue'
 
 const props = defineProps({
   projectName: { type: String, required: true },
@@ -29,6 +30,8 @@ const props = defineProps({
   // state/action. { id, title, comment, type, ... }, same shape as
   // chatStore.js's sessions rows.
   selectedSession: { type: Object, default: null },
+  sessionInputTokens: { type: Number, default: null },
+  inputTokenBudgetPerSession: { type: Number, default: null },
   sessionStartElement: { type: Object, default: null },
   sessionEndElement: { type: Object, default: null },
   // Test mode only: no edit form, no delete, no "+ Add state" — this tab
@@ -107,16 +110,12 @@ onMounted(loadProjectMetadata)
     />
 
     <template v-if="selectedSession">
-      <div class="inspector-signal-block">
-        <div class="inspector-signal-readonly">
-          <div class="inspector-signal-header">
-            <span class="inspector-detail-badge inspector-detail-badge-session">Session</span>
-            <span class="inspector-signal-name">{{ selectedSession.title || selectedSession.end_state || 'Untitled session' }}</span>
-          </div>
-          <span v-if="selectedSession.type === 'imported'" class="inspector-detail-badge inspector-detail-badge-neutral">Imported</span>
-          <span v-if="selectedSession.comment" class="inspector-signal-ui_description">{{ selectedSession.comment }}</span>
-        </div>
-      </div>
+      <SessionDetailCard
+        :session="selectedSession"
+        :editable="false"
+        :session-input-tokens="sessionInputTokens"
+        :input-token-budget-per-session="inputTokenBudgetPerSession"
+      />
       <InspectorDetailCard
         v-if="sessionStartIsEnd"
         :selected-element="sessionStartElement"
@@ -155,15 +154,4 @@ onMounted(loadProjectMetadata)
 .inspector-state-tab { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
 .inspector-state-tab-add-btn { flex-shrink: 0; margin-top: 0.5rem; padding: 0.5rem; border-radius: 6px; border: 1px dashed #4a6fa5; background: white; color: #4a6fa5; font-size: 0.82rem; cursor: pointer; }
 .inspector-state-tab-add-btn:hover { background: #eef2f9; }
-
-/* The read-only session card (Auto mode) — same classes as
-   InspectorSignalsTab.vue/LabelProjectView.vue's own session block,
-   copied here since Vue's scoped styles never cross component files. */
-.inspector-signal-block { display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.75rem; padding: 0.6rem 0.75rem; border-radius: 8px; border: 1px solid #eee; background: #fafafa; }
-.inspector-signal-header { display: flex; align-items: center; gap: 0.4rem; }
-.inspector-detail-badge { flex-shrink: 0; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.15rem 0.5rem; border-radius: 999px; color: white; }
-.inspector-detail-badge-session { background: #455a64; }
-.inspector-detail-badge-neutral { background: #4a6fa5; }
-.inspector-signal-name { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; }
-.inspector-signal-ui_description { display: block; margin-top: 0.3rem; font-size: 0.78rem; color: #666; line-height: 1.4; }
 </style>

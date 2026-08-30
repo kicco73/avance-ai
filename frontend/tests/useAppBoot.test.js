@@ -22,6 +22,7 @@ vi.mock('../src/dialogStore.js', () => ({
 }))
 vi.mock('../src/chatStore.js', () => ({
   setCapabilities: vi.fn(),
+  setInputTokenBudgetPerSession: vi.fn(),
   handleStateChange: vi.fn(),
   loadMessages: vi.fn(),
   loadAiModels: vi.fn(),
@@ -32,7 +33,7 @@ import { disconnect as disconnectChat } from '../src/chatClient.js'
 import { clearApiError } from '../src/errorStore.js'
 import { requireLogin } from '../src/authStore.js'
 import { confirmDialog } from '../src/dialogStore.js'
-import { setCapabilities, handleStateChange, loadMessages, loadAiModels } from '../src/chatStore.js'
+import { setCapabilities, setInputTokenBudgetPerSession, handleStateChange, loadMessages, loadAiModels } from '../src/chatStore.js'
 import { useAppBoot } from '../src/composables/useAppBoot.js'
 
 function mountComposable(setup) {
@@ -106,10 +107,22 @@ describe('useAppBoot', () => {
       await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
 
       expect(setCapabilities).toHaveBeenCalledWith({ talkAvailable: true, micAvailable: true })
+      expect(setInputTokenBudgetPerSession).toHaveBeenCalledWith(null)
       expect(handleStateChange).toHaveBeenCalled()
       expect(clearApiError).toHaveBeenCalled()
       expect(loadMessages).toHaveBeenCalled() // role === 'user'
       expect(loadAiModels).toHaveBeenCalled()
+    })
+
+    it('passes the backend-reported input token budget through, when present', async () => {
+      getState.mockResolvedValue({ talk_enabled: true, listen_enabled: true, input_token_budget_per_session: 8000 })
+      getMe.mockResolvedValue({ role: 'user' })
+      const s = mount()
+
+      s.startBootSequence()
+      await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
+
+      expect(setInputTokenBudgetPerSession).toHaveBeenCalledWith(8000)
     })
 
     it('resets the navigation stack before resolving who is landing where', async () => {

@@ -522,6 +522,9 @@ class ChatService(object):
 	def get_latest_signals(self) -> list[SignalPayload]:
 		return self._tracking_service.get_latest_signals()
 
+	def get_input_token_budget_per_session(self) -> int | None:
+		return self._tracking_service.get_input_token_budget_per_session()
+
 	def is_auto_tracking_enabled(self, session_id: int) -> bool:
 		self._require_own_session(session_id)
 		return self._tracking_service.is_auto_tracking_enabled(session_id)

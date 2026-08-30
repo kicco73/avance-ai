@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Any
 
 from automaton.automaton import State
 from logging_factory import LoggerFactory
@@ -14,7 +15,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 	class Parameters:
 		signal_row_id: State
 
-	def on_receiving_metadata_that_may_trigger_status_change(self, key: str, value: str):
+	def on_receiving_metadata_that_may_trigger_status_change(self, key: str, value: Any):
 		rv = value
 		if key == 'signals':
 			rv = self.metadata.signals = self.metadata_processor.parse_raw_signals(value)
@@ -30,9 +31,13 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			rv = self.metadata.audio = value
 		elif key == 'reaction':
 			rv = self.metadata.reaction = value.strip() or None
+		elif key == 'input_tokens':
+			rv = self.metadata.input_tokens = value
+		elif key == 'output_tokens':
+			rv = self.metadata.output_tokens = value
 		self.metadata.on_metadata(key, rv)
 
-	def on_receiving_metadata_when_repeating_the_call(self, key: str, value: str):
+	def on_receiving_metadata_when_repeating_the_call(self, key: str, value: Any):
 		# 'signals' is never among tag_specs for this call — already known
 		# from the first call, re-requesting them would be wasted and must
 		# not trigger a second trigger evaluation. 'reaction' isn't among
@@ -46,8 +51,12 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			rv = self.metadata.audio = value
 		elif key == 'reaction':
 			rv = self.metadata.reaction = value.strip() or None
+		elif key == 'input_tokens':
+			rv = self.metadata.input_tokens = value
+		elif key == 'output_tokens':
+			rv = self.metadata.output_tokens = value
 		self.metadata.on_metadata(key, rv)
-	
+
 	async def _get_ai_reply(self) -> OutVariables:
 
 		self.out = OutVariables("", [], None, self.user.state, None)

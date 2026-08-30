@@ -33,6 +33,7 @@ import {
   toggleSpokenText,
 } from '../../chatStoreFactory.js'
 import { applyAspect } from '../../chatSkin.js'
+import { useVisualViewport } from '../../composables/useVisualViewport.js'
 
 const props = defineProps({
   hideSessionsPanel: { type: Boolean, default: false },
@@ -68,7 +69,8 @@ const {
   handleAction,
   toggleAudio,
   projectPaused,
-  projectPausedReason
+  projectPausedReason,
+  reloadMessages
 } = props.store
 
 const emit = defineEmits(['project-select', 'project-download'])
@@ -146,6 +148,40 @@ function stopSessionsDrag() {
   draggingSessions = false
 }
 
+// Swipe-left-to-close on touch — the divider drag above is mouse-only
+// (mousedown/mousemove), and on a full-width mobile drawer (see
+// .sessions-panel's own mobile width below) there's no divider to grab
+// anyway. Tracks whether the gesture reads as more horizontal than
+// vertical before committing, so it doesn't hijack a vertical scroll
+// inside the panel's own session list.
+const SWIPE_CLOSE_THRESHOLD_PX = 60
+let swipeStartX = 0
+let swipeStartY = 0
+let swipeTracking = false
+
+function onSessionsPanelTouchStart(event) {
+  const touch = event.touches[0]
+  if (!touch) return
+  swipeStartX = touch.clientX
+  swipeStartY = touch.clientY
+  swipeTracking = true
+}
+
+function onSessionsPanelTouchMove(event) {
+  if (!swipeTracking) return
+  const touch = event.touches[0]
+  if (!touch) return
+  const dx = touch.clientX - swipeStartX
+  const dy = touch.clientY - swipeStartY
+  if (Math.abs(dx) < SWIPE_CLOSE_THRESHOLD_PX || Math.abs(dx) < Math.abs(dy)) return
+  swipeTracking = false
+  if (dx < 0) toggleSessionsPanel()
+}
+
+function onSessionsPanelTouchEnd() {
+  swipeTracking = false
+}
+
 // Auto-collapses the sessions panel after 5s of no interaction inside it —
 // reset on every mousemove/click/keydown/scroll there (see the template's
 // own listeners on .sessions-panel-wrap), started/stopped by the watch
@@ -173,10 +209,29 @@ watch(sessionsPanelOpen, (open) => {
   else clearSessionsPanelIdleTimer()
 })
 
+// Mobile backgrounds the page constantly (app switch, screen lock) — iOS
+// suspends the webview and drops the socket within seconds of that, and
+// nothing was listening for the return trip before this. connect()/
+// disconnect() are chatClient.js's own public API (that file itself is
+// off-limits to edit) — reconnecting is a plain close-then-reopen, same
+// as a fresh mount does today. This can't repair one specific case: a
+// transient failure sets chatClient.js's own websocketUnavailable latch,
+// which has no exposed reset, so connect() silently no-ops for the rest
+// of the page's life after that — fixing that needs a small change
+// inside chatClient.js, which needs sign-off first rather than a
+// workaround built around it from out here.
+function onVisibilityChange() {
+  if (document.visibilityState !== 'visible') return
+  disconnectChat()
+  connectChat()
+  reloadMessages?.()
+}
+
 onMounted(() => {
   connectChat()
   window.addEventListener('mousemove', onSessionsDrag)
   window.addEventListener('mouseup', stopSessionsDrag)
+  document.addEventListener('visibilitychange', onVisibilityChange)
   if (props.themeMode === 'manual') applyAspect.value = false
   if (sessionsPanelOpen.value) resetSessionsPanelIdleTimer()
 })
@@ -184,6 +239,7 @@ onBeforeUnmount(() => {
   disconnectChat()
   window.removeEventListener('mousemove', onSessionsDrag)
   window.removeEventListener('mouseup', stopSessionsDrag)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
   if (props.themeMode === 'manual') applyAspect.value = true
   clearSessionsPanelIdleTimer()
 })
@@ -203,6 +259,17 @@ function resend(i) {
 async function startPtt(event) {
   if (event?.pointerType === 'mouse' && event.button !== 0) return
   if (recording.value || chatLoading.value || chatDisabled.value) return
+  // getUserMedia only exists in a secure context (https, or localhost) —
+  // over plain http on a LAN it's simply undefined, which otherwise
+  // surfaces as the same "access was denied" message a real permission
+  // refusal gives, hiding the actual (unfixable-by-the-user) cause.
+  if (!navigator.mediaDevices?.getUserMedia) {
+    setApiError(
+      'Microphone unavailable.',
+      window.isSecureContext ? undefined : 'This page must be loaded over https to use the microphone.'
+    )
+    return
+  }
   try {
     await startRecording()
     recording.value = true
@@ -226,14 +293,45 @@ function scrollToBottom() {
   })
 }
 
-// Auto-scroll when new messages arrive or stream in.
+// Whether the transcript was already scrolled near its bottom before the
+// latest change — read before each new-content auto-scroll below so
+// streaming/new messages don't yank someone back down mid-reread further
+// up. Starts true (a fresh mount/session has nothing to scroll away
+// from yet) and resets to true on session switch, since that view always
+// opens pinned at the bottom regardless of where the previous one sat.
+const NEAR_BOTTOM_THRESHOLD_PX = 80
+const userNearBottom = ref(true)
+
+function onMessagesScroll() {
+  const el = scrollEl.value
+  if (!el) return
+  userNearBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_THRESHOLD_PX
+}
+
+watch(currentSessionId, () => { userNearBottom.value = true })
+
+// Auto-scroll when new messages arrive or stream in — but only for
+// someone already reading the live edge, not someone scrolled back
+// through history (see userNearBottom above).
 watch(
   messages,
   () => {
-    scrollToBottom()
+    if (userNearBottom.value) scrollToBottom()
   },
   { deep: true }
 )
+
+// The on-screen keyboard (or a pinch-zoom) shrinks window.visualViewport
+// without resizing the layout viewport, so the transcript's own scroll
+// position — computed against the old, taller height — no longer reaches
+// the new bottom. Same userNearBottom gate as the messages watcher above:
+// someone already at the live edge stays pinned there as the keyboard
+// opens, someone scrolled back through history keeps their place instead
+// of being yanked down by an unrelated viewport change.
+const { height: visualViewportHeight } = useVisualViewport()
+watch(visualViewportHeight, () => {
+  if (userNearBottom.value) scrollToBottom()
+})
 
 watch(chatLoading, async (isLoading, wasLoading) => {
   if (isLoading || !wasLoading || chatDisabled.value) return
@@ -288,8 +386,16 @@ watch(
         @click="resetSessionsPanelIdleTimer"
         @keydown="resetSessionsPanelIdleTimer"
         @scroll.capture="resetSessionsPanelIdleTimer"
+        @touchstart.passive="resetSessionsPanelIdleTimer"
+        @touchmove.passive="resetSessionsPanelIdleTimer"
       >
-        <div class="sessions-panel" :style="{ width: sessionsWidth + 'px' }">
+        <div
+          class="sessions-panel"
+          :style="{ width: sessionsWidth + 'px' }"
+          @touchstart.passive="onSessionsPanelTouchStart"
+          @touchmove.passive="onSessionsPanelTouchMove"
+          @touchend.passive="onSessionsPanelTouchEnd"
+        >
           <div class="sessions-panel-project-menu">
             <ProjectsMenu
               ref="projectsMenuRef"
@@ -340,7 +446,7 @@ watch(
       <div class="chat-header-icon"></div>
     </div>
 
-    <div class="messages chat-body" ref="scrollEl">
+    <div class="messages chat-body" ref="scrollEl" @scroll="onMessagesScroll">
       <slot name="timeline">
         <MessageBubble
           v-for="(msg, i) in messages"
@@ -441,6 +547,11 @@ watch(
 
 .sessions-reopen-btn {
   position: absolute;
+  /* No safe-area compensation needed here specifically — LiveChatWindow's
+     own top padding already reserves that space for the whole window,
+     so this sits below the notch/status bar the same as everything else
+     inside it. RunChat's own embedded ChatView has no such padding, but
+     it's not full-viewport there either, so there's nothing to reserve. */
   top: 0.75rem;
   left: 0.75rem;
   z-index: 10;
@@ -462,6 +573,17 @@ watch(
 
 .sessions-reopen-btn:hover {
   opacity: 1;
+}
+
+/* No hover on touch, so the opacity-until-hover treatment above left
+   this permanently dim there — full opacity and a larger target by
+   default instead. */
+@media (hover: none) and (pointer: coarse) {
+  .sessions-reopen-btn {
+    width: 2.75rem;
+    height: 2.75rem;
+    opacity: 1;
+  }
 }
 
 /* Overlays the chat rather than sitting in the flex flow — opening it
@@ -545,6 +667,31 @@ watch(
   background: #dbe4f0;
 }
 
+/* A fixed 240px drawer left an 80px sliver of chat visible beside it on
+   a 320px phone — full-width sheet instead, same convention as a mobile
+   nav drawer. The resize divider (mousedown/mousemove only, inert on
+   touch anyway) has nothing to do at full width, so it's hidden too —
+   same breakpoint EditProjectView.vue already uses for its own
+   drag-divider-vs-touch split. */
+@media (max-width: 640px) {
+  /* .sessions-panel-wrap otherwise has no explicit width (only
+     top/left/bottom) — shrink-to-fit around its content, which left
+     .sessions-panel's own 100% below resolving against that same
+     shrink-to-fit content width instead of the viewport. right: 0 gives
+     it a real, viewport-wide box for that percentage to resolve against. */
+  .sessions-panel-wrap {
+    right: 0;
+  }
+
+  .sessions-panel {
+    width: 100% !important;
+  }
+
+  .split-divider {
+    display: none;
+  }
+}
+
 .messages {
   flex: 1;
   overflow-y: auto;
@@ -552,6 +699,10 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  /* Without this, an over-scroll past the top on Android Chrome falls
+     through to the browser's own pull-to-refresh — a full SPA reload,
+     losing the draft and re-running the terms/session checks. */
+  overscroll-behavior-y: contain;
 }
 
 .chat-ended-notice {

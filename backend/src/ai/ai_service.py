@@ -204,7 +204,7 @@ class AiService(object):
 		last_text_length = 0
 
 		logger.info(f"generate_stream_with_metadata: provider={self._current_provider_label} fields={list(schema.keys())}")
-		response_stream = self._active_provider.generate_stream_with_schema(system_prompt, history, schema=schema) # type: ignore
+		response_stream = self._active_provider.generate_stream_with_schema(system_prompt, history, schema=schema, on_metadata=on_metadata) # type: ignore
 
 		try:
 			async for chunk in response_stream:

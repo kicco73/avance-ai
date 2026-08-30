@@ -392,8 +392,8 @@ export function useTestExecutionTree(projectName, strategy, sessions, projectSig
 
   const anyTestExecuted = computed(() => Object.keys(nodeEvents.value).length > 0)
 
-  // reset_cache() wipes every test row project-wide, both strategies at
-  // once — a job still in flight under either one must be stopped or let
+  // reset_cache() wipes every test row project-wide, every strategy at
+  // once — a job still in flight under any of them must be stopped or let
   // finish first, so this checks every tracked node's raw status, not
   // just the currently selected strategy's own view of them.
   const anyJobBusy = computed(() => (

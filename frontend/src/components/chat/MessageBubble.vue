@@ -9,6 +9,13 @@ import MessageReactionButton from './MessageReactionButton.vue'
 // duration below, so the "inflate" finishes right as the picker appears.
 const LONG_PRESS_MS = 450
 
+// A press that drifts more than this before LONG_PRESS_MS elapses reads
+// as a scroll/pan, not a hold — cancels the timer instead of opening the
+// picker (touch-action stays pan-y, see .bubble-assistant below, so the
+// browser's own vertical scroll runs concurrently with this timer; this
+// threshold is what keeps a drifting scroll from also firing a reaction).
+const LONG_PRESS_MOVE_CANCEL_PX = 10
+
 const BARE_DATA_IMAGE_RE = /(?<!\]\()(data:image\/[a-zA-Z0-9+.-]+;base64,[A-Za-z0-9+/=]+)/g
 
 function autoWrapBareImages(text) {
@@ -51,6 +58,12 @@ const bubbleRef = ref(null)
 const reactionButtonRef = ref(null)
 const longPressActive = ref(false)
 let longPressTimer = null
+let pressStartX = 0
+let pressStartY = 0
+// Set the instant the long-press fires and cleared on the next click —
+// suppresses the ghost click that follows the closing touchend so a link
+// under the finger doesn't also navigate (see onBubbleClickCapture).
+let justOpenedReaction = false
 
 function clearLongPressTimer() {
   if (longPressTimer != null) {
@@ -59,14 +72,27 @@ function clearLongPressTimer() {
   }
 }
 
-function onBubblePointerDown() {
+function onBubblePointerDown(event) {
   if (props.message.role !== 'assistant' || !props.reactions.length) return
+  pressStartX = event.clientX
+  pressStartY = event.clientY
   longPressActive.value = true
   longPressTimer = setTimeout(() => {
     longPressTimer = null
     longPressActive.value = false
+    justOpenedReaction = true
     reactionButtonRef.value?.open(bubbleRef.value)
   }, LONG_PRESS_MS)
+}
+
+// A finger drifting toward a scroll shouldn't also open the picker —
+// cancels the pending long-press once the move exceeds the threshold,
+// leaving the browser's own touch-action: pan-y scroll to keep running.
+function onBubblePointerMove(event) {
+  if (longPressTimer == null) return
+  const dx = event.clientX - pressStartX
+  const dy = event.clientY - pressStartY
+  if (Math.hypot(dx, dy) > LONG_PRESS_MOVE_CANCEL_PX) onBubblePointerEnd()
 }
 
 // Shared by pointerup/pointercancel/pointerleave — any of them ends the
@@ -74,6 +100,16 @@ function onBubblePointerDown() {
 function onBubblePointerEnd() {
   longPressActive.value = false
   clearLongPressTimer()
+}
+
+// Capture-phase so it runs before a link's own click handler (navigation)
+// fires — swallows exactly the one click that immediately follows the
+// picker opening, then gets out of the way.
+function onBubbleClickCapture(event) {
+  if (!justOpenedReaction) return
+  justOpenedReaction = false
+  event.preventDefault()
+  event.stopPropagation()
 }
 
 onBeforeUnmount(clearLongPressTimer)
@@ -136,9 +172,11 @@ const {
           }
         ]"
         @pointerdown="onBubblePointerDown"
+        @pointermove="onBubblePointerMove"
         @pointerup="onBubblePointerEnd"
         @pointercancel="onBubblePointerEnd"
         @pointerleave="onBubblePointerEnd"
+        @click.capture="onBubbleClickCapture"
       >
         <span v-if="isAwaitingReply" class="typing-dots" aria-label="Waiting for reply">
           <span class="typing-dot"></span>
@@ -199,6 +237,15 @@ const {
   max-width: 70%;
 }
 
+/* Narrow phones can't spare 30% of the screen to whitespace — bubbles
+   grow to near-full-width, same convention WhatsApp/iMessage use, with
+   role still read from color/alignment rather than empty space. */
+@media (max-width: 640px) {
+  .message-row {
+    max-width: 88%;
+  }
+}
+
 .message-row-user {
   align-self: flex-end;
   flex-direction: row-reverse;
@@ -241,6 +288,11 @@ const {
   transition: transform 0.45s ease;
   user-select: none;
   -webkit-user-select: none;
+  /* iOS's own long-press callout (copy/share/lookup menu) is a separate
+     mechanism from text selection — user-select: none alone doesn't
+     suppress it, and it's exactly the kind of thing that competes with
+     the long-press-to-react gesture below. */
+  -webkit-touch-callout: none;
 }
 
 /* Visual feedback while holding down an assistant bubble, building up to
@@ -308,9 +360,14 @@ const {
   background: #eee;
   color: #222;
   border-bottom-left-radius: 2px;
-  /* Long-press-to-react only applies here — stops a touch scroll/zoom
-     gesture from hijacking a held-down finger before it registers. */
-  touch-action: none;
+  /* pan-y (not none): keeps the container's vertical scroll working
+     under a held finger — onBubblePointerMove cancels the pending
+     long-press once a drag reads as a scroll rather than a hold, so the
+     two gestures don't fight over the same touch. Horizontal panning
+     stays constrained by this same ancestor rule (see the pre/table
+     overflow-x containers below, reachable by mouse/trackpad drag and
+     pinch-zoom, if not by a touch drag). */
+  touch-action: pan-y;
 }
 
 .bubble-failed {
@@ -496,10 +553,19 @@ const {
   background: rgba(255, 255, 255, 0.2);
 }
 
+/* Wraps every table (see markdown.js's table_open/table_close rules) —
+   scrolls wide tables horizontally instead of squeezing columns until
+   words split. */
+.bubble :deep(.md-table-wrap) {
+  overflow-x: auto;
+  margin: 0.75rem 0;
+}
+
 .bubble :deep(table) {
   width: 100%;
+  min-width: max-content;
   border-collapse: collapse;
-  margin: 0.75rem 0;
+  margin: 0;
 }
 
 .bubble :deep(th),
@@ -520,6 +586,10 @@ const {
 .bubble :deep(img) {
   max-width: 100%;
   border-radius: 6px;
+  /* Safari's native drag-to-copy/share on an image is its own gesture,
+     separate from user-select/-webkit-touch-callout above — same
+     long-press-to-react conflict, just image-specific. */
+  -webkit-user-drag: none;
 }
 
 .bubble :deep(a) {

@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from peewee import fn
+
 from logging_factory import LoggerFactory
 
 from .models import Message
@@ -19,9 +21,9 @@ class MessageMixin:
 
     def save_message(
         self, role: str, content: str, session_id: int, audio_text: str | None=None, reaction: str | None=None,
-        timestamp: datetime | None | object=_TIMESTAMP_UNSET,
+        timestamp: datetime | None | object=_TIMESTAMP_UNSET, tokens: int | None=None,
     ) -> int:
-        fields: dict[str, Any] = {"role": role, "content": content, "session": session_id, "audio_text": audio_text, "reaction": reaction}
+        fields: dict[str, Any] = {"role": role, "content": content, "session": session_id, "audio_text": audio_text, "reaction": reaction, "tokens": tokens}
         if timestamp is not _TIMESTAMP_UNSET:
             fields["timestamp"] = timestamp
         message = Message.create(**fields)
@@ -35,6 +37,9 @@ class MessageMixin:
         Message.update(reaction=reaction).where(Message.id == message_id).execute()
         return self.get_message(message_id)
 
+    def set_message_tokens(self, message_id: int, tokens: int) -> None:
+        Message.update(tokens=tokens).where(Message.id == message_id).execute()
+
     def delete_message(self, message_id: int) ->  None:
         logger.warning(f"deleting message id {message_id}")
         Message.delete().where(Message.id == message_id).execute()
@@ -43,7 +48,7 @@ class MessageMixin:
         message = Message.get_or_none(Message.id == message_id)
         if message is None:
             return None
-        return {'id': message.id, 'role': message.role, 'content': message.content, 'audio_text': message.audio_text, 'reaction': message.reaction, 'timestamp': _utc_iso(message.timestamp), 'session_id': message.session.id}
+        return {'id': message.id, 'role': message.role, 'content': message.content, 'audio_text': message.audio_text, 'reaction': message.reaction, 'tokens': message.tokens, 'timestamp': _utc_iso(message.timestamp), 'session_id': message.session.id}
 
     def get_messages(self, session_id: int, last_n: int | None=None, since: datetime | None=None) -> list[dict]:
         # id, not timestamp: always present (never null, unlike an
@@ -56,7 +61,29 @@ class MessageMixin:
             query = query.limit(last_n)
         rows = list(query)
         rows.reverse()
-        return [{'id': m.id, 'role': m.role, 'content': m.content, 'audio_text': m.audio_text, 'reaction': m.reaction, 'timestamp': _utc_iso(m.timestamp), 'session_id': session_id} for m in rows]
+        return [{'id': m.id, 'role': m.role, 'content': m.content, 'audio_text': m.audio_text, 'reaction': m.reaction, 'tokens': m.tokens, 'timestamp': _utc_iso(m.timestamp), 'session_id': session_id} for m in rows]
+
+    def get_turn_history(self, session_id: int, since: datetime | None, token_budget: int | None) -> list[dict]:
+        # FIXME: COALESCE is load-bearing — SUM() over an all-NULL window
+        # is NULL, never <= token_budget, which would empty the result.
+        if token_budget is None:
+            return self.get_messages(session_id, since=since)
+
+        windowed = Message.select(
+            Message.id,
+            fn.SUM(fn.COALESCE(Message.tokens, 0)).over(order_by=[Message.id.desc()]).alias('running_tokens'),
+        ).where(Message.session == session_id)
+        if since is not None:
+            windowed = windowed.where(Message.timestamp > since)
+
+        cte = windowed.cte('windowed', columns=('id', 'running_tokens'))
+        query = (Message
+                 .select()
+                 .join(cte, on=(Message.id == cte.c.id))
+                 .where(cte.c.running_tokens <= token_budget)
+                 .order_by(Message.id)
+                 .with_cte(cte))
+        return [{'id': m.id, 'role': m.role, 'content': m.content, 'audio_text': m.audio_text, 'reaction': m.reaction, 'tokens': m.tokens, 'timestamp': _utc_iso(m.timestamp), 'session_id': session_id} for m in query]
 
     def has_messages_since(self, session_id: int, since: datetime | None) -> bool:
         query = Message.select().where(Message.session == session_id)

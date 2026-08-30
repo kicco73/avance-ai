@@ -116,6 +116,17 @@ secrets). Top-level sections:
   chunk-by-chunk and pushes retry/backoff status frames live instead of
   the client polling for them. Either way, the turn logic itself
   (`ChatService.process_turn`) is identical.
+- **`chat-service.input-token-budget-per-session`** — optional, defaults
+  to `8000`. Caps how much of a session's own message history a turn's
+  prompt can carry: walking backward from the latest message, as many
+  messages as fit within this many cumulative tokens (`Message.tokens`)
+  are sent to the model. Combined with a project state's own
+  `history-cutoff` (see `PROJECT_SPECS.md` §5) in a single query
+  (`Db.get_turn_history`) rather than replacing it — whichever cutoff is
+  tighter wins. Exposed read-only to the frontend via `GET /api/state`'s
+  own `input_token_budget_per_session`, so "Label sessions"' own session
+  detail panel can show a burnt-vs-budget bar (input tokens summed across
+  the session's `user` messages) with the exact numbers on hover.
 - **`ai-service.providers`** — a non-empty, ordered list. The first entry
   is used; later ones are an automatic fallback if it becomes unavailable
   (rate limit, quota, outage — see `ai/cascading_llm_provider.py`).

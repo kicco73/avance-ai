@@ -174,6 +174,7 @@ class SessionImportManager:
         message_id = self._db.save_message(
             message['role'], text, session_id,
             audio_text=message.get('audio_text'),
+            tokens=message.get('tokens'),
             timestamp=_parse_iso(message.get('timestamp')),
         )
         if not any(message.get(field) is not None for field in self._TRACKING_FIELDS):

@@ -118,6 +118,7 @@ class Message(BaseModel):
     # the user's own choice on a bot message, or the bot's own choice on a
     # user message (see automaton.Reaction/State.reactions_enabled).
     reaction = TextField(null=True)
+    tokens = IntegerField(null=True)
     session = ForeignKeyField(ChatSession, null=False, backref='messages', on_delete='CASCADE')
 
     class Meta:
@@ -203,7 +204,7 @@ class Test(BaseModel):
     # published (see ChatSession.project_revision, same idea).
     project_draft_edit_count = IntegerField(null=False)
     session_labeling_revision = IntegerField(null=True)
-    # Only ever set for strategy='batch' — stays null for 'turn_by_turn'.
+    # Only ever set for strategy='batch'/'batch_lite' — stays null for 'turn_by_turn'.
     batch_segments = IntegerField(null=True)
     ai_model_snapshot = TextField(null=True)
     results = TextField(null=True)

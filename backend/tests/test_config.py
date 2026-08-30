@@ -90,6 +90,30 @@ class TestMaxSessionDurationInMinutes:
             _load(monkeypatch, tmp_path, content)
 
 
+class TestInputTokenBudgetPerSession:
+    """End-to-end: a real AppConfig() built from a real (temp) config file."""
+
+    def test_defaults_to_8000_when_omitted(self, monkeypatch, tmp_path):
+        config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
+        assert config.input_token_budget_per_session == 8000
+
+    def test_reads_a_custom_value(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG.replace(
+            "chat-service: {}",
+            "chat-service:\n  input-token-budget-per-session: 4000",
+        )
+        config = _load(monkeypatch, tmp_path, content)
+        assert config.input_token_budget_per_session == 4000
+
+    def test_rejects_a_non_positive_value(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG.replace(
+            "chat-service: {}",
+            "chat-service:\n  input-token-budget-per-session: 0",
+        )
+        with pytest.raises(ConfigError):
+            _load(monkeypatch, tmp_path, content)
+
+
 class TestGetOptionalBool:
     """Unit tests against the parsing helper directly — no file I/O."""
 

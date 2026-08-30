@@ -88,7 +88,7 @@ def test_get_messages_response_shape_has_no_annotation_fields(client, hello_proj
 
     assert rows
     for row in rows:
-        assert set(row) == {"id", "role", "content", "audio_text", "reaction", "timestamp", "session_id"}
+        assert set(row) == {"id", "role", "content", "audio_text", "reaction", "tokens", "timestamp", "session_id"}
 
 
 @pytest.mark.contract

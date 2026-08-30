@@ -33,14 +33,19 @@ async function openPopover(anchorEl) {
   if (!rect) return
   await nextTick()
   const popoverRect = popoverRef.value?.getBoundingClientRect()
-  if (!popoverRect || popoverRect.bottom <= window.innerHeight) return
+  if (!popoverRect) return
   const roomAbove = rect.top - 6 >= popoverRect.height
-  style.value = {
-    top: roomAbove
-      ? `${rect.top - popoverRect.height - 6}px`
-      : `${Math.max(6, window.innerHeight - popoverRect.height - 6)}px`,
-    left: `${rect.left}px`
-  }
+  const fitsBelow = popoverRect.bottom <= window.innerHeight
+  const top = fitsBelow
+    ? rect.bottom + 6
+    : roomAbove
+      ? rect.top - popoverRect.height - 6
+      : Math.max(6, window.innerHeight - popoverRect.height - 6)
+  // Anchored at the bubble's own left edge, this can run past the right
+  // edge on a narrow phone where the bubble itself sits close to it —
+  // clamps back to stay fully on-screen either way.
+  const left = Math.min(rect.left, window.innerWidth - popoverRect.width - 6)
+  style.value = { top: `${top}px`, left: `${Math.max(6, left)}px` }
 }
 
 function closePopover() {
@@ -54,17 +59,39 @@ function pick(key) {
   closePopover()
 }
 
-function onDocumentMousedown(event) {
+// pointerdown (not mousedown): iOS doesn't reliably synthesize mousedown
+// for a tap outside an interactive element, so click-away could silently
+// fail to close the picker there.
+function onDocumentPointerdown(event) {
   if (popoverRef.value?.contains(event.target)) return
   closePopover()
 }
 
+// The popover is teleported to <body> at a fixed pixel position computed
+// once on open — it doesn't track the transcript's own scroll, so it'd
+// hang in place over whatever message scrolled into its spot. Closing on
+// scroll is simpler than re-anchoring on every frame and matches what
+// most chat apps do for this kind of popover. Capture phase: scroll
+// events don't bubble, but a capturing listener on document still sees
+// them on the way down to the actual scrolling element (.messages).
+function onAncestorScroll() {
+  closePopover()
+}
+
 watch(open, (isOpen) => {
-  if (isOpen) document.addEventListener('mousedown', onDocumentMousedown)
-  else document.removeEventListener('mousedown', onDocumentMousedown)
+  if (isOpen) {
+    document.addEventListener('pointerdown', onDocumentPointerdown)
+    document.addEventListener('scroll', onAncestorScroll, true)
+  } else {
+    document.removeEventListener('pointerdown', onDocumentPointerdown)
+    document.removeEventListener('scroll', onAncestorScroll, true)
+  }
 })
 
-onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentMousedown))
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', onDocumentPointerdown)
+  document.removeEventListener('scroll', onAncestorScroll, true)
+})
 
 defineExpose({ open: openPopover, close: closePopover })
 </script>

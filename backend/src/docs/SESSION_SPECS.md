@@ -43,6 +43,16 @@ Every message always carries these four fields:
 | `timestamp`  | `string \| null`  | When it was sent, ISO 8601.                                                 |
 | `audio_text` | `string \| null`  | Raw speech-to-text transcription, when the message came in via voice and was edited before sending (`text` then holds the edited version). |
 
+A message optionally also carries `tokens` — its token cost (input tokens
+for a `user` message, output tokens for an `assistant` one), when the AI
+provider reported one for it. **Omitted entirely**, never `null`, when
+unknown (e.g. an export produced before this field existed, or a message a
+provider never reported usage for).
+
+| Field    | Type      | Meaning                     |
+| -------- | --------- | --------------------------- |
+| `tokens` | `integer` | Token cost of this message. |
+
 A message that triggered (or recorded) an automaton transition additionally
 carries these seven fields. They are **omitted entirely** on a message with
 no linked transition — don't assume they're present with `null` values:
@@ -76,13 +86,15 @@ no linked transition — don't assume they're present with `null` values:
         "role": "user",
         "text": "Hi, I'd like to buy the blue jacket.",
         "timestamp": "2026-08-20T12:34:56+00:00",
-        "audio_text": null
+        "audio_text": null,
+        "tokens": 42
       },
       {
         "role": "assistant",
         "text": "Sure — what size?",
         "timestamp": "2026-08-20T12:34:58+00:00",
         "audio_text": null,
+        "tokens": 18,
         "old_state": "greeting",
         "action": "start_purchase",
         "new_state": "asking_size",
@@ -100,7 +112,7 @@ no linked transition — don't assume they're present with `null` values:
 
 - **Not every message has transition fields.** A message with no linked
   automaton transition only ever has `role`, `text`, `timestamp`,
-  `audio_text`.
+  `audio_text`, and optionally `tokens`.
 - **The opening transition is never exported.** A Tracking row with no
   linked message (the session's very first, implicit transition into
   `start_state`) is dropped on export; the importing side reconstructs it

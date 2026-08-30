@@ -78,6 +78,7 @@ class SessionImportMessageJson(BaseModel):
     text: str
     timestamp: str | None = None
     audio_text: str | None = None
+    tokens: int | None = None
     old_state: str | None = None
     action: str | None = None
     new_state: str | None = None
@@ -155,7 +156,7 @@ class CreateTestRequest(BaseModel):
     # (same session_id=None|int dual as BenchmarkCalculator). See
     # TestService.create_run.
     session_id: int | None = None
-    # 'turn_by_turn' or 'batch' — see test_service.py's own
+    # 'batch_lite', 'batch', or 'turn_by_turn' — see test_service.py's own
     # VALID_STRATEGIES.
     strategy: str
     # None = the requesting user (Session().user), the default. Set to

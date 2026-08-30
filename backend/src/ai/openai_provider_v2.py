@@ -13,6 +13,7 @@ from ai.llm_provider import (
     AIServiceProviderRateLimitedError,
     AIServiceProviderUnavailableError,
     LLMProvider,
+    MetadataCallback,
     content_to_text,
 )
 from logging_factory import LoggerFactory
@@ -91,6 +92,7 @@ class OpenAICompatibleProvider(LLMProvider):
         system_prompt: str,
         history: List[Dict[str, Any]],
         schema: Optional[Dict[str, str]] = None,
+        on_metadata: Optional[MetadataCallback] = None,
     ) -> AsyncIterator[str]:
         messages: List[Dict[str, str]] = [
             {"role": "system", "content": system_prompt}
@@ -125,6 +127,8 @@ class OpenAICompatibleProvider(LLMProvider):
             }
 
         total_tokens = 0
+        input_tokens = 0
+        output_tokens = 0
         finish_reason: Optional[str] = None
         try:
             stream = await self._client.chat.completions.create(
@@ -139,12 +143,17 @@ class OpenAICompatibleProvider(LLMProvider):
             async for chunk in stream:
                 if chunk.usage is not None:
                     total_tokens = chunk.usage.total_tokens
+                    input_tokens = chunk.usage.prompt_tokens
+                    output_tokens = chunk.usage.completion_tokens
                 if chunk.choices:
                     if chunk.choices[0].finish_reason is not None:
                         finish_reason = chunk.choices[0].finish_reason
                     if chunk.choices[0].delta.content:
                         yield chunk.choices[0].delta.content
             self._add_tokens(total_tokens)
+            if on_metadata is not None:
+                on_metadata("input_tokens", input_tokens)
+                on_metadata("output_tokens", output_tokens)
             logger.info(
                 f"OpenAI-compatible call finished: model={self._model_name} finish_reason={finish_reason} "
                 f"total_tokens={total_tokens} max_output_tokens={self._max_output_tokens}"

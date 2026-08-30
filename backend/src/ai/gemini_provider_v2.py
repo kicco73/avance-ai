@@ -19,6 +19,7 @@ from ai.llm_provider import (
 	AIServiceProviderRateLimitedError,
 	AIServiceProviderUnavailableError,
 	LLMProvider,
+	MetadataCallback,
 	content_to_text,
 )
 
@@ -136,12 +137,15 @@ class GeminiProvider(LLMProvider):
 		self,
 		system_prompt: str,
 		history: list[dict[str, Any]],
-		schema: dict[str, str] | None = None
+		schema: dict[str, str] | None = None,
+		on_metadata: MetadataCallback | None = None,
 	) -> AsyncIterator[str]:
 
 		contents, config = self._format_history_and_config(system_prompt, history, schema or {})
 
 		total_tokens = 0
+		input_tokens = 0
+		output_tokens = 0
 		finish_reason: types.FinishReason | None = None
 		with _handle_gemini_errors():
 			response_stream = await self._client().aio.models.generate_content_stream(
@@ -152,14 +156,22 @@ class GeminiProvider(LLMProvider):
 
 			async for chunk in response_stream:
 				usage = chunk.usage_metadata
-				if usage is not None and usage.total_token_count is not None:
-					total_tokens = usage.total_token_count
+				if usage is not None:
+					if usage.total_token_count is not None:
+						total_tokens = usage.total_token_count
+					if usage.prompt_token_count is not None:
+						input_tokens = usage.prompt_token_count
+					if usage.candidates_token_count is not None:
+						output_tokens = usage.candidates_token_count
 				if chunk.candidates and chunk.candidates[0].finish_reason is not None:
 					finish_reason = chunk.candidates[0].finish_reason
 				if not chunk.text:
 					continue
 				yield chunk.text
 		self._add_tokens(total_tokens)
+		if on_metadata is not None:
+			on_metadata("input_tokens", input_tokens)
+			on_metadata("output_tokens", output_tokens)
 		logger.info(
 			f"Gemini call finished: model={self._model_name} finish_reason={finish_reason} "
 			f"total_tokens={total_tokens} max_output_tokens={self._max_output_tokens}"

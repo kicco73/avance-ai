@@ -2,7 +2,7 @@
 // The text input plus its side buttons (mic / audio / spoken-text) — a
 // self-contained, presentational piece. All chat business logic stays in
 // the parent; this component only renders and emits.
-import { ref } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 
 defineProps({
   disabled: { type: Boolean, default: false },
@@ -20,17 +20,62 @@ const emit = defineEmits(['submit', 'mic-start', 'mic-stop', 'toggle-audio', 'to
 const inputRef = ref(null)
 
 defineExpose({ focus: () => inputRef.value?.focus() })
+
+// Grows the textarea with its content (up to CSS's own max-height, which
+// takes over with its own scrollbar past that) instead of a fixed
+// single-line input that scrolls its text sideways.
+//
+// Measuring is a two-step dance because a CSS transition is active on
+// height (see .input-row textarea below): reading scrollHeight
+// synchronously right after changing a *transitioning* height reflects
+// the pre-transition box, not the real content need, so a naive
+// set-'auto'-then-read-scrollHeight got stuck on whatever the tallest
+// height-so-far was instead of ever shrinking back down. Fix: measure
+// with the transition switched off (so the reset is instant, not
+// animated), then restore the *visually current* height and force a
+// reflow before re-enabling the transition, so the animation the user
+// sees still runs from where the box actually was, not from the
+// throwaway reset value.
+function autosize() {
+  const el = inputRef.value
+  if (!el) return
+  const prevHeight = el.offsetHeight
+  const prevTransition = el.style.transition
+  el.style.transition = 'none'
+  el.style.height = 'auto'
+  const needed = el.scrollHeight
+  el.style.height = `${prevHeight}px`
+  void el.offsetHeight
+  el.style.transition = prevTransition
+  el.style.height = `${needed}px`
+}
+
+watch(draft, () => nextTick(autosize))
+
+// Enter sends (matching the old single-line input's implicit behavior);
+// Shift+Enter inserts a newline. isComposing guards an IME's own Enter
+// (confirming a candidate) from being read as "send".
+function onKeydown(event) {
+  if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return
+  event.preventDefault()
+  emit('submit')
+}
 </script>
 
 <template>
   <form class="input-row" @submit.prevent="emit('submit')">
-    <input
+    <textarea
       ref="inputRef"
       v-model="draft"
-      type="text"
+      rows="1"
       placeholder="Type a message..."
       :disabled="disabled"
-    />
+      enterkeyhint="send"
+      autocapitalize="sentences"
+      autocomplete="off"
+      spellcheck="true"
+      @keydown="onKeydown"
+    ></textarea>
 
     <button
       v-if="micAvailable"
@@ -87,17 +132,59 @@ defineExpose({ focus: () => inputRef.value?.focus() })
 <style scoped>
 .input-row {
   display: flex;
+  /* Not the default stretch: the side buttons would otherwise grow to
+     match the textarea's own height as it grows across multiple lines.
+     flex-end keeps them at their own fixed size, anchored to the
+     textarea's bottom edge. */
+  align-items: flex-end;
   gap: 0.5rem;
   padding: 0.75rem 1rem;
+  /* Home indicator (iOS) / gesture nav bar (Android) sits right under
+     this row otherwise — env() resolves to 0 on a device with neither,
+     and unconditionally (not just under the max-width below): a
+     landscape phone can easily be wider than that breakpoint while
+     still having a home indicator to clear. This is the chat's actual
+     footer edge, so it's the one place that reserves the bottom safe
+     area — see LiveChatWindow.vue's own top/left/right padding for the
+     rest. */
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
   border-top: 1px solid #ddd;
 }
 
-.input-row input {
+@media (max-width: 640px) {
+  .input-row {
+    padding: 0.5rem 0.75rem;
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+  }
+}
+
+.input-row textarea {
   flex: 1;
+  /* Without this a flex item won't shrink below its content's intrinsic
+     width — with mic/audio/spoken-text all showing, that pushed the
+     later buttons out of the row entirely on narrow screens instead of
+     yielding space to them. */
+  min-width: 0;
+  /* autosize() below sets height directly from scrollHeight, which (per
+     spec) already includes padding — with the default content-box, that
+     same padding then gets added a second time on top, inflating the
+     box by 2x padding on every resize. border-box makes height and
+     scrollHeight refer to the same box. */
+  box-sizing: border-box;
   padding: 0.5rem 0.75rem;
   border-radius: 6px;
   border: 1px solid #ccc;
-  font-size: 0.95rem;
+  /* 16px: below this, iOS Safari zooms the page in on focus and doesn't
+     zoom back out on blur. */
+  font-size: 1rem;
+  font-family: inherit;
+  line-height: 1.4;
+  resize: none;
+  max-height: 6.5em;
+  overflow-y: auto;
+  /* Animates the grow/shrink set by autosize() above (always an explicit
+     px value, never 'auto', so there are two real numbers to tween). */
+  transition: height 0.15s ease-out;
 }
 
 .mic-btn,
@@ -105,6 +192,10 @@ defineExpose({ focus: () => inputRef.value?.focus() })
 .spoken-text-btn {
   flex: none;
   width: 2.5rem;
+  /* Fixed, not stretched (see .input-row's align-items: flex-end) —
+     matches the textarea's own one-line height so the row reads as a
+     single tidy baseline before it ever grows. */
+  height: 2.5rem;
   border-radius: 6px;
   border: 1px solid #999;
   background: white;
@@ -113,6 +204,17 @@ defineExpose({ focus: () => inputRef.value?.focus() })
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* No mouse precision to rely on — grows each side button to the ~44px
+   minimum recommended touch target (iOS HIG / Material). */
+@media (hover: none) and (pointer: coarse) {
+  .mic-btn,
+  .audio-btn,
+  .spoken-text-btn {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
 }
 
 .mic-btn {

@@ -19,7 +19,9 @@ class _FakeProvider:
         self._error = error
         self.calls = 0
 
-    async def generate_stream_with_schema(self, system_prompt: str, history: list[dict], schema: dict[str, str]) -> AsyncIterator[str]:
+    async def generate_stream_with_schema(
+        self, system_prompt: str, history: list[dict], schema: dict[str, str], on_metadata=None,
+    ) -> AsyncIterator[str]:
         self.calls += 1
         for chunk in self._chunks:
             yield chunk

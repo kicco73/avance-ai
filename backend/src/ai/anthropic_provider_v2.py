@@ -20,6 +20,7 @@ from ai.llm_provider import (
 	AIServiceProviderRateLimitedError,
 	AIServiceProviderUnavailableError,
 	LLMProvider,
+	MetadataCallback,
 	content_to_text,
 )
 from logging_factory import LoggerFactory
@@ -194,6 +195,7 @@ class AnthropicProvider(LLMProvider):
 		system_prompt: str,
 		history: list[dict[str, Any]],
 		schema: dict[str, str] | None = None,
+		on_metadata: MetadataCallback | None = None,
 	) -> AsyncIterator[str]:
 		messages: list[MessageParam] = self._build_messages(
 			history
@@ -225,6 +227,9 @@ class AnthropicProvider(LLMProvider):
 				final_message = await stream.get_final_message()
 				usage = final_message.usage
 				self._add_tokens(usage.input_tokens + usage.output_tokens)
+				if on_metadata is not None:
+					on_metadata("input_tokens", usage.input_tokens)
+					on_metadata("output_tokens", usage.output_tokens)
 				stop_reason = final_message.stop_reason
 				logger.info(
 					f"Anthropic call finished: model={self._model_name} stop_reason={stop_reason} "

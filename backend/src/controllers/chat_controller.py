@@ -167,6 +167,7 @@ class ChatController(BaseController):
 
         payload["talk_enabled"] = self.talk_service is not None
         payload["listen_enabled"] = self.listen_service is not None
+        payload["input_token_budget_per_session"] = self.chat_service.get_input_token_budget_per_session()
         return payload
 
     @get("/api/ai/models")

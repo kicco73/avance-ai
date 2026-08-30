@@ -29,8 +29,8 @@ const props = defineProps({
 const emit = defineEmits(['select'])
 
 // Applies to whichever node gets activated next — one shared control, not a per-node choice.
-const strategy = ref('batch')
-const strategyLabels = { batch: 'Batch', turn_by_turn: 'Turn-by-turn' }
+const strategy = ref('batch_lite')
+const strategyLabels = { batch_lite: 'Batch-lite', batch: 'Batch', turn_by_turn: 'Turn-by-turn' }
 
 const {
   open: strategyOpen, triggerRef: strategyBtnEl, panelRef: strategyPanelEl, style: strategyPanelStyle,

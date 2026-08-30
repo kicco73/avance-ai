@@ -12,6 +12,7 @@ from tracking.env import Env
 from tracking.session_facts import SessionFacts
 from tracking.tracking_engine import TestObservationSink, TrackingEngine
 from testing.metrics_provider import TestMetricsProvider
+from testing.replay_messages import next_assistant_message_id
 
 
 class TestSignalSource(Protocol):
@@ -95,7 +96,7 @@ class TestProcessor(object):
             self._session_facts.set_last_transition_instant(real_timestamp)
 
         observation_message_id = (
-            self._next_assistant_message_id(self._ordered_ids, self._by_id, message_id)
+            next_assistant_message_id(self._ordered_ids, self._by_id, message_id)
             if self._automaton.autotracking_on_ai_message else message_id
         )
         self._tracking_engine.apply_transition(
@@ -111,12 +112,3 @@ class TestProcessor(object):
             if row['expected_state']:
                 return row['expected_state']
         return session['start_state']
-
-    @staticmethod
-    def _next_assistant_message_id(ordered_ids: list[int], by_id: dict, user_message_id: int) -> int | None:
-        index = ordered_ids.index(user_message_id)
-        if index + 1 < len(ordered_ids):
-            next_id = ordered_ids[index + 1]
-            if by_id[next_id]['role'] == 'assistant':
-                return next_id
-        return None

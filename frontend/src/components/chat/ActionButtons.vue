@@ -58,6 +58,29 @@ const visibleActions = computed(() =>
   cursor: pointer;
 }
 
+/* An unbounded flex-wrap can grow to several rows before it runs out of
+   actions, eating the transcript's own height with no cap — a single
+   horizontally-scrollable row instead, same pattern as a mobile chip
+   bar. Tighter padding claws back some of the footer's own share of a
+   short screen. */
+@media (max-width: 640px) {
+  .action-buttons {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .action-btn {
+    flex: none;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .action-btn {
+    min-height: 2.75rem;
+  }
+}
+
 .action-btn:hover:not(:disabled) {
   background: #4a6fa5;
   color: white;

@@ -190,6 +190,25 @@ def test_import_json_handles_a_mixed_batch_of_files(client, hello_project):
     assert "Good one" in titles
 
 
+@pytest.mark.regression
+def test_export_omits_tokens_when_unknown_but_includes_it_when_known(client, hello_project):
+    payload = {
+        "name": "Token accounting",
+        "username": "User 1",
+        "messages": [
+            {"role": "user", "text": "hi", "tokens": 42},
+            {"role": "assistant", "text": "hello"},
+        ],
+    }
+
+    _import_json(client, [payload])
+    Session().user = "User 1"
+    [exported] = client.get("/api/projects/hello/sessions/export").json()
+
+    assert exported["messages"][0]["tokens"] == 42
+    assert "tokens" not in exported["messages"][1]
+
+
 @pytest.mark.contract
 def test_import_json_rejects_a_malformed_message(client, hello_project):
     result = _import_json(client, [{"name": "bad", "messages": [{"role": "user"}]}])  # missing required 'text'

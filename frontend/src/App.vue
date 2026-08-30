@@ -39,6 +39,7 @@ import {
 } from './chatStore.js'
 import { useAppBoot } from './composables/useAppBoot.js'
 import { useChatFlipTransition } from './composables/useChatFlipTransition.js'
+import { useVisualViewport } from './composables/useVisualViewport.js'
 
 const editProjectName = ref(null)
 const labelProjectName = ref(null)
@@ -79,6 +80,12 @@ function popPushedView() {
   setNavBack()
   pushedView.value = null
 }
+
+// Not consumed directly here — calling it activates the shared listener
+// that mirrors window.visualViewport onto <html>'s own CSS custom
+// properties (see the composable), which .app's own height below and
+// LiveChatWindow.vue's positioning both read.
+useVisualViewport()
 
 const { onChatBeforeEnter, onChatEnter, onChatBeforeLeave, onChatLeave } = useChatFlipTransition(navDirection)
 // Chat has no Settings/Profile controls of its own (unlike the other
@@ -584,6 +591,11 @@ body {
   padding: 0;
   height: 100%;
   overflow: hidden;
+  /* Belt-and-suspenders against Android Chrome's pull-to-refresh — the
+     live chat transcript itself is the primary fix (see ChatView.vue's
+     .messages), this just stops the same rubber-band reaching the body
+     from any other edge case. */
+  overscroll-behavior-y: none;
   /* Shows around .app's edges once it shrinks for an open dialog (see
      .app-dialog-open) and through the chat flip's crossover (.app-body
      and .app are otherwise transparent) — one shared background instead
@@ -604,7 +616,13 @@ body {
 .app {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  /* Not 100vh: that's the *layout* viewport, which doesn't shrink for
+     the on-screen keyboard or a pinch-zoom — content past its edge was
+     genuinely unreachable (html/body are overflow: hidden, and iOS
+     doesn't reliably reset pageScale on blur). The custom property is
+     window.visualViewport's own height, kept live by useVisualViewport()
+     above; 100dvh is the fallback for a browser without that API. */
+  height: var(--visual-viewport-height, 100dvh);
   font-family: system-ui, -apple-system, sans-serif;
   transform: scale(1);
   filter: blur(0);

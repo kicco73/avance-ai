@@ -1,3 +1,5 @@
+from typing import Any
+
 from logging_factory import LoggerFactory
 from session import Session
 
@@ -7,7 +9,7 @@ logger = LoggerFactory.get_logger(__name__)
 
 class TrackingProcessorAfterAiMessage(TrackingProcessor):
 
-	def on_receiving_metadata_when_ai_message(self, key: str, value: str):
+	def on_receiving_metadata_when_ai_message(self, key: str, value: Any):
 		rv = value
 		if key == 'signals':
 			rv = self.metadata.signals = self.metadata_processor.parse_raw_signals(value)
@@ -22,6 +24,10 @@ class TrackingProcessorAfterAiMessage(TrackingProcessor):
 			rv = self.metadata.audio = value
 		elif key == 'reaction':
 			rv = self.metadata.reaction = value.strip() or None
+		elif key == 'input_tokens':
+			rv = self.metadata.input_tokens = value
+		elif key == 'output_tokens':
+			rv = self.metadata.output_tokens = value
 		self.metadata.on_metadata(key, rv)
 	
 	async def _get_ai_reply(self) -> OutVariables:

@@ -109,7 +109,7 @@ class LLMProvider(TokenCounter, ABC):
 
 	@abstractmethod
 	async def generate_stream_with_schema(
-		self, system_prompt: str, history: list[dict], schema: dict[str, str]
+		self, system_prompt: str, history: list[dict], schema: dict[str, str], on_metadata: MetadataCallback | None = None,
 	) -> AsyncIterator[str]:
 		raise NotImplementedError
 		yield

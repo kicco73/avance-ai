@@ -162,7 +162,7 @@ class TestReplayJob(CancelableJob):
             return Env(stored=persisted_env.stored(until=until), action_set=persisted_env.action_set(until=until))
 
     def _chunk_into_batches(self, message_ids: list[int]) -> list[list[int]]:
-        if self._signal_source_cls is not BatchSignalSource:
+        if not issubclass(self._signal_source_cls, BatchSignalSource):
             return [[message_id] for message_id in message_ids]
         max_turns_per_call = estimate_max_turns_per_call(
             len(self._automaton.signals), self._service._ai_service.get_max_output_tokens(),

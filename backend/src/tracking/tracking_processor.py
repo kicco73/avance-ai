@@ -42,6 +42,8 @@ class Metadata:
 	# audio/env/signals, this ends up persisted on the *user's* message
 	# (see process() below), not the assistant's own new one.
 	reaction: str | None = None
+	input_tokens: int | None = None
+	output_tokens: int | None = None
 
 @dataclass(frozen=True, slots=True)
 class UserVariables:
@@ -88,6 +90,7 @@ class TrackingProcessor(object):
 			  user_variables: UserVariables,
 			  auto_tracking_enabled: bool = True,
 			  talk_enabled: bool = True,
+			  input_token_budget_per_session: int | None = 8000,
 		):
 		self.ai_service = ai_service
 
@@ -95,6 +98,7 @@ class TrackingProcessor(object):
 		self.db = db
 		self.user = user_variables
 		self.talk_enabled = talk_enabled
+		self.input_token_budget_per_session = input_token_budget_per_session
 		self._tracking_engine = TrackingEngine(DbTrackingSink(db), env, scope_builder, auto_tracking_enabled)
 		# Set per-turn by process() — appended to base_prompt after the
 		# state's own contextual_prompt (see __build_turn_prompt_parts).
@@ -131,7 +135,10 @@ class TrackingProcessor(object):
 
 		self.out = await self._get_ai_reply()
 
-		assistant_id = self.db.save_message("assistant", self.out.reply, self.user.session_id, audio_text=self.metadata.audio)
+		assistant_id = self.db.save_message(
+			"assistant", self.out.reply, self.user.session_id,
+			audio_text=self.metadata.audio, tokens=self.metadata.output_tokens,
+		)
 		# Linked to the assistant's own message right away — this turn's
 		# reply is what actually reported these env values, unlike
 		# self.out.tracking_id, which may already be linked to an earlier message.
@@ -151,6 +158,9 @@ class TrackingProcessor(object):
 		# same guard build_turn_response's own user_message_id uses.
 		if self.metadata.reaction and user_message_id is not None:
 			self.db.set_message_reaction(user_message_id, self.metadata.reaction)
+
+		if self.metadata.input_tokens is not None and user_message_id is not None:
+			self.db.set_message_tokens(user_message_id, self.metadata.input_tokens)
 
 		return self._build_turn_response(user_message_id, assistant_id)
 
@@ -176,7 +186,7 @@ class TrackingProcessor(object):
 		priming_messages = build_priming_messages(turn_attachments)
 		since = self.db.history_cutoff_for_session(self.user.session_id, self.user.state.history_cutoff)
 		return priming_messages + self._strip_timestamps(
-			self.db.get_messages(self.user.session_id, since=since)
+			self.db.get_turn_history(self.user.session_id, since, self.input_token_budget_per_session)
 		)
 
 	def build_turn_protocol(self) -> TurnProtocol:

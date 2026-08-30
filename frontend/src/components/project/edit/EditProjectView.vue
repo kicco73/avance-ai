@@ -33,6 +33,7 @@ import {
   getSignals,
   getSessionSignals,
   getSessions,
+  getMessages,
   getProjectGraph,
   getProjectSignals,
   getStateInputTokens,
@@ -46,7 +47,7 @@ import { buildTimeline, highlightedStateKeyFor, nearestMessageIdAtOrBefore, resu
 // ProjectTestPanel.vue, the "Test" tab, via the live store) —
 // unrelated to runSessions below, "Run" mode's own draft session pool,
 // which just happens to share the same name in testStore.
-import { sessions } from '../../../chatStore.js'
+import { sessions, inputTokenBudgetPerSession } from '../../../chatStore.js'
 import { activeChatMode } from '../../../chatSkin.js'
 import { setTestProject, testStore, testChatModelStore, loadTestChatModels } from '../../../testChatStore.js'
 
@@ -240,6 +241,17 @@ const autoSelectedSignal = computed(() => {
 const autoSessionSignals = ref([])
 watch(autoSelectedSessionId, async (id) => {
   autoSessionSignals.value = id == null ? [] : await getSessionSignals(id).catch(() => [])
+})
+
+const autoSessionMessages = ref([])
+watch(autoSelectedSessionId, async (id) => {
+  autoSessionMessages.value = id == null ? [] : await getMessages(id).catch(() => [])
+})
+// FIXME: null (bar hidden), not 0, when no message ever reported tokens.
+const autoSessionInputTokens = computed(() => {
+  const userMessages = autoSessionMessages.value.filter((m) => m.role === 'user')
+  if (!userMessages.some((m) => m.tokens != null)) return null
+  return userMessages.reduce((sum, m) => sum + (m.tokens ?? 0), 0)
 })
 const autoSessionIsImported = computed(() => autoSelectedSession.value?.type === 'imported')
 const autoSessionAnnotatedStates = computed(() => autoSessionSignals.value.map((row) => row.expected_state).filter(Boolean))
@@ -915,6 +927,8 @@ onBeforeUnmount(() => {
                 :selected-element="mode === 'test' ? autoSelectedElement : stateTabElement"
                 :state-tokens="stateTabTokens"
                 :selected-session="mode === 'test' ? autoSelectedSession : null"
+                :session-input-tokens="mode === 'test' ? autoSessionInputTokens : null"
+                :input-token-budget-per-session="inputTokenBudgetPerSession"
                 :session-start-element="mode === 'test' ? autoSessionStartElement : null"
                 :session-end-element="mode === 'test' ? autoSessionEndElement : null"
                 :read-only="mode === 'test'"

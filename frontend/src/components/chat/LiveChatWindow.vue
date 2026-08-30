@@ -81,7 +81,29 @@ defineExpose({
 <style scoped>
 .live-chat-window {
   position: fixed;
-  inset: 0;
+  left: 0;
+  right: 0;
+  /* top/height (not inset: 0): a fixed element's inset tracks the
+     *layout* viewport, which doesn't shrink or pan for the on-screen
+     keyboard or a pinch-zoom — the window then sat partly behind the
+     keyboard, or off past a zoomed edge with html/body's own overflow:
+     hidden leaving no way to scroll it back (iOS also doesn't reliably
+     reset pageScale on blur, so this stuck until a reload). The custom
+     properties are window.visualViewport's own offset/height, kept live
+     by App.vue's useVisualViewport() call; 100dvh/0px are the fallback
+     for a browser without that API. */
+  top: var(--visual-viewport-offset-top, 0px);
+  height: var(--visual-viewport-height, 100dvh);
+  /* Padding (not the height/top above) reserves the safe area — it must
+     shrink the usable box, not sit outside the height already computed
+     from the visual viewport, so border-box is required here. Bottom is
+     deliberately not reserved here too: only the footer actually touches
+     that edge (see ChatInput.vue's own input-row), so reserving it twice
+     would waste vertical space everywhere else in the window. */
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
   z-index: 100;
   display: flex;
   min-height: 0;

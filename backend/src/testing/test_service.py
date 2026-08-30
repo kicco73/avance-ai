@@ -19,7 +19,7 @@ from project.project_service import ProjectService
 from testing.errors import TestServiceError
 from testing.cache import TestCache
 from testing.last_status_broadcaster import LastStatusBroadcaster
-from testing.signal_sources import BatchSignalSource, TurnByTurnSignalSource, estimate_max_turns_per_call
+from testing.signal_sources import BatchLiteSignalSource, BatchSignalSource, TurnByTurnSignalSource, estimate_max_turns_per_call
 from testing.jobs import (
     AllSignalsAggregationJob,
     AllStatesAggregationJob,
@@ -35,7 +35,13 @@ from tracking.tracking_service import TrackingService
 from logging_factory import LoggerFactory
 logger = LoggerFactory.get_logger(__name__)
 
-VALID_STRATEGIES = ('turn_by_turn', 'batch')
+VALID_STRATEGIES = ('batch_lite', 'batch', 'turn_by_turn')
+
+_SIGNAL_SOURCE_CLASS_BY_STRATEGY: dict[str, type] = {
+    'batch_lite': BatchLiteSignalSource,
+    'batch': BatchSignalSource,
+    'turn_by_turn': TurnByTurnSignalSource,
+}
 
 
 class TestService:
@@ -93,7 +99,7 @@ class TestService:
         session_labeling_revision = self._db.get_session_labeling_revision(session_id) if session_id is not None else None
         ai_model_snapshot = self._ai_service.get_models_info()
         scope_session_ids = self._resolve_scope(username, project_name, session_id)
-        signal_source_cls = TurnByTurnSignalSource if strategy == 'turn_by_turn' else BatchSignalSource
+        signal_source_cls = _SIGNAL_SOURCE_CLASS_BY_STRATEGY[strategy]
         total = (
             self._count_user_messages(scope_session_ids) if strategy == 'turn_by_turn'
             else self._count_batch_segments(scope_session_ids, automaton)

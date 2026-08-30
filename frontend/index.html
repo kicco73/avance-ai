@@ -2,9 +2,24 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- interactive-widget=resizes-content: on browsers that support it
+         (Chrome/Android), the on-screen keyboard resizes the layout
+         viewport itself instead of just the visual one, so the two stay
+         in sync natively; useVisualViewport.js covers the rest (iOS,
+         pinch-zoom, older browsers). Unsupported browsers just ignore the
+         unknown token. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <link rel="icon" type="image/x-icon" href="/src/assets/favicon.ico" />
-    <title>Avance — Prototype</title>
+    <link rel="apple-touch-icon" href="/src/assets/avance-logo.png" />
+    <meta name="theme-color" content="#4a6fa5" />
+    <!-- Add to Home Screen (iOS/Android): without these, the shortcut opens
+         a normal browser tab (address bar, tab switcher) instead of the
+         standalone chrome-less window the shortcut is meant to look like. -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Avance" />
+    <title>Avance</title>
   </head>
   <body>
     <div id="app"></div>
