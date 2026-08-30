@@ -21,56 +21,39 @@ function isStandalone() {
   return navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches
 }
 
-// Substituted for App.vue's own --safe-area-*-fallback custom properties
-// when env(safe-area-inset-*) measures 0 on standalone iOS (see
-// installSafeAreaFallback below, and index.html's own viewport meta
-// comment for why that can happen at all now). Tunable — these are just
-// the current values Apple ships: 59pt is the top inset on a Dynamic
-// Island device, 34pt is the standard home indicator bottom inset.
-const SAFE_AREA_TOP_FALLBACK_PX = 59
-const SAFE_AREA_BOTTOM_FALLBACK_PX = 34
-
-// Reads env(safe-area-inset-top)/env(safe-area-inset-bottom) the only way
-// they're actually readable — CSS custom environment variables have no
-// JS-facing equivalent, so this bounces them through an offscreen probe
-// element's own computed style instead. Fixed positioning + a large
-// negative offset keeps the probe from ever affecting layout or paint;
-// removed immediately after the one read it exists for.
-function measureSafeAreaInsets() {
-  const probe = document.createElement('div')
-  probe.style.position = 'fixed'
-  probe.style.top = '-9999px'
-  probe.style.left = '-9999px'
-  probe.style.paddingTop = 'env(safe-area-inset-top)'
-  probe.style.paddingBottom = 'env(safe-area-inset-bottom)'
-  document.body.appendChild(probe)
-  const computed = getComputedStyle(probe)
-  const top = parseFloat(computed.paddingTop) || 0
-  const bottom = parseFloat(computed.paddingBottom) || 0
-  probe.remove()
-  return { top, bottom }
-}
-
-// index.html deliberately no longer sets viewport-fit=cover (see its own
-// comment on why) — env(safe-area-inset-*) is spec'd to read 0 without
-// that token, which would otherwise collapse every reservation built on
-// App.vue's own --safe-area-* custom properties (the input row landing
-// back on the rounded corners/home indicator, exactly what those existed
-// to prevent). Only sets a fallback for whichever edge actually measured
-// 0 — a device that does still report a real inset (or a future iOS that
-// fixes this without the token) keeps using that real value untouched.
-export function installSafeAreaFallback() {
-  if (!isStandalone()) return
-  const { top, bottom } = measureSafeAreaInsets()
-  const root = document.documentElement.style
-  if (top === 0) root.setProperty('--safe-area-top-fallback', `${SAFE_AREA_TOP_FALLBACK_PX}px`)
-  if (bottom === 0) root.setProperty('--safe-area-bottom-fallback', `${SAFE_AREA_BOTTOM_FALLBACK_PX}px`)
-}
-
 function isInputFocused() {
   const el = document.activeElement
   if (!el) return false
   return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable
+}
+
+// How far window.innerHeight falls short of window.screen.height — on
+// standalone iOS this is exactly the shortfall left by WebKit bug #301108
+// (see index.html's own viewport meta comment: viewport-fit=cover stops
+// the layout viewport short of the home indicator instead of extending
+// under it). 0 on a device that doesn't have the bug, and 0 again once/if
+// Apple fixes it — this workaround retires itself automatically rather
+// than needing a version check. Skipped while a field is focused: the
+// keyboard shrinks innerHeight by hundreds of px, an entirely different
+// (and already handled — see installViewportRecovery below) situation,
+// not a deficit to compensate for.
+function updateOvershoot() {
+  if (isInputFocused()) return
+  const overshoot = Math.max(0, window.screen.height - window.innerHeight)
+  document.documentElement.style.setProperty('--viewport-bottom-overshoot', `${overshoot}px`)
+}
+
+// Every full-viewport container's own bottom reads
+// calc(-1 * var(--viewport-bottom-overshoot, 0px)) instead of the 0 an
+// inset: 0 box would use, extending that far past the (short) viewport's
+// own bottom edge — position: fixed elements don't contribute to
+// scrollable overflow, so this paints into the gap without making the
+// page scrollable.
+export function installViewportOvershoot() {
+  if (!isStandalone()) return
+  updateOvershoot()
+  window.addEventListener('resize', updateOvershoot)
+  window.addEventListener('orientationchange', updateOvershoot)
 }
 
 function remeasureViewport() {
@@ -79,6 +62,7 @@ function remeasureViewport() {
   el.style.display = 'none'
   void el.offsetHeight
   el.style.display = ''
+  updateOvershoot()
 }
 
 export function installViewportRecovery() {

@@ -1,7 +1,7 @@
 import { createApp } from 'vue'
 import App from './App.vue'
-import { installSafeAreaFallback, installViewportRecovery } from './useVisualViewport.js'
+import { installViewportOvershoot, installViewportRecovery } from './useVisualViewport.js'
 
-installSafeAreaFallback()
+installViewportOvershoot()
 installViewportRecovery()
 createApp(App).mount('#app')

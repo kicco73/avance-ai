@@ -62,7 +62,16 @@ const emit = defineEmits(['retry'])
 <style scoped>
 .splash {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  /* Extends past the viewport's own bottom edge on standalone iOS,
+     where WebKit bug #301108 leaves a gap there otherwise — see
+     index.html's own viewport meta comment and
+     useVisualViewport.js's installViewportOvershoot(). 0px, a no-op,
+     everywhere else (a plain browser tab, non-iOS, or once Apple fixes
+     the bug). */
+  bottom: calc(-1 * var(--viewport-bottom-overshoot, 0px));
   display: flex;
   align-items: center;
   justify-content: center;

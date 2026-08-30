@@ -3,7 +3,7 @@
 }
 
 .chat-header {
-  background: #14141f;
+  background: transparent;
   position: relative;
   display: flex;
   align-items: center;
@@ -66,13 +66,12 @@
   animation-timing-function: ease;
 }
 
-.chat-body { background: #10101c; 
-             background-image: url("sky_1800.jpg");
-             background-size: 100% auto;
-             background-position: top center;
-             background-repeat: no-repeat;
-
-           }
+/* Painted on the whole column (header + body + footer), not just
+   .chat-body, so it reaches the true physical edges on mobile —
+   viewport-fit=cover and the bottom overshoot extend .chat-window itself
+   there, while .chat-header/.chat-body stay transparent layers above it. */
+.chat-window { background: #10101c url("sky_1800.jpg") center / cover no-repeat; }
+.chat-body { background: transparent; }
 .chat-footer { background: #14141f; border-top: 1px solid #2a2a3c; }
 
 .state-Precontemplation .chat-header-icon {
