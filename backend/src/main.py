@@ -33,7 +33,7 @@ from tracking.wakeup_service import WakeupService
 from talk.talk_service import TalkService
 from listen.listen_service import ListenService
 
-__version__ = "1.16.4"
+__version__ = "1.16.5"
 
 logger = LoggerFactory.get_logger(__name__)
 

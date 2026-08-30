@@ -39,7 +39,6 @@ import {
 } from './chatStore.js'
 import { useAppBoot } from './composables/useAppBoot.js'
 import { useChatFlipTransition } from './composables/useChatFlipTransition.js'
-import { useVisualViewport } from './composables/useVisualViewport.js'
 
 const editProjectName = ref(null)
 const labelProjectName = ref(null)
@@ -80,12 +79,6 @@ function popPushedView() {
   setNavBack()
   pushedView.value = null
 }
-
-// Not consumed directly here — calling it activates the shared listener
-// that mirrors window.visualViewport onto <html>'s own CSS custom
-// properties (see the composable), which .app's own height below and
-// LiveChatWindow.vue's positioning both read.
-useVisualViewport()
 
 const { onChatBeforeEnter, onChatEnter, onChatBeforeLeave, onChatLeave } = useChatFlipTransition(navDirection)
 // Chat has no Settings/Profile controls of its own (unlike the other
@@ -418,7 +411,7 @@ onBeforeUnmount(() => {
   <div v-else-if="bootStatus === 'ready'" class="app" :class="{ 'app-dialog-open': dialogOpen }">
     <ErrorBanner />
 
-    <div class="app-body" :class="{ 'app-body-flip-space': currentUserRole === 'admin' }">
+    <div class="app-body">
       <!-- Plain user: chat is the entire app, no stack, no transition. -->
       <LiveChatWindow
         v-if="currentUserRole === 'user'"
@@ -548,14 +541,13 @@ onBeforeUnmount(() => {
           @before-leave="onChatBeforeLeave"
           @leave="onChatLeave"
         >
-          <div v-if="pushedView === 'chat'" class="chat-flip-layer">
-            <LiveChatWindow
-              ref="chatWindowRef"
-              :project-name="liveChatProjectName"
-              @project-select="handleLiveChatProjectSelect"
-              @project-download="handleModelDownload"
-            />
-          </div>
+          <LiveChatWindow
+            v-if="pushedView === 'chat'"
+            ref="chatWindowRef"
+            :project-name="liveChatProjectName"
+            @project-select="handleLiveChatProjectSelect"
+            @project-download="handleModelDownload"
+          />
         </Transition>
       </template>
 
@@ -614,10 +606,14 @@ body {
      accessibility change); touch-action is still honored there, and,
      unlike the meta tag, applies via ancestor intersection — one rule
      here covers every screen (splash, login, terms, chat, admin views)
-     without needing a matching rule on each. Normal single-finger
-     panning/scrolling and tapping still work (see each scrollable
-     element's own overflow, e.g. ChatView.vue's .messages). */
-  touch-action: manipulation;
+     without needing a matching rule on each. pan-x pan-y, not
+     manipulation: per spec manipulation is shorthand for "pan-x pan-y
+     pinch-zoom" — it explicitly *keeps* pinch-zoom enabled (only drops
+     double-tap-zoom), the opposite of what's wanted here. Listing just
+     the two pan values allows normal single-finger panning/scrolling
+     and tapping (see each scrollable element's own overflow, e.g.
+     ChatView.vue's .messages) while leaving both zoom gestures out. */
+  touch-action: pan-x pan-y;
   /* Shows around .app's edges once it shrinks for an open dialog (see
      .app-dialog-open) and through the chat flip's crossover (.app-body
      and .app are otherwise transparent) — one shared background instead
@@ -638,25 +634,10 @@ body {
 .app {
   display: flex;
   flex-direction: column;
-  /* Not 100vh: that's the *layout* viewport, which doesn't shrink for
-     the on-screen keyboard or a pinch-zoom — content past its edge was
-     genuinely unreachable (html/body are overflow: hidden, and iOS
-     doesn't reliably reset pageScale on blur). The custom property is
-     window.visualViewport's own height, kept live by useVisualViewport()
-     above; 100dvh is the fallback for a browser without that API. */
-  height: var(--visual-viewport-height, 100dvh);
+  height: 100dvh;
   font-family: system-ui, -apple-system, sans-serif;
-  /* none/none, not scale(1)/blur(0): those compute to the same visuals
-     but (per spec) still establish a containing block for position:fixed
-     descendants — LiveChatWindow.vue's own fixed window would then be
-     anchored to *this* box instead of the true viewport, breaking its
-     useVisualViewport-driven top/height (see its own comment) the moment
-     the on-screen keyboard opens. Only .app-dialog-open below needs the
-     real transform, and only while a dialog is actually open — chat
-     input is never focused at the same time (focus moves to the
-     dialog), so that brief exception doesn't reach this bug. */
-  transform: none;
-  filter: none;
+  transform: scale(1);
+  filter: blur(0);
   transition: transform 0.2s ease-in-out, filter 0.2s ease-in-out;
 }
 
@@ -674,42 +655,8 @@ body {
   display: flex;
   min-height: 0;
   overflow: hidden;
-  --flip-duration: 500ms;
-}
-
-/* perspective (any value but none) is the same kind of containing-block
-   trap as .app's transform/filter above — scoped to the admin role,
-   which is the only one that ever renders the 3D-flipping subtree below
-   (.view-flip-base / .chat-flip-layer). Plain users' LiveChatWindow isn't
-   position: fixed at all (see its own comment), so this doesn't affect
-   it either way — the scoping is about not creating a containing block
-   this role tree never needed in the first place. */
-.app-body-flip-space {
   perspective: 1300px;
-}
-
-/* Only the admin's pushed 'chat' overlay needs this: a fixed,
-   full-viewport layer for LiveChatWindow (itself a plain flex item now,
-   see its own comment) to 3D-rotate against .app-body-flip-space's
-   perspective above. top/height (not inset: 0) track
-   window.visualViewport's own offset/height (kept live by
-   useVisualViewport()) because a fixed element's inset tracks the
-   *layout* viewport, which doesn't shrink or pan for the on-screen
-   keyboard or a pinch-zoom; 100dvh/0px are the fallback for a browser
-   without that API. Admin's flip is a much shorter-lived, actively
-   animated overlay than the plain-user chat this same bug was reported
-   against, so the tradeoff of keeping the older, JS-dependent technique
-   here is deliberate rather than something to chase right now. */
-.chat-flip-layer {
-  position: fixed;
-  left: 0;
-  right: 0;
-  top: var(--visual-viewport-offset-top, 0px);
-  height: var(--visual-viewport-height, 100dvh);
-  z-index: 100;
-  display: flex;
-  min-height: 0;
-  min-width: 0;
+  --flip-duration: 500ms;
 }
 
 /* iOS-style 3D flip — chat only (see .app-body's perspective above).
