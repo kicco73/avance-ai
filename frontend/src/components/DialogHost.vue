@@ -96,6 +96,8 @@ function closeInfo() {
 </script>
 
 <template>
+  <div class="app-dim" aria-hidden="true" :class="{ 'app-dim-active': activeDialog }"></div>
+
   <dialog
     v-if="activeDialog"
     ref="dialogEl"
@@ -165,6 +167,42 @@ function closeInfo() {
 </template>
 
 <style scoped>
+/* The dialog's own dim/scrim, painted here rather than on .app-dialog's
+   own ::backdrop (see that rule's own comment) for two reasons found
+   together: ::backdrop's opacity transition + @starting-style gives it
+   an animated-opacity compositing layer, which WebKit clips to the
+   (short, on standalone iOS) viewport regardless of any bottom
+   extension — same failure mode TermsView.vue's own root ran into (see
+   App.vue's .app-backdrop comment for the general rule); and custom
+   property inheritance into ::backdrop isn't reliable in the first
+   place, so var(--viewport-bottom-overshoot) could easily have resolved
+   the 0px fallback there regardless. This element is a real, ordinary
+   box instead — always mounted (so its own transition can actually run
+   both ways, in and out) and toggled by .app-dim-active. Its own
+   dissolve animates background-color rather than opacity, which never
+   promotes a compositing layer, so the bottom extension below actually
+   holds. Never give this element opacity or transform of its own. z-index
+   above .dialog-card but below nothing that matters — the <dialog> this
+   dims sits in the browser's own top layer regardless, always above.
+   pointer-events: none — click-through is deliberate; onBackdropClick
+   still needs the (now fully transparent) ::backdrop to catch the
+   click-outside-to-close hit-test, which this element doesn't touch. */
+.app-dim {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: calc(-1 * var(--viewport-bottom-overshoot, 0px));
+  z-index: 2000;
+  pointer-events: none;
+  background: transparent;
+  transition: background-color 0.18s ease;
+}
+
+.app-dim-active {
+  background: rgba(0, 0, 0, 0.35);
+}
+
 /* Unscoped rules below target ::backdrop (a scoped [data-v-xxx] attribute
    selector can't reach a pseudo-element) and the <dialog> element's own
    default UA styling, which needs resetting before .dialog-card's own
@@ -320,30 +358,12 @@ function closeInfo() {
 <style>
 /* Genuinely unscoped — ::backdrop belongs to the top-layer <dialog>
    renders into, never reachable by this component's own [data-v-xxx]
-   scoping regardless of which <style> block it's declared in. */
+   scoping regardless of which <style> block it's declared in. Kept
+   transparent, deliberately minimal: the actual dim/scrim is .app-dim
+   above now (see its own comment for why), so this is only ever a
+   hit-test surface for onBackdropClick's click-outside-to-close — no
+   visible fill, no transition, nothing animated here at all. */
 .app-dialog::backdrop {
-  background: rgba(0, 0, 0, 0.35);
-  opacity: 1;
-  transition: opacity 0.18s ease;
-  /* Overrides the UA's own inset: 0 — ::backdrop is viewport-sized by
-     default, and on standalone iOS the viewport itself is shorter than
-     the physical screen by --viewport-bottom-overshoot (see
-     useVisualViewport.js's installViewportOvershoot()), same gap
-     App.vue's own .app-backdrop and every other full-viewport container
-     already extend past their own bottom edge to cover. ::backdrop
-     inherits custom properties from the <dialog> it belongs to, which
-     inherits from document.documentElement where that variable is set,
-     so it resolves here too. The 0px fallback makes this a no-op
-     anywhere the variable isn't defined (desktop, Android). */
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: calc(-1 * var(--viewport-bottom-overshoot, 0px));
-}
-
-@starting-style {
-  .app-dialog[open]::backdrop {
-    opacity: 0;
-  }
+  background: transparent;
 }
 </style>

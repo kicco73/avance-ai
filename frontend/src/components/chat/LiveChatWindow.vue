@@ -182,5 +182,20 @@ defineExpose({
   min-height: 0;
   min-width: 0;
   background: white;
+  /* Both properties inherit, so this one declaration covers every
+     descendant by default — header, message bubbles/timestamps, footer
+     buttons, sessions panel — instead of chasing individual elements one
+     at a time (see MessageBubble.vue's own .bubble/.bubble-timestamp,
+     added piecemeal before this and still correct, just now redundant).
+     ChatInput.vue's own <input> is unaffected: a form control's own
+     value text stays independently selectable/editable for typing,
+     cursor placement, and copy/paste regardless of an ancestor's
+     user-select — only the surrounding, non-editable UI is what this
+     actually reaches. -webkit-touch-callout: none suppresses iOS's own
+     long-press callout (copy/share/lookup) the same way, since it's a
+     separate mechanism user-select alone doesn't cover. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 </style>
