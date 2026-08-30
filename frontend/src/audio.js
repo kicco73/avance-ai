@@ -104,17 +104,23 @@ export function playMessageAudio(url) {
 // actually audible.
 const SILENT_WAV_DATA_URI = 'data:audio/wav;base64,UklGRiwAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQgAAACAgICAgICAgA=='
 
-// Set once the unlock has actually been attempted, so a later gesture's
-// own call is a cheap no-op instead of replaying the silent clip again —
-// iOS's unlock, once it happens, holds for the rest of the page's life.
+// Set only once the silent clip's play() has actually resolved — never
+// eagerly before that. An earlier version set this straight away, before
+// knowing whether play() would even succeed; a rejected/blocked attempt
+// (silently swallowed by the catch below) then left it stuck true
+// forever, since nothing ever unset it again — permanently skipping
+// every later gesture's own retry, with no error to reveal why. Chimes
+// never had this failure mode: getAudioContext() re-checks/resumes on
+// every single call instead of gating behind a "did this ever succeed"
+// flag at all.
 let narrationUnlocked = false
 
 // Call only from inside a real user gesture (chat submit, mic-start, or
 // the audio toggle switching on — see their own call sites); unlocking
 // iOS's playback policy requires that, and calling this outside one is a
-// silent no-op at best. Idempotent — every one of those call sites can
-// call it unconditionally, since only the first invocation across the
-// page's life actually does anything.
+// silent no-op at best. Safe to call every time, repeatedly — a
+// no-op once narrationUnlocked is actually true, and otherwise just
+// replays the (inaudible) silent clip again, which costs nothing.
 export function unlockAudioPlayback() {
   try {
     getAudioContext()
@@ -122,17 +128,21 @@ export function unlockAudioPlayback() {
     // Same tolerance as playMessageChime above.
   }
   if (narrationUnlocked) return
-  narrationUnlocked = true
   try {
     const audio = getNarrationAudio()
     audio.src = SILENT_WAV_DATA_URI
     audio.play().then(() => {
+      narrationUnlocked = true
       audio.pause()
       audio.removeAttribute('src')
       audio.load()
-    }).catch(() => {})
+    }).catch(() => {
+      // Rejected/blocked — narrationUnlocked stays false, so the next
+      // gesture (there's always another: every message send calls this
+      // too) tries again instead of giving up silently for good.
+    })
   } catch {
-    // The attempt itself never got going — let a later gesture retry.
-    narrationUnlocked = false
+    // Same tolerance as playMessageChime above — and, same as the
+    // rejection above, narrationUnlocked is never set here either.
   }
 }
