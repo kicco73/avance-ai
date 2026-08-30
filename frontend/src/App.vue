@@ -726,11 +726,17 @@ body {
    .app-body down, this must shift down with it. Settings sits left of
    Profile (row order in the template) — the two read as one control
    cluster in the corner, both hidden together (see -hidden below) since
-   neither means anything once the sessions panel covers this corner. */
+   neither means anything once the sessions panel covers this corner.
+   top/right add env(safe-area-inset-*) on top of the 0.75rem margin —
+   unlike LiveChatWindow.vue's own .sessions-reopen-btn (☰), this sits
+   in .app-body directly, a sibling of LiveChatWindow rather than a
+   descendant, so it never benefited from that component's own safe-area
+   padding: without this it landed right under the notch/Dynamic Island
+   instead of clear of it, the one corner control that did. */
 .topbar-overlay {
   position: absolute;
-  top: 0.75rem;
-  right: 0.75rem;
+  top: calc(0.75rem + env(safe-area-inset-top));
+  right: calc(0.75rem + env(safe-area-inset-right));
   z-index: 200;
   display: flex;
   align-items: center;

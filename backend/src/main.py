@@ -5,7 +5,6 @@ from __future__ import annotations
 import inspect
 from contextlib import asynccontextmanager
 from http import HTTPStatus
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,38 +26,15 @@ from ai.ai_service import AiService
 from testing.test_service import TestService
 from testing.queue_progress_broadcaster import QueueProgressBroadcaster
 from testing.last_status_broadcaster import LastStatusBroadcaster
-from session import Session
 from tracking.tracking_service import TrackingService
 from tracking.wakeup_service import WakeupService
 from talk.talk_service import TalkService
 from listen.listen_service import ListenService
 
-__version__ = "1.16.6"
+__version__ = "1.16.7"
 
 logger = LoggerFactory.get_logger(__name__)
 
-DEFAULT_SEED_PROJECT_ZIP = Path(__file__).resolve().parents[1] / "samples" / "projects" / "Lluna.zip"
-DEFAULT_SEED_PROJECT_NAME = "Lluna"
-
-
-async def _seed_default_project_if_empty(
-    db: Db, project_service: ProjectService, controller: AvanceController, job_queue: JobQueue,
-) -> None:
-    if db.list_projects():
-        return
-
-    Session().user = "system"
-    Session().role = "supervisor"
-    content = DEFAULT_SEED_PROJECT_ZIP.read_bytes()
-    _, job = await project_service.put_project(
-        DEFAULT_SEED_PROJECT_NAME, content, "application/zip", controller.settings._activate_project,
-    )
-    # Lluna.zip bundles a real sessions.json (unlike create_new_project's
-    # "Hello world" template) — the returned job has real work to do, so
-    # it must actually run through the real queue, not be dropped.
-    job_queue.submit(job)
-    await job_queue.wait_for(job)
-    project_service.publish_project(DEFAULT_SEED_PROJECT_NAME)
 
 def _build_fallback_app(error: Exception) -> FastAPI:
     """Used only when essential startup wiring fails: every request gets
@@ -160,8 +136,6 @@ def create_app() -> FastAPI:
             auth_service, test_event_broadcaster, job_queue, __version__,
         )
         app.include_router(controller.router)
-
-        await _seed_default_project_if_empty(db, project_service, controller, job_queue)
 
         logger.info("Boot completed - server ready.")
 
