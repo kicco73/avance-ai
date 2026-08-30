@@ -102,7 +102,7 @@ export function playMessageAudio(url) {
 // immediately stopped purely to unlock narrationAudio under iOS's
 // per-element playback policy (see unlockAudioPlayback below); never
 // actually audible.
-const SILENT_WAV_DATA_URI = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA='
+const SILENT_WAV_DATA_URI = 'data:audio/wav;base64,UklGRiwAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQgAAACAgICAgICAgA=='
 
 // Set once the unlock has actually been attempted, so a later gesture's
 // own call is a cheap no-op instead of replaying the silent clip again —
