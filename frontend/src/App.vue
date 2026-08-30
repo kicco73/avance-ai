@@ -385,10 +385,40 @@ function openProfile() {
   showProfile.value = true
 }
 
+// Belt-and-suspenders for the html/body touch-action: pan-x pan-y rule
+// above (see that rule's own comment) — CSS touch-action is supposed to
+// suppress pinch-zoom outright, but was still observed reachable on some
+// plain, unstyled backdrop (no bubble, no button, nothing with its own
+// touch-action) on a real device, which the CSS alone should already
+// have covered. Two independent mechanisms instead of trusting the one
+// that apparently isn't fully honored everywhere: a 2+-finger touchmove
+// is exactly the gesture that drives pinch-zoom, and preventDefault on
+// it blocks the zoom regardless of which element started the touch;
+// gesturestart/gesturechange are WebKit's own separate pinch-gesture
+// events (harmless no-op on engines that never fire them). { passive:
+// false } is required for preventDefault to actually take effect on
+// touchmove — the default listener is passive, exactly to let scrolling
+// stay fast, but that same default is what silently no-ops
+// preventDefault here if left unset.
+function preventMultiTouchZoom(event) {
+  if (event.touches.length > 1) event.preventDefault()
+}
+function preventGestureZoom(event) {
+  event.preventDefault()
+}
+
 onMounted(startBootSequence)
+onMounted(() => {
+  document.addEventListener('touchmove', preventMultiTouchZoom, { passive: false })
+  document.addEventListener('gesturestart', preventGestureZoom)
+  document.addEventListener('gesturechange', preventGestureZoom)
+})
 onBeforeUnmount(() => {
   disconnectChat()
   if (pingTimeoutHandle) clearTimeout(pingTimeoutHandle)
+  document.removeEventListener('touchmove', preventMultiTouchZoom)
+  document.removeEventListener('gesturestart', preventGestureZoom)
+  document.removeEventListener('gesturechange', preventGestureZoom)
 })
 </script>
 
@@ -623,6 +653,20 @@ body {
      stylesheet in the app). */
   --app-base-gradient: linear-gradient(160deg, #e4e7eb, #9aa1ac);
   background: var(--app-base-gradient);
+  /* One shared source for the four safe-area insets (notch/Dynamic
+     Island, home indicator, rounded corners in landscape) — every
+     top-level screen's own header/footer reserves space with
+     calc(<its own base spacing> + var(--safe-area-*)) instead of each
+     repeating env(safe-area-inset-*) directly. Same reasoning as
+     --app-base-gradient above: defined once, here, since this is the
+     one truly global stylesheet, so every screen stays in sync with
+     whichever screen was fixed most recently instead of drifting apart
+     the way ChatView.vue's .chat-header and
+     ManageProjectsView.vue's .manage-projects-header did before this. */
+  --safe-area-top: env(safe-area-inset-top);
+  --safe-area-right: env(safe-area-inset-right);
+  --safe-area-bottom: env(safe-area-inset-bottom);
+  --safe-area-left: env(safe-area-inset-left);
 }
 
 #app {
@@ -634,7 +678,14 @@ body {
 .app {
   display: flex;
   flex-direction: column;
-  height: 100dvh;
+  /* 100vh, not 100dvh: iOS has an active, confirmed bug in recent
+     releases (see the Apple Developer Forums, "New IOS Safari CSS Issue
+     with DVH & VH") where 100dvh leaves a gap at the bottom instead of
+     covering the full screen — visible mainly in a standalone home-screen
+     webapp like this one, which has no browser toolbar to dynamically
+     shrink for in the first place, so dvh's whole reason to exist over
+     vh doesn't even apply here. */
+  height: 100vh;
   font-family: system-ui, -apple-system, sans-serif;
   transform: scale(1);
   filter: blur(0);
@@ -727,16 +778,17 @@ body {
    Profile (row order in the template) — the two read as one control
    cluster in the corner, both hidden together (see -hidden below) since
    neither means anything once the sessions panel covers this corner.
-   top/right add env(safe-area-inset-*) on top of the 0.75rem margin —
-   unlike LiveChatWindow.vue's own .sessions-reopen-btn (☰), this sits
-   in .app-body directly, a sibling of LiveChatWindow rather than a
+   top/right add the shared --safe-area-* custom properties (defined on
+   html, body above) on top of the 0.75rem margin — unlike
+   LiveChatWindow.vue's own .sessions-reopen-btn (☰), this sits in
+   .app-body directly, a sibling of LiveChatWindow rather than a
    descendant, so it never benefited from that component's own safe-area
    padding: without this it landed right under the notch/Dynamic Island
    instead of clear of it, the one corner control that did. */
 .topbar-overlay {
   position: absolute;
-  top: calc(0.75rem + env(safe-area-inset-top));
-  right: calc(0.75rem + env(safe-area-inset-right));
+  top: calc(0.75rem + var(--safe-area-top));
+  right: calc(0.75rem + var(--safe-area-right));
   z-index: 200;
   display: flex;
   align-items: center;

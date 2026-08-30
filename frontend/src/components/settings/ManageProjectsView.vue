@@ -506,6 +506,15 @@ defineExpose({ refresh: load })
 .manage-projects-overlay {
   position: fixed;
   inset: 0;
+  /* Side edges only — same split as LiveChatWindow.vue's own
+     .live-chat-window (see its comment): top/bottom are reserved by
+     .manage-projects-header/its own footer instead, the elements whose
+     background actually needs to extend behind the notch/home indicator
+     rather than showing this white fallback through a gap. box-sizing
+     so the padding shrinks the box instead of sitting outside it. */
+  box-sizing: border-box;
+  padding-left: var(--safe-area-left);
+  padding-right: var(--safe-area-right);
   background: white;
   z-index: 100;
   display: flex;
@@ -518,7 +527,17 @@ defineExpose({ refresh: load })
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 1rem;
+  /* Same shared --safe-area-top custom property (see html, body in
+     App.vue) as ChatView.vue's own .chat-header — adds to this row's own
+     0.75rem base padding instead of eating into it, so this header
+     clears the notch/Dynamic Island the same way the chat one does, off
+     the same one source of truth instead of drifting out of sync with
+     it again. Left/right aren't reserved here too — .manage-projects-overlay
+     already does, and reserving both would double it. */
+  padding-top: calc(0.75rem + var(--safe-area-top));
+  padding-right: 1rem;
+  padding-bottom: 0.75rem;
+  padding-left: 1rem;
   border-bottom: 1px solid #ddd;
 }
 

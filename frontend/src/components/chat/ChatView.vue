@@ -534,8 +534,16 @@ watch(
 
 .sessions-reopen-btn {
   position: absolute;
-  top: 0.75rem;
-  left: 0.75rem;
+  /* Same calc(...) formula, off the same shared --safe-area-* custom
+     properties (see html, body in App.vue), as App.vue's own
+     .topbar-overlay (the gear/profile cluster in the opposite corner) —
+     not this element's own ancestor padding, which .chat-header now
+     owns instead (see its own comment): two different corner controls
+     using two different mechanisms drifted out of alignment the moment
+     one of them changed, so both now derive from the one shared,
+     already-verified formula instead. */
+  top: calc(0.75rem + var(--safe-area-top));
+  left: calc(0.75rem + var(--safe-area-left));
   z-index: 10;
   display: flex;
   align-items: center;
@@ -701,15 +709,14 @@ watch(
   position: relative;
   /* Reserves the notch/status bar — content-box on purpose (not
      border-box): this should *add* to the 70px a project's skin already
-     sizes its own icon/content against, not eat into it. Left/right too,
-     for a landscape notch/rounded corner. Living here rather than on
-     LiveChatWindow.vue's own wrapper means this element's own
-     background — the one a skin actually paints (see the .chat-header
-     hook in that file's comment) — extends behind the notch instead of
-     leaving a color-mismatched gap above it. */
-  padding-top: env(safe-area-inset-top);
-  padding-left: env(safe-area-inset-left);
-  padding-right: env(safe-area-inset-right);
+     sizes its own icon/content against, not eat into it. Living here
+     rather than on LiveChatWindow.vue's own wrapper means this
+     element's own background — the one a skin actually paints (see the
+     .chat-header hook in that file's comment) — extends behind the
+     notch instead of leaving a color-mismatched gap above it.
+     Left/right aren't reserved here too — LiveChatWindow.vue's own
+     .live-chat-window already does, and reserving both would double it. */
+  padding-top: var(--safe-area-top);
 }
 
 .chat-footer {
@@ -720,9 +727,7 @@ watch(
      home indicator (iOS) / gesture nav bar (Android). ChatInput.vue's
      own .input-row no longer reserves this itself (see its own
      comment), so this is the only place it's reserved now. */
-  padding-bottom: env(safe-area-inset-bottom);
-  padding-left: env(safe-area-inset-left);
-  padding-right: env(safe-area-inset-right);
+  padding-bottom: var(--safe-area-bottom);
 }
 
 /* While the sessions panel is open, the chat behind it is inert — dimmed

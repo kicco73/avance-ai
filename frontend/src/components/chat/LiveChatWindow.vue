@@ -94,8 +94,8 @@ defineExpose({
      there lets a dark skin's own background extend behind it instead of
      showing this white fallback through a color-mismatched gap. */
   box-sizing: border-box;
-  padding-left: env(safe-area-inset-left);
-  padding-right: env(safe-area-inset-right);
+  padding-left: var(--safe-area-left);
+  padding-right: var(--safe-area-right);
   z-index: 100;
   display: flex;
   min-height: 0;
