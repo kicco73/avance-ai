@@ -99,6 +99,9 @@ class ProjectService(object):
     def get_project_metadata(self, project_name: str) -> ProjectPayload:
         return self._inspector.get_project_metadata(project_name)
 
+    def get_project_name_by_share_id(self, project_id: str) -> str | None:
+        return self._inspector.get_project_name_by_share_id(project_id)
+
     def get_identifier_registry(self, project_name: str) -> dict[str, dict[str, str]]:
         return self._inspector.get_identifier_registry(project_name)
 

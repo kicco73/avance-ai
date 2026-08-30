@@ -132,6 +132,18 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
+    @get("/api/projects/by-id/{project_id}", role="user")
+    def get_project_by_share_id(self, project_id: str):
+        """Resolves a project's public share id (project.id, what
+        automaton.<id> names — see get_project_metadata's own "id" above)
+        back to its internal name. Unlike every other route in this file,
+        open to any authenticated role: it's the lookup a scanned "share
+        project" QR/link needs right after login (see shareLink.js and
+        useAppBoot.js), well before the visiting identity's own role is
+        known to be admin. null project_name when the id doesn't resolve
+        to anything, never an error."""
+        return {"project_name": self.project_service.get_project_name_by_share_id(project_id)}
+
     @get("/api/projects/{project_name}/files", role="admin")
     def get_project_files(self, project_name: str):
         """Text-editable files inside `project_name`'s directory (index.yml

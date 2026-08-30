@@ -1,9 +1,10 @@
 import { ref } from 'vue'
-import { getState, getMe, getProjects, postAcceptTerms, postLogout } from '../api.js'
+import { getState, getMe, getProjects, getProjectByShareId, activateProject, postAcceptTerms, postLogout } from '../api.js'
 import { disconnect as disconnectChat } from '../chatClient.js'
 import { clearApiError } from '../errorStore.js'
 import { requireLogin } from '../authStore.js'
 import { confirmDialog } from '../dialogStore.js'
+import { consumeSharedProjectId } from '../shareLink.js'
 import { setCapabilities, setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateChange, loadMessages, loadAiModels } from '../chatStore.js'
 
 // App.vue's own boot sequence: the backend-readiness ping loop, resolving
@@ -93,7 +94,10 @@ export function useAppBoot(
     // spin up a live session nobody's about to see. ChatWindow.vue only
     // mounts for them at all once they actually push into it (see
     // handleManageProjectsChat -> handleProjectSwitch's own loadMessages()).
-    if (currentUserRole.value === 'user') {
+    // The pushedView === 'chat' case covers an admin landing straight into
+    // chat via a share link (see resolveLandingView below) — same reasoning,
+    // a live session is actually about to show for them too in that case.
+    if (currentUserRole.value === 'user' || pushedView.value === 'chat') {
       loadMessages()
     }
     loadAiModels()
@@ -123,6 +127,29 @@ export function useAppBoot(
     }
   }
 
+  // The landing-time half of the "share project" QR/link flow (see
+  // shareLink.js and ShareProjectDialog.vue for the other half — capturing
+  // the id and rendering the QR that carries it). Consumes the id captured
+  // at page load, resolves it to a project name, and activates it
+  // server-side so whichever landing view resolveLandingView picks below
+  // (chat for a user, Manage projects -> chat for an admin, Label sessions
+  // for a supervisor) opens on that project instead of the one already
+  // active. Returns null — and leaves the previously active project alone
+  // — whenever there was no shared id, or it no longer resolves to a real
+  // project (deleted, or its id changed since the link was generated).
+  async function activateSharedProject() {
+    const projectId = consumeSharedProjectId()
+    if (!projectId) return null
+    try {
+      const { project_name: projectName } = await getProjectByShareId(projectId)
+      if (!projectName) return null
+      await activateProject(projectName)
+      return projectName
+    } catch {
+      return null // already surfaced via apiFetch; falls back to the normal landing
+    }
+  }
+
   // Resolved once per boot, before bootStatus ever flips to 'ready' — the
   // landing view has to be right from the very first render, not settled a
   // moment later once some async fetch resolves (that would flash the
@@ -146,11 +173,16 @@ export function useAppBoot(
     } catch {
       return // already surfaced via apiFetch; falls back to the chat-live default
     }
+    const sharedProjectName = await activateSharedProject()
     if (currentUserRole.value === 'supervisor') {
-      labelProjectName.value = await getActiveProjectName()
+      labelProjectName.value = sharedProjectName ?? await getActiveProjectName()
     }
     if (currentUserRole.value === 'user') {
-      liveChatProjectName.value = await getActiveProjectName()
+      liveChatProjectName.value = sharedProjectName ?? await getActiveProjectName()
+    }
+    if (currentUserRole.value === 'admin' && sharedProjectName) {
+      liveChatProjectName.value = sharedProjectName
+      pushedView.value = 'chat'
     }
   }
 

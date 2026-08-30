@@ -33,6 +33,14 @@ export function getProjectMetadata(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/project`)
 }
 
+// Resolves a project's public share id (project.id, see
+// InspectorProjectCard.vue's "id" field) back to its internal name —
+// { project_name: string | null }. Used by useAppBoot.js to land a
+// scanned "share project" link (shareLink.js) on the right project.
+export function getProjectByShareId(projectId) {
+  return apiFetch(`${API_URL}/projects/by-id/${encodeURIComponent(projectId)}`)
+}
+
 // { tokens: number | null } — estimated input-token cost of `stateKey`'s
 // own turn prompt (attachments, signal/reaction definitions, env, ...),
 // null when no AiService is configured. `sessionId`: see getProjectGraph above.

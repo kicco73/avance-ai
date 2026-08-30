@@ -5,6 +5,8 @@ vi.mock('../src/api.js', () => ({
   getState: vi.fn(),
   getMe: vi.fn(),
   getProjects: vi.fn(),
+  getProjectByShareId: vi.fn(),
+  activateProject: vi.fn(),
   postAcceptTerms: vi.fn(),
   postLogout: vi.fn(),
 }))
@@ -20,6 +22,9 @@ vi.mock('../src/authStore.js', () => ({
 vi.mock('../src/dialogStore.js', () => ({
   confirmDialog: vi.fn(),
 }))
+vi.mock('../src/shareLink.js', () => ({
+  consumeSharedProjectId: vi.fn(() => null),
+}))
 vi.mock('../src/chatStore.js', () => ({
   setCapabilities: vi.fn(),
   setInputTokenBudgetPerTurn: vi.fn(),
@@ -29,11 +34,12 @@ vi.mock('../src/chatStore.js', () => ({
   loadAiModels: vi.fn(),
 }))
 
-import { getState, getMe, getProjects, postAcceptTerms, postLogout } from '../src/api.js'
+import { getState, getMe, getProjects, getProjectByShareId, activateProject, postAcceptTerms, postLogout } from '../src/api.js'
 import { disconnect as disconnectChat } from '../src/chatClient.js'
 import { clearApiError } from '../src/errorStore.js'
 import { requireLogin } from '../src/authStore.js'
 import { confirmDialog } from '../src/dialogStore.js'
+import { consumeSharedProjectId } from '../src/shareLink.js'
 import { setCapabilities, setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateChange, loadMessages, loadAiModels } from '../src/chatStore.js'
 import { useAppBoot } from '../src/composables/useAppBoot.js'
 
@@ -228,6 +234,97 @@ describe('useAppBoot', () => {
       // must not have clobbered anything — advancing further stays 'ready'.
       await vi.advanceTimersByTimeAsync(800)
       expect(s.bootStatus.value).toBe('ready')
+    })
+  })
+
+  describe('shared project landing (share-link QR flow)', () => {
+    it('lands a plain user directly on the shared project instead of their previously active one', async () => {
+      getState.mockResolvedValue({})
+      getMe.mockResolvedValue({ role: 'user' })
+      consumeSharedProjectId.mockReturnValueOnce('shared-id')
+      getProjectByShareId.mockResolvedValue({ project_name: 'shared-project' })
+      activateProject.mockResolvedValue({})
+      const s = mount()
+
+      s.startBootSequence()
+      await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
+
+      expect(getProjectByShareId).toHaveBeenCalledWith('shared-id')
+      expect(activateProject).toHaveBeenCalledWith('shared-project')
+      expect(liveChatProjectName.value).toBe('shared-project')
+      expect(getProjects).not.toHaveBeenCalled() // never fell back to getActiveProjectName
+    })
+
+    it('pushes an admin straight into chat, on the shared project, and loads its messages', async () => {
+      getState.mockResolvedValue({})
+      getMe.mockResolvedValue({ role: 'admin' })
+      consumeSharedProjectId.mockReturnValueOnce('shared-id')
+      getProjectByShareId.mockResolvedValue({ project_name: 'shared-project' })
+      activateProject.mockResolvedValue({})
+      const s = mount()
+
+      s.startBootSequence()
+      await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
+
+      expect(pushedView.value).toBe('chat')
+      expect(liveChatProjectName.value).toBe('shared-project')
+      expect(loadMessages).toHaveBeenCalled()
+    })
+
+    it("lands a supervisor's Label sessions view on the shared project", async () => {
+      getState.mockResolvedValue({})
+      getMe.mockResolvedValue({ role: 'supervisor' })
+      consumeSharedProjectId.mockReturnValueOnce('shared-id')
+      getProjectByShareId.mockResolvedValue({ project_name: 'shared-project' })
+      activateProject.mockResolvedValue({})
+      const s = mount()
+
+      s.startBootSequence()
+      await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
+
+      expect(labelProjectName.value).toBe('shared-project')
+      expect(getProjects).not.toHaveBeenCalled()
+    })
+
+    it('an admin with no shared id lands on Manage projects as usual (no push, no activation)', async () => {
+      getState.mockResolvedValue({})
+      getMe.mockResolvedValue({ role: 'admin' })
+      const s = mount()
+
+      s.startBootSequence()
+      await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
+
+      expect(activateProject).not.toHaveBeenCalled()
+      expect(pushedView.value).toBeNull()
+    })
+
+    it('falls back to the normal landing when the shared id no longer resolves to a project', async () => {
+      getState.mockResolvedValue({})
+      getMe.mockResolvedValue({ role: 'user' })
+      getProjects.mockResolvedValue({ active: 'proj-fallback', projects: [] })
+      consumeSharedProjectId.mockReturnValueOnce('stale-id')
+      getProjectByShareId.mockResolvedValue({ project_name: null })
+      const s = mount()
+
+      s.startBootSequence()
+      await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
+
+      expect(activateProject).not.toHaveBeenCalled()
+      expect(liveChatProjectName.value).toBe('proj-fallback')
+    })
+
+    it('falls back to the normal landing when resolving the shared id fails', async () => {
+      getState.mockResolvedValue({})
+      getMe.mockResolvedValue({ role: 'user' })
+      getProjects.mockResolvedValue({ active: 'proj-fallback', projects: [] })
+      consumeSharedProjectId.mockReturnValueOnce('stale-id')
+      getProjectByShareId.mockRejectedValue(new Error('boom'))
+      const s = mount()
+
+      s.startBootSequence()
+      await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
+
+      expect(liveChatProjectName.value).toBe('proj-fallback')
     })
   })
 

@@ -10,6 +10,7 @@ import { setCanvasColor, restoreCanvasColor } from '../../canvasColor.js'
 import ModelMenu from '../ModelMenu.vue'
 import SettingsMenu from './SettingsMenu.vue'
 import ProfileMenu from '../ProfileMenu.vue'
+import ShareProjectDialog from './ShareProjectDialog.vue'
 import avanceLogoUrl from '../../assets/avance-logo.png'
 import avanceLogoLargeUrl from '../../assets/avance-logo-large.png'
 
@@ -73,6 +74,8 @@ const bodyWidth = ref(0)
 const actionsBlockWidth = ref(0)
 const openMenuFor = ref(null)
 const addMenuOpen = ref(false)
+// Name of the project whose ShareProjectDialog is currently open, or null.
+const shareProjectFor = ref(null)
 let bodyResizeObserver = null
 
 const headerEl = ref(null)
@@ -244,6 +247,20 @@ function selectChat(name) {
 
 function selectDownload(name) {
   emit('download', name)
+}
+
+// Shareable only once a project has declared a public id (project.id —
+// see InspectorProjectCard.vue's "Id" field): the share link resolves a
+// scanned QR back to a project through that id (see
+// useAppBoot.js's activateSharedProject), and a project without one has
+// nothing for it to resolve.
+function projectShareId(name) {
+  return metadataByName.value[name]?.id || null
+}
+
+function selectShare(name) {
+  if (!projectShareId(name)) return
+  shareProjectFor.value = name
 }
 
 // This view's own confirm, same pattern as selectDelete above — the
@@ -422,6 +439,17 @@ defineExpose({ refresh: load })
                       <path d="M12 3a1 1 0 0 1 1 1v9.59l2.3-2.3a1 1 0 1 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.42l2.3 2.3V4a1 1 0 0 1 1-1zM5 19a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1z" />
                     </svg>
                   </button>
+                  <button
+                    type="button"
+                    class="manage-projects-share-btn"
+                    :disabled="!projectShareId(row.name)"
+                    :title="projectShareId(row.name) ? 'Share project' : 'Share project (set an id in Edit project first)'"
+                    @click="selectShare(row.name)"
+                  >
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                      <path d="M3 11h8V3H3v8zm2-6h4v4H5V5zM3 21h8v-8H3v8zm2-6h4v4H5v-4zM13 3v8h8V3h-8zm6 6h-4V5h4v4zM19 19h2v2h-2zM13 13h2v2h-2zM15 15h2v2h-2zM13 17h2v2h-2zM15 19h2v2h-2zM17 17h2v2h-2zM17 13h2v2h-2zM19 15h2v2h-2z" />
+                    </svg>
+                  </button>
                   <button type="button" class="manage-projects-wipe-btn" title="Wipe live sessions" @click="selectWipeLiveSessions(row.name)">
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
                       <path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
@@ -456,6 +484,20 @@ defineExpose({ refresh: load })
                               <path d="M12 3a1 1 0 0 1 1 1v9.59l2.3-2.3a1 1 0 1 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.42l2.3 2.3V4a1 1 0 0 1 1-1zM5 19a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1z" />
                             </svg>
                             <span>Download project</span>
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            type="button"
+                            class="manage-projects-menu-item"
+                            :disabled="!projectShareId(row.name)"
+                            :title="projectShareId(row.name) ? '' : 'Set an id in Edit project first'"
+                            @click="selectShare(row.name); openMenuFor = null"
+                          >
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                              <path d="M3 11h8V3H3v8zm2-6h4v4H5V5zM3 21h8v-8H3v8zm2-6h4v4H5v-4zM13 3v8h8V3h-8zm6 6h-4V5h4v4zM19 19h2v2h-2zM13 13h2v2h-2zM15 15h2v2h-2zM13 17h2v2h-2zM15 19h2v2h-2zM17 17h2v2h-2zM17 13h2v2h-2zM19 15h2v2h-2z" />
+                            </svg>
+                            <span>Share project</span>
                           </button>
                         </li>
                         <li>
@@ -509,6 +551,13 @@ defineExpose({ refresh: load })
         </tbody>
       </table>
     </div>
+
+    <ShareProjectDialog
+      v-if="shareProjectFor"
+      :project-id="projectShareId(shareProjectFor)"
+      :ui-label="projectTitle(shareProjectFor)"
+      @close="shareProjectFor = null"
+    />
   </div>
 </template>
 
@@ -956,6 +1005,29 @@ defineExpose({ refresh: load })
   background: #f0f4fa;
 }
 
+.manage-projects-share-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.88rem;
+  height: 2.88rem;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: #4a6fa5;
+  cursor: pointer;
+}
+
+.manage-projects-share-btn:not(:disabled):hover {
+  background: #f0f4fa;
+}
+
+.manage-projects-share-btn:disabled {
+  color: #ccc;
+  cursor: not-allowed;
+}
+
 .manage-projects-wipe-btn {
   display: flex;
   align-items: center;
@@ -1061,8 +1133,17 @@ defineExpose({ refresh: load })
   color: #333;
 }
 
-.manage-projects-menu-item:hover {
+.manage-projects-menu-item:not(:disabled):hover {
   background: #f0f4fa;
+}
+
+.manage-projects-menu-item:disabled {
+  color: #ccc;
+  cursor: not-allowed;
+}
+
+.manage-projects-menu-item:disabled svg {
+  color: #ccc;
 }
 
 .manage-projects-menu-item svg {
