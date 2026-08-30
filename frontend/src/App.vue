@@ -607,6 +607,16 @@ body {
      .messages), this just stops the same rubber-band reaching the body
      from any other edge case. */
   overscroll-behavior-y: none;
+  /* Blocks pinch-zoom and double-tap-zoom app-wide — the viewport meta
+     tag's own maximum-scale/user-scalable is the "classic" way to do
+     this, but iOS Safari has deliberately ignored it since iOS 10 (an
+     accessibility change); touch-action is still honored there, and,
+     unlike the meta tag, applies via ancestor intersection — one rule
+     here covers every screen (splash, login, terms, chat, admin views)
+     without needing a matching rule on each. Normal single-finger
+     panning/scrolling and tapping still work (see each scrollable
+     element's own overflow, e.g. ChatView.vue's .messages). */
+  touch-action: manipulation;
   /* Shows around .app's edges once it shrinks for an open dialog (see
      .app-dialog-open) and through the chat flip's crossover (.app-body
      and .app are otherwise transparent) — one shared background instead
