@@ -274,6 +274,10 @@ const {
   font-size: 0.65rem;
   color: #999;
   padding: 0 0.2rem;
+  /* A sibling of .bubble, not a descendant — .bubble's own
+     user-select: none (see below) never covered it. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .bubble {

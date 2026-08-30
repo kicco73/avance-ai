@@ -733,7 +733,22 @@ body {
    container already does. z-index: -1 keeps it under all real content
    while still painting above html/body's own canvas-propagated
    background. pointer-events: none — it's decorative only, never meant
-   to intercept a tap/click meant for whatever's in front of it. */
+   to intercept a tap/click meant for whatever's in front of it.
+
+   Convention for every full-viewport surface (see useVisualViewport.js's
+   own installViewportOvershoot() for where the variable itself comes
+   from): extend its own bottom with
+   calc(-1 * var(--viewport-bottom-overshoot, 0px)), same as here. Its
+   root must never receive transform, filter, will-change: transform, or
+   an animated opacity — any of those give a position: fixed element its
+   own compositing layer, which WebKit clips to the (short, on standalone
+   iOS) viewport regardless of the extended bottom, silently discarding
+   it; put enter/leave animations on an inner content element instead
+   (this file's own Splash/TermsView do — see .splash-content/
+   .terms-panel). A top-layer element's own ::backdrop pseudo-element
+   needs the same bottom extension applied explicitly (see DialogHost.vue's
+   own .app-dialog::backdrop) — it's UA-styled viewport-sized on its own
+   and isn't reachable through this element's box at all. */
 .app-backdrop {
   position: fixed;
   top: 0;

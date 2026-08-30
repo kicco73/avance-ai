@@ -325,6 +325,20 @@ function closeInfo() {
   background: rgba(0, 0, 0, 0.35);
   opacity: 1;
   transition: opacity 0.18s ease;
+  /* Overrides the UA's own inset: 0 — ::backdrop is viewport-sized by
+     default, and on standalone iOS the viewport itself is shorter than
+     the physical screen by --viewport-bottom-overshoot (see
+     useVisualViewport.js's installViewportOvershoot()), same gap
+     App.vue's own .app-backdrop and every other full-viewport container
+     already extend past their own bottom edge to cover. ::backdrop
+     inherits custom properties from the <dialog> it belongs to, which
+     inherits from document.documentElement where that variable is set,
+     so it resolves here too. The 0px fallback makes this a no-op
+     anywhere the variable isn't defined (desktop, Android). */
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: calc(-1 * var(--viewport-bottom-overshoot, 0px));
 }
 
 @starting-style {

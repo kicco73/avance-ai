@@ -104,13 +104,29 @@ function reject() {
   padding-right: calc(2rem + var(--safe-area-right));
   padding-bottom: calc(2rem + var(--safe-area-bottom));
   padding-left: calc(2rem + var(--safe-area-left));
+  /* No transform/filter/animated opacity on this root, ever — any of
+     those give a fixed element its own compositing layer, which WebKit
+     clips to the (on standalone iOS, short) viewport regardless of this
+     element's own bottom extending past it — the overshoot above would
+     stop actually reaching the physical edge. See SplashScreen.vue's own
+     .splash for the same constraint; the enter/closing animation lives
+     on .terms-panel below instead, same as .splash-content there. */
+}
+
+.terms-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 760px;
+  height: 100%;
+  max-height: 100%;
   opacity: 1;
   transform: scale(1);
   transition: opacity 0.3s ease-in, transform 0.3s ease-in;
-  animation: terms-view-in 0.35s ease-out;
+  animation: terms-panel-in 0.35s ease-out;
 }
 
-@keyframes terms-view-in {
+@keyframes terms-panel-in {
   from {
     opacity: 0;
     transform: scale(0.96);
@@ -121,18 +137,9 @@ function reject() {
   }
 }
 
-.terms-view-closing {
+.terms-view-closing .terms-panel {
   opacity: 0;
   transform: scale(0.94);
-}
-
-.terms-panel {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  max-width: 760px;
-  height: 100%;
-  max-height: 100%;
 }
 
 .terms-title {
