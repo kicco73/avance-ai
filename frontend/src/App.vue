@@ -623,7 +623,19 @@ html,
 body {
   margin: 0;
   padding: 0;
-  height: 100%;
+  /* calc(100% + overshoot), not plain 100% — this box's own background
+     is what WebKit paints under a full-viewport container whenever one
+     shrinks or fades to reveal it (the chat's own 3D flip crossover, an
+     open dialog's .app-dialog-open scale-down — see --app-base-gradient's
+     own comment below). On standalone iOS the viewport itself is shorter
+     than the physical screen by --viewport-bottom-overshoot (see
+     useVisualViewport.js's installViewportOvershoot()); every other
+     full-viewport container already extends past its own bottom edge by
+     that same amount (see e.g. LiveChatWindow.vue's own comment) — this
+     one didn't, leaving a lighter strip at the true bottom where WebKit
+     tiled the gradient's own background-repeat past this box's short
+     100% instead. */
+  height: calc(100% + var(--viewport-bottom-overshoot, 0px));
   /* Not overflow: hidden — that risked clipping the full-viewport
      containers' own bottom overshoot (see .live-chat-window's own
      comment and --viewport-bottom-overshoot) at the compositing level.
@@ -669,8 +681,14 @@ body {
      document canvas's own background-color, which was never set at all
      before this: default transparent, showing as stark white. #9aa1ac is
      --app-base-gradient's own darker end, so if that ever shows through
-     for a moment it reads as part of the gradient, not as a gap. */
-  background: var(--app-base-gradient) #9aa1ac;
+     for a moment it reads as part of the gradient, not as a gap.
+     no-repeat: background-repeat defaults to repeat, which tiled a second
+     copy of the gradient — starting over at its own light end, #e4e7eb —
+     directly below this box whenever the height above didn't quite reach
+     far enough on its own; harmless now that height accounts for the
+     overshoot too, but there's no reason to leave a repeating background
+     on a single-viewport box regardless. */
+  background: var(--app-base-gradient) no-repeat #9aa1ac;
   /* One shared source for the four safe-area insets (notch/Dynamic
      Island, home indicator, rounded corners in landscape) — every
      top-level screen's own header/footer reserves space with

@@ -3,7 +3,7 @@
 }
 
 .chat-header {
-  background: transparent;
+  background-color: #0c1d33;
   position: relative;
   display: flex;
   align-items: center;
