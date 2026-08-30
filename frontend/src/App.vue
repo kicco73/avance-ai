@@ -423,6 +423,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <!-- Always mounted, outside every branch below — the real element that
+       actually covers the standalone-iOS gap under a shrunk/faded
+       full-viewport screen (see its own style for why the html/body
+       background alone couldn't). -->
+  <div class="app-backdrop" aria-hidden="true"></div>
+
   <!-- 'checking' (the invisible first ping) renders neither branch, on
        purpose: nothing should flash before we know whether the backend was
        already up. -->
@@ -623,19 +629,19 @@ html,
 body {
   margin: 0;
   padding: 0;
-  /* calc(100% + overshoot), not plain 100% — this box's own background
-     is what WebKit paints under a full-viewport container whenever one
-     shrinks or fades to reveal it (the chat's own 3D flip crossover, an
-     open dialog's .app-dialog-open scale-down — see --app-base-gradient's
-     own comment below). On standalone iOS the viewport itself is shorter
-     than the physical screen by --viewport-bottom-overshoot (see
-     useVisualViewport.js's installViewportOvershoot()); every other
-     full-viewport container already extends past its own bottom edge by
-     that same amount (see e.g. LiveChatWindow.vue's own comment) — this
-     one didn't, leaving a lighter strip at the true bottom where WebKit
-     tiled the gradient's own background-repeat past this box's short
-     100% instead. */
-  height: calc(100% + var(--viewport-bottom-overshoot, 0px));
+  /* Plain 100%, not calc(100% + overshoot) — an earlier attempt at
+     extending this box past the viewport to cover the standalone-iOS
+     gap (see --viewport-bottom-overshoot) didn't work: the background
+     a canvas-less document propagates to the canvas is positioned
+     against the *viewport* (the initial containing block), not against
+     html's own box, so stretching html/body's own height never actually
+     moved where that painted region ends. It also had a real side
+     effect worth undoing on its own — a root taller than the viewport
+     is genuine scrollable overflow. App.vue's own .app-backdrop (see
+     its template, first element, and its own style below) replaces this
+     as the thing that actually covers the gap; the background here
+     stays only as the last-resort fallback behind that real element. */
+  height: 100%;
   /* Not overflow: hidden — that risked clipping the full-viewport
      containers' own bottom overshoot (see .live-chat-window's own
      comment and --viewport-bottom-overshoot) at the compositing level.
@@ -717,6 +723,28 @@ body {
 </style>
 
 <style scoped>
+/* Replaces the html/body background as the backdrop a dialog reveals
+   scaling .app down (.app-dialog-open), the chat's own 3D flip reveals
+   mid-crossover, and Splash/Login/Terms sit in front of — those are all
+   real elements with their own box, so unlike html/body's background
+   (see that rule's own comment for why that one can't reach past the
+   viewport on standalone iOS) this one's bottom can actually extend into
+   --viewport-bottom-overshoot the same way every other full-viewport
+   container already does. z-index: -1 keeps it under all real content
+   while still painting above html/body's own canvas-propagated
+   background. pointer-events: none — it's decorative only, never meant
+   to intercept a tap/click meant for whatever's in front of it. */
+.app-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: calc(-1 * var(--viewport-bottom-overshoot, 0px));
+  z-index: -1;
+  pointer-events: none;
+  background: var(--app-base-gradient);
+}
+
 .app {
   display: flex;
   flex-direction: column;
