@@ -33,7 +33,6 @@ import {
   toggleSpokenText,
 } from '../../chatStoreFactory.js'
 import { applyAspect } from '../../chatSkin.js'
-import { useVisualViewport } from '../../composables/useVisualViewport.js'
 
 const props = defineProps({
   hideSessionsPanel: { type: Boolean, default: false },
@@ -321,18 +320,6 @@ watch(
   { deep: true }
 )
 
-// The on-screen keyboard (or a pinch-zoom) shrinks window.visualViewport
-// without resizing the layout viewport, so the transcript's own scroll
-// position — computed against the old, taller height — no longer reaches
-// the new bottom. Same userNearBottom gate as the messages watcher above:
-// someone already at the live edge stays pinned there as the keyboard
-// opens, someone scrolled back through history keeps their place instead
-// of being yanked down by an unrelated viewport change.
-const { height: visualViewportHeight } = useVisualViewport()
-watch(visualViewportHeight, () => {
-  if (userNearBottom.value) scrollToBottom()
-})
-
 watch(chatLoading, async (isLoading, wasLoading) => {
   if (isLoading || !wasLoading || chatDisabled.value) return
 
@@ -547,11 +534,6 @@ watch(
 
 .sessions-reopen-btn {
   position: absolute;
-  /* No safe-area compensation needed here specifically — LiveChatWindow's
-     own top padding already reserves that space for the whole window,
-     so this sits below the notch/status bar the same as everything else
-     inside it. RunChat's own embedded ChatView has no such padding, but
-     it's not full-viewport there either, so there's nothing to reserve. */
   top: 0.75rem;
   left: 0.75rem;
   z-index: 10;
@@ -670,9 +652,7 @@ watch(
 /* A fixed 240px drawer left an 80px sliver of chat visible beside it on
    a 320px phone — full-width sheet instead, same convention as a mobile
    nav drawer. The resize divider (mousedown/mousemove only, inert on
-   touch anyway) has nothing to do at full width, so it's hidden too —
-   same breakpoint EditProjectView.vue already uses for its own
-   drag-divider-vs-touch split. */
+   touch anyway) has nothing to do at full width, so it's hidden too. */
 @media (max-width: 640px) {
   /* .sessions-panel-wrap otherwise has no explicit width (only
      top/left/bottom) — shrink-to-fit around its content, which left

@@ -82,12 +82,13 @@ defineExpose({
 .live-chat-window {
   position: fixed;
   inset: 0;
-  /* Padding (not top/height math) reserves the safe area — it must
-     shrink the usable box without moving where the box itself sits, so
-     border-box is required here. Bottom is deliberately not reserved
-     here too: only the footer actually touches that edge (see
-     ChatInput.vue's own input-row), so reserving it twice would waste
-     vertical space everywhere else in the window. */
+  /* Reserves the notch/status bar and side edges — a device rendering
+     edge-to-edge (see index.html's viewport-fit=cover) would otherwise
+     put the header under the notch/Dynamic Island. Bottom isn't
+     reserved here: only the footer touches that edge (see ChatInput.vue's
+     own input-row), so reserving it twice would waste vertical space
+     everywhere else in the window. box-sizing so the padding shrinks the
+     box instead of sitting outside it. */
   box-sizing: border-box;
   padding-top: env(safe-area-inset-top);
   padding-left: env(safe-area-inset-left);
