@@ -304,10 +304,10 @@ class AppConfig:
         self.max_session_duration_in_minutes = self._get_optional_positive_float(
             raw, "chat-service", "max_session_duration_in_minutes", path, default=60.0
         )
-        # FIXME: 8000 mirrored in TrackingService/TrackingProcessor's own
+        # FIXME: 16000 mirrored in TrackingService/TrackingProcessor's own
         # constructor defaults — keep in sync.
         self.input_token_budget_per_session = self._get_optional_positive_int(
-            raw, "chat-service", "input-token-budget-per-session", path, default=8000
+            raw, "chat-service", "input-token-budget-per-session", path, default=16000
         )
 
         # Two separate worker pools (see jobs/job_queue.py's JobQueue and

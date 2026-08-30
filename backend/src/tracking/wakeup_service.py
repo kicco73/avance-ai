@@ -67,7 +67,11 @@ class WakeupService:
         # own caller — that caller is always some *other* project's real
         # turn, which must complete regardless of whether waking up an observer succeeds.
         try:
-            for observer_project_name in self._db.get_observers(event.project_name):
+            # The observer index is keyed by the observed project's id
+            # (see ProjectObserverIndex), not its name.
+            project_id = self._db.get_project_id(event.project_name)
+            observers = self._db.get_observers(project_id) if project_id else []
+            for observer_project_name in observers:
                 if self._db.get_latest_chat_session(event.username, observer_project_name) is not None:
                     self._wake(event.username, observer_project_name)
         except Exception:

@@ -40,7 +40,7 @@ def test_fresh_install_has_no_active_project(client):
 def test_state_reports_the_configured_input_token_budget_per_session(client):
     state = client.get("/api/state")
     assert state.status_code == 200
-    assert state.json()["input_token_budget_per_session"] == 8000
+    assert state.json()["input_token_budget_per_session"] == 16000
 
 
 def test_deleting_the_active_project_falls_back_to_a_remaining_one(client):

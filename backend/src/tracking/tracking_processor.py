@@ -90,7 +90,7 @@ class TrackingProcessor(object):
 			  user_variables: UserVariables,
 			  auto_tracking_enabled: bool = True,
 			  talk_enabled: bool = True,
-			  input_token_budget_per_session: int | None = 8000,
+			  input_token_budget_per_session: int | None = 16000,
 		):
 		self.ai_service = ai_service
 

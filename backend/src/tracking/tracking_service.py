@@ -35,7 +35,7 @@ class TrackingService(object):
 		metrics_service: MetricService,
 		talk_enabled: bool = True,
 		# FIXME: mirrors AppConfig's own default (config.py) — keep in sync.
-		input_token_budget_per_session: int | None = 8000,
+		input_token_budget_per_session: int | None = 16000,
 	) -> None:
 		self._db = db
 		self._project_service = project_service

@@ -93,9 +93,9 @@ class TestMaxSessionDurationInMinutes:
 class TestInputTokenBudgetPerSession:
     """End-to-end: a real AppConfig() built from a real (temp) config file."""
 
-    def test_defaults_to_8000_when_omitted(self, monkeypatch, tmp_path):
+    def test_defaults_to_16000_when_omitted(self, monkeypatch, tmp_path):
         config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
-        assert config.input_token_budget_per_session == 8000
+        assert config.input_token_budget_per_session == 16000
 
     def test_reads_a_custom_value(self, monkeypatch, tmp_path):
         content = MINIMAL_CONFIG.replace(

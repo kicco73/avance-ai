@@ -23,27 +23,27 @@ class ObservabilityMixin:
             for row in rows
         ]
 
-    def set_project_observers(self, observer_project_name: str, observed_project_names: set[str]) -> None:
+    def set_project_observers(self, observer_project_name: str, observed_project_ids: set[str]) -> None:
         """Replaces every row this project contributes to the index with
-        a fresh one per name in `observed_project_names` — recomputed
-        from scratch on every build rather than diffed."""
+        a fresh one per id in `observed_project_ids` — recomputed from
+        scratch on every build rather than diffed."""
         ProjectObserverIndex.delete().where(
             ProjectObserverIndex.observer_project_name == observer_project_name
         ).execute()
-        for project_name in observed_project_names:
-            ProjectObserverIndex.create(project_name=project_name, observer_project_name=observer_project_name)
+        for project_id in observed_project_ids:
+            ProjectObserverIndex.create(project_id=project_id, observer_project_name=observer_project_name)
 
-    def get_observers(self, project_name: str) -> list[str]:
-        """Every project that references `project_name` via automaton.*
+    def get_observers(self, project_id: str) -> list[str]:
+        """Every project that references `project_id` via automaton.*
         in one of its self-loop triggers — the wake-up handler's "who
         might care that this project just changed" list."""
-        rows = ProjectObserverIndex.select().where(ProjectObserverIndex.project_name == project_name)
+        rows = ProjectObserverIndex.select().where(ProjectObserverIndex.project_id == project_id)
         return [row.observer_project_name for row in rows]
 
     def get_observed_projects(self, observer_project_name: str) -> list[str]:
-        """The reverse direction of get_observers — every project
+        """The reverse direction of get_observers — every project id
         `observer_project_name` itself depends on via automaton.*."""
         rows = ProjectObserverIndex.select().where(
             ProjectObserverIndex.observer_project_name == observer_project_name
         )
-        return [row.project_name for row in rows]
+        return [row.project_id for row in rows]

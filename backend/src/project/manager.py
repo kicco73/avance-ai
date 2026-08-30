@@ -57,16 +57,27 @@ class ProjectManager:
                     refs |= TriggerExpressionAnalyzer.automaton_project_refs(action.trigger)
         return refs
 
-    def _resolve_automaton_project_refs(self, project_ids: set[str]) -> set[str]:
-        """Translates automaton.* project_id tokens into project_name. A
-        token matching no known project_id is silently dropped, not an
-        error — a dangling reference is a runtime concern, not build-time."""
-        names: set[str] = set()
-        for project_id in project_ids:
-            name = self._db.get_project_name_by_project_id(project_id)
-            if name is not None:
-                names.add(name)
-        return names
+    def _filter_resolvable_project_ids(self, project_ids: set[str]) -> set[str]:
+        """Every id in `project_ids` that currently names a real project. An
+        id matching none is silently dropped, not an error — a dangling
+        reference is a runtime concern, not build-time (the referenced
+        project might simply not exist yet)."""
+        return {
+            project_id for project_id in project_ids
+            if self._db.get_project_name_by_project_id(project_id) is not None
+        }
+
+    def _dependency_unavailable(self, dep_id: str) -> tuple[bool, str]:
+        """(is_unavailable, display_label) for one observed dependency,
+        named by id. No Project row left at all (deleted after this
+        project came to observe it) counts as unavailable too — the id
+        itself stands in as the label since there's no project_name left
+        to show."""
+        dep_name = self._db.get_project_name_by_project_id(dep_id)
+        if dep_name is None:
+            return True, dep_id
+        is_paused, _ = self._db.get_project_availability(dep_name) or (True, None)
+        return is_paused, dep_name
 
     def recompute_availability(self, project_name: str) -> None:
         """Available exactly when the build succeeds and every automaton.*
@@ -82,13 +93,12 @@ class ProjectManager:
                 available, reason = False, f"Build failed: {exc}"
 
             if available:
-                blocking = next(
-                    (
-                        dep for dep in self._db.get_observed_projects(project_name)
-                        if (self._db.get_project_availability(dep) or (False, None))[0]
-                    ),
-                    None,
-                )
+                blocking = None
+                for dep_id in self._db.get_observed_projects(project_name):
+                    is_unavailable, label = self._dependency_unavailable(dep_id)
+                    if is_unavailable:
+                        blocking = label
+                        break
                 if blocking is not None:
                     available, reason = False, f"Depends on unavailable project '{blocking}'."
 
@@ -101,6 +111,14 @@ class ProjectManager:
         self._db.set_project_availability(project_name, is_paused=not available, paused_reason=reason)
         publish(AvailabilityChanged(project_name=project_name, available=available))
 
+    def _observers_of(self, project_name: str) -> list[str]:
+        """Every project observing `project_name` via automaton.* — the
+        observer index is keyed by the observed project's id, so this
+        translates name -> id first. A project with no declared id can't
+        be referenced by anyone, so it trivially has no observers."""
+        project_id = self._db.get_project_id(project_name)
+        return self._db.get_observers(project_id) if project_id else []
+
     def register_availability_cascade(self) -> None:
         """Subscribed once, for the process's lifetime. Recursive by
         construction: recompute_availability's write-only-on-change guard
@@ -109,7 +127,7 @@ class ProjectManager:
 
     def _on_availability_changed(self, event: AvailabilityChanged) -> None:
         try:
-            for observer in self._db.get_observers(event.project_name):
+            for observer in self._observers_of(event.project_name):
                 self.recompute_availability(observer)
         except Exception:
             logger.exception(
@@ -242,9 +260,8 @@ class ProjectManager:
         Refreshes the automaton cache and resets the active project's live
         conversation only when its current state no longer exists."""
 
-        # Synced first: the reverse index below translates other projects'
-        # project_id into project_name, so this project's own row must be
-        # current before anything can resolve against it.
+        # Synced first: this project's own project_id must be current
+        # before any *other* project's build can resolve a reference to it.
         self._db.set_project_metadata(
             project_name, automaton.project_id, automaton.project_ui_label, automaton.project_ui_description,
         )
@@ -254,8 +271,8 @@ class ProjectManager:
         # Reverse index of every project this one's self-loop actions
         # reference via automaton.* — recomputed on every successful build
         # regardless of whether `project_name` is currently active.
-        observed_project_names = self._resolve_automaton_project_refs(self._automaton_project_refs(automaton))
-        self._db.set_project_observers(project_name, observed_project_names)
+        observed_project_ids = self._filter_resolvable_project_ids(self._automaton_project_refs(automaton))
+        self._db.set_project_observers(project_name, observed_project_ids)
         self.recompute_availability(project_name)
         if project_name == self._inspector.get_active_project_name():
             current_state_key = self._db.get_current_state(project_name)
@@ -506,8 +523,14 @@ class ProjectManager:
         # back None, so checking afterwards could never see a match.
         was_active = project_name == self._inspector.get_active_project_name()
         self._db.reset_project(project_name)
+        observers = self._observers_of(project_name)
         self._db.delete_archives(project_name)
         self._automaton_loader.invalidate_cache(project_name)
+        # No AvailabilityChanged fires for a deletion (the project isn't
+        # merely unavailable, it's gone), so its observers would otherwise
+        # never notice their dependency vanished — recompute them directly.
+        for observer in observers:
+            self.recompute_availability(observer)
 
         if was_active:
             # Falls back to whatever's left, or nothing at all (the

@@ -273,14 +273,18 @@ class SystemWarning(BaseModel):
 class ProjectObserverIndex(BaseModel):
     """Reverse index of automaton.* cross-project references, rebuilt
     from scratch for `observer_project_name` on every index.yml build.
-    Queried both as "who observes me" and "who do I depend on"."""
+    Queried both as "who observes me" and "who do I depend on". Keyed by
+    project_id (the stable token an automaton.<id> reference names), not
+    project_name — a project_name is only ever the *observer* side here,
+    since the observed side must always have a declared id to be
+    referenceable in the first place, while the observer itself may not."""
     id = AutoField()
-    project_name = CharField(index=True)
+    project_id = CharField(index=True)
     observer_project_name = CharField(index=True)
 
     class Meta:
         table_name = 'ProjectObserverIndex'
-        indexes = ((('project_name', 'observer_project_name'), True),)
+        indexes = ((('project_id', 'observer_project_name'), True),)
 
 class EditHistory(BaseModel):
     """Per-(user, project, file) undo/redo trail for the project editor —

@@ -291,6 +291,25 @@ def test_resuming_a_manually_paused_dependency_cascades_availability_back(db, pr
     assert db.get_project_availability("dependent") == (False, None)
 
 
+def test_deleting_a_project_pauses_its_observer(db, project_service):
+    """A dependency that was resolved once (and recorded in the observer
+    index) and later deleted must block its observer — unlike a reference
+    that never resolved to a real project in the first place, see
+    test_depending_on_a_project_that_does_not_exist_at_all_is_not_itself_blocking."""
+    _publish_project(db, project_service, "dependency", VALID_YML)
+    _publish_project(db, project_service, "dependent", _yml_observing("dependency"))
+    assert db.get_project_availability("dependent") == (False, None)
+
+    async def commit(_project_name, _automaton):
+        pass
+
+    asyncio.run(project_service.delete_project("dependency", commit))
+
+    is_paused, reason = db.get_project_availability("dependent")
+    assert is_paused is True
+    assert "dependency" in reason
+
+
 def test_get_runtime_status_reports_all_three_states(db, project_service):
     _publish_project(db, project_service, "running-proj", VALID_YML)
     _publish_project(db, project_service, "auto-paused-proj", VALID_YML)

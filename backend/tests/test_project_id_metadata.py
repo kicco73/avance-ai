@@ -64,10 +64,11 @@ def test_changing_a_project_id_frees_up_the_old_one(client):
 
 
 def test_availability_resolves_automaton_star_against_project_id_not_project_name(client, app_db: Db):
-    """The reverse index operates on project_id, never the raw
+    """The reverse index is stored keyed by project_id, never the raw
     project_name — this project's on-disk name ("Weird Name With
     Spaces") isn't a valid identifier, so "watcher" can only resolve its
-    automaton.dep_id reference through the declared project.id."""
+    automaton.dep_id reference through the declared project.id, and the
+    index itself records "dep_id", not "Weird Name With Spaces"."""
     resp = _put(
         client, "Weird Name With Spaces",
         "project:\n  id: dep_id\n" + MINIMAL,
@@ -82,8 +83,8 @@ def test_availability_resolves_automaton_star_against_project_id_not_project_nam
     resp = _put(client, "watcher", watcher_yml)
     assert resp.status_code == 200, resp.text
 
-    assert app_db.get_observers("Weird Name With Spaces") == ["watcher"]
-    assert app_db.get_observed_projects("watcher") == ["Weird Name With Spaces"]
+    assert app_db.get_observers("dep_id") == ["watcher"]
+    assert app_db.get_observed_projects("watcher") == ["dep_id"]
 
 
 def test_referencing_a_project_with_no_declared_id_anywhere_is_rejected(client):

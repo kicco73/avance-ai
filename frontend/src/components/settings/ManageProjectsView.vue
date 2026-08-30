@@ -373,6 +373,9 @@ defineExpose({ refresh: load })
                   <svg v-if="row.status === 'running'" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
                     <path d="M8 5h3v14H8zM13 5h3v14h-3z" />
                   </svg>
+                  <svg v-else-if="row.status === 'paused'" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                    <path d="M6 6h12v12H6z" />
+                  </svg>
                   <svg v-else viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
                     <path d="M8 5v14l11-7z" />
                   </svg>

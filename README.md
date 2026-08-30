@@ -117,7 +117,7 @@ secrets). Top-level sections:
   the client polling for them. Either way, the turn logic itself
   (`ChatService.process_turn`) is identical.
 - **`chat-service.input-token-budget-per-session`** — optional, defaults
-  to `8000`. Caps how much of a session's own message history a turn's
+  to `16000`. Caps how much of a session's own message history a turn's
   prompt can carry: walking backward from the latest message, as many
   messages as fit within this many cumulative tokens (`Message.tokens`)
   are sent to the model. Combined with a project state's own

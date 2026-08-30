@@ -92,7 +92,7 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
         "CREATE TABLE SessionSummary (id INTEGER PRIMARY KEY, session_id INTEGER, content TEXT)",
         "CREATE TABLE SystemWarning (id INTEGER PRIMARY KEY, user_id TEXT, project_name TEXT, kind TEXT, "
         "message TEXT, timestamp TEXT)",
-        "CREATE TABLE ProjectObserverIndex (id INTEGER PRIMARY KEY, project_name TEXT, observer_project_name TEXT)",
+        "CREATE TABLE ProjectObserverIndex (id INTEGER PRIMARY KEY, project_id TEXT, observer_project_name TEXT)",
         "CREATE TABLE Settings (key TEXT PRIMARY KEY, value TEXT)",
     ]
     wrong = _make_sqlite_bytes(tmp_path, "wrong_columns.db", ddl)
