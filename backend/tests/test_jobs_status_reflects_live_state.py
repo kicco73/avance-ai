@@ -12,6 +12,7 @@ import json
 import threading
 import time
 
+import httpx
 import pytest
 
 from jobs import CancelableJob
@@ -80,34 +81,30 @@ def test_last_status_broadcaster_clear_and_forget():
     assert broadcaster.snapshot() == []
 
 
-def test_get_test_events_sends_the_broadcaster_snapshot_before_live_updates(client, hello_project):
+def test_get_test_events_sends_the_broadcaster_snapshot_before_live_updates(client, hello_project, live_server):
     """A job that already finished before anyone connected must still be
     visible the moment a new connection opens — the whole point of the
-    snapshot-then-live-stream shape."""
+    snapshot-then-live-stream shape. Needs `live_server` (a real socket),
+    not `client`: this endpoint only ends on client disconnect, which
+    Starlette's in-process TestClient can never observe (see
+    live_server's own docstring in conftest.py)."""
     test_service = client.app.state.test_service
     test_service._status_broadcaster.push(
         "user", {"key": "batch:root", "job_status": "completed", "queue_status": "exited", "error": None},
     )
 
+    # The snapshot burst also carries hello_project's own "upload" job
+    # status (broadcast through this same test_event_broadcaster) ahead
+    # of "batch:root" — collect a few lines rather than stopping at the
+    # first, so a snapshot ordering this test doesn't control can't fail it.
     messages = []
-    stop = threading.Event()
-
-    def listen():
-        Session().user = "user"
-        Session().role = "supervisor"
-        with client.stream("GET", f"/api/projects/{hello_project}/test-events") as resp:
+    with httpx.Client(base_url=live_server, timeout=5.0) as real_client:
+        with real_client.stream("GET", f"/api/projects/{hello_project}/test-events") as resp:
             for line in resp.iter_lines():
-                if stop.is_set():
-                    break
                 if line.startswith("data: "):
                     messages.append(json.loads(line[len("data: "):]))
-                    if len(messages) >= 1:
+                    if any(m.get("key") == "batch:root" for m in messages) or len(messages) >= 5:
                         break
-
-    t = threading.Thread(target=listen, daemon=True)
-    t.start()
-    t.join(timeout=5.0)
-    stop.set()
 
     assert any(m.get("key") == "batch:root" and m.get("job_status") == "completed" for m in messages), messages
 

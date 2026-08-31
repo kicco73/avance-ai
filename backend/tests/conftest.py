@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import socket
 import threading
+import time
 from pathlib import Path
 
 import pytest
+import uvicorn
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -223,6 +226,57 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
 @pytest.fixture
 def client(app: FastAPI) -> TestClient:
     return TestClient(app)
+
+
+class _FixedSessionMiddleware:
+    """Stand-in for the real AuthMiddleware (never wired into the `app`
+    fixture, see its own docstring) — sets the same fixed test identity
+    `_default_session_user` sets for `client`'s in-process calls, but per
+    real request: a `live_server` request runs on uvicorn's own server
+    thread, an OS thread `_default_session_user`'s pytest-thread
+    assignment never reaches (contextvars don't cross threads on their
+    own — see session.py's own docstring)."""
+
+    def __init__(self, app: FastAPI) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            Session().user = "user"
+            Session().role = "supervisor"
+        await self.app(scope, receive, send)
+
+
+@pytest.fixture
+def live_server(app: FastAPI):
+    """A real server for the handful of endpoints that only end when the
+    client disconnects (SSE) — Starlette's own in-process TestClient runs
+    the *whole* ASGI call inside one blocking portal.call() before
+    returning anything at all to the caller (see testclient.py's
+    _ASGIAdapter.handle_request), so it can never observe a response that
+    only completes on client-initiated disconnect: nothing is handed back
+    for the client to disconnect *from* yet. A real loopback socket has no
+    such deadlock — the server thread and the test thread are genuinely
+    concurrent. Serves the exact same `app` object `client` calls hit, so
+    it shares every bit of state (Db, job queue, broadcasters) with them."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+
+    config = uvicorn.Config(_FixedSessionMiddleware(app), host="127.0.0.1", port=port, log_level="warning")
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    try:
+        deadline = time.monotonic() + 5.0
+        while not server.started and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert server.started, "live_server: uvicorn never reported startup within 5s"
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        server.should_exit = True
+        thread.join(timeout=5.0)
 
 
 @pytest.fixture

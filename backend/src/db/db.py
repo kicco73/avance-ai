@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import tempfile
 from datetime import datetime, timezone
 
 from logging_factory import LoggerFactory
@@ -21,6 +22,7 @@ from .user_projects import UserProjectMixin
 from .tracking import TrackingMixin
 
 from playhouse.db_url import connect, parse as parse_db_url
+from playhouse.migrate import SqliteMigrator, migrate
 
 from .models import (
     Archive, ChatSession, EditHistory, Invite, Message,
@@ -79,13 +81,45 @@ class Db(
         actual = self._actual_schema(path)
         if not actual:
             return
-        if actual == self._expected_schema():
+        expected = self._expected_schema()
+        if actual == expected:
             return
-        logger.warning("Database schema at '%s' doesn't match what this code expects — dropping and recreating every table from scratch (database.force-drop-and-create-when-incompatible is enabled).", path)
+        backup_path = self._timestamped_backup_path(path)
+        self._backup_to_path(backup_path)
+        try:
+            logger.warning("Database schema at '%s' doesn't match what this code expects — backed it up to '%s', now migrating it in place (database.force-drop-and-create-when-incompatible is enabled).", path, backup_path)
+            self._migrate_schema(actual, expected)
+            if self._actual_schema(path) == expected:
+                return
+            raise ValueError('schema still differs after migration')
+        except Exception:
+            logger.exception("In-place migration failed — dropping and recreating every table from scratch instead (the pre-migration backup at '%s' is untouched).", backup_path)
         database.execute_sql('PRAGMA foreign_keys = OFF')
         try:
-            for table in actual:
+            for table in self._actual_schema(path):
                 database.execute_sql(f'DROP TABLE IF EXISTS "{table}"')
+        finally:
+            self._enable_foreign_keys()
+
+    def _migrate_schema(self, actual: dict[str, set[str]], expected: dict[str, set[str]]) -> None:
+        migrator = SqliteMigrator(database)
+        models_by_table = {model._meta.table_name: model for model in self._MODELS}
+        new_models = [model for table, model in models_by_table.items() if table not in actual]
+        operations = []
+        for table, columns in expected.items():
+            if table not in actual:
+                continue
+            model = models_by_table[table]
+            for column in sorted(columns - actual[table]):
+                operations.append(migrator.add_column(table, column, model._meta.columns[column]))
+            for column in sorted(actual[table] - columns):
+                operations.append(migrator.drop_column(table, column))
+        database.execute_sql('PRAGMA foreign_keys = OFF')
+        try:
+            migrate(*operations)
+            for table in sorted(actual.keys() - expected.keys()):
+                database.execute_sql(f'DROP TABLE IF EXISTS "{table}"')
+            database.create_tables(new_models, safe=True)
         finally:
             self._enable_foreign_keys()
 
@@ -96,9 +130,28 @@ class Db(
     def backup_file_path(self) -> str:
         return os.path.abspath(parse_db_url(self._database_url)['database'])
 
+    @staticmethod
+    def _timestamped_backup_path(path: str) -> str:
+        root, ext = os.path.splitext(path)
+        return f'{root}-{datetime.now().strftime("%Y-%m-%d_%H:%M:%S")}{ext}'
+
+    @staticmethod
+    def _backup_to_path(dest_path: str) -> None:
+        dest_conn = sqlite3.connect(dest_path)
+        try:
+            database.connection().backup(dest_conn)
+        finally:
+            dest_conn.close()
+
     def export_backup(self) -> bytes:
-        with open(self.backup_file_path(), 'rb') as f:
-            return f.read()
+        fd, tmp_path = tempfile.mkstemp(suffix='.db')
+        os.close(fd)
+        try:
+            self._backup_to_path(tmp_path)
+            with open(tmp_path, 'rb') as f:
+                return f.read()
+        finally:
+            os.remove(tmp_path)
 
     @classmethod
     def _expected_schema(cls) -> dict[str, set[str]]:
