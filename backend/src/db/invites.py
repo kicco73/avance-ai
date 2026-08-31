@@ -23,3 +23,9 @@ class InviteMixin:
         never a counter stored on Invite itself (see models.py's own
         docstring on Invite/UserProject.invite)."""
         return UserProject.select().where(UserProject.invite == invite_id).count()
+
+    def delete_expired_unredeemed_invites(self) -> None:
+        redeemed_invite_ids = UserProject.select(UserProject.invite).where(UserProject.invite.is_null(False))
+        Invite.delete().where(
+            (Invite.expires_at < datetime.utcnow()) & (Invite.id.not_in(redeemed_invite_ids))
+        ).execute()

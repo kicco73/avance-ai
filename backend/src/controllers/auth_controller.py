@@ -70,6 +70,13 @@ class AuthController(BaseController):
             raise HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail=str(exc)) from exc
         return {"success": True}
 
+    # role="pending": App.vue's own TermsView-vs-InviteRequiredView gate
+    # needs this before ever calling accept-terms, for an identity that
+    # has no User row yet — same reachability as accept-terms/logout.
+    @get("/api/auth/pending-status", role="pending")
+    def get_pending_status(self):
+        return {"invite_exempt": self.auth_service.is_invite_exempt(Session().user)}
+
     # role="pending": logout must stay reachable by an identity that
     # rejected the Terms screen and never got a User row at all — not
     # just by fully registered ones.

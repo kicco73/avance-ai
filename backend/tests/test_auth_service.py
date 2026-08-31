@@ -290,6 +290,22 @@ class TestPreWiredAdminRegistration:
 
         assert admin_auth_service.verify_token(token).role == "admin"
 
+    def test_is_invite_exempt_holds_for_a_pre_wired_admin_even_with_no_user_row(
+        self, admin_auth_service, admin_identity, db
+    ):
+        """Regression: a pre-wired admin who "Erase all my data"'d their
+        User row and then just logs back in (no share link involved)
+        must still resolve as invite-exempt — App.vue's own TermsView-
+        vs-InviteRequiredView gate (GET /api/auth/pending-status) relies
+        on this to avoid dead-ending them at InviteRequiredView, which
+        has no path back to a registered account at all."""
+        assert db.get_user_by_id(admin_identity.email) is None
+
+        assert admin_auth_service.is_invite_exempt(admin_identity.email) is True
+
+    def test_is_invite_exempt_is_false_for_a_regular_identity(self, auth_service, identity):
+        assert auth_service.is_invite_exempt(identity.email) is False
+
 
 class TestVerifyToken:
     def test_a_token_issued_by_login_verifies_to_a_pending_identity(self, auth_service, identity):

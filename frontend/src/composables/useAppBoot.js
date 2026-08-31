@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { getState, getMe, getProjects, postRedeemInviteCode, activateProject, postAcceptTerms, postLogout } from '../api.js'
+import { getState, getMe, getProjects, postRedeemInviteCode, activateProject, postAcceptTerms, postLogout, getPendingStatus } from '../api.js'
 import { disconnect as disconnectChat } from '../chatClient.js'
 import { clearApiError } from '../errorStore.js'
 import { requireLogin } from '../authStore.js'
@@ -33,6 +33,16 @@ export function useAppBoot(
   // plain re-login just reissues the same role=None token. Takes over the
   // whole screen the same way needsLogin does, ahead of bootStatus.
   const needsTerms = ref(false)
+  // True when the pending identity above is one of the two pre-wired
+  // admin addresses (see AuthService.is_invite_exempt) — App.vue's
+  // TermsView-vs-InviteRequiredView gate treats this the same as
+  // hasSharedInvite (shareLink.js), since either one clears
+  // complete_registration's own invite check. Resolved fresh on every
+  // 'pending' result (see runPingAttempt) rather than assumed to still
+  // hold from an earlier session in this same long-lived App.vue
+  // instance; defaults to false so a failed check never accidentally
+  // grants the exemption.
+  const inviteExempt = ref(false)
   // Set by a failed handleTermsAccept — the specific reason an invite
   // code was refused (invalid/expired/maxed-out, see AuthService.
   // complete_registration's own PermissionError messages), for
@@ -207,6 +217,12 @@ export function useAppBoot(
       return
     }
     if (result === 'pending') {
+      try {
+        inviteExempt.value = (await getPendingStatus()).invite_exempt
+      } catch {
+        inviteExempt.value = false // already surfaced via apiFetch; fails closed
+      }
+      if (token !== bootSequenceToken) return
       needsTerms.value = true
       return
     }
@@ -276,6 +292,7 @@ export function useAppBoot(
     disconnectChat()
     needsTerms.value = false
     termsError.value = ''
+    inviteExempt.value = false
     requireLogin()
   }
 
@@ -292,7 +309,7 @@ export function useAppBoot(
   }
 
   return {
-    bootStatus, needsTerms, termsError,
+    bootStatus, needsTerms, termsError, inviteExempt,
     getActiveProjectName, resolveLandingView, startBootSequence,
     handleLoggedIn, handleTermsAccept, handleTermsReject, handleLogout,
   }

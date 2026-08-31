@@ -62,6 +62,16 @@ export function getMe() {
   return apiFetch(`${API_URL}/auth/me`)
 }
 
+// App.vue's own TermsView-vs-InviteRequiredView gate for a pending
+// (not-yet-registered) session — whether this identity is one of the
+// two pre-wired admin addresses exempt from the invite-only
+// self-registration wall (see AuthService.is_invite_exempt), so they
+// still reach TermsView even with no "share project" invite link in
+// the URL (e.g. re-logging in after "Erase all my data").
+export function getPendingStatus() {
+  return apiFetch(`${API_URL}/auth/pending-status`)
+}
+
 export function getAuthProviders() {
   return apiFetch(`${API_URL}/auth/providers`)
 }

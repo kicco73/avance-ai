@@ -44,11 +44,14 @@ import { peekInviteCode } from './shareLink.js'
 // body executes). Whether a pending (unregistered) identity gets
 // TermsView (this app's own self-service registration) or
 // InviteRequiredView (registration refused — see AuthService.
-// complete_registration) hinges on this alone: registration is
-// invite-only now, recognizable only by having arrived via a "share
-// project" link. A truthy code here is no guarantee it's still valid
-// (expiry/max-shares are only checked server-side, at Accept) — see
-// termsError/TermsView's own submitError for that outcome.
+// complete_registration) hinges on this or useAppBoot.js's own
+// inviteExempt (the two pre-wired admin addresses, see
+// AuthService.is_invite_exempt): registration is invite-only now,
+// recognizable only by having arrived via a "share project" link or
+// being one of those two addresses. A truthy code here is no
+// guarantee it's still valid (expiry/max-shares are only checked
+// server-side, at Accept) — see termsError/TermsView's own
+// submitError for that outcome.
 const hasSharedInvite = !!peekInviteCode()
 
 const editProjectName = ref(null)
@@ -110,7 +113,7 @@ const currentUserProfile = ref(null)
 const currentUserRole = ref(null)
 
 const {
-  bootStatus, needsTerms, termsError,
+  bootStatus, needsTerms, termsError, inviteExempt,
   getActiveProjectName, startBootSequence,
   handleLoggedIn, handleTermsAccept, handleTermsReject, handleLogout,
 } = useAppBoot(
@@ -440,7 +443,7 @@ onBeforeUnmount(() => {
        api.js's apiFetch) can happen at any point, including mid-boot. -->
   <LoginView v-if="needsLogin" @logged-in="handleLoggedIn" />
 
-  <TermsView v-else-if="needsTerms && hasSharedInvite" :submit-error="termsError" @accept="handleTermsAccept" @reject="handleTermsReject" />
+  <TermsView v-else-if="needsTerms && (hasSharedInvite || inviteExempt)" :submit-error="termsError" @accept="handleTermsAccept" @reject="handleTermsReject" />
   <InviteRequiredView v-else-if="needsTerms" @logout="handleTermsReject" />
 
   <SplashScreen v-else-if="bootStatus === 'waiting'" variant="connecting" />

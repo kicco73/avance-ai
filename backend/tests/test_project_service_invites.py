@@ -66,6 +66,34 @@ class TestCreateInvite:
             project_service.create_invite("does-not-exist", created_by=None)
 
 
+class TestCreateInviteCleansUpExpiredUnredeemedInvites:
+    def test_deletes_an_expired_invite_that_was_never_redeemed(self, db, project_service, project):
+        expired_at = datetime.utcnow() - timedelta(days=1)
+        db.create_invite("OLD001", project, None, expired_at, max_shares=3)
+
+        project_service.create_invite(project, created_by=None)
+
+        assert db.get_invite_by_code("OLD001") is None
+
+    def test_keeps_an_expired_invite_that_was_redeemed_at_least_once(self, db, project_service, project):
+        expired_at = datetime.utcnow() - timedelta(days=1)
+        db.create_invite("OLD002", project, None, expired_at, max_shares=3)
+        db.get_or_create_user("google", "sub-a", "a@example.com", "A", None)
+        invite = db.get_invite_by_code("OLD002")
+        db.record_invite_redemption("a@example.com", project, invite.id, datetime.utcnow())
+
+        project_service.create_invite(project, created_by=None)
+
+        assert db.get_invite_by_code("OLD002") is not None
+
+    def test_keeps_an_unredeemed_invite_that_has_not_expired_yet(self, db, project_service, project):
+        db.create_invite("STILL1", project, None, datetime.utcnow() + timedelta(days=7), max_shares=3)
+
+        project_service.create_invite(project, created_by=None)
+
+        assert db.get_invite_by_code("STILL1") is not None
+
+
 class TestResolveInviteLink:
     def test_resolves_a_generated_code(self, project_service, project):
         invite = project_service.create_invite(project, created_by=None)

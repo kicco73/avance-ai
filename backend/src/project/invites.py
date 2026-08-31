@@ -35,6 +35,7 @@ class InviteManager:
     def create_invite(self, project_name: str, created_by: str | None) -> dict:
         if not self._db.project_exists(project_name):
             raise FileNotFoundError(f"No such project: {project_name!r}")
+        self._db.delete_expired_unredeemed_invites()
         code = self._generate_unique_code()
         expires_at = datetime.utcnow() + timedelta(days=self._valid_days)
         invite = self._db.create_invite(code, project_name, created_by, expires_at, self._max_shares)

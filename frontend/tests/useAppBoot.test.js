@@ -9,6 +9,7 @@ vi.mock('../src/api.js', () => ({
   activateProject: vi.fn(),
   postAcceptTerms: vi.fn(),
   postLogout: vi.fn(),
+  getPendingStatus: vi.fn(),
 }))
 vi.mock('../src/chatClient.js', () => ({
   disconnect: vi.fn(),
@@ -35,7 +36,7 @@ vi.mock('../src/chatStore.js', () => ({
   loadAiModels: vi.fn(),
 }))
 
-import { getState, getMe, getProjects, postRedeemInviteCode, activateProject, postAcceptTerms, postLogout } from '../src/api.js'
+import { getState, getMe, getProjects, postRedeemInviteCode, activateProject, postAcceptTerms, postLogout, getPendingStatus } from '../src/api.js'
 import { disconnect as disconnectChat } from '../src/chatClient.js'
 import { clearApiError } from '../src/errorStore.js'
 import { requireLogin } from '../src/authStore.js'
@@ -181,6 +182,43 @@ describe('useAppBoot', () => {
 
       expect(s.bootStatus.value).toBe('checking') // never touched
       expect(getMe).not.toHaveBeenCalled()
+    })
+
+    it('a pending pre-wired admin (no share link, no User row) resolves as invite-exempt', async () => {
+      // Regression: an admin who erased their own data, then just logs
+      // back in normally (no ?invite= link, see shareLink.js) — App.vue's
+      // gate must still be able to route them to TermsView, not
+      // InviteRequiredView's dead end. See AuthService.is_invite_exempt.
+      getState.mockRejectedValue({ status: 403 })
+      getPendingStatus.mockResolvedValue({ invite_exempt: true })
+      const s = mount()
+
+      s.startBootSequence()
+      await vi.waitFor(() => expect(s.needsTerms.value).toBe(true))
+
+      expect(s.inviteExempt.value).toBe(true)
+    })
+
+    it('a pending regular identity with no share link is not invite-exempt', async () => {
+      getState.mockRejectedValue({ status: 403 })
+      getPendingStatus.mockResolvedValue({ invite_exempt: false })
+      const s = mount()
+
+      s.startBootSequence()
+      await vi.waitFor(() => expect(s.needsTerms.value).toBe(true))
+
+      expect(s.inviteExempt.value).toBe(false)
+    })
+
+    it('fails closed (not exempt) if the pending-status check itself fails', async () => {
+      getState.mockRejectedValue({ status: 403 })
+      getPendingStatus.mockRejectedValue(new Error('boom'))
+      const s = mount()
+
+      s.startBootSequence()
+      await vi.waitFor(() => expect(s.needsTerms.value).toBe(true))
+
+      expect(s.inviteExempt.value).toBe(false)
     })
 
     it('a 401 just stops — apiFetch already triggered the login screen', async () => {
@@ -425,6 +463,17 @@ describe('useAppBoot', () => {
       expect(disconnectChat).toHaveBeenCalled()
       expect(s.needsTerms.value).toBe(false)
       expect(requireLogin).toHaveBeenCalled()
+    })
+
+    it('clears inviteExempt so a later identity in the same tab never inherits it', async () => {
+      postLogout.mockResolvedValue()
+      const s = mount()
+      s.needsTerms.value = true
+      s.inviteExempt.value = true
+
+      await s.handleTermsReject()
+
+      expect(s.inviteExempt.value).toBe(false)
     })
   })
 

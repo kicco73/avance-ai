@@ -514,7 +514,7 @@ let stateTabTokensRequestId = 0
 
 async function refreshStateTabTokens() {
   const key = stateTabTokensKey.value
-  if (key == null) {
+  if (!key) {
     stateTabTokens.value = null
     return
   }

@@ -168,6 +168,16 @@ class AuthService:
         if invite is not None:
             self._project_service.redeem_invite(invite, user.id)
 
+    def is_invite_exempt(self, email: str) -> bool:
+        """App.vue's own TermsView-vs-InviteRequiredView gate for a
+        pending (role=None) identity: the same exemption
+        complete_registration already grants the two pre-wired admin
+        addresses, surfaced here so the frontend can pick TermsView for
+        them too even with no "share project" invite link in the URL —
+        e.g. after "Erase all my data" wiped their User row and a plain
+        re-login (no invite link involved) leaves them pending again."""
+        return self._db.is_pre_wired_admin(email)
+
     def get_profile(self, email: str) -> dict | None:
         return self._db.get_user_by_email(email)
 
