@@ -18,6 +18,10 @@ def _put(client, name: str, yml: str):
     return client.put(f"/api/projects/{name}", content=yml.encode(), headers={"Content-Type": "application/x-yaml"})
 
 
+def _resave(client, name: str, yml: str):
+    return client.put(f"/api/projects/{name}/files/index.yml", content=yml.encode(), headers={"Content-Type": "application/x-yaml"})
+
+
 MINIMAL = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
 
 
@@ -46,7 +50,7 @@ def test_re_saving_the_same_project_with_its_own_existing_id_is_not_a_conflict(c
     resp = _put(client, "one", yml)
     assert resp.status_code == 200, resp.text
 
-    resp = _put(client, "one", yml)  # same project, same id — no conflict with itself
+    resp = _resave(client, "one", yml)  # same project, same id — no conflict with itself
 
     assert resp.status_code == 200, resp.text
 
@@ -55,7 +59,7 @@ def test_changing_a_project_id_frees_up_the_old_one(client):
     resp = _put(client, "one", "project:\n  id: old_id\n" + MINIMAL)
     assert resp.status_code == 200, resp.text
 
-    resp = _put(client, "one", "project:\n  id: new_id\n" + MINIMAL)
+    resp = _resave(client, "one", "project:\n  id: new_id\n" + MINIMAL)
     assert resp.status_code == 200, resp.text
 
     # The old id is free again — a different project may now claim it.

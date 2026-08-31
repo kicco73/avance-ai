@@ -53,7 +53,7 @@ def _setup_pinned_session(client) -> int:
 class TestGetProjectGraphRevision:
     def test_without_session_id_reflects_the_current_draft(self, client):
         session_id = _setup_pinned_session(client)
-        client.put("/api/projects/proj", content=THREE_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
+        client.put("/api/projects/proj/files/index.yml", content=THREE_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
         client.post("/api/projects/proj/publish", json={})
 
         response = client.get("/api/projects/proj/graph")
@@ -63,7 +63,7 @@ class TestGetProjectGraphRevision:
 
     def test_a_live_session_stays_pinned_to_its_own_published_revision(self, client):
         session_id = _setup_pinned_session(client)
-        client.put("/api/projects/proj", content=THREE_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
+        client.put("/api/projects/proj/files/index.yml", content=THREE_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
         client.post("/api/projects/proj/publish", json={})
 
         response = client.get(f"/api/projects/proj/graph?session_id={session_id}")
@@ -73,7 +73,7 @@ class TestGetProjectGraphRevision:
 
     def test_response_reports_the_exact_revision_it_was_resolved_against(self, client):
         session_id = _setup_pinned_session(client)
-        client.put("/api/projects/proj", content=THREE_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
+        client.put("/api/projects/proj/files/index.yml", content=THREE_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
         client.post("/api/projects/proj/publish", json={})
 
         pinned = client.get(f"/api/projects/proj/graph?session_id={session_id}")
@@ -95,7 +95,7 @@ class TestGetProjectGraphRevision:
         action_response = client.post(f"/api/chat/sessions/{test_session_id}/action", json={"action_name": "go"})
         assert action_response.status_code == 200, action_response.text
 
-        client.put("/api/projects/proj", content=THREE_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
+        client.put("/api/projects/proj/files/index.yml", content=THREE_STATE_YML.encode(), headers={"Content-Type": "application/x-yaml"})
 
         response = client.get(f"/api/projects/proj/graph?session_id={test_session_id}")
 
@@ -119,7 +119,7 @@ class TestGetProjectSignalsRevision:
         client.post(f"/api/chat/sessions/{session_id}/action", json={"action_name": "go"})
 
         client.put(
-            "/api/projects/proj",
+            "/api/projects/proj/files/index.yml",
             content=(TWO_STATE_YML + "signals:\n  mood:\n    definition: \"1\"\n").encode(),
             headers={"Content-Type": "application/x-yaml"},
         )
@@ -141,7 +141,7 @@ class TestGetProjectEnvKeysRevision:
         client.post(f"/api/chat/sessions/{session_id}/action", json={"action_name": "go"})
 
         client.put(
-            "/api/projects/proj",
+            "/api/projects/proj/files/index.yml",
             content=(TWO_STATE_YML + "env:\n  greeting:\n    value: \"'hi'\"\n").encode(),
             headers={"Content-Type": "application/x-yaml"},
         )
