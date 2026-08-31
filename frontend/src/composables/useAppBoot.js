@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { getState, getMe, getProjects, getProjectByInviteCode, activateProject, postAcceptTerms, postLogout } from '../api.js'
+import { getState, getMe, getProjects, postRedeemInviteCode, activateProject, postAcceptTerms, postLogout } from '../api.js'
 import { disconnect as disconnectChat } from '../chatClient.js'
 import { clearApiError } from '../errorStore.js'
 import { requireLogin } from '../authStore.js'
@@ -136,20 +136,20 @@ export function useAppBoot(
   // The landing-time half of the "share project" invite-link flow (see
   // shareLink.js and ShareProjectDialog.vue for the other half —
   // capturing the code and rendering the QR that carries it). Consumes
-  // the code captured at page load, resolves it to a project name, and
-  // activates it server-side so whichever landing view resolveLandingView
-  // picks below (chat for a user, Manage projects -> chat for an admin,
-  // Label sessions for a supervisor) opens on that project instead of
-  // the one already active. Existence-only resolution — expiry/max-shares
-  // never gate this path (see GET /api/projects/by-invite/{code}'s own
-  // docstring) — so returns null, leaving the previously active project
-  // alone, only when there was no invite code at all, or the code no
-  // longer resolves to any project (deleted since the link was generated).
+  // the code captured at page load, resolves it to a project name
+  // (granting a plain 'user' access to it server-side the first time —
+  // see ProjectService.resolve_invite_link), and activates it so
+  // whichever landing view resolveLandingView picks below (chat for a
+  // user, Manage projects -> chat for an admin, Label sessions for a
+  // supervisor) opens on that project instead of the one already active.
+  // Returns null, leaving the previously active project alone, when
+  // there was no invite code at all, the code doesn't resolve to any
+  // project, or (a 'user' only) the link is expired/maxed-out.
   async function activateInvitedProject() {
     const code = consumeInviteCode()
     if (!code) return null
     try {
-      const { project_name: projectName } = await getProjectByInviteCode(code)
+      const { project_name: projectName } = await postRedeemInviteCode(code)
       if (!projectName) return null
       await activateProject(projectName)
       return projectName

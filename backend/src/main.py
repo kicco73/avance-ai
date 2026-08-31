@@ -74,6 +74,10 @@ def create_app() -> FastAPI:
         listen_service = ListenService.from_config(config.listen_services) if config.listen_services is not None else None
         
         db = Db(config.database_url, migration_strategy=config.database_migration_strategy)
+        # Bridged onto app.state for the same reason auth_service is below:
+        # AuthMiddleware was already registered before this existed, and
+        # needs it for its own per-request UserProject ownership check.
+        app.state.db = db
 
         # Built before AuthService below — AuthService.complete_registration
         # delegates every invite rule (exists/not expired/under its

@@ -5,7 +5,7 @@ vi.mock('../src/api.js', () => ({
   getState: vi.fn(),
   getMe: vi.fn(),
   getProjects: vi.fn(),
-  getProjectByInviteCode: vi.fn(),
+  postRedeemInviteCode: vi.fn(),
   activateProject: vi.fn(),
   postAcceptTerms: vi.fn(),
   postLogout: vi.fn(),
@@ -35,7 +35,7 @@ vi.mock('../src/chatStore.js', () => ({
   loadAiModels: vi.fn(),
 }))
 
-import { getState, getMe, getProjects, getProjectByInviteCode, activateProject, postAcceptTerms, postLogout } from '../src/api.js'
+import { getState, getMe, getProjects, postRedeemInviteCode, activateProject, postAcceptTerms, postLogout } from '../src/api.js'
 import { disconnect as disconnectChat } from '../src/chatClient.js'
 import { clearApiError } from '../src/errorStore.js'
 import { requireLogin } from '../src/authStore.js'
@@ -243,14 +243,14 @@ describe('useAppBoot', () => {
       getState.mockResolvedValue({})
       getMe.mockResolvedValue({ role: 'user' })
       consumeInviteCode.mockReturnValueOnce('shared-id')
-      getProjectByInviteCode.mockResolvedValue({ project_name: 'shared-project' })
+      postRedeemInviteCode.mockResolvedValue({ project_name: 'shared-project' })
       activateProject.mockResolvedValue({})
       const s = mount()
 
       s.startBootSequence()
       await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
 
-      expect(getProjectByInviteCode).toHaveBeenCalledWith('shared-id')
+      expect(postRedeemInviteCode).toHaveBeenCalledWith('shared-id')
       expect(activateProject).toHaveBeenCalledWith('shared-project')
       expect(liveChatProjectName.value).toBe('shared-project')
       expect(getProjects).not.toHaveBeenCalled() // never fell back to getActiveProjectName
@@ -260,7 +260,7 @@ describe('useAppBoot', () => {
       getState.mockResolvedValue({})
       getMe.mockResolvedValue({ role: 'admin' })
       consumeInviteCode.mockReturnValueOnce('shared-id')
-      getProjectByInviteCode.mockResolvedValue({ project_name: 'shared-project' })
+      postRedeemInviteCode.mockResolvedValue({ project_name: 'shared-project' })
       activateProject.mockResolvedValue({})
       const s = mount()
 
@@ -276,7 +276,7 @@ describe('useAppBoot', () => {
       getState.mockResolvedValue({})
       getMe.mockResolvedValue({ role: 'supervisor' })
       consumeInviteCode.mockReturnValueOnce('shared-id')
-      getProjectByInviteCode.mockResolvedValue({ project_name: 'shared-project' })
+      postRedeemInviteCode.mockResolvedValue({ project_name: 'shared-project' })
       activateProject.mockResolvedValue({})
       const s = mount()
 
@@ -304,7 +304,7 @@ describe('useAppBoot', () => {
       getMe.mockResolvedValue({ role: 'user' })
       getProjects.mockResolvedValue({ active: 'proj-fallback', projects: [] })
       consumeInviteCode.mockReturnValueOnce('stale-id')
-      getProjectByInviteCode.mockResolvedValue({ project_name: null })
+      postRedeemInviteCode.mockResolvedValue({ project_name: null })
       const s = mount()
 
       s.startBootSequence()
@@ -319,7 +319,7 @@ describe('useAppBoot', () => {
       getMe.mockResolvedValue({ role: 'user' })
       getProjects.mockResolvedValue({ active: 'proj-fallback', projects: [] })
       consumeInviteCode.mockReturnValueOnce('stale-id')
-      getProjectByInviteCode.mockRejectedValue(new Error('boom'))
+      postRedeemInviteCode.mockRejectedValue(new Error('boom'))
       const s = mount()
 
       s.startBootSequence()

@@ -312,8 +312,12 @@ class ProjectInspector:
             "revision": revision,
         }
 
-    def list_projects(self) -> dict:
-        projects = self._db.list_projects_with_availability()
+    def list_projects(self, username: str | None = None) -> dict:
+        projects = (
+            self._db.list_projects_with_availability()
+            if username is None
+            else self._db.list_projects_with_availability_for_user(username)
+        )
         try:
             active = self.get_active_project_name()
         except FileNotFoundError:

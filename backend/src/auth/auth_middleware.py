@@ -40,7 +40,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if request.url.path in ALLOWED_PATHS:
             return await call_next(request)
 
-        matched_route = self._matched_route_for(request)
+        matched_route, path_params = self._matched_route_for(request)
         required_role = getattr(matched_route.endpoint, "__required_role__", "user") if matched_route else "user"
         if required_role is None:
             return await call_next(request)
@@ -53,6 +53,18 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         if not role_satisfies(identity.role, required_role):
             return self._forbidden_response()
+
+        # A plain 'user' only ever owns whichever projects they have a
+        # UserProject row for (see ProjectService.resolve_invite_link) —
+        # checked once here, for every {project_name}-scoped route at
+        # once, rather than in each controller method individually.
+        # supervisor/admin routes are untouched: identity.role is never
+        # 'user' there.
+        project_name = path_params.get("project_name")
+        if identity.role == 'user' and project_name is not None:
+            db = request.app.state.db
+            if not db.user_has_project_access(identity.email, project_name):
+                return self._forbidden_response()
 
         Session().user = identity.email
         Session().role = identity.role
@@ -91,7 +103,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
     @classmethod
     def _matched_route_for(cls, request: Request):
         for candidate_route in cls._flatten_routes(request.app.routes):
-            match, _ = candidate_route.matches(request.scope)
+            match, child_scope = candidate_route.matches(request.scope)
             if match == Match.FULL:
-                return candidate_route
-        return None
+                return candidate_route, child_scope.get("path_params", {})
+        return None, {}

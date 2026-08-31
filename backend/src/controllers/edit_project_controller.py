@@ -144,17 +144,23 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except FileNotFoundError as exc:
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
 
-    @get("/api/projects/by-invite/{code}", role="user")
-    def get_project_by_invite_code(self, code: str):
+    @post("/api/projects/by-invite/{code}", role="user")
+    def post_resolve_invite_code(self, code: str):
         """Resolves a "share project" invite code back to the project it
         was generated for. Unlike every other route in this file, open to
         any authenticated role: it's the lookup a scanned QR/link needs
         right after login (see shareLink.js and useAppBoot.js), well
-        before the visiting identity's own role is known to be admin.
-        Existence-only — see ProjectService.get_project_name_by_invite_code
-        for why expiry/max-shares never gate this path. null project_name
-        when the code doesn't resolve to anything, never an error."""
-        return {"project_name": self.project_service.get_project_name_by_invite_code(code)}
+        before the visiting identity's own role is known to be admin. A
+        POST, not a GET: for role="user" reaching a project for the first
+        time, this also consumes the invite and grants access (see
+        ProjectService.resolve_invite_link) — a real side effect, and one
+        that can fail (expired/maxed-out link). null project_name when
+        the code doesn't resolve to anything at all, never an error."""
+        try:
+            project_name = self.project_service.resolve_invite_link(code, Session().user, Session().role)
+        except PermissionError as exc:
+            raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail=str(exc)) from exc
+        return {"project_name": project_name}
 
     @get("/api/projects/{project_name}/files", role="admin")
     def get_project_files(self, project_name: str):

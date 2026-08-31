@@ -40,15 +40,34 @@ class InviteManager:
         invite = self._db.create_invite(code, project_name, created_by, expires_at, self._max_shares)
         return self._payload(invite)
 
-    def get_project_name_by_code(self, code: str) -> str | None:
-        """Existence-only resolution — an already-registered identity
-        following the link just needs to land on the right project (see
-        useAppBoot.js's activateInvitedProject), regardless of whether
-        the invite is expired or maxed out: those budgets gate *new*
-        registrations only (see validate_for_registration below), never
-        someone who's already in."""
+    def resolve_invite_link(self, code: str | None, user_id: str, role: str) -> str | None:
+        """Where an already-authenticated identity following a share link
+        lands (see useAppBoot.js's activateInvitedProject) — unlike
+        validate_for_registration below (a brand-new identity's own
+        self-registration), a code that's simply unknown here is a
+        graceful no-op, same as before. role='user' is the only one ever
+        gated by UserProject (see Db.list_projects_with_availability_for_user),
+        so a revisit (already has a UserProject row for this project) or
+        any other role never spends the invite's budget or writes a row —
+        only the first time a 'user' actually reaches a project through
+        this code does the same expiry/max-shares check
+        validate_for_registration enforces apply here too, followed by
+        the same redemption."""
         invite = self._db.get_invite_by_code(code) if code else None
-        return invite.project_name_id if invite is not None else None
+        if invite is None:
+            return None
+        project_name = invite.project_name_id
+        if role != 'user' or self._db.user_has_project_access(user_id, project_name):
+            return project_name
+        self._ensure_within_budget(invite)
+        self.redeem(invite, user_id)
+        return project_name
+
+    def _ensure_within_budget(self, invite) -> None:
+        if invite.expires_at < datetime.utcnow():
+            raise PermissionError("This invite link has expired.")
+        if self._db.count_invite_redemptions(invite.id) >= invite.max_shares:
+            raise PermissionError("This invite link has already reached its maximum number of uses.")
 
     def validate_for_registration(self, code: str | None):
         """The gate a brand-new identity's self-registration must clear
@@ -59,10 +78,7 @@ class InviteManager:
         invite = self._db.get_invite_by_code(code) if code else None
         if invite is None:
             raise PermissionError("This invite link is invalid.")
-        if invite.expires_at < datetime.utcnow():
-            raise PermissionError("This invite link has expired.")
-        if self._db.count_invite_redemptions(invite.id) >= invite.max_shares:
-            raise PermissionError("This invite link has already reached its maximum number of uses.")
+        self._ensure_within_budget(invite)
         return invite
 
     def redeem(self, invite, user_id: str) -> None:

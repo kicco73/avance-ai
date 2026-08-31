@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from conftest import parse_sse_result
+from session import Session
 
 pytestmark = pytest.mark.regression
 
@@ -151,6 +152,30 @@ def test_new_project_creates_and_activates_hello_world(client):
     publish_resp = client.post("/api/projects/Hello world/publish", json={})
     assert publish_resp.status_code == 200, publish_resp.text
     assert client.get("/api/chat/session").status_code == 200
+
+
+class TestGetProjectsAsUser:
+    """A plain 'user' only sees projects they have a UserProject row for
+    (see Db.list_projects_with_availability_for_user) — every other role
+    (the default test session's own "supervisor", and admin) still sees
+    everything, per the tests above."""
+
+    def test_sees_none_of_the_existing_projects_by_default(self, client):
+        _upload(client, "hello", "Hello world.zip")
+        _upload(client, "cat", "Aprendr català.zip")
+        Session().role = "user"
+
+        assert client.get("/api/projects").json()["projects"] == []
+
+    def test_sees_only_a_project_they_have_access_to(self, app_db, client):
+        _upload(client, "hello", "Hello world.zip")
+        _upload(client, "cat", "Aprendr català.zip")
+        app_db.record_terms_acceptance(Session().user, "hello", archive_id=None)
+        Session().role = "user"
+
+        projects = client.get("/api/projects").json()["projects"]
+
+        assert [p["name"] for p in projects] == ["hello"]
 
 
 def test_new_project_de_duplicates_the_name_on_repeat_calls(client):

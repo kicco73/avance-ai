@@ -116,8 +116,8 @@ class ProjectService(object):
     def get_state_input_tokens(self, project_name: str, state_key: str, session_id: int | None = None) -> int | None:
         return self._inspector.get_state_input_tokens(project_name, state_key, session_id)
 
-    def list_projects(self) -> dict:
-        return self._inspector.list_projects()
+    def list_projects(self, username: str | None = None) -> dict:
+        return self._inspector.list_projects(username)
 
     def get_project_revision_info(self, project_name: str) -> dict:
         return self._inspector.get_project_revision_info(project_name)
@@ -144,8 +144,8 @@ class ProjectService(object):
     def create_invite(self, project_name: str, created_by: str | None) -> dict:
         return self._invites.create_invite(project_name, created_by)
 
-    def get_project_name_by_invite_code(self, code: str) -> str | None:
-        return self._invites.get_project_name_by_code(code)
+    def resolve_invite_link(self, code: str | None, user_id: str, role: str) -> str | None:
+        return self._invites.resolve_invite_link(code, user_id, role)
 
     def validate_invite_for_registration(self, code: str | None):
         return self._invites.validate_for_registration(code)

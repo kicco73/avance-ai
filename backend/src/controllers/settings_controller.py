@@ -17,6 +17,7 @@ from db import Db
 from jobs import JobQueue, stream_job_progress
 from testing.queue_progress_broadcaster import QueueProgressBroadcaster
 from project.project_service import ProjectService
+from session import Session
 
 from .base_controller import BaseController, delete, get, post, put
 from .project_commit_mixin import ProjectCommitMixin
@@ -74,7 +75,8 @@ class SettingsController(BaseController, ProjectCommitMixin):
 
     @get("/api/projects")
     def get_projects(self):
-        return self.project_service.list_projects()
+        username = Session().user if Session().role == 'user' else None
+        return self.project_service.list_projects(username)
 
     @get("/api/settings/projects/runtime-status", role="admin")
     def get_all_projects_runtime_status(self):

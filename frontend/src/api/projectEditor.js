@@ -43,9 +43,11 @@ export function postCreateInvite(projectName) {
 // Resolves a "share project" invite code back to the project it was
 // generated for — { project_name: string | null }. Used by
 // useAppBoot.js to land a scanned invite link (shareLink.js) on the
-// right project.
-export function getProjectByInviteCode(code) {
-  return apiFetch(`${API_URL}/projects/by-invite/${encodeURIComponent(code)}`)
+// right project. A POST, not a GET: for a plain 'user' reaching this
+// project for the first time, it also consumes the invite and grants
+// them access (creates a UserProject row) server-side.
+export function postRedeemInviteCode(code) {
+  return apiFetch(`${API_URL}/projects/by-invite/${encodeURIComponent(code)}`, { method: 'POST' })
 }
 
 // { tokens: number | null } — estimated input-token cost of `stateKey`'s

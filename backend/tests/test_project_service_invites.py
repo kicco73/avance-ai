@@ -1,6 +1,7 @@
 """ProjectService's own invite facade (project/invites.py's InviteManager)
-— code generation, existence-only resolution for an already-registered
-landing, and the stricter exists/not-expired/under-max-shares gate
+— code generation, an already-authenticated identity's own landing
+(resolve_invite_link, which only ever gates/grants a role='user' caller),
+and the stricter exists/not-expired/under-max-shares gate
 AuthService.complete_registration relies on for registration itself.
 """
 from __future__ import annotations
@@ -65,24 +66,59 @@ class TestCreateInvite:
             project_service.create_invite("does-not-exist", created_by=None)
 
 
-class TestGetProjectNameByInviteCode:
+class TestResolveInviteLink:
     def test_resolves_a_generated_code(self, project_service, project):
         invite = project_service.create_invite(project, created_by=None)
 
-        assert project_service.get_project_name_by_invite_code(invite["code"]) == project
+        assert project_service.resolve_invite_link(invite["code"], "someone@example.com", "admin") == project
 
     def test_an_unknown_code_resolves_to_none(self, project_service):
-        assert project_service.get_project_name_by_invite_code("NOSUCH") is None
+        assert project_service.resolve_invite_link("NOSUCH", "someone@example.com", "user") is None
 
-    def test_ignores_expiry_and_max_shares_unlike_registration_validation(self, db, project_service, project):
-        """An already-registered identity following the link just needs
-        to land on the right project — see the module docstring."""
+    def test_admin_and_supervisor_ignore_expiry_and_max_shares_and_never_get_a_userproject_row(self, db, project_service, project):
+        """Only role='user' is ever gated by UserProject (see
+        Db.list_projects_with_availability_for_user) — every other role
+        keeps the old existence-only lookup, no budget spent."""
+        expired_at = datetime.utcnow() - timedelta(days=1)
+        db.create_invite("OLDONE", project, None, expired_at, max_shares=1)
+        db.get_or_create_user("google", "sub-a", "a@example.com", "A", None)
+
+        assert project_service.resolve_invite_link("OLDONE", "a@example.com", "admin") == project
+        assert db.user_has_project_access("a@example.com", project) is False
+
+    def test_a_user_revisiting_a_project_they_already_have_access_to_ignores_expiry_and_max_shares(self, db, project_service, project):
         expired_at = datetime.utcnow() - timedelta(days=1)
         db.create_invite("OLDONE", project, None, expired_at, max_shares=1)
         db.get_or_create_user("google", "sub-a", "a@example.com", "A", None)
         db.record_invite_redemption("a@example.com", project, db.get_invite_by_code("OLDONE").id, datetime.utcnow())
 
-        assert project_service.get_project_name_by_invite_code("OLDONE") == project
+        assert project_service.resolve_invite_link("OLDONE", "a@example.com", "user") == project
+
+    def test_grants_a_user_access_the_first_time_they_reach_a_new_project(self, db, project_service, project):
+        created = project_service.create_invite(project, created_by=None)
+        db.get_or_create_user("google", "sub-a", "a@example.com", "A", None)
+
+        assert project_service.resolve_invite_link(created["code"], "a@example.com", "user") == project
+
+        assert db.user_has_project_access("a@example.com", project) is True
+
+    def test_raises_for_a_user_with_no_existing_access_when_the_link_is_expired(self, db, project_service, project):
+        expired_at = datetime.utcnow() - timedelta(days=1)
+        db.create_invite("EXPIR1", project, None, expired_at, max_shares=3)
+        db.get_or_create_user("google", "sub-a", "a@example.com", "A", None)
+
+        with pytest.raises(PermissionError, match="expired"):
+            project_service.resolve_invite_link("EXPIR1", "a@example.com", "user")
+
+    def test_raises_for_a_user_with_no_existing_access_once_max_shares_is_reached(self, db, project_service, project):
+        db.create_invite("MAXED1", project, None, datetime.utcnow() + timedelta(days=7), max_shares=1)
+        db.get_or_create_user("google", "sub-a", "a@example.com", "A", None)
+        db.get_or_create_user("google", "sub-b", "b@example.com", "B", None)
+        invite = db.get_invite_by_code("MAXED1")
+        db.record_invite_redemption("a@example.com", project, invite.id, datetime.utcnow())
+
+        with pytest.raises(PermissionError, match="maximum"):
+            project_service.resolve_invite_link("MAXED1", "b@example.com", "user")
 
 
 class TestValidateInviteForRegistration:

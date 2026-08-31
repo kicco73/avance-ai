@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .models import Archive, ChatSession, EditHistory, Message, Project, StateRemap, Tracking, database
+from .models import Archive, ChatSession, EditHistory, Message, Project, StateRemap, Tracking, UserProject, database
 
 
 class ProjectMixin:
@@ -172,6 +172,19 @@ class ProjectMixin:
         return [
             {"name": p.name, "is_paused": p.is_paused, "ui_label": p.ui_label}
             for p in Project.select(Project.name, Project.is_paused, Project.ui_label)
+        ]
+
+    def list_projects_with_availability_for_user(self, username: str) -> list[dict]:
+        """Same shape as list_projects_with_availability above, restricted
+        to the projects `username` has a UserProject row for — a plain
+        'user' role's own view of ProjectsMenu.vue."""
+        return [
+            {"name": p.name, "is_paused": p.is_paused, "ui_label": p.ui_label}
+            for p in (
+                Project.select(Project.name, Project.is_paused, Project.ui_label)
+                .join(UserProject, on=(UserProject.project_name == Project.name))
+                .where(UserProject.user == username)
+            )
         ]
 
     def list_projects_runtime_status(self) -> list[dict]:

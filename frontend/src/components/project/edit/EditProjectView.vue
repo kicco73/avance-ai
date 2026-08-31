@@ -298,12 +298,6 @@ const inspectorTabs = computed(() => {
 })
 const inspectorActiveTab = ref('states')
 
-// A selection made in edit mode drives the Inspector's "State"/"Actions"
-// tab too — the user shouldn't have to manually click over to it.
-watch(selectedGraphElement, (element) => {
-  if (mode.value !== 'edit' || !element) return
-  inspectorActiveTab.value = element.kind === 'state' ? 'state' : 'actions'
-})
 // Live value/error per signal name — fed to the Inspector's signal-values
 // prop, refreshed on its own cadence (see refreshSignalValues).
 const signalValueByName = ref({})
