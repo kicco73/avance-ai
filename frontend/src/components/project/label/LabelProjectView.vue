@@ -394,6 +394,9 @@ onBeforeUnmount(() => {
      everywhere else (a plain browser tab, non-iOS, or once Apple fixes
      the bug). */
   bottom: calc(-1 * var(--viewport-bottom-overshoot, 0px));
+  box-sizing: border-box;
+  padding-left: var(--safe-area-left);
+  padding-right: var(--safe-area-right);
   background: white;
   z-index: 100;
   display: flex;
@@ -405,7 +408,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  padding: 0.75rem 1rem;
+  padding: calc(0.75rem + var(--safe-area-top)) 1rem 0.75rem;
   border-bottom: 1px solid #ddd;
 }
 

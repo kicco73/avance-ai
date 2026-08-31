@@ -1042,6 +1042,9 @@ onBeforeUnmount(() => {
      everywhere else (a plain browser tab, non-iOS, or once Apple fixes
      the bug). */
   bottom: calc(-1 * var(--viewport-bottom-overshoot, 0px));
+  box-sizing: border-box;
+  padding-left: var(--safe-area-left);
+  padding-right: var(--safe-area-right);
   background: white;
   z-index: 100;
   display: flex;
@@ -1057,7 +1060,7 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  padding: 0.75rem 1rem;
+  padding: calc(0.75rem + var(--safe-area-top)) 1rem 0.75rem;
   border-bottom: 1px solid #ddd;
 }
 
@@ -1332,6 +1335,10 @@ onBeforeUnmount(() => {
      everywhere else (a plain browser tab, non-iOS, or once Apple fixes
      the bug). */
   bottom: calc(-1 * var(--viewport-bottom-overshoot, 0px));
+  box-sizing: border-box;
+  padding-top: var(--safe-area-top);
+  padding-left: var(--safe-area-left);
+  padding-right: var(--safe-area-right);
   background: white;
   z-index: 150;
   display: flex;
@@ -1345,6 +1352,7 @@ onBeforeUnmount(() => {
        width comes from the drag-adjusted --inspector-width variable. */
     position: static;
     inset: auto;
+    padding: 0;
     z-index: auto;
     flex-shrink: 0;
     width: var(--inspector-width);
@@ -1363,6 +1371,7 @@ onBeforeUnmount(() => {
 .inspector-panel-collapsed {
   position: static !important;
   inset: auto !important;
+  padding: 0 !important;
   z-index: auto !important;
   flex-shrink: 0;
   width: 2.4rem !important;
