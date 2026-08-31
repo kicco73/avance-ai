@@ -199,10 +199,14 @@ class ProjectManager:
     def accept_legal_terms(self, username: str, project_name: str) -> None:
         """Records that `username` has accepted `project_name`'s current
         legal/terms.md — a no-op if the project has none. Always accepts
-        whichever Archive row is current *right now*, not whichever one
-        the frontend last saw as pending: if it changed again in between,
-        the next legal_terms_pending check will correctly ask again."""
-        current = self._db.get_archive_row(project_name, LEGAL_TERMS_FILE_NAME)
+        whichever *published* Archive row is current right now, matching
+        legal_terms_pending's own revision — never the draft's, which can
+        hold a different row id for the same file the moment the project
+        has any unpublished edit: if the published terms changed again in
+        between, the next legal_terms_pending check will correctly ask again."""
+        current = self._db.get_archive_row(
+            project_name, LEGAL_TERMS_FILE_NAME, revision=self._inspector.get_published_revision(project_name)
+        )
         if current is None:
             return
         self._db.record_terms_acceptance(username, project_name, current.id)

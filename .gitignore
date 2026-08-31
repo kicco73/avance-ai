@@ -13,4 +13,5 @@ backend/src/_version.py
 frontend/dist/
 frontend/node_modules/
 *.db
+*.sqlite
 ai/llama.cpp/
