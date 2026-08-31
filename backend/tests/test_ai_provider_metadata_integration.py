@@ -59,7 +59,11 @@ def _strategy_for(wanted: str):
     capability matches `wanted`, skipping the test if the local config
     has none matching."""
     ai_service = AiService.for_live(_APP_CONFIG.ai_services)
-    for index in range(len(_APP_CONFIG.ai_services)):
+    # AiService.for_live filters _APP_CONFIG.ai_services down to only the
+    # entries whose own modes include "live" (see AIServiceConfig.modes)
+    # — its own selectable-provider count, not the unfiltered config's,
+    # is the one this loop must stay in range of.
+    for index in range(len(ai_service.get_models_info()["models"])):
         ai_service.select_model(index)
         if _classify(ai_service) == wanted:
             # True picks one of the two valid tag/field orderings,

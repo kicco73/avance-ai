@@ -78,9 +78,21 @@ ai-service:
     # ai/ai_service.py's AiService): the first provider is tried first,
     # later ones are only used as a fallback if an earlier one becomes
     # unavailable (rate limit/quota, or an outage that outlasts retries).
+    # There are actually *two* independent cascades built from this one
+    # list — live chat (AiService.for_live) and the test panel/batch runs
+    # (AiService.for_test) — each with its own fallback order. `modes`
+    # below controls which cascade(s) an entry ends up in.
     - driver: gemini
       model: gemini-flash-lite-latest
       key: <your-gemini-api-key>
+      # Optional. Which cascade(s) this entry belongs to: some
+      # combination of "live"/"test", e.g. [live] for a live-chat-only
+      # model, [test] for a test-only one, or [live, test] to be
+      # explicit about both. Omit entirely for the default — both. An
+      # empty list ([]) is different from omitting it: it deliberately
+      # excludes the entry from both cascades rather than falling back
+      # to that default.
+      # modes: [live, test]
       # Both optional. ui-label is what the frontend's model menu shows for
       # this entry — falls back to `driver` (e.g. "gemini") if omitted.
       # ui-description is an optional longer blurb shown alongside it.

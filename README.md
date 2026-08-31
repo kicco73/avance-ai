@@ -130,14 +130,21 @@ secrets). Top-level sections:
   sessions"' own session detail panel can show a burnt-vs-budget bar
   (input tokens summed across the session's `user` messages) with the
   exact numbers on hover. Nothing in the backend trims history against it.
-- **`ai-service.providers`** — a non-empty, ordered list. The first entry
-  is used; later ones are an automatic fallback if it becomes unavailable
-  (rate limit, quota, outage — see `ai/cascading_llm_provider.py`).
-  `driver` is one of `anthropic`, `gemini`, `openai` (the `openai` driver
-  also accepts any OpenAI-compatible endpoint via `url`, e.g. a local
-  llama.cpp server). `model` and `key` are provider-specific; `ui-label`/
-  `ui-description` (both optional) are what the frontend's model-selector
-  menu shows.
+- **`ai-service.providers`** — a non-empty, ordered list, backing *two*
+  independent cascades — live chat and the test panel/batch runs (see
+  `AiService.for_live`/`for_test` in `ai/ai_service.py`) — rather than
+  one shared one. Within whichever cascade an entry belongs to, order is
+  fallback order: the first entry is used; later ones only kick in if an
+  earlier one becomes unavailable (rate limit, quota, outage — see
+  `ai/cascading_llm_provider.py`). `driver` is one of `anthropic`,
+  `gemini`, `openai` (the `openai` driver also accepts any
+  OpenAI-compatible endpoint via `url`, e.g. a local llama.cpp server).
+  `model` and `key` are provider-specific; `ui-label`/`ui-description`
+  (both optional) are what the frontend's model-selector menu shows.
+  `modes` (optional, e.g. `[live]` or `[test]`) — which cascade(s) this
+  entry belongs to; omitted defaults to both, while an explicit empty
+  list excludes it from both. At least one entry must remain in each
+  cascade.
 - **`talk-service`** / **`listen-service`** — optional (`enabled: false`
   or the whole section omitted by default). Same `providers` list shape
   as `ai-service`, but independent rosters, for text-to-speech and

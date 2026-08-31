@@ -250,6 +250,27 @@ class AppConfig:
             ))
         return providers
 
+    _AI_SERVICE_MODES = ("live", "test")
+
+    @classmethod
+    def _parse_ai_service_modes(cls, entry: dict, i: int, path: Path) -> tuple[str, ...]:
+        """None (the key absent entirely) means both live and test — the
+        default every entry had before `modes` existed at all. An
+        explicit empty list is different: it deliberately puts the entry
+        in neither cascade, rather than falling back to that default."""
+        modes = entry.get("modes")
+        if modes is None:
+            return cls._AI_SERVICE_MODES
+        if not isinstance(modes, list) or not all(isinstance(m, str) for m in modes):
+            raise ConfigError(f"{path}: 'ai-service.providers[{i}].modes' must be a list of strings if present.")
+        invalid = sorted(set(modes) - set(cls._AI_SERVICE_MODES))
+        if invalid:
+            raise ConfigError(
+                f"{path}: 'ai-service.providers[{i}].modes' contains invalid entr{'y' if len(invalid) == 1 else 'ies'} "
+                f"{invalid} — must be 'live' and/or 'test'."
+            )
+        return tuple(dict.fromkeys(modes))  # de-duplicated, order preserved
+
     @classmethod
     def _parse_ai_services(cls, raw: dict, path: Path) -> list[AIServiceConfig]:
         entries = cls._get_providers(raw, "ai-service", path)
@@ -278,11 +299,22 @@ class AppConfig:
                 raise ConfigError(f"{path}: 'ai-service.providers[{i}].key' must be a string or None.")
             driver = driver.strip()
             ui_label, ui_description = cls._parse_ui_fields(entry, driver, "ai-service", i, path)
+            modes = cls._parse_ai_service_modes(entry, i, path)
             services.append(AIServiceConfig(
                 driver=driver, model=model.strip(), key=key, url=url,
                 ui_label=ui_label, ui_description=ui_description,
-                max_output_tokens=max_output_tokens,
+                max_output_tokens=max_output_tokens, modes=modes,
             ))
+        # AiService.for_live/for_test each filter this same list down to
+        # only the entries whose own modes include that one (see
+        # AIServiceConfig.modes) — every entry opting out of a mode (or
+        # every entry sharing the same non-default modes) could otherwise
+        # leave one of the two cascades silently empty, a startup-time
+        # misconfiguration worth catching here rather than as a confusing
+        # runtime failure the first time that mode is actually used.
+        for mode in cls._AI_SERVICE_MODES:
+            if not any(mode in service.modes for service in services):
+                raise ConfigError(f"{path}: 'ai-service.providers' has no entry left for mode {mode!r}.")
         return services
 
     def __init__(self) -> None:

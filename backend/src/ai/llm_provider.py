@@ -26,6 +26,13 @@ class AIServiceConfig:
 	ui_label: str
 	ui_description: str | None = None
 	max_output_tokens: int = 1024
+	# Which cascade(s) this entry participates in (see AiService.for_live/
+	# for_test, which each filter on this independently) — some
+	# combination of "live"/"test", or empty to sit in neither. Defaults
+	# to both when `modes` is absent from config.yml entirely (see
+	# AppConfig._parse_ai_services); an explicit empty list is different
+	# from that default — it deliberately excludes the entry from both.
+	modes: tuple[str, ...] = ("live", "test")
 
 
 class AIServiceError(ProviderError):

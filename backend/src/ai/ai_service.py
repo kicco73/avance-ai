@@ -66,15 +66,31 @@ class AiService(object):
 
 	@classmethod
 	def for_live(cls, ai_service_config: list[AIServiceConfig]) -> "AiService":
-		labeled = cls._build_labeled_providers(ai_service_config)
+		"""Builds the live-chat cascade from only the entries whose own
+		`modes` includes "live" (defaults to both live and test — see
+		AIServiceConfig.modes) — entirely independent of for_test below:
+		each classmethod filters the same incoming list on its own, builds
+		its own fresh provider instances (_build_labeled_providers), and
+		hands them to its own AutoLiveLLMProvider/AutoTestLLMProvider
+		cascade. Nothing constructed here is shared with for_test's own
+		result."""
+		live_config = cls._filter_by_mode(ai_service_config, "live")
+		labeled = cls._build_labeled_providers(live_config)
 		selectable = [AutoLiveLLMProvider([entry]) for entry in labeled]
-		return cls(AutoLiveLLMProvider(labeled), selectable_providers=selectable, configs=ai_service_config)
+		return cls(AutoLiveLLMProvider(labeled), selectable_providers=selectable, configs=live_config)
 
 	@classmethod
 	def for_test(cls, ai_service_config: list[AIServiceConfig]) -> "AiService":
-		labeled = cls._build_labeled_providers(ai_service_config)
+		"""The test-panel/batch-run cascade — see for_live's own docstring
+		for why this stays fully independent of it."""
+		test_config = cls._filter_by_mode(ai_service_config, "test")
+		labeled = cls._build_labeled_providers(test_config)
 		selectable = [AutoLiveLLMProvider([entry]) for entry in labeled]
-		return cls(AutoTestLLMProvider(labeled), selectable_providers=selectable, configs=ai_service_config)
+		return cls(AutoTestLLMProvider(labeled), selectable_providers=selectable, configs=test_config)
+
+	@staticmethod
+	def _filter_by_mode(ai_service_config: list[AIServiceConfig], mode: str) -> list[AIServiceConfig]:
+		return [service for service in ai_service_config if mode in service.modes]
 
 	@classmethod
 	def _build_labeled_providers(cls, ai_service_config: list[AIServiceConfig]) -> list[tuple[str, LLMProvider]]:

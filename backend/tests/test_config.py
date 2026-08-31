@@ -332,6 +332,88 @@ class TestServiceMinTestIntervalMs:
             _load(monkeypatch, tmp_path, content)
 
 
+class TestAiServiceProvidersModes:
+    """AIServiceConfig.modes — see AiService.for_live/for_test, which
+    each filter config.ai_services down to only the entries whose own
+    modes include that one."""
+
+    def test_defaults_to_both_live_and_test_when_omitted(self, monkeypatch, tmp_path):
+        config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
+        assert config.ai_services[0].modes == ("live", "test")
+
+    def test_reads_a_live_only_entry(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG.replace(
+            "ai-service:\n  providers:\n    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n",
+            "ai-service:\n  providers:\n    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n"
+            "      modes: [live]\n    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n"
+            "      modes: [test]\n",
+        )
+        config = _load(monkeypatch, tmp_path, content)
+        assert config.ai_services[0].modes == ("live",)
+        assert config.ai_services[1].modes == ("test",)
+
+    def test_reads_an_explicit_both_entry(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG.replace(
+            "      key: fake-key\n",
+            "      key: fake-key\n      modes: [live, test]\n",
+        )
+        config = _load(monkeypatch, tmp_path, content)
+        assert config.ai_services[0].modes == ("live", "test")
+
+    def test_deduplicates_repeated_entries(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG.replace(
+            "ai-service:\n  providers:\n    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n",
+            "ai-service:\n  providers:\n    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n"
+            "      modes: [live, live]\n    - driver: gemini\n      model: other-model\n      key: fake-key\n",
+        )
+        config = _load(monkeypatch, tmp_path, content)
+        assert config.ai_services[0].modes == ("live",)
+
+    def test_an_explicit_empty_list_excludes_the_entry_from_both_but_a_sibling_still_covers_them(
+        self, monkeypatch, tmp_path
+    ):
+        content = MINIMAL_CONFIG.replace(
+            "ai-service:\n  providers:\n    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n",
+            "ai-service:\n  providers:\n    - driver: gemini\n      model: gemini-flash-lite-latest\n      key: fake-key\n"
+            "      modes: []\n    - driver: gemini\n      model: other-model\n      key: fake-key\n",
+        )
+        config = _load(monkeypatch, tmp_path, content)
+        assert config.ai_services[0].modes == ()
+        assert config.ai_services[1].modes == ("live", "test")
+
+    def test_rejects_a_non_list_value(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG.replace(
+            "      key: fake-key\n",
+            "      key: fake-key\n      modes: live\n",
+        )
+        with pytest.raises(ConfigError):
+            _load(monkeypatch, tmp_path, content)
+
+    def test_rejects_an_invalid_mode_name(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG.replace(
+            "      key: fake-key\n",
+            "      key: fake-key\n      modes: [live, staging]\n",
+        )
+        with pytest.raises(ConfigError, match="staging"):
+            _load(monkeypatch, tmp_path, content)
+
+    def test_rejects_leaving_the_live_cascade_completely_empty(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG.replace(
+            "      key: fake-key\n",
+            "      key: fake-key\n      modes: [test]\n",
+        )
+        with pytest.raises(ConfigError, match="'live'"):
+            _load(monkeypatch, tmp_path, content)
+
+    def test_rejects_leaving_the_test_cascade_completely_empty(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG.replace(
+            "      key: fake-key\n",
+            "      key: fake-key\n      modes: [live]\n",
+        )
+        with pytest.raises(ConfigError, match="'test'"):
+            _load(monkeypatch, tmp_path, content)
+
+
 class TestInviteValidDays:
     def test_defaults_to_7_when_the_section_is_omitted(self, monkeypatch, tmp_path):
         config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
