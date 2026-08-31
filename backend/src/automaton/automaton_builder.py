@@ -257,11 +257,13 @@ class AutomatonBuilder(object):
 
     def _actions_sanity_check(
         self, key: str, state: State, declared_states: set[str], registry: dict[str, dict[str, str]],
-        known_projects: dict[str, frozenset[str]] | None = None,
+        env_keys: dict[str, EnvKey], known_projects: dict[str, frozenset[str]] | None = None,
     ):
         """`registry`: every valid identifier for this project, one set
-        per namespace. `known_projects`: None skips the automaton.*
-        existence check entirely."""
+        per namespace. `env_keys`: for checking an action's own `env:`
+        writes against each key's own declared type (see
+        _validate_env_key_type below). `known_projects`: None skips the
+        automaton.* existence check entirely."""
         for action in state.actions:
             if action.target not in declared_states:
                 raise ValueError(
@@ -297,6 +299,32 @@ class AutomatonBuilder(object):
                     self._validate_namespaced_expression(
                         expression, f"State {key}, action '{action.name}': env expression for '{env_key}'", registry,
                     )
+                    self._validate_env_key_type(
+                        env_keys[env_key], expression, f"State {key}, action '{action.name}'",
+                    )
+
+    @staticmethod
+    def _validate_env_key_type(declared: EnvKey, expression: str, context: str) -> None:
+        """An env key's own declared `value` (its default) fixes that
+        key's type for good, the same way a signal's definition always
+        yields a number — a later write can update *what* the key holds,
+        never *what kind of thing* it holds. Silently skipped (never a
+        false positive) whenever either side's kind isn't statically
+        knowable: `declared.value` is empty (no default was ever given,
+        so the key was never typed to begin with), or either expression
+        combines values in a way TriggerExpressionAnalyzer.expression_kind
+        can't see through (e.g. `env.other_key`, arithmetic, a bare name)."""
+        if not declared.value:
+            return
+        declared_kind = TriggerExpressionAnalyzer.expression_kind(declared.value)
+        written_kind = TriggerExpressionAnalyzer.expression_kind(expression)
+        if declared_kind is None or written_kind is None or declared_kind == written_kind:
+            return
+        raise ValueError(
+            f"{context}: env expression for '{declared.name}' ('{expression}') is a {written_kind}, but "
+            f"'{declared.name}' was declared as a {declared_kind} (its own 'value' default) — an env "
+            "key's type can't change once declared."
+        )
 
     def _build_init_action(self, raw: dict, env_keys: dict[str, EnvKey]) -> Action:
         """`env_keys`: every project-level `env:` declaration is folded
@@ -471,7 +499,7 @@ class AutomatonBuilder(object):
         registry = IdentifierRegistry.build(list(signals.values()), list(env_keys.values()))
         for key, state in states.items():
             context_key = init_action.name if key == "" else key
-            self._actions_sanity_check(context_key, state, set(raw_states.keys()), registry, known_projects)
+            self._actions_sanity_check(context_key, state, set(raw_states.keys()), registry, env_keys, known_projects)
 
         general_attachments = self._extract_required_archives(raw.get('attachments', []), all_archives, for_field="global")
 

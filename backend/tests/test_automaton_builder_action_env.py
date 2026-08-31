@@ -145,6 +145,108 @@ env:
         )
 
 
+def test_writing_a_number_to_a_string_declared_key_is_rejected():
+    with pytest.raises(ValueError, match="is a number, but 'greeting' was declared as a string"):
+        _build(
+            """
+        env:
+          greeting: "42"
+""",
+            env_section="""
+env:
+  greeting:
+    value: "'hello'"
+""",
+        )
+
+
+def test_writing_a_string_to_a_number_declared_key_is_rejected():
+    with pytest.raises(ValueError, match="is a string, but 'counter' was declared as a number"):
+        _build(
+            """
+        env:
+          counter: "'not a number'"
+""",
+            env_section="""
+env:
+  counter:
+    value: "0"
+""",
+        )
+
+
+def test_writing_a_number_to_a_bool_declared_key_is_rejected():
+    """bool and number are kept strictly separate here — unlike the
+    ordering-comparison leniency (True >= 0.5 is legal Python), a flag
+    switching to holding an arbitrary count is exactly the kind of drift
+    this check exists to catch."""
+    with pytest.raises(ValueError, match="is a number, but 'enabled' was declared as a bool"):
+        _build(
+            """
+        env:
+          enabled: "2"
+""",
+            env_section="""
+env:
+  enabled:
+    value: "True"
+""",
+        )
+
+
+def test_writing_a_matching_type_is_accepted():
+    automaton = _build(
+        """
+        env:
+          counter: "5"
+""",
+        env_section="""
+env:
+  counter:
+    value: "0"
+""",
+    )
+    action = automaton.states["a"].actions[0]
+    assert action.env == {"counter": "5"}
+
+
+def test_an_env_key_with_no_declared_default_has_no_fixed_type():
+    """An empty 'value' never establishes a type to begin with, so any
+    expression is accepted — same free-form behavior as before this check existed."""
+    automaton = _build(
+        """
+        env:
+          anything: "'a string now'"
+""",
+        env_section="""
+env:
+  anything: {}
+""",
+    )
+    action = automaton.states["a"].actions[0]
+    assert action.env == {"anything": "'a string now'"}
+
+
+def test_an_expression_whose_kind_is_not_statically_knowable_is_not_flagged():
+    """`env.other` reads another key at runtime — its own kind isn't
+    knowable ahead of a real turn, so the check is silently skipped
+    rather than guessing wrong."""
+    automaton = _build(
+        """
+        env:
+          counter: env.other
+""",
+        env_section="""
+env:
+  counter:
+    value: "0"
+  other: {}
+""",
+    )
+    action = automaton.states["a"].actions[0]
+    assert action.env == {"counter": "env.other"}
+
+
 def test_env_must_be_a_mapping():
     with pytest.raises(ValueError, match="'env' must be a mapping"):
         _build("""

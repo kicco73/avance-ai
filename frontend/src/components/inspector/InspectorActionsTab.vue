@@ -13,6 +13,8 @@ const props = defineProps({
   highlightedStateKey: { type: String, default: null },
   // {key, uiLabel} for each real state; forwarded to each row's target <select>.
   availableStates: { type: Array, default: () => [] },
+  // Every declared project env key's name; forwarded to each row's Env editor.
+  availableEnvKeys: { type: Array, default: () => [] },
   // False while showing the init-action, which is a singleton the automaton
   // always owns — unlike a real state's actions, it can't have another one
   // added via "+ Add action".
@@ -142,6 +144,7 @@ function handleDragEnd() {
         :selectable="!isSelected(action)"
         editable
         :available-states="availableStates"
+        :available-env-keys="availableEnvKeys"
         :recently-added-key="recentlyAddedKey"
         :closable="false"
         :open="expandedActionName === action.data.actionName"

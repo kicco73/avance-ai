@@ -153,6 +153,43 @@ class TestPutActionField:
         )
         assert response.status_code == 400
 
+    def test_edits_env(self, client, hello_project):
+        env_key = client.post(f"/api/projects/{hello_project}/env-keys").json()
+        action = client.post(f"/api/projects/{hello_project}/states/Hello/actions").json()
+        response = client.put(
+            f"/api/projects/{hello_project}/states/Hello/actions/{action['name']}/env",
+            json={"value": {env_key["name"]: "1"}},
+        )
+        assert response.status_code == 200
+        assert f"{env_key['name']}:" in _index_yml(client, hello_project)
+
+    def test_clearing_env_removes_it_rather_than_storing_an_empty_mapping(self, client, hello_project):
+        env_key = client.post(f"/api/projects/{hello_project}/env-keys").json()
+        action = client.post(f"/api/projects/{hello_project}/states/Hello/actions").json()
+        client.put(
+            f"/api/projects/{hello_project}/states/Hello/actions/{action['name']}/env",
+            json={"value": {env_key["name"]: "1"}},
+        )
+        response = client.put(
+            f"/api/projects/{hello_project}/states/Hello/actions/{action['name']}/env",
+            json={"value": {}},
+        )
+        assert response.status_code == 200
+        # Exactly one "env:" left — the project-level declaration itself;
+        # the action's own (now emptied) one was removed, not left as `env: {}`.
+        assert _index_yml(client, hello_project).count("env:") == 1
+
+    def test_env_writing_to_an_undeclared_key_is_400(self, client, hello_project):
+        """The usual parsing/validation pass (AutomatonBuilder, run via
+        prepare_update on every save) still gates this field — an action
+        can only set an env key that's already declared project-wide."""
+        action = client.post(f"/api/projects/{hello_project}/states/Hello/actions").json()
+        response = client.put(
+            f"/api/projects/{hello_project}/states/Hello/actions/{action['name']}/env",
+            json={"value": {"never_declared_anywhere": "1"}},
+        )
+        assert response.status_code == 400
+
 
 class TestPutSignalField:
     def test_edits_definition(self, client, hello_project):

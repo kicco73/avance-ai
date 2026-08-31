@@ -91,6 +91,7 @@ function edgeToCyData(e, id) {
     hasTrigger: e.action.has_trigger,
     actionPrompt: e.action_prompt,
     onEnter: e.action['on-enter'],
+    env: e.env || {},
     isInitEdge
   }
 }

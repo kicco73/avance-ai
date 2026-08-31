@@ -36,6 +36,7 @@ import {
   getSessions,
   getMessages,
   getProjectGraph,
+  getProjectEnvKeys,
   getProjectSignals,
   getStateInputTokens,
   getUsers
@@ -366,6 +367,10 @@ const validStateKeys = ref(new Set())
 // options (see InspectorDetailCard.vue's availableStates prop).
 const availableStates = ref([])
 
+// Every declared project env key's name — the Actions tab's Env editor
+// <select> options (see InspectorDetailCard.vue's availableEnvKeys prop).
+const availableEnvKeys = ref([])
+
 // The live chat's timeline (see ChatTimeline.vue's resolveStateLabel
 // prop) shows a transition's ui-label instead of its raw state key.
 // Falls back to the raw key for a state that's since been renamed/removed (see isStateGone).
@@ -390,6 +395,11 @@ async function refreshValidStateKeys() {
     actionLabelsByState.value = new Map(
       edges.map((e) => [`${e.source}::${e.action.name}`, e.action.ui_label])
     )
+  } catch {
+    // already surfaced via apiFetch
+  }
+  try {
+    availableEnvKeys.value = (await getProjectEnvKeys(props.projectName)).env_keys.map((e) => e.env_key.name)
   } catch {
     // already surfaced via apiFetch
   }
@@ -949,6 +959,7 @@ onBeforeUnmount(() => {
                 :fired-action-edge="firedActionEdge"
                 :highlighted-state-key="highlightedStateKey"
                 :available-states="availableStates"
+                :available-env-keys="availableEnvKeys"
                 :allow-add="!!selectedStateKey"
                 :recently-added-key="recentlyAddedKey"
                 @select="handleTabSelect"

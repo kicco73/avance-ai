@@ -23,7 +23,7 @@ from .project_commit_mixin import ProjectCommitMixin
 # below — name/key is deliberately never in any of these three: it's
 # generated once at creation and immutable from then on.
 STATE_EDITABLE_FIELDS = {"ui-label", "ui-description", "history-cutoff", "contextual-prompt", "chat", "reactions-enabled"}
-ACTION_EDITABLE_FIELDS = {"ui-label", "ui-description", "action-prompt", "target", "trigger", "on-enter"}
+ACTION_EDITABLE_FIELDS = {"ui-label", "ui-description", "action-prompt", "target", "trigger", "on-enter", "env"}
 SIGNAL_EDITABLE_FIELDS = {"ui-label", "ui-description", "definition"}
 # Unlike a state/action/signal, an env key has no separate ui-label to
 # derive its name from — 'name' is itself directly editable here.

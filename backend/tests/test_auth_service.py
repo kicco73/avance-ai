@@ -224,6 +224,73 @@ class TestCompleteRegistration:
         assert db.count_invite_redemptions(invite.id) == 1
 
 
+class TestPreWiredAdminRegistration:
+    """One of the two hardcoded bootstrap admin addresses (Db._ADMIN_EMAILS)
+    used to get its User row created straight out of resolve_login(), on
+    its very first login — before ever reaching TermsView.vue. That meant
+    Terms acceptance itself was silently skipped for them, the one thing
+    it must never be, regardless of the invite-code exception these two
+    addresses are otherwise entitled to."""
+
+    ADMIN_EMAIL = "enrico.carniani@gmail.com"
+
+    @pytest.fixture
+    def admin_identity(self) -> AuthenticatedUser:
+        return AuthenticatedUser(
+            provider_user_id="sub-admin", email=self.ADMIN_EMAIL, name="Enrico", picture_url=None
+        )
+
+    @pytest.fixture
+    def admin_provider(self, admin_identity) -> _FakeProvider:
+        return _FakeProvider("admin-credential", admin_identity)
+
+    @pytest.fixture
+    def admin_auth_service(self, db, admin_provider, project_service) -> AuthService:
+        return _auth_service(db, admin_provider, project_service)
+
+    def test_logging_in_as_a_pre_wired_admin_creates_no_user_row(self, db, admin_auth_service, admin_identity):
+        admin_auth_service.login("google", "admin-credential")
+
+        assert db.get_user_by_id(admin_identity.email) is None
+
+    def test_a_pre_wired_admin_before_accepting_terms_resolves_to_a_pending_identity(
+        self, admin_auth_service, admin_identity
+    ):
+        token = admin_auth_service.login("google", "admin-credential")
+
+        verified = admin_auth_service.verify_token(token)
+
+        assert verified is not None
+        assert verified.email == admin_identity.email
+        assert verified.role is None
+
+    def test_a_pre_wired_admin_can_complete_registration_with_no_invite_code(
+        self, db, admin_auth_service, admin_identity
+    ):
+        """The one exception a pre-wired admin gets over a regular
+        identity (see TestCompleteRegistration.
+        test_a_valid_token_with_no_invite_code_is_refused_as_uninvited
+        above) — but only reachable, same as anyone else, through this
+        method, itself only ever called from TermsView.vue's Accept."""
+        token = admin_auth_service.login("google", "admin-credential")
+
+        admin_auth_service.complete_registration(token)
+
+        user = db.get_user_by_id(admin_identity.email)
+        assert user is not None
+        assert user["role"] == "admin"
+
+    def test_a_pre_wired_admin_still_has_to_accept_terms_to_get_a_real_role(
+        self, admin_auth_service, admin_identity
+    ):
+        token = admin_auth_service.login("google", "admin-credential")
+        assert admin_auth_service.verify_token(token).role is None
+
+        admin_auth_service.complete_registration(token)
+
+        assert admin_auth_service.verify_token(token).role == "admin"
+
+
 class TestVerifyToken:
     def test_a_token_issued_by_login_verifies_to_a_pending_identity(self, auth_service, identity):
         """No User row exists yet right after login() — verify_token

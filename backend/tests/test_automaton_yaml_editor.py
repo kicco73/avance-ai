@@ -229,6 +229,21 @@ class TestSetActionField:
         action = next(a for a in automaton.states["a"].actions if a.name == "go-b")
         assert action.trigger is None
 
+    def test_env_edit(self):
+        editor = _editor(BASE_YAML + "env:\n  counter: {}\n")
+        editor.set_action_field("a", "go-b", "env", {"counter": "1"})
+        automaton = _builds(editor.serialize())
+        action = next(a for a in automaton.states["a"].actions if a.name == "go-b")
+        assert action.env == {"counter": "1"}
+
+    def test_clearing_env_removes_the_key_instead_of_storing_an_empty_mapping(self):
+        editor = _editor(BASE_YAML + "env:\n  counter: {}\n")
+        editor.set_action_field("a", "go-b", "env", {"counter": "1"})
+        editor.set_action_field("a", "go-b", "env", {})
+        automaton = _builds(editor.serialize())
+        action = next(a for a in automaton.states["a"].actions if a.name == "go-b")
+        assert action.env is None
+
 
 class TestSetSignalField:
     def test_non_ui_label_field_is_a_plain_edit(self):

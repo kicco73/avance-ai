@@ -73,8 +73,9 @@ class AuthService:
         identity (see _issue_token) and stays unregistered until
         TermsView.vue's Accept action calls complete_registration().
         Rejecting Terms then leaves zero trace: no row was ever created
-        to clean up. The one exception is Db.resolve_login's own two
-        pre-wired admin addresses, which it registers right here."""
+        to clean up. This holds even for the two pre-wired admin
+        addresses (Db.is_pre_wired_admin) — they still see and accept
+        Terms like anyone else, just without needing an invite code."""
         auth_provider = self._providers.get(provider)
         if auth_provider is None:
             raise ValueError(f"Unknown auth provider: {provider!r}.")
@@ -145,17 +146,27 @@ class AuthService:
         this is a stranger who was never invited, registration refused,
         no User row created. Invite validation happens before the User
         row is ever created, and its redemption is only recorded (see
-        ProjectService.redeem_invite) once that row actually exists."""
+        ProjectService.redeem_invite) once that row actually exists.
+
+        The one exception is the two pre-wired admin addresses
+        (Db.is_pre_wired_admin): no invite exists to redeem there since
+        no one exists yet to send them one, so this skips straight to
+        row creation for them — but this method is still the only path
+        that reaches it, still gated behind TermsView.vue's Accept, so
+        Terms acceptance itself is never skipped, only the invite check."""
         payload = self._decode(token)
         email = payload.get("email") if payload else None
         if email is None:
             raise ValueError("Invalid or expired session.")
-        invite = self._project_service.validate_invite_for_registration(invite_code)
+        invite = None
+        if not self._db.is_pre_wired_admin(email):
+            invite = self._project_service.validate_invite_for_registration(invite_code)
         user = self._db.get_or_create_user(
             payload.get("provider"), payload.get("provider_user_id"), email, payload.get("name"), payload.get("picture_url")
         )
         self._db.update_last_login(user.id, payload.get("name"), payload.get("picture_url"))
-        self._project_service.redeem_invite(invite, user.id)
+        if invite is not None:
+            self._project_service.redeem_invite(invite, user.id)
 
     def get_profile(self, email: str) -> dict | None:
         return self._db.get_user_by_email(email)

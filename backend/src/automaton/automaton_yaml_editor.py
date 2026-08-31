@@ -252,9 +252,13 @@ class AutomatonYamlEditor:
         raw_action = self._find_action(state_name, action_name)
         # An empty trigger means manual-only, so the key is removed
         # rather than left holding "" — has_trigger would otherwise
-        # report True for an action the user just cleared.
-        if field == "trigger" and not value:
-            raw_action.pop("trigger", None)
+        # report True for an action the user just cleared. An emptied
+        # 'env' mapping is removed the same way, rather than lingering as
+        # `env: {}` (behaviorally identical either way — AutomatonBuilder
+        # treats a falsy env the same as a missing one — but this keeps
+        # the YAML clean).
+        if field in ("trigger", "env") and not value:
+            raw_action.pop(field, None)
         else:
             raw_action[field] = value
         return self._action_payload(state_name, action_name)

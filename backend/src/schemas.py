@@ -134,17 +134,23 @@ class SetEnvValueRequest(BaseModel):
 
 class SetProjectFieldRequest(BaseModel):
     # See ProjectService.set_state_field/set_action_field/set_signal_field.
-    # Editable fields are free text (ui-label, contextual-prompt, etc.) or,
-    # for a state's history-cutoff/chat, a plain boolean.
-    value: str | bool
+    # Editable fields are free text (ui-label, contextual-prompt, etc.), a
+    # plain boolean (a state's history-cutoff/chat), or — for an action's
+    # own 'env' field only — a mapping of env-key -> expression source.
+    value: str | bool | dict[str, str]
 
     @field_validator("value")
     @classmethod
-    def _strip_string_value(cls, value: str | bool) -> str | bool:
+    def _strip_string_value(cls, value: str | bool | dict[str, str]) -> str | bool | dict[str, str]:
         """Trims string values so incidental UI whitespace (e.g. "Action ")
         never creates a duplicate distinct from "Action". A bare boolean
-        (history-cutoff/chat) passes through untouched."""
-        return value.strip() if isinstance(value, str) else value
+        (history-cutoff/chat) passes through untouched; a mapping (env) is
+        stripped entry by entry the same way."""
+        if isinstance(value, str):
+            return value.strip()
+        if isinstance(value, dict):
+            return {key: entry.strip() for key, entry in value.items()}
+        return value
 
 
 class ReorderActionRequest(BaseModel):

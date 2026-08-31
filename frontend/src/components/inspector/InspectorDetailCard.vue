@@ -7,6 +7,7 @@ import { vAutosize } from './textareaAutosize.js'
 import CardMenu from './CardMenu.vue'
 import TriggerEditor from './TriggerEditor.vue'
 import OnEnterEditor from './OnEnterEditor.vue'
+import EnvMapEditor from './EnvMapEditor.vue'
 import { handleEnterNext } from './enterToNextField.js'
 import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 import { useTokensBar } from '../../composables/useTokensBar.js'
@@ -36,6 +37,9 @@ const props = defineProps({
   // Every state's {key, uiLabel} — options for the action form's target
   // <select>. Unused for a state card.
   availableStates: { type: Array, default: () => [] },
+  // Every declared project env key's name — options for the action
+  // form's Env editor (EnvMapEditor.vue). Unused for a state card.
+  availableEnvKeys: { type: Array, default: () => [] },
   // Whether the form is open — a v-model (update:open) the parent owns
   // rather than local state, since a list of these cards needs an
   // accordion (only one open at a time), which only a shared parent can enforce.
@@ -78,6 +82,7 @@ const editContextualPrompt = ref('')
 const editTrigger = ref('')
 const editTarget = ref('')
 const editOnEnter = ref('')
+const editEnv = ref({})
 
 const elementIdentity = computed(() => {
   if (!props.selectedElement) return null
@@ -96,6 +101,7 @@ function resetEditBuffers() {
   editTrigger.value = d.trigger ?? ''
   editTarget.value = d.target ?? ''
   editOnEnter.value = d.onEnter ?? ''
+  editEnv.value = { ...(d.env ?? {}) }
 }
 
 watch(elementIdentity, resetEditBuffers, { immediate: true })
@@ -136,6 +142,14 @@ function commitOnEnter() {
   commitTextField('on-enter', editOnEnter.value, props.selectedElement?.data.onEnter ?? '')
 }
 
+// editEnv is a mapping, not a string — commitTextField's === compare
+// doesn't apply, so this mirrors it with a structural comparison instead.
+function commitEnv() {
+  const original = props.selectedElement?.data.env ?? {}
+  if (JSON.stringify(editEnv.value) === JSON.stringify(original)) return
+  emit('set-field', 'env', editEnv.value)
+}
+
 // history-cutoff/chat: a plain instant toggle, not a typed field — no
 // local buffer/blur dance needed.
 function commitBoolField(field, value) {
@@ -158,6 +172,8 @@ const deleteDisabledReason = computed(() => {
 function handleDelete() {
   emit('delete')
 }
+
+const envEntries = computed(() => Object.entries(props.selectedElement?.data.env ?? {}))
 
 function attachmentLabel(index) { return String.fromCharCode(97 + index) }
 
@@ -362,6 +378,11 @@ function selectAttachment(fileName) {
               @blur="commitUiDescription"
             ></textarea>
             <template v-if="!selectedElement.data.isInitEdge">
+              <label class="inspector-detail-form-label" title="Sets project env keys when this action fires — Python expressions, evaluated server-side">
+                <span class="inspector-py-field-icon" title="Python expression">PY</span>
+                Env
+              </label>
+              <EnvMapEditor v-model="editEnv" :key-options="availableEnvKeys" @blur="commitEnv" />
               <label class="inspector-detail-form-label" title="A Python expression, evaluated server-side">
                 <span class="inspector-py-field-icon" title="Python expression">PY</span>
                 Trigger
@@ -388,6 +409,10 @@ function selectAttachment(fileName) {
           <div v-else key="readonly" class="inspector-detail-readonly">
             <p v-if="selectedElement.data.uiDescription" class="inspector-detail-ui_description">{{ selectedElement.data.uiDescription }}</p>
             <p class="inspector-detail-field"><template v-if="!selectedElement.data.isInitEdge"><strong>{{ stateLabelFor(selectedElement.data.source) }}</strong> → </template><strong>{{ stateLabelFor(selectedElement.data.target) }}</strong></p>
+            <p v-if="envEntries.length" class="inspector-detail-field">
+              <strong>Env:</strong>
+              <code v-for="[key, value] in envEntries" :key="key" class="inspector-detail-code">{{ key }} = {{ value }}</code>
+            </p>
             <p v-if="selectedElement.data.trigger" class="inspector-detail-field"><strong>Trigger:</strong><code class="inspector-detail-code">{{ selectedElement.data.trigger }}</code></p>
             <p v-if="selectedElement.data.onEnter" class="inspector-detail-field"><strong>On enter:</strong> {{ selectedElement.data.onEnter }}</p>
             <p v-if="selectedElement.data.actionPrompt" class="inspector-detail-field"><strong>Action prompt:</strong> {{ selectedElement.data.actionPrompt }}</p>
@@ -470,7 +495,7 @@ function selectAttachment(fileName) {
 .inspector-detail-tokens-bar-fill-orange { background: #f5a623; }
 .inspector-detail-tokens-bar-fill-red { background: #c62828; }
 .inspector-detail-field { margin: 0 0 0.4rem; line-height: 1.4; }
-.inspector-detail-code { font-size: 0.75rem; background: #eee; border-radius: 4px; padding: 0.1rem 0.4rem; }
+.inspector-detail-code { display: inline-block; margin: 0.15rem 0.3rem 0 0; font-size: 0.75rem; background: #eee; border-radius: 4px; padding: 0.1rem 0.4rem; }
 .inspector-attachments { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.5rem; }
 .inspector-attachment-btn { width: 1.5rem; height: 1.5rem; line-height: 1; border-radius: 4px; border: 1px solid #4a6fa5; background: white; color: #4a6fa5; cursor: pointer; font-size: 0.72rem; font-weight: 600; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .inspector-attachment-btn:hover:not(:disabled) { background: #4a6fa5; color: white; }

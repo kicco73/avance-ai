@@ -198,3 +198,21 @@ class TriggerExpressionAnalyzer:
                     f"with a {right_kind} — this will raise a TypeError as soon as it's evaluated"
                 )
         return violations
+
+    @classmethod
+    def expression_kind(cls, expression: str) -> str | None:
+        """`expression`'s own statically-known kind ('number'/'string'/
+        'bool'), the same notion _leaf_kind uses for one comparison
+        operand — exposed here for a caller checking type *consistency*
+        (e.g. an env key's declared value vs. what an action's own
+        `env:` writes to it) rather than an ordering comparison. None
+        when the expression's kind isn't knowable ahead of a real turn
+        (it reads env.*/a bare name, combines values via an operator
+        this can't see through, or — for a caller passing already-
+        untrusted text — isn't even valid syntax), never something to
+        treat as a mismatch on its own."""
+        try:
+            tree = ast.parse(expression, mode="eval").body
+        except SyntaxError:
+            return None
+        return cls._leaf_kind(tree)
