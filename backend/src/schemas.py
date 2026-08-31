@@ -14,6 +14,16 @@ class LoginRequest(BaseModel):
     credential: str
 
 
+class AcceptTermsRequest(BaseModel):
+    # The invite code a "share project" link carries (see
+    # frontend/src/shareLink.js) — self-registration is only allowed
+    # when this clears AuthService.complete_registration's own
+    # ProjectService.validate_invite_for_registration check (exists, not
+    # expired, under its max-shares budget). None for a plain sign-in
+    # with no invite context, which registration now refuses.
+    invite_code: str | None = None
+
+
 class ActionRequest(BaseModel):
     action_name: str
 

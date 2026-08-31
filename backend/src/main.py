@@ -31,7 +31,7 @@ from tracking.wakeup_service import WakeupService
 from talk.talk_service import TalkService
 from listen.listen_service import ListenService
 
-__version__ = "1.16.22"
+__version__ = "1.16.23"
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -78,11 +78,20 @@ def create_app() -> FastAPI:
             force_drop_and_create_when_incompatible=config.database_force_drop_and_create_when_incompatible,
         )
 
+        # Built before AuthService below — AuthService.complete_registration
+        # delegates every invite rule (exists/not expired/under its
+        # max-shares budget) to ProjectService (see project/invites.py's
+        # InviteManager), so it needs this constructed first.
+        project_service = ProjectService(
+            db, ai_live_service,
+            invite_valid_days=config.invite_valid_days, invite_max_shares=config.invite_max_shares,
+        )
+
         # Built once here (not a global singleton — see auth/auth_service.py's
         # own module docstring), passed explicitly to whatever needs it.
         # Also bridged onto app.state: AuthMiddleware was already
         # registered (add_middleware, below) before this existed.
-        auth_service = AuthService(db, config.auth_providers, config.auth_token_ttl_in_hours)
+        auth_service = AuthService(db, config.auth_providers, config.auth_token_ttl_in_hours, project_service)
         app.state.auth_service = auth_service
 
         test_event_broadcaster = LastStatusBroadcaster(QueueProgressBroadcaster(ai_test_service))
@@ -94,7 +103,6 @@ def create_app() -> FastAPI:
             min_job_interval_ms=config.test_service_min_test_interval_ms,
         )
 
-        project_service = ProjectService(db, ai_live_service)
         session_manager = ChatSessionManager(db, open_window_minutes=config.max_session_duration_in_minutes)
         
         # A leaf service (see metrics/metric_service.py's own module

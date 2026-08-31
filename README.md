@@ -145,6 +145,15 @@ secrets). Top-level sections:
   is fully local (no `key`, downloads/caches its own model on first use).
   When disabled, the corresponding endpoints respond with a clear
   "service not available" error instead of the backend failing to boot.
+- **`project-service.invite-valid-days`** / **`project-service.invite-max-shares`**
+  — optional, default to `7` and `3`. Govern "share project" invite
+  links (Manage projects' own Share dialog, backed by
+  `project/invites.py`'s `InviteManager`): how many days a freshly
+  generated invite code stays redeemable, and how many new registrations
+  it can carry before self-registration through it is refused —
+  registration is invite-only (see `AuthService.complete_registration`).
+  A fresh `Invite` row (its own code/expiry/budget) is created every
+  time the dialog opens, never reused.
 
 Restart the backend after any change (`--reload` does this automatically
 when `.config.yml`'s containing files change, but `.config.yml` itself is

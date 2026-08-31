@@ -330,3 +330,35 @@ class TestServiceMinTestIntervalMs:
         content = MINIMAL_CONFIG + "\ntest-service:\n  min-test-interval-ms: -1\n"
         with pytest.raises(ConfigError):
             _load(monkeypatch, tmp_path, content)
+
+
+class TestInviteValidDays:
+    def test_defaults_to_7_when_the_section_is_omitted(self, monkeypatch, tmp_path):
+        config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
+        assert config.invite_valid_days == 7
+
+    def test_reads_a_custom_value(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG + "\nproject-service:\n  invite-valid-days: 14\n"
+        config = _load(monkeypatch, tmp_path, content)
+        assert config.invite_valid_days == 14
+
+    def test_rejects_a_non_positive_value(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG + "\nproject-service:\n  invite-valid-days: 0\n"
+        with pytest.raises(ConfigError):
+            _load(monkeypatch, tmp_path, content)
+
+
+class TestInviteMaxShares:
+    def test_defaults_to_3_when_the_section_is_omitted(self, monkeypatch, tmp_path):
+        config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
+        assert config.invite_max_shares == 3
+
+    def test_reads_a_custom_value(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG + "\nproject-service:\n  invite-max-shares: 10\n"
+        config = _load(monkeypatch, tmp_path, content)
+        assert config.invite_max_shares == 10
+
+    def test_rejects_a_non_positive_value(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG + "\nproject-service:\n  invite-max-shares: 0\n"
+        with pytest.raises(ConfigError):
+            _load(monkeypatch, tmp_path, content)

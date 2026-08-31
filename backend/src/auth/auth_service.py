@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import secrets
 from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING
 
 import jwt
 
@@ -15,6 +16,9 @@ from auth.auth_provider import AuthenticatedUser, AuthProvider
 from auth.providers.google_auth_provider import GoogleAuthProvider
 from config import AuthProviderConfig
 from db import Db
+
+if TYPE_CHECKING:
+    from project.project_service import ProjectService
 
 _JWT_ALGORITHM = "HS256"
 
@@ -32,8 +36,12 @@ class AuthService:
     # not the whole AppConfig object — same shape as AiService.for_live
     # (config.ai_services) elsewhere, and easier to construct from a test
     # without a real config.yml.
-    def __init__(self, db: Db, providers: list[AuthProviderConfig], token_ttl_in_hours: float) -> None:
+    def __init__(
+        self, db: Db, providers: list[AuthProviderConfig], token_ttl_in_hours: float,
+        project_service: "ProjectService",
+    ) -> None:
         self._db = db
+        self._project_service = project_service
         self._jwt_secret = self._resolve_jwt_secret()
         self.token_ttl = timedelta(hours=token_ttl_in_hours)
         # Only entries whose driver this build actually knows how to
@@ -122,19 +130,31 @@ class AuthService:
             picture_url=payload.get("picture_url"), role=None,
         )
 
-    def complete_registration(self, token: str) -> None:
+    def complete_registration(self, token: str, invite_code: str | None = None) -> None:
         """TermsView.vue's Accept action: creates the User row login()
         deliberately deferred, keyed off the same already-issued token —
         no new cookie needed, verify_token resolves it as a normal
-        registered user from here on."""
+        registered user from here on.
+
+        Self-registration is invite-only: `invite_code` is the "share
+        project" invite code a QR/link carries (frontend/src/shareLink.js)
+        and must clear ProjectService.validate_invite_for_registration
+        (exists, not expired, under its max-shares budget) — see that
+        method for the specific PermissionError each failure raises — or
+        this is a stranger who was never invited, registration refused,
+        no User row created. Invite validation happens before the User
+        row is ever created, and its redemption is only recorded (see
+        ProjectService.redeem_invite) once that row actually exists."""
         payload = self._decode(token)
         email = payload.get("email") if payload else None
         if email is None:
             raise ValueError("Invalid or expired session.")
+        invite = self._project_service.validate_invite_for_registration(invite_code)
         user = self._db.get_or_create_user(
             payload.get("provider"), payload.get("provider_user_id"), email, payload.get("name"), payload.get("picture_url")
         )
         self._db.update_last_login(user.id)
+        self._project_service.redeem_invite(invite, user.id)
 
     def get_profile(self, email: str) -> dict | None:
         return self._db.get_user_by_email(email)

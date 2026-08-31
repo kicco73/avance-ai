@@ -14,6 +14,7 @@ from automaton.automaton_yaml_editor import InitActionTargetError
 from chat.chat_service import ChatService
 from project.project_service import ProjectService
 from schemas import PublishProjectRequest, ReorderActionRequest, SetProjectFieldRequest
+from session import Session
 
 from .base_controller import BaseController, delete, get, post, put
 from .project_commit_mixin import ProjectCommitMixin
@@ -132,17 +133,28 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
-    @get("/api/projects/by-id/{project_id}", role="user")
-    def get_project_by_share_id(self, project_id: str):
-        """Resolves a project's public share id (project.id, what
-        automaton.<id> names — see get_project_metadata's own "id" above)
-        back to its internal name. Unlike every other route in this file,
-        open to any authenticated role: it's the lookup a scanned "share
-        project" QR/link needs right after login (see shareLink.js and
-        useAppBoot.js), well before the visiting identity's own role is
-        known to be admin. null project_name when the id doesn't resolve
-        to anything, never an error."""
-        return {"project_name": self.project_service.get_project_name_by_share_id(project_id)}
+    @post("/api/projects/{project_name}/invites", role="admin")
+    def post_create_invite(self, project_name: str):
+        """ShareProjectDialog.vue's own trigger — a fresh Invite row (own
+        random code, expiry, max-shares budget — see
+        ProjectService.create_invite) every time the dialog opens, never
+        reused. {code, expires_at, max_shares}."""
+        try:
+            return self.project_service.create_invite(project_name, Session().user)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+
+    @get("/api/projects/by-invite/{code}", role="user")
+    def get_project_by_invite_code(self, code: str):
+        """Resolves a "share project" invite code back to the project it
+        was generated for. Unlike every other route in this file, open to
+        any authenticated role: it's the lookup a scanned QR/link needs
+        right after login (see shareLink.js and useAppBoot.js), well
+        before the visiting identity's own role is known to be admin.
+        Existence-only — see ProjectService.get_project_name_by_invite_code
+        for why expiry/max-shares never gate this path. null project_name
+        when the code doesn't resolve to anything, never an error."""
+        return {"project_name": self.project_service.get_project_name_by_invite_code(code)}
 
     @get("/api/projects/{project_name}/files", role="admin")
     def get_project_files(self, project_name: str):

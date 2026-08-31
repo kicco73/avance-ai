@@ -5,6 +5,7 @@ import EditProjectView from './components/project/edit/EditProjectView.vue'
 import LabelProjectView from './components/project/label/LabelProjectView.vue'
 import LoginView from './components/LoginView.vue'
 import TermsView from './components/TermsView.vue'
+import InviteRequiredView from './components/InviteRequiredView.vue'
 import ProfileMenu from './components/ProfileMenu.vue'
 import ProfileView from './components/ProfileView.vue'
 import SettingsMenu from './components/settings/SettingsMenu.vue'
@@ -39,6 +40,20 @@ import {
 } from './chatStore.js'
 import { useAppBoot } from './composables/useAppBoot.js'
 import { useChatFlipTransition } from './composables/useChatFlipTransition.js'
+import { peekInviteCode } from './shareLink.js'
+
+// Read once, at this component's own setup — the only mount App.vue
+// ever gets, and shareLink.js's own module-level capture has already
+// run by then (import graphs resolve before any component's setup()
+// body executes). Whether a pending (unregistered) identity gets
+// TermsView (this app's own self-service registration) or
+// InviteRequiredView (registration refused — see AuthService.
+// complete_registration) hinges on this alone: registration is
+// invite-only now, recognizable only by having arrived via a "share
+// project" link. A truthy code here is no guarantee it's still valid
+// (expiry/max-shares are only checked server-side, at Accept) — see
+// termsError/TermsView's own submitError for that outcome.
+const hasSharedInvite = !!peekInviteCode()
 
 const editProjectName = ref(null)
 const labelProjectName = ref(null)
@@ -105,7 +120,7 @@ const currentUserProfile = ref(null)
 const currentUserRole = ref(null)
 
 const {
-  bootStatus, needsTerms,
+  bootStatus, needsTerms, termsError,
   getActiveProjectName, startBootSequence,
   handleLoggedIn, handleTermsAccept, handleTermsReject, handleLogout,
 } = useAppBoot(
@@ -439,7 +454,8 @@ onBeforeUnmount(() => {
        api.js's apiFetch) can happen at any point, including mid-boot. -->
   <LoginView v-if="needsLogin" @logged-in="handleLoggedIn" />
 
-  <TermsView v-else-if="needsTerms" @accept="handleTermsAccept" @reject="handleTermsReject" />
+  <TermsView v-else-if="needsTerms && hasSharedInvite" :submit-error="termsError" @accept="handleTermsAccept" @reject="handleTermsReject" />
+  <InviteRequiredView v-else-if="needsTerms" @logout="handleTermsReject" />
 
   <SplashScreen v-else-if="bootStatus === 'waiting'" variant="connecting" />
   <SplashScreen v-else-if="bootStatus === 'failed'" variant="failed" @retry="startBootSequence" />

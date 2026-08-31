@@ -221,14 +221,6 @@ class ProjectInspector:
             "signal_tracking_on_ai_message": automaton.autotracking_on_ai_message,
         }
 
-    def get_project_name_by_share_id(self, project_id: str) -> str | None:
-        """Resolves a project's public share id (project.id, what
-        automaton.<id> names — see get_project_metadata's own "id" above)
-        back to its internal name. None when it doesn't resolve to
-        anything, never an error — the lookup a scanned "share project"
-        QR/link needs once its session is authenticated."""
-        return self._db.get_project_name_by_project_id(project_id)
-
     def get_identifier_registry(self, project_name: str) -> dict[str, dict[str, str]]:
         """Every identifier `project_name`'s trigger/`env:` expressions can
         reference, plus an "automaton.<id>"/"automaton.<id>.env" entry per

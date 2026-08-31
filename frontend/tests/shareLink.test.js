@@ -9,34 +9,53 @@ describe('shareLink', () => {
     vi.resetModules()
   })
 
-  it('captures a ?project=<id> query param, strips it from the address bar, and hands it out exactly once', async () => {
-    window.history.pushState(null, '', '/?project=abc123&foo=bar')
-    const { consumeSharedProjectId } = await import('../src/shareLink.js')
+  it('captures a ?invite=<code> query param, strips it from the address bar, and hands it out exactly once', async () => {
+    window.history.pushState(null, '', '/?invite=Ab3dE9&foo=bar')
+    const { consumeInviteCode } = await import('../src/shareLink.js')
 
     expect(window.location.search).toBe('?foo=bar')
-    expect(consumeSharedProjectId()).toBe('abc123')
-    expect(consumeSharedProjectId()).toBeNull()
+    expect(consumeInviteCode()).toBe('Ab3dE9')
+    expect(consumeInviteCode()).toBeNull()
   })
 
-  it('drops the query string entirely once project was its only param', async () => {
-    window.history.pushState(null, '', '/?project=abc123')
+  it('drops the query string entirely once invite was its only param', async () => {
+    window.history.pushState(null, '', '/?invite=Ab3dE9')
     await import('../src/shareLink.js')
 
     expect(window.location.search).toBe('')
   })
 
-  it('resolves to null when there is no project param at all', async () => {
+  it('resolves to null when there is no invite param at all', async () => {
     window.history.pushState(null, '', '/?foo=bar')
-    const { consumeSharedProjectId } = await import('../src/shareLink.js')
+    const { consumeInviteCode } = await import('../src/shareLink.js')
 
-    expect(consumeSharedProjectId()).toBeNull()
+    expect(consumeInviteCode()).toBeNull()
     expect(window.location.search).toBe('?foo=bar') // left untouched
   })
 
-  it('buildShareUrl encodes the id into a link at the current origin/pathname', async () => {
+  it('buildInviteUrl encodes the code into a link at the current origin/pathname', async () => {
     window.history.pushState(null, '', '/')
-    const { buildShareUrl } = await import('../src/shareLink.js')
+    const { buildInviteUrl } = await import('../src/shareLink.js')
 
-    expect(buildShareUrl('my id/token')).toBe(`${window.location.origin}/?project=my%20id%2Ftoken`)
+    expect(buildInviteUrl('Ab 3d/E9')).toBe(`${window.location.origin}/?invite=Ab%203d%2FE9`)
+  })
+
+  describe('peekInviteCode', () => {
+    it('reads the captured code without spending it — repeatable, unlike consumeInviteCode', async () => {
+      window.history.pushState(null, '', '/?invite=Ab3dE9')
+      const { peekInviteCode, consumeInviteCode } = await import('../src/shareLink.js')
+
+      expect(peekInviteCode()).toBe('Ab3dE9')
+      expect(peekInviteCode()).toBe('Ab3dE9') // still there
+      expect(consumeInviteCode()).toBe('Ab3dE9') // now actually spent
+      expect(peekInviteCode()).toBeNull()
+    })
+
+    it('resolves to null with no invite param at all', async () => {
+      window.history.pushState(null, '', '/')
+      const { peekInviteCode } = await import('../src/shareLink.js')
+
+      expect(peekInviteCode()).toBeNull()
+    })
   })
 })

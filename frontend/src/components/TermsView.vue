@@ -9,7 +9,7 @@
 // Also reused as-is by LiveChatWindow.vue whenever a project's own
 // legal/terms.md is pending acceptance for the active user — showReject=
 // false there since there's nothing to decline, just an Accept to dismiss it.
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { getTerms } from '../api.js'
 import { renderMarkdown } from '../markdown.js'
 import logoUrl from '../assets/avance-logo.png'
@@ -23,7 +23,12 @@ const props = defineProps({
   showReject: { type: Boolean, default: true },
   // Defaults to the platform-wide GET /api/terms; LiveChatWindow.vue passes
   // its own fetcher instead, reading the project's own legal/terms.md.
-  fetchTerms: { type: Function, default: getTerms }
+  fetchTerms: { type: Function, default: getTerms },
+  // A failed Accept's own reason (see useAppBoot.js's termsError) —
+  // e.g. an invite code that turned out expired/maxed-out between page
+  // load and clicking Accept. Empty/unset for LiveChatWindow.vue's own
+  // reuse, which has no equivalent failure mode of its own.
+  submitError: { type: String, default: '' }
 })
 
 const emit = defineEmits(['accept', 'reject'])
@@ -46,6 +51,15 @@ onMounted(async () => {
 const CLOSE_ANIMATION_MS = 300
 const closing = ref(false)
 
+// accept() plays the closing animation optimistically, before App.vue's
+// own async handleTermsAccept has actually resolved — a rejected invite
+// code (submitError going from empty to set, same instance still
+// mounted since needsTerms never flipped) needs to bring the panel back
+// into view rather than leaving it faded out with no way to retry.
+watch(() => props.submitError, (err) => {
+  if (err) closing.value = false
+})
+
 function accept() {
   if (closing.value) return
   closing.value = true
@@ -67,6 +81,8 @@ function reject() {
       <p v-if="loading" class="terms-status">Loading…</p>
       <p v-else-if="error" class="terms-status terms-error">{{ error }}</p>
       <div v-else class="terms-content" v-html="renderMarkdown(content)"></div>
+
+      <p v-if="submitError" class="terms-status terms-error terms-submit-error">{{ submitError }}</p>
 
       <div class="terms-actions">
         <button v-if="showReject" type="button" class="terms-btn terms-btn-reject" @click="reject">Reject</button>
@@ -159,6 +175,12 @@ function reject() {
 
 .terms-error {
   color: #c62828;
+}
+
+.terms-submit-error {
+  flex-shrink: 0;
+  margin: 1rem 0 0;
+  text-align: right;
 }
 
 .terms-content {

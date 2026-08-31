@@ -5,7 +5,7 @@ vi.mock('../src/api.js', () => ({
   getState: vi.fn(),
   getMe: vi.fn(),
   getProjects: vi.fn(),
-  getProjectByShareId: vi.fn(),
+  getProjectByInviteCode: vi.fn(),
   activateProject: vi.fn(),
   postAcceptTerms: vi.fn(),
   postLogout: vi.fn(),
@@ -23,7 +23,8 @@ vi.mock('../src/dialogStore.js', () => ({
   confirmDialog: vi.fn(),
 }))
 vi.mock('../src/shareLink.js', () => ({
-  consumeSharedProjectId: vi.fn(() => null),
+  consumeInviteCode: vi.fn(() => null),
+  peekInviteCode: vi.fn(() => null),
 }))
 vi.mock('../src/chatStore.js', () => ({
   setCapabilities: vi.fn(),
@@ -34,12 +35,12 @@ vi.mock('../src/chatStore.js', () => ({
   loadAiModels: vi.fn(),
 }))
 
-import { getState, getMe, getProjects, getProjectByShareId, activateProject, postAcceptTerms, postLogout } from '../src/api.js'
+import { getState, getMe, getProjects, getProjectByInviteCode, activateProject, postAcceptTerms, postLogout } from '../src/api.js'
 import { disconnect as disconnectChat } from '../src/chatClient.js'
 import { clearApiError } from '../src/errorStore.js'
 import { requireLogin } from '../src/authStore.js'
 import { confirmDialog } from '../src/dialogStore.js'
-import { consumeSharedProjectId } from '../src/shareLink.js'
+import { consumeInviteCode, peekInviteCode } from '../src/shareLink.js'
 import { setCapabilities, setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateChange, loadMessages, loadAiModels } from '../src/chatStore.js'
 import { useAppBoot } from '../src/composables/useAppBoot.js'
 
@@ -241,15 +242,15 @@ describe('useAppBoot', () => {
     it('lands a plain user directly on the shared project instead of their previously active one', async () => {
       getState.mockResolvedValue({})
       getMe.mockResolvedValue({ role: 'user' })
-      consumeSharedProjectId.mockReturnValueOnce('shared-id')
-      getProjectByShareId.mockResolvedValue({ project_name: 'shared-project' })
+      consumeInviteCode.mockReturnValueOnce('shared-id')
+      getProjectByInviteCode.mockResolvedValue({ project_name: 'shared-project' })
       activateProject.mockResolvedValue({})
       const s = mount()
 
       s.startBootSequence()
       await vi.waitFor(() => expect(s.bootStatus.value).toBe('ready'))
 
-      expect(getProjectByShareId).toHaveBeenCalledWith('shared-id')
+      expect(getProjectByInviteCode).toHaveBeenCalledWith('shared-id')
       expect(activateProject).toHaveBeenCalledWith('shared-project')
       expect(liveChatProjectName.value).toBe('shared-project')
       expect(getProjects).not.toHaveBeenCalled() // never fell back to getActiveProjectName
@@ -258,8 +259,8 @@ describe('useAppBoot', () => {
     it('pushes an admin straight into chat, on the shared project, and loads its messages', async () => {
       getState.mockResolvedValue({})
       getMe.mockResolvedValue({ role: 'admin' })
-      consumeSharedProjectId.mockReturnValueOnce('shared-id')
-      getProjectByShareId.mockResolvedValue({ project_name: 'shared-project' })
+      consumeInviteCode.mockReturnValueOnce('shared-id')
+      getProjectByInviteCode.mockResolvedValue({ project_name: 'shared-project' })
       activateProject.mockResolvedValue({})
       const s = mount()
 
@@ -274,8 +275,8 @@ describe('useAppBoot', () => {
     it("lands a supervisor's Label sessions view on the shared project", async () => {
       getState.mockResolvedValue({})
       getMe.mockResolvedValue({ role: 'supervisor' })
-      consumeSharedProjectId.mockReturnValueOnce('shared-id')
-      getProjectByShareId.mockResolvedValue({ project_name: 'shared-project' })
+      consumeInviteCode.mockReturnValueOnce('shared-id')
+      getProjectByInviteCode.mockResolvedValue({ project_name: 'shared-project' })
       activateProject.mockResolvedValue({})
       const s = mount()
 
@@ -302,8 +303,8 @@ describe('useAppBoot', () => {
       getState.mockResolvedValue({})
       getMe.mockResolvedValue({ role: 'user' })
       getProjects.mockResolvedValue({ active: 'proj-fallback', projects: [] })
-      consumeSharedProjectId.mockReturnValueOnce('stale-id')
-      getProjectByShareId.mockResolvedValue({ project_name: null })
+      consumeInviteCode.mockReturnValueOnce('stale-id')
+      getProjectByInviteCode.mockResolvedValue({ project_name: null })
       const s = mount()
 
       s.startBootSequence()
@@ -317,8 +318,8 @@ describe('useAppBoot', () => {
       getState.mockResolvedValue({})
       getMe.mockResolvedValue({ role: 'user' })
       getProjects.mockResolvedValue({ active: 'proj-fallback', projects: [] })
-      consumeSharedProjectId.mockReturnValueOnce('stale-id')
-      getProjectByShareId.mockRejectedValue(new Error('boom'))
+      consumeInviteCode.mockReturnValueOnce('stale-id')
+      getProjectByInviteCode.mockRejectedValue(new Error('boom'))
       const s = mount()
 
       s.startBootSequence()
@@ -371,6 +372,45 @@ describe('useAppBoot', () => {
       await s.handleTermsAccept()
 
       expect(s.needsTerms.value).toBe(true)
+    })
+
+    it('surfaces the backend-reported reason (e.g. an expired/maxed invite) in termsError', async () => {
+      const err = new Error('This invite link has expired.')
+      err.detail = ''
+      postAcceptTerms.mockRejectedValue(err)
+      const s = mount()
+      s.needsTerms.value = true
+
+      await s.handleTermsAccept()
+
+      expect(s.termsError.value).toBe('This invite link has expired.')
+      expect(s.needsTerms.value).toBe(true)
+    })
+
+    it('clears any previous termsError at the start of a fresh attempt', async () => {
+      postAcceptTerms.mockRejectedValueOnce(new Error('nope')).mockResolvedValueOnce()
+      getState.mockResolvedValue({})
+      getMe.mockResolvedValue({ role: 'admin' })
+      const s = mount()
+      s.needsTerms.value = true
+
+      await s.handleTermsAccept()
+      expect(s.termsError.value).toBe('nope')
+
+      await s.handleTermsAccept()
+      expect(s.termsError.value).toBe('')
+    })
+
+    it('sends the peeked (not consumed) shared project id — registration is invite-only', async () => {
+      postAcceptTerms.mockResolvedValue()
+      peekInviteCode.mockReturnValueOnce('invite-id')
+      const s = mount()
+      s.needsTerms.value = true
+
+      await s.handleTermsAccept()
+
+      expect(postAcceptTerms).toHaveBeenCalledWith('invite-id')
+      expect(consumeInviteCode).not.toHaveBeenCalled() // still there for the later landing resolution
     })
   })
 

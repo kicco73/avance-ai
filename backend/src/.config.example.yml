@@ -51,6 +51,19 @@ test-service:
   max-tests-per-minute: 15
   min-test-interval-ms: 0
 
+project-service:
+  # Optional section — can be omitted entirely, and each field within it
+  # is independently optional too. Governs "share project" invite links
+  # (see project/invites.py's InviteManager) — a fresh Invite row (own
+  # random code) is generated every time the Share dialog opens.
+  # How many days a freshly generated invite code stays redeemable,
+  # counted from the moment it's created.
+  invite-valid-days: 7
+  # How many new registrations a single invite code can carry before
+  # AuthService.complete_registration starts refusing it (self-
+  # registration is invite-only — see AcceptTermsRequest).
+  invite-max-shares: 3
+
 ai-service:
   # Optional. Passed as max_tokens/max_output_tokens to
   # every provider below — the ceiling a single structured-output call

@@ -249,17 +249,7 @@ function selectDownload(name) {
   emit('download', name)
 }
 
-// Shareable only once a project has declared a public id (project.id —
-// see InspectorProjectCard.vue's "Id" field): the share link resolves a
-// scanned QR back to a project through that id (see
-// useAppBoot.js's activateSharedProject), and a project without one has
-// nothing for it to resolve.
-function projectShareId(name) {
-  return metadataByName.value[name]?.id || null
-}
-
 function selectShare(name) {
-  if (!projectShareId(name)) return
   shareProjectFor.value = name
 }
 
@@ -442,8 +432,7 @@ defineExpose({ refresh: load })
                   <button
                     type="button"
                     class="manage-projects-share-btn"
-                    :disabled="!projectShareId(row.name)"
-                    :title="projectShareId(row.name) ? 'Share project' : 'Share project (set an id in Edit project first)'"
+                    title="Share project"
                     @click="selectShare(row.name)"
                   >
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
@@ -490,8 +479,6 @@ defineExpose({ refresh: load })
                           <button
                             type="button"
                             class="manage-projects-menu-item"
-                            :disabled="!projectShareId(row.name)"
-                            :title="projectShareId(row.name) ? '' : 'Set an id in Edit project first'"
                             @click="selectShare(row.name); openMenuFor = null"
                           >
                             <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
@@ -554,7 +541,7 @@ defineExpose({ refresh: load })
 
     <ShareProjectDialog
       v-if="shareProjectFor"
-      :project-id="projectShareId(shareProjectFor)"
+      :project-name="shareProjectFor"
       :ui-label="projectTitle(shareProjectFor)"
       @close="shareProjectFor = null"
     />
@@ -1019,13 +1006,8 @@ defineExpose({ refresh: load })
   cursor: pointer;
 }
 
-.manage-projects-share-btn:not(:disabled):hover {
+.manage-projects-share-btn:hover {
   background: #f0f4fa;
-}
-
-.manage-projects-share-btn:disabled {
-  color: #ccc;
-  cursor: not-allowed;
 }
 
 .manage-projects-wipe-btn {
@@ -1133,17 +1115,8 @@ defineExpose({ refresh: load })
   color: #333;
 }
 
-.manage-projects-menu-item:not(:disabled):hover {
+.manage-projects-menu-item:hover {
   background: #f0f4fa;
-}
-
-.manage-projects-menu-item:disabled {
-  color: #ccc;
-  cursor: not-allowed;
-}
-
-.manage-projects-menu-item:disabled svg {
-  color: #ccc;
 }
 
 .manage-projects-menu-item svg {

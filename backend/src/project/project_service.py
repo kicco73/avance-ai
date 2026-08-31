@@ -17,6 +17,7 @@ from tracking.session_import import SessionImportManager
 
 from .editor import ProjectEditor
 from .inspector import ProjectInspector
+from .invites import InviteManager
 from .manager import ProjectManager
 from .archive.automaton_loader import AutomatonLoader
 from .project_import_bundle_job import ProjectImportBundleJob
@@ -29,7 +30,10 @@ __all__ = ["ProjectService", "CommitCallback"]
 
 
 class ProjectService(object):
-    def __init__(self, db: Db, ai_service: "AiService | None" = None) -> None:
+    def __init__(
+        self, db: Db, ai_service: "AiService | None" = None,
+        invite_valid_days: int = 7, invite_max_shares: int = 3,
+    ) -> None:
         self._db = db
         session_export_manager = SessionExportManager(db)
         session_import_manager = SessionImportManager(db)
@@ -39,6 +43,7 @@ class ProjectService(object):
             db, self._automaton_loader, self._inspector, session_export_manager, session_import_manager
         )
         self._editor = ProjectEditor(db, self._automaton_loader, self._inspector, self._manager)
+        self._invites = InviteManager(db, invite_valid_days, invite_max_shares)
 
     # -- ProjectInspector -------------------------------------------------
 
@@ -99,9 +104,6 @@ class ProjectService(object):
     def get_project_metadata(self, project_name: str) -> ProjectPayload:
         return self._inspector.get_project_metadata(project_name)
 
-    def get_project_name_by_share_id(self, project_id: str) -> str | None:
-        return self._inspector.get_project_name_by_share_id(project_id)
-
     def get_identifier_registry(self, project_name: str) -> dict[str, dict[str, str]]:
         return self._inspector.get_identifier_registry(project_name)
 
@@ -136,6 +138,20 @@ class ProjectService(object):
 
     def accept_legal_terms(self, username: str, project_name: str) -> None:
         self._manager.accept_legal_terms(username, project_name)
+
+    # -- InviteManager ----------------------------------------------------
+
+    def create_invite(self, project_name: str, created_by: str | None) -> dict:
+        return self._invites.create_invite(project_name, created_by)
+
+    def get_project_name_by_invite_code(self, code: str) -> str | None:
+        return self._invites.get_project_name_by_code(code)
+
+    def validate_invite_for_registration(self, code: str | None):
+        return self._invites.validate_for_registration(code)
+
+    def redeem_invite(self, invite, user_id: str) -> None:
+        self._invites.redeem(invite, user_id)
 
     def set_manually_paused(self, project_name: str) -> dict:
         return self._manager.set_manually_paused(project_name)

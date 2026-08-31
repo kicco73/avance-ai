@@ -9,6 +9,7 @@ from logging_factory import LoggerFactory
 from .test_aggregates import TestAggregateMixin
 from .tests import TestMixin
 from .history import HistoryMixin
+from .invites import InviteMixin
 from .messages import MessageMixin
 from .observability import ObservabilityMixin
 from .projects import ProjectMixin
@@ -22,7 +23,7 @@ from .tracking import TrackingMixin
 from playhouse.db_url import connect, parse as parse_db_url
 
 from .models import (
-    Archive, ChatSession, EditHistory, Message,
+    Archive, ChatSession, EditHistory, Invite, Message,
     Project, ProjectObserverIndex, Settings, User, SessionSummary, StateRemap, SystemWarning, Test,
     TestAggregateResult, TestObservation, Tracking, UserProject,
     database,
@@ -45,13 +46,14 @@ class Db(
     SessionSummaryMixin,
     SettingsMixin,
     UserProjectMixin,
+    InviteMixin,
     ObservabilityMixin):
 
     _SQLITE_MAGIC = b"SQLite format 3\x00"
     _MODELS = (
         Project, ChatSession, Message, User, Tracking, Archive, EditHistory, StateRemap,
         Test, TestObservation, TestAggregateResult, SessionSummary, SystemWarning,
-        ProjectObserverIndex, Settings, UserProject,
+        ProjectObserverIndex, Settings, UserProject, Invite,
     )
 
     def __init__(self, database_url: str, force_drop_and_create_when_incompatible: bool=False) -> None:

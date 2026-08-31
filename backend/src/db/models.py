@@ -305,17 +305,50 @@ class EditHistory(BaseModel):
         table_name = 'EditHistory'
         indexes = ((('user_id', 'project_name', 'archive_name', 'kind', 'seq'), True),)
 
+class Invite(BaseModel):
+    """A "share project" link's own row (see ShareProjectDialog.vue/
+    shareLink.js) — one per dialog-open, never reused. `code` is the
+    short random token the link/QR actually carries; project_name/
+    expires_at/max_shares are the invite-only-registration budget
+    InviteManager enforces (project/invites.py) before a brand-new
+    identity is ever allowed to self-register through it (see
+    AuthService.complete_registration). How many people actually have,
+    see UserProject.invite's own backref (`redemptions`) below — never
+    stored on this row itself, always counted live."""
+    id = AutoField()
+    code = CharField(unique=True, index=True)
+    created_at = DateTimeField(default=datetime.utcnow)
+    expires_at = DateTimeField()
+    project_name = ForeignKeyField(Project, field='name', column_name='project_name', backref='invites', on_delete='CASCADE')
+    max_shares = IntegerField()
+    # Nullable + SET NULL, not CASCADE: unlike EditHistory/SystemWarning's
+    # own user_id (whose owner's own data it *is*), an Invite is a link
+    # other people are actively using — deleting the admin who generated
+    # it must never break it for them.
+    created_by = ForeignKeyField(User, field='id', column_name='created_by_id', null=True, backref='invites_created', on_delete='SET NULL')
+
+    class Meta:
+        table_name = 'Invite'
+
 class UserProject(BaseModel):
     """One row per (user, project) once that user has ever accepted the
-    project's legal/terms.md — its absence means the user has never
-    accepted any revision of it. accepted_terms points at the specific
-    Archive row (archive_name=legal/terms.md) they accepted; a mismatch
-    against the project's current such row means the terms changed since
-    and must be re-accepted before a new live session can open (see
-    ProjectService.legal_terms_pending/accept_legal_terms)."""
+    project's legal/terms.md, OR registered onto the platform through an
+    invite to this project (see ProjectService.redeem_invite) — either
+    half may be set independently of the other, and neither implies the
+    other. accepted_terms points at the specific Archive row
+    (archive_name=legal/terms.md) they accepted; a mismatch against the
+    project's current such row means the terms changed since and must be
+    re-accepted before a new live session can open (see
+    ProjectService.legal_terms_pending/accept_legal_terms). invite/
+    invite_timestamp record which Invite (if any) brought this user to
+    this project, and when — Invite.redemptions (this FK's own backref)
+    is how InviteManager counts a code's max_shares usage, by counting
+    rows here rather than any counter stored on Invite itself."""
     user = ForeignKeyField(User, field='id', column_name='user_id', backref='user_projects', on_delete='CASCADE')
     project_name = ForeignKeyField(Project, field='name', column_name='project_name', backref='user_projects', on_delete='CASCADE')
     accepted_terms = ForeignKeyField(Archive, column_name='accepted_terms_id', backref='accepted_by', null=True, on_delete='SET NULL')
+    invite = ForeignKeyField(Invite, column_name='invite_id', null=True, backref='redemptions', on_delete='SET NULL')
+    invite_timestamp = DateTimeField(null=True)
 
     class Meta:
         table_name = 'UserProject'

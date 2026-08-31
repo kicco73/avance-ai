@@ -1,8 +1,7 @@
 """GET/PUT /api/projects/{project_name}/project — reads/writes the optional
 top-level `project:` section (id/ui-label/ui-description) of index.yml
-(ProjectService.get_project_metadata/set_project_field) — and
-GET /api/projects/by-id/{project_id}, the reverse lookup a "share
-project" QR/link resolves through (ProjectService.get_project_name_by_share_id).
+(ProjectService.get_project_metadata/set_project_field). See
+test_controller_invites.py for the "share project" invite endpoints.
 """
 from __future__ import annotations
 
@@ -43,25 +42,6 @@ class TestGetProjectMetadata:
     def test_unknown_project_is_404(self, client):
         response = client.get("/api/projects/does-not-exist/project")
         assert response.status_code == 404
-
-
-class TestGetProjectByShareId:
-    def test_resolves_a_declared_id_to_its_project_name(self, client, hello_project):
-        client.put(f"/api/projects/{hello_project}/project/id", json={"value": "concierge"})
-
-        response = client.get("/api/projects/by-id/concierge")
-        assert response.status_code == 200
-        assert response.json() == {"project_name": hello_project}
-
-    def test_an_unresolved_id_reports_none_rather_than_404ing(self, client):
-        response = client.get("/api/projects/by-id/does-not-exist")
-        assert response.status_code == 200
-        assert response.json() == {"project_name": None}
-
-    def test_a_project_with_no_declared_id_is_unreachable_by_its_name(self, client, hello_project):
-        response = client.get(f"/api/projects/by-id/{hello_project}")
-        assert response.status_code == 200
-        assert response.json() == {"project_name": None}
 
 
 class TestPutProjectField:

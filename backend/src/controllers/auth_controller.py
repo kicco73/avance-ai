@@ -10,7 +10,7 @@ from pathlib import Path
 from fastapi import HTTPException, Request, Response
 
 from auth.auth_service import SESSION_COOKIE_NAME, AuthService
-from schemas import LoginRequest
+from schemas import AcceptTermsRequest, LoginRequest
 from session import Session
 
 from .base_controller import BaseController, get, post
@@ -50,16 +50,22 @@ class AuthController(BaseController):
         return {"success": True}
 
     @post("/api/auth/accept-terms", role="pending")
-    def post_accept_terms(self, request: Request):
+    def post_accept_terms(self, request: Request, req: AcceptTermsRequest):
         """TermsView.vue's Accept button — creates the User row that
         login() deliberately deferred. Reads the session cookie straight
         off the request (rather than Session(), which only carries email/
         role) since AuthService.complete_registration needs the full
         identity the token already has: provider/provider_user_id/name/
-        picture_url."""
+        picture_url. req.invite_code is the invite that registration must
+        carry (see AcceptTermsRequest) — a PermissionError means it didn't
+        (invalid/expired/maxed-out code), surfaced as 403 with the
+        specific reason rather than the 401 an actually-bad/expired
+        session token gets."""
         token = request.cookies.get(SESSION_COOKIE_NAME)
         try:
-            self.auth_service.complete_registration(token)
+            self.auth_service.complete_registration(token, req.invite_code)
+        except PermissionError as exc:
+            raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail=str(exc)) from exc
         return {"success": True}

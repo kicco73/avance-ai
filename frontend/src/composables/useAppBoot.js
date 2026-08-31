@@ -1,10 +1,10 @@
 import { ref } from 'vue'
-import { getState, getMe, getProjects, getProjectByShareId, activateProject, postAcceptTerms, postLogout } from '../api.js'
+import { getState, getMe, getProjects, getProjectByInviteCode, activateProject, postAcceptTerms, postLogout } from '../api.js'
 import { disconnect as disconnectChat } from '../chatClient.js'
 import { clearApiError } from '../errorStore.js'
 import { requireLogin } from '../authStore.js'
 import { confirmDialog } from '../dialogStore.js'
-import { consumeSharedProjectId } from '../shareLink.js'
+import { consumeInviteCode, peekInviteCode } from '../shareLink.js'
 import { setCapabilities, setInputTokenBudgetPerTurn, setTotalTokenBudgetPerSession, handleStateChange, loadMessages, loadAiModels } from '../chatStore.js'
 
 // App.vue's own boot sequence: the backend-readiness ping loop, resolving
@@ -33,6 +33,12 @@ export function useAppBoot(
   // plain re-login just reissues the same role=None token. Takes over the
   // whole screen the same way needsLogin does, ahead of bootStatus.
   const needsTerms = ref(false)
+  // Set by a failed handleTermsAccept — the specific reason an invite
+  // code was refused (invalid/expired/maxed-out, see AuthService.
+  // complete_registration's own PermissionError messages), for
+  // TermsView.vue to actually show. Cleared at the start of every new
+  // attempt so a retry never displays a stale message.
+  const termsError = ref('')
 
   const PING_INTERVAL_MS = 800
   const PING_TIMEOUT_MS = 3000
@@ -127,21 +133,23 @@ export function useAppBoot(
     }
   }
 
-  // The landing-time half of the "share project" QR/link flow (see
-  // shareLink.js and ShareProjectDialog.vue for the other half — capturing
-  // the id and rendering the QR that carries it). Consumes the id captured
-  // at page load, resolves it to a project name, and activates it
-  // server-side so whichever landing view resolveLandingView picks below
-  // (chat for a user, Manage projects -> chat for an admin, Label sessions
-  // for a supervisor) opens on that project instead of the one already
-  // active. Returns null — and leaves the previously active project alone
-  // — whenever there was no shared id, or it no longer resolves to a real
-  // project (deleted, or its id changed since the link was generated).
-  async function activateSharedProject() {
-    const projectId = consumeSharedProjectId()
-    if (!projectId) return null
+  // The landing-time half of the "share project" invite-link flow (see
+  // shareLink.js and ShareProjectDialog.vue for the other half —
+  // capturing the code and rendering the QR that carries it). Consumes
+  // the code captured at page load, resolves it to a project name, and
+  // activates it server-side so whichever landing view resolveLandingView
+  // picks below (chat for a user, Manage projects -> chat for an admin,
+  // Label sessions for a supervisor) opens on that project instead of
+  // the one already active. Existence-only resolution — expiry/max-shares
+  // never gate this path (see GET /api/projects/by-invite/{code}'s own
+  // docstring) — so returns null, leaving the previously active project
+  // alone, only when there was no invite code at all, or the code no
+  // longer resolves to any project (deleted since the link was generated).
+  async function activateInvitedProject() {
+    const code = consumeInviteCode()
+    if (!code) return null
     try {
-      const { project_name: projectName } = await getProjectByShareId(projectId)
+      const { project_name: projectName } = await getProjectByInviteCode(code)
       if (!projectName) return null
       await activateProject(projectName)
       return projectName
@@ -173,7 +181,7 @@ export function useAppBoot(
     } catch {
       return // already surfaced via apiFetch; falls back to the chat-live default
     }
-    const sharedProjectName = await activateSharedProject()
+    const sharedProjectName = await activateInvitedProject()
     if (currentUserRole.value === 'supervisor') {
       labelProjectName.value = sharedProjectName ?? await getActiveProjectName()
     }
@@ -234,12 +242,23 @@ export function useAppBoot(
   // TermsView.vue's Accept — creates the User row (or recreates a deleted
   // one, see needsTerms's own comment), then resumes booting exactly like
   // a fresh login would: the same cookie now resolves as a registered user.
+  // Only reachable at all when App.vue rendered TermsView rather than
+  // InviteRequiredView (see its own gate) — i.e. peekInviteCode() was
+  // already known truthy by then. A non-destructive peek, not
+  // consumeInviteCode(): the later post-registration boot still needs to
+  // actually consume it once, in resolveLandingView's own
+  // activateInvitedProject() above. The invite code being *present* here
+  // doesn't mean it's still *valid* though (expiry/max-shares are only
+  // checked server-side, at this exact call) — a rejection's specific
+  // reason lands in termsError for TermsView to show, rather than the
+  // generic apiFetch error banner (never visible during this boot phase).
   async function handleTermsAccept() {
+    termsError.value = ''
     try {
-      await postAcceptTerms()
-    } catch {
-      // already surfaced via apiFetch; stays on TermsView so it can be retried
-      return
+      await postAcceptTerms(peekInviteCode())
+    } catch (err) {
+      termsError.value = err.detail || err.message || 'Could not complete registration.'
+      return // stays on TermsView so it can be retried
     }
     needsTerms.value = false
     startBootSequence()
@@ -256,6 +275,7 @@ export function useAppBoot(
     }
     disconnectChat()
     needsTerms.value = false
+    termsError.value = ''
     requireLogin()
   }
 
@@ -272,7 +292,7 @@ export function useAppBoot(
   }
 
   return {
-    bootStatus, needsTerms,
+    bootStatus, needsTerms, termsError,
     getActiveProjectName, resolveLandingView, startBootSequence,
     handleLoggedIn, handleTermsAccept, handleTermsReject, handleLogout,
   }

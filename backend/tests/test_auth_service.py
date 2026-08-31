@@ -9,6 +9,7 @@ from auth.auth_provider import AuthenticatedUser, AuthProvider
 from auth.auth_service import AuthService
 from auth.errors import AuthError
 from config import AuthProviderConfig
+from project.project_service import ProjectService
 
 pytestmark = pytest.mark.contract
 
@@ -31,9 +32,10 @@ class _FakeProvider(AuthProvider):
         return {"client_id": "fake-client-id"}
 
 
-def _auth_service(db, provider: _FakeProvider) -> AuthService:
+def _auth_service(db, provider: _FakeProvider, project_service: ProjectService) -> AuthService:
     service = AuthService(
-        db, [AuthProviderConfig(driver="google", key="unused", ui_label="Google")], token_ttl_in_hours=24 * 7,
+        db, [AuthProviderConfig(driver="google", key="unused", ui_label="Google")],
+        token_ttl_in_hours=24 * 7, project_service=project_service,
     )
     # AuthService builds its own provider instances from config (see its
     # own _PROVIDER_CLASSES registry) — swapped out here for the fake,
@@ -53,13 +55,28 @@ def provider(identity) -> _FakeProvider:
 
 
 @pytest.fixture
-def auth_service(db, provider) -> AuthService:
-    return _auth_service(db, provider)
+def project_service(db) -> ProjectService:
+    return ProjectService(db)
+
+
+@pytest.fixture
+def auth_service(db, provider, project_service) -> AuthService:
+    return _auth_service(db, provider, project_service)
 
 
 @pytest.fixture
 def jwt_secret(db, auth_service) -> str:
     return db.get_setting("jwt-secret")
+
+
+# Registration is invite-only (see AuthService.complete_registration) —
+# every test that needs it to actually succeed has to hand it a real
+# Invite row's own code.
+@pytest.fixture
+def invite_code(db, project_service) -> str:
+    db.ensure_project("invite-project")
+    invite = project_service.create_invite("invite-project", created_by=None)
+    return invite["code"]
 
 
 class TestLogin:
@@ -93,9 +110,11 @@ class TestLogin:
 
         assert db.get_user_by_id(identity.email) is None
 
-    def test_login_updates_last_login_for_an_already_registered_user(self, db, auth_service, identity, jwt_secret):
+    def test_login_updates_last_login_for_an_already_registered_user(
+        self, db, auth_service, identity, jwt_secret, invite_code
+    ):
         first_token = auth_service.login("google", "good-credential")
-        auth_service.complete_registration(first_token)
+        auth_service.complete_registration(first_token, invite_code)
 
         second_token = auth_service.login("google", "good-credential")
         payload = jwt.decode(second_token, jwt_secret, algorithms=["HS256"])
@@ -105,10 +124,10 @@ class TestLogin:
 
 
 class TestCompleteRegistration:
-    def test_accepting_terms_creates_the_user_row(self, db, auth_service, identity):
+    def test_accepting_terms_creates_the_user_row(self, db, auth_service, identity, invite_code):
         token = auth_service.login("google", "good-credential")
 
-        auth_service.complete_registration(token)
+        auth_service.complete_registration(token, invite_code)
 
         user = db.get_user_by_id(identity.email)
         assert user is not None
@@ -116,9 +135,9 @@ class TestCompleteRegistration:
         assert user["provider_user_id"] == identity.provider_user_id
         assert user["last_login"] is not None
 
-    def test_the_same_token_still_works_after_registering(self, auth_service, identity):
+    def test_the_same_token_still_works_after_registering(self, auth_service, identity, invite_code):
         token = auth_service.login("google", "good-credential")
-        auth_service.complete_registration(token)
+        auth_service.complete_registration(token, invite_code)
 
         verified = auth_service.verify_token(token)
 
@@ -129,6 +148,80 @@ class TestCompleteRegistration:
     def test_an_invalid_token_raises_value_error(self, auth_service):
         with pytest.raises(ValueError):
             auth_service.complete_registration("not-a-real-jwt")
+
+    def test_a_valid_token_with_no_invite_code_is_refused_as_uninvited(self, db, auth_service, identity):
+        """The old self-service behavior — a fresh Google sign-in
+        registering itself with no invite context at all — is exactly
+        what's now forbidden."""
+        token = auth_service.login("google", "good-credential")
+
+        with pytest.raises(PermissionError):
+            auth_service.complete_registration(token)
+
+        assert db.get_user_by_id(identity.email) is None
+
+    def test_an_invite_code_that_does_not_resolve_is_refused(self, db, auth_service, identity):
+        token = auth_service.login("google", "good-credential")
+
+        with pytest.raises(PermissionError):
+            auth_service.complete_registration(token, "no-such-code")
+
+        assert db.get_user_by_id(identity.email) is None
+
+    def test_an_expired_invite_is_refused(self, db, auth_service, identity, project_service):
+        db.ensure_project("expired-project")
+        expired_at = datetime.utcnow() - timedelta(days=1)
+        db.create_invite("EXPIRED", "expired-project", None, expired_at, max_shares=3)
+        token = auth_service.login("google", "good-credential")
+
+        with pytest.raises(PermissionError):
+            auth_service.complete_registration(token, "EXPIRED")
+
+        assert db.get_user_by_id(identity.email) is None
+
+    def test_an_invite_that_already_reached_its_max_shares_is_refused(self, db, provider, identity):
+        """A second identity trying the same one-share invite after the
+        first already redeemed it."""
+        db.ensure_project("maxed-project")
+        maxed_service = ProjectService(db, invite_max_shares=1)
+        invite = maxed_service.create_invite("maxed-project", created_by=None)
+        service = _auth_service(db, provider, maxed_service)
+        first_token = service.login("google", "good-credential")
+        service.complete_registration(first_token, invite["code"])
+
+        second_provider = _FakeProvider(
+            "second-credential",
+            AuthenticatedUser(provider_user_id="sub-456", email="bob@example.com", name="Bob", picture_url=None),
+        )
+        second_service = _auth_service(db, second_provider, maxed_service)
+        second_token = second_service.login("google", "second-credential")
+
+        with pytest.raises(PermissionError):
+            second_service.complete_registration(second_token, invite["code"])
+        assert db.get_user_by_id("bob@example.com") is None
+
+    def test_a_valid_invite_code_allows_registration(self, db, auth_service, identity, invite_code):
+        """The one door still open: arriving via a "share project" invite
+        link (see shareLink.js/useAppBoot.js) — recognizable by a code
+        that resolves to a real, unexpired, still-available Invite."""
+        token = auth_service.login("google", "good-credential")
+
+        auth_service.complete_registration(token, invite_code)
+
+        assert db.get_user_by_id(identity.email) is not None
+
+    def test_registration_records_the_redemption_on_user_project(self, db, auth_service, identity, invite_code):
+        """The other half of a successful invite-based registration (see
+        UserProjectMixin.record_invite_redemption) — invite_id/
+        invite_timestamp on the new (user, project) row, which is also
+        how a later count_invite_redemptions knows this invite's own
+        cardinality."""
+        token = auth_service.login("google", "good-credential")
+
+        auth_service.complete_registration(token, invite_code)
+
+        invite = db.get_invite_by_code(invite_code)
+        assert db.count_invite_redemptions(invite.id) == 1
 
 
 class TestVerifyToken:
@@ -146,9 +239,11 @@ class TestVerifyToken:
         assert verified.name == identity.name
         assert verified.role is None
 
-    def test_a_token_verifies_to_the_registered_identity_once_terms_are_accepted(self, auth_service, identity):
+    def test_a_token_verifies_to_the_registered_identity_once_terms_are_accepted(
+        self, auth_service, identity, invite_code
+    ):
         token = auth_service.login("google", "good-credential")
-        auth_service.complete_registration(token)
+        auth_service.complete_registration(token, invite_code)
 
         verified = auth_service.verify_token(token)
 

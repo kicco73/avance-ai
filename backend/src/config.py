@@ -333,6 +333,17 @@ class AppConfig:
             raw, "test-service", "min-test-interval-ms", path, default=0
         )
 
+        # "Share project" invite links (see project/invites.py's own
+        # InviteManager) — how long a freshly generated code stays
+        # redeemable, and how many new registrations it can carry before
+        # AuthService.complete_registration starts refusing it.
+        self.invite_valid_days = self._get_optional_positive_int(
+            raw, "project-service", "invite-valid-days", path, default=7
+        )
+        self.invite_max_shares = self._get_optional_positive_int(
+            raw, "project-service", "invite-max-shares", path, default=3
+        )
+
         self.ai_services = self._parse_ai_services(raw, path)
         self.talk_services = self._parse_talk_services(raw, path)
         self.listen_services = self._parse_listen_services(raw, path)

@@ -30,9 +30,17 @@ export function getTerms() {
 }
 
 // TermsView.vue's Accept action — creates the User row postLogin's own
-// login() deliberately deferred (see auth_service.py).
-export function postAcceptTerms() {
-  return apiFetch(`${API_URL}/auth/accept-terms`, { method: 'POST' })
+// login() deliberately deferred (see auth_service.py). Registration is
+// invite-only: `inviteCode` (see shareLink.js's peekInviteCode) must
+// clear the backend's own exists/not-expired/under-max-shares check, or
+// this is refused (403, with a specific reason) — see useAppBoot.js's
+// handleTermsAccept, the only caller.
+export function postAcceptTerms(inviteCode) {
+  return apiFetch(`${API_URL}/auth/accept-terms`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ invite_code: inviteCode ?? null })
+  })
 }
 
 export function getLegalTermsStatus(projectName) {

@@ -33,12 +33,19 @@ export function getProjectMetadata(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/project`)
 }
 
-// Resolves a project's public share id (project.id, see
-// InspectorProjectCard.vue's "id" field) back to its internal name —
-// { project_name: string | null }. Used by useAppBoot.js to land a
-// scanned "share project" link (shareLink.js) on the right project.
-export function getProjectByShareId(projectId) {
-  return apiFetch(`${API_URL}/projects/by-id/${encodeURIComponent(projectId)}`)
+// ShareProjectDialog.vue's own trigger — a fresh Invite row every time
+// the dialog opens (see backend's InviteManager.create_invite), never
+// reused. { code, expires_at, max_shares }.
+export function postCreateInvite(projectName) {
+  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/invites`, { method: 'POST' })
+}
+
+// Resolves a "share project" invite code back to the project it was
+// generated for — { project_name: string | null }. Used by
+// useAppBoot.js to land a scanned invite link (shareLink.js) on the
+// right project.
+export function getProjectByInviteCode(code) {
+  return apiFetch(`${API_URL}/projects/by-invite/${encodeURIComponent(code)}`)
 }
 
 // { tokens: number | null } — estimated input-token cost of `stateKey`'s
