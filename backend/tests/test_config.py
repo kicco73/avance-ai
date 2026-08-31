@@ -138,45 +138,42 @@ class TestTotalTokenBudgetPerSession:
             _load(monkeypatch, tmp_path, content)
 
 
-class TestGetOptionalBool:
-    """Unit tests against the parsing helper directly — no file I/O."""
-
+class TestGetOptionalChoice:
     def test_returns_the_default_when_the_field_is_absent(self):
         raw = {"database": {"url": "sqlite:///x.db"}}
-        value = AppConfig._get_optional_bool(raw, "database", "force-drop-and-create-when-incompatible", "cfg", default=False)
-        assert value is False
+        value = AppConfig._get_optional_choice(raw, "database", "migration-strategy", "cfg", default="stop", choices=("stop", "upgrade", "drop"))
+        assert value == "stop"
 
-    def test_returns_the_configured_value_when_present(self):
-        raw = {"database": {"force-drop-and-create-when-incompatible": True}}
-        value = AppConfig._get_optional_bool(raw, "database", "force-drop-and-create-when-incompatible", "cfg", default=False)
-        assert value is True
+    @pytest.mark.parametrize("configured", ["stop", "upgrade", "drop"])
+    def test_returns_the_configured_value_when_present(self, configured):
+        raw = {"database": {"migration-strategy": configured}}
+        value = AppConfig._get_optional_choice(raw, "database", "migration-strategy", "cfg", default="stop", choices=("stop", "upgrade", "drop"))
+        assert value == configured
 
-    @pytest.mark.parametrize("bad_value", ["true", 1, 0, None])
-    def test_rejects_non_boolean_values(self, bad_value):
-        raw = {"database": {"force-drop-and-create-when-incompatible": bad_value}}
+    @pytest.mark.parametrize("bad_value", ["wipe", True, 1, None])
+    def test_rejects_values_outside_the_choices(self, bad_value):
+        raw = {"database": {"migration-strategy": bad_value}}
         with pytest.raises(ConfigError):
-            AppConfig._get_optional_bool(raw, "database", "force-drop-and-create-when-incompatible", "cfg", default=False)
+            AppConfig._get_optional_choice(raw, "database", "migration-strategy", "cfg", default="stop", choices=("stop", "upgrade", "drop"))
 
 
-class TestDatabaseForceDropAndCreateWhenIncompatible:
-    """End-to-end: a real AppConfig() built from a real (temp) config file."""
-
-    def test_defaults_to_false_when_omitted(self, monkeypatch, tmp_path):
+class TestDatabaseMigrationStrategy:
+    def test_defaults_to_stop_when_omitted(self, monkeypatch, tmp_path):
         config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
-        assert config.database_force_drop_and_create_when_incompatible is False
+        assert config.database_migration_strategy == "stop"
 
     def test_reads_a_custom_value(self, monkeypatch, tmp_path):
         content = MINIMAL_CONFIG.replace(
             'database:\n  url: "sqlite:///:memory:"',
-            'database:\n  url: "sqlite:///:memory:"\n  force-drop-and-create-when-incompatible: true',
+            'database:\n  url: "sqlite:///:memory:"\n  migration-strategy: upgrade',
         )
         config = _load(monkeypatch, tmp_path, content)
-        assert config.database_force_drop_and_create_when_incompatible is True
+        assert config.database_migration_strategy == "upgrade"
 
-    def test_rejects_a_non_boolean_value(self, monkeypatch, tmp_path):
+    def test_rejects_an_unknown_strategy(self, monkeypatch, tmp_path):
         content = MINIMAL_CONFIG.replace(
             'database:\n  url: "sqlite:///:memory:"',
-            'database:\n  url: "sqlite:///:memory:"\n  force-drop-and-create-when-incompatible: "yes"',
+            'database:\n  url: "sqlite:///:memory:"\n  migration-strategy: wipe',
         )
         with pytest.raises(ConfigError):
             _load(monkeypatch, tmp_path, content)

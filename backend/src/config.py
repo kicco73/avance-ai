@@ -121,11 +121,11 @@ class AppConfig:
         return value
 
     @classmethod
-    def _get_optional_bool(cls, raw: dict, section: str, field: str, path: Path, default: bool) -> bool:
+    def _get_optional_choice(cls, raw: dict, section: str, field: str, path: Path, default: str, choices: tuple[str, ...]) -> str:
         sub = cls._get_section(raw, section, path)
         value = sub.get(field, default)
-        if not isinstance(value, bool):
-            raise ConfigError(f"{path}: '{section}.{field}' must be a boolean if present.")
+        if value not in choices:
+            raise ConfigError(f"{path}: '{section}.{field}' must be one of {', '.join(choices)} if present.")
         return value
 
     @classmethod
@@ -324,11 +324,8 @@ class AppConfig:
             raise ConfigError(f"{path} must contain a YAML mapping at the top level.")
 
         self.database_url = self._require_str(raw, "database", "url", path)
-        # Off by default: this is destructive, wiping and rebuilding a
-        # stale/incompatible schema automatically instead of leaving it
-        # for a human to migrate or restore by hand.
-        self.database_force_drop_and_create_when_incompatible = self._get_optional_bool(
-            raw, "database", "force-drop-and-create-when-incompatible", path, default=False
+        self.database_migration_strategy = self._get_optional_choice(
+            raw, "database", "migration-strategy", path, default="stop", choices=("stop", "upgrade", "drop")
         )
         # The single source of truth for how long a chat session stays
         # "open" (see chat/session_manager.py's ChatSessionManager) — never

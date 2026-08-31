@@ -68,18 +68,19 @@ class AuthService:
         controller turns that into an explicit 400) or AuthError if the
         credential itself fails verification.
 
-        Deliberately never creates the User row here — a first-time
-        identity gets a session token straight off the verified identity
-        (see _issue_token) and stays unregistered until TermsView.vue's
-        Accept action calls complete_registration(). Rejecting Terms then
-        leaves zero trace: no row was ever created to clean up."""
+        Deliberately never creates the User row here for a first-time
+        identity — it gets a session token straight off the verified
+        identity (see _issue_token) and stays unregistered until
+        TermsView.vue's Accept action calls complete_registration().
+        Rejecting Terms then leaves zero trace: no row was ever created
+        to clean up. The one exception is Db.resolve_login's own two
+        pre-wired admin addresses, which it registers right here."""
         auth_provider = self._providers.get(provider)
         if auth_provider is None:
             raise ValueError(f"Unknown auth provider: {provider!r}.")
 
         identity = auth_provider.verify(credential)
-        if self._db.get_user_by_id(identity.email) is not None:
-            self._db.update_last_login(identity.email)
+        self._db.resolve_login(provider, identity.provider_user_id, identity.email, identity.name, identity.picture_url)
         return self._issue_token(identity, provider)
 
     def _issue_token(self, identity: AuthenticatedUser, provider: str) -> str:
@@ -153,7 +154,7 @@ class AuthService:
         user = self._db.get_or_create_user(
             payload.get("provider"), payload.get("provider_user_id"), email, payload.get("name"), payload.get("picture_url")
         )
-        self._db.update_last_login(user.id)
+        self._db.update_last_login(user.id, payload.get("name"), payload.get("picture_url"))
         self._project_service.redeem_invite(invite, user.id)
 
     def get_profile(self, email: str) -> dict | None:

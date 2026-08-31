@@ -813,6 +813,11 @@ body {
 .app-dialog-open {
   transform: scale(0.9);
   filter: blur(3px);
+  padding-bottom: var(--viewport-bottom-overshoot, 0px);
+}
+
+.app-dialog-open .app-body {
+  --viewport-bottom-overshoot: 0px;
 }
 
 .app-body {

@@ -31,7 +31,7 @@ from tracking.wakeup_service import WakeupService
 from talk.talk_service import TalkService
 from listen.listen_service import ListenService
 
-__version__ = "1.16.27"
+__version__ = "1.16.28"
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -73,10 +73,7 @@ def create_app() -> FastAPI:
         talk_service = TalkService.from_config(config.talk_services) if config.talk_services is not None else None
         listen_service = ListenService.from_config(config.listen_services) if config.listen_services is not None else None
         
-        db = Db(
-            config.database_url,
-            force_drop_and_create_when_incompatible=config.database_force_drop_and_create_when_incompatible,
-        )
+        db = Db(config.database_url, migration_strategy=config.database_migration_strategy)
 
         # Built before AuthService below — AuthService.complete_registration
         # delegates every invite rule (exists/not expired/under its

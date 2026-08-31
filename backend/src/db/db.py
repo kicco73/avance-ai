@@ -58,12 +58,15 @@ class Db(
         ProjectObserverIndex, Settings, UserProject, Invite,
     )
 
-    def __init__(self, database_url: str, force_drop_and_create_when_incompatible: bool=False) -> None:
+    MIGRATION_STRATEGIES = ('stop', 'upgrade', 'drop')
+
+    def __init__(self, database_url: str, migration_strategy: str = 'stop') -> None:
+        if migration_strategy not in self.MIGRATION_STRATEGIES:
+            raise ValueError(f"Unknown migration strategy '{migration_strategy}' — expected one of {self.MIGRATION_STRATEGIES}.")
         self._database_url = database_url
         database.initialize(connect(database_url, pragmas={'foreign_keys': 1}))
         database.connect(reuse_if_open=True)
-        if force_drop_and_create_when_incompatible:
-            self._drop_and_recreate_if_incompatible()
+        self._apply_migration_strategy(migration_strategy)
         database.create_tables(self._MODELS, safe=True)
         self._backfill_projects()
 
@@ -74,7 +77,7 @@ class Db(
         for name in names:
             Project.get_or_create(name=name, defaults={'revision': 0, 'published_revision': None})
 
-    def _drop_and_recreate_if_incompatible(self) -> None:
+    def _apply_migration_strategy(self, strategy: str) -> None:
         path = self.backup_file_path()
         if not os.path.exists(path):
             return
@@ -84,19 +87,20 @@ class Db(
         expected = self._expected_schema()
         if actual == expected:
             return
+        if strategy == 'stop':
+            raise ValueError(f"Database schema at '{path}' doesn't match what this code expects and database.migration-strategy is 'stop' — set it to 'upgrade' or 'drop', or fix the database by hand.")
         backup_path = self._timestamped_backup_path(path)
         self._backup_to_path(backup_path)
-        try:
-            logger.warning("Database schema at '%s' doesn't match what this code expects — backed it up to '%s', now migrating it in place (database.force-drop-and-create-when-incompatible is enabled).", path, backup_path)
+        if strategy == 'upgrade':
+            logger.warning("Database schema at '%s' doesn't match what this code expects — backed it up to '%s', now migrating it in place (database.migration-strategy is 'upgrade').", path, backup_path)
             self._migrate_schema(actual, expected)
-            if self._actual_schema(path) == expected:
-                return
-            raise ValueError('schema still differs after migration')
-        except Exception:
-            logger.exception("In-place migration failed — dropping and recreating every table from scratch instead (the pre-migration backup at '%s' is untouched).", backup_path)
+            if self._actual_schema(path) != expected:
+                raise ValueError(f"Database schema at '{path}' still doesn't match after in-place migration — refusing to touch the data any further (the pre-migration backup is at '{backup_path}').")
+            return
+        logger.warning("Database schema at '%s' doesn't match what this code expects — backed it up to '%s', now dropping and recreating every table from scratch (database.migration-strategy is 'drop').", path, backup_path)
         database.execute_sql('PRAGMA foreign_keys = OFF')
         try:
-            for table in self._actual_schema(path):
+            for table in actual:
                 database.execute_sql(f'DROP TABLE IF EXISTS "{table}"')
         finally:
             self._enable_foreign_keys()

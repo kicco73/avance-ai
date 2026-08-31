@@ -110,6 +110,15 @@ secrets). Top-level sections:
 - **`database.url`** — a Peewee connection URL. `sqlite:///avance.db` by
   default; anything else requires adding the matching driver to
   `requirements.txt` (not included).
+- **`database.migration-strategy`** — optional, defaults to `stop`.
+  What to do at startup when the on-disk schema doesn't match what the
+  code expects: `stop` refuses to start and leaves the database
+  untouched; `upgrade` migrates the schema in place (tables and columns
+  added/removed incrementally, everything else preserved), refusing to
+  start like `stop` if the difference can't be expressed that way;
+  `drop` recreates every table from scratch, losing all data. Both
+  `upgrade` and `drop` first save an automatic timestamped backup copy
+  of the database file next to the original.
 - **`chat-service.transport`** — `"rest"` or `"websocket"`. REST
   (`POST /api/chat/messages`) returns the full reply in one response;
   `websocket` (`/ws/chat`, only registered when selected) streams it

@@ -16,6 +16,23 @@ def _initial_role(email: str) -> str:
 
 class UserMixin:
 
+    def resolve_login(self, provider: str, provider_user_id: str, email: str, name: str, picture_url: str | None) -> None:
+        """AuthService.login's single touchpoint for the User row.
+        Syncs name/picture_url/last_login for an already-registered
+        account. For one of the two pre-wired admin addresses
+        (_ADMIN_EMAILS) with no row yet, creates it outright instead —
+        self-registration is otherwise invite-only (see
+        AuthService.complete_registration), and no one exists yet to
+        invite either of them. Runs on every login rather than once at
+        boot, so ProfileView's "erase all my data" doesn't strand
+        either address unregistered forever: the very next login just
+        re-creates the row. A no-op for any other unregistered email."""
+        if User.get_or_none(User.id == email) is None:
+            if email not in _ADMIN_EMAILS:
+                return
+            self.get_or_create_user(provider, provider_user_id, email, name, picture_url)
+        self.update_last_login(email, name, picture_url)
+
     def list_users(self) -> list[dict]:
         return [
             {
@@ -39,9 +56,6 @@ class UserMixin:
                 "picture_url": picture_url, "role": _initial_role(email),
             },
         )
-        user.name = name
-        user.picture_url = picture_url
-        user.save()
         return user
 
     def get_user_by_id(self, user_id: str) -> dict | None:
@@ -96,8 +110,14 @@ class UserMixin:
         verify_token), routing straight back through TermsView.vue."""
         User.delete().where(User.id == email).execute()
 
-    def update_last_login(self, user_id) -> None:
-        User.update(last_login=datetime.utcnow()).where(User.id == user_id).execute()
+    def update_last_login(self, user_id: str, name: str, picture_url: str | None) -> None:
+        """Called on every login (see AuthService.login/complete_registration)
+        with the identity the provider just verified — refreshes
+        name/picture_url alongside the timestamp, so profile data set at
+        registration time (or, for Db.seed_admin_users' pre-wired admins,
+        never set at all) catches up to the provider's current values the
+        next time that account actually logs in."""
+        User.update(name=name, picture_url=picture_url, last_login=datetime.utcnow()).where(User.id == user_id).execute()
 
     def get_active_project_name(self, user: str) -> str | None:
         row = User.get_or_none(User.email == user)
