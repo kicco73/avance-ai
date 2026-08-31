@@ -116,7 +116,7 @@ defineExpose({ loadEnv, refresh })
     <template v-else>
       <div class="inspector-signal-block">
         <div class="inspector-signal-header">
-          <span class="inspector-detail-badge inspector-detail-badge-env-action">ENVscher</span>
+          <span class="inspector-detail-badge inspector-detail-badge-env-action">ENV</span>
           <span class="inspector-signal-name">User memory</span>
         </div>
         <p v-if="!actionSetEntries.length" class="inspector-env-empty">No values defined yet.</p>
