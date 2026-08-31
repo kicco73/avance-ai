@@ -11,7 +11,7 @@ class IdentifierRegistry:
     """The {namespace: {identifier: description}} registry every
     trigger/env: expression can reference: a project's own declared
     signals/env keys merged with the platform's fixed system/session/
-    metric identifiers."""
+    user/metric identifiers."""
 
     SYSTEM: dict[str, str] = {
         "today": "Today's date (UTC), as YYYY-MM-DD.",
@@ -23,6 +23,20 @@ class IdentifierRegistry:
         "last_user_session_datetime": "The previous session's own start timestamp (UTC ISO-8601), or None for a user's very first session.",
         "number_of_user_sessions": "How many sessions this user has ever had in this project.",
         "state_duration_in_minutes": "How long the conversation has sat in its current state, in minutes.",
+    }
+
+    # Every User field (db/models.py) except id — see
+    # db.users.UserMixin.get_user_facts, this namespace's own source.
+    USER: dict[str, str] = {
+        "email": "The user's email address (also their login identity).",
+        "name": "The user's display name, as reported by their auth provider.",
+        "picture_url": "The user's avatar/profile picture URL, as reported by their auth provider.",
+        "provider": "Which auth provider verified this account (e.g. \"google\").",
+        "provider_user_id": "The auth provider's own opaque, stable id for this account.",
+        "created_at": "When this account was first registered (UTC ISO-8601).",
+        "last_login": "This account's most recent login (UTC ISO-8601).",
+        "active_project": "The name of this user's currently active project, or None if none is set.",
+        "role": "This user's platform role: \"user\", \"supervisor\", or \"admin\".",
     }
 
     @staticmethod
@@ -54,5 +68,6 @@ class IdentifierRegistry:
             "system": dict(cls.SYSTEM),
             "session": dict(cls.SESSION),
             "session.metric": dict(cls.SESSION_METRIC),
+            "user": dict(cls.USER),
             "metric": dict(cls.METRIC),
         }

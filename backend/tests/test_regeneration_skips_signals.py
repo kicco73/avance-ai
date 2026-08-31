@@ -17,6 +17,7 @@ from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
 from tracking.system_facts import SystemFacts
 from tracking.tracking_processor import UserVariables
+from tracking.user_facts import UserFacts
 from tracking.tracking_processor_user import TrackingProcessorAfterUserMessage
 
 pytestmark = pytest.mark.regression
@@ -84,7 +85,7 @@ async def test_regeneration_call_does_not_request_signals(db):
     metrics = MetricService(db, project_service)
     env = PersistedEnv(db, project_service)
     scope_builder = EvaluationScopeBuilder(
-        env, metrics, SystemFacts(), SessionFacts(db, project_service)
+        env, metrics, SystemFacts(), SessionFacts(db, project_service), UserFacts(db)
     )
 
     processor = TrackingProcessorAfterUserMessage(

@@ -17,6 +17,7 @@ from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
 from tracking.system_facts import SystemFacts
 from tracking.tracking_engine import TestObservationSink, TrackingEngine
+from tracking.user_facts import UserFacts
 
 from .serialization import _serialize_metric_result
 
@@ -135,8 +136,9 @@ class TestReplayJob(CancelableJob):
         env = self._build_seed_env(session)
         system_facts = SystemFacts()
         session_facts = SessionFacts(db, FixedProjectContext(project_name=self._run['project_name']))
+        user_facts = UserFacts(db)
         metrics = TestMetricsProvider(db, self._run['username'], self._run['project_name'], session_id)
-        scope_builder = EvaluationScopeBuilder(env, metrics, system_facts, session_facts)
+        scope_builder = EvaluationScopeBuilder(env, metrics, system_facts, session_facts, user_facts)
         sink = TestObservationSink(self._run['id'])
         tracking_engine = TrackingEngine(sink, env, scope_builder)
         self._signal_source = self._signal_source_cls(

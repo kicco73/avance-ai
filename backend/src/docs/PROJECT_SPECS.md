@@ -258,7 +258,7 @@ result regardless, for inspection, without ever applying a transition.
 A boolean-ish expression evaluated with
 [`simpleeval`](https://pypi.org/project/simpleeval/) — comparisons,
 boolean logic, and arithmetic, plus attribute access and calls **only**
-on the four reserved namespaces below (never arbitrary Python — no
+on the five reserved namespaces below (never arbitrary Python — no
 imports, no calling anything else):
 
 ```text
@@ -266,9 +266,10 @@ signal.mood >= 70
 engagement >= 20 and retention >= 1
 (signal.mood >= 40 and engagement >= 10) or signal_stability < 20
 session.number_of_user_sessions() >= 3 and system.time() > "18:00:00"
+user.role == "admin"
 ```
 
-Four reserved namespaces, each resolving to a dict-or-proxy object:
+Five reserved namespaces, each resolving to a dict-or-proxy object:
 
 | Namespace | Resolves to | Access |
 | --- | --- | --- |
@@ -276,6 +277,7 @@ Four reserved namespaces, each resolving to a dict-or-proxy object:
 | `env.<name>` | A key set by **some action's own** `env:` field, anywhere in this project (§6.4) — never a model-reported free-form value | attribute |
 | `system.<name>` | An engine fact independent of any user/session (`today`, `time`) | **call** — `system.today()`, not `system.today` |
 | `session.<name>` | An engine fact about the current user+project's own session/transition history (`current_session_duration_in_minutes`, `last_user_session_datetime`, `number_of_user_sessions`, `state_duration_in_minutes`) | **call** — `session.number_of_user_sessions()`, not the bare attribute |
+| `user.<name>` | A field of the current user's own account (`email`, `name`, `picture_url`, `provider`, `provider_user_id`, `created_at`, `last_login`, `active_project`, `role`) | attribute — same as `env.<name>`, never called |
 
 A **bare** (unnamespaced) name is only ever a core metric (§3) — nothing
 else may appear unnamespaced anymore.
@@ -283,8 +285,8 @@ else may appear unnamespaced anymore.
 Every reference is validated at build/upload time: `signal.<name>` must
 name a declared signal, `env.<name>` must name a key **some** action's
 own `env:` field sets somewhere in the project, `system.<name>`/
-`session.<name>` must be one of the fixed method names above, and a bare
-name must be a recognized metric — anything else fails with an
+`session.<name>`/`user.<name>` must be one of the fixed names above, and
+a bare name must be a recognized metric — anything else fails with an
 "undefined name(s)" error, and a syntactically invalid expression fails
 the same way with a parse error. At evaluation time (not build time): if
 any referenced `signal.<name>` is currently `None` (not yet computed —
@@ -331,8 +333,8 @@ of this memory — the `env.<name>` namespace §6.2's trigger expressions
 themselves read from — as a **side effect of the action firing**
 (manually or via its `trigger`). Each entry is `key: expression`,
 evaluated with the exact same namespaced scope/mechanics as `trigger`
-(§6.2: `signal.`/`env.`/`system.`/`session.`, plus any bare metric
-name), just without the boolean cast — a result can be any simple value
+(§6.2: `signal.`/`env.`/`system.`/`session.`/`user.`, plus any bare
+metric name), just without the boolean cast — a result can be any simple value
 (string, number, bool, `None`, ...), not only true/false:
 
 ```yaml
@@ -432,8 +434,9 @@ how you're likely to hit them:
 - Every action's `trigger`, if given, is syntactically valid and every
   reference resolves: `signal.<name>` to a declared signal, `env.<name>`
   to a key some action's own `env:` declares somewhere in the project,
-  `system.<name>`/`session.<name>` to one of the fixed proxy methods
-  (§6.2), and a bare name to a reserved metric name.
+  `system.<name>`/`session.<name>` to one of the fixed proxy methods,
+  `user.<name>` to one of the fixed user fields (§6.2), and a bare name
+  to a reserved metric name.
 - Every action's `env`, if given, is a mapping, and each of its
   expressions gets the exact same validation `trigger` does — syntax and
   unknown-name checks alike (§6.4).

@@ -139,9 +139,13 @@ function chooseOption(id) {
         <p v-if="promptError" class="dialog-field-error">{{ promptError }}</p>
       </template>
 
-      <!-- info/about/custom have no buttons of their own any more — the
-           × above is the only way to close them now. -->
-      <div v-if="['confirm', 'prompt', 'choose'].includes(activeDialog.kind)" class="dialog-actions">
+      <!-- about/custom have no buttons of their own — the × above is the
+           only way to close them. Same for info, unless its own caller
+           opted into a single labeled button via okLabel (e.g. "Bye!"). -->
+      <div
+        v-if="['confirm', 'prompt', 'choose'].includes(activeDialog.kind) || (activeDialog.kind === 'info' && activeDialog.okLabel)"
+        class="dialog-actions"
+      >
         <template v-if="activeDialog.kind === 'confirm'">
           <button class="dialog-btn dialog-btn-cancel" @click="closeWith(false)">Cancel</button>
           <button
@@ -165,6 +169,10 @@ function chooseOption(id) {
             :class="{ 'dialog-btn-danger': option.danger }"
             @click="chooseOption(option.id)"
           >{{ option.label }}</button>
+        </template>
+
+        <template v-else-if="activeDialog.kind === 'info'">
+          <button class="dialog-btn dialog-btn-primary" @click="closeWith(true)">{{ activeDialog.okLabel }}</button>
         </template>
       </div>
     </div>

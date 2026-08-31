@@ -42,6 +42,21 @@ def test_a_trigger_may_reference_any_session_attr(attr):
     assert automaton.states["a"].actions[0].trigger == f"session.{attr}() != None"
 
 
+@pytest.mark.parametrize("attr", sorted(IdentifierRegistry.USER))
+def test_a_trigger_may_reference_any_user_attr(attr):
+    """Unlike system.*/session.*, user.* is a plain field, not a
+    zero-arg call — same shape as env.*."""
+    content = _project(f"user.{attr} != None")
+    automaton = AutomatonBuilder().build({"index.yml": content})
+    assert automaton.states["a"].actions[0].trigger == f"user.{attr} != None"
+
+
+def test_a_trigger_referencing_an_unknown_user_attr_is_rejected():
+    content = _project("user.bogus_field != None")
+    with pytest.raises(ValueError, match="undefined name\\(s\\).*user.bogus_field"):
+        AutomatonBuilder().build({"index.yml": content})
+
+
 def test_a_trigger_referencing_an_undeclared_env_key_is_rejected():
     content = _project("env.some_custom_env_key >= 1")
     with pytest.raises(ValueError, match="undefined name\\(s\\).*env.some_custom_env_key"):

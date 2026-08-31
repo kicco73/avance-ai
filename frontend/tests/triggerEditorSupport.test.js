@@ -201,9 +201,10 @@ describe('completionInfo', () => {
 })
 
 describe('isProxyNamespace', () => {
-  it('is false for the two variable namespaces', () => {
+  it('is false for the plain variable namespaces (signal/env/user resolve straight off an already-fetched dict)', () => {
     expect(isProxyNamespace('signal')).toBe(false)
     expect(isProxyNamespace('env')).toBe(false)
+    expect(isProxyNamespace('user')).toBe(false)
   })
 
   it('is true for every proxy namespace', () => {
@@ -234,8 +235,12 @@ describe('namespaceOf (the coloring regex\'s own namespace extraction)', () => {
     expect(namespaceOf('session.number_of_user_sessions')).toBe('session')
   })
 
+  it('extracts the user namespace', () => {
+    expect(namespaceOf('user.email')).toBe('user')
+  })
+
   it('every namespace it can extract has a fixed color', () => {
-    for (const namespace of ['signal', 'env', 'system', 'session', 'session.metric', 'metric', 'automaton']) {
+    for (const namespace of ['signal', 'env', 'system', 'session', 'session.metric', 'user', 'metric', 'automaton']) {
       expect(NAMESPACE_COLORS[namespace]).toMatch(/^#[0-9a-f]{6}$/)
     }
   })

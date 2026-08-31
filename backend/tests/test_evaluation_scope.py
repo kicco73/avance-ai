@@ -15,6 +15,7 @@ from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
 from tracking.system_facts import SystemFacts
+from tracking.user_facts import UserFacts
 
 pytestmark = pytest.mark.contract
 
@@ -26,7 +27,7 @@ def _builder(db) -> EvaluationScopeBuilder:
     project_service = FixedProjectContext(project_name=PROJECT_NAME)
     env = PersistedEnv(db, project_service)
     metrics = MetricService(db, project_service)
-    return EvaluationScopeBuilder(env, metrics, SystemFacts(), SessionFacts(db, project_service))
+    return EvaluationScopeBuilder(env, metrics, SystemFacts(), SessionFacts(db, project_service), UserFacts(db))
 
 
 def _automaton_with_trigger(trigger_expr: str) -> Automaton:
@@ -57,6 +58,7 @@ def test_scope_always_includes_every_namespace(db):
     assert scope["system"].today().count("-") == 2
     assert scope["session"].number_of_user_sessions() == 0
     assert scope["session"].metric.engagement() is not None
+    assert scope["user"]["email"] == USERNAME
     assert scope["metric"].retention() is not None
 
 
@@ -98,6 +100,18 @@ def test_session_fact_is_usable_in_a_trigger_end_to_end(db):
         start_state="a", end_state="a",
     )
     scope = builder.build(automaton, "a", {})
+    assert automaton.evaluate_triggers("a", scope) == "advance"
+
+
+def test_user_fact_is_usable_in_a_trigger_end_to_end(db):
+    db.ensure_project(PROJECT_NAME)
+    db.publish_project(PROJECT_NAME)
+    db.set_user_role(USERNAME, "admin")
+    automaton = _automaton_with_trigger("user.role == 'admin'")
+
+    scope = _builder(db).build(automaton, "a", {})
+
+    assert scope["user"]["role"] == "admin"
     assert automaton.evaluate_triggers("a", scope) == "advance"
 
 

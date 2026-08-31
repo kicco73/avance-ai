@@ -66,7 +66,11 @@ async function eraseAllData() {
     return // already surfaced via apiFetch
   }
 
-  await infoDialog({ title: 'Data erased', body: 'All your data has been erased.\nLogging you out.\n\n Thank you for being with us!' })
+  await infoDialog({
+    title: 'Data erased',
+    body: 'All your data has been erased.\nLogging you out.\n\n Thank you for being with us!',
+    okLabel: 'Bye!'
+  })
   disconnectChat()
   requireLogin()
 }

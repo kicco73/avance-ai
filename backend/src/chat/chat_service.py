@@ -19,6 +19,7 @@ from tracking.env import PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.session_facts import SessionFacts
 from tracking.system_facts import SystemFacts
+from tracking.user_facts import UserFacts
 from chat.errors import ChatServiceError
 from chat.session_manager import ChatSessionManager
 from chat.session_summary_manager import SessionSummaryManager
@@ -59,9 +60,10 @@ class ChatService(object):
 		self.env = PersistedEnv(db, project_service)
 		self._system_facts = SystemFacts()
 		self._session_facts = SessionFacts(db, project_service)
+		self._user_facts = UserFacts(db)
 		self._automaton_namespace = AutomatonNamespace(db, project_service)
 		self._evaluation_scope_builder = EvaluationScopeBuilder(
-			self.env, metric_service, self._system_facts, self._session_facts, self._automaton_namespace
+			self.env, metric_service, self._system_facts, self._session_facts, self._user_facts, self._automaton_namespace
 		)
 		self._tracking_engine = TrackingEngine(DbTrackingSink(db), self.env, self._evaluation_scope_builder)
 

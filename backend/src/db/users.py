@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from peewee import SQL
 
@@ -90,6 +91,29 @@ class UserMixin:
             "role": user.role,
             "created_at": _utc_iso(user.created_at),
             "last_login": _utc_iso(user.last_login),
+        }
+
+    def get_user_facts(self, email: str) -> dict[str, Any]:
+        """tracking.user_facts.UserFacts's own source — every User field
+        except id, keyed exactly as a trigger/env: expression references
+        them (user.email, user.name, ...; user.active_project resolves
+        to the project's own name string, same as active_project_id
+        everywhere else in this module). {} for an identity with no
+        User row yet, rather than raising — the same "just missing"
+        shape env.* namespace values get from PersistedEnv."""
+        user = User.get_or_none(User.id == email)
+        if user is None:
+            return {}
+        return {
+            "provider": user.provider,
+            "provider_user_id": user.provider_user_id,
+            "email": user.email,
+            "name": user.name,
+            "picture_url": user.picture_url,
+            "created_at": _utc_iso(user.created_at),
+            "last_login": _utc_iso(user.last_login),
+            "active_project": user.active_project_id,
+            "role": user.role,
         }
 
     def set_user_role(self, user_id: str, role: str) -> None:

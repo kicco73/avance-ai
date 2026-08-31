@@ -48,9 +48,11 @@ export function chooseDialog({ title, body, options }) {
   return enqueue({ kind: 'choose', title, body, options })
 }
 
-// Purely informational — a single Close button, nothing to decide.
-export function infoDialog({ title, body }) {
-  return enqueue({ kind: 'info', title, body })
+// Purely informational — nothing to decide. `okLabel`, when given, adds
+// a single labeled button (e.g. "Bye!") alongside the usual × close
+// button; omitted (the default), the × is the only way to close it.
+export function infoDialog({ title, body, okLabel = null }) {
+  return enqueue({ kind: 'info', title, body, okLabel })
 }
 
 // SettingsMenu's "About Avance...": just the logo and the version, no

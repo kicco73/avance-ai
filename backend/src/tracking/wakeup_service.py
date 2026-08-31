@@ -19,6 +19,7 @@ from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
 from tracking.system_facts import SystemFacts
 from tracking.tracking_engine import DbTrackingSink, TrackingEngine
+from tracking.user_facts import UserFacts
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -81,7 +82,7 @@ class WakeupService:
 
     async def _reevaluate_and_apply(self, username: str, observer_project_name: str) -> None:
         """Re-derives `observer_project_name`'s own current scope from
-        scratch — a fresh Env/MetricService/SessionFacts/AutomatonNamespace
+        scratch — a fresh Env/MetricService/SessionFacts/UserFacts/AutomatonNamespace
         bound to this (username, observer_project_name) pair — then applies a self-loop transition if one fires."""
         session = self._db.get_latest_chat_session(username, observer_project_name)
         if session is None:
@@ -89,8 +90,8 @@ class WakeupService:
 
         automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
 
-        # PersistedEnv/MetricService/SessionFacts/AutomatonNamespace all
-        # read Session().user themselves now — pinned to the observer
+        # PersistedEnv/MetricService/SessionFacts/UserFacts/AutomatonNamespace
+        # all read Session().user themselves now — pinned to the observer
         # being woken (never whatever's live for this job's own context),
         # then restored. project_context stands in for the *live* active
         # project these would otherwise resolve, staying fixed on
@@ -102,12 +103,13 @@ class WakeupService:
             metrics = MetricService(self._db, project_context)
             system = SystemFacts()
             session_facts = SessionFacts(self._db, project_context)
+            user_facts = UserFacts(self._db)
             # The real project_service here, unlike project_context above:
             # AutomatonNamespace's automaton.<project> cross-references
             # resolve an OTHER project entirely, a genuinely different
             # mechanism from "the current one's own active project".
             automaton_namespace = AutomatonNamespace(self._db, self._project_service)
-            scope_builder = EvaluationScopeBuilder(env, metrics, system, session_facts, automaton_namespace)
+            scope_builder = EvaluationScopeBuilder(env, metrics, system, session_facts, user_facts, automaton_namespace)
             tracking_engine = TrackingEngine(DbTrackingSink(self._db), env, scope_builder)
 
             scope = scope_builder.build(automaton, state.key, {})

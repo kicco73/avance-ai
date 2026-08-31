@@ -15,7 +15,7 @@ class TriggerExpressionAnalyzer:
     # Reserved namespaces a trigger/env expression resolves against. `automaton`
     # has no entry in _NAMESPACE_PATHS below since automaton.<project>.state/
     # env.<key> is a dynamic, per-project chain static-tuple matching can't express.
-    RESERVED_NAMESPACES = ("signal", "env", "system", "session", "metric", "automaton")
+    RESERVED_NAMESPACES = ("signal", "env", "system", "session", "user", "metric", "automaton")
 
     # Dotted sub-namespaces nested one level under a reserved namespace above —
     # each entry matches as a *whole* path, so `session.metric.<attr>` and plain
@@ -135,6 +135,21 @@ class TriggerExpressionAnalyzer:
             "last_user_session_datetime": _KIND_STRING,
             "number_of_user_sessions": _KIND_NUMBER,
             "state_duration_in_minutes": _KIND_NUMBER,
+        },
+        # Every User field (db/models.py) is a plain string once
+        # resolved (see db.users.UserMixin.get_user_facts's own
+        # _utc_iso formatting for created_at/last_login) — none of
+        # user.* is ever a number.
+        ("user",): {
+            "provider": _KIND_STRING,
+            "provider_user_id": _KIND_STRING,
+            "email": _KIND_STRING,
+            "name": _KIND_STRING,
+            "picture_url": _KIND_STRING,
+            "created_at": _KIND_STRING,
+            "last_login": _KIND_STRING,
+            "active_project": _KIND_STRING,
+            "role": _KIND_STRING,
         },
     }
     # Every identifier under these namespaces is always a number, no per-name

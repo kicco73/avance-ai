@@ -14,6 +14,7 @@ from tracking.env import Env
 from tracking.evaluator import SignalEvaluator
 from tracking.session_facts import SessionFacts
 from tracking.system_facts import SystemFacts
+from tracking.user_facts import UserFacts
 
 if TYPE_CHECKING:
     # Import guarded: automaton_namespace -> project_service ->
@@ -29,12 +30,14 @@ class EvaluationScopeBuilder(object):
         metrics: MetricService,
         system: SystemFacts,
         session: SessionFacts,
+        user: UserFacts,
         automaton_namespace: "AutomatonNamespace | None" = None,
     ) -> None:
         self._env = env
         self._metrics = metrics
         self._system = system
         self._session = session
+        self._user = user
         # Optional — a test replay omits it, so its scope has no
         # "automaton" namespace: an automaton.* reference there fails to
         # resolve rather than doing real cross-project work during a replay.
@@ -42,7 +45,7 @@ class EvaluationScopeBuilder(object):
 
     def build(self, automaton: Automaton, state_key: str, raw_signal_values: dict[str, Any] | None) -> dict[str, Any]:
         """`raw_signal_values` is always re-coerced against every declared
-        signal, never assumed pre-validated. env/system/session/metric
+        signal, never assumed pre-validated. env/system/session/user/metric
         are cheap, lazy proxies included unconditionally; only the bare core-metric names are gated, since building them is eager."""
         signal_values = SignalEvaluator().validate(automaton, raw_signal_values)
         scope: dict[str, Any] = {
@@ -50,6 +53,7 @@ class EvaluationScopeBuilder(object):
             "env": self._env.action_set(),
             "system": self._system,
             "session": self._session,
+            "user": self._user.as_dict(),
             "metric": self._metrics.for_turn(),
         }
         if self._automaton_namespace is not None:

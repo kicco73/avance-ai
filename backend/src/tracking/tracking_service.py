@@ -18,6 +18,7 @@ from .env import PersistedEnv
 from .evaluation_scope import EvaluationScopeBuilder
 from .session_facts import SessionFacts
 from .system_facts import SystemFacts
+from .user_facts import UserFacts
 from .definitions import Signals
 from .session_import import SessionImportManager
 from .session_import_job import SessionImportJob
@@ -278,11 +279,12 @@ class TrackingService(object):
 		env = PersistedEnv(self._db, fixed_context)
 		system_facts = SystemFacts()
 		session_facts = SessionFacts(self._db, fixed_context)
+		user_facts = UserFacts(self._db)
 		automaton_namespace = AutomatonNamespace(self._db, self._project_service)
 		metrics = MetricService(
 			self._db, fixed_context, max_session_duration_in_minutes=self._metrics.max_session_duration_in_minutes
 		)
-		scope_builder = EvaluationScopeBuilder(env, metrics, system_facts, session_facts, automaton_namespace)
+		scope_builder = EvaluationScopeBuilder(env, metrics, system_facts, session_facts, user_facts, automaton_namespace)
 
 		def on_metadata_sync_to_async(key: str, value: Any):
 			if on_metadata:
