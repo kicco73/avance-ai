@@ -6,6 +6,7 @@ import MessageCommentButton from '../../chat/MessageCommentButton.vue'
 import ProjectsMenu from '../../ProjectsMenu.vue'
 import SettingsMenu from '../../settings/SettingsMenu.vue'
 import ProfileMenu from '../../ProfileMenu.vue'
+import AppHeader from '../../AppHeader.vue'
 import Inspector from '../../inspector/Inspector.vue'
 import InspectorGraphTab from '../../inspector/InspectorGraphTab.vue'
 import InspectorSignalsTab from '../../inspector/InspectorSignalsTab.vue'
@@ -40,7 +41,7 @@ const props = defineProps({
 // SettingsMenu.vue's own emits; profile/logout are the same pass-through
 // of ProfileMenu.vue's own.
 const emit = defineEmits([
-  'close', 'project-select', 'manage-projects', 'manage-users', 'label-sessions', 'edit-projects', 'about',
+  'close', 'project-select', 'manage-projects', 'manage-users', 'label-sessions', 'edit-projects',
   'download-backup', 'restore-backup', 'profile', 'logout'
 ])
 
@@ -221,25 +222,28 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="test-overlay">
-    <div class="test-header">
-      <button class="back-btn" title="Back" @click="emit('close')">«</button>
-      <h2>Label sessions — {{ projectName }}</h2>
-      <div class="test-header-actions">
-        <ProjectsMenu :selected-name="projectName" @select="(name) => emit('project-select', name)" />
-        <SettingsMenu
-          :role="role"
-          align="right"
-          @manage-projects="emit('manage-projects')"
-          @manage-users="emit('manage-users')"
-          @label-sessions="emit('label-sessions')"
-          @edit-projects="emit('edit-projects')"
-          @about="emit('about')"
-          @download-backup="emit('download-backup')"
-          @restore-backup="(file) => emit('restore-backup', file)"
-        />
-        <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
-      </div>
-    </div>
+    <AppHeader>
+      <template #left>
+        <button class="app-header-icon-btn" title="Back" @click="emit('close')">«</button>
+        <h2 class="app-header-title">Label sessions — {{ projectName }}</h2>
+      </template>
+      <template #right>
+        <div class="test-header-actions">
+          <ProjectsMenu :selected-name="projectName" @select="(name) => emit('project-select', name)" />
+          <SettingsMenu
+            :role="role"
+            align="right"
+            @manage-projects="emit('manage-projects')"
+            @manage-users="emit('manage-users')"
+            @label-sessions="emit('label-sessions')"
+            @edit-projects="emit('edit-projects')"
+            @download-backup="emit('download-backup')"
+            @restore-backup="(file) => emit('restore-backup', file)"
+          />
+          <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
+        </div>
+      </template>
+    </AppHeader>
 
     <div class="test-body">
       <div class="test-chat-pane">
@@ -404,21 +408,7 @@ onBeforeUnmount(() => {
   font-family: system-ui, -apple-system, sans-serif;
 }
 
-.test-header {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: calc(0.75rem + var(--safe-area-top)) 1rem 0.75rem;
-  border-bottom: 1px solid #ddd;
-}
-
-.test-header h2 {
-  margin: 0;
-  font-size: 1.1rem;
-}
-
 .test-header-actions {
-  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -426,28 +416,6 @@ onBeforeUnmount(() => {
 
 .test-header-actions .projects-menu {
   max-width: 220px;
-}
-
-.back-btn {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  padding: 0;
-  border-radius: 6px;
-  border: 1px solid #4a6fa5;
-  background: white;
-  color: #4a6fa5;
-  font-size: 1rem;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.back-btn:hover {
-  background: #4a6fa5;
-  color: white;
 }
 
 .sessions-toggle-btn {

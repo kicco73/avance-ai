@@ -4,6 +4,7 @@ import { getMe, postEraseData } from '../api.js'
 import { confirmDialog, infoDialog } from '../dialogStore.js'
 import { disconnect as disconnectChat } from '../chatClient.js'
 import { requireLogin } from '../authStore.js'
+import AppHeader from './AppHeader.vue'
 
 const emit = defineEmits(['close'])
 
@@ -73,10 +74,12 @@ async function eraseAllData() {
 
 <template>
   <div class="profile-view-overlay">
-    <div class="profile-view-header">
-      <button class="back-btn" title="Back" @click="emit('close')">«</button>
-      <h2>Profile</h2>
-    </div>
+    <AppHeader>
+      <template #left>
+        <button class="app-header-icon-btn" title="Back" @click="emit('close')">«</button>
+        <h2 class="app-header-title">Profile</h2>
+      </template>
+    </AppHeader>
 
     <div class="profile-view-body">
       <p v-if="loading" class="profile-view-status">Loading…</p>
@@ -136,53 +139,6 @@ async function eraseAllData() {
   display: flex;
   flex-direction: column;
   font-family: system-ui, -apple-system, sans-serif;
-}
-
-.profile-view-header {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  /* Same shared --safe-area-top custom property (see html, body in
-     App.vue) as ManageProjectsView.vue's own .manage-projects-header —
-     adds to this row's own 0.75rem base padding instead of eating into
-     it, so this header clears the notch/Dynamic Island the same way the
-     other top-level views do, off the same one source of truth instead
-     of drifting out of sync with it again. Left/right aren't reserved
-     here too — .profile-view-overlay already does, and reserving both
-     would double it. */
-  padding-top: calc(0.75rem + var(--safe-area-top));
-  padding-right: 1rem;
-  padding-bottom: 0.75rem;
-  padding-left: 1rem;
-  background: white;
-  border-bottom: 1px solid #ddd;
-}
-
-.profile-view-header h2 {
-  margin: 0;
-  font-size: 1.1rem;
-}
-
-.back-btn {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  padding: 0;
-  border-radius: 6px;
-  border: 1px solid #4a6fa5;
-  background: white;
-  color: #4a6fa5;
-  font-size: 1rem;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.back-btn:hover {
-  background: #4a6fa5;
-  color: white;
 }
 
 .profile-view-body {

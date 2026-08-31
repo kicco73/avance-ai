@@ -22,6 +22,7 @@ import ModelMenu from '../../ModelMenu.vue'
 import SettingsMenu from '../../settings/SettingsMenu.vue'
 import ProfileMenu from '../../ProfileMenu.vue'
 import ProjectsMenu from '../../ProjectsMenu.vue'
+import AppHeader from '../../AppHeader.vue'
 import { useLeaveConfirmation } from '../../../composables/useLeaveConfirmation.js'
 import { useResizablePanel } from '../../../composables/useResizablePanel.js'
 import { useProjectFiles } from '../../../composables/useProjectFiles.js'
@@ -88,7 +89,7 @@ const props = defineProps({
 setTestProject(props.projectName)
 
 const emit = defineEmits([
-  'saved', 'back', 'project-select', 'manage-projects', 'manage-users', 'label-sessions', 'edit-projects', 'about',
+  'saved', 'back', 'project-select', 'manage-projects', 'manage-users', 'label-sessions', 'edit-projects',
   'download-backup', 'restore-backup', 'profile', 'logout'
 ])
 
@@ -772,69 +773,74 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="edit-project-overlay">
-    <div class="edit-project-header">
-      <div class="edit-project-header-title">
-        <button class="back-btn" title="Back" @click="handleBack">«</button>
-        <h2>Edit project — {{ projectName }}</h2>
-      </div>
-      <div class="mode-segment">
-        <button
-          class="mode-segment-btn"
-          :class="{ 'mode-segment-btn-active': mode === 'edit' }"
-          @click="setMode('edit')"
-        >Design</button>
-        <button
-          class="mode-segment-btn"
-          :class="{ 'mode-segment-btn-active': mode === 'run' }"
-          @click="setMode('run')"
-        >Run</button>
-        <button
-          class="mode-segment-btn"
-          :class="{ 'mode-segment-btn-active': mode === 'test' }"
-          @click="setMode('test')"
-        >Test</button>
-      </div>
-      <div class="edit-project-header-actions">
-        <div v-if="projectRevision" class="publish-split-btn">
+    <AppHeader>
+      <template #left>
+        <div class="edit-project-header-title">
+          <button class="app-header-icon-btn" title="Back" @click="handleBack">«</button>
+          <h2 class="app-header-title">Edit project — {{ projectName }}</h2>
+        </div>
+      </template>
+      <template #center>
+        <div class="mode-segment">
           <button
-            class="publish-btn"
-            :disabled="publishUpToDate || publishing"
-            :title="`Draft revision ${projectRevision.revision} — published: ${projectRevision.published_revision ?? 'never'}`"
-            @click="handlePublish"
-          >{{ publishing ? 'Publishing…' : `Rev. ${projectRevision.revision}` }}</button>
-          <template v-if="canRevert">
+            class="mode-segment-btn"
+            :class="{ 'mode-segment-btn-active': mode === 'edit' }"
+            @click="setMode('edit')"
+          >Design</button>
+          <button
+            class="mode-segment-btn"
+            :class="{ 'mode-segment-btn-active': mode === 'run' }"
+            @click="setMode('run')"
+          >Run</button>
+          <button
+            class="mode-segment-btn"
+            :class="{ 'mode-segment-btn-active': mode === 'test' }"
+            @click="setMode('test')"
+          >Test</button>
+        </div>
+      </template>
+      <template #right>
+        <div class="edit-project-header-actions">
+          <div v-if="projectRevision" class="publish-split-btn">
             <button
-              type="button"
-              class="publish-menu-toggle"
-              title="More publish options"
-              @click="publishMenuOpen = !publishMenuOpen"
-            >▾</button>
-            <div v-if="publishMenuOpen" class="publish-menu-dropdown">
-              <button type="button" class="publish-menu-item" @click="closePublishMenu(); handlePublish()">Publish</button>
+              class="publish-btn"
+              :disabled="publishUpToDate || publishing"
+              :title="`Draft revision ${projectRevision.revision} — published: ${projectRevision.published_revision ?? 'never'}`"
+              @click="handlePublish"
+            >{{ publishing ? 'Publishing…' : `Rev. ${projectRevision.revision}` }}</button>
+            <template v-if="canRevert">
               <button
                 type="button"
-                class="publish-menu-item publish-menu-item-danger"
-                @click="closePublishMenu(); handleRevert()"
-              >Revert to rev. {{ projectRevision.published_revision }}</button>
-            </div>
-          </template>
+                class="publish-menu-toggle"
+                title="More publish options"
+                @click="publishMenuOpen = !publishMenuOpen"
+              >▾</button>
+              <div v-if="publishMenuOpen" class="publish-menu-dropdown">
+                <button type="button" class="publish-menu-item" @click="closePublishMenu(); handlePublish()">Publish</button>
+                <button
+                  type="button"
+                  class="publish-menu-item publish-menu-item-danger"
+                  @click="closePublishMenu(); handleRevert()"
+                >Revert to rev. {{ projectRevision.published_revision }}</button>
+              </div>
+            </template>
+          </div>
+          <ProjectsMenu :selected-name="projectName" @select="handleProjectMenuSelect" />
+          <ModelMenu :model-store="testChatModelStore" />
+          <SettingsMenu
+            :role="role"
+            align="right"
+            @manage-projects="handleSettingsManageProjects"
+            @manage-users="handleSettingsManageUsers"
+            @label-sessions="handleSettingsLabelSessions"
+            @edit-projects="handleSettingsEditProjects"
+            @download-backup="emit('download-backup')"
+            @restore-backup="(file) => emit('restore-backup', file)"
+          />
+          <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
         </div>
-        <ProjectsMenu :selected-name="projectName" @select="handleProjectMenuSelect" />
-        <ModelMenu :model-store="testChatModelStore" />
-        <SettingsMenu
-          :role="role"
-          align="right"
-          @manage-projects="handleSettingsManageProjects"
-          @manage-users="handleSettingsManageUsers"
-          @label-sessions="handleSettingsLabelSessions"
-          @edit-projects="handleSettingsEditProjects"
-          @about="emit('about')"
-          @download-backup="emit('download-backup')"
-          @restore-backup="(file) => emit('restore-backup', file)"
-        />
-        <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
-      </div>
-    </div>
+      </template>
+    </AppHeader>
 
     <div class="edit-project-body">
       <div class="edit-project-panels">
@@ -1052,60 +1058,16 @@ onBeforeUnmount(() => {
   font-family: system-ui, -apple-system, sans-serif;
 }
 
-/* Three columns so .mode-segment sits truly centered in the header
-   regardless of how wide the title/actions on either side are — the two
-   outer columns are equal (1fr each), so the middle one's own auto width
-   is centered between them rather than just within the actions column. */
-.edit-project-header {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  padding: calc(0.75rem + var(--safe-area-top)) 1rem 0.75rem;
-  border-bottom: 1px solid #ddd;
-}
-
 .edit-project-header-title {
   display: flex;
   align-items: center;
   gap: 0.6rem;
   min-width: 0;
-  justify-self: start;
-}
-
-.edit-project-header-title h2 {
-  margin: 0;
-  font-size: 1.1rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.back-btn {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  padding: 0;
-  border-radius: 6px;
-  border: 1px solid #4a6fa5;
-  background: white;
-  color: #4a6fa5;
-  font-size: 1rem;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.back-btn:hover {
-  background: #4a6fa5;
-  color: white;
 }
 
 .edit-project-header-actions {
   display: flex;
   align-items: center;
-  justify-self: end;
   gap: 0.5rem;
 }
 
@@ -1114,7 +1076,6 @@ onBeforeUnmount(() => {
 }
 
 .mode-segment {
-  justify-self: center;
   display: flex;
   gap: 0.2rem;
   padding: 0.2rem;

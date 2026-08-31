@@ -20,7 +20,10 @@ import ChatInput from './ChatInput.vue'
 import MessageBubble from './MessageBubble.vue'
 import SessionsPanel from './SessionsPanel.vue'
 import ProjectsMenu from '../ProjectsMenu.vue'
+import ProfileMenu from '../ProfileMenu.vue'
+import AppHeader from '../AppHeader.vue'
 import SplashScreen from '../SplashScreen.vue'
+import { roleSatisfies } from '../../roles.js'
 import { setApiError } from '../../errorStore.js'
 import { connect as connectChat, disconnect as disconnectChat } from '../../chatClient.js'
 import { startRecording, stopRecording } from '../../mic.js'
@@ -42,7 +45,14 @@ const props = defineProps({
   // session/messages/state, never shared with any other store instance
   // (see chatStoreFactory.js's createChatStore). Defaults to the app's
   // one live chat; RunChat.vue passes its own test store instead.
-  store: { type: Object, default: () => liveStore }
+  store: { type: Object, default: () => liveStore },
+  // Only ever set by LiveChatWindow.vue's real, top-level instance (see
+  // hideSessionsPanel above — RunChat.vue's embedded preview leaves both
+  // unset) — gates the header's own back-to-Manage-projects button below.
+  role: { type: String, default: null },
+  // ProfileMenu.vue's own avatar/name, same pass-through every other
+  // top-level view already does.
+  profile: { type: Object, default: null }
 })
 
 const {
@@ -73,9 +83,14 @@ const {
   reloadMessages
 } = props.store
 
-const emit = defineEmits(['project-select', 'project-download'])
+const emit = defineEmits(['project-select', 'project-download', 'manage-projects', 'profile', 'logout'])
 
 const projectsMenuRef = ref(null)
+
+// The header's own back arrow — only an admin (whose LiveChatWindow is
+// pushed *over* ManageProjectsView, see App.vue) has anywhere to pop back
+// to; a plain user's chat is their whole app, with no base to return to.
+const canBackToManageProjects = computed(() => roleSatisfies(props.role, 'admin'))
 
 // No transcript import here: imported sessions are a separate pool that
 // never shows up in this component's own sessions list, so importing
@@ -426,13 +441,32 @@ watch(
       :class="{ 'chat-window-dimmed': !hideSessionsPanel && sessionsPanelOpen }"
       @click="closeSessionsPanelOnChatClick"
     >
-    <button
-      v-if="!hideSessionsPanel && !sessionsPanelOpen"
-      type="button"
-      class="sessions-reopen-btn"
-      title="Show sessions"
-      @click.stop="toggleSessionsPanel"
-    >☰</button>
+    <AppHeader
+      v-if="!hideSessionsPanel"
+      variant="overlay"
+      class="chat-header-overlay"
+      :class="{ 'chat-header-overlay-hidden': sessionsPanelOpen }"
+    >
+      <template #left>
+        <button
+          v-if="!sessionsPanelOpen"
+          type="button"
+          class="app-header-icon-btn"
+          title="Show sessions"
+          @click.stop="toggleSessionsPanel"
+        >☰</button>
+        <button
+          v-if="canBackToManageProjects"
+          type="button"
+          class="app-header-icon-btn"
+          title="Back to Manage projects"
+          @click="emit('manage-projects')"
+        >«</button>
+      </template>
+      <template #right>
+        <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
+      </template>
+    </AppHeader>
 
     <SplashScreen v-if="!hideSessionsPanel && projectPaused" variant="paused" :reason="projectPausedReason" embedded />
     <SplashScreen v-else-if="!hideSessionsPanel && !state?.key" variant="no-project" embedded />
@@ -540,48 +574,16 @@ watch(
   transition: filter 0s 0.32s;
 }
 
-.sessions-reopen-btn {
-  position: absolute;
-  /* Same calc(...) formula, off the same shared --safe-area-* custom
-     properties (see html, body in App.vue), as App.vue's own
-     .topbar-overlay (the gear/profile cluster in the opposite corner) —
-     not this element's own ancestor padding, which .chat-header now
-     owns instead (see its own comment): two different corner controls
-     using two different mechanisms drifted out of alignment the moment
-     one of them changed, so both now derive from the one shared,
-     already-verified formula instead. */
-  top: calc(0.75rem + var(--safe-area-top));
-  left: calc(0.75rem + var(--safe-area-left));
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  line-height: 1;
-  border: 1px solid #4a6fa5;
-  border-radius: 6px;
-  background: #fff;
-  color: #4a6fa5;
-  cursor: pointer;
-  font-size: 0.9rem;
-  opacity: 0.35;
-  transition: opacity 0.15s ease;
+/* Fades out in lockstep with the sessions panel sliding open — same
+   reasoning as ChatWindow.vue's own .chat-window-dimmed (see below): once
+   the panel covers this corner, its own controls take over. */
+.chat-header-overlay {
+  transition: opacity 0.32s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.sessions-reopen-btn:hover {
-  opacity: 1;
-}
-
-/* No hover on touch, so the opacity-until-hover treatment above left
-   this permanently dim there — full opacity and a larger target by
-   default instead. */
-@media (hover: none) and (pointer: coarse) {
-  .sessions-reopen-btn {
-    width: 2.75rem;
-    height: 2.75rem;
-    opacity: 1;
-  }
+.chat-header-overlay-hidden {
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* Overlays the chat rather than sitting in the flex flow — opening it

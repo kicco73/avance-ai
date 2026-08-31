@@ -19,7 +19,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
-  'manage-projects', 'manage-users', 'label-sessions', 'edit-projects', 'download-backup', 'restore-backup', 'about'
+  'manage-projects', 'manage-users', 'label-sessions', 'edit-projects', 'download-backup', 'restore-backup'
 ])
 
 const open = ref(false)
@@ -31,7 +31,6 @@ const canManageUsers = computed(() => roleSatisfies(props.role, 'admin'))
 const canLabelSessions = computed(() => roleSatisfies(props.role, 'supervisor'))
 const canEditProjects = computed(() => roleSatisfies(props.role, 'admin'))
 const canBackup = computed(() => roleSatisfies(props.role, 'admin'))
-const canViewAbout = computed(() => roleSatisfies(props.role, 'supervisor'))
 
 function toggle() {
   open.value = !open.value
@@ -65,11 +64,6 @@ function selectDownloadBackup() {
 function selectRestoreBackup() {
   open.value = false
   restoreInput.value?.click()
-}
-
-function selectAbout() {
-  open.value = false
-  emit('about')
 }
 
 function handleRestoreFileChange(event) {
@@ -122,10 +116,6 @@ onBeforeUnmount(() => {
           </li>
           <li>
             <button class="settings-item" :disabled="!canBackup" :title="canBackup ? '' : 'Requires admin access'" @click="selectRestoreBackup">Restore backup...</button>
-          </li>
-          <li class="settings-separator" role="separator"></li>
-          <li>
-            <button class="settings-item" :disabled="!canViewAbout" @click="selectAbout">About Avance...</button>
           </li>
         </ul>
       </div>

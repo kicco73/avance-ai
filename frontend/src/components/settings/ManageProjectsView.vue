@@ -10,6 +10,7 @@ import { setCanvasColor, restoreCanvasColor } from '../../canvasColor.js'
 import ModelMenu from '../ModelMenu.vue'
 import SettingsMenu from './SettingsMenu.vue'
 import ProfileMenu from '../ProfileMenu.vue'
+import AppHeader from '../AppHeader.vue'
 import ShareProjectDialog from './ShareProjectDialog.vue'
 import avanceLogoUrl from '../../assets/avance-logo.png'
 import avanceLogoLargeUrl from '../../assets/avance-logo-large.png'
@@ -95,7 +96,7 @@ function setLogoBtnEl(el) {
 function handleHeaderResize(entries) {
   for (const entry of entries) {
     const width = entry.contentRect.width
-    if (entry.target === headerEl.value) headerWidth.value = width
+    if (entry.target === headerEl.value.el) headerWidth.value = width
     else if (entry.target === modelMenuWrapEl.value) modelMenuWidth.value = width
     else if (entry.target === headerActionsEl.value) headerActionsWidth.value = width
   }
@@ -285,7 +286,7 @@ onMounted(() => {
   })
   bodyResizeObserver.observe(bodyEl.value)
   headerResizeObserver = new ResizeObserver(handleHeaderResize)
-  headerResizeObserver.observe(headerEl.value)
+  headerResizeObserver.observe(headerEl.value.el)
   headerResizeObserver.observe(modelMenuWrapEl.value)
   headerResizeObserver.observe(headerActionsEl.value)
   document.addEventListener('click', handleDocumentClick)
@@ -303,66 +304,71 @@ defineExpose({ refresh: load })
 
 <template>
   <div class="manage-projects-overlay">
-    <div class="manage-projects-header" ref="headerEl">
-      <div class="manage-projects-header-side" ref="modelMenuWrapEl">
-        <ModelMenu :model-store="confirmingModelStore" />
-      </div>
-      <button
-        v-if="logoFits"
-        type="button"
-        class="manage-projects-header-logo-btn"
-        :ref="setLogoBtnEl"
-        title="About Avance"
-        @click="emit('about')"
-      >
-        <img :src="avanceLogoLargeUrl" alt="Avance" class="manage-projects-header-logo" />
-      </button>
-      <div class="manage-projects-header-actions" ref="headerActionsEl">
-        <div class="manage-projects-add-menu">
-          <button
-            type="button"
-            class="manage-projects-action-btn"
-            @click="toggleAddMenu"
-          >
-            Add
-          </button>
-          <Transition name="manage-projects-add-panel">
-            <div v-if="addMenuOpen" class="manage-projects-add-panel">
-              <ul class="manage-projects-add-list">
-                <li>
-                  <button type="button" class="manage-projects-add-item" @click="selectNewProject">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                      <path d="M12 4a1 1 0 0 1 1 1v6h6a1 1 0 1 1 0 2h-6v6a1 1 0 1 1-2 0v-6H5a1 1 0 1 1 0-2h6V5a1 1 0 0 1 1-1z" />
-                    </svg>
-                    <span>New project</span>
-                  </button>
-                </li>
-                <li>
-                  <button type="button" class="manage-projects-add-item" @click="selectUploadProject">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                      <path d="M12 21a1 1 0 0 1-1-1v-9.59l-2.3 2.3a1 1 0 1 1-1.4-1.42l4-4a1 1 0 0 1 1.4 0l4 4a1 1 0 1 1-1.4 1.42l-2.3-2.3V20a1 1 0 0 1-1 1zM5 5a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1z" />
-                    </svg>
-                    <span>Upload project...</span>
-                  </button>
-                </li>
-              </ul>
-            </div>
-          </Transition>
+    <AppHeader ref="headerEl">
+      <template #left>
+        <div class="manage-projects-header-side" ref="modelMenuWrapEl">
+          <ModelMenu :model-store="confirmingModelStore" />
         </div>
-        <SettingsMenu
-          :role="role"
-          align="right"
-          @manage-projects="emit('manage-projects')"
-          @manage-users="emit('manage-users')"
-          @label-sessions="emit('label-sessions')"
-          @edit-projects="emit('edit-projects')"
-          @about="emit('about')"
-          @download-backup="emit('download-backup')"
-          @restore-backup="(file) => emit('restore-backup', file)"
-        />
-        <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
-      </div>
-    </div>
+      </template>
+      <template #center>
+        <button
+          v-if="logoFits"
+          type="button"
+          class="manage-projects-header-logo-btn"
+          :ref="setLogoBtnEl"
+          title="About Avance"
+          @click="emit('about')"
+        >
+          <img :src="avanceLogoLargeUrl" alt="Avance" class="manage-projects-header-logo" />
+        </button>
+      </template>
+      <template #right>
+        <div class="manage-projects-header-actions" ref="headerActionsEl">
+          <div class="manage-projects-add-menu">
+            <button
+              type="button"
+              class="manage-projects-action-btn"
+              @click="toggleAddMenu"
+            >
+              Add
+            </button>
+            <Transition name="manage-projects-add-panel">
+              <div v-if="addMenuOpen" class="manage-projects-add-panel">
+                <ul class="manage-projects-add-list">
+                  <li>
+                    <button type="button" class="manage-projects-add-item" @click="selectNewProject">
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                        <path d="M12 4a1 1 0 0 1 1 1v6h6a1 1 0 1 1 0 2h-6v6a1 1 0 1 1-2 0v-6H5a1 1 0 1 1 0-2h6V5a1 1 0 0 1 1-1z" />
+                      </svg>
+                      <span>New project</span>
+                    </button>
+                  </li>
+                  <li>
+                    <button type="button" class="manage-projects-add-item" @click="selectUploadProject">
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                        <path d="M12 21a1 1 0 0 1-1-1v-9.59l-2.3 2.3a1 1 0 1 1-1.4-1.42l4-4a1 1 0 0 1 1.4 0l4 4a1 1 0 1 1-1.4 1.42l-2.3-2.3V20a1 1 0 0 1-1 1zM5 5a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1z" />
+                      </svg>
+                      <span>Upload project...</span>
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            </Transition>
+          </div>
+          <SettingsMenu
+            :role="role"
+            align="right"
+            @manage-projects="emit('manage-projects')"
+            @manage-users="emit('manage-users')"
+            @label-sessions="emit('label-sessions')"
+            @edit-projects="emit('edit-projects')"
+            @download-backup="emit('download-backup')"
+            @restore-backup="(file) => emit('restore-backup', file)"
+          />
+          <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
+        </div>
+      </template>
+    </AppHeader>
 
     <div class="manage-projects-body" ref="bodyEl">
       <p v-if="loading" class="manage-projects-status">Loading…</p>
@@ -569,30 +575,7 @@ defineExpose({ refresh: load })
   font-family: system-ui, -apple-system, sans-serif;
 }
 
-.manage-projects-header {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  /* Same shared --safe-area-top custom property (see html, body in
-     App.vue) as ChatView.vue's own .chat-header — adds to this row's own
-     0.75rem base padding instead of eating into it, so this header
-     clears the notch/Dynamic Island the same way the chat one does, off
-     the same one source of truth instead of drifting out of sync with
-     it again. Left/right aren't reserved here too — .manage-projects-overlay
-     already does, and reserving both would double it. */
-  padding-top: calc(0.75rem + var(--safe-area-top));
-  padding-right: 1rem;
-  padding-bottom: 0.75rem;
-  padding-left: 1rem;
-  border-bottom: 1px solid #ddd;
-}
-
 .manage-projects-header-logo-btn {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
   padding: 0;

@@ -6,9 +6,7 @@ import LabelProjectView from './components/project/label/LabelProjectView.vue'
 import LoginView from './components/LoginView.vue'
 import TermsView from './components/TermsView.vue'
 import InviteRequiredView from './components/InviteRequiredView.vue'
-import ProfileMenu from './components/ProfileMenu.vue'
 import ProfileView from './components/ProfileView.vue'
-import SettingsMenu from './components/settings/SettingsMenu.vue'
 import ManageProjectsView from './components/settings/ManageProjectsView.vue'
 import ManageUsersView from './components/settings/ManageUsersView.vue'
 import SplashScreen from './components/SplashScreen.vue'
@@ -30,13 +28,11 @@ import {
 } from './api.js'
 import { disconnect as disconnectChat } from './chatClient.js'
 import { needsLogin } from './authStore.js'
-import { roleSatisfies } from './roles.js'
 import { activeDialog, aboutDialog, confirmDialog } from './dialogStore.js'
 import {
   handleStateChange,
   loadMessages,
-  clearChatUi,
-  sessionsPanelOpen
+  clearChatUi
 } from './chatStore.js'
 import { useAppBoot } from './composables/useAppBoot.js'
 import { useChatFlipTransition } from './composables/useChatFlipTransition.js'
@@ -96,12 +92,6 @@ function popPushedView() {
 }
 
 const { onChatBeforeEnter, onChatEnter, onChatBeforeLeave, onChatLeave } = useChatFlipTransition(navDirection)
-// Chat has no Settings/Profile controls of its own (unlike the other
-// views, each of which builds SettingsMenu/ProfileMenu into its own
-// header) — true whenever chat is the thing on screen, whether that's a
-// plain user's whole app or an admin's pushed chat, so the shared
-// .topbar-overlay below knows when to show itself.
-const chatVisible = computed(() => currentUserRole.value === 'user' || pushedView.value === 'chat')
 const dialogOpen = computed(() => !!activeDialog.value)
 const modelUploadInput = ref(null)
 const chatWindowRef = ref(null)
@@ -469,8 +459,13 @@ onBeforeUnmount(() => {
         v-if="currentUserRole === 'user'"
         ref="chatWindowRef"
         :project-name="liveChatProjectName"
+        :role="currentUserRole"
+        :profile="currentUserProfile"
         @project-select="handleLiveChatProjectSelect"
         @project-download="handleModelDownload"
+        @manage-projects="handleSettingsManageProjects"
+        @profile="openProfile"
+        @logout="handleLogout"
       />
 
       <!-- Supervisor: Label sessions is the entire app, no stack, no
@@ -487,7 +482,6 @@ onBeforeUnmount(() => {
         @manage-users="handleSettingsManageUsers"
         @label-sessions="handleSettingsLabelSessions"
         @edit-projects="handleSettingsEditProjects"
-        @about="handleShowAbout"
         @download-backup="handleDownloadBackup"
         @restore-backup="handleRestoreBackup"
         @profile="openProfile"
@@ -545,7 +539,6 @@ onBeforeUnmount(() => {
             @manage-users="handleSettingsManageUsers"
             @label-sessions="handleSettingsLabelSessions"
             @edit-projects="handleSettingsEditProjects"
-            @about="handleShowAbout"
             @download-backup="handleDownloadBackup"
             @restore-backup="handleRestoreBackup"
             @profile="openProfile"
@@ -563,7 +556,6 @@ onBeforeUnmount(() => {
             @manage-users="handleSettingsManageUsers"
             @label-sessions="handleSettingsLabelSessions"
             @edit-projects="handleSettingsEditProjects"
-            @about="handleShowAbout"
             @download-backup="handleDownloadBackup"
             @restore-backup="handleRestoreBackup"
             @profile="openProfile"
@@ -578,7 +570,6 @@ onBeforeUnmount(() => {
             @manage-users="handleSettingsManageUsers"
             @label-sessions="handleSettingsLabelSessions"
             @edit-projects="handleSettingsEditProjects"
-            @about="handleShowAbout"
             @download-backup="handleDownloadBackup"
             @restore-backup="handleRestoreBackup"
             @profile="openProfile"
@@ -597,27 +588,16 @@ onBeforeUnmount(() => {
             v-if="pushedView === 'chat'"
             ref="chatWindowRef"
             :project-name="liveChatProjectName"
+            :role="currentUserRole"
+            :profile="currentUserProfile"
             @project-select="handleLiveChatProjectSelect"
             @project-download="handleModelDownload"
+            @manage-projects="handleSettingsManageProjects"
+            @profile="openProfile"
+            @logout="handleLogout"
           />
         </Transition>
       </template>
-
-      <div class="topbar-overlay" v-if="chatVisible" :class="{ 'topbar-overlay-hidden': sessionsPanelOpen }">
-        <SettingsMenu
-          v-if="roleSatisfies(currentUserRole, 'supervisor')"
-          :role="currentUserRole"
-          align="right"
-          @manage-projects="handleSettingsManageProjects"
-          @manage-users="handleSettingsManageUsers"
-          @label-sessions="handleSettingsLabelSessions"
-          @edit-projects="handleSettingsEditProjects"
-          @about="handleShowAbout"
-          @download-backup="handleDownloadBackup"
-          @restore-backup="handleRestoreBackup"
-        />
-        <ProfileMenu :profile="currentUserProfile" @profile="openProfile" @logout="handleLogout" />
-      </div>
 
       <input
         ref="modelUploadInput"
@@ -901,39 +881,6 @@ body {
 
 .view-slide-back-leave-to {
   transform: translateX(100%);
-}
-
-/* Anchored to .app-body, not the viewport: when ErrorBanner pushes
-   .app-body down, this must shift down with it. Settings sits left of
-   Profile (row order in the template) — the two read as one control
-   cluster in the corner, both hidden together (see -hidden below) since
-   neither means anything once the sessions panel covers this corner.
-   top/right add the shared --safe-area-* custom properties (defined on
-   html, body above) on top of the 0.75rem margin — unlike
-   LiveChatWindow.vue's own .sessions-reopen-btn (☰), this sits in
-   .app-body directly, a sibling of LiveChatWindow rather than a
-   descendant, so it never benefited from that component's own safe-area
-   padding: without this it landed right under the notch/Dynamic Island
-   instead of clear of it, the one corner control that did. */
-.topbar-overlay {
-  position: absolute;
-  top: calc(0.75rem + var(--safe-area-top));
-  right: calc(0.75rem + var(--safe-area-right));
-  z-index: 200;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.32s cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: transform, opacity;
-  backface-visibility: hidden;
-}
-
-/* Slides out to the right in lockstep with the sessions panel opening
-   (see ChatWindow.vue's own .chat-window-dimmed fade/blur). */
-.topbar-overlay-hidden {
-  transform: translateX(3.5rem);
-  opacity: 0;
-  pointer-events: none;
 }
 
 .upload-model-input {

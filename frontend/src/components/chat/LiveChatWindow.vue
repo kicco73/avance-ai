@@ -21,10 +21,15 @@ const props = defineProps({
   // Real, always non-null for the admin's own pushed 'chat' instance,
   // which only ever opens from an explicit row click.
   projectName: { type: String, default: null },
-  hideSessionsPanel: { type: Boolean, default: false }
+  hideSessionsPanel: { type: Boolean, default: false },
+  // Passed straight through to ChatView.vue's own header — see its props
+  // for what each one drives (the back-to-Manage-projects button /
+  // ProfileMenu.vue's avatar).
+  role: { type: String, default: null },
+  profile: { type: Object, default: null }
 })
 
-defineEmits(['project-select', 'project-download'])
+defineEmits(['project-select', 'project-download', 'manage-projects', 'profile', 'logout'])
 
 const chatViewRef = ref(null)
 const termsPending = ref(null)
@@ -144,8 +149,13 @@ defineExpose({
       v-else-if="termsPending === false"
       ref="chatViewRef"
       :hide-sessions-panel="hideSessionsPanel"
+      :role="role"
+      :profile="profile"
       @project-select="(name) => $emit('project-select', name)"
       @project-download="(name) => $emit('project-download', name)"
+      @manage-projects="$emit('manage-projects')"
+      @profile="$emit('profile')"
+      @logout="$emit('logout')"
     />
   </div>
 </template>
