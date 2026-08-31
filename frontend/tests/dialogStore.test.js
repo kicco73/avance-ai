@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { activeDialog, chooseDialog, confirmDialog, infoDialog, promptDialog, resolveActiveDialog } from '../src/dialogStore.js'
+import { activeDialog, chooseDialog, confirmDialog, customDialog, infoDialog, promptDialog, resolveActiveDialog } from '../src/dialogStore.js'
 
 describe('dialogStore', () => {
   it('confirmDialog resolves true/false off resolveActiveDialog', async () => {
@@ -36,6 +36,24 @@ describe('dialogStore', () => {
     const pending = infoDialog({ title: 'About', body: 'Version 1.0' })
     resolveActiveDialog(true)
     await expect(pending).resolves.toBe(true)
+  })
+
+  it('customDialog carries the given component/props through as kind "custom", resolving once closed', async () => {
+    const FakeComponent = { name: 'FakeComponent' }
+    const pending = customDialog({ component: FakeComponent, props: { projectName: 'proj' } })
+
+    expect(activeDialog.value.kind).toBe('custom')
+    expect(activeDialog.value.component).toBe(FakeComponent)
+    expect(activeDialog.value.props).toEqual({ projectName: 'proj' })
+
+    resolveActiveDialog(null)
+    await expect(pending).resolves.toBe(null)
+  })
+
+  it('customDialog defaults props to an empty object when omitted', () => {
+    customDialog({ component: {} })
+    expect(activeDialog.value.props).toEqual({})
+    resolveActiveDialog(null)
   })
 
   it('only ever shows one dialog at a time — a second request waits for the first to resolve', async () => {

@@ -4,10 +4,13 @@
 // dialog opens, then shows a QR code and copyable link for it (see
 // shareLink.js/useAppBoot.js for the landing half: ?invite=<code>,
 // resolved and activated once the scanning session is authenticated, or
-// gated at registration if it isn't one yet). Rendered directly by
-// ManageProjectsView.vue as a standalone overlay rather than through
-// dialogStore.js/DialogHost.vue — its QR image and copyable link don't
-// fit that store's fixed confirm/prompt/choose/info/about kinds.
+// gated at registration if it isn't one yet).
+//
+// Pure content only — no backdrop, card chrome, or close button of its
+// own: ManageProjectsView.vue opens this through dialogStore.js's
+// customDialog(), so DialogHost.vue supplies all of that (including the
+// × that closes it) the same way it does for confirm/prompt/choose/
+// info/about.
 import { onMounted, ref } from 'vue'
 import QRCode from 'qrcode'
 import { postCreateInvite } from '../../api.js'
@@ -17,8 +20,6 @@ const props = defineProps({
   projectName: { type: String, required: true },
   uiLabel: { type: String, default: null }
 })
-
-const emit = defineEmits(['close'])
 
 const loading = ref(true)
 const error = ref('')
@@ -49,83 +50,39 @@ async function copyLink() {
   clearTimeout(copiedTimeout)
   copiedTimeout = setTimeout(() => { copied.value = false }, 2000)
 }
-
-function onBackdropClick(event) {
-  if (event.target === event.currentTarget) emit('close')
-}
 </script>
 
 <template>
-  <div class="share-project-overlay" @click="onBackdropClick">
-    <div class="share-project-card">
-      <button type="button" class="share-project-close" title="Close" @click="emit('close')">×</button>
-      <h2 class="share-project-title">Share project</h2>
-      <p v-if="uiLabel" class="share-project-subtitle">{{ uiLabel }}</p>
+  <div class="share-project">
+    <h2 class="share-project-title">Share project</h2>
+    <p v-if="uiLabel" class="share-project-subtitle">{{ uiLabel }}</p>
 
-      <p v-if="loading" class="share-project-status">Generating invite…</p>
-      <p v-else-if="error" class="share-project-status share-project-error">{{ error }}</p>
-      <template v-else>
-        <div class="share-project-qr-wrap">
-          <img v-if="qrDataUrl" :src="qrDataUrl" class="share-project-qr" alt="QR code linking to this project's live chat" />
-        </div>
-        <p class="share-project-hint">
-          Scan to open this project's live chat.
-          <template v-if="expiresAt"> Valid until {{ new Date(expiresAt).toLocaleDateString() }}, up to {{ maxShares }} people.</template>
-        </p>
-        <div class="share-project-link-row">
-          <input type="text" class="share-project-link-input" :value="shareUrl" readonly @click="$event.target.select()" />
-          <button type="button" class="share-project-copy-btn" @click="copyLink">{{ copied ? 'Copied' : 'Copy' }}</button>
-        </div>
-      </template>
-    </div>
+    <p v-if="loading" class="share-project-status">Generating invite…</p>
+    <p v-else-if="error" class="share-project-status share-project-error">{{ error }}</p>
+    <template v-else>
+      <div class="share-project-qr-wrap">
+        <img v-if="qrDataUrl" :src="qrDataUrl" class="share-project-qr" alt="QR code linking to this project's live chat" />
+      </div>
+      <p class="share-project-hint">
+        Scan to open this project's live chat.
+        <template v-if="expiresAt"> Valid until {{ new Date(expiresAt).toLocaleDateString() }}, up to {{ maxShares }} people.</template>
+      </p>
+      <div class="share-project-link-row">
+        <input type="text" class="share-project-link-input" :value="shareUrl" readonly @click="$event.target.select()" />
+        <button type="button" class="share-project-copy-btn" @click="copyLink">{{ copied ? 'Copied' : 'Copy' }}</button>
+      </div>
+    </template>
   </div>
 </template>
 
 <style scoped>
-.share-project-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 2000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
-  background: rgba(0, 0, 0, 0.35);
-}
-
-.share-project-card {
-  position: relative;
-  width: 100%;
-  max-width: 320px;
-  box-sizing: border-box;
-  padding: 1.4rem;
-  border-radius: 10px;
-  background: white;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+.share-project {
   text-align: center;
-}
-
-.share-project-close {
-  position: absolute;
-  top: 0.6rem;
-  right: 0.6rem;
-  width: 1.8rem;
-  height: 1.8rem;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  color: #777;
-  font-size: 1.3rem;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.share-project-close:hover {
-  background: #f0f0f0;
 }
 
 .share-project-title {
   margin: 0 0 0.2rem;
+  padding-right: 1.6rem; /* clears DialogHost.vue's × close button, top-right */
   font-size: 1.05rem;
   font-weight: 600;
   color: #333;

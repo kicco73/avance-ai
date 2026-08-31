@@ -1,10 +1,11 @@
 <script setup>
 // Single native <dialog> that renders whatever dialogStore.js's
-// activeDialog currently is — confirm/prompt/choose/info, mutually
-// exclusive by construction (dialogStore.js only ever hands this one
-// request at a time). showModal()/close() are driven by the watch below;
-// everything about focus trapping, ESC handling, and focus-return on
-// close is the browser's own <dialog> behavior, not reimplemented here.
+// activeDialog currently is — confirm/prompt/choose/info/about/custom,
+// mutually exclusive by construction (dialogStore.js only ever hands
+// this one request at a time). showModal()/close() are driven by the
+// watch below; everything about focus trapping, ESC handling, and
+// focus-return on close is the browser's own <dialog> behavior, not
+// reimplemented here.
 import { computed, nextTick, ref, watch } from 'vue'
 import { activeDialog, resolveActiveDialog } from '../dialogStore.js'
 import logoUrl from '../assets/avance-logo.png'
@@ -89,10 +90,6 @@ function submitPrompt() {
 function chooseOption(id) {
   closeWith(id)
 }
-
-function closeInfo() {
-  closeWith(true)
-}
 </script>
 
 <template>
@@ -110,9 +107,19 @@ function closeInfo() {
       class="dialog-card"
       :class="{ 'dialog-card-visible': cardVisible, 'dialog-card-about': activeDialog.kind === 'about' }"
     >
+      <button
+        type="button"
+        class="dialog-close-btn"
+        title="Close"
+        @click="closeWith(cancelValueFor(activeDialog))"
+      >×</button>
+
       <template v-if="activeDialog.kind === 'about'">
         <img :src="logoUrl" class="dialog-about-logo" alt="Avance" />
         <p class="dialog-about-version">Version {{ activeDialog.version }}</p>
+      </template>
+      <template v-else-if="activeDialog.kind === 'custom'">
+        <component :is="activeDialog.component" v-bind="activeDialog.props" />
       </template>
       <template v-else>
         <h2 class="dialog-title">{{ activeDialog.title }}</h2>
@@ -132,7 +139,9 @@ function closeInfo() {
         <p v-if="promptError" class="dialog-field-error">{{ promptError }}</p>
       </template>
 
-      <div class="dialog-actions">
+      <!-- info/about/custom have no buttons of their own any more — the
+           × above is the only way to close them now. -->
+      <div v-if="['confirm', 'prompt', 'choose'].includes(activeDialog.kind)" class="dialog-actions">
         <template v-if="activeDialog.kind === 'confirm'">
           <button class="dialog-btn dialog-btn-cancel" @click="closeWith(false)">Cancel</button>
           <button
@@ -156,10 +165,6 @@ function closeInfo() {
             :class="{ 'dialog-btn-danger': option.danger }"
             @click="chooseOption(option.id)"
           >{{ option.label }}</button>
-        </template>
-
-        <template v-else-if="activeDialog.kind === 'info' || activeDialog.kind === 'about'">
-          <button class="dialog-btn dialog-btn-primary" @click="closeInfo">Close</button>
         </template>
       </div>
     </div>
@@ -218,6 +223,7 @@ function closeInfo() {
 }
 
 .dialog-card {
+  position: relative;
   background: white;
   border: 1px solid #ddd;
   border-radius: 10px;
@@ -232,8 +238,28 @@ function closeInfo() {
   transform: scale(1) translateY(0);
 }
 
+.dialog-close-btn {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  width: 1.8rem;
+  height: 1.8rem;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: #777;
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.dialog-close-btn:hover {
+  background: #f0f0f0;
+}
+
 .dialog-title {
   margin: 0 0 0.5rem;
+  padding-right: 1.6rem; /* clears the × close button, top-right */
   font-size: 1.05rem;
   font-weight: 600;
   color: #333;

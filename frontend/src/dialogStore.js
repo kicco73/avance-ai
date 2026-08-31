@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { markRaw, ref } from 'vue'
 
 // At most one dialog is ever shown. A request made while one's already
 // open waits here instead of stacking visually or replacing it — DialogHost.vue
@@ -57,4 +57,20 @@ export function infoDialog({ title, body }) {
 // separate title/body text.
 export function aboutDialog({ version }) {
   return enqueue({ kind: 'about', version })
+}
+
+// A caller-supplied component, rendered inside the same shared chrome
+// (backdrop, card, enter/leave transition, the × close button) as every
+// other kind here — for content too specific to fit confirm/prompt/
+// choose/info/about's own fixed shapes (e.g. ShareProjectDialog.vue's
+// QR code). `props` are bound onto it as-is. Resolves once the dialog
+// closes, same promise contract as every other kind, though most custom
+// content has nothing meaningful to resolve with — the × button alone
+// is enough to close it.
+export function customDialog({ component, props = {} }) {
+  // markRaw: `component` is a static component definition, not app
+  // state — pushing it into queue.value (a ref) unmarked would let Vue's
+  // reactivity wrap it in a Proxy, which <component :is="..."> in
+  // DialogHost.vue doesn't expect to receive.
+  return enqueue({ kind: 'custom', component: markRaw(component), props })
 }

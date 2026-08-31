@@ -4,7 +4,7 @@
 // The status dot toggles running <-> manually_paused only; 'paused' needs an external fix.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getProjectMetadata, getProjectsRuntimeStatus, projectFileContentUrl, putProjectPause, putProjectResume } from '../../api.js'
-import { confirmDialog } from '../../dialogStore.js'
+import { confirmDialog, customDialog } from '../../dialogStore.js'
 import { liveModelStore } from '../../chatStore.js'
 import { setCanvasColor, restoreCanvasColor } from '../../canvasColor.js'
 import ModelMenu from '../ModelMenu.vue'
@@ -74,8 +74,6 @@ const bodyWidth = ref(0)
 const actionsBlockWidth = ref(0)
 const openMenuFor = ref(null)
 const addMenuOpen = ref(false)
-// Name of the project whose ShareProjectDialog is currently open, or null.
-const shareProjectFor = ref(null)
 let bodyResizeObserver = null
 
 const headerEl = ref(null)
@@ -250,7 +248,7 @@ function selectDownload(name) {
 }
 
 function selectShare(name) {
-  shareProjectFor.value = name
+  customDialog({ component: ShareProjectDialog, props: { projectName: name, uiLabel: projectTitle(name) } })
 }
 
 // This view's own confirm, same pattern as selectDelete above — the
@@ -538,13 +536,6 @@ defineExpose({ refresh: load })
         </tbody>
       </table>
     </div>
-
-    <ShareProjectDialog
-      v-if="shareProjectFor"
-      :project-name="shareProjectFor"
-      :ui-label="projectTitle(shareProjectFor)"
-      @close="shareProjectFor = null"
-    />
   </div>
 </template>
 
