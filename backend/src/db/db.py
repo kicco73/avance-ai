@@ -66,9 +66,25 @@ class Db(
         self._database_url = database_url
         database.initialize(connect(database_url, pragmas={'foreign_keys': 1}))
         database.connect(reuse_if_open=True)
+        self._repair_indexes_if_inconsistent()
         self._apply_migration_strategy(migration_strategy)
         database.create_tables(self._MODELS, safe=True)
         self._backfill_projects()
+
+    def _repair_indexes_if_inconsistent(self) -> None:
+        problems = [row[0] for row in database.execute_sql('PRAGMA integrity_check').fetchall()]
+        if problems == ['ok']:
+            return
+        path = self.backup_file_path()
+        if not all('index' in problem for problem in problems):
+            raise ValueError(f"Database at '{path}' is corrupted beyond its indexes — refusing to touch it (integrity_check: {problems}).")
+        backup_path = self._timestamped_backup_path(path)
+        self._backup_to_path(backup_path)
+        logger.warning("Database at '%s' has indexes inconsistent with their tables (integrity_check: %s) — backed it up to '%s', now rebuilding every index from table data (REINDEX).", path, problems, backup_path)
+        database.execute_sql('REINDEX')
+        problems = [row[0] for row in database.execute_sql('PRAGMA integrity_check').fetchall()]
+        if problems != ['ok']:
+            raise ValueError(f"Database at '{path}' is still corrupted after rebuilding its indexes — refusing to touch it (integrity_check: {problems}; the pre-repair backup is at '{backup_path}').")
 
     @staticmethod
     def _backfill_projects() -> None:
