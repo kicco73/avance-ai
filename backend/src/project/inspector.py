@@ -224,8 +224,12 @@ class ProjectInspector:
     def get_identifier_registry(self, project_name: str) -> dict[str, dict[str, str]]:
         """Every identifier `project_name`'s trigger/`env:` expressions can
         reference, plus an "automaton.<id>"/"automaton.<id>.env" entry per
-        *other* project with a project.id."""
-        automaton = self.get_automaton(project_name, self.get_published_revision(project_name))
+        *other* project with a project.id. Only ever called from the
+        design view (TriggerEditor's autocomplete), so — like
+        get_project_signals/get_project_env_keys — this reads the
+        in-progress draft, not the published revision: a signal/env key
+        just declared must be offerable before the project is published."""
+        automaton = self._automaton_loader.load(project_name)
         registry = IdentifierRegistry.build(automaton.signals, automaton.env_keys)
         registry["automaton"] = {}
         for name in self._db.list_projects():

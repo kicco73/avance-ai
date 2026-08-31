@@ -35,13 +35,13 @@ const props = defineProps({
 })
 
 // Emits events only; App.vue owns the actual new/upload/delete actions.
-// The Settings-menu ones (manage-projects/manage-users/label-sessions/
-// about/download-backup/restore-backup) are a plain pass-through of
+// The Settings-menu ones (manage-users/label-sessions/about/
+// download-backup/restore-backup) are a plain pass-through of
 // SettingsMenu.vue's own emits; profile/logout are the same pass-through
 // of ProfileMenu.vue's own.
 const emit = defineEmits([
   'new-project', 'upload', 'delete', 'edit', 'label', 'download', 'chat', 'wipe-live-sessions',
-  'manage-projects', 'manage-users', 'label-sessions', 'edit-projects', 'about', 'download-backup', 'restore-backup',
+  'manage-users', 'label-sessions', 'edit-projects', 'about', 'download-backup', 'restore-backup',
   'profile', 'logout'
 ])
 
@@ -358,7 +358,6 @@ defineExpose({ refresh: load })
           <SettingsMenu
             :role="role"
             align="right"
-            @manage-projects="emit('manage-projects')"
             @manage-users="emit('manage-users')"
             @label-sessions="emit('label-sessions')"
             @edit-projects="emit('edit-projects')"

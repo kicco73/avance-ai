@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, ref } from 'vue'
-import { clearActionEnv, clearEnv, deleteEnvValue, getEnv, putEnvValue } from '../../api.js'
+import { clearEnv, deleteEnvValue, getEnv, putEnvValue } from '../../api.js'
 import { confirmDialog } from '../../dialogStore.js'
 
 const props = defineProps({
@@ -101,23 +101,6 @@ async function clearAll() {
   }
 }
 
-async function clearActionAll() {
-  const ok = await confirmDialog({
-    title: 'Clear environment values',
-    body: 'Clear all action-set environment values? This cannot be undone.',
-    okLabel: 'Clear',
-    danger: true
-  })
-  if (!ok) return
-  try {
-    const result = await clearActionEnv()
-    stored.value = result.stored
-    actionSet.value = result.action_set
-  } catch {
-    // already surfaced via apiFetch
-  }
-}
-
 // Always reloads regardless of whether this tab is active — cheap, and
 // values can change while this tab isn't the one showing.
 async function refresh() {
@@ -133,8 +116,19 @@ defineExpose({ loadEnv, refresh })
     <template v-else>
       <div class="inspector-signal-block">
         <div class="inspector-signal-header">
+          <span class="inspector-detail-badge inspector-detail-badge-env-action">ENVscher</span>
+          <span class="inspector-signal-name">User memory</span>
+        </div>
+        <p v-if="!actionSetEntries.length" class="inspector-env-empty">No values defined yet.</p>
+        <p v-for="[key, value] in actionSetEntries" :key="key" class="inspector-detail-field">
+          <strong>{{ key }}:</strong> {{ value === null ? '—' : value }}
+        </p>
+      </div>
+
+      <div class="inspector-signal-block">
+        <div class="inspector-signal-header">
           <span class="inspector-detail-badge inspector-detail-badge-env">AI</span>
-          <span class="inspector-signal-name">Environment memory</span>
+          <span class="inspector-signal-name">Auto memory</span>
           <button
             v-if="isLive && storedEntries.length"
             class="inspector-env-clear-btn"
@@ -144,6 +138,9 @@ defineExpose({ loadEnv, refresh })
         </div>
         <p v-if="!storedEntries.length" class="inspector-env-empty">No stored values yet.</p>
         <div v-for="[key, value] in storedEntries" :key="key" class="inspector-env-row">
+          <span class="inspector-env-ai-icon" title="Read by the AI">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zM11.5 9.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>
+          </span>
           <strong class="inspector-env-key">{{ key }}:</strong>
           <input
             v-if="editingKey === key"
@@ -169,23 +166,6 @@ defineExpose({ loadEnv, refresh })
           >×</button>
         </div>
       </div>
-
-      <div class="inspector-signal-block">
-        <div class="inspector-signal-header">
-          <span class="inspector-detail-badge inspector-detail-badge-env-action">Action</span>
-          <span class="inspector-signal-name">Set by an action's own env:</span>
-          <button
-            v-if="isLive && actionSetEntries.length"
-            class="inspector-env-clear-btn"
-            title="Clear all action-set values"
-            @click="clearActionAll"
-          >Clear all</button>
-        </div>
-        <p v-if="!actionSetEntries.length" class="inspector-env-empty">No values set by an action yet.</p>
-        <p v-for="[key, value] in actionSetEntries" :key="key" class="inspector-detail-field">
-          <strong>{{ key }}:</strong> {{ value === null ? '—' : value }}
-        </p>
-      </div>
     </template>
   </div>
 </template>
@@ -201,7 +181,8 @@ defineExpose({ loadEnv, refresh })
 .inspector-signal-name { font-weight: 600; font-size: 0.85rem; color: #333; }
 .inspector-detail-field { margin: 0 0 0.3rem; line-height: 1.4; font-size: 0.8rem; color: #444; word-break: break-word; }
 .inspector-env-empty { margin: 0; font-size: 0.8rem; color: #888; font-style: italic; }
-.inspector-env-row { display: flex; align-items: baseline; gap: 0.4rem; font-size: 0.8rem; color: #444; padding: 0.15rem 0; }
+.inspector-env-row { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: #444; padding: 0.15rem 0; }
+.inspector-env-ai-icon { display: inline-flex; flex-shrink: 0; color: #8b5cf6; }
 .inspector-env-key { flex-shrink: 0; }
 .inspector-env-value { flex: 1; word-break: break-word; border-radius: 4px; padding: 0.05rem 0.3rem; margin: -0.05rem -0.3rem; }
 .inspector-env-value-editable { cursor: text; }

@@ -109,29 +109,6 @@ def test_update_is_a_noop_when_every_key_is_filtered_out(db):
 
 
 @pytest.mark.regression
-def test_clear_action_set_wipes_every_action_set_key(db):
-    _session(db)
-    env = _env(db)
-    env.update_action_set({"a": 1, "b": 2})
-
-    env.clear_action_set()
-
-    assert env.action_set() == {}
-
-
-@pytest.mark.contract
-def test_clear_action_set_leaves_stored_untouched(db):
-    _session(db)
-    env = _env(db)
-    env.update({"favorite_color": "blue"})
-    env.update_action_set({"a": 1})
-
-    env.clear_action_set()
-
-    assert env.stored() == {"favorite_color": "blue"}
-
-
-@pytest.mark.regression
 def test_action_set_reads_a_value_set_via_update_action_set(db):
     _session(db)
     env = _env(db)

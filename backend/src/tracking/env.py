@@ -80,14 +80,9 @@ class Env(object):
 
     def clear(self) -> None:
         """Wipes every stored (free-form) key. Action-set values live in
-        a separate store and are untouched by this — see clear_action_set."""
+        a separate store and are untouched by this — they're never
+        user-clearable (see stored()'s own docstring: only stored is)."""
         self._write_stored({})
-
-    def clear_action_set(self) -> None:
-        """clear()'s equivalent for action-set values. An action whose
-        `env:` field still fires will simply re-populate what it sets on
-        its next turn."""
-        self._write_action_set({})
 
     def get(self, key: str, default: Any = None) -> Any:
         # action_set() takes priority on a name collision — an action's

@@ -229,13 +229,9 @@ function handleLiveChatProjectSelect(projectName) {
   handleProjectSwitch(projectName)
 }
 
-// Settings' own three view-switching entries. Manage projects is the
-// admin's permanent base (never unmounted) — picking it is always a pop,
-// never a push. The other two are admin-only push targets, but this is
-// also reachable by a supervisor clicking their own "Label sessions" item
-// (already where they are, since it's their whole app) — for them this
-// just re-points their standing LabelProjectView at the current active
-// project, with no push/transition at all.
+// Fed only by ChatView.vue's own admin-only back arrow now (the Settings
+// menu no longer has a "Manage projects" item) — pops back to the
+// permanent ManageProjectsView base, which is never unmounted.
 function handleSettingsManageProjects() {
   popPushedView()
 }
@@ -478,7 +474,6 @@ onBeforeUnmount(() => {
         role="supervisor"
         :profile="currentUserProfile"
         @project-select="handleLabelProjectSwitch"
-        @manage-projects="handleSettingsManageProjects"
         @manage-users="handleSettingsManageUsers"
         @label-sessions="handleSettingsLabelSessions"
         @edit-projects="handleSettingsEditProjects"
@@ -514,7 +509,6 @@ onBeforeUnmount(() => {
           @chat="handleManageProjectsChat"
           @download="handleModelDownload"
           @wipe-live-sessions="handleManageProjectsWipeLiveSessions"
-          @manage-projects="handleSettingsManageProjects"
           @manage-users="handleSettingsManageUsers"
           @label-sessions="handleSettingsLabelSessions"
           @edit-projects="handleSettingsEditProjects"
@@ -535,7 +529,6 @@ onBeforeUnmount(() => {
             @saved="handleModelEditSaved"
             @back="popPushedView"
             @project-select="handleModelEdit"
-            @manage-projects="handleSettingsManageProjects"
             @manage-users="handleSettingsManageUsers"
             @label-sessions="handleSettingsLabelSessions"
             @edit-projects="handleSettingsEditProjects"
@@ -552,7 +545,6 @@ onBeforeUnmount(() => {
             :profile="currentUserProfile"
             @close="popPushedView"
             @project-select="handleLabelProjectSwitch"
-            @manage-projects="handleSettingsManageProjects"
             @manage-users="handleSettingsManageUsers"
             @label-sessions="handleSettingsLabelSessions"
             @edit-projects="handleSettingsEditProjects"
@@ -566,7 +558,6 @@ onBeforeUnmount(() => {
             :current-user-role="currentUserRole"
             :profile="currentUserProfile"
             @close="popPushedView"
-            @manage-projects="handleSettingsManageProjects"
             @manage-users="handleSettingsManageUsers"
             @label-sessions="handleSettingsLabelSessions"
             @edit-projects="handleSettingsEditProjects"

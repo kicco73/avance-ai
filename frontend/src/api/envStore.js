@@ -13,16 +13,16 @@ export function getIdentifiers(projectName) {
   return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/identifiers`)
 }
 
-// The active project's "environment" memory: {stored, action_set,
-// computed}, reported separately so the Env tab knows which section each
-// value belongs in. `messageId` restricts to values as of that message.
+// The active project's "environment" memory: {stored, action_set},
+// reported separately so the Env tab knows which section each value
+// belongs in. `messageId` restricts to values as of that message.
 export function getEnv(messageId) {
   const query = messageId != null ? `?message_id=${encodeURIComponent(messageId)}` : ''
   return apiFetch(`${API_URL}/chat/env${query}`)
 }
 
 // Edits (or adds) one stored env key — always live, there's no editing
-// history. Returns the same {stored, computed} shape as getEnv.
+// history. Returns the same {stored, action_set} shape as getEnv.
 export function putEnvValue(key, value) {
   return apiFetch(`${API_URL}/chat/env/${encodeURIComponent(key)}`, {
     method: 'PUT',
@@ -38,17 +38,11 @@ export function deleteEnvValue(key) {
 }
 
 // Wipes every stored ("AI" section) env key at once. Returns the same
-// {stored, action_set, computed} shape as getEnv.
+// {stored, action_set} shape as getEnv. action_set has no clear-all of
+// its own — those values are never user-clearable (see tracking/env.py's
+// Env.stored() docstring).
 export function clearEnv() {
   return apiFetch(`${API_URL}/chat/env`, {
-    method: 'DELETE'
-  })
-}
-
-// Wipes every action-set ("ACTION" section) env key at once — a distinct
-// endpoint from clearEnv, not a query param on it.
-export function clearActionEnv() {
-  return apiFetch(`${API_URL}/chat/action-env`, {
     method: 'DELETE'
   })
 }

@@ -75,10 +75,25 @@ def test_returns_one_dict_per_namespace_for_the_active_project(client):
     assert set(body["metric"]) == {"retention", "activity_consistency"}
 
 
-def test_400_for_a_project_that_has_never_been_published(client):
+def test_404_for_a_project_that_does_not_exist(client):
     response = client.get("/api/projects/does-not-exist/identifiers")
 
-    assert response.status_code == 400
+    assert response.status_code == 404
+
+
+def test_200_for_a_project_that_exists_but_has_never_been_published(client):
+    """The identifier registry backs the design view's own autocomplete —
+    it must reflect a signal/env key just declared in the draft, even
+    before the project's very first publish."""
+    response = client.put(
+        "/api/projects/draft-only-proj", content=_zip_of(PROJECT), headers={"Content-Type": "application/zip"}
+    )
+    assert response.status_code == 200, response.text
+
+    response = client.get("/api/projects/draft-only-proj/identifiers")
+
+    assert response.status_code == 200
+    assert response.json()["env"] == {"visits": "How many times this action has fired."}
 
 
 OTHER_PROJECT = """

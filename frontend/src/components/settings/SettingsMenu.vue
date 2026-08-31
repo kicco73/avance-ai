@@ -19,14 +19,13 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
-  'manage-projects', 'manage-users', 'label-sessions', 'edit-projects', 'download-backup', 'restore-backup'
+  'manage-users', 'label-sessions', 'edit-projects', 'download-backup', 'restore-backup'
 ])
 
 const open = ref(false)
 const rootEl = ref(null)
 const restoreInput = ref(null)
 
-const canManageProjects = computed(() => roleSatisfies(props.role, 'admin'))
 const canManageUsers = computed(() => roleSatisfies(props.role, 'admin'))
 const canLabelSessions = computed(() => roleSatisfies(props.role, 'supervisor'))
 const canEditProjects = computed(() => roleSatisfies(props.role, 'admin'))
@@ -34,11 +33,6 @@ const canBackup = computed(() => roleSatisfies(props.role, 'admin'))
 
 function toggle() {
   open.value = !open.value
-}
-
-function selectManageProjects() {
-  open.value = false
-  emit('manage-projects')
 }
 
 function selectManageUsers() {
@@ -97,9 +91,6 @@ onBeforeUnmount(() => {
     <Transition name="settings-panel">
       <div v-if="open" class="settings-panel" :class="{ 'settings-panel-align-right': align === 'right' }">
         <ul class="settings-list">
-          <li>
-            <button class="settings-item" :disabled="!canManageProjects" :title="canManageProjects ? '' : 'Requires admin access'" @click="selectManageProjects">Manage projects</button>
-          </li>
           <li>
             <button class="settings-item" :disabled="!canManageUsers" :title="canManageUsers ? '' : 'Requires admin access'" @click="selectManageUsers">Manage users</button>
           </li>

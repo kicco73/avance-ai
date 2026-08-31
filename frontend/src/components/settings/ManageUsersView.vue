@@ -22,12 +22,11 @@ const props = defineProps({
   profile: { type: Object, default: null }
 })
 
-// The Settings-menu ones (manage-projects/manage-users/label-sessions/
-// download-backup/restore-backup) are a plain pass-through of
-// SettingsMenu.vue's own emits; profile/logout are the same pass-through
-// of ProfileMenu.vue's own.
+// The Settings-menu ones (manage-users/label-sessions/download-backup/
+// restore-backup) are a plain pass-through of SettingsMenu.vue's own
+// emits; profile/logout are the same pass-through of ProfileMenu.vue's own.
 const emit = defineEmits([
-  'close', 'manage-projects', 'manage-users', 'label-sessions', 'edit-projects', 'download-backup',
+  'close', 'manage-users', 'label-sessions', 'edit-projects', 'download-backup',
   'restore-backup', 'profile', 'logout'
 ])
 
@@ -198,7 +197,6 @@ defineExpose({ refresh: load })
         <SettingsMenu
           :role="currentUserRole"
           align="right"
-          @manage-projects="emit('manage-projects')"
           @manage-users="emit('manage-users')"
           @label-sessions="emit('label-sessions')"
           @edit-projects="emit('edit-projects')"

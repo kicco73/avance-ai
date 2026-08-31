@@ -298,7 +298,12 @@ class AutomatonBuilder(object):
                         expression, f"State {key}, action '{action.name}': env expression for '{env_key}'", registry,
                     )
 
-    def _build_init_action(self, raw: dict) -> Action:
+    def _build_init_action(self, raw: dict, env_keys: dict[str, EnvKey]) -> Action:
+        """`env_keys`: every project-level `env:` declaration is folded
+        into this synthetic action's own `env:` field, so its one-time
+        firing at session bootstrap (see ChatService.open_if_needed)
+        evaluates each key's default through the same eval_action_env
+        path a real action's `env:` uses — no separate mechanism needed."""
         raw_init_action = raw.get("init-action")
         if not isinstance(raw_init_action, dict) or not raw_init_action.get("target"):
             raise ValueError(
@@ -307,6 +312,7 @@ class AutomatonBuilder(object):
             )
         init_on_enter = raw_init_action.get("on-enter")
         self._validate_on_enter(init_on_enter, "init-action")
+        env = {name: env_key.value for name, env_key in env_keys.items() if env_key.value}
         init_action = Action(
             name="init-action",
             ui_label=raw_init_action.get("ui-label", "init-action"),
@@ -314,6 +320,7 @@ class AutomatonBuilder(object):
             target=raw_init_action["target"],
             action_prompt=raw_init_action["action-prompt"].strip() if raw_init_action.get("action-prompt") else None,
             on_enter=init_on_enter,
+            env=env or None,
         )
         return init_action
 
@@ -430,7 +437,7 @@ class AutomatonBuilder(object):
         # Pass 1: build every state/action first, no expression validation
         # yet — forward references to a state/signal/env key declared
         # elsewhere in the file are fine, so every state must exist first.
-        init_action = self._build_init_action(raw)
+        init_action = self._build_init_action(raw, env_keys)
         states: dict[str, State] = {}
         states[""] = State(key="", ui_label="", final=False, ui_description="", actions=[init_action])
 
@@ -456,20 +463,15 @@ class AutomatonBuilder(object):
 
         # Pass 2: build the identifier registry, the single source
         # _actions_sanity_check validates every trigger/env: expression
-        # against below.
+        # against below. An env key's own `value` (its default) is
+        # validated here too, for free — it was folded into init_action's
+        # own `env:` field above, so init_action's state ("") passes
+        # through the very same action.env expression validation as any
+        # other action's.
         registry = IdentifierRegistry.build(list(signals.values()), list(env_keys.values()))
         for key, state in states.items():
             context_key = init_action.name if key == "" else key
             self._actions_sanity_check(context_key, state, set(raw_states.keys()), registry, known_projects)
-
-        # An env key's own `value` (its default) is a namespaced
-        # expression exactly like an action's own env: one, so it gets
-        # the same validation.
-        for env_key in env_keys.values():
-            if env_key.value:
-                self._validate_namespaced_expression(
-                    env_key.value, f"Env key '{env_key.name}': value", registry,
-                )
 
         general_attachments = self._extract_required_archives(raw.get('attachments', []), all_archives, for_field="global")
 

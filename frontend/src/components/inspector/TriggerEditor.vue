@@ -15,7 +15,8 @@ import {
   highlightActiveLine,
   highlightSpecialChars,
   keymap,
-  rectangularSelection
+  rectangularSelection,
+  tooltips
 } from '@codemirror/view'
 import { bracketMatching, defaultHighlightStyle, foldKeymap, indentOnInput, syntaxHighlighting } from '@codemirror/language'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
@@ -101,6 +102,13 @@ function createEditor() {
       EditorView.lineWrapping,
       autocompletion({ override: [completeIdentifiers] }),
       namespaceHighlighter,
+      // Without this, the completion tooltip's container defaults to the
+      // editor's own DOM (see @codemirror/view's TooltipViewManager),
+      // which .trigger-editor-host clips via overflow: hidden — the
+      // dropdown was getting cut off instead of floating over the rest
+      // of the Inspector. Escaping to <body> needs the standalone
+      // .cm-tooltip z-index rule below to still land above the panel.
+      tooltips({ parent: document.body }),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) model.value = update.state.doc.toString()
       }),
@@ -157,9 +165,17 @@ onBeforeUnmount(() => {
 </style>
 
 <style>
-/* Unscoped: CodeMirror renders the completion "info" panel into a tooltip
-   appended to <body>, outside this component's DOM subtree — a scoped
-   style's data-v-* selector would never match it. */
+/* Unscoped: tooltips({ parent: document.body }) above (see
+   createEditor) renders every completion tooltip — the list and this
+   "info" side-panel alike — straight onto <body>, outside this
+   component's DOM subtree, so a scoped style's data-v-* selector would
+   never match it. z-index bumped past the Inspector panel/cards
+   (highest existing value in this app short of a real modal is 1000)
+   now that it's a body-level sibling instead of clipped inside
+   .trigger-editor-host. */
+.cm-tooltip {
+  z-index: 1500;
+}
 .cm-trigger-completion-info {
   padding: 0.4rem 0.5rem;
   max-width: 22rem;

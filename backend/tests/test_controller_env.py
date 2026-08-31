@@ -96,29 +96,3 @@ def test_clear_env_bootstraps_a_session_if_none_exists_yet(client, hello_project
     assert response.json()["stored"] == {}
 
 
-def test_clear_action_env_wipes_every_action_set_key(client, hello_project, app_db):
-    client.get("/api/chat/session")
-    app_db.set_action_env("hello", {"a": 1, "b": 2}, "user")
-    assert client.get("/api/chat/env").json()["action_set"] == {"a": 1, "b": 2}
-
-    response = client.delete("/api/chat/action-env")
-
-    assert response.status_code == 200
-    assert response.json()["action_set"] == {}
-    assert client.get("/api/chat/env").json()["action_set"] == {}
-
-
-def test_clear_action_env_leaves_stored_untouched(client, hello_project, app_db):
-    client.get("/api/chat/session")
-    client.put("/api/chat/env/favorite_color", json={"value": "blue"})
-    app_db.set_action_env("hello", {"a": 1}, "user")
-
-    body = client.delete("/api/chat/action-env").json()
-
-    assert body["stored"] == {"favorite_color": "blue"}
-
-
-def test_clear_action_env_bootstraps_a_session_if_none_exists_yet(client, hello_project):
-    response = client.delete("/api/chat/action-env")
-    assert response.status_code == 200
-    assert response.json()["action_set"] == {}

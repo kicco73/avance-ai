@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from datetime import datetime, timezone
 from http import HTTPStatus
 
@@ -469,13 +470,6 @@ class ChatService(object):
 		self.env.clear()
 		return self.get_env()
 
-	def clear_action_env(self) -> dict:
-		"""Wipes every action-set env key at once — the Inspector Env
-		tab's "clear all" button for the ACTION section. Always live."""
-		self.get_or_create_current_session(None)
-		self.env.clear_action_set()
-		return self.get_env()
-
 	def get_benchmark_metrics(self, project_name: str, session_id: int | None = None) -> list[dict]:
 		"""Expert-annotation-vs-actual benchmark metrics for `project_name`
 		— every annotated session, or (session_id given) just that one.
@@ -572,6 +566,24 @@ class ChatService(object):
 			raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
 		return session["project_name"]
 
+	def _apply_declared_env_defaults(self, automaton: Automaton, project_name: str) -> None:
+		"""See open_if_needed's own call site. `automaton.init_action.env`
+		carries every project-level `env:` declaration's default
+		(AutomatonBuilder folds them in); this evaluates only whichever
+		of those keys don't already have a stored or action-set value,
+		through the same eval_action_env path a real action's own `env:`
+		uses via TrackingEngine.apply_action_env."""
+		action = automaton.init_action
+		if not action.env:
+			return
+		current = {**self.env.stored(), **self.env.action_set()}
+		missing = {key: expression for key, expression in action.env.items() if key not in current}
+		if not missing:
+			return
+		self._tracking_engine.apply_action_env(
+			automaton, replace(action, env=missing), {}, "", username=self._username, project_name=project_name
+		)
+
 	async def open_if_needed(self, session_id: int) -> dict | None:
 		# An imported session is a fixed transcript, never live — its NULL
 		# message timestamps would make has_messages_since wrongly report
@@ -584,6 +596,16 @@ class ChatService(object):
 
 		project_name = session["project_name"]
 		automaton, state = self._project_service.get_automaton_and_state_for_session(session_id)
+
+		# Every declared env key's default (folded into init_action's own
+		# `env:` by AutomatonBuilder) — checked on every open, not just
+		# the project's first-ever bootstrap below, so a key declared
+		# after this project already had sessions still gets picked up
+		# the next time one is opened. Self-limiting: only ever fills in
+		# a key nothing has set yet, so it never clobbers a value the
+		# model/an action/the user set afterwards, and it's a no-op
+		# (no DB write) once every declared key already has one.
+		self._apply_declared_env_defaults(automaton, project_name)
 
 		init_message = None
 		if self._db.get_current_state(project_name) is None:

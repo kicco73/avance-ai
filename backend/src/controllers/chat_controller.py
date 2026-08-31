@@ -86,16 +86,6 @@ class ChatController(BaseController):
         section. Always live."""
         return self.chat_service.clear_env()
 
-    # A distinct top-level path, not /api/chat/env/action — routes
-    # register alphabetically by method name, so /api/chat/env/{key}
-    # could end up registered first and swallow it as key="action".
-    @delete("/api/chat/action-env")
-    def clear_action_env(self):
-        """Wipes every action-set env key at once (see ChatService.
-        clear_action_env) — the Inspector Env tab's own "clear all"
-        button for the ACTION section. Always live."""
-        return self.chat_service.clear_action_env()
-
     @put("/api/chat/env/{key}")
     def put_env_value(self, key: str, req: SetEnvValueRequest):
         """Edits one stored env key (see ChatService.set_env_value) —

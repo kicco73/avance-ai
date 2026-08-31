@@ -12,7 +12,8 @@ import {
   highlightActiveLine,
   highlightSpecialChars,
   keymap,
-  rectangularSelection
+  rectangularSelection,
+  tooltips
 } from '@codemirror/view'
 import { bracketMatching, defaultHighlightStyle, foldKeymap, indentOnInput, syntaxHighlighting } from '@codemirror/language'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
@@ -78,6 +79,13 @@ function createEditor() {
       javascript(),
       autocompletion({ override: [completeOnEnterLocals] }),
       EditorView.lineWrapping,
+      // Without this, the completion tooltip's container defaults to the
+      // editor's own DOM (see @codemirror/view's TooltipViewManager),
+      // which .on-enter-editor-host clips via overflow: hidden — the
+      // dropdown was getting cut off instead of floating over the rest
+      // of the Inspector. Escaping to <body> needs the standalone
+      // .cm-tooltip z-index rule below to still land above the panel.
+      tooltips({ parent: document.body }),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) model.value = update.state.doc.toString()
       }),
@@ -123,4 +131,17 @@ onBeforeUnmount(() => {
 .on-enter-editor-host :deep(.cm-editor) { outline: none; }
 .on-enter-editor-host :deep(.cm-content) { padding: 0.35rem 0.5rem; min-height: 2rem; font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; }
 .on-enter-editor-host :deep(.cm-scroller) { font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace; }
+</style>
+
+<style>
+/* Unscoped: tooltips({ parent: document.body }) above (see
+   createEditor) renders the completion tooltip straight onto <body>,
+   outside this component's DOM subtree, so a scoped style's data-v-*
+   selector would never match it. z-index bumped past the Inspector
+   panel/cards (highest existing value in this app short of a real
+   modal is 1000) now that it's a body-level sibling instead of
+   clipped inside .on-enter-editor-host. */
+.cm-tooltip {
+  z-index: 1500;
+}
 </style>

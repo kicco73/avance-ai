@@ -89,7 +89,7 @@ const props = defineProps({
 setTestProject(props.projectName)
 
 const emit = defineEmits([
-  'saved', 'back', 'project-select', 'manage-projects', 'manage-users', 'label-sessions', 'edit-projects',
+  'saved', 'back', 'project-select', 'manage-users', 'label-sessions', 'edit-projects',
   'download-backup', 'restore-backup', 'profile', 'logout'
 ])
 
@@ -607,9 +607,8 @@ const { confirmLeaveIfNeeded } = useLeaveConfirmation(activeEditorIsDirty, 'Disc
 // revision to decide about, does a three-way choice show: publish before
 // leaving, leave it pending, or cancel the close outright. Shared by
 // every Settings-menu item that actually navigates away from here (see
-// handleSettings* below — "Manage projects" is this view's own Back now,
-// the only place it's ever entered from) — About/Download backup/Restore
-// backup don't navigate away, so they skip this guard entirely.
+// handleSettings* below) — About/Download backup/Restore backup don't
+// navigate away, so they skip this guard entirely.
 async function leaveEditProject(onLeave) {
   if (!(await confirmLeaveIfNeeded())) return
   if (publishUpToDate.value) {
@@ -637,14 +636,6 @@ async function leaveEditProject(onLeave) {
 // SettingsMenu.vue's own emits, same shape as ManageProjectsView.vue/
 // LabelProjectView.vue's, guarded by leaveEditProject instead of firing
 // straight away (those two views have nothing unsaved to lose; this one does).
-function handleSettingsManageProjects() {
-  leaveEditProject(() => emit('manage-projects'))
-}
-
-// The header's own dedicated Back button — same destination and same
-// leaveEditProject guard as the Settings menu's "Manage projects" item,
-// but its own separate emit: App.vue tells the two apart to slide the
-// right direction (Back pops, the Settings item pushes).
 function handleBack() {
   leaveEditProject(() => emit('back'))
 }
@@ -824,7 +815,6 @@ onBeforeUnmount(() => {
           <SettingsMenu
             :role="role"
             align="right"
-            @manage-projects="handleSettingsManageProjects"
             @manage-users="handleSettingsManageUsers"
             @label-sessions="handleSettingsLabelSessions"
             @edit-projects="handleSettingsEditProjects"
