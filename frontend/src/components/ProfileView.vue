@@ -121,6 +121,16 @@ async function eraseAllData() {
      everywhere else (a plain browser tab, non-iOS, or once Apple fixes
      the bug). */
   bottom: calc(-1 * var(--viewport-bottom-overshoot, 0px));
+  /* Side edges only — same split as ManageProjectsView.vue's own
+     .manage-projects-overlay (see its comment): top/bottom are reserved
+     by .profile-view-header/.profile-view-body instead, the elements
+     whose background actually needs to extend behind the notch/home
+     indicator rather than showing this fallback color through a gap.
+     box-sizing so the padding shrinks the box instead of sitting outside
+     it. */
+  box-sizing: border-box;
+  padding-left: var(--safe-area-left);
+  padding-right: var(--safe-area-right);
   background: #f7f8fa;
   z-index: 100;
   display: flex;
@@ -132,7 +142,18 @@ async function eraseAllData() {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  padding: 0.75rem 1rem;
+  /* Same shared --safe-area-top custom property (see html, body in
+     App.vue) as ManageProjectsView.vue's own .manage-projects-header —
+     adds to this row's own 0.75rem base padding instead of eating into
+     it, so this header clears the notch/Dynamic Island the same way the
+     other top-level views do, off the same one source of truth instead
+     of drifting out of sync with it again. Left/right aren't reserved
+     here too — .profile-view-overlay already does, and reserving both
+     would double it. */
+  padding-top: calc(0.75rem + var(--safe-area-top));
+  padding-right: 1rem;
+  padding-bottom: 0.75rem;
+  padding-left: 1rem;
   background: white;
   border-bottom: 1px solid #ddd;
 }
