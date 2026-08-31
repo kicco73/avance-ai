@@ -103,6 +103,34 @@ def test_upgrade_readds_a_dropped_invite_column_and_preserves_data(tmp_path):
     assert len(_backups(tmp_path, "test")) == 1
 
 
+def test_upgrade_survives_the_leftovers_of_an_interrupted_column_rebuild(tmp_path):
+    db_path = tmp_path / "test.db"
+    Db(f"sqlite:///{db_path}")
+    _run_sql(db_path, [
+        "INSERT INTO Project (name, revision, is_paused, manually_paused, draft_edit_count) VALUES ('lluna', 1, 0, 0, 0)",
+        "INSERT INTO User (id, email, role, created_at) VALUES ('enrico@example.com', 'enrico@example.com', 'user', '2026-01-01 00:00:00')",
+        'ALTER TABLE "UserProject" RENAME TO "UserProject__tmp__"',
+        "CREATE TABLE UserProject ("
+        "user_id VARCHAR(255) NOT NULL REFERENCES User(id), "
+        "project_name VARCHAR(255) NOT NULL REFERENCES Project(name), "
+        "accepted_terms_id INTEGER, "
+        "PRIMARY KEY (user_id, project_name))",
+        "INSERT INTO UserProject (user_id, project_name) VALUES ('enrico@example.com', 'lluna')",
+    ])
+    orphaned = _query(db_path, "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='UserProject__tmp__'")
+    assert any("invite_id" in name for (name,) in orphaned)
+
+    Db(f"sqlite:///{db_path}", migration_strategy="upgrade")
+
+    tables = {row[0] for row in _query(db_path, "SELECT name FROM sqlite_master WHERE type='table'")}
+    assert "UserProject__tmp__" not in tables
+    columns = {row[1] for row in _query(db_path, "PRAGMA table_info(UserProject)")}
+    assert {"invite_id", "invite_timestamp"} <= columns
+    assert _query(db_path, "SELECT user_id, project_name FROM UserProject") == [("enrico@example.com", "lluna")]
+    rows = list(UserProject.select(UserProject.user, UserProject.invite).dicts())
+    assert rows == [{"user": "enrico@example.com", "invite": None}]
+
+
 def test_upgrade_refuses_a_change_it_cannot_express(tmp_path):
     db_path = tmp_path / "test.db"
     Db(f"sqlite:///{db_path}")

@@ -109,20 +109,21 @@ class Db(
         migrator = SqliteMigrator(database)
         models_by_table = {model._meta.table_name: model for model in self._MODELS}
         new_models = [model for table, model in models_by_table.items() if table not in actual]
-        operations = []
-        for table, columns in expected.items():
-            if table not in actual:
-                continue
-            model = models_by_table[table]
-            for column in sorted(columns - actual[table]):
-                operations.append(migrator.add_column(table, column, model._meta.columns[column]))
-            for column in sorted(actual[table] - columns):
-                operations.append(migrator.drop_column(table, column))
         database.execute_sql('PRAGMA foreign_keys = OFF')
         try:
-            migrate(*operations)
             for table in sorted(actual.keys() - expected.keys()):
                 database.execute_sql(f'DROP TABLE IF EXISTS "{table}"')
+            operations = []
+            for table, columns in expected.items():
+                if table not in actual:
+                    continue
+                model = models_by_table[table]
+                for column in sorted(columns - actual[table]):
+                    database.execute_sql(f'DROP INDEX IF EXISTS "{table}_{column}"')
+                    operations.append(migrator.add_column(table, column, model._meta.columns[column]))
+                for column in sorted(actual[table] - columns):
+                    operations.append(migrator.drop_column(table, column))
+            migrate(*operations)
             database.create_tables(new_models, safe=True)
         finally:
             self._enable_foreign_keys()
