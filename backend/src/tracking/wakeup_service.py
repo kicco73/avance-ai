@@ -123,7 +123,7 @@ class WakeupService:
             # the build-time guarantee, since a wake-up must never apply a
             # real, non-self-loop transition on the user's behalf.
             if action is not None and action.target == state.key:
-                tracking_engine.apply_transition(
+                _, on_enter = tracking_engine.apply_transition(
                     automaton, state, action, {}, session["id"],
                     username=username, project_name=observer_project_name,
                 )
@@ -135,7 +135,7 @@ class WakeupService:
                         "type": "notification",
                         "project_name": observer_project_name,
                         "state": automaton.get_state_payload(state),
-                        "on-enter": action.on_enter,
+                        "on-enter": on_enter,
                     })
 
     def _wake(self, username: str, observer_project_name: str) -> None:

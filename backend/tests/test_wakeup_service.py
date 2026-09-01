@@ -13,7 +13,7 @@ import pytest
 from automaton.automaton_builder import AutomatonBuilder
 from chat.ws_adapter import WsAdapter
 from events import StateChanged, publish
-from conftest import NullBroadcaster
+from conftest import NullBroadcaster, make_test_actuator_factory
 from jobs import JobQueue
 from project.project_service import ProjectService
 from tracking.wakeup_service import WakeupService
@@ -76,6 +76,9 @@ def project_service(db) -> ProjectService:
     return ProjectService(db)
 
 
+_actuator_factory = make_test_actuator_factory
+
+
 def test_reverse_index_is_populated_when_watcher_is_built(db, project_service):
     _publish_project(db, project_service, "observed", OBSERVED_YML)
     _publish_project(db, project_service, "watcher", WATCHER_YML)
@@ -108,7 +111,7 @@ def test_reevaluate_and_apply_fires_the_self_loop_when_the_observed_state_now_ma
     db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
 
     job_queue = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
-    service = WakeupService(db, project_service, job_queue)
+    service = WakeupService(db, project_service, job_queue, _actuator_factory(db))
     asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
 
     after = db.get_signals(watcher_session["id"])
@@ -148,7 +151,7 @@ class TestWsAdapterPush:
         ws_adapter._connections[USERNAME] = websocket
 
         ephemeral_jobs = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
-        service = WakeupService(db, project_service, ephemeral_jobs, ws_adapter)
+        service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db), ws_adapter=ws_adapter)
         asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
 
         assert len(websocket.sent) == 1
@@ -169,7 +172,7 @@ class TestWsAdapterPush:
         ws_adapter = WsAdapter(chat_service=None, db=db, auth_service=None)  # nobody registered for USERNAME
 
         ephemeral_jobs = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
-        service = WakeupService(db, project_service, ephemeral_jobs, ws_adapter)
+        service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db), ws_adapter=ws_adapter)
         asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
 
         # The transition itself is still applied and persisted regardless
@@ -186,7 +189,7 @@ class TestWsAdapterPush:
         watcher_session = db.get_latest_chat_session(USERNAME, "watcher")
 
         ephemeral_jobs = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
-        service = WakeupService(db, project_service, ephemeral_jobs)  # ws_adapter omitted entirely
+        service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db))  # ws_adapter omitted entirely
         asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
 
         assert db.get_signals(watcher_session["id"])[-1]["new_state"] == "x"
@@ -203,7 +206,7 @@ class TestWsAdapterPush:
         ws_adapter._connections[USERNAME] = websocket
 
         ephemeral_jobs = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
-        service = WakeupService(db, project_service, ephemeral_jobs, ws_adapter)
+        service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db), ws_adapter=ws_adapter)
         asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
 
         assert websocket.sent == []
@@ -218,7 +221,7 @@ def test_reevaluate_and_apply_does_nothing_when_the_observed_state_does_not_matc
     before = len(db.get_signals(watcher_session["id"]))
 
     ephemeral_jobs = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
-    service = WakeupService(db, project_service, ephemeral_jobs)
+    service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db))
     asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
 
     assert len(db.get_signals(watcher_session["id"])) == before
@@ -239,7 +242,7 @@ def test_publishing_state_changed_wakes_up_every_observer_with_a_session(app_db)
     db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
 
     ephemeral_jobs = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
-    service = WakeupService(db, project_service, ephemeral_jobs)
+    service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db))
     service.register()
 
     publish(StateChanged(username=USERNAME, project_name="observed", from_state="a", to_state="b"))
@@ -264,7 +267,7 @@ def test_a_user_with_no_session_in_the_observer_project_is_never_woken(app_db):
     db.create_chat_session(username=USERNAME, project_name="observed", revision=db.get_project_published_revision("observed"))
 
     ephemeral_jobs = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
-    service = WakeupService(db, project_service, ephemeral_jobs)
+    service = WakeupService(db, project_service, ephemeral_jobs, _actuator_factory(db))
     service.register()
 
     publish(StateChanged(username=USERNAME, project_name="observed", from_state="a", to_state="b"))

@@ -133,20 +133,24 @@ class TrackingEngine:
         *,
         username: str | None = None,
         project_name: str | None = None,
-    ) -> int:
+    ) -> tuple[int, str | None]:
         """`username`/`project_name`: optional, defaulting to None meaning
         "don't publish" — a test replay has no real user/project of
-        its own and must never trigger a StateChanged/EnvChanged a wake-up handler could act on."""
+        its own and must never trigger a StateChanged/EnvChanged a wake-up
+        handler could act on. The second element of the returned tuple is
+        the fired action's own on-enter, already rendered to wire-ready JS
+        (see apply_action_env) — None when there was no transition or
+        nothing on-enter renders to."""
         if action is None:
             # No transition fired — just the evaluation itself is worth
             # keeping (see db.get_latest_signal_snapshot, Tracking.values).
-            return self._sink.save_signal_snapshot(signal_values, session_id, message_id)
+            return self._sink.save_signal_snapshot(signal_values, session_id, message_id), None
 
         # Always saved, self-loop or not — a fired trigger is a real event
         # worth a history entry either way; a self-loop just never bumps
         # history_cutoff's own timestamp.
 
-        self.apply_action_env(automaton, action, signal_values, state.key, username=username, project_name=project_name)
+        on_enter = self.apply_action_env(automaton, action, signal_values, state.key, username=username, project_name=project_name)
         tracking_id = self._sink.save_transition(
             state.key,
             action.name,
@@ -157,7 +161,7 @@ class TrackingEngine:
             message_id=message_id,
         )
         self.notify_transition(username, project_name, state.key, action.target)
-        return tracking_id
+        return tracking_id, on_enter
 
     @staticmethod
     def notify_transition(
@@ -181,12 +185,16 @@ class TrackingEngine:
         *,
         username: str | None = None,
         project_name: str | None = None,
-    ) -> None:
+    ) -> str | None:
         """Applies `action`'s own `env:` updates to the current scope —
         shared by both the auto-tracking and manual-action paths (the
-        latter fires with empty signal_values). Publishes one EnvChanged per key actually written."""
-        if not action.env and not action.actuator:
-            return
+        latter fires with empty signal_values). Publishes one EnvChanged
+        per key actually written. Also renders `action.on_enter` (§6.5's
+        actuator.* calls, e.g. celebrate()/notify()/send_mail()) against
+        that same scope, returning the wire-ready JS text (or None) for
+        the caller to attach to its own "on-enter" response."""
+        if not action.env and not action.on_enter:
+            return None
         scope = self._scope_builder.build(automaton, state_key, signal_values)
         if action.env:
             updates = automaton.eval_action_env(action, scope)
@@ -195,5 +203,15 @@ class TrackingEngine:
                 if username is not None and project_name is not None:
                     for key, value in updates.items():
                         publish(EnvChanged(username=username, project_name=project_name, key=key, value=value))
-        if action.actuator:
-            automaton.eval_action_actuator(action, scope)
+        return automaton.render_on_enter(action, scope) if action.on_enter else None
+
+    def render_on_enter(self, automaton: Automaton, action: Action, state_key: str) -> str | None:
+        """`action.on_enter` rendered against a fresh scope, with no env
+        applied — for a caller reporting an action's on-enter outside a
+        real transition/env-apply path (a brand-new session's own
+        init-action, a test-session reset), where env: is either
+        irrelevant or already handled elsewhere."""
+        if not action.on_enter:
+            return None
+        scope = self._scope_builder.build(automaton, state_key, None)
+        return automaton.render_on_enter(action, scope)

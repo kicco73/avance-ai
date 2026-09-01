@@ -24,6 +24,8 @@ from controllers.edit_project_controller import EditProjectController
 from controllers.label_project_controller import LabelProjectController
 from controllers.settings_controller import SettingsController
 from controllers.user_controller import UserController
+from controllers.whatsapp_controller import WhatsAppController
+from whatsapp.whatsapp_service import WhatsAppService
 
 
 class AvanceController(object):
@@ -41,6 +43,7 @@ class AvanceController(object):
         job_queue: JobQueue,
         version: str,
         services_config: dict,
+        whatsapp_service: WhatsAppService | None = None,
     ) -> None:
         self.chat_service = chat_service
         self.project_service = project_service
@@ -65,6 +68,12 @@ class AvanceController(object):
         self.auth = AuthController(auth_service)
         self.user = UserController(auth_service)
 
+        controllers = [self.chat, self.edit_project, self.label_project, self.settings, self.auth, self.user]
+        # Opt-in channel (see docs/WHATSAPP.md): no service, no routes.
+        self.whatsapp = WhatsAppController(whatsapp_service) if whatsapp_service is not None else None
+        if self.whatsapp is not None:
+            controllers.append(self.whatsapp)
+
         self.router = APIRouter()
-        for controller in (self.chat, self.edit_project, self.label_project, self.settings, self.auth, self.user):
+        for controller in controllers:
             controller.register_routes(self.router)

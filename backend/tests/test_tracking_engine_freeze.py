@@ -13,6 +13,7 @@ import pytest
 from automaton.automaton import Action, Automaton, Signal, State
 from metrics.metric_service import MetricService
 from tracking.fixed_project_context import FixedProjectContext
+from conftest import make_test_actuator_factory
 from tracking.tracking_service import TrackingService
 
 USERNAME = "user"
@@ -77,7 +78,7 @@ def _tracking_service(db, automaton: Automaton, signals_json: str = '{"mySignal"
     ai_service = FakeSchemaAiService(signals_json)
     project_service = FakeProjectService(automaton)
     metrics = MetricService(db, FixedProjectContext(project_name=PROJECT_NAME))
-    return TrackingService(db, project_service, metrics), ai_service
+    return TrackingService(db, project_service, metrics, make_test_actuator_factory(db)), ai_service
 
 
 def _session_id(db, *, type: str = "test") -> int:

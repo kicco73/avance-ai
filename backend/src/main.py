@@ -31,9 +31,10 @@ from tracking.actuators import ActuatorSetFactory
 from tracking.tracking_service import TrackingService
 from tracking.wakeup_service import WakeupService
 from talk.talk_service import TalkService
+from whatsapp.whatsapp_service import WhatsAppService
 from listen.listen_service import ListenService
 
-__version__ = "1.21.1"
+__version__ = "1.22.0"
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -78,6 +79,13 @@ def create_app() -> FastAPI:
         test_event_broadcaster = LastStatusBroadcaster(QueueProgressBroadcaster(ai_test_service))
         job_queue = JobQueue(max_concurrent=config.jobs_shared_max_concurrent, broadcaster=test_event_broadcaster)
 
+        # Always constructed, even with no notification-service section in
+        # .config.yml — actuator.send_mail (see tracking/actuators/
+        # actuator_set.py) is the only caller, and may never fire; a real
+        # attempt to send/enqueue a mail without one configured raises at
+        # that point instead of blocking startup for a feature nothing may ever use.
+        if config.notification_service_config is None:
+            logger.critical("No 'notification-service' section in .config.yml — actuator.send_mail will fail if used.")
         notification_service = NotificationService(config.notification_service_config, job_queue)
         app.state.notification_service = notification_service
 
@@ -147,9 +155,18 @@ def create_app() -> FastAPI:
         # subscribes once for the process lifetime.
         WakeupService(db, project_service, job_queue, actuator_factory).register()
 
+        # Opt-in (whatsapp-service.enabled in .config.yml): one more
+        # client of ChatService.process_turn, beside the SPA — see
+        # whatsapp/whatsapp_service.py's own module docstring.
+        whatsapp_service = (
+            WhatsAppService(config.whatsapp_service_config, chat_service, db)
+            if config.whatsapp_service_config is not None else None
+        )
+
         controller = AvanceController(
             chat_service, project_service, talk_service, listen_service, db, tracking_service, test_service,
             auth_service, test_event_broadcaster, job_queue, __version__, config.public_services_snapshot(),
+            whatsapp_service=whatsapp_service,
         )
         app.include_router(controller.router)
 
@@ -160,7 +177,7 @@ def create_app() -> FastAPI:
         # --- SHUTDOWN / CLEANUP ---
         logger.info("Shutting down - cleaning up resources...")
         
-        for service in [db, talk_service, listen_service, ai_live_service, ai_test_service]:
+        for service in [db, talk_service, listen_service, ai_live_service, ai_test_service, whatsapp_service]:
             if service is not None and hasattr(service, "close") and callable(getattr(service, "close")):
                 close_fn = getattr(service, "close")
                 if inspect.iscoroutinefunction(close_fn):

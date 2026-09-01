@@ -1,7 +1,6 @@
 from automaton.automaton import Action, EnvKey, MemoryArchive, Automaton, Reaction, Signal, SourceDict, State
 from automaton.identifier_registry import IdentifierRegistry
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
-from automaton.on_enter_script import OnEnterScriptError, OnEnterScriptSignatureParser
 from typing import Any
 from metrics.metrics_framework import metric_names
 from tracking.actuators import ActuatorSet
@@ -12,11 +11,6 @@ import inspect
 from pathlib import Path
 
 _yaml = YAML(typ='rt')
-
-# Stateless — one shared instance is enough (see OnEnterScriptSignature
-# Parser's own docstring); every call site below is a plain
-# AutomatonBuilder method, never itself an instance concern.
-_on_enter_parser = OnEnterScriptSignatureParser()
 
 EXTENSION_TO_MEDIA_TYPE = {
     ".yml": "text/plain",
@@ -158,19 +152,8 @@ class AutomatonBuilder(object):
             )
         return {key: value if isinstance(value, str) else str(value) for key, value in raw_env.items()}
 
-    @staticmethod
-    def _validate_on_enter(on_enter: str | None, location: str) -> None:
-        """`location` (e.g. "state 'a', action 'go'") is prepended to
-        whatever OnEnterScriptSignatureParser.validate raises, re-raised
-        as the same OnEnterScriptError type rather than a bare ValueError."""
-        try:
-            _on_enter_parser.validate(on_enter)
-        except OnEnterScriptError as exc:
-            raise OnEnterScriptError(f"{location}: invalid on-enter script — {exc}") from exc
-
     def _build_action(self, key: str, raw_action: dict, all_archives: dict[str, MemoryArchive]) -> Action:
         on_enter = raw_action.get("on-enter")
-        self._validate_on_enter(on_enter, f"state '{key}', action '{raw_action['name']}'")
         return Action(
             name=raw_action["name"],
             ui_description=raw_action.get("ui-description"),
@@ -184,7 +167,6 @@ class AutomatonBuilder(object):
             attachments=self._extract_required_archives(raw_action.get("attachments", []), all_archives, f"action {raw_action['name']}"),
             on_enter=on_enter,
             env=self._build_action_env(raw_action.get("env"), raw_action["name"]),
-            actuator=raw_action.get("actuator"),
         )
 
     def _build_state(self, key: str, raw_state: dict, all_archives: dict[str, MemoryArchive]) -> State:
@@ -266,6 +248,24 @@ class AutomatonBuilder(object):
                     f"{context} ('{expression}'): actuator.{method_name}(...) takes {expected} "
                     f"argument(s), got {arg_count}"
                 )
+
+    @classmethod
+    def _validate_on_enter(cls, on_enter: str | None, context: str, registry: dict[str, dict[str, str]]) -> None:
+        """`on-enter`: zero or more `actuator.<name>(...)` calls, one per
+        non-blank line — e.g. `actuator.celebrate()` on its own line,
+        `actuator.notify(user.name, "Hi!")` on another — validated the
+        same way a lone `actuator:` expression always was (full registry,
+        since a call's own arguments may reference any namespace), just
+        per line so multiple calls can fire from one action."""
+        if not on_enter:
+            return
+        for line_number, line in enumerate(on_enter.splitlines(), start=1):
+            line = line.strip()
+            if not line:
+                continue
+            line_context = f"{context}, on-enter line {line_number}"
+            cls._validate_namespaced_expression(line, line_context, registry)
+            cls._validate_actuator_arity(line, line_context)
 
     @staticmethod
     def _validate_trigger_types(expression: str, context: str) -> None:
@@ -349,12 +349,9 @@ class AutomatonBuilder(object):
                     self._validate_env_key_type(
                         env_keys[env_key], expression, f"State {key}, action '{action.name}'",
                     )
-            if action.actuator:
-                self._validate_namespaced_expression(
-                    action.actuator, f"State {key}, action '{action.name}': actuator", registry,
-                )
-                self._validate_actuator_arity(
-                    action.actuator, f"State {key}, action '{action.name}': actuator",
+            if action.on_enter:
+                self._validate_on_enter(
+                    action.on_enter, f"State {key}, action '{action.name}'", registry,
                 )
 
     @staticmethod
@@ -396,7 +393,6 @@ class AutomatonBuilder(object):
                 "field — the project's real starting state."
             )
         init_on_enter = raw_init_action.get("on-enter")
-        self._validate_on_enter(init_on_enter, "init-action")
         env = {name: env_key.value for name, env_key in env_keys.items() if env_key.value}
         env.update(self._build_action_env(raw_init_action.get("env"), "init-action") or {})
         init_action = Action(

@@ -10,7 +10,7 @@ from project.project_service import ProjectService
 from db import Db
 from metrics.metric_service import MetricService
 
-from .actuators import ActuatorSetFactory, FakeActuatorSet
+from .actuators import ActuatorSetFactory
 from .automaton_namespace import AutomatonNamespace
 from .errors import TrackingServiceError
 from .fixed_project_context import FixedProjectContext
@@ -304,7 +304,4 @@ class TrackingService(object):
 			input_token_budget_per_turn=self._input_token_budget_per_turn,
 		)
 
-		result = await tracking_processor.process(text, on_metadata=on_metadata_sync_to_async, extra_prompt=extra_prompt)
-		if isinstance(actuator_set, FakeActuatorSet) and actuator_set.notices:
-			result["actuator_notices"] = actuator_set.notices
-		return result
+		return await tracking_processor.process(text, on_metadata=on_metadata_sync_to_async, extra_prompt=extra_prompt)

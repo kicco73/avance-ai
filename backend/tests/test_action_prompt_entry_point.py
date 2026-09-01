@@ -12,7 +12,7 @@ from automaton.automaton import Action, Automaton, State
 from chat.chat_service import ChatService
 from chat.session_manager import ChatSessionManager
 from conftest import FakeAiService
-from conftest import NullBroadcaster
+from conftest import NullBroadcaster, make_test_actuator_factory
 from jobs import JobQueue
 from metrics.metric_service import MetricService
 from tracking.tracking_processor import TrackingProcessor
@@ -85,11 +85,12 @@ def _chat_service(db, automaton: Automaton) -> tuple[ChatService, FakeAiService]
     project_service = FakeProjectService(automaton)
     metric_service = MetricService(db, project_service)
     job_queue = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
-    tracking_service = TrackingService(db, project_service, metric_service)
+    actuator_factory = make_test_actuator_factory(db, job_queue)
+    tracking_service = TrackingService(db, project_service, metric_service, actuator_factory)
     chat_service = ChatService(
         db=db, ai_service=ai_service, ai_test_service=ai_service, project_service=project_service,
         session_manager=ChatSessionManager(db), tracking_service=tracking_service, metric_service=metric_service,
-        job_queue=job_queue,
+        job_queue=job_queue, actuator_factory=actuator_factory,
     )
     return chat_service, ai_service
 

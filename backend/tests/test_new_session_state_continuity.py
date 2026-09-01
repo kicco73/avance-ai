@@ -11,7 +11,7 @@ import pytest
 pytestmark = pytest.mark.contract
 
 YML = (
-    "init-action:\n  target: a\n  on-enter: celebrate()\n"
+    "init-action:\n  target: a\n  on-enter: actuator.celebrate()\n"
     "states:\n"
     "  a:\n"
     "    contextual-prompt: hi\n"

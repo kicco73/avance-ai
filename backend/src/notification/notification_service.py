@@ -24,13 +24,20 @@ class NotificationService:
         "smtps": (465, True),
     }
 
-    def __init__(self, config: NotificationServiceConfig, job_queue: JobQueue) -> None:
-        self._username = config.username
-        self._password = config.password
-        self._from_name = config.from_name
-        self._timeout_seconds = config.timeout_seconds
-        self._hostname, self._port, self._implicit_tls = self._parse_url(config.url)
+    def __init__(self, config: NotificationServiceConfig | None, job_queue: JobQueue) -> None:
+        # None whenever this deployment's own .config.yml declares no
+        # notification-service section — always constructed regardless
+        # (actuator.send_mail is the only caller, and may never fire), but
+        # any actual attempt to send/enqueue a mail then raises, rather
+        # than failing app boot for a feature nothing may ever use.
+        self._config = config
         self._job_queue = job_queue
+        if config is not None:
+            self._username = config.username
+            self._password = config.password
+            self._from_name = config.from_name
+            self._timeout_seconds = config.timeout_seconds
+            self._hostname, self._port, self._implicit_tls = self._parse_url(config.url)
 
     @classmethod
     def _parse_url(cls, url: str) -> tuple[str, int, bool]:
@@ -74,6 +81,10 @@ class NotificationService:
         self._job_queue.submit(self._build_send_mail_job(to, subject, body_md))
 
     def _build_send_mail_job(self, to: str, subject: str, body_md: str) -> SendMailJob:
+        if self._config is None:
+            raise NotificationError(
+                "No 'notification-service' section in .config.yml — actuator.send_mail can't run."
+            )
         message = self._build_message(to, subject, body_md)
         return SendMailJob(
             self._hostname, self._port, self._implicit_tls, self._username, self._password,

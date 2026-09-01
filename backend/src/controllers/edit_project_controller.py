@@ -23,7 +23,7 @@ from .project_commit_mixin import ProjectCommitMixin
 # below — name/key is deliberately never in any of these three: it's
 # generated once at creation and immutable from then on.
 STATE_EDITABLE_FIELDS = {"ui-label", "ui-description", "history-cutoff", "contextual-prompt", "chat", "reactions-enabled"}
-ACTION_EDITABLE_FIELDS = {"ui-label", "ui-description", "action-prompt", "target", "trigger", "on-enter", "env", "actuator"}
+ACTION_EDITABLE_FIELDS = {"ui-label", "ui-description", "action-prompt", "target", "trigger", "on-enter", "env"}
 # The init-action is an action like any other (see AutomatonYamlEditor.
 # _init_action_payload) minus 'trigger' — it's the automaton's
 # unconditional entry point, never conditionally fired, so

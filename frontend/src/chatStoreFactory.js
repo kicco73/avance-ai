@@ -7,7 +7,6 @@ import {
 import { sendMessage as sendChatMessage, onNotification } from './chatClient.js'
 import { playMessageChime, playMessageAudio, playReactionChime, unlockAudioPlayback } from './audio.js'
 import { runOnEnterScript } from './onEnterActions.js'
-import { notify } from './toastStore.js'
 import { clearApiError, setApiError } from './errorStore.js'
 import { confirmDialog } from './dialogStore.js'
 import { registerSkinSource } from './chatSkin.js'
@@ -352,12 +351,6 @@ export function createChatStore({
     playMessageAudio(messageAudioUrl(messageId))
   }
 
-  function notifyActuatorNotices(result) {
-    for (const notice of result.actuator_notices || []) {
-      notify('Actuator (dummy run)', notice)
-    }
-  }
-
   function setMessageFailed(id, failed) {
     const target = messages.value.find((m) => m.id === id)
     if (target) target.failed = failed
@@ -557,7 +550,6 @@ export function createChatStore({
         currentSessionId.value = result.session_id
         selectedSessionActive.value = true
       }
-      notifyActuatorNotices(result)
       if (sessionsPanelOpen.value) loadSessions()
       bumpTurn()
     } catch (err) {

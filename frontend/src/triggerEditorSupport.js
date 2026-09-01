@@ -8,7 +8,8 @@ import { snippetCompletion } from '@codemirror/autocomplete'
 // only carries a free-text description, never a structured signature.
 const CALL_PARAMS = {
   'source.attachment': ['name'],
-  'actuator.send_mail': ['to', 'body_md']
+  'actuator.send_mail': ['to', 'body_md'],
+  'actuator.notify': ['title', 'body_md']
 }
 
 // Fixed per-namespace colors — frontend-only, the identifier registry

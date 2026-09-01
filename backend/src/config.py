@@ -47,6 +47,22 @@ class TalkServiceConfig:
 
 
 @dataclass(frozen=True)
+class WhatsAppServiceConfig:
+    """The optional `whatsapp-service` section (see docs/WHATSAPP.md):
+    Meta Cloud API credentials plus the phone -> account mapping."""
+    verify_token: str
+    app_secret: str
+    access_token: str
+    phone_number_id: str
+    graph_version: str
+    # WhatsApp number (E.164 digits, no '+') -> the User row's own email.
+    # A number not listed here gets a "not linked" reply and is never
+    # let anywhere near a chat session.
+    users: dict[str, str]
+    mark_read: bool
+
+
+@dataclass(frozen=True)
 class AuthProviderConfig:
     driver: str
     # Mandatory here — Google always requires a client ID; revisit whether
@@ -275,7 +291,50 @@ class AppConfig:
         return providers
 
     @classmethod
-    def _parse_notification_service_config(cls, raw: dict, path: Path) -> NotificationServiceConfig:
+    def _parse_whatsapp_service_config(cls, raw: dict, path: Path) -> WhatsAppServiceConfig | None:
+        """Same optional, default-off shape as talk-service.enabled: no
+        section (or enabled: false) means no WhatsApp channel is built
+        and its webhook routes are never registered."""
+        sub = cls._get_optional_section(raw, "whatsapp-service", path)
+        if not sub.get("enabled", False):
+            return None
+        section = "whatsapp-service"
+        verify_token = cls._require_str(raw, section, "verify-token", path)
+        app_secret = cls._require_str(raw, section, "app-secret", path)
+        access_token = cls._require_str(raw, section, "access-token", path)
+        phone_number_id = cls._require_str(raw, section, "phone-number-id", path)
+        graph_version = sub.get("graph-version", "v23.0")
+        if not isinstance(graph_version, str) or not graph_version.strip():
+            raise ConfigError(f"{path}: '{section}.graph-version' must be a non-empty string if present.")
+        users_raw = sub.get("users", {})
+        if not isinstance(users_raw, dict):
+            raise ConfigError(f"{path}: '{section}.users' must be a mapping of phone number -> email.")
+        users: dict[str, str] = {}
+        for phone, email in users_raw.items():
+            phone_str = str(phone).strip().lstrip("+")
+            if not phone_str.isdigit():
+                raise ConfigError(f"{path}: '{section}.users' key {phone!r} is not a phone number (digits only, no '+').")
+            if not isinstance(email, str) or not email.strip():
+                raise ConfigError(f"{path}: '{section}.users[{phone!r}]' must be a non-empty email string.")
+            users[phone_str] = email.strip()
+        mark_read = sub.get("mark-read", True)
+        if not isinstance(mark_read, bool):
+            raise ConfigError(f"{path}: '{section}.mark-read' must be a boolean if present.")
+        return WhatsAppServiceConfig(
+            verify_token=verify_token, app_secret=app_secret, access_token=access_token,
+            phone_number_id=phone_number_id, graph_version=graph_version.strip(), users=users, mark_read=mark_read,
+        )
+
+    @classmethod
+    def _parse_notification_service_config(cls, raw: dict, path: Path) -> NotificationServiceConfig | None:
+        """None if the whole section is absent — actuator.send_mail (see
+        tracking/actuators/actuator_set.py) is the only thing that needs
+        a NotificationService; nothing else in the system requires one.
+        A section that IS present still gets every field required below,
+        same as before — a deliberately-added-but-broken section is
+        still a real misconfiguration, not silently skipped."""
+        if raw.get("notification-service") is None:
+            return None
         url = cls._require_str(raw, "notification-service", "url", path)
         username = cls._require_str(raw, "notification-service", "username", path)
         password = cls._require_str(raw, "notification-service", "password", path)
@@ -427,6 +486,8 @@ class AppConfig:
         self.auth_providers = self._parse_auth_providers(raw, path)
 
         self.notification_service_config = self._parse_notification_service_config(raw, path)
+
+        self.whatsapp_service_config = self._parse_whatsapp_service_config(raw, path)
 
     @staticmethod
     def _public_provider_fields(entry) -> dict:

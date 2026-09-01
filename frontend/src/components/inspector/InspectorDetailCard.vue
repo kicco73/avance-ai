@@ -6,7 +6,6 @@ import { computed, ref, watch } from 'vue'
 import { vAutosize } from './textareaAutosize.js'
 import CardMenu from './CardMenu.vue'
 import TriggerEditor from './TriggerEditor.vue'
-import OnEnterEditor from './OnEnterEditor.vue'
 import { handleEnterNext } from './enterToNextField.js'
 import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 import { useTokensBar } from '../../composables/useTokensBar.js'
@@ -76,7 +75,6 @@ const editUiLabel = ref('')
 const editUiDescription = ref('')
 const editContextualPrompt = ref('')
 const editTrigger = ref('')
-const editActuator = ref('')
 const editTarget = ref('')
 const editOnEnter = ref('')
 
@@ -95,7 +93,6 @@ function resetEditBuffers() {
   editUiDescription.value = d.uiDescription ?? ''
   editContextualPrompt.value = d.contextualPrompt ?? ''
   editTrigger.value = d.trigger ?? ''
-  editActuator.value = d.actuator ?? ''
   editTarget.value = d.target ?? ''
   editOnEnter.value = d.onEnter ?? ''
 }
@@ -125,10 +122,6 @@ function commitContextualPrompt() {
 
 function commitTrigger() {
   commitTextField('trigger', editTrigger.value, props.selectedElement?.data.trigger ?? '')
-}
-
-function commitActuator() {
-  commitTextField('actuator', editActuator.value, props.selectedElement?.data.actuator ?? '')
 }
 
 function commitTarget() {
@@ -386,14 +379,9 @@ function selectAttachment(fileName) {
             </template>
             <label class="inspector-detail-form-label" title="A Python expression, evaluated server-side">
               <span class="inspector-py-field-icon" title="Python expression">PY</span>
-              Actuator
-            </label>
-            <TriggerEditor v-model="editActuator" @click.stop @blur="commitActuator" />
-            <label class="inspector-detail-form-label" title="Executed client-side (see onEnterActions.js) after this action actually changes state">
-              <span class="inspector-js-field-icon" title="JavaScript, executed client-side">JS</span>
               On enter
             </label>
-            <OnEnterEditor v-model="editOnEnter" @click.stop @blur="commitOnEnter" />
+            <TriggerEditor v-model="editOnEnter" @click.stop @blur="commitOnEnter" />
             <p class="inspector-detail-field">
               <template v-if="!selectedElement.data.isInitEdge"><strong>{{ stateLabelFor(selectedElement.data.source) }}</strong> → </template>
               <select
@@ -414,8 +402,7 @@ function selectAttachment(fileName) {
               <code v-for="[key, value] in envEntries" :key="key" class="inspector-detail-code">{{ key }} = {{ value }}</code>
             </p>
             <p v-if="selectedElement.data.trigger" class="inspector-detail-field"><strong>Trigger:</strong><code class="inspector-detail-code">{{ selectedElement.data.trigger }}</code></p>
-            <p v-if="selectedElement.data.actuator" class="inspector-detail-field"><strong>Actuator:</strong><code class="inspector-detail-code">{{ selectedElement.data.actuator }}</code></p>
-            <p v-if="selectedElement.data.onEnter" class="inspector-detail-field"><strong>On enter:</strong> {{ selectedElement.data.onEnter }}</p>
+            <p v-if="selectedElement.data.onEnter" class="inspector-detail-field"><strong>On enter:</strong><code class="inspector-detail-code">{{ selectedElement.data.onEnter }}</code></p>
             <p v-if="selectedElement.data.actionPrompt" class="inspector-detail-field"><strong>Action prompt:</strong> {{ selectedElement.data.actionPrompt }}</p>
           </div>
         </Transition>
@@ -476,11 +463,7 @@ function selectAttachment(fileName) {
 /* Marks a field the AI itself reads, as opposed to a purely
    human-facing one like Description. */
 .inspector-ai-field-icon { display: inline-flex; flex-shrink: 0; color: #8b5cf6; }
-/* Marks a field that runs as client-side JavaScript — monochrome "JS"
-   badge to match this panel's other small badges. */
-.inspector-js-field-icon { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 1.1rem; height: 0.85rem; border-radius: 3px; background: #f0db4f; color: #222; font-size: 0.55rem; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: -0.02em; }
-/* Marks a field evaluated server-side as a Python expression — same
-   "language badge" convention as JS above, Python's own blue. */
+/* Marks a field evaluated server-side as a Python expression. */
 .inspector-py-field-icon { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 1.1rem; height: 0.85rem; border-radius: 3px; background: #4b8bbe; color: white; font-size: 0.55rem; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: -0.02em; }
 .inspector-detail-textarea { display: block; width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 0.8rem; line-height: 1.54; padding: 0.4rem 0.5rem; border-radius: 6px; border: 1px solid #ccc; }
 .inspector-detail-target-select { display: inline-block; width: auto; max-width: 100%; font: inherit; font-weight: 700; font-size: inherit; color: #333; padding: 0.05rem 0.2rem; border-radius: 4px; border: 1px solid transparent; background: transparent; cursor: pointer; }
