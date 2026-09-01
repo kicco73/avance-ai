@@ -1,6 +1,15 @@
 // Pure, framework-agnostic logic behind TriggerEditor.vue's autocomplete
 // and syntax-coloring. `completeIdentifiers` only depends on
 // CompletionContext's shape (matchBefore), never a live EditorView/DOM.
+import { snippetCompletion } from '@codemirror/autocomplete'
+
+// Known parameter names for a proxy-style (call) identifier, purely to
+// build a fill-in-the-blanks snippet completion — the registry itself
+// only carries a free-text description, never a structured signature.
+const CALL_PARAMS = {
+  'source.attachment': ['name'],
+  'actuator.send_mail': ['to', 'body_md']
+}
 
 // Fixed per-namespace colors — frontend-only, the identifier registry
 // never transports styling. "session.metric" gets its own distinct
@@ -98,14 +107,21 @@ export function completeIdentifiers(context, registry) {
     const from = dotted.from + lastDot + 1
     const identifiers = registry[namespace] ?? {}
     const options = Object.entries(identifiers).map(([name, description]) => {
-      const type = isProxyNamespace(namespace) ? 'function' : 'variable'
+      const isCall = isProxyNamespace(namespace)
+      const type = isCall ? 'function' : 'variable'
+      const info = () => completionInfo(name, description, type)
+      const params = isCall ? CALL_PARAMS[`${namespace}.${name}`] : null
+      if (params) {
+        const template = `${name}(${params.map((param) => '${' + param + '}').join(', ')})`
+        return snippetCompletion(template, { label: name, type, info })
+      }
       return {
         label: name,
         // Not `detail` — see completionInfo's own docstring on why a
         // longer description belongs in `info` instead.
-        info: () => completionInfo(name, description, type),
+        info,
         type,
-        apply: isProxyNamespace(namespace) ? `${name}()` : name
+        apply: isCall ? `${name}()` : name
       }
     })
     for (const child of directChildNamespaces(registry, namespace)) {

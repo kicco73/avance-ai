@@ -84,7 +84,7 @@ function handleValueBlur(row) {
         <span class="inspector-py-field-icon" title="Python expression">PY</span>
         Value
       </label>
-      <TriggerEditor v-model="row.value" @click.stop @blur="handleValueBlur(row)" />
+      <TriggerEditor v-model="row.value" :exclude-namespaces="['actuator']" @click.stop @blur="handleValueBlur(row)" />
     </div>
     <button type="button" class="inspector-signals-add-btn" @click="addRow">+ Add env key</button>
   </div>

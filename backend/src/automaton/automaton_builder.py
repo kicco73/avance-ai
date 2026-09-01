@@ -4,9 +4,11 @@ from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from automaton.on_enter_script import OnEnterScriptError, OnEnterScriptSignatureParser
 from typing import Any
 from metrics.metrics_framework import metric_names
+from tracking.actuators import ActuatorSet
 
 from ruamel.yaml import YAML
 import base64
+import inspect
 from pathlib import Path
 
 _yaml = YAML(typ='rt')
@@ -253,6 +255,19 @@ class AutomatonBuilder(object):
             raise ValueError(f"{context} references undefined name(s): {', '.join(sorted(unknown))}")
 
     @staticmethod
+    def _validate_actuator_arity(expression: str, context: str) -> None:
+        for method_name, arg_count in TriggerExpressionAnalyzer.namespace_calls(expression, "actuator"):
+            method = getattr(ActuatorSet, method_name, None)
+            if method is None:
+                continue
+            expected = len(inspect.signature(method).parameters) - 1
+            if arg_count != expected:
+                raise ValueError(
+                    f"{context} ('{expression}'): actuator.{method_name}(...) takes {expected} "
+                    f"argument(s), got {arg_count}"
+                )
+
+    @staticmethod
     def _validate_trigger_types(expression: str, context: str) -> None:
         """Only for `trigger:`, never `env:` — `env:` allows any simple
         value, not a boolean condition, so it has no comparison shape to
@@ -294,6 +309,7 @@ class AutomatonBuilder(object):
         writes against each key's own declared type (see
         _validate_env_key_type below). `known_projects`: None skips the
         automaton.* existence check entirely."""
+        registry_without_actuator = {ns: names for ns, names in registry.items() if ns != "actuator"}
         for action in state.actions:
             if action.target not in declared_states:
                 raise ValueError(
@@ -302,7 +318,7 @@ class AutomatonBuilder(object):
                 )
             if action.trigger:
                 self._validate_namespaced_expression(
-                    action.trigger, f"State {key}, action '{action.name}': trigger", registry,
+                    action.trigger, f"State {key}, action '{action.name}': trigger", registry_without_actuator,
                 )
                 self._validate_trigger_types(
                     action.trigger, f"State {key}, action '{action.name}': trigger",
@@ -327,7 +343,8 @@ class AutomatonBuilder(object):
                             "the project's own 'env' section — declare it there first."
                         )
                     self._validate_namespaced_expression(
-                        expression, f"State {key}, action '{action.name}': env expression for '{env_key}'", registry,
+                        expression, f"State {key}, action '{action.name}': env expression for '{env_key}'",
+                        registry_without_actuator,
                     )
                     self._validate_env_key_type(
                         env_keys[env_key], expression, f"State {key}, action '{action.name}'",
@@ -335,6 +352,9 @@ class AutomatonBuilder(object):
             if action.actuator:
                 self._validate_namespaced_expression(
                     action.actuator, f"State {key}, action '{action.name}': actuator", registry,
+                )
+                self._validate_actuator_arity(
+                    action.actuator, f"State {key}, action '{action.name}': actuator",
                 )
 
     @staticmethod

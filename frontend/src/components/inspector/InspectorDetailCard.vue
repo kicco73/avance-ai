@@ -382,18 +382,18 @@ function selectAttachment(fileName) {
                 <span class="inspector-py-field-icon" title="Python expression">PY</span>
                 Trigger
               </label>
-              <TriggerEditor v-model="editTrigger" @click.stop @blur="commitTrigger" />
+              <TriggerEditor v-model="editTrigger" :exclude-namespaces="['actuator']" @click.stop @blur="commitTrigger" />
             </template>
-            <label class="inspector-detail-form-label" title="Executed client-side (see onEnterActions.js) after this action actually changes state">
-              <span class="inspector-js-field-icon" title="JavaScript, executed client-side">JS</span>
-              On enter
-            </label>
-            <OnEnterEditor v-model="editOnEnter" @click.stop @blur="commitOnEnter" />
             <label class="inspector-detail-form-label" title="A Python expression, evaluated server-side">
               <span class="inspector-py-field-icon" title="Python expression">PY</span>
               Actuator
             </label>
             <TriggerEditor v-model="editActuator" @click.stop @blur="commitActuator" />
+            <label class="inspector-detail-form-label" title="Executed client-side (see onEnterActions.js) after this action actually changes state">
+              <span class="inspector-js-field-icon" title="JavaScript, executed client-side">JS</span>
+              On enter
+            </label>
+            <OnEnterEditor v-model="editOnEnter" @click.stop @blur="commitOnEnter" />
             <p class="inspector-detail-field">
               <template v-if="!selectedElement.data.isInitEdge"><strong>{{ stateLabelFor(selectedElement.data.source) }}</strong> → </template>
               <select

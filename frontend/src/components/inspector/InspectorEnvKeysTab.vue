@@ -150,6 +150,7 @@ onMounted(loadEnvKeys)
             </label>
             <TriggerEditor
               v-model="editValue"
+              :exclude-namespaces="['actuator']"
               @click.stop
               @blur="commitField('value', editValue, entry.env_key.value ?? '')"
             />

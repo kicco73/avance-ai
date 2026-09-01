@@ -117,6 +117,19 @@ class TriggerExpressionAnalyzer:
             refs.setdefault(".".join(path), set()).add(leaf)
         return refs
 
+    @classmethod
+    def namespace_calls(cls, expression: str, *namespace: str) -> list[tuple[str, int]]:
+        tree = ast.parse(expression, mode="eval")
+        calls = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+                continue
+            ref = cls._namespace_path_of(node.func)
+            if ref is None or ref[0] != namespace:
+                continue
+            calls.append((ref[1], len(node.args) + len(node.keywords)))
+        return calls
+
     # Every identifier whose runtime *type* is fixed by its own contract, well
     # enough to check statically. `env.*` is absent: it's a free-form store any
     # expression can set to anything, so its type is treated as unknown.

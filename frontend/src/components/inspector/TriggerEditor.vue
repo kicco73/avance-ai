@@ -27,6 +27,7 @@ import { identifierRegistry, refreshIdentifierRegistry } from '../../identifierR
 import { NAMESPACE_COLORS, REFERENCE_PATTERN_SOURCE, completeIdentifiers as completeIdentifiersFor } from '../../triggerEditorSupport.js'
 
 const model = defineModel({ type: String, default: '' })
+const props = defineProps({ excludeNamespaces: { type: Array, default: () => [] } })
 const emit = defineEmits(['blur'])
 
 const loading = ref(true)
@@ -37,7 +38,10 @@ let view = null
 // snapshot, so an identifier added elsewhere while this editor is open is
 // visible on the very next keystroke.
 function completeIdentifiers(context) {
-  return completeIdentifiersFor(context, identifierRegistry.value)
+  const registry = identifierRegistry.value
+  if (!props.excludeNamespaces.length) return completeIdentifiersFor(context, registry)
+  const filtered = Object.fromEntries(Object.entries(registry).filter(([ns]) => !props.excludeNamespaces.includes(ns)))
+  return completeIdentifiersFor(context, filtered)
 }
 
 // Matches a namespace reference (e.g. "signal.mood") — group 1 is the
