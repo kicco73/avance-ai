@@ -13,6 +13,7 @@ export const NAMESPACE_COLORS = {
   'session.metric': '#ad1457',
   user: '#d84315',
   source: '#3949ab',
+  actuator: '#c62828',
   metric: '#2e7d32',
   automaton: '#455a64'
 }
@@ -30,7 +31,7 @@ export function isProxyNamespace(namespace) {
 // Matches a complete namespace reference (e.g. "signal.mood") anywhere
 // in the text — group 1 is the namespace path, used to look up its color
 // (NAMESPACE_COLORS). Always construct a fresh RegExp — /g carries state via lastIndex.
-export const REFERENCE_PATTERN_SOURCE = '\\b(signal|env|system|session(?:\\.metric)?|user|source|metric|automaton)\\.[A-Za-z_]\\w*'
+export const REFERENCE_PATTERN_SOURCE = '\\b(signal|env|system|session(?:\\.metric)?|user|source|actuator|metric|automaton)\\.[A-Za-z_]\\w*'
 
 export function namespaceOf(referenceText) {
   const match = new RegExp(`^${REFERENCE_PATTERN_SOURCE}`).exec(referenceText)

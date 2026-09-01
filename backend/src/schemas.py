@@ -32,6 +32,10 @@ class AutoTrackingRequest(BaseModel):
     enabled: bool
 
 
+class ActuatorsRequest(BaseModel):
+    enabled: bool
+
+
 class ChatMessageRequest(BaseModel):
     message: str
 

@@ -1,12 +1,13 @@
 import { nextTick, ref } from 'vue'
 import {
-  getMessages, getSessionState, postAction, getAutoTracking, postAutoTracking,
+  getMessages, getSessionState, postAction, getAutoTracking, postAutoTracking, getActuators, postActuators,
   postTruncateSession, deleteSession, putMessageReaction, postListenTranscribe, messageAudioUrl,
   getAiModels, postAiModelSelection
 } from './api.js'
 import { sendMessage as sendChatMessage, onNotification } from './chatClient.js'
 import { playMessageChime, playMessageAudio, playReactionChime, unlockAudioPlayback } from './audio.js'
 import { runOnEnterScript } from './onEnterActions.js'
+import { notify } from './toastStore.js'
 import { clearApiError, setApiError } from './errorStore.js'
 import { confirmDialog } from './dialogStore.js'
 import { registerSkinSource } from './chatSkin.js'
@@ -92,7 +93,7 @@ export function toggleSpokenText() {
 // about session resolution itself.
 export function createChatStore({
   kind, getCurrentSession, getSessionsList, createSession, resetSession = null,
-  confirmNewSession = true, useAutoTracking = false, subscribeToNotifications = false,
+  confirmNewSession = true, useAutoTracking = false, useActuatorsToggle = false, subscribeToNotifications = false,
 }) {
   const state = ref(null)
   const currentSessionId = ref(null)
@@ -110,6 +111,8 @@ export function createChatStore({
   const actionLoading = ref(false)
   const autoTrackingEnabled = ref(true)
   const autoTrackingLoading = ref(false)
+  const actuatorsEnabled = ref(false)
+  const actuatorsLoading = ref(false)
   const draft = ref('')
   const turnCount = ref(0)
   let nextMessageId = 0
@@ -162,6 +165,15 @@ export function createChatStore({
     }
   }
 
+  async function loadActuators() {
+    try {
+      const res = await getActuators(currentSessionId.value)
+      actuatorsEnabled.value = res.enabled
+    } catch {
+      // already surfaced via apiFetch
+    }
+  }
+
   async function ensureSession() {
     projectPaused.value = false
     const session = await getCurrentSession(currentSessionId.value)
@@ -176,6 +188,7 @@ export function createChatStore({
     currentProjectName.value = session.project_name
     state.value = session.state
     if (useAutoTracking) await loadAutoTracking()
+    if (useActuatorsToggle) await loadActuators()
     return session.id
   }
 
@@ -311,6 +324,18 @@ export function createChatStore({
     }
   }
 
+  async function toggleActuators() {
+    actuatorsLoading.value = true
+    try {
+      const res = await postActuators(currentSessionId.value, !actuatorsEnabled.value)
+      actuatorsEnabled.value = res.enabled
+    } catch {
+      // already surfaced via apiFetch
+    } finally {
+      actuatorsLoading.value = false
+    }
+  }
+
   function toggleAudio() {
     audioEnabled.value = !audioEnabled.value
     if (audioEnabled.value) {
@@ -325,6 +350,12 @@ export function createChatStore({
   function maybeAutoPlayAudio(messageId) {
     if (!audioEnabled.value || messageId == null) return
     playMessageAudio(messageAudioUrl(messageId))
+  }
+
+  function notifyActuatorNotices(result) {
+    for (const notice of result.actuator_notices || []) {
+      notify('Actuator (dummy run)', notice)
+    }
   }
 
   function setMessageFailed(id, failed) {
@@ -526,6 +557,7 @@ export function createChatStore({
         currentSessionId.value = result.session_id
         selectedSessionActive.value = true
       }
+      notifyActuatorNotices(result)
       if (sessionsPanelOpen.value) loadSessions()
       bumpTurn()
     } catch (err) {
@@ -541,6 +573,7 @@ export function createChatStore({
     clearApiError()
     chatStatus.value = ''
     autoTrackingEnabled.value = true
+    actuatorsEnabled.value = false
     // A project switch is exactly when "the current session" should be re-resolved.
     currentSessionId.value = null
     currentProjectName.value = null
@@ -613,9 +646,9 @@ export function createChatStore({
     state, currentSessionId, selectedSessionActive, projectPaused, projectPausedReason,
     sessions, sessionsLoading, sessionsPanelOpen, currentProjectName,
     messages, historyLoaded, chatLoading, chatStatus, actionLoading,
-    autoTrackingEnabled, autoTrackingLoading, draft, turnCount,
+    autoTrackingEnabled, autoTrackingLoading, actuatorsEnabled, actuatorsLoading, draft, turnCount,
     handleStateChange, loadMessages, loadSessions, refreshSessionsQuietly, toggleSessionsPanel,
-    selectSession, reloadMessages, handleTruncateFrom, handleDeleteSession, toggleAutoTracking,
+    selectSession, reloadMessages, handleTruncateFrom, handleDeleteSession, toggleAutoTracking, toggleActuators,
     toggleAudio, handleSend, handleVoiceMessage, handleResend, handleReact, handleAction,
     clearChatUi, handleReset: resetSession ? handleReset : null, handleNewSession,
   }

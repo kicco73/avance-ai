@@ -19,6 +19,7 @@ from project.project_service import ProjectService
 from talk.talk_service import TalkService, TalkServiceNotAvailableError
 from schemas import (
     ActionRequest,
+    ActuatorsRequest,
     AiModelSelectionRequest,
     AutoTrackingRequest,
     ChatMessageRequest,
@@ -264,6 +265,15 @@ class ChatController(BaseController):
     def post_autotracking(self, session_id: int, req: AutoTrackingRequest):
         self.chat_service.set_auto_tracking_enabled(session_id, req.enabled)
         return {"enabled": self.chat_service.is_auto_tracking_enabled(session_id)}
+
+    @get("/api/chat/sessions/{session_id}/actuators")
+    def get_actuators(self, session_id: int):
+        return {"enabled": self.chat_service.is_actuators_enabled(session_id)}
+
+    @post("/api/chat/sessions/{session_id}/actuators")
+    def post_actuators(self, session_id: int, req: ActuatorsRequest):
+        self.chat_service.set_actuators_enabled(session_id, req.enabled)
+        return {"enabled": self.chat_service.is_actuators_enabled(session_id)}
 
     @put("/api/chat/messages/{message_id}/reaction")
     def put_message_reaction(self, message_id: int, req: ReactionRequest):

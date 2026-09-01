@@ -182,6 +182,7 @@ class AutomatonBuilder(object):
             attachments=self._extract_required_archives(raw_action.get("attachments", []), all_archives, f"action {raw_action['name']}"),
             on_enter=on_enter,
             env=self._build_action_env(raw_action.get("env"), raw_action["name"]),
+            actuator=raw_action.get("actuator"),
         )
 
     def _build_state(self, key: str, raw_state: dict, all_archives: dict[str, MemoryArchive]) -> State:
@@ -331,6 +332,10 @@ class AutomatonBuilder(object):
                     self._validate_env_key_type(
                         env_keys[env_key], expression, f"State {key}, action '{action.name}'",
                     )
+            if action.actuator:
+                self._validate_namespaced_expression(
+                    action.actuator, f"State {key}, action '{action.name}': actuator", registry,
+                )
 
     @staticmethod
     def _validate_env_key_type(declared: EnvKey, expression: str, context: str) -> None:

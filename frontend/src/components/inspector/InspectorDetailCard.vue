@@ -76,6 +76,7 @@ const editUiLabel = ref('')
 const editUiDescription = ref('')
 const editContextualPrompt = ref('')
 const editTrigger = ref('')
+const editActuator = ref('')
 const editTarget = ref('')
 const editOnEnter = ref('')
 
@@ -94,6 +95,7 @@ function resetEditBuffers() {
   editUiDescription.value = d.uiDescription ?? ''
   editContextualPrompt.value = d.contextualPrompt ?? ''
   editTrigger.value = d.trigger ?? ''
+  editActuator.value = d.actuator ?? ''
   editTarget.value = d.target ?? ''
   editOnEnter.value = d.onEnter ?? ''
 }
@@ -123,6 +125,10 @@ function commitContextualPrompt() {
 
 function commitTrigger() {
   commitTextField('trigger', editTrigger.value, props.selectedElement?.data.trigger ?? '')
+}
+
+function commitActuator() {
+  commitTextField('actuator', editActuator.value, props.selectedElement?.data.actuator ?? '')
 }
 
 function commitTarget() {
@@ -383,6 +389,11 @@ function selectAttachment(fileName) {
               On enter
             </label>
             <OnEnterEditor v-model="editOnEnter" @click.stop @blur="commitOnEnter" />
+            <label class="inspector-detail-form-label" title="A Python expression, evaluated server-side">
+              <span class="inspector-py-field-icon" title="Python expression">PY</span>
+              Actuator
+            </label>
+            <TriggerEditor v-model="editActuator" @click.stop @blur="commitActuator" />
             <p class="inspector-detail-field">
               <template v-if="!selectedElement.data.isInitEdge"><strong>{{ stateLabelFor(selectedElement.data.source) }}</strong> → </template>
               <select
@@ -403,6 +414,7 @@ function selectAttachment(fileName) {
               <code v-for="[key, value] in envEntries" :key="key" class="inspector-detail-code">{{ key }} = {{ value }}</code>
             </p>
             <p v-if="selectedElement.data.trigger" class="inspector-detail-field"><strong>Trigger:</strong><code class="inspector-detail-code">{{ selectedElement.data.trigger }}</code></p>
+            <p v-if="selectedElement.data.actuator" class="inspector-detail-field"><strong>Actuator:</strong><code class="inspector-detail-code">{{ selectedElement.data.actuator }}</code></p>
             <p v-if="selectedElement.data.onEnter" class="inspector-detail-field"><strong>On enter:</strong> {{ selectedElement.data.onEnter }}</p>
             <p v-if="selectedElement.data.actionPrompt" class="inspector-detail-field"><strong>Action prompt:</strong> {{ selectedElement.data.actionPrompt }}</p>
           </div>

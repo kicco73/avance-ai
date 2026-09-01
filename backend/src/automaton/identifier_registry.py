@@ -31,6 +31,10 @@ class IdentifierRegistry:
         "attachment": "One of the project's own attachment files, by name, read as plain text — e.g. source.attachment('notes.txt').",
     }
 
+    ACTUATOR: dict[str, str] = {
+        "send_mail": "Sends an email — e.g. actuator.send_mail(user.email, 'Some **markdown** body').",
+    }
+
     # Every User field (db/models.py) except id — see
     # db.users.UserMixin.get_user_facts, this namespace's own source.
     USER: dict[str, str] = {
@@ -76,5 +80,6 @@ class IdentifierRegistry:
             "session.metric": dict(cls.SESSION_METRIC),
             "user": dict(cls.USER),
             "source": dict(cls.SOURCE),
+            "actuator": dict(cls.ACTUATOR),
             "metric": dict(cls.METRIC),
         }

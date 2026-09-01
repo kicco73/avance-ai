@@ -11,6 +11,7 @@ from typing import Any, TYPE_CHECKING
 from automaton.automaton import Automaton
 from db import Db
 from metrics.metric_service import MetricService
+from tracking.actuators import ActuatorSet, FakeActuatorSet
 from tracking.env import Env
 from tracking.evaluator import SignalEvaluator
 from tracking.session_facts import SessionFacts
@@ -35,6 +36,7 @@ class EvaluationScopeBuilder(object):
         user: UserFacts,
         db: Db,
         automaton_namespace: "AutomatonNamespace | None" = None,
+        actuator_set: ActuatorSet | None = None,
     ) -> None:
         self._env = env
         self._metrics = metrics
@@ -49,6 +51,7 @@ class EvaluationScopeBuilder(object):
         # "automaton" namespace: an automaton.* reference there fails to
         # resolve rather than doing real cross-project work during a replay.
         self._automaton_namespace = automaton_namespace
+        self._actuator_set = actuator_set if actuator_set is not None else FakeActuatorSet()
 
     def build(self, automaton: Automaton, state_key: str, raw_signal_values: dict[str, Any] | None) -> dict[str, Any]:
         """`raw_signal_values` is always re-coerced against every declared
@@ -72,4 +75,5 @@ class EvaluationScopeBuilder(object):
         }
         if self._automaton_namespace is not None:
             scope["automaton"] = self._automaton_namespace
+        scope["actuator"] = self._actuator_set
         return self._metrics.merge_if_referenced(automaton, state_key, scope)

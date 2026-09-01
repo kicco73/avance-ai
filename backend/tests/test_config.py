@@ -22,6 +22,11 @@ auth-service:
   providers:
     - driver: google
       key: fake-client-id
+
+notification-service:
+  url: "smtp://smtp.example.com:587"
+  username: fake-username
+  password: fake-password
 """
 
 

@@ -16,6 +16,7 @@ import { useFloatingTooltip } from '../../../../useFloatingTooltip.js'
 
 const {
   autoTrackingEnabled, autoTrackingLoading, toggleAutoTracking,
+  actuatorsEnabled, actuatorsLoading, toggleActuators,
   sessions, sessionsLoading, currentSessionId, loadSessions, selectSession, handleNewSession, handleDeleteSession,
   state, handleReact, turnCount
 } = testStore
@@ -187,6 +188,18 @@ onBeforeUnmount(() => {
               @change="toggleAutoTracking"
             />
             Freeze transitions
+          </label>
+          <label
+            class="dev-mode-toggle"
+            :class="{ 'dev-mode-toggle-active': actuatorsEnabled, 'dev-mode-toggle-disabled': actuatorsLoading }"
+          >
+            <input
+              type="checkbox"
+              :checked="actuatorsEnabled"
+              :disabled="actuatorsLoading"
+              @change="toggleActuators"
+            />
+            Run actuators
           </label>
           <label
             class="dev-mode-toggle"

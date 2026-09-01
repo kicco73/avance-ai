@@ -12,6 +12,7 @@ from logging_factory import LoggerFactory
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
 from session import Session
+from tracking.actuators import ActuatorSetFactory
 from tracking.automaton_namespace import AutomatonNamespace
 from tracking.env import PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
@@ -49,11 +50,13 @@ class WakeupJob(CancelableJob):
 
 class WakeupService:
     def __init__(
-        self, db: Db, project_service: ProjectService, job_queue: JobQueue, ws_adapter: WsAdapter | None = None,
+        self, db: Db, project_service: ProjectService, job_queue: JobQueue, actuator_factory: ActuatorSetFactory,
+        ws_adapter: WsAdapter | None = None,
     ) -> None:
         self._db = db
         self._project_service = project_service
         self._job_queue = job_queue
+        self._actuator_factory = actuator_factory
         # None whenever no websocket transport is configured — push is
         # simply skipped in that case; a re-evaluated self-loop is still
         # applied and persisted either way, only live delivery depends on this.
@@ -109,7 +112,9 @@ class WakeupService:
             # resolve an OTHER project entirely, a genuinely different
             # mechanism from "the current one's own active project".
             automaton_namespace = AutomatonNamespace(self._db, self._project_service)
-            scope_builder = EvaluationScopeBuilder(env, metrics, system, session_facts, user_facts, self._db, automaton_namespace)
+            scope_builder = EvaluationScopeBuilder(
+                env, metrics, system, session_facts, user_facts, self._db, automaton_namespace, self._actuator_factory.live(),
+            )
             tracking_engine = TrackingEngine(DbTrackingSink(self._db), env, scope_builder)
 
             scope = scope_builder.build(automaton, state.key, {})

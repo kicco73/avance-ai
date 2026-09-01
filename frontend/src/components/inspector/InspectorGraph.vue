@@ -94,6 +94,7 @@ function edgeToCyData(e, id) {
     buttonText: e.action.ui_button,
     trigger: e.trigger,
     hasTrigger: e.action.has_trigger,
+    actuator: e.actuator,
     actionPrompt: e.action_prompt,
     onEnter: e.action['on-enter'],
     env: e.env || {},

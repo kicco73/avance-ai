@@ -10,6 +10,7 @@ from project.project_service import ProjectService
 from db import Db
 from metrics.metric_service import MetricService
 
+from .actuators import ActuatorSetFactory, FakeActuatorSet
 from .automaton_namespace import AutomatonNamespace
 from .errors import TrackingServiceError
 from .fixed_project_context import FixedProjectContext
@@ -34,6 +35,7 @@ class TrackingService(object):
 		db: Db,
 		project_service: ProjectService,
 		metrics_service: MetricService,
+		actuator_factory: ActuatorSetFactory,
 		talk_enabled: bool = True,
 		# FIXME: mirrors AppConfig's own default (config.py) — keep in sync.
 		input_token_budget_per_turn: int | None = 16000,
@@ -43,6 +45,7 @@ class TrackingService(object):
 	) -> None:
 		self._db = db
 		self._project_service = project_service
+		self._actuator_factory = actuator_factory
 		self._metrics = metrics_service
 		self._talk_enabled = talk_enabled
 		self._input_token_budget_per_turn = input_token_budget_per_turn
@@ -249,7 +252,7 @@ class TrackingService(object):
 		the "Label sessions" view's "Unlabel all" action."""
 		self._db.clear_session_annotations(session_id)
 
-	def _process(
+	async def _process(
 		self,
 		session_id: int,
 		text: str | None,
@@ -281,10 +284,13 @@ class TrackingService(object):
 		session_facts = SessionFacts(self._db, fixed_context)
 		user_facts = UserFacts(self._db)
 		automaton_namespace = AutomatonNamespace(self._db, self._project_service)
+		actuator_set = self._actuator_factory.for_session(session_id)
 		metrics = MetricService(
 			self._db, fixed_context, max_session_duration_in_minutes=self._metrics.max_session_duration_in_minutes
 		)
-		scope_builder = EvaluationScopeBuilder(env, metrics, system_facts, session_facts, user_facts, self._db, automaton_namespace)
+		scope_builder = EvaluationScopeBuilder(
+			env, metrics, system_facts, session_facts, user_facts, self._db, automaton_namespace, actuator_set,
+		)
 
 		def on_metadata_sync_to_async(key: str, value: Any):
 			if on_metadata:
@@ -298,4 +304,7 @@ class TrackingService(object):
 			input_token_budget_per_turn=self._input_token_budget_per_turn,
 		)
 
-		return tracking_processor.process(text, on_metadata=on_metadata_sync_to_async, extra_prompt=extra_prompt)
+		result = await tracking_processor.process(text, on_metadata=on_metadata_sync_to_async, extra_prompt=extra_prompt)
+		if isinstance(actuator_set, FakeActuatorSet) and actuator_set.notices:
+			result["actuator_notices"] = actuator_set.notices
+		return result

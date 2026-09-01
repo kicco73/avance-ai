@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from abc import ABC, abstractmethod
 from collections import deque
 from dataclasses import dataclass
 from typing import ClassVar, TYPE_CHECKING
@@ -16,7 +17,22 @@ if TYPE_CHECKING:
 
 logger = LoggerFactory.get_logger(__name__)
 
-class JobQueue(object):
+class AbstractJobQueue(ABC):
+
+    @abstractmethod
+    def submit(self, job: DependentJob, parent: DependentJob | None = None) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def cancel(self, job: CancelableJob) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def wait_for(self, job: DependentJob) -> None:
+        raise NotImplementedError
+
+
+class JobQueue(AbstractJobQueue):
     """Generic job orchestrator: submit, queue, run on a dedicated thread
     pool. One deque, shared by every worker — a non-background job jumps
     to the head, a background one joins the tail; workers always pop the

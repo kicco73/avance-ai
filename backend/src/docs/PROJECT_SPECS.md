@@ -258,7 +258,7 @@ result regardless, for inspection, without ever applying a transition.
 A boolean-ish expression evaluated with
 [`simpleeval`](https://pypi.org/project/simpleeval/) — comparisons,
 boolean logic, and arithmetic, plus attribute access and calls **only**
-on the six reserved namespaces below (never arbitrary Python — no
+on the seven reserved namespaces below (never arbitrary Python — no
 imports, no calling anything else):
 
 ```text
@@ -269,7 +269,7 @@ session.number_of_user_sessions() >= 3 and system.time() > "18:00:00"
 user.role == "admin"
 ```
 
-Six reserved namespaces, each resolving to a dict-or-proxy object:
+Seven reserved namespaces, each resolving to a dict-or-proxy object:
 
 | Namespace | Resolves to | Access |
 | --- | --- | --- |
@@ -279,6 +279,7 @@ Six reserved namespaces, each resolving to a dict-or-proxy object:
 | `session.<name>` | An engine fact about the current user+project's own session/transition history (`current_session_duration_in_minutes`, `last_user_session_datetime`, `number_of_user_sessions`, `state_duration_in_minutes`) | **call** — `session.number_of_user_sessions()`, not the bare attribute |
 | `user.<name>` | A field of the current user's own account (`email`, `name`, `picture_url`, `provider`, `provider_user_id`, `created_at`, `last_login`, `active_project`, `role`) | attribute — same as `env.<name>`, never called |
 | `source.<name>(...)` | A **data source** — see below | **call**, with its own arguments |
+| `actuator.<name>(...)` | A **side-effecting actuator** — see §6.5 | **call**, with its own arguments |
 
 A **bare** (unnamespaced) name is only ever a core metric (§3) — nothing
 else may appear unnamespaced anymore.
@@ -309,8 +310,8 @@ own — this table just lists what's currently available.
 Every reference is validated at build/upload time: `signal.<name>` must
 name a declared signal, `env.<name>` must name a key **some** action's
 own `env:` field sets somewhere in the project, `system.<name>`/
-`session.<name>`/`user.<name>`/`source.<name>` must be one of the fixed
-names above, and a bare name must be a recognized metric — anything
+`session.<name>`/`user.<name>`/`source.<name>`/`actuator.<name>` must be
+one of the fixed names above, and a bare name must be a recognized metric — anything
 else fails with an "undefined name(s)" error, and a syntactically
 invalid expression fails the same way with a parse error. At evaluation
 time (not build time): if any referenced `signal.<name>` is currently
@@ -399,6 +400,33 @@ shows the two in their own separate sections regardless — **ACTION** for
 this action-set store, distinct from the model-reported **AI** one —
 never editable/deletable through that UI, only ever a side effect of the
 action that set them firing again.
+
+### 6.5 Action `actuator`
+
+An action can also declare a single `actuator:` expression — evaluated
+with the exact same namespaced scope/mechanics as `trigger`/`env`
+(§6.2), as a side effect of the action firing (manually or via its
+`trigger`), same timing as `env:` (§6.4). Unlike `env:`, its return
+value is discarded — only the `actuator.<name>(...)` call's own side
+effect matters:
+
+```yaml
+actuator: actuator.send_mail(user.email, "Your request was escalated.")
+```
+
+**Actuators** (`actuator.<name>(...)`) are code-defined "plugins", same
+shape as data sources (§6.2) — each one is its own Python class
+(`backend/src/tracking/actuators/`), not something a project declares
+in YAML. The only one that exists today is `actuator.send_mail(to,
+body_md)`, which queues an email onto the system's own job queue —
+fire-and-forget, never awaited by the turn that triggered it.
+
+Actuators never run during a test replay/benchmark — that path never
+even has a live actuator implementation wired in. They also never run
+during EditProjectView's embedded "Test" chat unless that test
+session's own "Run actuators" toggle (Run panel) is switched on; while
+off (the default), a dummy implementation records what it would have
+sent instead of actually sending anything.
 
 ## 7. Attachments
 

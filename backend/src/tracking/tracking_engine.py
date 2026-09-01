@@ -185,12 +185,15 @@ class TrackingEngine:
         """Applies `action`'s own `env:` updates to the current scope —
         shared by both the auto-tracking and manual-action paths (the
         latter fires with empty signal_values). Publishes one EnvChanged per key actually written."""
-        if not action.env:
+        if not action.env and not action.actuator:
             return
         scope = self._scope_builder.build(automaton, state_key, signal_values)
-        updates = automaton.eval_action_env(action, scope)
-        if updates:
-            self._env.update_action_set(updates)
-            if username is not None and project_name is not None:
-                for key, value in updates.items():
-                    publish(EnvChanged(username=username, project_name=project_name, key=key, value=value))
+        if action.env:
+            updates = automaton.eval_action_env(action, scope)
+            if updates:
+                self._env.update_action_set(updates)
+                if username is not None and project_name is not None:
+                    for key, value in updates.items():
+                        publish(EnvChanged(username=username, project_name=project_name, key=key, value=value))
+        if action.actuator:
+            automaton.eval_action_actuator(action, scope)

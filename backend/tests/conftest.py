@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import socket
 import threading
@@ -19,7 +18,7 @@ from controller import AvanceController
 from db import Db
 from error_handlers import ApiErrorHandlers
 from events.dispatcher import _reset_for_tests as _reset_dispatcher_for_tests
-from jobs import JobQueue
+from jobs import JobQueue, NullBroadcaster
 from metrics.metric_service import MetricService
 from project.project_service import ProjectService
 from session import Session
@@ -143,40 +142,6 @@ class FakeAiService:
 @pytest.fixture
 def fake_ai_service() -> FakeAiService:
     return FakeAiService()
-
-
-class NullBroadcaster:
-    """Stands in for QueueProgressBroadcaster wherever a JobQueue is built.
-    Implements the real connect()/disconnect()/push() contract (minus the
-    token-count enrichment, which needs a real AiService) so
-    JobQueue.wait_for() still works for the tests that exercise it —
-    everywhere else, nothing ever connect()s, so push() finds no
-    connections and is dropped exactly as before."""
-
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._connections: dict[str, dict[asyncio.Queue, asyncio.AbstractEventLoop]] = {}
-
-    def connect(self, username: str) -> asyncio.Queue:
-        connection: asyncio.Queue = asyncio.Queue()
-        loop = asyncio.get_running_loop()
-        with self._lock:
-            self._connections.setdefault(username, {})[connection] = loop
-        return connection
-
-    def disconnect(self, username: str, connection: asyncio.Queue) -> None:
-        with self._lock:
-            connections = self._connections.get(username)
-            if connections is not None:
-                connections.pop(connection, None)
-                if not connections:
-                    del self._connections[username]
-
-    def push(self, username: str, message: dict) -> None:
-        with self._lock:
-            connections = list(self._connections.get(username, {}).items())
-        for connection, loop in connections:
-            loop.call_soon_threadsafe(connection.put_nowait, message)
 
 
 @pytest.fixture

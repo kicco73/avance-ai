@@ -41,6 +41,7 @@ class Action:
     # merged onto the env store so the next prompt sees the update. Same
     # scope/mechanics as `trigger` (see _eval_trigger), minus the boolean cast.
     env: dict[str, str] | None = None
+    actuator: str | None = None
 
 @dataclass
 class State:
@@ -118,6 +119,7 @@ ActionPayload = TypedDict("ActionPayload", {
     "ui_description": str | None,
     "target": str,
     "has_trigger": bool,
+    "has_actuator": bool,
     "on-enter": str | None,
 })
 
@@ -238,6 +240,7 @@ class Automaton(object):
             "ui_description": action.ui_description,
             "target": action.target,
             "has_trigger": action.trigger is not None,
+            "has_actuator": action.actuator is not None,
             "on-enter": action.on_enter,
         }
 
@@ -366,6 +369,18 @@ class Automaton(object):
                     action.name, key, expression, exc,
                 )
         return result
+
+    @staticmethod
+    def eval_action_actuator(action: Action, scope: dict[str, Any]) -> None:
+        if not action.actuator:
+            return
+        try:
+            simpleeval.simple_eval(action.actuator, names=scope)
+        except Exception as exc:
+            logger.warning(
+                "actuator expression evaluation failed for action '%s' ('%s'): %s",
+                action.name, action.actuator, exc,
+            )
 
     @staticmethod
     def _eval_trigger(expression: str, scope: dict[str, Any]) -> bool:

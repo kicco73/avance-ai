@@ -308,6 +308,7 @@ class ProjectInspector:
                 "action_prompt": action.action_prompt,
                 "ui_description": action.ui_description,
                 "env": action.env or {},
+                "actuator": action.actuator,
             }
             for state in automaton.states.values()
             for action in state.actions

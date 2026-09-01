@@ -148,3 +148,15 @@ auth-service:
     - driver: google
       key: <your-google-client-id>
       # ui-label/ui-description: same optional fields as ai-service above.
+
+notification-service:
+  # Mandatory: url, username, password. url is parsed as smtp://host[:port]
+  # (STARTTLS, default port 587) or smtps://host[:port] (implicit TLS,
+  # default port 465) — no credentials or path/query in the url itself.
+  url: smtp://smtp.gmail.com:587
+  username: <gmail address>
+  password: <gmail app password>
+  # Optional: from-name defaults to unset (From = username only).
+  from-name: Avance
+  # Optional, defaults to 10.
+  timeout-seconds: 10

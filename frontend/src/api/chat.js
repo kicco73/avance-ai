@@ -160,6 +160,18 @@ export function postAutoTracking(sessionId, enabled) {
   })
 }
 
+export function getActuators(sessionId) {
+  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/actuators`)
+}
+
+export function postActuators(sessionId, enabled) {
+  return apiFetch(`${API_URL}/chat/sessions/${encodeURIComponent(sessionId)}/actuators`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled })
+  })
+}
+
 export function messageAudioUrl(messageId) {
   return `${API_URL}/chat/messages/${messageId}/audio`
 }

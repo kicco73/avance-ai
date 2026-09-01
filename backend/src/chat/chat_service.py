@@ -14,6 +14,7 @@ from keyed_lock_registry import KeyedLockRegistry
 from project_rw_lock import ProjectRwLock
 from session import Session
 
+from tracking.actuators import ActuatorSet, ActuatorSetFactory, FakeActuatorSet
 from tracking.automaton_namespace import AutomatonNamespace
 from tracking.env import PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
@@ -46,6 +47,7 @@ class ChatService(object):
 		tracking_service: TrackingService,
 		metric_service: MetricService,
 		job_queue: JobQueue,
+		actuator_factory: ActuatorSetFactory,
 	) -> None:
 		self._db = db
 		self._ai_service = ai_service
@@ -54,6 +56,7 @@ class ChatService(object):
 		self._session_manager = session_manager
 		self._tracking_service = tracking_service
 		self.metric_service = metric_service
+		self._actuator_factory = actuator_factory
 		# Shares the general job_queue (see main.py's own wiring) —
 		# never its own private queue.
 		self._session_summary_manager = SessionSummaryManager(db, ai_service, job_queue, session_manager)
@@ -62,14 +65,18 @@ class ChatService(object):
 		self._session_facts = SessionFacts(db, project_service)
 		self._user_facts = UserFacts(db)
 		self._automaton_namespace = AutomatonNamespace(db, project_service)
-		self._evaluation_scope_builder = EvaluationScopeBuilder(
-			self.env, metric_service, self._system_facts, self._session_facts, self._user_facts, db, self._automaton_namespace
-		)
-		self._tracking_engine = TrackingEngine(DbTrackingSink(db), self.env, self._evaluation_scope_builder)
 
 		self._project_locks = KeyedLockRegistry(ProjectRwLock)
 		self._session_locks = KeyedLockRegistry(asyncio.Lock)
 		self._global_lock = asyncio.Lock()
+
+	def _tracking_engine_for_session(self, session_id: int) -> tuple[TrackingEngine, "ActuatorSet"]:
+		actuator_set = self._actuator_factory.for_session(session_id)
+		scope_builder = EvaluationScopeBuilder(
+			self.env, self.metric_service, self._system_facts, self._session_facts, self._user_facts,
+			self._db, self._automaton_namespace, actuator_set,
+		)
+		return TrackingEngine(DbTrackingSink(self._db), self.env, scope_builder), actuator_set
 
 
 	@property
@@ -532,6 +539,14 @@ class ChatService(object):
 		self._require_own_session(session_id)
 		self._tracking_service.set_auto_tracking_enabled(session_id, enabled)
 
+	def is_actuators_enabled(self, session_id: int) -> bool:
+		self._require_own_session(session_id)
+		return self._actuator_factory.is_enabled_for_test_session(session_id)
+
+	def set_actuators_enabled(self, session_id: int, enabled: bool) -> None:
+		self._require_own_session(session_id)
+		self._actuator_factory.set_enabled_for_test_session(session_id, enabled)
+
 	def clear_auto_tracking_overrides(self) -> None:
 		self._tracking_service.clear_auto_tracking_overrides()
 
@@ -568,7 +583,7 @@ class ChatService(object):
 			raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
 		return session["project_name"]
 
-	def _apply_declared_env_defaults(self, automaton: Automaton, project_name: str) -> None:
+	def _apply_declared_env_defaults(self, automaton: Automaton, project_name: str, session_id: int) -> None:
 		"""See open_if_needed's own call site. `automaton.init_action.env`
 		carries every project-level `env:` declaration's default
 		(AutomatonBuilder folds them in, in declaration order), evaluated
@@ -587,9 +602,11 @@ class ChatService(object):
 			return
 		current = {**self.env.stored(), **self.env.action_set()}
 		missing = {key: expression for key, expression in action.env.items() if key not in current}
+		tracking_engine, _ = self._tracking_engine_for_session(session_id)
 		for key, expression in missing.items():
-			self._tracking_engine.apply_action_env(
-				automaton, replace(action, env={key: expression}), {}, "", username=self._username, project_name=project_name
+			tracking_engine.apply_action_env(
+				automaton, replace(action, env={key: expression}, actuator=None), {}, "",
+				username=self._username, project_name=project_name,
 			)
 
 	async def open_if_needed(self, session_id: int) -> dict | None:
@@ -613,7 +630,7 @@ class ChatService(object):
 		# a key nothing has set yet, so it never clobbers a value the
 		# model/an action/the user set afterwards, and it's a no-op
 		# (no DB write) once every declared key already has one.
-		self._apply_declared_env_defaults(automaton, project_name)
+		self._apply_declared_env_defaults(automaton, project_name, session_id)
 
 		init_message = None
 		if self._db.get_current_state(project_name) is None:
@@ -691,20 +708,24 @@ class ChatService(object):
 				action_name, session["id"]
 			)
 			automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
-			self._tracking_engine.apply_action_env(
+			tracking_engine, actuator_set = self._tracking_engine_for_session(session["id"])
+			tracking_engine.apply_action_env(
 				automaton, action, {}, source_state_key, username=Session().user, project_name=project_name,
 			)
 			reply = await self._messages_for_transition(
 				action, session["id"], state, is_self_loop=(action.target == source_state_key)
 			)
 			self._session_manager.touch_session(session["id"], state.key)
-			return {
+			result = {
 				"state": state_payload,
 				"reply": reply,
 				"on-enter": action.on_enter,
 				"ai_model": self.get_ai_models_info(),
 				"session_id": session["id"],
 			}
+			if isinstance(actuator_set, FakeActuatorSet) and actuator_set.notices:
+				result["actuator_notices"] = actuator_set.notices
+			return result
 
 	async def process_turn(
 		self,

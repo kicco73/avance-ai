@@ -21,17 +21,19 @@ from error_handlers import ApiErrorHandlers
 from jobs import JobQueue, ThrottledJobQueue
 from logging_factory import LoggerFactory
 from metrics.metric_service import MetricService
+from notification.notification_service import NotificationService
 from project.project_service import ProjectService
 from ai.ai_service import AiService
 from testing.test_service import TestService
 from testing.queue_progress_broadcaster import QueueProgressBroadcaster
 from testing.last_status_broadcaster import LastStatusBroadcaster
+from tracking.actuators import ActuatorSetFactory
 from tracking.tracking_service import TrackingService
 from tracking.wakeup_service import WakeupService
 from talk.talk_service import TalkService
 from listen.listen_service import ListenService
 
-__version__ = "1.20.2"
+__version__ = "1.21.0"
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -73,7 +75,14 @@ def create_app() -> FastAPI:
         talk_service = TalkService.from_config(config.talk_services) if config.talk_services is not None else None
         listen_service = ListenService.from_config(config.listen_services) if config.listen_services is not None else None
         
+        test_event_broadcaster = LastStatusBroadcaster(QueueProgressBroadcaster(ai_test_service))
+        job_queue = JobQueue(max_concurrent=config.jobs_shared_max_concurrent, broadcaster=test_event_broadcaster)
+
+        notification_service = NotificationService(config.notification_service_config, job_queue)
+        app.state.notification_service = notification_service
+
         db = Db(config.database_url, migration_strategy=config.database_migration_strategy)
+        actuator_factory = ActuatorSetFactory(notification_service, db)
         # Bridged onto app.state for the same reason auth_service is below:
         # AuthMiddleware was already registered before this existed, and
         # needs it for its own per-request UserProject ownership check.
@@ -95,8 +104,6 @@ def create_app() -> FastAPI:
         auth_service = AuthService(db, config.auth_providers, config.auth_token_ttl_in_hours, project_service)
         app.state.auth_service = auth_service
 
-        test_event_broadcaster = LastStatusBroadcaster(QueueProgressBroadcaster(ai_test_service))
-        job_queue = JobQueue(max_concurrent=config.jobs_shared_max_concurrent, broadcaster=test_event_broadcaster)
         test_job_queue = ThrottledJobQueue(
             max_concurrent=config.test_service_max_concurrent_tests,
             broadcaster=test_event_broadcaster,
@@ -118,13 +125,13 @@ def create_app() -> FastAPI:
         # tracking/tracking_service.py's own module docstring). Both this and
         # ChatService depend on ai_service/metric_service directly, never each other.
         tracking_service = TrackingService(
-            db, project_service, metric_service, talk_enabled=talk_service is not None,
+            db, project_service, metric_service, actuator_factory, talk_enabled=talk_service is not None,
             input_token_budget_per_turn=config.input_token_budget_per_turn,
             total_token_budget_per_session=config.total_token_budget_per_session,
         )
         chat_service = ChatService(
             db, ai_live_service, ai_test_service, project_service, session_manager,
-            tracking_service, metric_service, job_queue,
+            tracking_service, metric_service, job_queue, actuator_factory,
         )
 
         test_service = TestService(
@@ -138,7 +145,7 @@ def create_app() -> FastAPI:
 
         # Cross-project wake-up (see tracking/wakeup_service.py) —
         # subscribes once for the process lifetime.
-        WakeupService(db, project_service, job_queue).register()
+        WakeupService(db, project_service, job_queue, actuator_factory).register()
 
         controller = AvanceController(
             chat_service, project_service, talk_service, listen_service, db, tracking_service, test_service,

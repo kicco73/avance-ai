@@ -19,3 +19,5 @@ partial_json_parser
 pyjwt>=2.9
 google-auth>=2.35
 tinycss2>=1.4
+aiosmtplib>=5.0
+markdown>=3.7
