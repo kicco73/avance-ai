@@ -12,13 +12,10 @@ import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
 from chat.ws_adapter import WsAdapter
-from config import NotificationServiceConfig
 from events import StateChanged, publish
-from conftest import NullBroadcaster
+from conftest import NullBroadcaster, make_test_actuator_factory
 from jobs import JobQueue
-from notification.notification_service import NotificationService
 from project.project_service import ProjectService
-from tracking.actuators import ActuatorSetFactory
 from tracking.wakeup_service import WakeupService
 
 pytestmark = pytest.mark.contract
@@ -79,15 +76,7 @@ def project_service(db) -> ProjectService:
     return ProjectService(db)
 
 
-def _actuator_factory(db) -> ActuatorSetFactory:
-    """A real ActuatorSetFactory, wired the same way main.py does — no
-    wakeup test's YAML ever calls actuator.send_mail, so the dummy SMTP
-    config is never actually dialed."""
-    dummy_config = NotificationServiceConfig(
-        url="smtp://localhost", username="test@example.com", password="", from_name=None, timeout_seconds=5,
-    )
-    notification_service = NotificationService(dummy_config, JobQueue(max_concurrent=1, broadcaster=NullBroadcaster()))
-    return ActuatorSetFactory(notification_service, db)
+_actuator_factory = make_test_actuator_factory
 
 
 def test_reverse_index_is_populated_when_watcher_is_built(db, project_service):

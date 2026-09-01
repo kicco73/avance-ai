@@ -150,7 +150,9 @@ auth-service:
       # ui-label/ui-description: same optional fields as ai-service above.
 
 notification-service:
-  # Mandatory: url, username, password. url is parsed as smtp://host[:port]
+  # Optional: omit this whole section if no project ever needs
+  # actuator.send_mail — it's the only thing that uses it. Present, url/
+  # username/password are mandatory: url is parsed as smtp://host[:port]
   # (STARTTLS, default port 587) or smtps://host[:port] (implicit TLS,
   # default port 465) — no credentials or path/query in the url itself.
   url: smtp://smtp.gmail.com:587
@@ -160,3 +162,32 @@ notification-service:
   from-name: Avance
   # Optional, defaults to 10.
   timeout-seconds: 10
+
+whatsapp-service:
+  # Optional, defaults to false (and the whole section can be omitted
+  # entirely). If true, WhatsApp becomes one more chat client of the very
+  # same live sessions the SPA uses (see backend/src/docs/WHATSAPP.md):
+  # Meta's webhook is served at /api/whatsapp/webhook.
+  enabled: false
+  # Any string you choose — repeated verbatim in the Meta app's webhook
+  # configuration; Meta echoes it in the one-time verification GET.
+  verify-token: <your-verify-token>
+  # The Meta app's App Secret (App settings > Basic) — every webhook POST
+  # is HMAC-signed with it (X-Hub-Signature-256) and rejected otherwise.
+  app-secret: <your-app-secret>
+  # A permanent System User token (the one shown in "API Setup" expires
+  # in 24h) with whatsapp_business_messaging permission.
+  access-token: <your-access-token>
+  # The Phone Number ID of the WhatsApp Business number — NOT the number.
+  phone-number-id: <your-phone-number-id>
+  # Optional, defaults to v23.0 — check the Meta console for the current one.
+  graph-version: v23.0
+  # Optional, defaults to true: send the blue "read" tick on receipt.
+  mark-read: true
+  # Which account each WhatsApp number chats as. Keys are the sender's
+  # number as Meta sends it (E.164 digits, no '+'); values the User row's
+  # email — an account that already registered from the web, accepted
+  # Terms, and has access to (at least) its active project. A number not
+  # listed here gets a "not linked" reply and nothing else.
+  users:
+    "34600000001": someone@example.com

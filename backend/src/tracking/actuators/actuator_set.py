@@ -36,6 +36,10 @@ class LiveActuatorSet(ActuatorSet):
         self._notification_service = notification_service
 
     def send_mail(self, to: str, body_md: str) -> str | None:
+        # Raises (NotificationError) if this deployment's own .config.yml
+        # declares no notification-service section — see
+        # NotificationService's own docstring on why that's deferred to
+        # here rather than failing at app boot.
         self._notification_service.enqueue_mail(to, _SEND_MAIL_SUBJECT, body_md)
         return None
 

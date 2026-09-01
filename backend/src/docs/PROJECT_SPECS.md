@@ -216,7 +216,7 @@ actions:
     trigger: "signal.mood >= 70 and engagement >= 20"
     action-prompt: |
       Briefly acknowledge the mood/engagement trigger, then continue.
-    on-enter: celebrate
+    on-enter: actuator.celebrate()
     env:
       reset_counter: True
       number_of_steps: env.number_of_steps + 1
@@ -231,7 +231,7 @@ Each entry:
 | `target` | no | string | this action's **own state's key** | The destination state. Omitting it (or setting it explicitly to the current state) is a **self-loop**: the conversation stays in the same state, only the action's own effects (transition logged, `action-prompt` reply if any) happen. Must name a real key under `states:` (or the current state itself). |
 | `trigger` | no | string (expression) | `None` | A boolean expression over signal/metric names — see §6.2. Absent means **manual-only**: reachable only via `POST /api/chat/sessions/{session_id}/action`, never fired by auto-tracking. |
 | `action-prompt` | no | string | `None` | An instruction sent to the model **as if it were the user's own message**, to produce an immediate reaction to this action firing — see §6.3. |
-| `on-enter` | no | string | `None` | Passed through to the frontend as-is when this action fires, and run there as a small JS script (see frontend/src/onEnterActions.js's own `runOnEnterScript`) against two callable locals: `celebrate()` (a confetti animation) and `notify(title, body)` (a toast; `body` is markdown) — e.g. `on-enter: celebrate` or `on-enter: "notify('Nice!', 'You reached **state B**.')"`. Any other/malformed script fails loudly in the browser console, never silently. A property of the action firing, not of its destination state: two different actions landing on the same state can each carry their own value (or none) — a state reached one way might celebrate, reached another way might not. |
+| `on-enter` | no | string | `None` | One or more `actuator.<name>(...)` calls, one per line — a side effect of the action firing, same timing as `env:` — see §6.5. A property of the action firing, not of its destination state: two different actions landing on the same state can each carry their own value (or none) — a state reached one way might celebrate, reached another way might not. |
 | `env` | no | mapping of key -> expression | `None` | Updates the project's own environment memory when this action fires (manually or via a trigger) — see §6.4. |
 | `ui-label` | no | string | `name` (also used if `ui-label` is present but empty) | Shown in the frontend. |
 | `ui-button` | no | string | `ui-label`, and transitively `name`, if absent or empty | Button text in the frontend's manual-action bar. |
@@ -258,7 +258,7 @@ result regardless, for inspection, without ever applying a transition.
 A boolean-ish expression evaluated with
 [`simpleeval`](https://pypi.org/project/simpleeval/) — comparisons,
 boolean logic, and arithmetic, plus attribute access and calls **only**
-on the seven reserved namespaces below (never arbitrary Python — no
+on the six reserved namespaces below (never arbitrary Python — no
 imports, no calling anything else):
 
 ```text
@@ -269,7 +269,7 @@ session.number_of_user_sessions() >= 3 and system.time() > "18:00:00"
 user.role == "admin"
 ```
 
-Seven reserved namespaces, each resolving to a dict-or-proxy object:
+Six reserved namespaces, each resolving to a dict-or-proxy object:
 
 | Namespace | Resolves to | Access |
 | --- | --- | --- |
@@ -279,10 +279,11 @@ Seven reserved namespaces, each resolving to a dict-or-proxy object:
 | `session.<name>` | An engine fact about the current user+project's own session/transition history (`current_session_duration_in_minutes`, `last_user_session_datetime`, `number_of_user_sessions`, `state_duration_in_minutes`) | **call** — `session.number_of_user_sessions()`, not the bare attribute |
 | `user.<name>` | A field of the current user's own account (`email`, `name`, `picture_url`, `provider`, `provider_user_id`, `created_at`, `last_login`, `active_project`, `role`) | attribute — same as `env.<name>`, never called |
 | `source.<name>(...)` | A **data source** — see below | **call**, with its own arguments |
-| `actuator.<name>(...)` | A **side-effecting actuator** — see §6.5 | **call**, with its own arguments |
 
 A **bare** (unnamespaced) name is only ever a core metric (§3) — nothing
-else may appear unnamespaced anymore.
+else may appear unnamespaced anymore. `actuator.<name>(...)` is a
+**seventh**, reserved but deliberately absent from both `trigger:` and
+`env:` — it's only ever valid inside `on-enter:` (§6.5).
 
 **Data sources** (`source.<name>(...)`) are code-defined "plugins" —
 each one is its own Python module (`backend/src/tracking/sources/`),
@@ -310,7 +311,7 @@ own — this table just lists what's currently available.
 Every reference is validated at build/upload time: `signal.<name>` must
 name a declared signal, `env.<name>` must name a key **some** action's
 own `env:` field sets somewhere in the project, `system.<name>`/
-`session.<name>`/`user.<name>`/`source.<name>`/`actuator.<name>` must be
+`session.<name>`/`user.<name>`/`source.<name>` must be
 one of the fixed names above, and a bare name must be a recognized metric — anything
 else fails with an "undefined name(s)" error, and a syntactically
 invalid expression fails the same way with a parse error. At evaluation
@@ -401,32 +402,52 @@ this action-set store, distinct from the model-reported **AI** one —
 never editable/deletable through that UI, only ever a side effect of the
 action that set them firing again.
 
-### 6.5 Action `actuator`
+### 6.5 Action `on-enter`
 
-An action can also declare a single `actuator:` expression — evaluated
-with the exact same namespaced scope/mechanics as `trigger`/`env`
-(§6.2), as a side effect of the action firing (manually or via its
-`trigger`), same timing as `env:` (§6.4). Unlike `env:`, its return
-value is discarded — only the `actuator.<name>(...)` call's own side
-effect matters:
+An action's `on-enter` field is one or more `actuator.<name>(...)`
+calls, one per non-blank line, each evaluated with the exact same
+namespaced scope/mechanics as `trigger`/`env` (§6.2, plus `actuator`
+itself — see the reserved-namespaces note above) as a side effect of
+the action firing (manually or via its `trigger`), same timing as
+`env:` (§6.4):
 
 ```yaml
-actuator: actuator.send_mail(user.email, "Your request was escalated.")
+on-enter: |
+  actuator.celebrate()
+  actuator.notify('Nice!', 'You reached **state B**.')
 ```
 
 **Actuators** (`actuator.<name>(...)`) are code-defined "plugins", same
-shape as data sources (§6.2) — each one is its own Python class
+shape as data sources (§6.2) — each one is its own Python method
 (`backend/src/tracking/actuators/`), not something a project declares
-in YAML. The only one that exists today is `actuator.send_mail(to,
-body_md)`, which queues an email onto the system's own job queue —
-fire-and-forget, never awaited by the turn that triggered it.
+in YAML. Three exist today:
+
+- `actuator.celebrate()` and `actuator.notify(title, body_md)` (`body_md`
+  is markdown) each compile straight to the frontend's own
+  onEnterActions.js locals of the same name — a confetti animation and a
+  toast, respectively. Nothing runs server-side beyond building that JS
+  snippet: the "tunnel" is exact and unconditional, e.g.
+  `actuator.notify('Nice!', 'Well done')` reaches the browser as the
+  literal `notify("Nice!", "Well done")` and runs there exactly like an
+  old-style bare on-enter script once did.
+- `actuator.send_mail(to, body_md)` queues an email onto the system's
+  own job queue — fire-and-forget, never awaited by the turn that
+  triggered it — with no frontend-visible effect at all.
+
+Every call's own return value (if any) becomes wire-ready JS the
+frontend runs verbatim; a call with nothing to tunnel (`send_mail`)
+simply contributes nothing. Multiple lines concatenate in order, so
+`on-enter` can both celebrate and notify from the same action.
 
 Actuators never run during a test replay/benchmark — that path never
-even has a live actuator implementation wired in. They also never run
-during EditProjectView's embedded "Test" chat unless that test
-session's own "Run actuators" toggle (Run panel) is switched on; while
-off (the default), a dummy implementation records what it would have
-sent instead of actually sending anything.
+even has a live actuator implementation wired in. A real side effect
+(`send_mail`) also never runs during EditProjectView's embedded "Test"
+chat unless that test session's own "Run actuators" toggle (Run panel)
+is switched on; while off (the default), it's suppressed and reported
+back as a `notify(...)` toast describing what would have happened,
+instead of actually happening. `celebrate`/`notify` themselves carry no
+real-world side effect to suppress, so they always tunnel through
+regardless of that toggle.
 
 ## 7. Attachments
 
@@ -493,6 +514,9 @@ how you're likely to hit them:
 - Every action's `env`, if given, is a mapping, and each of its
   expressions gets the exact same validation `trigger` does — syntax and
   unknown-name checks alike (§6.4).
+- Every action's `on-enter`, if given, is one `actuator.<name>(...)`
+  call per non-blank line, each validated the same way (plus its own
+  argument-count check against the real Python method) — see §6.5.
 - No signal is named after a reserved core metric name (§3).
 - Every `attachments:` entry (global, per-signal, per-state — not
   per-action) names a file actually present in the upload.
@@ -527,5 +551,5 @@ For richer real-world examples: `default/index.yml` uses multiple signals
 with attachments, a `fixed-message` state, and per-state
 `transition-log-level`; `Aprendr català/index.yml` uses `history-cutoff`
 alongside its own `fixed-message` state and several actions' own
-`on-enter: celebrate`.
+`on-enter: actuator.celebrate()`.
 `Drogodependencia/index.yml` is a further, simpler example with neither.
