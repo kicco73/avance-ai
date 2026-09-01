@@ -6,15 +6,17 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 //
 // themeMode: 'auto' (default, LiveChatWindow.vue's own instance) shows
 // the project's index.css skin the whole time, same as the live chat
-// always has. 'manual' (RunChat.vue) starts unskinned instead and leaves
-// showing it up to the shared applyAspect flag/toggle — owned here, not
-// by whichever component happens to pass the prop, so entering/leaving
-// manual mode is always symmetric: onMounted forces it off, onBeforeUnmount
-// always restores it, with no separate opt-in/opt-out call for a
-// manual-mode consumer to remember. applyAspect is shared across every
-// ChatView instance (a genuine app-wide preference, see chatSkin.js),
-// which is exactly why a manual instance must restore it on unmount
-// rather than leaving it however it last set it.
+// always has. 'manual' (RunChat.vue) leaves showing it up to the shared
+// applyAspect flag/toggle — owned here, not by whichever component happens
+// to pass the prop, so entering/leaving manual mode is always symmetric:
+// onMounted applies manualApplyAspectPreference (defaults to unskinned on
+// first-ever use), onBeforeUnmount saves whatever the toggle ended up at
+// back into that preference and always restores applyAspect itself to
+// true. applyAspect is shared across every ChatView instance (a genuine
+// app-wide preference, see chatSkin.js), which is exactly why a manual
+// instance must restore it on unmount rather than leaving it however it
+// last set it — manualApplyAspectPreference is what lets a manual
+// instance still remember its own choice across that reset.
 import ActionButtons from './ActionButtons.vue'
 import ChatInput from './ChatInput.vue'
 import MessageBubble from './MessageBubble.vue'
@@ -36,7 +38,7 @@ import {
   spokenTextEnabled,
   toggleSpokenText,
 } from '../../chatStoreFactory.js'
-import { applyAspect } from '../../chatSkin.js'
+import { applyAspect, manualApplyAspectPreference } from '../../chatSkin.js'
 
 const props = defineProps({
   hideSessionsPanel: { type: Boolean, default: false },
@@ -247,7 +249,7 @@ onMounted(() => {
   window.addEventListener('mousemove', onSessionsDrag)
   window.addEventListener('mouseup', stopSessionsDrag)
   document.addEventListener('visibilitychange', onVisibilityChange)
-  if (props.themeMode === 'manual') applyAspect.value = false
+  if (props.themeMode === 'manual') applyAspect.value = manualApplyAspectPreference.value
   if (sessionsPanelOpen.value) resetSessionsPanelIdleTimer()
 })
 onBeforeUnmount(() => {
@@ -255,7 +257,10 @@ onBeforeUnmount(() => {
   window.removeEventListener('mousemove', onSessionsDrag)
   window.removeEventListener('mouseup', stopSessionsDrag)
   document.removeEventListener('visibilitychange', onVisibilityChange)
-  if (props.themeMode === 'manual') applyAspect.value = true
+  if (props.themeMode === 'manual') {
+    manualApplyAspectPreference.value = applyAspect.value
+    applyAspect.value = true
+  }
   clearSessionsPanelIdleTimer()
 })
 

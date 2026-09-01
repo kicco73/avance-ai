@@ -10,6 +10,17 @@ import { resolveCssAssetUrls } from './cssAssetUrls.js'
 // two <style> tags nor a stale skin left over from whichever was visible
 // before a mode switch.
 export const applyAspect = ref(true)
+
+// Run mode's own remembered "Apply aspect" choice — ChatView.vue forces
+// the shared applyAspect flag above off on every manual-mode mount and
+// back to true on unmount (see that file's own docstring), since
+// applyAspect is a single app-wide flag also read by the live chat
+// elsewhere. Without this separate memory, that symmetric reset would
+// also wipe out whatever the user had chosen in Run mode's own toggle the
+// moment they switched away and back via EditProjectView's Design/Run/Test
+// segmented control (RunChat.vue, and therefore ChatView.vue, unmounts on
+// every such switch).
+export const manualApplyAspectPreference = ref(false)
 export const skinVersion = ref(0)
 export function invalidateSkin() {
   skinVersion.value++

@@ -56,7 +56,7 @@ const props = defineProps({
 
 const emit = defineEmits([
   'select', 'select-attachment', 'jump-to-attachment', 'set-field', 'set-project-field', 'delete',
-  'add-state', 'add-action', 'delete-file'
+  'add-state', 'add-action', 'delete-file', 'open-actions-order'
 ])
 
 // True whenever there's no active file browsing to defer to (currentFileName
@@ -168,6 +168,7 @@ onMounted(loadProjectMetadata)
       @jump-to-attachment="emit('jump-to-attachment', $event)"
       @set-field="(field, value) => emit('set-field', field, value)"
       @delete="emit('delete', selectedElement)"
+      @open-actions-order="emit('open-actions-order', selectedElement)"
     />
     <ActionEnvEditor
       v-if="isBehaviorContext && !readOnly && open && selectedElement?.kind === 'action'"

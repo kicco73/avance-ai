@@ -14,6 +14,7 @@ import InspectorMetricsTab from '../../inspector/InspectorMetricsTab.vue'
 import InspectorEnvTab from '../../inspector/InspectorEnvTab.vue'
 import InspectorEnvKeysTab from '../../inspector/InspectorEnvKeysTab.vue'
 import InspectorStateTab from '../../inspector/InspectorStateTab.vue'
+import ActionsOrderDialog from '../../inspector/ActionsOrderDialog.vue'
 import SessionDetailCard from '../../inspector/SessionDetailCard.vue'
 import InspectorUserInfoCard from '../../inspector/InspectorUserInfoCard.vue'
 import InspectorSignalDetailCard from '../../inspector/InspectorSignalDetailCard.vue'
@@ -39,7 +40,7 @@ import {
   getUsers
 } from '../../../api.js'
 import { setApiWarning } from '../../../errorStore.js'
-import { confirmDialog, chooseDialog } from '../../../dialogStore.js'
+import { confirmDialog, chooseDialog, customDialog } from '../../../dialogStore.js'
 import { refreshIdentifierRegistry } from '../../../identifierRegistry.js'
 import { buildTimeline, highlightedStateKeyFor, nearestMessageIdAtOrBefore, resultingStateKeyFor, signalValuesFor } from '../../../testTimeline.js'
 // `sessions` here is the *project's* whole session catalog (loaded by
@@ -593,6 +594,21 @@ function handleDeleteSelectedElement(element) {
   else handleDeleteAction(element.data.matchStateKey, element.data.actionName)
 }
 
+function handleOpenActionsOrder(element) {
+  if (element?.kind !== 'state') return
+  const stateKey = element.data.id
+  guardedAction('reorder actions', () => {
+    customDialog({
+      component: ActionsOrderDialog,
+      props: {
+        projectName: props.projectName,
+        stateName: stateKey,
+        actions: indexYmlEditorRef.value?.actionsForState(stateKey) ?? []
+      }
+    })
+  })
+}
+
 // The state edit form's attachment buttons (see InspectorDetailCard.vue's
 // selectAttachment) jump to where the file is declared in index.yml
 // rather than opening it, unlike every other attachment button elsewhere.
@@ -913,6 +929,7 @@ onBeforeUnmount(() => {
                 @set-field="handleSetSelectedElementField"
                 @set-project-field="handleSetProjectField"
                 @delete="handleDeleteSelectedElement"
+                @open-actions-order="handleOpenActionsOrder"
                 @add-state="handleAddState"
                 @add-action="handleAddAction"
                 @delete-file="handleDeleteFile"

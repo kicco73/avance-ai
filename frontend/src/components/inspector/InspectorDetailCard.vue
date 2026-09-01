@@ -49,7 +49,7 @@ const props = defineProps({
   roleBadge: { type: String, default: null }
 })
 
-const emit = defineEmits(['select-attachment', 'jump-to-attachment', 'close', 'select', 'set-field', 'delete', 'update:open'])
+const emit = defineEmits(['select-attachment', 'jump-to-attachment', 'close', 'select', 'set-field', 'delete', 'update:open', 'open-actions-order'])
 
 const showEditForm = computed(() => props.editable && props.open)
 
@@ -232,7 +232,12 @@ function selectAttachment(fileName) {
           @keydown.enter.prevent="handleEnterNext"
         />
         <span v-else class="inspector-detail-title">{{ selectedElement.data.uiLabel }}</span>
-        <CardMenu v-if="editable">
+        <CardMenu v-if="editable" v-slot="{ close }">
+          <button
+            v-if="selectedElement.kind === 'state'"
+            type="button"
+            @click="close(); emit('open-actions-order')"
+          >Actions order</button>
           <button
             type="button"
             class="card-menu-item-danger"

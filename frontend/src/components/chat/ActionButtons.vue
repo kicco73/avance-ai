@@ -45,15 +45,11 @@ const visibleActions = computed(() =>
   gap: 0.5rem;
   flex-wrap: wrap;
   padding: 0.75rem 1rem;
-  background: #f5f5f7;
 }
 
 .action-btn {
   padding: 0.4rem 0.9rem;
   border-radius: 6px;
-  border: 1px solid #4a6fa5;
-  background: white;
-  color: #4a6fa5;
   font-size: 0.85rem;
   cursor: pointer;
 }
@@ -81,13 +77,33 @@ const visibleActions = computed(() =>
   }
 }
 
-.action-btn:hover:not(:disabled) {
-  background: #4a6fa5;
-  color: white;
-}
-
 .action-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+</style>
+
+<!-- Unscoped, deliberately: a scoped rule's [data-v-xxx] attribute selector
+     always outranks an equal-specificity .action-buttons/.action-btn rule
+     from a project's own index.css skin, regardless of load order — same
+     issue ChatView.vue's .chat-header/.chat-body/.chat-footer sidestep by
+     carrying no color of their own at all. These colors need a real
+     default, so they live here instead: no scoping attribute means a
+     skin's own same-specificity selector wins on source order (its <style>
+     tag is appended to <head> well after this one). -->
+<style>
+.action-buttons {
+  background: #f5f5f7;
+}
+
+.action-btn {
+  border: 1px solid #4a6fa5;
+  background: white;
+  color: #4a6fa5;
+}
+
+.action-btn:hover:not(:disabled) {
+  background: #4a6fa5;
+  color: white;
 }
 </style>
