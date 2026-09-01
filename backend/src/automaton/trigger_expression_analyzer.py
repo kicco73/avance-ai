@@ -15,7 +15,7 @@ class TriggerExpressionAnalyzer:
     # Reserved namespaces a trigger/env expression resolves against. `automaton`
     # has no entry in _NAMESPACE_PATHS below since automaton.<project>.state/
     # env.<key> is a dynamic, per-project chain static-tuple matching can't express.
-    RESERVED_NAMESPACES = ("signal", "env", "system", "session", "user", "metric", "automaton")
+    RESERVED_NAMESPACES = ("signal", "env", "system", "session", "user", "source", "metric", "automaton")
 
     # Dotted sub-namespaces nested one level under a reserved namespace above —
     # each entry matches as a *whole* path, so `session.metric.<attr>` and plain
@@ -151,6 +151,8 @@ class TriggerExpressionAnalyzer:
             "active_project": _KIND_STRING,
             "role": _KIND_STRING,
         },
+        # Every data source (tracking/sources/) returns text.
+        ("source",): {"attachment": _KIND_STRING},
     }
     # Every identifier under these namespaces is always a number, no per-name
     # exceptions to look up — signals by contract, metrics because

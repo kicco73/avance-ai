@@ -254,6 +254,58 @@ class TestPutInitActionTarget:
         assert "Hello:" in _index_yml(client, hello_project)
 
 
+class TestPutInitActionField:
+    """The init-action is an action like any other action-field edit —
+    same payload shape, same endpoint pattern — minus 'trigger'/'env',
+    which AutomatonBuilder's own _build_init_action never reads for it."""
+
+    def test_edits_ui_description(self, client, hello_project):
+        response = client.put(
+            f"/api/projects/{hello_project}/init-action/ui-description",
+            json={"value": "Where every session begins."},
+        )
+        assert response.status_code == 200
+        assert response.json()["ui_description"] == "Where every session begins."
+        assert "Where every session begins." in _index_yml(client, hello_project)
+
+    def test_edits_on_enter(self, client, hello_project):
+        response = client.put(
+            f"/api/projects/{hello_project}/init-action/on-enter",
+            json={"value": "celebrate()"},
+        )
+        assert response.status_code == 200
+        assert response.json()["on-enter"] == "celebrate()"
+
+    def test_has_trigger_is_always_false(self, client, hello_project):
+        response = client.put(
+            f"/api/projects/{hello_project}/init-action/ui-label",
+            json={"value": "Start"},
+        )
+        assert response.status_code == 200
+        assert response.json()["has_trigger"] is False
+
+    def test_rejects_trigger(self, client, hello_project):
+        response = client.put(
+            f"/api/projects/{hello_project}/init-action/trigger",
+            json={"value": "True"},
+        )
+        assert response.status_code == 400
+
+    def test_rejects_env(self, client, hello_project):
+        response = client.put(
+            f"/api/projects/{hello_project}/init-action/env",
+            json={"value": {"anything": "1"}},
+        )
+        assert response.status_code == 400
+
+    def test_rejects_a_field_not_on_the_whitelist(self, client, hello_project):
+        response = client.put(
+            f"/api/projects/{hello_project}/init-action/not-a-real-field",
+            json={"value": "anything"},
+        )
+        assert response.status_code == 400
+
+
 class TestReorderActions:
     def test_moves_an_action_and_returns_the_new_order(self, client, hello_project):
         first = client.post(f"/api/projects/{hello_project}/states/Hello/actions").json()

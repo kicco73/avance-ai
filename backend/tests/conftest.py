@@ -212,11 +212,30 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     # /api/auth/*, so nothing needs a real Google client id to resolve.
     auth_service = AuthService(app_db, [], token_ttl_in_hours=24 * 7, project_service=project_service)
 
+    # A plausible stand-in for AppConfig.public_services_snapshot() — this
+    # fixture never loads a real .config.yml, so the Settings > Manage
+    # services page's own read-only payload is faked here instead.
+    services_config = {
+        "chat": {
+            "max-session-duration-in-minutes": 60,
+            "input-token-budget-per-turn": 16000,
+            "total-token-budget-per-session": 200000,
+        },
+        "testing": {"max-concurrent-tests": 4, "max-tests-per-minute": 15, "min-test-interval-ms": 0},
+        "ai": {
+            "max-output-tokens": 1024,
+            "providers": [{"driver": "fake", "model": "fake-model", "ui-label": "fake", "ui-description": None, "url": None, "modes": ["live", "test"]}],
+        },
+        "talk": {"enabled": False, "providers": []},
+        "listen": {"enabled": False, "providers": []},
+        "database": {"url": "sqlite:///test.db", "migration-strategy": "stop"},
+    }
+
     fastapi_app = FastAPI(title="Avance State Engine (test)")
     ApiErrorHandlers.register(fastapi_app)
     controller = AvanceController(
         chat_service, project_service, None, None, app_db, tracking_service, test_service,
-        auth_service, test_event_broadcaster, job_queue, "test-version",
+        auth_service, test_event_broadcaster, job_queue, "test-version", services_config,
     )
     fastapi_app.include_router(controller.router)
     fastapi_app.state.test_service = test_service

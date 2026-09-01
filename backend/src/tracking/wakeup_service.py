@@ -109,7 +109,7 @@ class WakeupService:
             # resolve an OTHER project entirely, a genuinely different
             # mechanism from "the current one's own active project".
             automaton_namespace = AutomatonNamespace(self._db, self._project_service)
-            scope_builder = EvaluationScopeBuilder(env, metrics, system, session_facts, user_facts, automaton_namespace)
+            scope_builder = EvaluationScopeBuilder(env, metrics, system, session_facts, user_facts, self._db, automaton_namespace)
             tracking_engine = TrackingEngine(DbTrackingSink(self._db), env, scope_builder)
 
             scope = scope_builder.build(automaton, state.key, {})

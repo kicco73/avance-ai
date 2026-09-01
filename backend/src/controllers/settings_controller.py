@@ -15,6 +15,7 @@ from fastapi import HTTPException, Request, Response
 from chat.chat_service import ChatService
 from db import Db
 from jobs import JobQueue, stream_job_progress
+from testing.last_status_broadcaster import LastStatusBroadcaster
 from testing.queue_progress_broadcaster import QueueProgressBroadcaster
 from project.project_service import ProjectService
 from session import Session
@@ -30,7 +31,8 @@ class SettingsController(BaseController, ProjectCommitMixin):
 
     def __init__(
         self, chat_service: ChatService, project_service: ProjectService, db: Db, version: str,
-        test_event_broadcaster: QueueProgressBroadcaster, job_queue: JobQueue,
+        test_event_broadcaster: QueueProgressBroadcaster | LastStatusBroadcaster, job_queue: JobQueue,
+        services_config: dict,
     ) -> None:
         self.chat_service = chat_service
         self.project_service = project_service
@@ -38,12 +40,20 @@ class SettingsController(BaseController, ProjectCommitMixin):
         self.version = version
         self.test_event_broadcaster = test_event_broadcaster
         self.job_queue = job_queue
+        self.services_config = services_config
 
     @get("/api/settings/about", role="supervisor")
     def get_about(self):
         """The Settings menu's own "About Avance..." dialog — just the
         display name and running backend version, __version__ in main.py."""
         return {"name": APP_NAME, "version": self.version}
+
+    @get("/api/settings/services", role="admin")
+    def get_services(self):
+        """Settings > Manage services — read-only snapshot of
+        .config.yml's own service sections (see AppConfig.
+        public_services_snapshot), one tab per section on the frontend."""
+        return self.services_config
 
     @get("/api/settings/backup", role="admin")
     async def get_backup(self):
@@ -71,6 +81,15 @@ class SettingsController(BaseController, ProjectCommitMixin):
             except ValueError as exc:
                 raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
             self.chat_service.clear_auto_tracking_overrides()
+        return {"success": True}
+
+    @post("/api/settings/database/wipe-live-sessions", role="admin")
+    async def post_wipe_all_live_sessions(self):
+        """Settings > Manage services > Database — deletes every live
+        conversation across every project (not just the active one), same
+        global scope as the backup endpoints above."""
+        async with self.chat_service.global_exclusive_access():
+            self.project_service.wipe_all_live_sessions()
         return {"success": True}
 
     @get("/api/projects")
@@ -176,10 +195,4 @@ class SettingsController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except OSError as exc:
             raise HTTPException(status_code=HTTPStatus.INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
-        return {"success": True}
-
-    @post("/api/projects/{project_name}/live-sessions/wipe", role="admin")
-    async def post_wipe_live_sessions(self, project_name: str):
-        async with self.chat_service.acquire_write(project_name):
-            self.project_service.wipe_live_sessions(project_name)
         return {"success": True}

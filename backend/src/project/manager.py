@@ -313,6 +313,7 @@ class ProjectManager:
         )
 
         revision = self._db.get_project_revision(project_name)
+        automaton.set_storage_location(project_name, revision)
         self._automaton_loader.set_cached(project_name, revision, automaton)
         # Reverse index of every project this one's self-loop actions
         # reference via automaton.* — recomputed on every successful build
@@ -333,8 +334,8 @@ class ProjectManager:
     def reset_test_sessions(self, project_name: str) -> None:
         self._db.reset_project_for_user(Session().user, project_name, type='test')
 
-    def wipe_live_sessions(self, project_name: str) -> None:
-        self._db.wipe_live_sessions_for_project(project_name)
+    def wipe_all_live_sessions(self) -> None:
+        self._db.wipe_live_sessions_for_all_projects()
 
     def preview_publish(self, project_name: str) -> dict:
         """Whether publishing `project_name` needs a human state remap

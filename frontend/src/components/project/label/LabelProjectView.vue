@@ -4,7 +4,6 @@ import ChatTimeline from '../../chat/ChatTimeline.vue'
 import SessionsTree from '../../chat/SessionsTree.vue'
 import MessageCommentButton from '../../chat/MessageCommentButton.vue'
 import ProjectsMenu from '../../ProjectsMenu.vue'
-import SettingsMenu from '../../settings/SettingsMenu.vue'
 import ProfileMenu from '../../ProfileMenu.vue'
 import AppHeader from '../../AppHeader.vue'
 import Inspector from '../../inspector/Inspector.vue'
@@ -24,11 +23,6 @@ const props = defineProps({
     type: String,
     required: true
   },
-  // This is a supervisor's own landing page now (see App.vue's role-based
-  // routing) — no Back button to fall back on, so its own Settings menu
-  // (same one the main chat screen shows) is how it reaches every other
-  // top-level view instead.
-  role: { type: String, default: null },
   // ProfileMenu.vue's own avatar/name — App.vue already fetched this once
   // during boot (see its own `profile` prop docstring), passed straight
   // through so this landing page can show the same topbar avatar the main
@@ -36,13 +30,10 @@ const props = defineProps({
   profile: { type: Object, default: null }
 })
 
-// The Settings-menu ones (manage-users/label-sessions/about/
-// download-backup/restore-backup) are a plain pass-through of
-// SettingsMenu.vue's own emits; profile/logout are the same pass-through
-// of ProfileMenu.vue's own.
+// project-select is ProjectsMenu.vue's own switch; profile/logout are a
+// plain pass-through of ProfileMenu.vue's own emits.
 const emit = defineEmits([
-  'close', 'project-select', 'manage-users', 'label-sessions', 'edit-projects',
-  'download-backup', 'restore-backup', 'profile', 'logout'
+  'close', 'project-select', 'profile', 'logout'
 ])
 
 // This view's own session pointer — never chatStore.js's shared
@@ -225,20 +216,10 @@ onBeforeUnmount(() => {
     <AppHeader>
       <template #left>
         <button class="app-header-icon-btn" title="Back" @click="emit('close')">«</button>
-        <h2 class="app-header-title">Label sessions — {{ projectName }}</h2>
+        <ProjectsMenu align="left" :selected-name="projectName" @select="(name) => emit('project-select', name)" />
       </template>
       <template #right>
         <div class="test-header-actions">
-          <ProjectsMenu :selected-name="projectName" @select="(name) => emit('project-select', name)" />
-          <SettingsMenu
-            :role="role"
-            align="right"
-            @manage-users="emit('manage-users')"
-            @label-sessions="emit('label-sessions')"
-            @edit-projects="emit('edit-projects')"
-            @download-backup="emit('download-backup')"
-            @restore-backup="(file) => emit('restore-backup', file)"
-          />
           <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
         </div>
       </template>

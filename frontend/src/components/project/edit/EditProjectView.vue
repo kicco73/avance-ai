@@ -14,14 +14,11 @@ import InspectorMetricsTab from '../../inspector/InspectorMetricsTab.vue'
 import InspectorEnvTab from '../../inspector/InspectorEnvTab.vue'
 import InspectorEnvKeysTab from '../../inspector/InspectorEnvKeysTab.vue'
 import InspectorStateTab from '../../inspector/InspectorStateTab.vue'
-import InspectorActionsTab from '../../inspector/InspectorActionsTab.vue'
 import SessionDetailCard from '../../inspector/SessionDetailCard.vue'
 import InspectorUserInfoCard from '../../inspector/InspectorUserInfoCard.vue'
 import InspectorSignalDetailCard from '../../inspector/InspectorSignalDetailCard.vue'
 import ModelMenu from '../../ModelMenu.vue'
-import SettingsMenu from '../../settings/SettingsMenu.vue'
 import ProfileMenu from '../../ProfileMenu.vue'
-import ProjectsMenu from '../../ProjectsMenu.vue'
 import AppHeader from '../../AppHeader.vue'
 import { useLeaveConfirmation } from '../../../composables/useLeaveConfirmation.js'
 import { useResizablePanel } from '../../../composables/useResizablePanel.js'
@@ -76,9 +73,6 @@ const props = defineProps({
     type: String,
     required: true
   },
-  // Settings-menu access (see the header's own SettingsMenu below) —
-  // same role gating as ManageProjectsView.vue/LabelProjectView.vue.
-  role: { type: String, default: null },
   // ProfileMenu.vue's own avatar/name — App.vue already fetched this once
   // during boot, passed straight through so this view can show the same
   // topbar avatar the main chat screen does.
@@ -89,10 +83,7 @@ const props = defineProps({
 // its whole lifetime — the "Run" tab's own test store targets it once here.
 setTestProject(props.projectName)
 
-const emit = defineEmits([
-  'saved', 'back', 'project-select', 'manage-users', 'label-sessions', 'edit-projects',
-  'download-backup', 'restore-backup', 'profile', 'logout'
-])
+const emit = defineEmits(['saved', 'back', 'profile', 'logout'])
 
 const {
   filesLoading, files, currentFileName, uploading, creatingFile, deletingFile,
@@ -143,21 +134,6 @@ const selectedStateKey = computed(() => {
 // list its Session Explorer (RunChat.vue) loads — read here for the
 // Inspector's SessionDetailCard, which RunChat.vue doesn't itself show.
 const runCurrentSession = computed(() => runSessions.value.find((s) => s.id === currentSessionId.value) ?? null)
-
-// Resolved off index.yml's own already-loaded graph data (see
-// IndexYmlEditorPanel.vue's stateElementFor/actionsForState) rather than
-// a second fetch — null/[] whenever nothing is selected.
-const stateTabElement = computed(() => {
-  const key = selectedStateKey.value
-  return key == null ? null : (indexYmlEditorRef.value?.stateElementFor(key) ?? null)
-})
-// No selection at all means an empty list — showing the init-action's
-// own state (key "") here without anything actually selected in the
-// Graph would make "Actions" look like a selection exists when it doesn't.
-const actionsTabList = computed(() => {
-  const key = selectedStateKey.value
-  return key == null ? [] : (indexYmlEditorRef.value?.actionsForState(key) ?? [])
-})
 
 // Test mode's own selection (ProjectTestPanel.vue's own selectedNodeId —
 // this view only ever gets told what it is via @select, never owns the
@@ -272,9 +248,11 @@ const autoSessionEndElement = computed(() => (
 
 // The tab set this view's Inspector shows (see Inspector.vue's slot-based
 // contract; LabelProjectView.vue passes a different set). 'run' mode
-// shows the live conversation's Metrics/Env; edit mode shows index.yml's own Info/Actions/Signals/Env-keys instead.
-// Test mode only ever shows Info — plain read-only viewing, no Actions/
-// Signals/Env-keys editing surface makes sense while browsing test results.
+// shows the live conversation's Metrics/Env; edit mode shows index.yml's own
+// Info/Signals/Env-keys instead — Info doubles as the Actions tab used to,
+// showing whichever of a state/action the Graph selection actually is.
+// Test mode only ever shows Info — plain read-only viewing, no Signals/
+// Env-keys editing surface makes sense while browsing test results.
 const inspectorTabs = computed(() => {
   if (mode.value === 'run') {
     return [
@@ -292,7 +270,6 @@ const inspectorTabs = computed(() => {
   }
   return [
     { id: 'state', label: 'Info' },
-    { id: 'actions', label: 'Actions' },
     { id: 'signals', label: 'Signals' },
     { id: 'env-keys', label: 'Env' }
   ]
@@ -501,8 +478,9 @@ const runOpen = computed(() => mode.value === 'run')
 const testOpen = computed(() => mode.value === 'test')
 
 // Whichever state key the "State" Inspector tab is actually showing right
-// now — stateTabElement in edit mode, autoSelectedElement's own key while
-// browsing a run (see InspectorStateTab's :selected-element binding below).
+// now — selectedGraphElement's own containing state in edit mode,
+// autoSelectedElement's own key while browsing a run (see InspectorStateTab's
+// :selected-element binding below).
 const stateTabTokensKey = computed(() => (mode.value === 'test' ? autoSelectedStateKey.value : selectedStateKey.value))
 
 // Estimated input-token cost of that state's own turn prompt (see backend
@@ -580,14 +558,14 @@ const {
   handleAddState, handleAddSignal, handleAddEnvKey, handleAddAction,
   handleSetStateField, handleSetProjectField, handleSetActionField, handleSetSignalField, handleSetEnvKeyField,
   handleDeleteState, handleDeleteAction, handleDeleteSignal, handleDeleteEnvKey,
-  handleReorderAction,
 } = useIndexYmlEditing(
   props.projectName, guardedAction, indexYmlEditorRef, jumpToDefinition, selectedGraphElement, selectedStateKey, flashRecentlyAdded
 )
 
-// The Inspector's "State"/"Actions" tabs share the same selection the
-// Graph drives, but a row click here only emits 'select' — this is the
-// tab-side equivalent of a Graph click's select + jump-to-definition. Silent: shouldn't yank the user into the Code segment.
+// The Inspector's "Info" tab shares the same selection the Graph drives,
+// but a row click here only emits 'select' — this is the tab-side
+// equivalent of a Graph click's select + jump-to-definition. Silent:
+// shouldn't yank the user into the Code segment.
 function handleTabSelect(element) {
   selectedGraphElement.value = element
   if (!element) return
@@ -598,11 +576,31 @@ function handleTabSelect(element) {
   )
 }
 
+// The Info tab's detail card is generic (state or action, whichever is
+// selected) — these two dispatch a field-edit/delete to whichever of
+// handleSetStateField/handleSetActionField or handleDeleteState/
+// handleDeleteAction actually applies, off selectedGraphElement's own kind.
+function handleSetSelectedElementField(field, value) {
+  const element = selectedGraphElement.value
+  if (!element) return
+  if (element.kind === 'state') handleSetStateField(element.data.id, field, value)
+  else handleSetActionField(element.data.matchStateKey, element.data.actionName, field, value)
+}
+
+function handleDeleteSelectedElement(element) {
+  if (!element) return
+  if (element.kind === 'state') handleDeleteState(element.data.id)
+  else handleDeleteAction(element.data.matchStateKey, element.data.actionName)
+}
+
 // The state edit form's attachment buttons (see InspectorDetailCard.vue's
 // selectAttachment) jump to where the file is declared in index.yml
 // rather than opening it, unlike every other attachment button elsewhere.
+// selectAttachment only ever emits this for a state selection (an action's
+// own attachments go through select-attachment instead), so selectedGraphElement
+// is guaranteed to be the state kind whenever this actually fires.
 function handleJumpToAttachment(fileName) {
-  const stateKey = stateTabElement.value?.data.id
+  const stateKey = selectedGraphElement.value?.data.id
   if (stateKey == null) return
   jumpToDefinition({ kind: 'attachment', stateKey, fileName }, { silent: true })
 }
@@ -642,27 +640,8 @@ async function leaveEditProject(onLeave) {
   // null (Cancel/backdrop/ESC) — stay open, nothing to do.
 }
 
-// The Settings-menu items that navigate away — a plain pass-through of
-// SettingsMenu.vue's own emits, same shape as ManageProjectsView.vue/
-// LabelProjectView.vue's, guarded by leaveEditProject instead of firing
-// straight away (those two views have nothing unsaved to lose; this one does).
 function handleBack() {
   leaveEditProject(() => emit('back'))
-}
-function handleSettingsManageUsers() {
-  leaveEditProject(() => emit('manage-users'))
-}
-function handleSettingsLabelSessions() {
-  leaveEditProject(() => emit('label-sessions'))
-}
-
-// ProjectsMenu.vue's own switch — guarded the same way, since it edits a
-// *different* project out from under whatever's unsaved/unpublished here.
-function handleProjectMenuSelect(name) {
-  leaveEditProject(() => emit('project-select', name))
-}
-function handleSettingsEditProjects() {
-  leaveEditProject(() => emit('edit-projects'))
 }
 
 // Live values for whatever signals the active conversation currently
@@ -770,10 +749,8 @@ onBeforeUnmount(() => {
   <div class="edit-project-overlay">
     <AppHeader>
       <template #left>
-        <div class="edit-project-header-title">
-          <button class="app-header-icon-btn" title="Back" @click="handleBack">«</button>
-          <h2 class="app-header-title">Edit project — {{ projectName }}</h2>
-        </div>
+        <button class="app-header-icon-btn" title="Back" @click="handleBack">«</button>
+        <ModelMenu :model-store="testChatModelStore" />
       </template>
       <template #center>
         <div class="mode-segment">
@@ -820,17 +797,6 @@ onBeforeUnmount(() => {
               </div>
             </template>
           </div>
-          <ProjectsMenu :selected-name="projectName" @select="handleProjectMenuSelect" />
-          <ModelMenu :model-store="testChatModelStore" />
-          <SettingsMenu
-            :role="role"
-            align="right"
-            @manage-users="handleSettingsManageUsers"
-            @label-sessions="handleSettingsLabelSessions"
-            @edit-projects="handleSettingsEditProjects"
-            @download-backup="emit('download-backup')"
-            @restore-backup="(file) => emit('restore-backup', file)"
-          />
           <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
         </div>
       </template>
@@ -924,8 +890,11 @@ onBeforeUnmount(() => {
                 v-else
                 :ref="registerTab('state')"
                 :project-name="projectName"
-                :selected-element="mode === 'test' ? autoSelectedElement : stateTabElement"
+                :selected-element="mode === 'test' ? autoSelectedElement : selectedGraphElement"
                 :state-tokens="stateTabTokens"
+                :fired-action-edge="firedActionEdge"
+                :available-states="availableStates"
+                :available-env-keys="availableEnvKeys"
                 :selected-session="mode === 'test' ? autoSelectedSession : null"
                 :session-input-tokens="mode === 'test' ? autoSessionInputTokens : null"
                 :total-token-budget-per-session="totalTokenBudgetPerSession"
@@ -940,35 +909,16 @@ onBeforeUnmount(() => {
                 @select="handleTabSelect"
                 @select-attachment="selectFile"
                 @jump-to-attachment="handleJumpToAttachment"
-                @set-field="(field, value) => handleSetStateField(stateTabElement?.data.id, field, value)"
+                @set-field="handleSetSelectedElementField"
                 @set-project-field="handleSetProjectField"
-                @delete="handleDeleteState"
+                @delete="handleDeleteSelectedElement"
                 @add-state="handleAddState"
+                @add-action="handleAddAction"
                 @delete-file="handleDeleteFile"
               />
             </template>
             <template #tab-user="{ registerTab }">
               <InspectorUserInfoCard :ref="registerTab('user')" :user="autoSelectedUser" />
-            </template>
-            <template #tab-actions="{ registerTab }">
-              <InspectorActionsTab
-                :ref="registerTab('actions')"
-                :actions="actionsTabList"
-                :editable-files="files"
-                :selected-element="selectedGraphElement"
-                :fired-action-edge="firedActionEdge"
-                :highlighted-state-key="highlightedStateKey"
-                :available-states="availableStates"
-                :available-env-keys="availableEnvKeys"
-                :allow-add="!!selectedStateKey"
-                :recently-added-key="recentlyAddedKey"
-                @select="handleTabSelect"
-                @select-attachment="selectFile"
-                @reorder="handleReorderAction"
-                @set-field="handleSetActionField"
-                @delete="handleDeleteAction"
-                @add-action="handleAddAction"
-              />
             </template>
             <template #tab-signals="{ registerTab }">
               <InspectorSignalsTab
@@ -1053,21 +1003,10 @@ onBeforeUnmount(() => {
   font-family: system-ui, -apple-system, sans-serif;
 }
 
-.edit-project-header-title {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  min-width: 0;
-}
-
 .edit-project-header-actions {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-}
-
-.edit-project-header-actions .projects-menu {
-  max-width: 220px;
 }
 
 .mode-segment {

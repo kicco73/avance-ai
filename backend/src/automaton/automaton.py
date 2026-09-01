@@ -201,6 +201,26 @@ class Automaton(object):
         # mutually exclusive — this flag selects between them.
         self.autotracking_on_ai_message = autotracking_on_ai_message
         self.talk_enabled = talk_enabled
+        # Which (project_name, revision) this Automaton actually came
+        # from — unset here (never a build()-time concern: most callers,
+        # including nearly every test, build one purely in-memory with
+        # nothing to name). Only AutomatonLoader.load_at_revision and
+        # ProjectManager.finalize_update, the two places that resolve
+        # this correctly and are about to cache the result, ever call
+        # set_storage_location below.
+        self.project_name: str | None = None
+        self.revision: int | None = None
+
+    def set_storage_location(self, project_name: str, revision: int) -> None:
+        """tracking.sources.attachment's own source.attachment(name) reads
+        straight from Db at this exact (project_name, revision) — never
+        this Automaton's own in-memory `attachments` (see that module's
+        docstring for why: a large file no state/action/signal ever
+        declared under its own `attachments:` would otherwise still get
+        eagerly loaded/converted on every build just because it's in the
+        project, whether source.attachment ever asks for it or not)."""
+        self.project_name = project_name
+        self.revision = revision
 
     def get_state(self, state_key: str) -> State:
         return self.states[state_key]

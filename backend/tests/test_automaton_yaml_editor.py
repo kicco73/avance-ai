@@ -245,6 +245,33 @@ class TestSetActionField:
         assert action.env is None
 
 
+class TestSetInitActionField:
+    """The init-action is an action like any other — same payload shape
+    as TestSetActionField above, built off the same _action_payload_from_raw."""
+
+    def test_ui_description_edit(self):
+        editor = _editor()
+        payload = editor.set_init_action_field("ui-description", "Where every session begins.")
+        assert payload["name"] == "init-action"
+        assert payload["ui_description"] == "Where every session begins."
+        automaton = _builds(editor.serialize())
+        assert automaton.init_action.ui_description == "Where every session begins."
+
+    def test_ui_button_falls_back_to_ui_label_like_a_real_action_does(self):
+        editor = _editor()
+        payload = editor.set_init_action_field("ui-label", "Begin")
+        assert payload["ui_button"] == "Begin"
+
+    def test_has_trigger_is_always_false_even_with_a_stray_trigger_key(self):
+        """AutomatonBuilder's own _build_init_action never reads
+        'trigger' for the init-action — a stray key left in the YAML
+        (however it got there) must never make has_trigger lie about that."""
+        stray_trigger_yaml = BASE_YAML.replace("init-action:\n  target: a\n", "init-action:\n  target: a\n  trigger: 'True'\n")
+        editor = _editor(stray_trigger_yaml)
+        payload = editor.set_init_action_field("ui-label", "Begin")
+        assert payload["has_trigger"] is False
+
+
 class TestSetSignalField:
     def test_non_ui_label_field_is_a_plain_edit(self):
         editor = _editor()

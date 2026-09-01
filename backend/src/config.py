@@ -2,11 +2,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 from ruamel.yaml import YAML
 
 from ai.llm_provider import AIServiceConfig
 
 _yaml = YAML(typ='rt')
+
+
+def _redact_database_url(url: str) -> str:
+    """Same url .config.yml carries, minus embedded credentials (a
+    mysql:// url can hold a plaintext user:pass) — this is what the
+    frontend's Settings > Manage services > Database tab actually shows
+    (see AppConfig.public_services_snapshot)."""
+    parsed = urlsplit(url)
+    if not parsed.username and not parsed.password:
+        return url
+    netloc = parsed.hostname or ""
+    if parsed.port:
+        netloc += f":{parsed.port}"
+    return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment))
 
 class ConfigError(Exception):
     """Raised when backend/.config.yml is missing or structurally invalid."""
@@ -384,4 +399,54 @@ class AppConfig:
         )
         self.auth_providers = self._parse_auth_providers(raw, path)
 
+    @staticmethod
+    def _public_provider_fields(entry) -> dict:
+        return {
+            "driver": entry.driver,
+            "model": entry.model,
+            "ui-label": entry.ui_label,
+            "ui-description": entry.ui_description,
+        }
 
+    def public_services_snapshot(self) -> dict:
+        """Read-only projection of this config's service sections — same
+        section/field names as .config.yml itself, so the frontend's
+        Settings > Manage services page can show it as-is. Every provider
+        key, the database url's own credentials, and jwt-secret are
+        stripped out here (the one place secrets are parsed in the first
+        place) rather than downstream — nothing else ever gets a chance
+        to leak them."""
+        return {
+            "chat": {
+                "max-session-duration-in-minutes": self.max_session_duration_in_minutes,
+                "input-token-budget-per-turn": self.input_token_budget_per_turn,
+                "total-token-budget-per-session": self.total_token_budget_per_session,
+            },
+            "testing": {
+                "max-concurrent-tests": self.test_service_max_concurrent_tests,
+                "max-tests-per-minute": self.test_service_max_tests_per_minute,
+                "min-test-interval-ms": self.test_service_min_test_interval_ms,
+            },
+            "ai": {
+                "max-output-tokens": self.ai_services[0].max_output_tokens,
+                "providers": [
+                    {**self._public_provider_fields(p), "url": p.url, "modes": list(p.modes)}
+                    for p in self.ai_services
+                ],
+            },
+            "talk": {
+                "enabled": self.talk_services is not None,
+                "providers": [self._public_provider_fields(p) for p in (self.talk_services or [])],
+            },
+            "listen": {
+                "enabled": self.listen_services is not None,
+                "providers": [
+                    {**self._public_provider_fields(p), "language": p.language}
+                    for p in (self.listen_services or [])
+                ],
+            },
+            "database": {
+                "url": _redact_database_url(self.database_url),
+                "migration-strategy": self.database_migration_strategy,
+            },
+        }

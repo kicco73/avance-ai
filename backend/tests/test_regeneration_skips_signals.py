@@ -85,7 +85,7 @@ async def test_regeneration_call_does_not_request_signals(db):
     metrics = MetricService(db, project_service)
     env = PersistedEnv(db, project_service)
     scope_builder = EvaluationScopeBuilder(
-        env, metrics, SystemFacts(), SessionFacts(db, project_service), UserFacts(db)
+        env, metrics, SystemFacts(), SessionFacts(db, project_service), UserFacts(db), db
     )
 
     processor = TrackingProcessorAfterUserMessage(

@@ -284,7 +284,7 @@ class TrackingService(object):
 		metrics = MetricService(
 			self._db, fixed_context, max_session_duration_in_minutes=self._metrics.max_session_duration_in_minutes
 		)
-		scope_builder = EvaluationScopeBuilder(env, metrics, system_facts, session_facts, user_facts, automaton_namespace)
+		scope_builder = EvaluationScopeBuilder(env, metrics, system_facts, session_facts, user_facts, self._db, automaton_namespace)
 
 		def on_metadata_sync_to_async(key: str, value: Any):
 			if on_metadata:

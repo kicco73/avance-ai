@@ -8,7 +8,13 @@ import { getProjects } from '../api.js'
 // choice being the app's actual active project. Defaults to `null`, which
 // falls back to the normal behavior (the app's own active project).
 const props = defineProps({
-  selectedName: { type: String, default: null }
+  selectedName: { type: String, default: null },
+  // 'right' (default) anchors the dropdown's own right edge to the
+  // button's, opening leftward — for a button that's the last one on the
+  // right of its header. 'left' anchors the left edge instead, opening
+  // rightward, for a button placed near the left of its header (see
+  // LabelProjectView.vue).
+  align: { type: String, default: 'right' }
 })
 
 const emit = defineEmits([
@@ -92,7 +98,7 @@ onBeforeUnmount(() => {
       </svg>
     </button>
 
-    <div v-if="open" class="projects-panel">
+    <div v-if="open" class="projects-panel" :class="{ 'projects-panel-align-left': align === 'left' }">
       <p v-if="loading" class="projects-status">Loading…</p>
 
       <ul v-else class="projects-list">
@@ -178,6 +184,11 @@ onBeforeUnmount(() => {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   z-index: 100;
   overflow: hidden;
+}
+
+.projects-panel-align-left {
+  right: auto;
+  left: 0;
 }
 
 .projects-status {

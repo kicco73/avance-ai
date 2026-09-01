@@ -165,8 +165,8 @@ class ProjectService(object):
     def reset_test_sessions(self, project_name: str) -> None:
         self._manager.reset_test_sessions(project_name)
 
-    def wipe_live_sessions(self, project_name: str) -> None:
-        self._manager.wipe_live_sessions(project_name)
+    def wipe_all_live_sessions(self) -> None:
+        self._manager.wipe_all_live_sessions()
 
     def preview_publish(self, project_name: str) -> dict:
         return self._manager.preview_publish(project_name)

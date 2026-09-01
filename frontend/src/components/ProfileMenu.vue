@@ -73,10 +73,20 @@ onBeforeUnmount(() => {
       <div v-if="open" class="profile-panel">
         <ul class="profile-list">
           <li>
-            <button class="profile-item" @click="selectProfile">Profile</button>
+            <button class="profile-item" @click="selectProfile">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+              </svg>
+              <span>Profile</span>
+            </button>
           </li>
           <li>
-            <button class="profile-item" @click="selectLogout">Logout</button>
+            <button class="profile-item" @click="selectLogout">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                <path d="M17 7l-1.41 1.41L17.17 10H9v2h8.17l-1.58 1.59L17 15l4-4zM5 5h7V3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h7v-2H5V5z" />
+              </svg>
+              <span>Logout</span>
+            </button>
           </li>
         </ul>
       </div>
@@ -151,7 +161,9 @@ onBeforeUnmount(() => {
 }
 
 .profile-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
   width: 100%;
   text-align: left;
   padding: 0.5rem 0.9rem;
@@ -160,6 +172,10 @@ onBeforeUnmount(() => {
   cursor: pointer;
   font-size: 0.9rem;
   color: #4a6fa5;
+}
+
+.profile-item svg {
+  flex-shrink: 0;
 }
 
 .profile-item:hover {

@@ -14,6 +14,7 @@ from listen.listen_service import ListenService
 from project.project_service import ProjectService
 from talk.talk_service import TalkService
 from testing.test_service import TestService
+from testing.last_status_broadcaster import LastStatusBroadcaster
 from testing.queue_progress_broadcaster import QueueProgressBroadcaster
 from tracking.tracking_service import TrackingService
 
@@ -36,9 +37,10 @@ class AvanceController(object):
         tracking_service: TrackingService,
         test_service: TestService,
         auth_service: AuthService,
-        test_event_broadcaster: QueueProgressBroadcaster,
+        test_event_broadcaster: QueueProgressBroadcaster | LastStatusBroadcaster,
         job_queue: JobQueue,
         version: str,
+        services_config: dict,
     ) -> None:
         self.chat_service = chat_service
         self.project_service = project_service
@@ -58,7 +60,7 @@ class AvanceController(object):
             chat_service, project_service, tracking_service, test_service, test_event_broadcaster, job_queue,
         )
         self.settings = SettingsController(
-            chat_service, project_service, db, version, test_event_broadcaster, job_queue,
+            chat_service, project_service, db, version, test_event_broadcaster, job_queue, services_config,
         )
         self.auth = AuthController(auth_service)
         self.user = UserController(auth_service)

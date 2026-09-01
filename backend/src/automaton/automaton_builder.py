@@ -343,6 +343,7 @@ class AutomatonBuilder(object):
         env = {name: env_key.value for name, env_key in env_keys.items() if env_key.value}
         init_action = Action(
             name="init-action",
+            ui_description=raw_init_action.get("ui-description"),
             ui_label=raw_init_action.get("ui-label", "init-action"),
             ui_button="",
             target=raw_init_action["target"],

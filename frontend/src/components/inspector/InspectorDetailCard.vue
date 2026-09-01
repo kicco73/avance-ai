@@ -7,7 +7,6 @@ import { vAutosize } from './textareaAutosize.js'
 import CardMenu from './CardMenu.vue'
 import TriggerEditor from './TriggerEditor.vue'
 import OnEnterEditor from './OnEnterEditor.vue'
-import EnvMapEditor from './EnvMapEditor.vue'
 import { handleEnterNext } from './enterToNextField.js'
 import { useFloatingTooltip } from '../../useFloatingTooltip.js'
 import { useTokensBar } from '../../composables/useTokensBar.js'
@@ -37,9 +36,6 @@ const props = defineProps({
   // Every state's {key, uiLabel} — options for the action form's target
   // <select>. Unused for a state card.
   availableStates: { type: Array, default: () => [] },
-  // Every declared project env key's name — options for the action
-  // form's Env editor (EnvMapEditor.vue). Unused for a state card.
-  availableEnvKeys: { type: Array, default: () => [] },
   // Whether the form is open — a v-model (update:open) the parent owns
   // rather than local state, since a list of these cards needs an
   // accordion (only one open at a time), which only a shared parent can enforce.
@@ -82,7 +78,6 @@ const editContextualPrompt = ref('')
 const editTrigger = ref('')
 const editTarget = ref('')
 const editOnEnter = ref('')
-const editEnv = ref({})
 
 const elementIdentity = computed(() => {
   if (!props.selectedElement) return null
@@ -101,7 +96,6 @@ function resetEditBuffers() {
   editTrigger.value = d.trigger ?? ''
   editTarget.value = d.target ?? ''
   editOnEnter.value = d.onEnter ?? ''
-  editEnv.value = { ...(d.env ?? {}) }
 }
 
 watch(elementIdentity, resetEditBuffers, { immediate: true })
@@ -140,14 +134,6 @@ function commitTarget() {
 // convention every other field here follows ('ui-label', 'history-cutoff', ...).
 function commitOnEnter() {
   commitTextField('on-enter', editOnEnter.value, props.selectedElement?.data.onEnter ?? '')
-}
-
-// editEnv is a mapping, not a string — commitTextField's === compare
-// doesn't apply, so this mirrors it with a structural comparison instead.
-function commitEnv() {
-  const original = props.selectedElement?.data.env ?? {}
-  if (JSON.stringify(editEnv.value) === JSON.stringify(original)) return
-  emit('set-field', 'env', editEnv.value)
 }
 
 // history-cutoff/chat: a plain instant toggle, not a typed field — no
@@ -378,11 +364,6 @@ function selectAttachment(fileName) {
               @blur="commitUiDescription"
             ></textarea>
             <template v-if="!selectedElement.data.isInitEdge">
-              <label class="inspector-detail-form-label" title="Sets project env keys when this action fires — Python expressions, evaluated server-side">
-                <span class="inspector-py-field-icon" title="Python expression">PY</span>
-                Env
-              </label>
-              <EnvMapEditor v-model="editEnv" :key-options="availableEnvKeys" @blur="commitEnv" />
               <label class="inspector-detail-form-label" title="A Python expression, evaluated server-side">
                 <span class="inspector-py-field-icon" title="Python expression">PY</span>
                 Trigger

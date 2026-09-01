@@ -258,7 +258,7 @@ result regardless, for inspection, without ever applying a transition.
 A boolean-ish expression evaluated with
 [`simpleeval`](https://pypi.org/project/simpleeval/) — comparisons,
 boolean logic, and arithmetic, plus attribute access and calls **only**
-on the five reserved namespaces below (never arbitrary Python — no
+on the six reserved namespaces below (never arbitrary Python — no
 imports, no calling anything else):
 
 ```text
@@ -269,7 +269,7 @@ session.number_of_user_sessions() >= 3 and system.time() > "18:00:00"
 user.role == "admin"
 ```
 
-Five reserved namespaces, each resolving to a dict-or-proxy object:
+Six reserved namespaces, each resolving to a dict-or-proxy object:
 
 | Namespace | Resolves to | Access |
 | --- | --- | --- |
@@ -278,18 +278,43 @@ Five reserved namespaces, each resolving to a dict-or-proxy object:
 | `system.<name>` | An engine fact independent of any user/session (`today`, `time`) | **call** — `system.today()`, not `system.today` |
 | `session.<name>` | An engine fact about the current user+project's own session/transition history (`current_session_duration_in_minutes`, `last_user_session_datetime`, `number_of_user_sessions`, `state_duration_in_minutes`) | **call** — `session.number_of_user_sessions()`, not the bare attribute |
 | `user.<name>` | A field of the current user's own account (`email`, `name`, `picture_url`, `provider`, `provider_user_id`, `created_at`, `last_login`, `active_project`, `role`) | attribute — same as `env.<name>`, never called |
+| `source.<name>(...)` | A **data source** — see below | **call**, with its own arguments |
 
 A **bare** (unnamespaced) name is only ever a core metric (§3) — nothing
 else may appear unnamespaced anymore.
 
+**Data sources** (`source.<name>(...)`) are code-defined "plugins" —
+each one is its own Python module (`backend/src/tracking/sources/`),
+not something a project declares in YAML. The only one that exists
+today is `source.attachment(name)`: reads one of this project's own
+uploaded files by name (exact path, or a unique basename), **directly
+from storage** — not the `attachments:` mechanism (§5/§6) at all, and
+not eagerly loaded the way an action's own declared attachments are.
+This is deliberate: a project can bundle large reference files no
+state/action/signal ever declares as an `attachments:` entry, without
+paying to load and convert every one of them on every build — only the
+one file actually named, only when a running trigger/env: expression
+asks for it. Returns the file's **text** content; a binary file raises,
+since there's no binary-to-text extraction. Reads at the exact revision
+the current conversation's own automaton was loaded from — never
+"whatever's published right now" — so mid-conversation this always sees
+the same file content the rest of that conversation's automaton does,
+even if the project gets edited/republished while it's still running.
+Typically combined with `env:` (§6.4) to load a file's content into a
+prompt-visible variable once, e.g. `policy: source.attachment('policy.md')`.
+New data sources are a code change (a new module in that package plus
+one dispatch method), not something a project author can add on their
+own — this table just lists what's currently available.
+
 Every reference is validated at build/upload time: `signal.<name>` must
 name a declared signal, `env.<name>` must name a key **some** action's
 own `env:` field sets somewhere in the project, `system.<name>`/
-`session.<name>`/`user.<name>` must be one of the fixed names above, and
-a bare name must be a recognized metric — anything else fails with an
-"undefined name(s)" error, and a syntactically invalid expression fails
-the same way with a parse error. At evaluation time (not build time): if
-any referenced `signal.<name>` is currently `None` (not yet computed —
+`session.<name>`/`user.<name>`/`source.<name>` must be one of the fixed
+names above, and a bare name must be a recognized metric — anything
+else fails with an "undefined name(s)" error, and a syntactically
+invalid expression fails the same way with a parse error. At evaluation
+time (not build time): if any referenced `signal.<name>` is currently
+`None` (not yet computed —
 e.g. before the first auto-tracking pass), the whole expression
 short-circuits to `false` without attempting evaluation; any other
 evaluation failure (an `env.<name>` never actually set yet, despite
@@ -333,8 +358,8 @@ of this memory — the `env.<name>` namespace §6.2's trigger expressions
 themselves read from — as a **side effect of the action firing**
 (manually or via its `trigger`). Each entry is `key: expression`,
 evaluated with the exact same namespaced scope/mechanics as `trigger`
-(§6.2: `signal.`/`env.`/`system.`/`session.`/`user.`, plus any bare
-metric name), just without the boolean cast — a result can be any simple value
+(§6.2: `signal.`/`env.`/`system.`/`session.`/`user.`/`source.`, plus any
+bare metric name), just without the boolean cast — a result can be any simple value
 (string, number, bool, `None`, ...), not only true/false:
 
 ```yaml
@@ -435,8 +460,8 @@ how you're likely to hit them:
   reference resolves: `signal.<name>` to a declared signal, `env.<name>`
   to a key some action's own `env:` declares somewhere in the project,
   `system.<name>`/`session.<name>` to one of the fixed proxy methods,
-  `user.<name>` to one of the fixed user fields (§6.2), and a bare name
-  to a reserved metric name.
+  `user.<name>` to one of the fixed user fields, `source.<name>` to one
+  of the fixed data sources (§6.2), and a bare name to a reserved metric name.
 - Every action's `env`, if given, is a mapping, and each of its
   expressions gets the exact same validation `trigger` does — syntax and
   unknown-name checks alike (§6.4).

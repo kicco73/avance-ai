@@ -1,6 +1,6 @@
 import {
   postAddState, postAddSignal, postAddEnvKey, postAddAction, putStateField, putProjectField,
-  putActionField, putInitActionField, putSignalField, putEnvKeyField, putActionOrder,
+  putActionField, putInitActionField, putSignalField, putEnvKeyField,
   deleteState, deleteProjectAction, deleteProjectSignal, deleteProjectEnvKey,
 } from '../api.js'
 
@@ -180,22 +180,9 @@ export function useIndexYmlEditing(
     })
   }
 
-  function handleReorderAction({ actionName, position }) {
-    const stateKey = selectedStateKey.value
-    if (!stateKey) return
-    guardedAction('reorder actions', async () => {
-      try {
-        await putActionOrder(projectName, stateKey, actionName, position)
-      } catch {
-        // already surfaced via apiFetch
-      }
-    })
-  }
-
   return {
     handleAddState, handleAddSignal, handleAddEnvKey, handleAddAction,
     handleSetStateField, handleSetProjectField, handleSetActionField, handleSetSignalField, handleSetEnvKeyField,
     handleDeleteState, handleDeleteAction, handleDeleteSignal, handleDeleteEnvKey,
-    handleReorderAction,
   }
 }

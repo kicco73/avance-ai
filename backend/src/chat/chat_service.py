@@ -63,7 +63,7 @@ class ChatService(object):
 		self._user_facts = UserFacts(db)
 		self._automaton_namespace = AutomatonNamespace(db, project_service)
 		self._evaluation_scope_builder = EvaluationScopeBuilder(
-			self.env, metric_service, self._system_facts, self._session_facts, self._user_facts, self._automaton_namespace
+			self.env, metric_service, self._system_facts, self._session_facts, self._user_facts, db, self._automaton_namespace
 		)
 		self._tracking_engine = TrackingEngine(DbTrackingSink(db), self.env, self._evaluation_scope_builder)
 

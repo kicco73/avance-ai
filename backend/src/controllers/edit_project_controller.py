@@ -24,6 +24,11 @@ from .project_commit_mixin import ProjectCommitMixin
 # generated once at creation and immutable from then on.
 STATE_EDITABLE_FIELDS = {"ui-label", "ui-description", "history-cutoff", "contextual-prompt", "chat", "reactions-enabled"}
 ACTION_EDITABLE_FIELDS = {"ui-label", "ui-description", "action-prompt", "target", "trigger", "on-enter", "env"}
+# The init-action is an action like any other (see AutomatonYamlEditor.
+# _init_action_payload) minus 'trigger' and 'env' — AutomatonBuilder's
+# own _build_init_action never reads either for it, so this endpoint
+# refuses to write a field that would just sit dead in the YAML.
+INIT_ACTION_EDITABLE_FIELDS = ACTION_EDITABLE_FIELDS - {"trigger", "env"}
 SIGNAL_EDITABLE_FIELDS = {"ui-label", "ui-description", "definition"}
 # Unlike a state/action/signal, an env key has no separate ui-label to
 # derive its name from — 'name' is itself directly editable here.
@@ -402,6 +407,11 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         """Every editable field of the init-action itself. 'target'
         (moving the automaton's start state) is the one case with its
         own validation — an unknown state name converts to 400."""
+        if field not in INIT_ACTION_EDITABLE_FIELDS:
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail=f"'{field}' is not an editable init-action field — expected one of {sorted(INIT_ACTION_EDITABLE_FIELDS)}.",
+            )
         try:
             return await self.project_service.set_init_action_field(
                 project_name, field, req.value, self._activate_project

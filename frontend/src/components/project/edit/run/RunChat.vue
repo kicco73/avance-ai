@@ -2,20 +2,53 @@
 // Run mode's embedded live chat, full height (mode is 'edit'/'run'/'test', mutually
 // exclusive, so this never shares space with Design's split-view). Auto-tracking state
 // comes straight from chatStore.js's shared singleton rather than being prop-drilled.
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ChatView from '../../../chat/ChatView.vue'
 import ChatTimeline from '../../../chat/ChatTimeline.vue'
 import RestartFromHereButton from '../../../chat/RestartFromHereButton.vue'
 import SessionsPanel from '../../../chat/SessionsPanel.vue'
-import { spokenTextEnabled } from '../../../../chatStoreFactory.js'
+import { getMessages } from '../../../../api.js'
+import { spokenTextEnabled, totalTokenBudgetPerSession } from '../../../../chatStoreFactory.js'
 import { applyAspect } from '../../../../chatSkin.js'
 import { testStore } from '../../../../testChatStore.js'
+import { useTokensBar } from '../../../../composables/useTokensBar.js'
+import { useFloatingTooltip } from '../../../../useFloatingTooltip.js'
 
 const {
   autoTrackingEnabled, autoTrackingLoading, toggleAutoTracking, handleReset,
   sessions, sessionsLoading, currentSessionId, loadSessions, selectSession, handleNewSession, handleDeleteSession,
-  state, handleReact
+  state, handleReact, turnCount
 } = testStore
+
+// Input tokens burnt so far in the live session — same source
+// (getMessages' own per-message `tokens`) and math as EditProjectView.
+// vue's own autoSessionInputTokens, just event-driven off this store's
+// currentSessionId/turnCount instead of a session picked in Test mode.
+// Naturally reads as zero the moment a new/switched session has no
+// messages of its own yet — no separate reset needed.
+const sessionTokensBurnt = ref(0)
+async function refreshSessionTokensBurnt() {
+  const sessionId = currentSessionId.value
+  if (sessionId == null) {
+    sessionTokensBurnt.value = 0
+    return
+  }
+  try {
+    const history = await getMessages(sessionId)
+    sessionTokensBurnt.value = history
+      .filter((m) => m.role === 'user')
+      .reduce((sum, m) => sum + (m.tokens ?? 0), 0)
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+watch(currentSessionId, refreshSessionTokensBurnt, { immediate: true })
+watch(turnCount, refreshSessionTokensBurnt)
+
+const { width: tokensBarWidth, level: tokensBarLevel } = useTokensBar(sessionTokensBurnt, totalTokenBudgetPerSession)
+const {
+  visible: tokensTooltipVisible, style: tokensTooltipStyle, show: showTokensTooltip, hide: hideTokensTooltip
+} = useFloatingTooltip()
 
 defineProps({
   timeline: { type: Array, required: true },
@@ -115,6 +148,24 @@ onBeforeUnmount(() => {
 
     <div class="edit-project-chat-panel">
       <div class="edit-project-chat-toolbar">
+        <div
+          v-if="totalTokenBudgetPerSession != null"
+          class="run-tokens-bar"
+          @mouseenter="showTokensTooltip($event.currentTarget)"
+          @mouseleave="hideTokensTooltip"
+        >
+          <span class="run-tokens-icon">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zM11.5 9.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>
+          </span>
+          <span class="run-tokens-label">Tokens</span>
+          <div class="run-tokens-bar-track">
+            <div
+              class="run-tokens-bar-fill"
+              :class="`run-tokens-bar-fill-${tokensBarLevel}`"
+              :style="{ width: tokensBarWidth }"
+            ></div>
+          </div>
+        </div>
         <div class="edit-project-chat-toolbar-toggles">
           <label
             class="dev-mode-toggle"
@@ -138,6 +189,9 @@ onBeforeUnmount(() => {
           </label>
         </div>
       </div>
+      <Teleport to="body">
+        <span v-if="tokensTooltipVisible" class="run-tokens-tooltip-floating" :style="tokensTooltipStyle">Token burnt: {{ sessionTokensBurnt }}</span>
+      </Teleport>
       <ChatView ref="chatViewRef" hide-sessions-panel theme-mode="manual" :store="testStore">
         <template #timeline>
           <ChatTimeline
@@ -180,8 +234,10 @@ onBeforeUnmount(() => {
 .run-split-divider:hover { background: #dbe4f0; }
 
 .edit-project-chat-panel { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
-.edit-project-chat-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.5rem 0.75rem; background: #f5f5f7; border-bottom: 1px solid #ddd; flex-shrink: 0; }
-.edit-project-chat-toolbar-toggles { display: flex; align-items: center; gap: 1rem; }
+.edit-project-chat-toolbar { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; background: #f5f5f7; border-bottom: 1px solid #ddd; flex-shrink: 0; }
+/* Pinned right regardless of whether the tokens bar renders beside it
+   (hidden when total-token-budget-per-session isn't configured). */
+.edit-project-chat-toolbar-toggles { display: flex; align-items: center; gap: 1rem; margin-left: auto; }
 .edit-project-chat-toolbar-actions { display: flex; align-items: center; gap: 0.5rem; }
 
 .dev-mode-toggle { display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; color: #666; cursor: pointer; user-select: none; }
@@ -192,4 +248,36 @@ onBeforeUnmount(() => {
 .dev-mode-toggle-active { color: #b06a00; font-weight: 600; }
 .dev-mode-toggle-disabled { opacity: 0.6; cursor: not-allowed; }
 .dev-mode-toggle-disabled input { cursor: not-allowed; }
+
+/* Same shape as ProjectTestPanel.vue's own .tests-panel-tokens-bar —
+   this one tracks the live session's own input tokens against
+   total-token-budget-per-session instead of a test-run budget. */
+.run-tokens-bar { display: flex; align-items: center; gap: 0.4rem; min-width: 160px; }
+.run-tokens-icon { flex-shrink: 0; display: flex; color: #4a6fa5; }
+.run-tokens-label { font-size: 0.8rem; color: #555; white-space: nowrap; }
+.run-tokens-bar-track { width: 240px; height: 8px; border-radius: 999px; background: #eee; overflow: hidden; }
+.run-tokens-bar-fill { height: 100%; border-radius: 999px; transition: width 0.3s ease; }
+.run-tokens-bar-fill-green { background: #2e7d32; }
+.run-tokens-bar-fill-orange { background: #f5a623; }
+.run-tokens-bar-fill-red { background: #c62828; }
+</style>
+
+<style>
+/* Unscoped: teleported to <body> (see ProjectTestPanel.vue's own tokens
+   bar tooltip), outside this component's normal DOM subtree. */
+.run-tokens-tooltip-floating {
+  position: fixed;
+  width: max-content;
+  max-width: 200px;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  background: #333;
+  color: white;
+  font-size: 0.72rem;
+  font-weight: 400;
+  line-height: 1.3;
+  text-align: left;
+  pointer-events: none;
+  z-index: 1000;
+}
 </style>

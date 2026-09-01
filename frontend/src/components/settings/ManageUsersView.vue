@@ -6,7 +6,6 @@ import { confirmDialog } from '../../dialogStore.js'
 import { roleSatisfies } from '../../roles.js'
 import DocInfoButton from '../DocInfoButton.vue'
 import ProjectsMenu from '../ProjectsMenu.vue'
-import SettingsMenu from './SettingsMenu.vue'
 import ProfileMenu from '../ProfileMenu.vue'
 import InspectorSignalsTab from '../inspector/InspectorSignalsTab.vue'
 import InspectorUserInfoCard from '../inspector/InspectorUserInfoCard.vue'
@@ -22,12 +21,9 @@ const props = defineProps({
   profile: { type: Object, default: null }
 })
 
-// The Settings-menu ones (manage-users/label-sessions/download-backup/
-// restore-backup) are a plain pass-through of SettingsMenu.vue's own
-// emits; profile/logout are the same pass-through of ProfileMenu.vue's own.
+// profile/logout are a plain pass-through of ProfileMenu.vue's own emits.
 const emit = defineEmits([
-  'close', 'manage-users', 'label-sessions', 'edit-projects', 'download-backup',
-  'restore-backup', 'profile', 'logout'
+  'close', 'profile', 'logout'
 ])
 
 const canEditRole = computed(() => roleSatisfies(props.currentUserRole, 'admin'))
@@ -191,18 +187,8 @@ defineExpose({ refresh: load })
   <div class="manage-users-overlay">
     <div class="manage-users-header">
       <button class="back-btn" title="Back" @click="emit('close')">«</button>
-      <h2>Users</h2>
+      <ProjectsMenu align="left" :selected-name="statsProjectName" @select="statsProjectName = $event" />
       <div class="manage-users-header-actions">
-        <ProjectsMenu :selected-name="statsProjectName" @select="statsProjectName = $event" />
-        <SettingsMenu
-          :role="currentUserRole"
-          align="right"
-          @manage-users="emit('manage-users')"
-          @label-sessions="emit('label-sessions')"
-          @edit-projects="emit('edit-projects')"
-          @download-backup="emit('download-backup')"
-          @restore-backup="(file) => emit('restore-backup', file)"
-        />
         <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
       </div>
     </div>
@@ -359,11 +345,6 @@ defineExpose({ refresh: load })
   gap: 0.6rem;
   padding: calc(0.75rem + var(--safe-area-top)) 1rem 0.75rem;
   border-bottom: 1px solid #ddd;
-}
-
-.manage-users-header h2 {
-  margin: 0;
-  font-size: 1.1rem;
 }
 
 .manage-users-header-actions {

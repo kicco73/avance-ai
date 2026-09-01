@@ -85,10 +85,16 @@ export function deleteProject(projectName) {
   })
 }
 
-export function postWipeLiveSessions(projectName) {
-  return apiFetch(`${API_URL}/projects/${encodeURIComponent(projectName)}/live-sessions/wipe`, {
-    method: 'POST'
-  })
+// Settings > Manage services > Database — wipes live sessions across
+// every project at once, not just one.
+export function postWipeAllLiveSessions() {
+  return apiFetch(`${API_URL}/settings/database/wipe-live-sessions`, { method: 'POST' })
+}
+
+// Settings > Manage services — read-only snapshot of .config.yml's own
+// service sections (see backend AppConfig.public_services_snapshot).
+export function getServicesConfig() {
+  return apiFetch(`${API_URL}/settings/services`)
 }
 
 export function downloadProject(projectName) {

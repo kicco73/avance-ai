@@ -1,6 +1,6 @@
 <script setup>
 // Topbar "⚙" menu: dropdown with toggle / click-outside-to-close,
-// offering Manage projects and backup download/restore actions.
+// offering Manage projects and Manage services.
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { roleSatisfies } from '../../roles.js'
 
@@ -8,28 +8,18 @@ const props = defineProps({
   // App.vue only renders this component once the current user is at
   // least 'supervisor' — this further disables the 'admin'-only items
   // for a plain supervisor, per each action's own backend role gate.
-  role: { type: String, default: null },
-  // 'left' (default) anchors the dropdown's own left edge to the
-  // button's — right for the main chat topbar's own icon, near the
-  // screen's left. ManageProjectsView.vue/LabelProjectView.vue's header
-  // instead has this button as the last one on the right, where a
-  // left-anchored panel would run off the edge of the screen — 'right'
-  // anchors its right edge to the button's instead, opening leftward.
-  align: { type: String, default: 'left' }
+  role: { type: String, default: null }
 })
 
 const emit = defineEmits([
-  'manage-users', 'label-sessions', 'edit-projects', 'download-backup', 'restore-backup'
+  'manage-users', 'manage-services'
 ])
 
 const open = ref(false)
 const rootEl = ref(null)
-const restoreInput = ref(null)
 
 const canManageUsers = computed(() => roleSatisfies(props.role, 'admin'))
-const canLabelSessions = computed(() => roleSatisfies(props.role, 'supervisor'))
-const canEditProjects = computed(() => roleSatisfies(props.role, 'admin'))
-const canBackup = computed(() => roleSatisfies(props.role, 'admin'))
+const canManageServices = computed(() => roleSatisfies(props.role, 'admin'))
 
 function toggle() {
   open.value = !open.value
@@ -40,31 +30,9 @@ function selectManageUsers() {
   emit('manage-users')
 }
 
-function selectLabelSessions() {
+function selectManageServices() {
   open.value = false
-  emit('label-sessions')
-}
-
-function selectEditProjects() {
-  open.value = false
-  emit('edit-projects')
-}
-
-function selectDownloadBackup() {
-  open.value = false
-  emit('download-backup')
-}
-
-function selectRestoreBackup() {
-  open.value = false
-  restoreInput.value?.click()
-}
-
-function handleRestoreFileChange(event) {
-  const file = event.target.files?.[0]
-  event.target.value = ''
-  if (!file) return
-  emit('restore-backup', file)
+  emit('manage-services')
 }
 
 function handleClickOutside(event) {
@@ -89,36 +57,28 @@ onBeforeUnmount(() => {
     </button>
 
     <Transition name="settings-panel">
-      <div v-if="open" class="settings-panel" :class="{ 'settings-panel-align-right': align === 'right' }">
+      <div v-if="open" class="settings-panel">
         <ul class="settings-list">
           <li>
-            <button class="settings-item" :disabled="!canManageUsers" :title="canManageUsers ? '' : 'Requires admin access'" @click="selectManageUsers">Manage users</button>
-          </li>
-          <li>
-            <button class="settings-item" :disabled="!canLabelSessions" :title="canLabelSessions ? '' : 'Requires supervisor access'" @click="selectLabelSessions">Label sessions</button>
-          </li>
-          <li class="settings-separator" role="separator"></li>
-          <li>
-            <button class="settings-item" :disabled="!canEditProjects" :title="canEditProjects ? '' : 'Requires admin access'" @click="selectEditProjects">Edit projects</button>
+            <button class="settings-item" :disabled="!canManageUsers" :title="canManageUsers ? '' : 'Requires admin access'" @click="selectManageUsers">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
+              </svg>
+              <span>Manage users</span>
+            </button>
           </li>
           <li class="settings-separator" role="separator"></li>
           <li>
-            <button class="settings-item" :disabled="!canBackup" :title="canBackup ? '' : 'Requires admin access'" @click="selectDownloadBackup">Download backup</button>
-          </li>
-          <li>
-            <button class="settings-item" :disabled="!canBackup" :title="canBackup ? '' : 'Requires admin access'" @click="selectRestoreBackup">Restore backup...</button>
+            <button class="settings-item" :disabled="!canManageServices" :title="canManageServices ? '' : 'Requires admin access'" @click="selectManageServices">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                <path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z" />
+              </svg>
+              <span>Manage services</span>
+            </button>
           </li>
         </ul>
       </div>
     </Transition>
-
-    <input
-      ref="restoreInput"
-      type="file"
-      accept=".sqlite"
-      class="restore-backup-input"
-      @change="handleRestoreFileChange"
-    />
   </div>
 </template>
 
@@ -127,9 +87,6 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
-/* Matches ChatWindow.vue's .sessions-reopen-btn exactly — both are
-   overlay icon buttons on the main chat screen, semi-transparent until
-   hovered rather than always fully opaque. */
 .settings-btn {
   display: flex;
   align-items: center;
@@ -141,12 +98,11 @@ onBeforeUnmount(() => {
   background: white;
   color: #4a6fa5;
   cursor: pointer;
-  opacity: 0.35;
-  transition: opacity 0.15s ease;
 }
 
 .settings-btn:hover {
-  opacity: 1;
+  background: #4a6fa5;
+  color: white;
 }
 
 .settings-panel {
@@ -161,12 +117,6 @@ onBeforeUnmount(() => {
   z-index: 100;
   overflow: hidden;
   transform-origin: top left;
-}
-
-.settings-panel-align-right {
-  left: auto;
-  right: 0;
-  transform-origin: top right;
 }
 
 .settings-panel-enter-active,
@@ -187,7 +137,9 @@ onBeforeUnmount(() => {
 }
 
 .settings-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
   width: 100%;
   text-align: left;
   padding: 0.5rem 0.9rem;
@@ -196,6 +148,10 @@ onBeforeUnmount(() => {
   cursor: pointer;
   font-size: 0.9rem;
   color: #4a6fa5;
+}
+
+.settings-item svg {
+  flex-shrink: 0;
 }
 
 .settings-item:hover:not(:disabled) {
@@ -211,9 +167,5 @@ onBeforeUnmount(() => {
   height: 1px;
   margin: 0.3rem 0;
   background: #eee;
-}
-
-.restore-backup-input {
-  display: none;
 }
 </style>

@@ -71,6 +71,7 @@ class AutomatonLoader:
         automaton = AutomatonBuilder().build(
             ArchiveLayout.decode_text(archives), self.known_projects_env_keys(project_name)
         )
+        automaton.set_storage_location(project_name, revision)
         self._automaton_cache[cache_key] = automaton
         return automaton
 

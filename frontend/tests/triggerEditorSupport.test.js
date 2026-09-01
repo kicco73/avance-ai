@@ -211,6 +211,7 @@ describe('isProxyNamespace', () => {
     expect(isProxyNamespace('system')).toBe(true)
     expect(isProxyNamespace('session')).toBe(true)
     expect(isProxyNamespace('session.metric')).toBe(true)
+    expect(isProxyNamespace('source')).toBe(true)
     expect(isProxyNamespace('metric')).toBe(true)
   })
 
@@ -239,8 +240,12 @@ describe('namespaceOf (the coloring regex\'s own namespace extraction)', () => {
     expect(namespaceOf('user.email')).toBe('user')
   })
 
+  it('extracts the source namespace', () => {
+    expect(namespaceOf("source.attachment('notes.txt')")).toBe('source')
+  })
+
   it('every namespace it can extract has a fixed color', () => {
-    for (const namespace of ['signal', 'env', 'system', 'session', 'session.metric', 'user', 'metric', 'automaton']) {
+    for (const namespace of ['signal', 'env', 'system', 'session', 'session.metric', 'user', 'source', 'metric', 'automaton']) {
       expect(NAMESPACE_COLORS[namespace]).toMatch(/^#[0-9a-f]{6}$/)
     }
   })

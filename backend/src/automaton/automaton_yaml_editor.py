@@ -7,6 +7,7 @@ from __future__ import annotations
 import ast
 import io
 import re
+from typing import Any, Mapping
 
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
@@ -148,7 +149,7 @@ class AutomatonYamlEditor:
         }
 
     @staticmethod
-    def _action_payload_from_raw(raw_action: CommentedMap, state_name: str) -> ActionPayload:
+    def _action_payload_from_raw(raw_action: Mapping[str, Any], state_name: str) -> ActionPayload:
         return {
             "name": raw_action["name"],
             "ui_label": raw_action.get("ui-label") or raw_action["name"],
@@ -264,15 +265,22 @@ class AutomatonYamlEditor:
         return self._action_payload(state_name, action_name)
 
     def _init_action_payload(self) -> ActionPayload:
+        """The init-action is an action like any other — same payload,
+        built the same way as _action_payload_from_raw — with two
+        structural exceptions to account for: its raw YAML dict has no
+        'name' key of its own (injected here as the constant
+        "init-action"), and it has no containing state to self-loop
+        back to were 'target' ever missing (there's no real "initial
+        state" it belongs to — "" stands in, the same reserved
+        pseudo-state key used elsewhere). 'trigger' is forced off
+        regardless of any stray key sitting in the YAML: unlike every
+        other field here, AutomatonBuilder's own _build_init_action
+        never reads it, so honoring it would describe an action that
+        doesn't actually exist once built."""
         init_action = self._raw.get("init-action") or {}
-        return {
-            "name": "init-action",
-            "ui_label": init_action.get("ui-label") or "init-action",
-            "ui_button": "",
-            "target": init_action.get("target"),
-            "has_trigger": False,
-            "on-enter": init_action.get("on-enter"),
-        }
+        payload = self._action_payload_from_raw({**init_action, "name": "init-action"}, "")
+        payload["has_trigger"] = False
+        return payload
 
     def set_signal_field(self, signal_name: str, field: str, value) -> SignalPayload:
         if field == "ui-label":

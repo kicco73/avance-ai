@@ -11,7 +11,7 @@ class IdentifierRegistry:
     """The {namespace: {identifier: description}} registry every
     trigger/env: expression can reference: a project's own declared
     signals/env keys merged with the platform's fixed system/session/
-    user/metric identifiers."""
+    user/source/metric identifiers."""
 
     SYSTEM: dict[str, str] = {
         "today": "Today's date (UTC), as YYYY-MM-DD.",
@@ -23,6 +23,12 @@ class IdentifierRegistry:
         "last_user_session_datetime": "The previous session's own start timestamp (UTC ISO-8601), or None for a user's very first session.",
         "number_of_user_sessions": "How many sessions this user has ever had in this project.",
         "state_duration_in_minutes": "How long the conversation has sat in its current state, in minutes.",
+    }
+
+    # One entry per module in tracking/sources/ — the code-defined "data
+    # source" plugins an action's own `env:` field can pull data through.
+    SOURCE: dict[str, str] = {
+        "attachment": "One of the project's own attachment files, by name, read as plain text — e.g. source.attachment('notes.txt').",
     }
 
     # Every User field (db/models.py) except id — see
@@ -69,5 +75,6 @@ class IdentifierRegistry:
             "session": dict(cls.SESSION),
             "session.metric": dict(cls.SESSION_METRIC),
             "user": dict(cls.USER),
+            "source": dict(cls.SOURCE),
             "metric": dict(cls.METRIC),
         }

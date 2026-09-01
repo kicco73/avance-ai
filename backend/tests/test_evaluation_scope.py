@@ -8,12 +8,13 @@ from datetime import datetime
 
 import pytest
 
-from automaton.automaton import Action, Automaton, State
+from automaton.automaton import Action, Automaton, MemoryArchive, State
 from metrics.metric_service import MetricService
 from tracking.env import PersistedEnv
 from tracking.evaluation_scope import EvaluationScopeBuilder
 from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
+from tracking.sources import SourceNamespace
 from tracking.system_facts import SystemFacts
 from tracking.user_facts import UserFacts
 
@@ -27,10 +28,10 @@ def _builder(db) -> EvaluationScopeBuilder:
     project_service = FixedProjectContext(project_name=PROJECT_NAME)
     env = PersistedEnv(db, project_service)
     metrics = MetricService(db, project_service)
-    return EvaluationScopeBuilder(env, metrics, SystemFacts(), SessionFacts(db, project_service), UserFacts(db))
+    return EvaluationScopeBuilder(env, metrics, SystemFacts(), SessionFacts(db, project_service), UserFacts(db), db)
 
 
-def _automaton_with_trigger(trigger_expr: str) -> Automaton:
+def _automaton_with_trigger(trigger_expr: str, attachments: dict[str, MemoryArchive] | None = None) -> Automaton:
     action = Action(name="advance", ui_label="Advance", ui_button="Advance", target="b", trigger=trigger_expr)
     state_a = State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action])
     state_b = State(key="b", ui_label="B", final=True, contextual_prompt="bye", actions=[])
@@ -40,7 +41,7 @@ def _automaton_with_trigger(trigger_expr: str) -> Automaton:
         states={"": State(key="", ui_label="", final=False, actions=[init_action]), "a": state_a, "b": state_b},
         general_prompt="",
         signals=[],
-        attachments={},
+        attachments=attachments or {},
         general_attachments={},
         autotracking_on_ai_message=False,
     )
@@ -59,6 +60,7 @@ def test_scope_always_includes_every_namespace(db):
     assert scope["session"].number_of_user_sessions() == 0
     assert scope["session"].metric.engagement() is not None
     assert scope["user"]["email"] == USERNAME
+    assert isinstance(scope["source"], SourceNamespace)
     assert scope["metric"].retention() is not None
 
 
@@ -113,6 +115,34 @@ def test_user_fact_is_usable_in_a_trigger_end_to_end(db):
 
     assert scope["user"]["role"] == "admin"
     assert automaton.evaluate_triggers("a", scope) == "advance"
+
+
+def test_source_attachment_is_usable_in_an_env_expression_end_to_end(db):
+    """source.attachment(name) reads straight from Db, at the same
+    (project_name, revision) the automaton itself was loaded from (see
+    Automaton.set_storage_location) — never automaton.attachments'
+    in-memory copy, which is why this seeds the file through
+    save_project_files rather than constructing a MemoryArchive."""
+    db.ensure_project(PROJECT_NAME)
+    db.save_project_files(PROJECT_NAME, {"notes.txt": b"hello from the archive"}, {"notes.txt": "text/plain"})
+    revision = db.get_project_revision(PROJECT_NAME)
+    action = Action(
+        name="advance", ui_label="Advance", ui_button="Advance", target="b",
+        trigger="signal.mood >= 1", env={"notes": "source.attachment('notes.txt')"},
+    )
+    state_a = State(key="a", ui_label="A", final=False, contextual_prompt="hi", actions=[action])
+    automaton = Automaton(
+        init_action=Action(name="init_action", ui_label="init_action", ui_button="", target="a"),
+        states={"": State(key="", ui_label="", final=False, actions=[]), "a": state_a},
+        general_prompt="", signals=[], attachments={}, general_attachments={},
+        autotracking_on_ai_message=False,
+    )
+    automaton.set_storage_location(PROJECT_NAME, revision)
+
+    scope = _builder(db).build(automaton, "a", {})
+
+    assert scope["source"].attachment("notes.txt") == "hello from the archive"
+    assert Automaton.eval_action_env(action, scope) == {"notes": "hello from the archive"}
 
 
 def test_env_action_set_value_is_usable_in_a_trigger_end_to_end(db):

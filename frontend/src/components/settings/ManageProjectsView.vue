@@ -5,9 +5,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getProjectMetadata, getProjectsRuntimeStatus, projectFileContentUrl, putProjectPause, putProjectResume } from '../../api.js'
 import { confirmDialog, customDialog } from '../../dialogStore.js'
-import { liveModelStore } from '../../chatStore.js'
 import { setCanvasColor, restoreCanvasColor } from '../../canvasColor.js'
-import ModelMenu from '../ModelMenu.vue'
 import SettingsMenu from './SettingsMenu.vue'
 import ProfileMenu from '../ProfileMenu.vue'
 import AppHeader from '../AppHeader.vue'
@@ -35,28 +33,14 @@ const props = defineProps({
 })
 
 // Emits events only; App.vue owns the actual new/upload/delete actions.
-// The Settings-menu ones (manage-users/label-sessions/about/
-// download-backup/restore-backup) are a plain pass-through of
-// SettingsMenu.vue's own emits; profile/logout are the same pass-through
-// of ProfileMenu.vue's own.
+// The Settings-menu ones (manage-users/manage-services/about) are a
+// plain pass-through of SettingsMenu.vue's own emits; profile/logout are
+// the same pass-through of ProfileMenu.vue's own.
 const emit = defineEmits([
-  'new-project', 'upload', 'delete', 'edit', 'label', 'download', 'chat', 'wipe-live-sessions',
-  'manage-users', 'label-sessions', 'edit-projects', 'about', 'download-backup', 'restore-backup',
+  'new-project', 'upload', 'delete', 'edit', 'label', 'download', 'chat',
+  'manage-users', 'manage-services', 'about',
   'profile', 'logout'
 ])
-
-async function selectModelWithConfirm(index) {
-  const label = index == null ? (liveModelStore.autoLabel ?? 'Auto') : (liveModelStore.models.value[index]?.ui_label ?? 'this model')
-  const ok = await confirmDialog({
-    title: 'Change model',
-    body: `Switch the live chat model to "${label}"?`,
-    okLabel: 'Switch'
-  })
-  if (!ok) return
-  await liveModelStore.select(index)
-}
-
-const confirmingModelStore = { ...liveModelStore, select: selectModelWithConfirm }
 
 const rows = ref([])
 const loading = ref(true)
@@ -78,15 +62,15 @@ const addMenuOpen = ref(false)
 let bodyResizeObserver = null
 
 const headerEl = ref(null)
-const modelMenuWrapEl = ref(null)
+const headerLeftEl = ref(null)
 const headerActionsEl = ref(null)
 const headerWidth = ref(0)
-const modelMenuWidth = ref(0)
+const headerLeftWidth = ref(0)
 const headerActionsWidth = ref(0)
 const logoWidth = ref(0)
 let headerResizeObserver = null
 
-const logoFits = computed(() => !logoWidth.value || headerWidth.value - modelMenuWidth.value - headerActionsWidth.value >= logoWidth.value)
+const logoFits = computed(() => !logoWidth.value || headerWidth.value - headerLeftWidth.value - headerActionsWidth.value >= logoWidth.value)
 
 function setLogoBtnEl(el) {
   if (!el || logoWidth.value > 0) return
@@ -97,7 +81,7 @@ function handleHeaderResize(entries) {
   for (const entry of entries) {
     const width = entry.contentRect.width
     if (entry.target === headerEl.value.el) headerWidth.value = width
-    else if (entry.target === modelMenuWrapEl.value) modelMenuWidth.value = width
+    else if (entry.target === headerLeftEl.value) headerLeftWidth.value = width
     else if (entry.target === headerActionsEl.value) headerActionsWidth.value = width
   }
 }
@@ -252,19 +236,6 @@ function selectShare(name) {
   customDialog({ component: ShareProjectDialog, props: { projectName: name, uiLabel: projectTitle(name) } })
 }
 
-// This view's own confirm, same pattern as selectDelete above — the
-// caller (App.vue) just performs the wipe, no confirm of its own.
-async function selectWipeLiveSessions(name) {
-  const ok = await confirmDialog({
-    title: 'Wipe live sessions',
-    body: `Delete every user's live conversation for "${name}"? This cannot be undone.`,
-    okLabel: 'Wipe',
-    danger: true
-  })
-  if (!ok) return
-  emit('wipe-live-sessions', name)
-}
-
 function statusTitle(row) {
   if (row.status === 'running') return 'Running'
   if (row.status === 'manually_paused') return 'Manually paused'
@@ -287,7 +258,7 @@ onMounted(() => {
   bodyResizeObserver.observe(bodyEl.value)
   headerResizeObserver = new ResizeObserver(handleHeaderResize)
   headerResizeObserver.observe(headerEl.value.el)
-  headerResizeObserver.observe(modelMenuWrapEl.value)
+  headerResizeObserver.observe(headerLeftEl.value)
   headerResizeObserver.observe(headerActionsEl.value)
   document.addEventListener('click', handleDocumentClick)
 })
@@ -306,31 +277,22 @@ defineExpose({ refresh: load })
   <div class="manage-projects-overlay">
     <AppHeader ref="headerEl">
       <template #left>
-        <div class="manage-projects-header-side" ref="modelMenuWrapEl">
-          <ModelMenu :model-store="confirmingModelStore" />
-        </div>
-      </template>
-      <template #center>
-        <button
-          v-if="logoFits"
-          type="button"
-          class="manage-projects-header-logo-btn"
-          :ref="setLogoBtnEl"
-          title="About Avance"
-          @click="emit('about')"
-        >
-          <img :src="avanceLogoLargeUrl" alt="Avance" class="manage-projects-header-logo" />
-        </button>
-      </template>
-      <template #right>
-        <div class="manage-projects-header-actions" ref="headerActionsEl">
+        <div class="manage-projects-header-side" ref="headerLeftEl">
+          <SettingsMenu
+            :role="role"
+            @manage-users="emit('manage-users')"
+            @manage-services="emit('manage-services')"
+          />
           <div class="manage-projects-add-menu">
             <button
               type="button"
               class="manage-projects-action-btn"
+              title="Add project"
               @click="toggleAddMenu"
             >
-              Add
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                <path d="M12 4a1 1 0 0 1 1 1v6h6a1 1 0 1 1 0 2h-6v6a1 1 0 1 1-2 0v-6H5a1 1 0 1 1 0-2h6V5a1 1 0 0 1 1-1z" />
+              </svg>
             </button>
             <Transition name="manage-projects-add-panel">
               <div v-if="addMenuOpen" class="manage-projects-add-panel">
@@ -355,15 +317,22 @@ defineExpose({ refresh: load })
               </div>
             </Transition>
           </div>
-          <SettingsMenu
-            :role="role"
-            align="right"
-            @manage-users="emit('manage-users')"
-            @label-sessions="emit('label-sessions')"
-            @edit-projects="emit('edit-projects')"
-            @download-backup="emit('download-backup')"
-            @restore-backup="(file) => emit('restore-backup', file)"
-          />
+        </div>
+      </template>
+      <template #center>
+        <button
+          v-if="logoFits"
+          type="button"
+          class="manage-projects-header-logo-btn"
+          :ref="setLogoBtnEl"
+          title="About Avance"
+          @click="emit('about')"
+        >
+          <img :src="avanceLogoLargeUrl" alt="Avance" class="manage-projects-header-logo" />
+        </button>
+      </template>
+      <template #right>
+        <div class="manage-projects-header-actions" ref="headerActionsEl">
           <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
         </div>
       </template>
@@ -442,12 +411,11 @@ defineExpose({ refresh: load })
                       <path d="M3 11h8V3H3v8zm2-6h4v4H5V5zM3 21h8v-8H3v8zm2-6h4v4H5v-4zM13 3v8h8V3h-8zm6 6h-4V5h4v4zM19 19h2v2h-2zM13 13h2v2h-2zM15 15h2v2h-2zM13 17h2v2h-2zM15 19h2v2h-2zM17 17h2v2h-2zM17 13h2v2h-2zM19 15h2v2h-2z" />
                     </svg>
                   </button>
-                  <button type="button" class="manage-projects-wipe-btn" title="Wipe live sessions" @click="selectWipeLiveSessions(row.name)">
+                  <button type="button" class="manage-projects-delete-btn" title="Delete project" @click="selectDelete(row.name)">
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
                       <path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
                     </svg>
                   </button>
-                  <button type="button" class="manage-projects-delete-btn" title="Delete project" @click="selectDelete(row.name)">×</button>
                 </div>
                 <div v-else class="manage-projects-actions-menu">
                   <button type="button" class="manage-projects-menu-btn" title="More actions" @click="toggleActionsMenu(row.name)">⋮</button>
@@ -491,16 +459,10 @@ defineExpose({ refresh: load })
                           </button>
                         </li>
                         <li>
-                          <button type="button" class="manage-projects-menu-item" @click="selectWipeLiveSessions(row.name); openMenuFor = null">
+                          <button type="button" class="manage-projects-menu-item manage-projects-menu-item-danger" @click="selectDelete(row.name); openMenuFor = null">
                             <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
                               <path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
                             </svg>
-                            <span>Wipe live sessions</span>
-                          </button>
-                        </li>
-                        <li>
-                          <button type="button" class="manage-projects-menu-item manage-projects-menu-item-danger" @click="selectDelete(row.name); openMenuFor = null">
-                            <span class="manage-projects-menu-item-delete-icon">×</span>
                             <span>Delete project</span>
                           </button>
                         </li>
@@ -574,6 +536,12 @@ defineExpose({ refresh: load })
   font-family: system-ui, -apple-system, sans-serif;
 }
 
+.manage-projects-header-side {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .manage-projects-header-logo-btn {
   display: flex;
   align-items: center;
@@ -595,10 +563,12 @@ defineExpose({ refresh: load })
 }
 
 .manage-projects-action-btn {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.4rem 1rem;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
   border-radius: 6px;
   border: 1px solid #4a6fa5;
   background: white;
@@ -618,7 +588,7 @@ defineExpose({ refresh: load })
 .manage-projects-add-panel {
   position: absolute;
   top: calc(100% + 0.4rem);
-  right: 0;
+  left: 0;
   min-width: 12rem;
   background: white;
   border: 1px solid #ddd;
@@ -626,7 +596,7 @@ defineExpose({ refresh: load })
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   z-index: 100;
   overflow: hidden;
-  transform-origin: top right;
+  transform-origin: top left;
 }
 
 .manage-projects-add-panel-enter-active,
@@ -656,7 +626,7 @@ defineExpose({ refresh: load })
   background: none;
   cursor: pointer;
   font-size: 0.85rem;
-  color: #333;
+  color: #4a6fa5;
 }
 
 .manage-projects-add-item:hover {
@@ -713,14 +683,14 @@ defineExpose({ refresh: load })
 }
 
 .manage-projects-col-status-actions-collapsed {
-  width: 48px;
+  width: 96px;
 }
 
 .manage-projects-status-actions-row {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 0.2rem;
+  gap: 2px;
   width: 100%;
 }
 
@@ -872,7 +842,7 @@ defineExpose({ refresh: load })
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 20px;
+  width: 2.88rem;
   height: 2.88rem;
   padding: 0;
   border: none;
@@ -983,7 +953,7 @@ defineExpose({ refresh: load })
   background: #f0f4fa;
 }
 
-.manage-projects-wipe-btn {
+.manage-projects-delete-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -995,22 +965,6 @@ defineExpose({ refresh: load })
   background: none;
   color: #c62828;
   cursor: pointer;
-}
-
-.manage-projects-wipe-btn:hover {
-  background: #fdecea;
-}
-
-.manage-projects-delete-btn {
-  width: 2.88rem;
-  height: 2.88rem;
-  line-height: 1;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  color: #c62828;
-  cursor: pointer;
-  font-size: 1.4rem;
 }
 
 .manage-projects-delete-btn:hover {
@@ -1027,7 +981,7 @@ defineExpose({ refresh: load })
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
+  width: 2.88rem;
   height: 2.88rem;
   padding: 0;
   border: none;
@@ -1085,7 +1039,7 @@ defineExpose({ refresh: load })
   background: none;
   cursor: pointer;
   font-size: 0.85rem;
-  color: #333;
+  color: #4a6fa5;
 }
 
 .manage-projects-menu-item:hover {
@@ -1097,19 +1051,11 @@ defineExpose({ refresh: load })
   color: #4a6fa5;
 }
 
-.manage-projects-menu-item-delete-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-  font-size: 1.1rem;
-  line-height: 1;
+.manage-projects-menu-item-danger {
   color: #c62828;
 }
 
-.manage-projects-menu-item-danger {
+.manage-projects-menu-item-danger svg {
   color: #c62828;
 }
 

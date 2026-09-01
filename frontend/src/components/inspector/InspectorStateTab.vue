@@ -1,8 +1,9 @@
 <script setup>
 // The Inspector's "Info" tab: the project's id/ui-label/ui-description on top,
-// then either the shared Graph selection's detail card + "+ Add state" (Behavior
-// node open) or the currently browsed file's read-only card (anything else — see
-// isBehaviorContext). Owns its own project-metadata fetch, but not the state
+// then either the shared Graph selection's detail card — a state OR an action,
+// whichever is actually selected — plus "+ Add state"/"+ Add action" (Behavior
+// node open), or the currently browsed file's read-only card (anything else —
+// see isBehaviorContext). Owns its own project-metadata fetch, but not the
 // selection itself.
 import { computed, onMounted, ref, watch } from 'vue'
 import { getProjectMetadata } from '../../api.js'
@@ -10,12 +11,20 @@ import InspectorDetailCard from './InspectorDetailCard.vue'
 import InspectorProjectCard from './InspectorProjectCard.vue'
 import InspectorFileCard from './InspectorFileCard.vue'
 import SessionDetailCard from './SessionDetailCard.vue'
+import ActionEnvEditor from './ActionEnvEditor.vue'
 
 const props = defineProps({
   projectName: { type: String, required: true },
   selectedElement: { type: Object, default: null },
   editableFiles: { type: Array, default: null },
   highlightedStateKey: { type: String, default: null },
+  // The action currently firing, for the detail card's own "Fired" badge —
+  // only meaningful when selectedElement is an action.
+  firedActionEdge: { type: Object, default: null },
+  // Forwarded to InspectorDetailCard.vue when selectedElement is an
+  // action — its target <select> options and Env editor's key suggestions.
+  availableStates: { type: Array, default: () => [] },
+  availableEnvKeys: { type: Array, default: () => [] },
   // See EditProjectView.vue's own docstring on this — 'state:<key>' while
   // `selectedElement` is the state a "+ Add state" click just created,
   // null otherwise.
@@ -46,7 +55,8 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
-  'select', 'select-attachment', 'jump-to-attachment', 'set-field', 'set-project-field', 'delete', 'add-state', 'delete-file'
+  'select', 'select-attachment', 'jump-to-attachment', 'set-field', 'set-project-field', 'delete',
+  'add-state', 'add-action', 'delete-file'
 ])
 
 // True whenever there's no active file browsing to defer to (currentFileName
@@ -64,12 +74,22 @@ const sessionStartIsEnd = computed(() => (
   props.sessionStartElement != null && props.sessionStartElement.data.id === props.sessionEndElement?.data.id
 ))
 
+// Same identity format InspectorDetailCard.vue's own elementIdentity and
+// EditProjectView.vue's flashRecentlyAdded use — 'state:<key>' or
+// 'action:<stateKey>/<actionName>'.
+const elementIdentity = computed(() => {
+  const el = props.selectedElement
+  if (!el) return null
+  return el.kind === 'state' ? `state:${el.data.id}` : `action:${el.data.matchStateKey}/${el.data.actionName}`
+})
+
 // This tab owns the detail card's open/closed state: closed whenever the
-// selection moves to a different state, except when it moved there because
-// "+ Add state" just created it — that one opens straight into its edit form.
+// selection moves to a different state/action, except when it moved there
+// because "+ Add state"/"+ Add action" just created it — that one opens
+// straight into its edit form.
 const open = ref(false)
-watch(() => props.selectedElement?.data.id, (id) => {
-  open.value = id != null && props.recentlyAddedKey === `state:${id}`
+watch(elementIdentity, (identity) => {
+  open.value = identity != null && props.recentlyAddedKey === identity
 })
 
 const projectMetadata = ref(null)
@@ -97,7 +117,7 @@ onMounted(loadProjectMetadata)
 <template>
   <div class="inspector-state-tab">
     <InspectorProjectCard
-      v-if="!readOnly"
+      v-if="!readOnly && !selectedElement"
       :project="projectMetadata"
       :editable="!readOnly"
       @set-field="(field, value) => emit('set-project-field', field, value)"
@@ -133,7 +153,9 @@ onMounted(loadProjectMetadata)
       :selected-element="selectedElement"
       :state-tokens="stateTokens"
       :editable-files="editableFiles"
+      :fired-action-edge="firedActionEdge"
       :highlighted-state-key="highlightedStateKey"
+      :available-states="availableStates"
       :recently-added-key="recentlyAddedKey"
       :selectable="!readOnly"
       :editable="!readOnly"
@@ -144,14 +166,24 @@ onMounted(loadProjectMetadata)
       @select-attachment="emit('select-attachment', $event)"
       @jump-to-attachment="emit('jump-to-attachment', $event)"
       @set-field="(field, value) => emit('set-field', field, value)"
-      @delete="emit('delete', selectedElement.data.id)"
+      @delete="emit('delete', selectedElement)"
     />
-    <button v-if="isBehaviorContext && !readOnly" class="inspector-state-tab-add-btn" @click="emit('add-state')">+ Add state</button>
+    <ActionEnvEditor
+      v-if="isBehaviorContext && !readOnly && open && selectedElement?.kind === 'action' && !selectedElement.data.isInitEdge"
+      :env="selectedElement.data.env"
+      :key-options="availableEnvKeys"
+      @set-field="(field, value) => emit('set-field', field, value)"
+    />
+    <div v-if="isBehaviorContext && !readOnly && selectedElement?.kind !== 'action'" class="inspector-state-tab-add-row">
+      <button v-if="!selectedElement" class="inspector-state-tab-add-btn" @click="emit('add-state')">+ Add state</button>
+      <button v-else class="inspector-state-tab-add-btn" @click="emit('add-action')">+ Add action</button>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .inspector-state-tab { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
-.inspector-state-tab-add-btn { flex-shrink: 0; margin-top: 0.5rem; padding: 0.5rem; border-radius: 6px; border: 1px dashed #4a6fa5; background: white; color: #4a6fa5; font-size: 0.82rem; cursor: pointer; }
+.inspector-state-tab-add-row { flex-shrink: 0; display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+.inspector-state-tab-add-btn { flex: 1; padding: 0.5rem; border-radius: 6px; border: 1px dashed #4a6fa5; background: white; color: #4a6fa5; font-size: 0.82rem; cursor: pointer; }
 .inspector-state-tab-add-btn:hover { background: #eef2f9; }
 </style>

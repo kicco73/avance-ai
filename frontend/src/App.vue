@@ -9,6 +9,7 @@ import InviteRequiredView from './components/InviteRequiredView.vue'
 import ProfileView from './components/ProfileView.vue'
 import ManageProjectsView from './components/settings/ManageProjectsView.vue'
 import ManageUsersView from './components/settings/ManageUsersView.vue'
+import ServicesView from './components/settings/ServicesView.vue'
 import SplashScreen from './components/SplashScreen.vue'
 import ErrorBanner from './components/ErrorBanner.vue'
 import ToastContainer from './components/ToastContainer.vue'
@@ -19,7 +20,7 @@ import {
   postNewProject,
   activateProject,
   deleteProject,
-  postWipeLiveSessions,
+  postWipeAllLiveSessions,
   downloadProject,
   getBackup,
   postRestoreBackup,
@@ -60,8 +61,9 @@ const liveChatProjectName = ref(null)
 const showProfile = ref(false)
 // Admin only: what's currently pushed over the permanently-mounted
 // ManageProjectsView base — null | 'edit' | 'label' | 'manageUsers' |
-// 'chat'. A plain 'user' has no stack at all (chat is the whole app); a
-// 'supervisor' has no stack either (LabelProjectView is the whole app).
+// 'services' | 'chat'. A plain 'user' has no stack at all (chat is the
+// whole app); a 'supervisor' has no stack either (LabelProjectView is
+// the whole app).
 const pushedView = ref(null)
 // Which way the next transition (see the <Transition>s below) should go —
 // 'forward' for anything that pushes a new view over another, 'back' only
@@ -114,7 +116,7 @@ const currentUserRole = ref(null)
 
 const {
   bootStatus, needsTerms, termsError, inviteExempt,
-  getActiveProjectName, startBootSequence,
+  startBootSequence,
   handleLoggedIn, handleTermsAccept, handleTermsReject, handleLogout,
 } = useAppBoot(
   currentUserProfile, currentUserRole, labelProjectName, liveChatProjectName,
@@ -243,17 +245,8 @@ function handleSettingsManageUsers() {
   pushView('manageUsers')
 }
 
-async function handleSettingsLabelSessions() {
-  const projectName = await getActiveProjectName()
-  if (!projectName) return
-  labelProjectName.value = projectName
-  if (currentUserRole.value === 'admin') pushView('label')
-}
-
-async function handleSettingsEditProjects() {
-  const projectName = await getActiveProjectName()
-  if (!projectName) return
-  await handleModelEdit(projectName)
+function handleSettingsManageServices() {
+  pushView('services')
 }
 
 async function handleModelEditSaved() {
@@ -323,9 +316,12 @@ async function handleModelDelete(projectName) {
   }
 }
 
-async function handleManageProjectsWipeLiveSessions(projectName) {
+// Settings > Manage services > Database's own confirm already ran (see
+// ServicesView.vue's selectWipeAllLiveSessions) — this just performs it,
+// same fire-and-forget shape as handleModelDownload.
+async function handleWipeAllLiveSessions() {
   try {
-    await postWipeLiveSessions(projectName)
+    await postWipeAllLiveSessions()
   } catch {
     // already surfaced via apiFetch
   }
@@ -468,20 +464,14 @@ onBeforeUnmount(() => {
       />
 
       <!-- Supervisor: Label sessions is the entire app, no stack, no
-           transition — Settings can only re-point it at another active
-           project (handleSettingsLabelSessions), never push/pop it. -->
+           transition — its own ProjectsMenu re-points it at another
+           project (project-select); Settings never push/pop it. -->
       <LabelProjectView
         v-else-if="currentUserRole === 'supervisor'"
         :key="labelProjectName"
         :project-name="labelProjectName"
-        role="supervisor"
         :profile="currentUserProfile"
         @project-select="handleLabelProjectSwitch"
-        @manage-users="handleSettingsManageUsers"
-        @label-sessions="handleSettingsLabelSessions"
-        @edit-projects="handleSettingsEditProjects"
-        @download-backup="handleDownloadBackup"
-        @restore-backup="handleRestoreBackup"
         @profile="openProfile"
         @logout="handleLogout"
       />
@@ -511,13 +501,9 @@ onBeforeUnmount(() => {
           @label="handleSelectLabelSessions"
           @chat="handleManageProjectsChat"
           @download="handleModelDownload"
-          @wipe-live-sessions="handleManageProjectsWipeLiveSessions"
           @manage-users="handleSettingsManageUsers"
-          @label-sessions="handleSettingsLabelSessions"
-          @edit-projects="handleSettingsEditProjects"
+          @manage-services="handleSettingsManageServices"
           @about="handleShowAbout"
-          @download-backup="handleDownloadBackup"
-          @restore-backup="handleRestoreBackup"
           @profile="openProfile"
           @logout="handleLogout"
         />
@@ -527,16 +513,9 @@ onBeforeUnmount(() => {
             v-if="pushedView === 'edit'"
             :key="editProjectName"
             :project-name="editProjectName"
-            role="admin"
             :profile="currentUserProfile"
             @saved="handleModelEditSaved"
             @back="popPushedView"
-            @project-select="handleModelEdit"
-            @manage-users="handleSettingsManageUsers"
-            @label-sessions="handleSettingsLabelSessions"
-            @edit-projects="handleSettingsEditProjects"
-            @download-backup="handleDownloadBackup"
-            @restore-backup="handleRestoreBackup"
             @profile="openProfile"
             @logout="handleLogout"
           />
@@ -544,15 +523,9 @@ onBeforeUnmount(() => {
             v-else-if="pushedView === 'label'"
             :key="labelProjectName"
             :project-name="labelProjectName"
-            role="admin"
             :profile="currentUserProfile"
             @close="popPushedView"
             @project-select="handleLabelProjectSwitch"
-            @manage-users="handleSettingsManageUsers"
-            @label-sessions="handleSettingsLabelSessions"
-            @edit-projects="handleSettingsEditProjects"
-            @download-backup="handleDownloadBackup"
-            @restore-backup="handleRestoreBackup"
             @profile="openProfile"
             @logout="handleLogout"
           />
@@ -561,11 +534,16 @@ onBeforeUnmount(() => {
             :current-user-role="currentUserRole"
             :profile="currentUserProfile"
             @close="popPushedView"
-            @manage-users="handleSettingsManageUsers"
-            @label-sessions="handleSettingsLabelSessions"
-            @edit-projects="handleSettingsEditProjects"
+            @profile="openProfile"
+            @logout="handleLogout"
+          />
+          <ServicesView
+            v-else-if="pushedView === 'services'"
+            :profile="currentUserProfile"
+            @close="popPushedView"
             @download-backup="handleDownloadBackup"
             @restore-backup="handleRestoreBackup"
+            @wipe-live-sessions="handleWipeAllLiveSessions"
             @profile="openProfile"
             @logout="handleLogout"
           />

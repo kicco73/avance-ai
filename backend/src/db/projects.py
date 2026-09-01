@@ -68,15 +68,11 @@ class ProjectMixin:
             (ChatSession.username == username) & (ChatSession.project_name == project_name) & (ChatSession.type == type)
         ).execute()
 
-    def wipe_live_sessions_for_project(self, project_name: str) -> None:
-        session_ids = ChatSession.select(ChatSession.id).where(
-            (ChatSession.project_name == project_name) & (ChatSession.type == 'live')
-        )
+    def wipe_live_sessions_for_all_projects(self) -> None:
+        session_ids = ChatSession.select(ChatSession.id).where(ChatSession.type == 'live')
         Tracking.delete().where(Tracking.session.in_(session_ids)).execute()
         Message.delete().where(Message.session.in_(session_ids)).execute()
-        ChatSession.delete().where(
-            (ChatSession.project_name == project_name) & (ChatSession.type == 'live')
-        ).execute()
+        ChatSession.delete().where(ChatSession.type == 'live').execute()
 
     def _current_revision(self, project_name: str) -> int:
         project = Project.get_or_none(Project.name == project_name)

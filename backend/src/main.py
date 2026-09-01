@@ -31,7 +31,7 @@ from tracking.wakeup_service import WakeupService
 from talk.talk_service import TalkService
 from listen.listen_service import ListenService
 
-__version__ = "1.18.1"
+__version__ = "1.19.0"
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -142,7 +142,7 @@ def create_app() -> FastAPI:
 
         controller = AvanceController(
             chat_service, project_service, talk_service, listen_service, db, tracking_service, test_service,
-            auth_service, test_event_broadcaster, job_queue, __version__,
+            auth_service, test_event_broadcaster, job_queue, __version__, config.public_services_snapshot(),
         )
         app.include_router(controller.router)
 
