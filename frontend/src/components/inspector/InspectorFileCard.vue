@@ -5,15 +5,39 @@
 // instead). Same badge/title/CardMenu convention as InspectorProjectCard.vue
 // and InspectorDetailCard.vue, minus any edit form: there's nothing on a
 // plain file worth editing here beyond deleting it.
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import CardMenu from './CardMenu.vue'
+import { getProjectFile } from '../../api.js'
 
 const props = defineProps({
+  projectName: { type: String, required: true },
   fileName: { type: String, required: true },
   deleting: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['delete'])
+
+// Own small fetch, same convention as InspectorStateTab.vue's own
+// project-metadata one — nothing else in the Inspector tree already
+// holds this file's byte size (ProjectDesignPanel.vue's own editors are
+// a sibling subtree, not a parent/child of this card).
+const fileSize = ref(null)
+async function loadFileSize() {
+  fileSize.value = null
+  try {
+    const info = await getProjectFile(props.projectName, props.fileName)
+    fileSize.value = info.size
+  } catch {
+    // already surfaced via apiFetch
+  }
+}
+watch(() => props.fileName, loadFileSize, { immediate: true })
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
 
 const TYPE_LABELS = {
   '.yml': 'YAML',
@@ -59,6 +83,7 @@ function handleDelete() {
     </div>
     <div class="inspector-detail-body">
       <p class="inspector-detail-field"><strong>Type:</strong> {{ fileType }}</p>
+      <p class="inspector-detail-field"><strong>Size:</strong> {{ fileSize == null ? '…' : formatFileSize(fileSize) }}</p>
     </div>
   </div>
 </template>
@@ -72,5 +97,6 @@ function handleDelete() {
 .inspector-detail-badge-file { background: #37474f; }
 .inspector-detail-title { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .inspector-detail-body { padding: 0.6rem 0.75rem; font-size: 0.8rem; color: #444; }
-.inspector-detail-field { margin: 0; line-height: 1.4; }
+.inspector-detail-field { margin: 0 0 0.3rem; line-height: 1.4; }
+.inspector-detail-field:last-child { margin-bottom: 0; }
 </style>

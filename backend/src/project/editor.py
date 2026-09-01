@@ -56,6 +56,7 @@ class ProjectEditor:
             "can_redo": self._db.has_redo(user, project_name, file_name),
             "content_type": content_type,
             "media_type": media_type,
+            "size": len(content),
         }
 
     def list_project_files(self, project_name: str) -> list[str]:

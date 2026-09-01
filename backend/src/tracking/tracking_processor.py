@@ -195,7 +195,7 @@ class TrackingProcessor(object):
 		Protocol = TurnProtocolUsingSchema if supports_schema else TurnProcotolUsingTextExtraction
 		return Protocol(
 			self.ai_service, has_to_evaluate_signals_before_ai_reply,
-			reactions_enabled=self.user.state.reactions_enabled,
+			reactions_enabled=self.user.automaton.reactions_enabled_for(self.user.state),
 			talk_enabled=self.talk_enabled and self.user.automaton.talk_enabled,
 		)
 
@@ -215,7 +215,7 @@ class TrackingProcessor(object):
 		# Unlike signal_definition, never filtered down to a subset — the
 		# bot's own reaction access is all-or-nothing per state (see
 		# State.reactions_enabled), never a partial vocabulary.
-		reaction_definition = self._build_reaction_definition(automaton) if state.reactions_enabled else None
+		reaction_definition = self._build_reaction_definition(automaton) if automaton.reactions_enabled_for(state) else None
 		base_prompt = f"{automaton.general_prompt}\n\n{state.contextual_prompt}"
 		if self.extra_prompt:
 			base_prompt = f"{base_prompt}\n\n{self.extra_prompt}"
@@ -282,7 +282,7 @@ def estimate_state_prompt(ai_service: AiService, automaton: Automaton, state: St
 		signals = Signals(FixedProjectContext(automaton), None)
 		signal_definition = signals.get_definition(automaton.triggerable_signal_names(state.key))
 		reaction_definition = (
-			TrackingProcessor._build_reaction_definition(automaton) if state.reactions_enabled else None
+			TrackingProcessor._build_reaction_definition(automaton) if automaton.reactions_enabled_for(state) else None
 		)
 		base_prompt = f"{automaton.general_prompt}\n\n{state.contextual_prompt}"
 		turn_attachments = list(automaton.general_attachments.values()) + list(state.attachments.values())
@@ -292,7 +292,7 @@ def estimate_state_prompt(ai_service: AiService, automaton: Automaton, state: St
 	protocol_class = TurnProtocolUsingSchema if ai_service.is_provider_with_schema() else TurnProcotolUsingTextExtraction
 	protocol = protocol_class(
 		ai_service, has_to_evaluate_signals_before_ai_reply,
-		reactions_enabled=state.reactions_enabled, talk_enabled=automaton.talk_enabled,
+		reactions_enabled=automaton.reactions_enabled_for(state), talk_enabled=automaton.talk_enabled,
 	)
 	system_prompt = protocol.build_final_prompt(base_prompt, signal_definition, env, reaction_definition)
 

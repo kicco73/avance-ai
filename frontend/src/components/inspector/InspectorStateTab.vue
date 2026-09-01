@@ -124,6 +124,7 @@ onMounted(loadProjectMetadata)
     />
     <InspectorFileCard
       v-if="showFileCard"
+      :project-name="projectName"
       :file-name="currentFileName"
       :deleting="deletingFile === currentFileName"
       @delete="emit('delete-file', currentFileName)"

@@ -291,6 +291,15 @@ class Automaton(object):
             "actions": [Automaton.get_action_payload(a) for a in state.actions],
         }
 
+    def reactions_enabled_for(self, state: State) -> bool:
+        """Whether the bot itself may actually attach a reaction while in
+        `state` — `state.reactions_enabled` opting in is necessary but not
+        sufficient: with no `reactions:` declared at all there's no
+        vocabulary to tag from, so the flag has no effect regardless of
+        what the state itself says (see TrackingProcessor.
+        build_turn_protocol/estimate_state_prompt, the two callers)."""
+        return state.reactions_enabled and bool(self.reactions)
+
     def move(self, state_key: str, action_name: str) -> Action:
         state = self.states[state_key]
         for action in state.actions:

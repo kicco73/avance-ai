@@ -72,7 +72,12 @@ function destroyGraph() {
 // `n`/`e` wrap the same state/action payload the live chat client gets,
 // plus extra fields only the graph needs (is_start/history_cutoff/
 // attachments on a node; source/trigger/action_prompt on an edge).
-function nodeToCyData(n) { return { id: n.state.key, uiLabel: n.state.ui_label, uiDescription: n.state.ui_description, final: n.state.final, isStart: n.is_start, chat: n.state.chat, historyCutoff: n.history_cutoff, reactionsEnabled: n.reactions_enabled, transitionLogLevel: n.transition_log_level, attachments: n.attachments, contextualPrompt: n.contextual_prompt } }
+// hasReactions: whether the project declares any reactions at all
+// (n.state.reactions is always the automaton's whole vocabulary, per
+// Automaton.get_state_payload — never state-specific) — reactionsEnabled
+// alone has no runtime effect without it (see Automaton.reactions_enabled_for),
+// so InspectorDetailCard.vue's own toggle locks itself off this instead.
+function nodeToCyData(n) { return { id: n.state.key, uiLabel: n.state.ui_label, uiDescription: n.state.ui_description, final: n.state.final, isStart: n.is_start, chat: n.state.chat, historyCutoff: n.history_cutoff, reactionsEnabled: n.reactions_enabled, hasReactions: (n.state.reactions?.length ?? 0) > 0, transitionLogLevel: n.transition_log_level, attachments: n.attachments, contextualPrompt: n.contextual_prompt } }
 // The edge with source === "" is the init_action. Its cytoscape `source`
 // becomes PSEUDO_START_ID, but `matchStateKey` keeps the real "" so
 // highlight matching elsewhere needs no special-casing for this edge.

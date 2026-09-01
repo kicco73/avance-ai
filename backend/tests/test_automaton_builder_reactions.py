@@ -125,3 +125,49 @@ states:
     automaton = AutomatonBuilder().build({"index.yml": content})
     assert automaton.states["a"].reactions_enabled is True
     assert automaton.states["b"].reactions_enabled is False
+
+
+class TestReactionsEnabledFor:
+    """Automaton.reactions_enabled_for — the effective, runtime "can the
+    bot actually attach a reaction here" check TrackingProcessor's own
+    build_turn_protocol/estimate_state_prompt both use, as opposed to a
+    state's raw, unguarded reactions_enabled flag above."""
+
+    def test_true_when_the_state_opts_in_and_the_project_declares_reactions(self):
+        automaton = AutomatonBuilder().build({"index.yml": """
+init-action:
+  target: a
+reactions:
+  supportive:
+    definition: Use when a verbal response would feel clinical.
+states:
+  a:
+    contextual-prompt: hi
+    reactions-enabled: true
+"""})
+        assert automaton.reactions_enabled_for(automaton.states["a"]) is True
+
+    def test_false_when_the_state_opts_in_but_the_project_declares_no_reactions(self):
+        automaton = AutomatonBuilder().build({"index.yml": """
+init-action:
+  target: a
+states:
+  a:
+    contextual-prompt: hi
+    reactions-enabled: true
+"""})
+        assert automaton.reactions_enabled_for(automaton.states["a"]) is False
+
+    def test_false_when_the_project_declares_reactions_but_the_state_opts_out(self):
+        automaton = AutomatonBuilder().build({"index.yml": """
+init-action:
+  target: a
+reactions:
+  supportive:
+    definition: Use when a verbal response would feel clinical.
+states:
+  a:
+    contextual-prompt: hi
+    reactions-enabled: false
+"""})
+        assert automaton.reactions_enabled_for(automaton.states["a"]) is False

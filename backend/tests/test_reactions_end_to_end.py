@@ -113,6 +113,61 @@ def test_reaction_on_someone_elses_message_is_404(client, reactions_project):
     assert response.status_code == 404
 
 
+NO_REACTIONS_PROJECT_YAML = """
+project:
+  id: no_reactions_demo
+
+init-action:
+  target: a
+
+states:
+  a:
+    contextual-prompt: hi
+    reactions-enabled: true
+"""
+
+
+@pytest.fixture
+def no_reactions_project(client):
+    """Same shape as reactions_project, but with no `reactions:` section
+    declared at all — 'a' still opts in with reactions-enabled: true,
+    which AutomatonBuilder happily parses (no build-time error, see
+    test_automaton_builder_reactions.py) but Automaton.reactions_enabled_for
+    should make a no-op at runtime regardless."""
+    response = client.put(
+        "/api/projects/no-reactions-demo", content=NO_REACTIONS_PROJECT_YAML.encode("utf-8"),
+        headers={"Content-Type": "application/x-yaml"},
+    )
+    assert response.status_code == 200, response.text
+    assert client.put("/api/projects/no-reactions-demo/activate").status_code == 200
+    assert client.post("/api/projects/no-reactions-demo/publish", json={}).status_code == 200
+    return "no-reactions-demo"
+
+
+def test_a_states_reactions_enabled_has_no_effect_without_a_declared_reactions_section(
+    client, fake_ai_service, no_reactions_project,
+):
+    """Even a model that emits a [reaction] tag anyway (ignoring that it
+    was never offered one, since TurnProtocol's own reaction_tags is
+    empty here) must not have it captured — "if activated, no effect"."""
+    async def generate_stream_with_reaction(system_prompt, history, on_retry=None):
+        fake_ai_service.calls.append((system_prompt, history))
+        yield "Hello there. [reaction]supportive[/reaction]"
+
+    fake_ai_service.generate_stream = generate_stream_with_reaction
+
+    session = client.get("/api/chat/session").json()
+    turn = parse_chat_turn_sse(client.post(
+        f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}
+    ))
+    user_message_id = turn["user_message_id"]
+
+    assert turn["user_message_reaction"] is None
+    rows = client.get(f"/api/chat/sessions/{session['id']}/messages").json()
+    user_row = next(r for r in rows if r["id"] == user_message_id)
+    assert user_row["reaction"] is None
+
+
 def test_bots_own_reaction_is_captured_and_persisted_on_the_users_message(client, fake_ai_service, reactions_project):
     """The full loop the earlier unit tests only exercised piecemeal:
     the AI actually emits a [reaction] tag (FakeAiService.is_provider_with_schema

@@ -40,6 +40,34 @@ def test_content_type_surfaces_on_get_project_file(client, hello_project):
 
 
 @pytest.mark.regression
+def test_size_surfaces_on_get_project_file_for_a_text_file(client, hello_project):
+    content = b"body { color: red; }"
+    response = client.put(f"/api/projects/{hello_project}/files/index.css", content=content)
+    assert response.status_code == 200, response.text
+
+    response = client.get(f"/api/projects/{hello_project}/files/index.css")
+    assert response.status_code == 200
+    assert response.json()["size"] == len(content)
+
+
+@pytest.mark.regression
+def test_size_surfaces_on_get_project_file_for_a_binary_image_too(client, hello_project):
+    """Unlike content (null for binary files, since raw bytes aren't
+    JSON-serializable — see _file_undo_redo_info's own comment), size is
+    always the real byte count either way."""
+    response = client.put(
+        f"/api/projects/{hello_project}/files/aspect/logo.png", content=PNG_MAGIC, headers={"Content-Type": "image/png"}
+    )
+    assert response.status_code == 200, response.text
+
+    response = client.get(f"/api/projects/{hello_project}/files/aspect/logo.png")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["content"] is None
+    assert body["size"] == len(PNG_MAGIC)
+
+
+@pytest.mark.regression
 def test_get_project_file_reports_no_content_for_a_missing_index_css(client):
     """index.css is the one file every project is allowed not to have —
     missing, this is 204 No Content, not a 404, so an editor can start

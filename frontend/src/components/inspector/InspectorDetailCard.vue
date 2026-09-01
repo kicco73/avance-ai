@@ -190,7 +190,7 @@ const hasSelectedElementBadges = computed(() => {
     // this card falls back to the same read-only badge set as non-editable.
     if (showEditForm.value) return true
     const d = props.selectedElement.data
-    return !!props.roleBadge || isSelectedStateCurrent.value || d.isStart || d.final || !d.chat || d.historyCutoff || d.reactionsEnabled
+    return !!props.roleBadge || isSelectedStateCurrent.value || d.isStart || d.final || !d.chat || d.historyCutoff || (d.reactionsEnabled && d.hasReactions)
   }
   // An open action's badges are suppressed entirely — only the "Action"
   // kind-badge in the header stays. Closed, same read-only set as
@@ -266,15 +266,18 @@ function selectAttachment(fileName) {
             >History cutoff</span>
             <span
               class="inspector-detail-badge inspector-detail-badge-toggle"
-              :class="selectedElement.data.reactionsEnabled ? 'inspector-detail-badge-toggle-on' : 'inspector-detail-badge-toggle-off'"
-              title="Click to toggle"
-              @click.stop="commitBoolField('reactions-enabled', !selectedElement.data.reactionsEnabled)"
+              :class="[
+                selectedElement.data.reactionsEnabled ? 'inspector-detail-badge-toggle-on' : 'inspector-detail-badge-toggle-off',
+                { 'inspector-detail-badge-toggle-locked': !selectedElement.data.hasReactions }
+              ]"
+              :title="selectedElement.data.hasReactions ? 'Click to toggle' : 'This project declares no reactions — add one in the Reactions tab first.'"
+              @click.stop="selectedElement.data.hasReactions && commitBoolField('reactions-enabled', !selectedElement.data.reactionsEnabled)"
             >Reactions</span>
           </template>
           <template v-else>
             <span v-if="!selectedElement.data.chat" class="inspector-detail-badge inspector-detail-badge-neutral">No chat</span>
             <span v-if="selectedElement.data.historyCutoff" class="inspector-detail-badge inspector-detail-badge-neutral">History cutoff</span>
-            <span v-if="selectedElement.data.reactionsEnabled" class="inspector-detail-badge inspector-detail-badge-neutral">Reactions</span>
+            <span v-if="selectedElement.data.reactionsEnabled && selectedElement.data.hasReactions" class="inspector-detail-badge inspector-detail-badge-neutral">Reactions</span>
           </template>
         </template>
         <template v-else-if="!showEditForm">
@@ -448,6 +451,7 @@ function selectAttachment(fileName) {
 .inspector-detail-badge-toggle { cursor: pointer; }
 .inspector-detail-badge-toggle-off { background: #ccc; color: #555; }
 .inspector-detail-badge-toggle-on { background: #4a6fa5; }
+.inspector-detail-badge-toggle-locked { cursor: not-allowed; opacity: 0.5; }
 .inspector-detail-title { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .inspector-detail-title-input { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; border: 1px solid transparent; border-radius: 4px; padding: 0.1rem 0.3rem; background: transparent; }
 .inspector-detail-title-input:hover, .inspector-detail-title-input:focus { border-color: #ccc; background: white; }
