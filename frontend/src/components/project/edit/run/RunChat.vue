@@ -7,7 +7,7 @@ import ChatView from '../../../chat/ChatView.vue'
 import ChatTimeline from '../../../chat/ChatTimeline.vue'
 import RestartFromHereButton from '../../../chat/RestartFromHereButton.vue'
 import SessionsPanel from '../../../chat/SessionsPanel.vue'
-import { getMessages } from '../../../../api.js'
+import { getMessages, deleteSession } from '../../../../api.js'
 import { spokenTextEnabled, totalTokenBudgetPerSession } from '../../../../chatStoreFactory.js'
 import { applyAspect } from '../../../../chatSkin.js'
 import { testStore } from '../../../../testChatStore.js'
@@ -15,7 +15,7 @@ import { useTokensBar } from '../../../../composables/useTokensBar.js'
 import { useFloatingTooltip } from '../../../../useFloatingTooltip.js'
 
 const {
-  autoTrackingEnabled, autoTrackingLoading, toggleAutoTracking, handleReset,
+  autoTrackingEnabled, autoTrackingLoading, toggleAutoTracking,
   sessions, sessionsLoading, currentSessionId, loadSessions, selectSession, handleNewSession, handleDeleteSession,
   state, handleReact, turnCount
 } = testStore
@@ -94,8 +94,18 @@ async function onDeleteSession(session) {
   }
 }
 
-async function onReset() {
-  await handleReset()
+// Central toolbar's own "Clear" button — deletes the current session
+// outright and immediately opens a brand new one, no confirmation (test
+// sessions are cheap/disposable, same reasoning as handleNewSession's
+// own confirmNewSession: false for this store — see testChatStore.js).
+async function onClearSession() {
+  const sessionId = currentSessionId.value
+  try {
+    if (sessionId != null) await deleteSession(sessionId)
+  } catch {
+    // already surfaced via apiFetch
+  }
+  await handleNewSession()
   await loadSessions()
 }
 
@@ -141,7 +151,6 @@ onBeforeUnmount(() => {
         @create="createSession"
         @delete="onDeleteSession"
       />
-      <button v-if="sessionExplorerOpen" class="run-sessions-reset-btn" @click="onReset">Reset</button>
     </div>
 
     <div v-if="sessionExplorerOpen" class="run-split-divider" @mousedown="startSessionExplorerDrag"></div>
@@ -188,6 +197,7 @@ onBeforeUnmount(() => {
             Apply aspect
           </label>
         </div>
+        <button type="button" class="run-clear-session-btn" title="Delete this session and start a new one" @click="onClearSession">Clear</button>
       </div>
       <Teleport to="body">
         <span v-if="tokensTooltipVisible" class="run-tokens-tooltip-floating" :style="tokensTooltipStyle">Token burnt: {{ sessionTokensBurnt }}</span>
@@ -227,9 +237,6 @@ onBeforeUnmount(() => {
 .run-sessions-panel { display: flex; flex-direction: column; flex: none; min-height: 0; border-right: 1px solid #ddd; background: #f9fafb; transition: width 0.15s ease; }
 .run-sessions-panel-collapsed { width: 2.4rem !important; }
 
-.run-sessions-reset-btn { flex-shrink: 0; width: 100%; padding: 0.5rem; border: none; border-top: 1px solid #ddd; border-radius: 0; background: white; color: #c62828; font-size: 0.82rem; font-weight: 600; cursor: pointer; }
-.run-sessions-reset-btn:hover { background: #c62828; color: white; }
-
 .run-split-divider { flex-shrink: 0; width: 6px; border-radius: 3px; background: transparent; cursor: col-resize; }
 .run-split-divider:hover { background: #dbe4f0; }
 
@@ -238,7 +245,9 @@ onBeforeUnmount(() => {
 /* Pinned right regardless of whether the tokens bar renders beside it
    (hidden when total-token-budget-per-session isn't configured). */
 .edit-project-chat-toolbar-toggles { display: flex; align-items: center; gap: 1rem; margin-left: auto; }
-.edit-project-chat-toolbar-actions { display: flex; align-items: center; gap: 0.5rem; }
+
+.run-clear-session-btn { flex-shrink: 0; padding: 0.35rem 0.75rem; border: 1px solid #c62828; border-radius: 6px; background: white; color: #c62828; font-size: 0.82rem; font-weight: 600; cursor: pointer; }
+.run-clear-session-btn:hover { background: #c62828; color: white; }
 
 .dev-mode-toggle { display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; color: #666; cursor: pointer; user-select: none; }
 .dev-mode-toggle input { cursor: pointer; }

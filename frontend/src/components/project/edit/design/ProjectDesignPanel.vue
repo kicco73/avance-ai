@@ -19,6 +19,10 @@ const props = defineProps({
   files: { type: Array, default: () => [] },
   filesLoading: { type: Boolean, default: true },
   currentFileName: { type: String, default: null },
+  // Set only right after a create/upload/new-legal flow opens this exact
+  // file — MdEditorPanel defaults to its Edit tab for it instead of
+  // Preview (see useProjectFiles.js's own switchFile).
+  justAddedFileName: { type: String, default: null },
   uploading: { type: Boolean, default: false },
   creatingFile: { type: Boolean, default: false },
   explorerWidth: { type: Number, required: true },
@@ -116,6 +120,7 @@ defineExpose({ codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef 
           ref="mdEditorRef"
           :project-name="projectName"
           :file-name="currentFileName"
+          :initial-segment="currentFileName === justAddedFileName ? 'edit' : 'preview'"
           @saved="emit('saved', $event)"
         />
         <div v-else-if="currentFileName !== 'index.yml' && currentFileName !== 'index.css'" class="edit-project-editor-attachment">

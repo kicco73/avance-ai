@@ -47,6 +47,11 @@ export function useProjectFiles(projectName, emit) {
   const filesLoading = ref(true)
   const files = ref([])
   const currentFileName = ref('index.yml')
+  // Name of the file a create/upload/new-legal flow just opened, so
+  // ProjectDesignPanel.vue can default MdEditorPanel to its Edit tab
+  // instead of Preview for it specifically — see switchFile's own
+  // self-clearing logic below.
+  const justAddedFileName = ref(null)
 
   const uploading = ref(false)
   const creatingFile = ref(false)
@@ -117,6 +122,11 @@ export function useProjectFiles(projectName, emit) {
     currentFileName.value = fileName
     // selectedGraphElement is deliberately left alone here — the Inspector's
     // "State"/"Actions" selection stays valid while browsing another file.
+    // justAddedFileName is a one-shot signal (see createProjectFile/
+    // handleUploadFile/handleNewLegal below) — self-clearing the moment
+    // navigation lands anywhere else, so returning to this same file
+    // later doesn't keep defaulting to Edit.
+    if (fileName !== justAddedFileName.value) justAddedFileName.value = null
   }
 
   // Every entry point that would discard unsaved code routes through here
@@ -242,7 +252,9 @@ export function useProjectFiles(projectName, emit) {
         }
       }
       await loadFiles()
-      await selectFile(canonicalUploadName(uploadedFiles[uploadedFiles.length - 1].name))
+      const lastUploadedName = canonicalUploadName(uploadedFiles[uploadedFiles.length - 1].name)
+      justAddedFileName.value = lastUploadedName
+      await selectFile(lastUploadedName)
     } catch {
       // already surfaced via apiFetch
     } finally {
@@ -260,6 +272,7 @@ export function useProjectFiles(projectName, emit) {
     try {
       await putProjectFile(projectName, name, content)
       await loadFiles()
+      justAddedFileName.value = name
       await selectFile(name)
     } catch {
       // already surfaced via apiFetch
@@ -300,6 +313,7 @@ export function useProjectFiles(projectName, emit) {
     try {
       await postAddLegalTerms(projectName)
       await loadFiles()
+      justAddedFileName.value = LEGAL_TERMS_FILE_NAME
       await selectFile(LEGAL_TERMS_FILE_NAME)
     } catch {
       // already surfaced via apiFetch
@@ -347,7 +361,7 @@ export function useProjectFiles(projectName, emit) {
   }
 
   return {
-    filesLoading, files, currentFileName, uploading, creatingFile, deletingFile,
+    filesLoading, files, currentFileName, justAddedFileName, uploading, creatingFile, deletingFile,
     designPanelRef, codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
     currentFileIsImage, currentFileIsMarkdown, isBehaviorNodeSelected, hasTheme,
     activeEditorIsDirty, activeEditor,

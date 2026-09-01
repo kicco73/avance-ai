@@ -148,14 +148,25 @@ class ChatController(BaseController):
     def get_state(self):
         """Also the frontend's boot/readiness ping — piggybacks
         talk_enabled/listen_enabled here. No `-> StatePayload` annotation:
-        with no active project/state the payload lacks those fields."""
+        with no active project/state the payload lacks those fields.
+        talk_enabled here is the AND of two independent things: whether
+        the server has any TTS provider configured at all (talk_service),
+        and whether the active project itself opted in (its own
+        project.talk-enabled, defaulting true) — the chat toolbar's
+        audio/spoken-text icons read this one combined flag rather than
+        checking the project's own setting separately."""
 
         try:
             payload = self.project_service.get_active_state_payload()
         except:
             payload = {}
 
-        payload["talk_enabled"] = self.talk_service is not None
+        try:
+            project_talk_enabled = self.project_service.get_active_automaton().talk_enabled
+        except:
+            project_talk_enabled = True
+
+        payload["talk_enabled"] = self.talk_service is not None and project_talk_enabled
         payload["listen_enabled"] = self.listen_service is not None
         payload["input_token_budget_per_turn"] = self.chat_service.get_input_token_budget_per_turn()
         payload["total_token_budget_per_session"] = self.chat_service.get_total_token_budget_per_session()

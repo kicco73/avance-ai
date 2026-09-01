@@ -112,6 +112,35 @@ class AutomatonBuilder(object):
             ui_description=raw_description.strip() if raw_description else None,
         )
 
+    @staticmethod
+    def _validate_env_key_default_order(env_keys: dict[str, EnvKey]) -> None:
+        """A later env key's own default may reference an earlier one
+        (`env.<name>`); referencing itself or a key declared further down
+        is rejected here. Only checked against *known* key names — a
+        reference to a name that isn't declared anywhere is left to the
+        normal env-expression validation this project's init-action
+        already goes through (see build()'s own registry-based pass
+        below), which reports that case as its own, clearer "undefined
+        name" error rather than a confusing ordering one. Likewise a bad
+        expression's own syntax error is left to that same pass — a
+        SyntaxError here just means nothing resolves to the 'env'
+        namespace, so there's nothing for this check to flag."""
+        all_names = set(env_keys.keys())
+        declared_so_far: set[str] = set()
+        for name, env_key in env_keys.items():
+            if env_key.value:
+                try:
+                    referenced = TriggerExpressionAnalyzer.namespace_refs(env_key.value).get("env", set())
+                except SyntaxError:
+                    referenced = set()
+                forward = (referenced & all_names) - declared_so_far
+                if forward:
+                    raise ValueError(
+                        f"env key '{name}': default value references "
+                        f"{', '.join(f'env.{ref}' for ref in sorted(forward))} before it's declared — "
+                        "an env key's own default may only reference an earlier env key, never itself or a later one."
+                    )
+            declared_so_far.add(name)
 
     @staticmethod
     def _build_action_env(raw_env: Any, action_name: str) -> dict[str, str] | None:
@@ -327,11 +356,14 @@ class AutomatonBuilder(object):
         )
 
     def _build_init_action(self, raw: dict, env_keys: dict[str, EnvKey]) -> Action:
-        """`env_keys`: every project-level `env:` declaration is folded
-        into this synthetic action's own `env:` field, so its one-time
-        firing at session bootstrap (see ChatService.open_if_needed)
-        evaluates each key's default through the same eval_action_env
-        path a real action's `env:` uses — no separate mechanism needed."""
+        """`env_keys`: every project-level `env:` declaration's own
+        default is folded into this synthetic action's own `env:` field
+        first, so its one-time firing at session bootstrap (see
+        ChatService.open_if_needed) evaluates each through the same
+        eval_action_env path a real action's `env:` uses. init-action can
+        also declare its own explicit `env:` mapping, exactly like a
+        regular action — applied on top, so it overrides a given key's
+        declared default rather than replacing every key's default outright."""
         raw_init_action = raw.get("init-action")
         if not isinstance(raw_init_action, dict) or not raw_init_action.get("target"):
             raise ValueError(
@@ -341,6 +373,7 @@ class AutomatonBuilder(object):
         init_on_enter = raw_init_action.get("on-enter")
         self._validate_on_enter(init_on_enter, "init-action")
         env = {name: env_key.value for name, env_key in env_keys.items() if env_key.value}
+        env.update(self._build_action_env(raw_init_action.get("env"), "init-action") or {})
         init_action = Action(
             name="init-action",
             ui_description=raw_init_action.get("ui-description"),
@@ -453,6 +486,16 @@ class AutomatonBuilder(object):
         env_keys: dict[str, EnvKey] = {
             name: self._build_env_key(name, raw_env_key) for name, raw_env_key in raw_env_keys.items()
         }
+        # Unlike every other forward reference in this file (see the
+        # comment on Pass 1 below), env keys' own defaults are a real
+        # exception: they're applied top-to-bottom, once, the first time
+        # a project's session opens (ChatService._apply_declared_env_
+        # defaults evaluates them one at a time, in this same order, so
+        # each one only ever sees an *earlier* key's value already
+        # persisted) — so a later key's default may reference an earlier
+        # one, the same way a plain sequential variable declaration
+        # would, but never the other way around.
+        self._validate_env_key_default_order(env_keys)
 
         raw_states = raw["states"]
         if not isinstance(raw_states, dict):

@@ -256,8 +256,10 @@ class TestPutInitActionTarget:
 
 class TestPutInitActionField:
     """The init-action is an action like any other action-field edit —
-    same payload shape, same endpoint pattern — minus 'trigger'/'env',
-    which AutomatonBuilder's own _build_init_action never reads for it."""
+    same payload shape, same endpoint pattern, same env editing — minus
+    'trigger', which AutomatonBuilder's own _build_init_action never
+    reads for it (the init-action is the automaton's unconditional
+    entry point, never conditionally fired)."""
 
     def test_edits_ui_description(self, client, hello_project):
         response = client.put(
@@ -291,10 +293,32 @@ class TestPutInitActionField:
         )
         assert response.status_code == 400
 
-    def test_rejects_env(self, client, hello_project):
+    def test_edits_env(self, client, hello_project):
+        env_key = client.post(f"/api/projects/{hello_project}/env-keys").json()
         response = client.put(
             f"/api/projects/{hello_project}/init-action/env",
-            json={"value": {"anything": "1"}},
+            json={"value": {env_key["name"]: "1"}},
+        )
+        assert response.status_code == 200
+        assert f"{env_key['name']}:" in _index_yml(client, hello_project)
+
+    def test_clearing_env_removes_it_rather_than_storing_an_empty_mapping(self, client, hello_project):
+        env_key = client.post(f"/api/projects/{hello_project}/env-keys").json()
+        client.put(
+            f"/api/projects/{hello_project}/init-action/env",
+            json={"value": {env_key["name"]: "1"}},
+        )
+        response = client.put(
+            f"/api/projects/{hello_project}/init-action/env",
+            json={"value": {}},
+        )
+        assert response.status_code == 200
+        assert "env: {}" not in _index_yml(client, hello_project)
+
+    def test_rejects_an_env_key_that_was_never_declared(self, client, hello_project):
+        response = client.put(
+            f"/api/projects/{hello_project}/init-action/env",
+            json={"value": {"never_declared": "1"}},
         )
         assert response.status_code == 400
 

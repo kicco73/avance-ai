@@ -12,12 +12,17 @@ import { renderMarkdown } from '../../../../markdown.js'
 
 const props = defineProps({
   projectName: { type: String, required: true },
-  fileName: { type: String, required: true }
+  fileName: { type: String, required: true },
+  // 'edit' for a file a create/upload/new-legal flow just opened (see
+  // ProjectDesignPanel.vue) — read once at mount, same as fileName
+  // itself: this component remounts fresh per file (:key="fileName"),
+  // so there's no later file switch for a reactive prop to catch.
+  initialSegment: { type: String, default: 'preview' }
 })
 
 const emit = defineEmits(['saved'])
 
-const segment = ref('preview')
+const segment = ref(props.initialSegment)
 const codeEditorRef = ref(null)
 
 const content = computed(() => codeEditorRef.value?.content ?? '')

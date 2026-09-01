@@ -7,6 +7,7 @@ import { getProjectMetadata, getProjectsRuntimeStatus, projectFileContentUrl, pu
 import { confirmDialog, customDialog } from '../../dialogStore.js'
 import { setCanvasColor, restoreCanvasColor } from '../../canvasColor.js'
 import SettingsMenu from './SettingsMenu.vue'
+import StatusToggleButton from './StatusToggleButton.vue'
 import ProfileMenu from '../ProfileMenu.vue'
 import AppHeader from '../AppHeader.vue'
 import ShareProjectDialog from './ShareProjectDialog.vue'
@@ -91,7 +92,7 @@ const actionsOverflow = computed(() => actionsBlockWidth.value > 0 && bodyWidth.
 function captureActionsWidth(rowEl) {
   if (actionsBlockWidth.value > 0 || !rowEl) return
   const nameCell = rowEl.querySelector('.manage-projects-name')
-  const statusBtn = rowEl.querySelector('.manage-projects-status-btn')
+  const statusBtn = rowEl.querySelector('.status-toggle-btn')
   const actionsRow = rowEl.querySelector('.manage-projects-actions-row')
   if (!nameCell || !statusBtn || !actionsRow) return
   actionsBlockWidth.value = nameCell.getBoundingClientRect().width + statusBtn.getBoundingClientRect().width + actionsRow.getBoundingClientRect().width
@@ -367,24 +368,12 @@ defineExpose({ refresh: load })
             <td class="manage-projects-col-spacer"></td>
             <td class="manage-projects-col-status-actions" :class="{ 'manage-projects-col-status-actions-collapsed': actionsOverflow }">
               <div class="manage-projects-status-actions-row">
-                <button
-                  type="button"
-                  class="manage-projects-status-btn"
-                  :class="`manage-projects-status-btn-${row.status}`"
+                <StatusToggleButton
+                  :status="row.status"
                   :disabled="row.status === 'paused' || togglingProject === row.name"
                   :title="statusTitle(row)"
                   @click="toggleStatus(row)"
-                >
-                  <svg v-if="row.status === 'running'" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                    <path d="M8 5h3v14H8zM13 5h3v14h-3z" />
-                  </svg>
-                  <svg v-else-if="row.status === 'paused'" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                    <path d="M6 6h12v12H6z" />
-                  </svg>
-                  <svg v-else viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                </button>
+                />
                 <div v-if="!actionsOverflow" class="manage-projects-actions-row">
                   <button type="button" class="manage-projects-edit-btn" title="Edit project" @click="selectEdit(row.name)">
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
@@ -835,50 +824,6 @@ defineExpose({ refresh: load })
   border-radius: 999px;
   background: #4a6fa5;
   transition: width 0.3s ease;
-}
-
-.manage-projects-status-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 2.88rem;
-  height: 2.88rem;
-  padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  cursor: pointer;
-}
-
-.manage-projects-status-btn:not(:disabled):hover {
-  background: #f0f4fa;
-}
-
-.manage-projects-status-btn:disabled {
-  cursor: not-allowed;
-}
-
-.manage-projects-status-btn-running {
-  color: #2e7d32;
-  animation: manage-projects-status-pulse 2.2s ease-in-out infinite;
-}
-
-@keyframes manage-projects-status-pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.35;
-  }
-}
-
-.manage-projects-status-btn-paused {
-  color: #b06a00;
-}
-
-.manage-projects-status-btn-manually_paused {
-  color: #607d8b;
 }
 
 .manage-projects-edit-btn {

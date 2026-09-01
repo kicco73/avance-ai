@@ -8,7 +8,8 @@
 import { onMounted, ref } from 'vue'
 import AppHeader from '../AppHeader.vue'
 import ProfileMenu from '../ProfileMenu.vue'
-import ModelMenu from '../ModelMenu.vue'
+import ServicesProviderCard from './ServicesProviderCard.vue'
+import StatusToggleButton from './StatusToggleButton.vue'
 import { getServicesConfig } from '../../api.js'
 import { confirmDialog } from '../../dialogStore.js'
 import { liveModelStore } from '../../chatStore.js'
@@ -27,15 +28,15 @@ defineProps({
 const emit = defineEmits(['close', 'download-backup', 'restore-backup', 'wipe-live-sessions', 'profile', 'logout'])
 
 const TABS = [
+  { id: 'ai', label: 'AI' },
   { id: 'chat', label: 'Chat' },
   { id: 'testing', label: 'Testing' },
-  { id: 'ai', label: 'AI' },
   { id: 'talk', label: 'Talk' },
   { id: 'listen', label: 'Listen' },
-  { id: 'database', label: 'Database' }
+  { id: 'database', label: 'Data' }
 ]
 
-const activeTab = ref('chat')
+const activeTab = ref(TABS[0].id)
 const services = ref(null)
 const loading = ref(true)
 
@@ -55,28 +56,72 @@ function fieldLabel(key) {
   return key.replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase())
 }
 
-// Every field on a provider entry except its own description (shown
-// separately, as prose) — works unchanged across ai/talk/listen's
-// slightly different provider shapes (url/modes/language are each
-// present on only one of the three).
-function providerFields(provider) {
-  return Object.entries(provider)
-    .filter(([key, value]) => key !== 'ui-description' && value != null && value !== '')
-    .map(([key, value]) => [fieldLabel(key), Array.isArray(value) ? value.join(', ') : String(value)])
-}
+// Any path that ends in one specific provider pinned (auto=false) loses
+// the same thing: no more automatic fallback if that provider fails or
+// runs out of tokens. Shared verbatim by selectModelWithConfirm's own
+// index!=null branch and toggleAutoLive's disable path below, so a
+// manual provider switch and an explicit "turn cascading off" read as
+// the same warning rather than two different-sounding ones.
+const NO_FALLBACK_WARNING =
+  'If the current provider fails or runs out of tokens, live chat will no longer automatically fall back to the next one and the service will stay broken. Continue?'
 
+// Shared by both the Auto-live checkbox (index null) and each provider's
+// own play button (its own index) below — same no-op guard ModelMenu.vue's
+// own select() used to run before ever reaching this, now needed here
+// directly since neither caller goes through that component anymore.
 async function selectModelWithConfirm(index) {
-  const label = index == null ? (liveModelStore.autoLabel ?? 'Auto') : (liveModelStore.models.value[index]?.ui_label ?? 'this model')
-  const ok = await confirmDialog({
-    title: 'Change model',
-    body: `Switch the live chat model to "${label}"?`,
-    okLabel: 'Switch'
-  })
+  if (liveModelStore.selectionLoading.value) return
+  const alreadySelected = index === (liveModelStore.auto.value ? null : liveModelStore.currentIndex.value)
+  if (alreadySelected) return
+  const ok = index == null
+    ? await confirmDialog({
+        title: 'Enable auto-live cascading',
+        body: `Switch the live chat provider to "${liveModelStore.autoLabel ?? 'Auto'}"?`,
+        okLabel: 'Switch'
+      })
+    : await confirmDialog({
+        title: 'Change provider',
+        body: NO_FALLBACK_WARNING,
+        okLabel: 'Switch',
+        danger: true
+      })
   if (!ok) return
   await liveModelStore.select(index)
 }
 
-const confirmingLiveModelStore = { ...liveModelStore, select: selectModelWithConfirm }
+// The Auto-live checkbox's own click handler — turning it on is just
+// selectModelWithConfirm(null) (its own "Switch to Auto?" confirm above),
+// but turning it off shows the same NO_FALLBACK_WARNING a manual provider
+// switch does — same real consequence either way. Whichever provider
+// auto-live cascading was actually using stays exactly where it is — this
+// only pins it explicitly, it never re-picks.
+async function toggleAutoLive() {
+  if (liveModelStore.selectionLoading.value) return
+  if (!liveModelStore.auto.value) {
+    await selectModelWithConfirm(null)
+    return
+  }
+  const ok = await confirmDialog({
+    title: 'Disable auto-live cascading',
+    body: NO_FALLBACK_WARNING,
+    okLabel: 'Disable',
+    danger: true
+  })
+  if (!ok) return
+  await liveModelStore.select(liveModelStore.currentIndex.value)
+}
+
+// Whichever provider is actually serving right now, auto-picked by the
+// cascade or manually pinned either way — same "which one is really in
+// effect" ModelMenu.vue's own checkmark used to show next to "Auto
+// (currentLabel)" when cascading was on.
+function isProviderActive(index) {
+  return liveModelStore.currentIndex.value === index
+}
+
+function providerStatusTitle(index) {
+  return isProviderActive(index) ? 'Active provider' : 'Set as the active provider'
+}
 
 async function selectWipeAllLiveSessions() {
   const ok = await confirmDialog({
@@ -111,7 +156,12 @@ async function selectWipeAllLiveSessions() {
         class="services-tab-btn"
         :class="{ 'services-tab-btn-active': activeTab === tab.id }"
         @click="activeTab = tab.id"
-      >{{ tab.label }}</button>
+      >
+        <svg v-if="tab.id === 'ai'" class="services-tab-ai-icon" viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
+          <path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zM11.5 9.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z" />
+        </svg>
+        {{ tab.label }}
+      </button>
     </div>
 
     <div class="services-body">
@@ -132,58 +182,39 @@ async function selectWipeAllLiveSessions() {
         </div>
 
         <div v-show="activeTab === 'ai'" class="services-panel">
-          <div class="services-provider-card">
-            <div class="services-provider-title">Model</div>
-            <ModelMenu :model-store="confirmingLiveModelStore" />
-          </div>
+          <label class="services-checkbox-field services-checkbox-field-active">
+            <input type="checkbox" :checked="liveModelStore.auto.value" @click.prevent="toggleAutoLive" />
+            Auto-live cascading enabled
+          </label>
           <div class="services-field">
             <label class="services-field-label">Max output tokens</label>
             <input class="services-field-input" type="text" :value="services.ai['max-output-tokens']" disabled />
           </div>
-          <div v-for="(provider, i) in services.ai.providers" :key="i" class="services-provider-card">
-            <div class="services-provider-title">{{ provider['ui-label'] || provider.driver }}</div>
-            <p v-if="provider['ui-description']" class="services-provider-desc">{{ provider['ui-description'] }}</p>
-            <div v-for="[label, value] in providerFields(provider)" :key="label" class="services-field">
-              <label class="services-field-label">{{ label }}</label>
-              <input class="services-field-input" type="text" :value="value" disabled />
-            </div>
+          <div v-for="(provider, i) in services.ai.providers" :key="i" class="services-provider-row">
+            <ServicesProviderCard class="services-provider-row-card" :provider="provider" />
+            <StatusToggleButton
+              :status="isProviderActive(i) ? 'running' : 'manually_paused'"
+              :disabled="isProviderActive(i) || liveModelStore.selectionLoading.value"
+              :title="providerStatusTitle(i)"
+              @click="selectModelWithConfirm(i)"
+            />
           </div>
         </div>
 
         <div v-show="activeTab === 'talk'" class="services-panel">
-          <div class="services-provider-card">
-            <div class="services-provider-title">Model</div>
-            <div class="services-field">
-              <label class="services-field-label">Enabled</label>
-              <input class="services-field-input" type="text" :value="services.talk.enabled ? 'Yes' : 'No'" disabled />
-            </div>
-          </div>
-          <div v-for="(provider, i) in services.talk.providers" :key="i" class="services-provider-card">
-            <div class="services-provider-title">{{ provider['ui-label'] || provider.driver }}</div>
-            <p v-if="provider['ui-description']" class="services-provider-desc">{{ provider['ui-description'] }}</p>
-            <div v-for="[label, value] in providerFields(provider)" :key="label" class="services-field">
-              <label class="services-field-label">{{ label }}</label>
-              <input class="services-field-input" type="text" :value="value" disabled />
-            </div>
-          </div>
+          <label class="services-checkbox-field">
+            <input type="checkbox" :checked="services.talk.enabled" disabled />
+            Service enabled
+          </label>
+          <ServicesProviderCard v-for="(provider, i) in services.talk.providers" :key="i" :provider="provider" />
         </div>
 
         <div v-show="activeTab === 'listen'" class="services-panel">
-          <div class="services-provider-card">
-            <div class="services-provider-title">Model</div>
-            <div class="services-field">
-              <label class="services-field-label">Enabled</label>
-              <input class="services-field-input" type="text" :value="services.listen.enabled ? 'Yes' : 'No'" disabled />
-            </div>
-          </div>
-          <div v-for="(provider, i) in services.listen.providers" :key="i" class="services-provider-card">
-            <div class="services-provider-title">{{ provider['ui-label'] || provider.driver }}</div>
-            <p v-if="provider['ui-description']" class="services-provider-desc">{{ provider['ui-description'] }}</p>
-            <div v-for="[label, value] in providerFields(provider)" :key="label" class="services-field">
-              <label class="services-field-label">{{ label }}</label>
-              <input class="services-field-input" type="text" :value="value" disabled />
-            </div>
-          </div>
+          <label class="services-checkbox-field">
+            <input type="checkbox" :checked="services.listen.enabled" disabled />
+            Service enabled
+          </label>
+          <ServicesProviderCard v-for="(provider, i) in services.listen.providers" :key="i" :provider="provider" />
         </div>
 
         <div v-show="activeTab === 'database'" class="services-panel">
@@ -193,7 +224,6 @@ async function selectWipeAllLiveSessions() {
           </div>
 
           <div class="services-section">
-            <span class="services-section-title">Backup</span>
             <div class="services-actions-row">
               <button type="button" class="services-action-btn" @click="emit('download-backup')">Download backup</button>
               <label class="services-action-btn services-restore-label">
@@ -205,12 +235,6 @@ async function selectWipeAllLiveSessions() {
                   @change="(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) emit('restore-backup', f) }"
                 />
               </label>
-            </div>
-          </div>
-
-          <div class="services-section">
-            <span class="services-section-title">Danger zone</span>
-            <div class="services-actions-row">
               <button type="button" class="services-action-btn services-action-btn-danger" @click="selectWipeAllLiveSessions">Wipe all live sessions</button>
             </div>
           </div>
@@ -250,6 +274,9 @@ async function selectWipeAllLiveSessions() {
 }
 
 .services-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   padding: 0.45rem 0.9rem;
   border: none;
   border-bottom: 2px solid transparent;
@@ -258,6 +285,11 @@ async function selectWipeAllLiveSessions() {
   cursor: pointer;
   font-size: 0.85rem;
   color: #666;
+}
+
+.services-tab-ai-icon {
+  flex-shrink: 0;
+  color: #8b5cf6;
 }
 
 .services-tab-btn:hover {
@@ -322,26 +354,50 @@ async function selectWipeAllLiveSessions() {
   -webkit-text-fill-color: #333;
 }
 
-.services-provider-card {
-  margin: 0.75rem 0;
-  padding: 0.75rem 1rem;
-  border: 1px solid #eee;
-  border-radius: 8px;
-  background: #fafafa;
-}
-
-.services-provider-title {
-  font-weight: 600;
-  font-size: 0.9rem;
-  color: #333;
-  margin-bottom: 0.4rem;
-}
-
-.services-provider-desc {
-  margin: 0 0 0.5rem;
+.services-checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
   font-size: 0.85rem;
-  color: #666;
-  line-height: 1.4;
+  color: #333;
+  cursor: default;
+}
+
+.services-checkbox-field input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  accent-color: #4a6fa5;
+}
+
+/* Unlike the other (read-only) checkbox-fields, this one is a real
+   action — clicking it selects Auto-live cascading, same as picking
+   "Auto" used to in the old ModelMenu.vue dropdown. */
+.services-checkbox-field-active {
+  cursor: pointer;
+}
+
+.services-checkbox-field-active input[type="checkbox"] {
+  cursor: pointer;
+}
+
+/* The play/pause status button sits outside ServicesProviderCard.vue's
+   own card, same layout as ManageProjectsView.vue's own project-card +
+   status-btn row, not embedded inside the card. */
+.services-provider-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  margin: 0.75rem 0;
+}
+
+.services-provider-row-card {
+  flex: 1;
+  min-width: 0;
+}
+
+.services-provider-row-card :deep(.inspector-detail-card) {
+  margin: 0;
 }
 
 .services-section {
@@ -351,14 +407,6 @@ async function selectWipeAllLiveSessions() {
   margin: 1.25rem 0 0.75rem;
   padding-top: 1rem;
   border-top: 1px solid #eee;
-}
-
-.services-section-title {
-  font-size: 0.8rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: #777;
 }
 
 .services-actions-row {

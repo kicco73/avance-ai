@@ -24,7 +24,7 @@ class TestGetProjectMetadata:
         assert response.status_code == 200
         assert response.json()["project"] == {
             "id": None, "ui_label": None, "ui_description": None,
-            "talk_enabled": True, "signal_tracking_on_ai_message": False,
+            "talk_enabled": True, "signal_tracking_on_ai_message": False, "general_prompt": "",
         }
 
     def test_reports_declared_fields(self, client, hello_project):
@@ -36,7 +36,7 @@ class TestGetProjectMetadata:
         assert response.status_code == 200
         assert response.json()["project"] == {
             "id": "concierge", "ui_label": "Concierge", "ui_description": "The front desk.",
-            "talk_enabled": True, "signal_tracking_on_ai_message": False,
+            "talk_enabled": True, "signal_tracking_on_ai_message": False, "general_prompt": "",
         }
 
     def test_unknown_project_is_404(self, client):
@@ -71,6 +71,29 @@ class TestPutProjectField:
         )
         assert response.status_code == 200
         assert response.json()["signal_tracking_on_ai_message"] is True
+
+    def test_edits_general_prompt(self, client, hello_project):
+        response = client.put(
+            f"/api/projects/{hello_project}/project/general-prompt", json={"value": "Always be polite."}
+        )
+        assert response.status_code == 200
+        assert response.json()["general_prompt"] == "Always be polite."
+        assert client.get(f"/api/projects/{hello_project}/project").json()["project"]["general_prompt"] == "Always be polite."
+
+    def test_general_prompt_is_stored_at_the_top_level_not_under_project(self, client, hello_project):
+        client.put(f"/api/projects/{hello_project}/project/general-prompt", json={"value": "Always be polite."})
+
+        # general-prompt must sit as a sibling of 'project:', never nested
+        # inside it (see AutomatonYamlEditor.set_project_field).
+        response = client.get(f"/api/projects/{hello_project}/files/index.yml")
+        assert "general-prompt: Always be polite." in response.json()["content"]
+
+    def test_clearing_general_prompt_removes_it_rather_than_writing_an_empty_string(self, client, hello_project):
+        client.put(f"/api/projects/{hello_project}/project/general-prompt", json={"value": "Always be polite."})
+
+        response = client.put(f"/api/projects/{hello_project}/project/general-prompt", json={"value": ""})
+        assert response.status_code == 200
+        assert response.json()["general_prompt"] == ""
 
     def test_rejects_an_invalid_identifier(self, client, hello_project):
         response = client.put(f"/api/projects/{hello_project}/project/id", json={"value": "not a valid id"})

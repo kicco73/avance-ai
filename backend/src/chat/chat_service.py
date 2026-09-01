@@ -571,20 +571,26 @@ class ChatService(object):
 	def _apply_declared_env_defaults(self, automaton: Automaton, project_name: str) -> None:
 		"""See open_if_needed's own call site. `automaton.init_action.env`
 		carries every project-level `env:` declaration's default
-		(AutomatonBuilder folds them in); this evaluates only whichever
-		of those keys don't already have a stored or action-set value,
+		(AutomatonBuilder folds them in, in declaration order), evaluated
 		through the same eval_action_env path a real action's own `env:`
-		uses via TrackingEngine.apply_action_env."""
+		uses via TrackingEngine.apply_action_env — but one key at a time,
+		not as a single batch: AutomatonBuilder._validate_env_key_default_
+		order guarantees a later key's default may only reference an
+		earlier one, so each key's own evaluation needs that earlier
+		key's value already persisted (a single shared apply_action_env
+		call evaluates every key against one static scope snapshot taken
+		before any of them run, which a same-batch reference could never
+		see). Only whichever keys don't already have a stored or
+		action-set value are (re-)evaluated."""
 		action = automaton.init_action
 		if not action.env:
 			return
 		current = {**self.env.stored(), **self.env.action_set()}
 		missing = {key: expression for key, expression in action.env.items() if key not in current}
-		if not missing:
-			return
-		self._tracking_engine.apply_action_env(
-			automaton, replace(action, env=missing), {}, "", username=self._username, project_name=project_name
-		)
+		for key, expression in missing.items():
+			self._tracking_engine.apply_action_env(
+				automaton, replace(action, env={key: expression}), {}, "", username=self._username, project_name=project_name
+			)
 
 	async def open_if_needed(self, session_id: int) -> dict | None:
 		# An imported session is a fixed transcript, never live — its NULL

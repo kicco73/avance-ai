@@ -86,7 +86,7 @@ setTestProject(props.projectName)
 const emit = defineEmits(['saved', 'back', 'profile', 'logout'])
 
 const {
-  filesLoading, files, currentFileName, uploading, creatingFile, deletingFile,
+  filesLoading, files, currentFileName, justAddedFileName, uploading, creatingFile, deletingFile,
   designPanelRef, codeEditorRef, indexYmlEditorRef, indexCssEditorRef, mdEditorRef,
   currentFileIsImage, currentFileIsMarkdown, isBehaviorNodeSelected, hasTheme,
   activeEditorIsDirty, activeEditor,
@@ -811,6 +811,7 @@ onBeforeUnmount(() => {
           :files="files"
           :files-loading="filesLoading"
           :current-file-name="currentFileName"
+          :just-added-file-name="justAddedFileName"
           :uploading="uploading"
           :creating-file="creatingFile"
           :explorer-width="explorerWidth"

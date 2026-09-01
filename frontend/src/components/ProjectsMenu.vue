@@ -24,19 +24,13 @@ const emit = defineEmits([
 
 const open = ref(false)
 const loading = ref(false)
-// {name, is_paused, ui_label}[] — the status dot reads is_paused directly
-// off this; ui_label is shown in place of the raw name wherever declared.
+// {name, is_paused, ui_label}[] — ui_label is shown in place of the raw
+// name wherever declared.
 const projects = ref([])
 const activeProjectName = ref(null)
 const rootEl = ref(null)
 
 const displayedProjectName = computed(() => props.selectedName ?? activeProjectName.value)
-
-// Falls back to the raw name before loadProjects() resolves, and for a
-// project that never declared a ui_label.
-const activeProjectLabel = computed(() => {
-  return projects.value.find((p) => p.name === displayedProjectName.value)?.ui_label ?? displayedProjectName.value
-})
 
 async function loadProjects() {
   loading.value = true
@@ -89,41 +83,37 @@ onBeforeUnmount(() => {
       class="projects-btn"
       :class="{ 'projects-btn-disabled': projects.length === 0 }"
       :disabled="projects.length === 0"
-      :title="activeProjectLabel ?? 'Projects'"
+      title="Current project"
       @click="toggle"
     >
-      <span class="projects-btn-label">{{ activeProjectLabel ?? 'Projects' }}</span>
-      <svg class="projects-btn-chevron" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-        <path d="M7 10l5 5 5-5z" />
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+        <path d="M4 4h4v4H4V4zm6 0h4v4h-4V4zm6 0h4v4h-4V4zM4 10h4v4H4v-4zm6 0h4v4h-4v-4zm6 0h4v4h-4v-4zM4 16h4v4H4v-4zm6 0h4v4h-4v-4zm6 0h4v4h-4v-4z" />
       </svg>
     </button>
 
-    <div v-if="open" class="projects-panel" :class="{ 'projects-panel-align-left': align === 'left' }">
-      <p v-if="loading" class="projects-status">Loading…</p>
+    <Transition name="projects-panel">
+      <div v-if="open" class="projects-panel" :class="{ 'projects-panel-align-left': align === 'left' }">
+        <p v-if="loading" class="projects-status">Loading…</p>
 
-      <ul v-else class="projects-list">
-        <li
-          v-for="project in projects"
-          :key="project.name"
-          class="project-entry"
-        >
-          <button
-            class="projects-item"
-            @click="selectProject(project.name)"
+        <ul v-else class="projects-list">
+          <li
+            v-for="project in projects"
+            :key="project.name"
+            class="project-entry"
           >
-            <span class="projects-item-check">
-              {{ project.name === displayedProjectName ? '✓' : '' }}
-            </span>
-            <span
-              class="projects-item-status"
-              :class="project.is_paused ? 'projects-item-status-paused' : 'projects-item-status-running'"
-              :title="project.is_paused ? 'Paused' : 'Running'"
-            ></span>
-            {{ project.ui_label ?? project.name }}
-          </button>
-        </li>
-      </ul>
-    </div>
+            <button
+              class="projects-item"
+              @click="selectProject(project.name)"
+            >
+              <span class="projects-item-check">
+                {{ project.name === displayedProjectName ? '✓' : '' }}
+              </span>
+              {{ project.ui_label ?? project.name }}
+            </button>
+          </li>
+        </ul>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -135,29 +125,15 @@ onBeforeUnmount(() => {
 .projects-btn {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  width: 100%;
-  padding: 0.4rem 0.7rem;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
   border-radius: 6px;
   border: 1px solid #4a6fa5;
   background: white;
   color: #4a6fa5;
   cursor: pointer;
-  /* Pinned to 18px to match .settings-btn's icon height exactly — a
-     button's text content doesn't reliably compute to the same line box
-     across fonts, so this keeps both buttons' total heights aligned. */
-  line-height: 18px;
-}
-
-.projects-btn-label {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.projects-btn-chevron {
-  flex-shrink: 0;
 }
 
 .projects-btn:hover {
@@ -184,6 +160,16 @@ onBeforeUnmount(() => {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   z-index: 100;
   overflow: hidden;
+}
+
+.projects-panel-enter-active,
+.projects-panel-leave-active {
+  transition: opacity 0.15s ease;
+}
+
+.projects-panel-enter-from,
+.projects-panel-leave-to {
+  opacity: 0;
 }
 
 .projects-panel-align-left {
@@ -213,7 +199,7 @@ onBeforeUnmount(() => {
   background: none;
   cursor: pointer;
   font-size: 0.9rem;
-  color: #333;
+  color: #4a6fa5;
 }
 
 .projects-item:hover:not(:disabled) {
@@ -229,23 +215,5 @@ onBeforeUnmount(() => {
 
 .project-entry + .project-entry {
   border-top: 1px solid #eee;
-}
-
-/* Running/paused status dot, next to each project's own name. */
-.projects-item-status {
-  display: inline-block;
-  flex-shrink: 0;
-  width: 0.5rem;
-  height: 0.5rem;
-  margin-right: 0.4rem;
-  border-radius: 50%;
-}
-
-.projects-item-status-running {
-  background: #2e7d32;
-}
-
-.projects-item-status-paused {
-  background: #b06a00;
 }
 </style>

@@ -186,6 +186,7 @@ class AutomatonYamlEditor:
             "ui_description": raw_project.get("ui-description"),
             "talk_enabled": raw_project.get("talk-enabled", True),
             "signal_tracking_on_ai_message": raw_project.get("signal-tracking-on-ai-message", False),
+            "general_prompt": self._raw.get("general-prompt", ""),
         }
 
     def _env_key_payload(self, name: str) -> EnvKeyPayload:
@@ -306,8 +307,19 @@ class AutomatonYamlEditor:
 
     def set_project_field(self, field: str, value) -> ProjectPayload:
         """The optional top-level `project:` mapping — id/ui-label/
-        ui-description. A falsy `id` removes the key rather than writing
-        an empty string, which AutomatonBuilder would reject as an invalid identifier."""
+        ui-description/talk-enabled/signal-tracking-on-ai-message — plus
+        'general-prompt', which despite belonging to this same edit form
+        is actually its own top-level YAML key, not nested under
+        `project:` at all (see AutomatonBuilder.build's own
+        general_prompt=raw.get("general-prompt", "")). A falsy `id`
+        removes the key rather than writing an empty string, which
+        AutomatonBuilder would reject as an invalid identifier."""
+        if field == "general-prompt":
+            if value:
+                self._raw["general-prompt"] = value
+            else:
+                self._raw.pop("general-prompt", None)
+            return self._project_payload()
         project = self._raw.setdefault("project", CommentedMap())
         if field == "id" and not value:
             project.pop("id", None)
@@ -318,11 +330,18 @@ class AutomatonYamlEditor:
     def set_init_action_field(self, field: str, value) -> StatePayload | ActionPayload:
         """Every editable field of the init-action itself. 'target' is
         handled by set_init_action_target below; the init-action lives
-        outside `states:` entirely, so the regular action lookup can't reach it."""
+        outside `states:` entirely, so the regular action lookup can't
+        reach it. 'env' gets the same "empty removes the key" treatment
+        as a regular action's own env field (see set_action_field) —
+        AutomatonBuilder treats a falsy env the same as a missing one,
+        so this just keeps the YAML clean."""
         if field == "target":
             return self.set_init_action_target(value)
         init_action = self._raw.setdefault("init-action", CommentedMap())
-        init_action[field] = value
+        if field == "env" and not value:
+            init_action.pop(field, None)
+        else:
+            init_action[field] = value
         return self._init_action_payload()
 
     def set_init_action_target(self, state_name: str) -> StatePayload:

@@ -25,17 +25,23 @@ from .project_commit_mixin import ProjectCommitMixin
 STATE_EDITABLE_FIELDS = {"ui-label", "ui-description", "history-cutoff", "contextual-prompt", "chat", "reactions-enabled"}
 ACTION_EDITABLE_FIELDS = {"ui-label", "ui-description", "action-prompt", "target", "trigger", "on-enter", "env"}
 # The init-action is an action like any other (see AutomatonYamlEditor.
-# _init_action_payload) minus 'trigger' and 'env' — AutomatonBuilder's
-# own _build_init_action never reads either for it, so this endpoint
-# refuses to write a field that would just sit dead in the YAML.
-INIT_ACTION_EDITABLE_FIELDS = ACTION_EDITABLE_FIELDS - {"trigger", "env"}
+# _init_action_payload) minus 'trigger' — it's the automaton's
+# unconditional entry point, never conditionally fired, so
+# AutomatonBuilder's own _build_init_action never reads that field for
+# it and this endpoint refuses to write one that would just sit dead in
+# the YAML. 'env' stays editable: AutomatonBuilder._build_init_action
+# merges it on top of every declared env key's own default.
+INIT_ACTION_EDITABLE_FIELDS = ACTION_EDITABLE_FIELDS - {"trigger"}
 SIGNAL_EDITABLE_FIELDS = {"ui-label", "ui-description", "definition"}
 # Unlike a state/action/signal, an env key has no separate ui-label to
 # derive its name from — 'name' is itself directly editable here.
 ENV_KEY_EDITABLE_FIELDS = {"name", "ui-description", "value"}
 # The optional top-level `project:` section — 'id' is what other
-# projects reach this one as through automaton.<id>.
-PROJECT_EDITABLE_FIELDS = {"id", "ui-label", "ui-description", "talk-enabled", "signal-tracking-on-ai-message"}
+# projects reach this one as through automaton.<id>. 'general-prompt' is
+# actually its own separate top-level key (see AutomatonYamlEditor.
+# set_project_field), grouped in here only because the frontend edits it
+# from the same Project card.
+PROJECT_EDITABLE_FIELDS = {"id", "ui-label", "ui-description", "talk-enabled", "signal-tracking-on-ai-message", "general-prompt"}
 
 
 class EditProjectController(BaseController, ProjectCommitMixin):

@@ -1,0 +1,108 @@
+<script setup>
+// Detail card for one ai/talk/listen provider entry (config.yml's own
+// providers[]) — same badge/title/open-closed convention as
+// InspectorDetailCard.vue's state/action cards and
+// InspectorProjectCard.vue's project card, but read-only (Manage
+// services never edits config.yml, unlike those) so there's no edit
+// form: closed shows the essential fields, open adds the description.
+import { computed, ref } from 'vue'
+import { renderMarkdown } from '../../markdown.js'
+
+const props = defineProps({
+  provider: { type: Object, required: true } // {driver, model, url?, ui-label, ui-description, modes?, language?}
+})
+
+const open = ref(false)
+
+function toggle() {
+  open.value = !open.value
+}
+
+function fieldLabel(key) {
+  return key.replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase())
+}
+
+// modes/language are pulled out as their own flag badges below, and
+// ui-label/ui-description are the title/description — everything else
+// (driver, model, url, ...) is shown as a field row.
+const fields = computed(() => {
+  return Object.entries(props.provider)
+    .filter(([key, value]) => !['ui-label', 'ui-description', 'modes', 'language'].includes(key) && value != null && value !== '')
+    .map(([key, value]) => [fieldLabel(key), String(value)])
+})
+
+const flagBadges = computed(() => {
+  const badges = []
+  if (Array.isArray(props.provider.modes)) {
+    for (const mode of props.provider.modes) badges.push(fieldLabel(mode))
+  }
+  if (props.provider.language) badges.push(props.provider.language.toUpperCase())
+  return badges
+})
+</script>
+
+<template>
+  <div class="inspector-detail-card" :class="{ 'inspector-detail-card-open': open }" @click="toggle">
+    <div class="inspector-detail-header">
+      <div class="inspector-detail-header-top">
+        <span class="inspector-detail-badge inspector-detail-badge-provider">Provider</span>
+        <span class="inspector-detail-title">{{ provider['ui-label'] || provider.driver }}</span>
+      </div>
+      <div v-if="flagBadges.length" class="inspector-detail-badges">
+        <span v-for="badge in flagBadges" :key="badge" class="inspector-detail-badge inspector-detail-badge-flag">{{ badge }}</span>
+      </div>
+    </div>
+    <div class="inspector-detail-body">
+      <Transition name="crossfade" mode="out-in">
+        <div v-if="open" key="open">
+          <div v-for="[label, value] in fields" :key="label" class="services-field">
+            <label class="services-field-label">{{ label }}</label>
+            <input class="services-field-input" type="text" :value="value" disabled />
+          </div>
+          <div
+            v-if="provider['ui-description']"
+            class="inspector-detail-ui_description"
+            v-html="renderMarkdown(provider['ui-description'])"
+          ></div>
+        </div>
+        <div v-else key="closed">
+          <p v-for="[label, value] in fields" :key="label" class="services-provider-field">
+            <strong>{{ label }}:</strong> {{ value }}
+          </p>
+        </div>
+      </Transition>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.inspector-detail-card { cursor: pointer; display: flex; flex-direction: column; border-radius: 8px; border: 1px solid #eee; background: #fafafa; overflow: hidden; margin: 0.75rem 0; }
+.inspector-detail-header { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.5rem 0.6rem; border-bottom: 1px solid #eee; flex-shrink: 0; }
+.inspector-detail-header-top { display: flex; align-items: center; gap: 0.5rem; }
+.inspector-detail-badge { flex-shrink: 0; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.15rem 0.5rem; border-radius: 999px; color: white; }
+.inspector-detail-badge-provider { background: #4a6fa5; }
+.inspector-detail-badges { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.inspector-detail-badge-flag { background: #eee; color: #555; }
+.inspector-detail-title { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inspector-detail-body { padding: 0.6rem 0.75rem; font-size: 0.8rem; color: #444; }
+.inspector-detail-ui_description { margin: 0.5rem 0 0; line-height: 1.4; }
+.crossfade-enter-active, .crossfade-leave-active { transition: opacity 0.15s ease; }
+.crossfade-enter-from, .crossfade-leave-to { opacity: 0; }
+
+/* Closed state: plain "label: value" text — same idiom as
+   InspectorDetailCard.vue's own .inspector-detail-field, not the styled
+   inputs below (those are for the open state only). */
+.services-provider-field { margin: 0 0 0.4rem; line-height: 1.4; }
+.services-provider-field:last-child { margin-bottom: 0; }
+.services-provider-field strong { color: #555; margin-right: 0.3rem; }
+
+/* Open state: the same field-as-disabled-input look every other Manage
+   services tab uses (see ServicesView.vue's own identically-named rules
+   — duplicated here since scoped styles don't cross component
+   boundaries). */
+.services-field { display: flex; flex-direction: column; gap: 0.25rem; margin: 0 0 0.75rem; max-width: 420px; }
+.services-field:last-child { margin-bottom: 0; }
+.services-field-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #777; }
+.services-field-input { width: 100%; box-sizing: border-box; padding: 0.4rem 0.6rem; border: 1px solid #ddd; border-radius: 6px; background: #f5f5f7; color: #333; font: inherit; font-size: 0.85rem; }
+.services-field-input:disabled { opacity: 1; cursor: default; -webkit-text-fill-color: #333; }
+</style>

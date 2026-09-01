@@ -98,3 +98,23 @@ env:
   broken:
     value: "1 +"
 """)
+
+
+def test_a_keys_own_value_referencing_a_later_declared_key_is_rejected():
+    with pytest.raises(ValueError, match="references env.visits before it's declared"):
+        _build("""
+env:
+  last_visit_count:
+    value: env.visits
+  visits:
+    value: "0"
+""")
+
+
+def test_a_keys_own_value_referencing_itself_is_rejected():
+    with pytest.raises(ValueError, match="references env.visits before it's declared"):
+        _build("""
+env:
+  visits:
+    value: env.visits
+""")

@@ -188,6 +188,7 @@ defineExpose({ refresh: load })
     <div class="manage-users-header">
       <button class="back-btn" title="Back" @click="emit('close')">«</button>
       <ProjectsMenu align="left" :selected-name="statsProjectName" @select="statsProjectName = $event" />
+      <h2 class="manage-users-header-title">Users</h2>
       <div class="manage-users-header-actions">
         <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
       </div>
@@ -340,11 +341,28 @@ defineExpose({ refresh: load })
 }
 
 .manage-users-header {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.6rem;
   padding: calc(0.75rem + var(--safe-area-top)) 1rem 0.75rem;
   border-bottom: 1px solid #ddd;
+}
+
+/* Same centered, blue-skin style as ServicesView.vue's own
+   .services-header-title — absolutely centered since this header is a
+   plain flex row (not AppHeader.vue's 3-column grid), so it can't be
+   centered by flex alone against the left/right groups' mismatched
+   widths. */
+.manage-users-header-title {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  margin: 0;
+  font-size: 1.1rem;
+  color: #4a6fa5;
+  pointer-events: none;
 }
 
 .manage-users-header-actions {

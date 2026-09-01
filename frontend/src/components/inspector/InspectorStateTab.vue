@@ -169,7 +169,7 @@ onMounted(loadProjectMetadata)
       @delete="emit('delete', selectedElement)"
     />
     <ActionEnvEditor
-      v-if="isBehaviorContext && !readOnly && open && selectedElement?.kind === 'action' && !selectedElement.data.isInitEdge"
+      v-if="isBehaviorContext && !readOnly && open && selectedElement?.kind === 'action'"
       :env="selectedElement.data.env"
       :key-options="availableEnvKeys"
       @set-field="(field, value) => emit('set-field', field, value)"

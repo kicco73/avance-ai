@@ -218,6 +218,9 @@ onBeforeUnmount(() => {
         <button class="app-header-icon-btn" title="Back" @click="emit('close')">«</button>
         <ProjectsMenu align="left" :selected-name="projectName" @select="(name) => emit('project-select', name)" />
       </template>
+      <template #center>
+        <h2 class="app-header-title test-header-title">Sessions</h2>
+      </template>
       <template #right>
         <div class="test-header-actions">
           <ProfileMenu :profile="profile" @profile="emit('profile')" @logout="emit('logout')" />
@@ -386,6 +389,10 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   font-family: system-ui, -apple-system, sans-serif;
+}
+
+.test-header-title {
+  color: #4a6fa5;
 }
 
 .test-header-actions {

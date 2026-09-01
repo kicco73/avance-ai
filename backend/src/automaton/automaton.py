@@ -157,6 +157,7 @@ class ProjectPayload(TypedDict):
     ui_description: str | None
     talk_enabled: bool
     signal_tracking_on_ai_message: bool
+    general_prompt: str
 
 
 class Automaton(object):

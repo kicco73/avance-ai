@@ -9,7 +9,11 @@ import { liveModelStore } from '../chatStore.js'
 // itself never knows which context it's in — same object shape either
 // way, just a different one passed in.
 const props = defineProps({
-  modelStore: { type: Object, default: () => liveModelStore }
+  modelStore: { type: Object, default: () => liveModelStore },
+  // Off for Manage services' own AI tab, whose Model card already shows
+  // the current model's full detail inline — the "?" popup would just be
+  // a redundant, disconnected copy of the same info.
+  showInfo: { type: Boolean, default: true }
 })
 
 const VIEWPORT_MARGIN = 8
@@ -108,6 +112,7 @@ onBeforeUnmount(() => {
       <span class="model-btn-caret">▾</span>
     </button>
     <button
+      v-if="showInfo"
       class="model-info-btn"
       title="About the current model"
       :disabled="!currentModel"

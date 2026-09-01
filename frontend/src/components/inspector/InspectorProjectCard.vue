@@ -7,7 +7,8 @@ import { vAutosize } from './textareaAutosize.js'
 import { handleEnterNext } from './enterToNextField.js'
 
 const props = defineProps({
-  project: { type: Object, default: null }, // { id, ui_label, ui_description, talk_enabled, signal_tracking_on_ai_message } | null, from getProjectMetadata
+  // { id, ui_label, ui_description, talk_enabled, signal_tracking_on_ai_message, general_prompt } | null, from getProjectMetadata
+  project: { type: Object, default: null },
   editable: { type: Boolean, default: false }
 })
 
@@ -19,11 +20,13 @@ const showEditForm = computed(() => props.editable && open.value)
 const editUiLabel = ref('')
 const editUiDescription = ref('')
 const editId = ref('')
+const editGeneralPrompt = ref('')
 
 function resetEditBuffers() {
   editUiLabel.value = props.project?.ui_label ?? ''
   editUiDescription.value = props.project?.ui_description ?? ''
   editId.value = props.project?.id ?? ''
+  editGeneralPrompt.value = props.project?.general_prompt ?? ''
 }
 
 watch(() => props.project, resetEditBuffers, { immediate: true, deep: true })
@@ -53,6 +56,10 @@ function commitUiDescription() {
 // identifier, so writing it through as-is would bounce back as a 400.
 function commitId() {
   commitTextField('id', editId.value, props.project?.id ?? '')
+}
+
+function commitGeneralPrompt() {
+  commitTextField('general-prompt', editGeneralPrompt.value, props.project?.general_prompt ?? '')
 }
 
 function commitBoolField(field, value) {
@@ -119,10 +126,25 @@ function commitBoolField(field, value) {
             @click.stop
             @blur="commitUiDescription"
           ></textarea>
+          <label class="inspector-detail-form-label" title="Prepended to every state's own contextual prompt">
+            <span class="inspector-ai-field-icon" title="Read by the AI">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zM11.5 9.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>
+            </span>
+            General prompt
+          </label>
+          <textarea
+            v-model="editGeneralPrompt"
+            v-autosize
+            class="inspector-detail-textarea"
+            rows="4"
+            @click.stop
+            @blur="commitGeneralPrompt"
+          ></textarea>
         </div>
         <div v-else key="readonly" class="inspector-detail-readonly">
           <p v-if="project?.id" class="inspector-detail-field"><strong>Id:</strong> <code class="inspector-detail-code">{{ project.id }}</code></p>
           <p v-if="project?.ui_description" class="inspector-detail-ui_description">{{ project.ui_description }}</p>
+          <p v-if="project?.general_prompt" class="inspector-detail-field"><strong>General prompt:</strong> {{ project.general_prompt }}</p>
         </div>
       </Transition>
     </div>
@@ -148,6 +170,7 @@ function commitBoolField(field, value) {
 .inspector-detail-title-input { flex: 1; min-width: 0; font-weight: 600; font-size: 0.85rem; color: #333; border: 1px solid transparent; border-radius: 4px; padding: 0.1rem 0.3rem; background: transparent; }
 .inspector-detail-title-input:hover, .inspector-detail-title-input:focus { border-color: #ccc; background: white; }
 .inspector-detail-form-label { display: flex; align-items: center; gap: 0.35rem; margin: 20px 0 0.2rem; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #777; }
+.inspector-ai-field-icon { display: inline-flex; flex-shrink: 0; color: #8b5cf6; }
 .inspector-py-field-icon { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 1.1rem; height: 0.85rem; border-radius: 3px; background: #4b8bbe; color: white; font-size: 0.55rem; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: -0.02em; }
 .inspector-project-id-input { display: block; width: 100%; box-sizing: border-box; font: inherit; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.8rem; padding: 0.3rem 0.5rem; border-radius: 6px; border: 1px solid #ccc; }
 .inspector-detail-textarea { display: block; width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 0.8rem; line-height: 1.54; padding: 0.4rem 0.5rem; border-radius: 6px; border: 1px solid #ccc; }
