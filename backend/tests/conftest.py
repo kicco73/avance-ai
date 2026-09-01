@@ -14,17 +14,20 @@ from fastapi.testclient import TestClient
 from auth.auth_service import AuthService
 from chat.chat_service import ChatService
 from chat.session_manager import ChatSessionManager
+from config import NotificationServiceConfig
 from controller import AvanceController
 from db import Db
 from error_handlers import ApiErrorHandlers
 from events.dispatcher import _reset_for_tests as _reset_dispatcher_for_tests
 from jobs import JobQueue, NullBroadcaster
 from metrics.metric_service import MetricService
+from notification.notification_service import NotificationService
 from project.project_service import ProjectService
 from session import Session
 from testing.test_service import TestService
 from testing.queue_progress_broadcaster import QueueProgressBroadcaster
 from testing.last_status_broadcaster import LastStatusBroadcaster
+from tracking.actuators import ActuatorSetFactory
 from tracking.tracking_service import TrackingService
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
@@ -162,12 +165,22 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     metric_service = MetricService(app_db, project_service)
     test_event_broadcaster = LastStatusBroadcaster(QueueProgressBroadcaster(fake_ai_service))
     job_queue = JobQueue(max_concurrent=1, broadcaster=test_event_broadcaster)
+    # A real NotificationService, wired the same way main.py does — no
+    # test project's YAML ever calls actuator.send_mail, so the dummy
+    # SMTP config is never actually dialed.
+    notification_service = NotificationService(
+        NotificationServiceConfig(
+            url="smtp://localhost", username="test@example.com", password="", from_name=None, timeout_seconds=5,
+        ),
+        job_queue,
+    )
+    actuator_factory = ActuatorSetFactory(notification_service, app_db)
     tracking_service = TrackingService(
-        app_db, project_service, metric_service,
+        app_db, project_service, metric_service, actuator_factory,
     )
     chat_service = ChatService(
         app_db, fake_ai_service, fake_ai_service, project_service, session_manager,
-        tracking_service, metric_service, job_queue,
+        tracking_service, metric_service, job_queue, actuator_factory,
     )
     test_service = TestService(
         app_db, fake_ai_service, tracking_service, job_queue, project_service, test_event_broadcaster,

@@ -41,7 +41,7 @@ def test_on_enter_is_reported_per_edge_not_per_node(client):
         "        target: b\n"
         "      - name: go-loud\n"
         "        target: b\n"
-        "        on-enter: celebrate()\n"
+        "        on-enter: actuator.celebrate()\n"
         "  b:\n"
         "    contextual-prompt: there\n"
     )
@@ -53,4 +53,4 @@ def test_on_enter_is_reported_per_edge_not_per_node(client):
     assert "on-enter" not in graph["nodes"][0]["state"]
     edges_by_name = {e["action"]["name"]: e for e in graph["edges"]}
     assert edges_by_name["go-quiet"]["action"]["on-enter"] is None
-    assert edges_by_name["go-loud"]["action"]["on-enter"] == "celebrate()"
+    assert edges_by_name["go-loud"]["action"]["on-enter"] == "actuator.celebrate()"

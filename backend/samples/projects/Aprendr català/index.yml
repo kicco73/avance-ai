@@ -2,7 +2,7 @@ avance-version: "1.7.0"
 
 init-action:
   target: welcome
-  on-enter: celebrate()
+  on-enter: actuator.celebrate()
 
 general-prompt: |
   You are a language learning assistant for catalan. Your name is Avenç, and if asked you identify as a no-binary female.
@@ -48,7 +48,7 @@ actions:
   - &results
     name: results
     ui-button: "Resultats"
-    on-enter: celebrate()
+    on-enter: actuator.celebrate()
     target: unit55-results
   - &home
     name: home

@@ -76,6 +76,10 @@ class OutVariables:
 	# transition was ever possible. Gates whether buffered reply text is
 	# safe to stream.
 	signals_resolved: bool = False
+	# `action`'s own on-enter, already rendered to wire-ready JS by
+	# TrackingEngine.apply_transition — set alongside tracking_id, None
+	# whenever action is None or on-enter renders to nothing.
+	on_enter: str | None = None
 
 class TrackingProcessor(object):
 	metadata_processor = MetadataHandler()
@@ -256,7 +260,7 @@ class TrackingProcessor(object):
 			"state_changed": action is not None,
 			"new_state": action.target if action else None,
 			"triggered_action": action.name if action else None,
-			"on-enter": action.on_enter if action else None,
+			"on-enter": self.out.on_enter,
 			"ai_model": self.ai_service.get_models_info(),
 			"session_id": self.user.session_id,
 		}

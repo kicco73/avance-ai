@@ -10,7 +10,7 @@ project:
 
 init-action:
   ui-label: new user
-  on-enter: celebrate()
+  on-enter: actuator.celebrate()
   target: Precontemplation
 
 # Fixed instructions appended to every state's contextual_prompt (except
@@ -141,7 +141,7 @@ reactions:
     definition: |
       Use only alongside a real milestone: committing to a concrete plan,
       reaching a sustained-behavior threshold, or another moment that
-      already triggers celebrate() on-enter. Never use it as a
+      already triggers actuator.celebrate() on-enter. Never use it as a
       substitute for actually acknowledging the milestone in the reply.
 
   listening:
@@ -207,7 +207,7 @@ states:
         ui-button: "Mark: plan defined"
         target: Action
         trigger: "signal.planConcreteness >= 75"
-        on-enter: celebrate()
+        on-enter: actuator.celebrate()
 
   Action:
     ui-label: "Action"

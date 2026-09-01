@@ -157,7 +157,6 @@ class AutomatonYamlEditor:
             "ui_description": raw_action["ui-description"].strip() if raw_action.get("ui-description") else None,
             "target": raw_action.get("target", state_name),
             "has_trigger": raw_action.get("trigger") is not None,
-            "has_actuator": raw_action.get("actuator") is not None,
             "on-enter": raw_action.get("on-enter"),
         }
 
@@ -260,7 +259,7 @@ class AutomatonYamlEditor:
         # `env: {}` (behaviorally identical either way — AutomatonBuilder
         # treats a falsy env the same as a missing one — but this keeps
         # the YAML clean).
-        if field in ("trigger", "env", "actuator") and not value:
+        if field in ("trigger", "env") and not value:
             raw_action.pop(field, None)
         else:
             raw_action[field] = value

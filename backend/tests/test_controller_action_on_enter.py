@@ -18,7 +18,7 @@ YML = (
     "        target: b\n"
     "      - name: go-loud\n"
     "        target: b\n"
-    "        on-enter: celebrate()\n"
+    "        on-enter: actuator.celebrate()\n"
     "  b:\n"
     "    contextual-prompt: there\n"
 )

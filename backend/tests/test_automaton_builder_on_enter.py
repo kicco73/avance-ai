@@ -1,13 +1,15 @@
 """on-enter is an action's own field (Action.on_enter), not the state's —
 a state reached by one action can celebrate while the same state
-reached by a different action doesn't.
+reached by a different action doesn't. Since the actuator field merged
+into on-enter, its grammar is the same namespaced actuator.<name>(...)
+call — one per non-blank line — that the standalone `actuator:` field
+used to validate (see AutomatonBuilder._validate_on_enter).
 """
 from __future__ import annotations
 
 import pytest
 
 from automaton.automaton_builder import AutomatonBuilder
-from automaton.on_enter_script import OnEnterScriptError
 
 pytestmark = pytest.mark.contract
 
@@ -22,13 +24,13 @@ states:
     actions:
       - name: go
         target: b
-        on-enter: celebrate()
+        on-enter: actuator.celebrate()
   b:
     contextual-prompt: there
 """
     automaton = AutomatonBuilder().build({"index.yml": content})
     action = automaton.states["a"].actions[0]
-    assert action.on_enter == "celebrate()"
+    assert action.on_enter == "actuator.celebrate()"
 
 
 def test_on_enter_absent_on_an_action_is_none():
@@ -63,14 +65,14 @@ states:
         target: c
       - name: go-loud
         target: c
-        on-enter: celebrate()
+        on-enter: actuator.celebrate()
   c:
     contextual-prompt: there
 """
     automaton = AutomatonBuilder().build({"index.yml": content})
     quiet, loud = automaton.states["a"].actions
     assert quiet.on_enter is None
-    assert loud.on_enter == "celebrate()"
+    assert loud.on_enter == "actuator.celebrate()"
 
 
 def test_a_stray_on_enter_under_a_state_is_silently_ignored():
@@ -82,23 +84,46 @@ init-action:
 states:
   a:
     contextual-prompt: hi
-    on-enter: celebrate
+    on-enter: actuator.celebrate()
 """
     automaton = AutomatonBuilder().build({"index.yml": content})
     assert not hasattr(automaton.states["a"], "on_enter")
+
+
+def test_on_enter_accepts_multiple_actuator_calls_one_per_line():
+    content = """
+init-action:
+  target: a
+states:
+  a:
+    contextual-prompt: hi
+    actions:
+      - name: go
+        target: b
+        on-enter: |
+          actuator.celebrate()
+          actuator.notify('Nice!', 'You reached **state B**.')
+  b:
+    contextual-prompt: there
+"""
+    automaton = AutomatonBuilder().build({"index.yml": content})
+    action = automaton.states["a"].actions[0]
+    assert action.on_enter.splitlines() == [
+        "actuator.celebrate()", "actuator.notify('Nice!', 'You reached **state B**.')",
+    ]
 
 
 def test_init_action_on_enter():
     content = """
 init-action:
   target: a
-  on-enter: celebrate()
+  on-enter: actuator.celebrate()
 states:
   a:
     contextual-prompt: hi
 """
     automaton = AutomatonBuilder().build({"index.yml": content})
-    assert automaton.init_action.on_enter == "celebrate()"
+    assert automaton.init_action.on_enter == "actuator.celebrate()"
 
 
 def test_init_action_on_enter_absent_is_none():
@@ -123,19 +148,19 @@ states:
     actions:
       - name: go
         target: b
-        on-enter: celebrate()
+        on-enter: actuator.celebrate()
   b:
     contextual-prompt: there
 """
     automaton = AutomatonBuilder().build({"index.yml": content})
     payload = automaton.get_state_payload(automaton.states["a"])
     assert "on-enter" not in payload
-    assert payload["actions"][0]["on-enter"] == "celebrate()"
+    assert payload["actions"][0]["on-enter"] == "actuator.celebrate()"
 
 
-def test_build_rejects_an_action_with_an_invalid_on_enter_script():
-    """A bare identifier (no call at all) fails the build outright, with
-    the offending state/action named in the message."""
+def test_build_rejects_an_action_with_a_bare_unnamespaced_call():
+    """A bare (non-actuator) call is just an undefined bare name — the
+    same "undefined name(s)" error any other unknown identifier gets."""
     content = """
 init-action:
   target: a
@@ -145,22 +170,60 @@ states:
     actions:
       - name: go
         target: b
-        on-enter: celebrate
+        on-enter: celebrate()
   b:
     contextual-prompt: there
 """
-    with pytest.raises(OnEnterScriptError, match="state 'a', action 'go'.*expected a single function call"):
+    with pytest.raises(ValueError, match="State a, action 'go'.*references undefined name\\(s\\): celebrate"):
         AutomatonBuilder().build({"index.yml": content})
 
 
-def test_build_rejects_an_init_action_with_an_invalid_on_enter_script():
+def test_build_rejects_an_unknown_actuator_method():
     content = """
 init-action:
   target: a
-  on-enter: doStuff()
+  on-enter: actuator.doStuff()
 states:
   a:
     contextual-prompt: hi
 """
-    with pytest.raises(OnEnterScriptError, match="init-action.*unknown function 'doStuff'"):
+    with pytest.raises(ValueError, match="init-action.*references undefined name\\(s\\): actuator.doStuff"):
+        AutomatonBuilder().build({"index.yml": content})
+
+
+def test_build_rejects_the_wrong_actuator_argument_count():
+    content = """
+init-action:
+  target: a
+states:
+  a:
+    contextual-prompt: hi
+    actions:
+      - name: go
+        target: b
+        on-enter: actuator.celebrate(42)
+  b:
+    contextual-prompt: there
+"""
+    with pytest.raises(ValueError, match="actuator.celebrate\\(\\.\\.\\.\\) takes 0 argument\\(s\\), got 1"):
+        AutomatonBuilder().build({"index.yml": content})
+
+
+def test_build_reports_the_offending_line_number_in_a_multi_line_script():
+    content = """
+init-action:
+  target: a
+states:
+  a:
+    contextual-prompt: hi
+    actions:
+      - name: go
+        target: b
+        on-enter: |
+          actuator.celebrate()
+          actuator.doStuff()
+  b:
+    contextual-prompt: there
+"""
+    with pytest.raises(ValueError, match="on-enter line 2.*references undefined name\\(s\\): actuator.doStuff"):
         AutomatonBuilder().build({"index.yml": content})
