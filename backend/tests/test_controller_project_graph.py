@@ -10,7 +10,7 @@ pytestmark = pytest.mark.contract
 
 
 def test_graph_excludes_the_reserved_implicit_state_from_nodes(client, hello_project):
-    graph = client.get("/api/projects/hello/graph").json()
+    graph = client.get(f"/api/projects/{hello_project}/graph").json()
 
     assert [n["state"]["key"] for n in graph["nodes"]] == ["Hello"]
     assert graph["nodes"][0]["is_start"] is True
@@ -19,7 +19,7 @@ def test_graph_excludes_the_reserved_implicit_state_from_nodes(client, hello_pro
 def test_graph_includes_an_edge_from_the_reserved_state_for_init_action(client, hello_project):
     """The init-action edge has no real source state, unlike edges
     between two real states."""
-    graph = client.get("/api/projects/hello/graph").json()
+    graph = client.get(f"/api/projects/{hello_project}/graph").json()
 
     init_edges = [e for e in graph["edges"] if e.get("source") in ("", None)]
     assert len(init_edges) == 1

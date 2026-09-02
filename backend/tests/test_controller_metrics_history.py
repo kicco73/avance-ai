@@ -17,7 +17,7 @@ def test_metrics_history_spans_every_session_chronologically(client, app_db, hel
         newer = client.post("/api/chat/sessions").json()
         client.post(f"/api/chat/sessions/{newer['id']}/messages", json={"message": "hello again"})
 
-    response = client.get("/api/projects/hello/users/alice/metrics-history")
+    response = client.get(f"/api/projects/{hello_project}/users/alice/metrics-history")
 
     assert response.status_code == 200
     body = response.json()
@@ -38,8 +38,8 @@ def test_metrics_history_is_scoped_to_the_given_user_and_project(client, app_db,
         session = client.get("/api/chat/session").json()
         client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})
 
-    alice_body = client.get("/api/projects/hello/users/alice/metrics-history").json()
-    carol_body = client.get("/api/projects/hello/users/carol/metrics-history").json()
+    alice_body = client.get(f"/api/projects/{hello_project}/users/alice/metrics-history").json()
+    carol_body = client.get(f"/api/projects/{hello_project}/users/carol/metrics-history").json()
 
     assert len(alice_body["metrics"]) == 1
     assert len(carol_body["metrics"]) == 1
@@ -53,7 +53,7 @@ def test_metrics_history_includes_one_session_start_per_session(client, app_db, 
         client.post(f"/api/chat/sessions/{older['id']}/messages", json={"message": "hi"})
         client.post("/api/chat/sessions")
 
-    body = client.get("/api/projects/hello/users/alice/metrics-history").json()
+    body = client.get(f"/api/projects/{hello_project}/users/alice/metrics-history").json()
 
     assert len(body["session_starts"]) == 2
     assert body["session_starts"][0]["timestamp"] <= body["session_starts"][1]["timestamp"]

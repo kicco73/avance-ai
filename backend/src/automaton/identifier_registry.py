@@ -35,7 +35,16 @@ class IdentifierRegistry:
         "send_mail": "Sends an email — e.g. actuator.send_mail(user.email, 'Some **markdown** body').",
         "celebrate": "Plays a confetti animation in the frontend — e.g. actuator.celebrate().",
         "notify": "Shows a toast in the frontend — e.g. actuator.notify('Nice!', 'You reached **state B**.'). `body_md` is markdown.",
-        "defer": "Runs another actuator call later, at a given time — e.g. actuator.defer(when, lambda: actuator.send_mail(user.email, 'Reminder')).",
+        "defer": "Runs another actuator call later, at a given time — e.g. actuator.defer(lambda: actuator.send_mail(user.email, 'Reminder'), when).",
+    }
+
+    DATETIME: dict[str, str] = {
+        "datetime": "Builds a specific date and time — e.g. datetime.datetime(2026, 1, 1, 9, 0, tzinfo=datetime.timezone.utc). Mainly used as actuator.defer's own `when` argument, which must be timezone-aware.",
+        "timedelta": "A duration, for offsetting a datetime — e.g. datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1).",
+    }
+
+    DATETIME_TIMEZONE: dict[str, str] = {
+        "utc": "The UTC timezone — pass as tzinfo to build a timezone-aware datetime, e.g. datetime.datetime(2026, 1, 1, 9, 0, tzinfo=datetime.timezone.utc).",
     }
 
     # Every User field (db/models.py) except id — see
@@ -85,4 +94,6 @@ class IdentifierRegistry:
             "source": dict(cls.SOURCE),
             "actuator": dict(cls.ACTUATOR),
             "metric": dict(cls.METRIC),
+            "datetime": dict(cls.DATETIME),
+            "datetime.timezone": dict(cls.DATETIME_TIMEZONE),
         }

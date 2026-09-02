@@ -51,6 +51,7 @@ the file format.
 | `signals` | no | mapping (name → signal) | `{}` | Numeric values the model estimates from the conversation each turn. See §4. |
 | `general-prompt` | no | string | `""` | Appended to every state's `contextual-prompt` when building the system prompt for a normal chat reply (never for a `fixed-message` state, and used *alone*, without the state's own prompt, when generating an `action-prompt` reply — see §6.3). |
 | `attachments` | no | list of filenames | `[]` | Global attachments, sent with **every** model call that also sends `general-prompt` (i.e. every normal chat turn and every `action-prompt`). See §7. |
+| `env` | no | mapping (name → fields) | `{}` | Declares every `env.<name>` this project's triggers/env expressions may reference. An action's own `env:` field (§6.4) can only **update** a key declared here — it can't invent one. See §6.4. |
 | `project` | no | mapping | — | Project identity/display metadata, and the auto-tracking mode toggle. See §2.1. |
 
 Any other top-level key is ignored (not an error).
@@ -230,7 +231,7 @@ Each entry:
 | `name` | **yes** | string | — | Identifier for this action — what `POST /api/chat/sessions/{session_id}/action` (`action_name`) and `POST /api/triggers/preview`'s response reference. |
 | `target` | no | string | this action's **own state's key** | The destination state. Omitting it (or setting it explicitly to the current state) is a **self-loop**: the conversation stays in the same state, only the action's own effects (transition logged, `action-prompt` reply if any) happen. Must name a real key under `states:` (or the current state itself). |
 | `trigger` | no | string (expression) | `None` | A boolean expression over signal/metric names — see §6.2. Absent means **manual-only**: reachable only via `POST /api/chat/sessions/{session_id}/action`, never fired by auto-tracking. |
-| `action-prompt` | no | string | `None` | An instruction sent to the model **as if it were the user's own message**, to produce an immediate reaction to this action firing — see §6.3. |
+| `action-prompt` | no | string | `None` | **Deprecated for automatic generation — see §6.3.** An instruction sent to the model **as if it were the user's own message**, to produce an immediate reaction to this action firing. |
 | `on-enter` | no | string | `None` | One or more `actuator.<name>(...)` calls, one per line — a side effect of the action firing, same timing as `env:` — see §6.5. A property of the action firing, not of its destination state: two different actions landing on the same state can each carry their own value (or none) — a state reached one way might celebrate, reached another way might not. |
 | `env` | no | mapping of key -> expression | `None` | Updates the project's own environment memory when this action fires (manually or via a trigger) — see §6.4. |
 | `ui-label` | no | string | `name` (also used if `ui-label` is present but empty) | Shown in the frontend. |
@@ -253,6 +254,23 @@ further for that turn, even if they'd also be `true` (FIFO priority).
 `POST /api/triggers/preview` reports every triggerable action's own
 result regardless, for inspection, without ever applying a transition.
 
+**When to leave an action manual-only.** A `trigger` exists so
+auto-tracking can detect, from the conversation's content, that a
+transition should happen — it's for reading something the user never
+explicitly stated, only implied (e.g. `signal.mood >= 70`). A
+**deterministic** action — one that should fire only because the user
+explicitly chose it, not because the model inferred it from anything
+said — should have **no `trigger`** and should **not** need a `signal`
+declared to drive it. Leave it manual-only: reachable only via
+`POST /api/chat/sessions/{session_id}/action`, which the frontend renders
+as a button in the manual-action bar. This is simpler on every axis —
+fewer signals for the model to estimate correctly every turn, one less
+trigger for auto-tracking to evaluate every pass, and a UI where a
+deterministic choice reads as a button the user picks, never as
+something the system might read wrong. Reserve `signal`/`trigger` for
+transitions that genuinely depend on interpreting what the user said,
+not on what they explicitly asked for.
+
 ### 6.2 Trigger expressions
 
 A boolean-ish expression evaluated with
@@ -269,16 +287,17 @@ session.number_of_user_sessions() >= 3 and system.time() > "18:00:00"
 user.role == "admin"
 ```
 
-Six reserved namespaces, each resolving to a dict-or-proxy object:
+Seven reserved namespaces, each resolving to a dict-or-proxy object:
 
 | Namespace | Resolves to | Access |
 | --- | --- | --- |
 | `signal.<name>` | A signal declared in this project's own `signals:` | attribute (a value, or `None` before it's ever been computed) |
-| `env.<name>` | A key set by **some action's own** `env:` field, anywhere in this project (§6.4) — never a model-reported free-form value | attribute |
+| `env.<name>` | A key **declared** in this project's own top-level `env:` section (§6.4) — never a model-reported free-form value | attribute |
 | `system.<name>` | An engine fact independent of any user/session (`today`, `time`) | **call** — `system.today()`, not `system.today` |
 | `session.<name>` | An engine fact about the current user+project's own session/transition history (`current_session_duration_in_minutes`, `last_user_session_datetime`, `number_of_user_sessions`, `state_duration_in_minutes`) | **call** — `session.number_of_user_sessions()`, not the bare attribute |
 | `user.<name>` | A field of the current user's own account (`email`, `name`, `picture_url`, `provider`, `provider_user_id`, `created_at`, `last_login`, `active_project`, `role`) | attribute — same as `env.<name>`, never called |
 | `source.<name>(...)` | A **data source** — see below | **call**, with its own arguments |
+| `datetime.<name>` | Python's own `datetime`/`timedelta`/`timezone` — narrowed to just those three, mainly for building `actuator.defer`'s own `when` argument (§6.5) | call, e.g. `datetime.datetime(2026, 1, 1, 9, 0, tzinfo=datetime.timezone.utc)`, `datetime.timedelta(days=1)` |
 
 A **bare** (unnamespaced) name is only ever a core metric (§3) — nothing
 else may appear unnamespaced anymore. `actuator.<name>(...)` is a
@@ -326,6 +345,17 @@ logged and also treated as `false` — a trigger can never crash a turn.
 
 ### 6.3 `action-prompt`
 
+**Deprecated — never emitted by automatic generation.** An automated
+system building or editing `index.yml` (the AI-assisted generator, or
+any other automatic project-authoring tool) must not use `action-prompt`.
+Whatever instruction it would have carried belongs instead in
+`general-prompt` (§2), if it should apply everywhere, or in the
+relevant state's own `contextual-prompt` (§5), if it's specific to that
+state — both already reach the model on every normal turn, without the
+extra model call `action-prompt` costs. Existing projects that already
+declare it keep working exactly as described below; the field just isn't
+one to generate into a new or edited project.
+
 When an action with `action-prompt` fires (manually or via a trigger),
 the engine makes one extra model call **before** anything else that turn
 (a normal reply, or the destination state's own opening message) would
@@ -357,27 +387,63 @@ never rendered into any prompt.
 
 An action's own `env:` field updates a **separate**, deterministic part
 of this memory — the `env.<name>` namespace §6.2's trigger expressions
-themselves read from — as a **side effect of the action firing**
-(manually or via its `trigger`). Each entry is `key: expression`,
-evaluated with the exact same namespaced scope/mechanics as `trigger`
-(§6.2: `signal.`/`env.`/`system.`/`session.`/`user.`/`source.`, plus any
-bare metric name), just without the boolean cast — a result can be any simple value
-(string, number, bool, `None`, ...), not only true/false:
+themselves read from. That namespace's own valid-name set is fixed
+**only** by the project's top-level `env:` section (§2) — every key an
+action's `env:` field, another project's `automaton.<id>.env.<key>`, or
+a trigger's own `env.<name>` might reference must be declared there
+first:
 
 ```yaml
 env:
-  reset_counter: True
-  number_of_steps: env.number_of_steps + 1
+  reset_counter:
+    ui-description: "Whether the counter was just reset."
+    value: "False"
+  number_of_steps:
+    value: "0"
 ```
 
-Self-referencing a key this same `env:` mapping also sets (as above) is
-this field's own common case — and build-time validation allows it
-because `env.<name>`'s own valid-name set is collected **project-wide**,
-across every action's own declared `env:` keys, before any expression is
-checked (§6.2) — so a key declared anywhere (including by the very
-action referencing it) is always a legitimate `env.<name>` reference.
-`env:` gets the **exact same** build-time validation `trigger` does —
-both syntax *and* unknown-name checks.
+`value:` is that key's **default** — applied once, top-to-bottom in
+declaration order, the first time a project's session opens (so a later
+default may reference an earlier key's own, e.g. `env.reset_counter`,
+but never a key declared further down or itself). An action's own
+`env:` field can only **update** a key already declared here — never
+invent a new one; writing to an undeclared key fails build-time
+validation ("declare it there first").
+
+Declaring a key here only makes it a legitimate `env.<name>` reference
+and gives it a default — it does **not** by itself update that key on
+any given turn. Each entry in an action's own `env:` field is `key:
+expression`, evaluated with the exact same namespaced scope/mechanics as
+`trigger` (§6.2: `signal.`/`env.`/`system.`/`session.`/`user.`/
+`source.`, plus any bare metric name), just without the boolean cast —
+a result can be any simple value (string, number, bool, `None`, ...),
+not only true/false:
+
+```yaml
+    actions:
+      - name: advance
+        target: b
+        trigger: "signal.mood >= 70"
+        env:
+          reset_counter: True
+          number_of_steps: env.number_of_steps + 1
+```
+
+Self-referencing a key this same `env:` mapping also writes to (as
+`number_of_steps` does above) is this field's own common case, and
+always valid regardless of write order within the mapping — it reads
+whatever that key's own last stored value was *before* this action fired.
+
+This write only ever happens as a **side effect of the action actually
+firing** — manually (its `trigger`, if any, is never evaluated for a
+manual call — §6.1), or, for a triggered action, at the exact moment
+auto-tracking picks it because its own `trigger` just evaluated `true`
+(§6.1, §6.2). Merely *having* a `trigger` that references a value, or a
+turn where that `trigger` stays `false`, never updates `env:` on its
+own — an action's `env:` is not a continuously-applied rule, it runs
+exactly once, exactly when that one action fires. `env:` gets the
+**exact same** build-time validation `trigger` does — both syntax *and*
+unknown-name checks.
 
 At evaluation time, a failure (an `env.<name>` reference that's a
 recognized name but has no value yet, or a runtime error like division
@@ -420,7 +486,7 @@ on-enter: |
 **Actuators** (`actuator.<name>(...)`) are code-defined "plugins", same
 shape as data sources (§6.2) — each one is its own Python method
 (`backend/src/tracking/actuators/`), not something a project declares
-in YAML. Three exist today:
+in YAML. Four exist today:
 
 - `actuator.celebrate()` and `actuator.notify(title, body_md)` (`body_md`
   is markdown) each compile straight to the frontend's own
@@ -433,6 +499,14 @@ in YAML. Three exist today:
 - `actuator.send_mail(to, body_md)` queues an email onto the system's
   own job queue — fire-and-forget, never awaited by the turn that
   triggered it — with no frontend-visible effect at all.
+- `actuator.defer(act, when)` schedules another actuator call to run
+  later, at `when` — a **timezone-aware** `datetime.datetime` (§6.2), e.g.
+  `datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)`.
+  `act` is a zero-argument lambda wrapping the actual call, e.g.
+  `actuator.defer(lambda: actuator.send_mail(user.email, 'Reminder'), when)`
+  — everything inside that lambda is validated exactly like a top-level
+  `on-enter:` call (arity included), but only actually runs, server-side,
+  once `when` arrives.
 
 Every call's own return value (if any) becomes wire-ready JS the
 frontend runs verbatim; a call with nothing to tunnel (`send_mail`)
@@ -507,8 +581,8 @@ how you're likely to hit them:
   key (or is omitted/self-referential for a self-loop).
 - Every action's `trigger`, if given, is syntactically valid and every
   reference resolves: `signal.<name>` to a declared signal, `env.<name>`
-  to a key some action's own `env:` declares somewhere in the project,
-  `system.<name>`/`session.<name>` to one of the fixed proxy methods,
+  to a key declared in the project's own top-level `env:` section (§2,
+  §6.4), `system.<name>`/`session.<name>` to one of the fixed proxy methods,
   `user.<name>` to one of the fixed user fields, `source.<name>` to one
   of the fixed data sources (§6.2), and a bare name to a reserved metric name.
 - Every action's `env`, if given, is a mapping, and each of its

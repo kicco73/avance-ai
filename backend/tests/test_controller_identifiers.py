@@ -5,6 +5,8 @@ import zipfile
 
 import pytest
 
+from conftest import parse_sse_result
+
 pytestmark = pytest.mark.regression
 
 PROJECT = """
@@ -42,16 +44,21 @@ def _zip_of(yaml_text: str) -> bytes:
     return buffer.getvalue()
 
 
-def _upload_and_activate(client, name: str, yaml_text: str):
+def _upload_and_activate(client, name: str, yaml_text: str) -> str:
+    """Returns the project's actual name — put_project derives it from
+    the upload's own project.id/project.ui-label when declared, so it
+    need not match `name`, the fallback used only when neither is."""
     response = client.put(
         f"/api/projects/{name}", content=_zip_of(yaml_text), headers={"Content-Type": "application/zip"}
     )
     assert response.status_code == 200, response.text
-    response = client.put(f"/api/projects/{name}/activate")
+    project_name = parse_sse_result(response)["project_name"]
+    response = client.put(f"/api/projects/{project_name}/activate")
     assert response.status_code == 200, response.text
     # get_active_automaton_and_state requires a published revision.
-    response = client.post(f"/api/projects/{name}/publish", json={})
+    response = client.post(f"/api/projects/{project_name}/publish", json={})
     assert response.status_code == 200, response.text
+    return project_name
 
 
 def test_returns_one_dict_per_namespace_for_the_active_project(client):
@@ -64,6 +71,7 @@ def test_returns_one_dict_per_namespace_for_the_active_project(client):
     # "automaton" is always present, even empty with no other project.
     assert set(body) == {
         "signal", "env", "system", "session", "session.metric", "user", "source", "actuator", "metric", "automaton",
+        "datetime", "datetime.timezone",
     }
     assert body["automaton"] == {}
     assert body["signal"] == {"myOwnSignal": "whatever this measures"}
@@ -121,7 +129,7 @@ states:
 
 
 def test_automaton_namespace_lists_every_other_project_never_the_active_one(client):
-    _upload_and_activate(client, "other-proj", OTHER_PROJECT)
+    other_name = _upload_and_activate(client, "other-proj", OTHER_PROJECT)
     _upload_and_activate(client, "identifiers-proj", PROJECT)  # re-activates identifiers-proj
 
     response = client.get("/api/projects/identifiers-proj/identifiers")
@@ -130,5 +138,5 @@ def test_automaton_namespace_lists_every_other_project_never_the_active_one(clie
     body = response.json()
     assert body["automaton"] == {}
     assert "automaton.identifiers-proj" not in body  # never declared a project.id at all
-    assert body["automaton.other_proj"] == {"state": "The 'other-proj' project's own current state."}
+    assert body["automaton.other_proj"] == {"state": f"The '{other_name}' project's own current state."}
     assert body["automaton.other_proj.env"] == {"budget": "Remaining shared budget."}

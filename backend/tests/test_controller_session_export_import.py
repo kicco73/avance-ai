@@ -14,17 +14,17 @@ from session import Session
 pytestmark = pytest.mark.contract
 
 
-def _import_transcript(client, text="user: hi there\nassistant: hello, world!\n", title="transcript.txt"):
+def _import_transcript(client, project, text="user: hi there\nassistant: hello, world!\n", title="transcript.txt"):
     response = client.post(
-        "/api/projects/hello/sessions/import", files=[("files", (title, text, "text/plain"))]
+        f"/api/projects/{project}/sessions/import", files=[("files", (title, text, "text/plain"))]
     )
     assert response.status_code == 200, response.text
     return parse_sse_result(response)["last_session_id"]
 
 
-def _import_json(client, sessions: list[dict], filename="sessions.json"):
+def _import_json(client, project, sessions: list[dict], filename="sessions.json"):
     response = client.post(
-        "/api/projects/hello/sessions/import", files=[("files", (filename, json.dumps(sessions), "application/json"))]
+        f"/api/projects/{project}/sessions/import", files=[("files", (filename, json.dumps(sessions), "application/json"))]
     )
     assert response.status_code == 200, response.text
     return parse_sse_result(response)
@@ -36,7 +36,7 @@ def _messages(client, session_id):
 
 @pytest.mark.regression
 def test_export_sessions_is_empty_for_a_project_with_no_sessions(client, hello_project):
-    response = client.get("/api/projects/hello/sessions/export")
+    response = client.get(f"/api/projects/{hello_project}/sessions/export")
     assert response.status_code == 200
     assert response.json() == []
 
@@ -46,9 +46,9 @@ def test_export_sessions_includes_native_sessions_alongside_imported_ones(client
     """Export must include every session of the project — native (live
     chat) and imported alike, not just the imported ones."""
     native_session = client.get("/api/chat/session").json()
-    _import_transcript(client)
+    _import_transcript(client, hello_project)
 
-    response = client.get("/api/projects/hello/sessions/export")
+    response = client.get(f"/api/projects/{hello_project}/sessions/export")
     assert response.status_code == 200
     exported = response.json()
 
@@ -59,7 +59,7 @@ def test_export_sessions_includes_native_sessions_alongside_imported_ones(client
 
 @pytest.mark.regression
 def test_export_sessions_reflects_an_imported_session_and_its_annotations(client, hello_project):
-    session_id = _import_transcript(client)
+    session_id = _import_transcript(client, hello_project)
     user_message_id = _messages(client, session_id)[0]["id"]
     client.put(f"/api/chat/messages/{user_message_id}/expected-state", json={"expected_state": "Hello"})
     client.put(f"/api/chat/messages/{user_message_id}/comment", json={"comment": "worth reviewing"})
@@ -67,7 +67,7 @@ def test_export_sessions_reflects_an_imported_session_and_its_annotations(client
     client.put(f"/api/chat/sessions/{session_id}/comment", json={"comment": "session-wide note"})
     client.put(f"/api/chat/sessions/{session_id}/labeled", json={"labeled": True})
 
-    response = client.get("/api/projects/hello/sessions/export")
+    response = client.get(f"/api/projects/{hello_project}/sessions/export")
     assert response.status_code == 200
     [exported] = response.json()
 
@@ -85,17 +85,17 @@ def test_export_sessions_reflects_an_imported_session_and_its_annotations(client
 
 @pytest.mark.regression
 def test_import_json_round_trips_an_exported_session_exactly(client, hello_project):
-    session_id = _import_transcript(client)
+    session_id = _import_transcript(client, hello_project)
     user_message_id = _messages(client, session_id)[0]["id"]
     client.put(f"/api/chat/messages/{user_message_id}/expected-state", json={"expected_state": "Hello"})
     client.put(f"/api/chat/sessions/{session_id}/title", json={"title": "Original"})
-    [exported] = client.get("/api/projects/hello/sessions/export").json()
+    [exported] = client.get(f"/api/projects/{hello_project}/sessions/export").json()
 
-    result = _import_json(client, [exported])
+    result = _import_json(client, hello_project, [exported])
     assert result["results"] == [{"file": "Original", "ok": True, "session_id": result["last_session_id"]}]
     assert result["last_session_id"] != session_id
 
-    [_, reimported] = client.get("/api/projects/hello/sessions/export").json()
+    [_, reimported] = client.get(f"/api/projects/{hello_project}/sessions/export").json()
     assert reimported["name"] == "Original"
     assert reimported["messages"] == exported["messages"]
 
@@ -113,15 +113,15 @@ def test_reimporting_the_same_export_twice_for_the_same_user_is_a_no_op_the_seco
         "comment": None,
         "messages": [{"role": "user", "text": "hi", "timestamp": "2026-01-01T10:00:00+00:00"}],
     }
-    first = _import_json(client, [payload])
+    first = _import_json(client, hello_project, [payload])
     assert first["results"] == [{"file": "Real session", "ok": True, "session_id": first["last_session_id"]}]
 
-    second = _import_json(client, [payload])
+    second = _import_json(client, hello_project, [payload])
     assert second["results"][0]["ok"] is False
     assert second["last_session_id"] is None
 
     Session().user = "User 1"
-    sessions = client.get("/api/projects/hello/sessions?include_imported=true").json()
+    sessions = client.get(f"/api/projects/{hello_project}/sessions?include_imported=true").json()
     assert len(sessions) == 1
 
 
@@ -146,18 +146,18 @@ def test_import_json_restores_a_native_looking_session_with_real_timestamps(clie
         ],
     }
 
-    result = _import_json(client, [payload])
+    result = _import_json(client, hello_project, [payload])
     session_id = result["last_session_id"]
 
     Session().user = "User 1"
-    [exported] = client.get("/api/projects/hello/sessions/export").json()
+    [exported] = client.get(f"/api/projects/{hello_project}/sessions/export").json()
     assert exported["timestamp"] == "2026-01-01T10:00:00+00:00"
     assert exported["start_state"] == "Hello"
     assert exported["end_state"] == "Hello"
     assert exported["messages"][1]["values"] == {"mood": 0.5}
     assert exported["messages"][1]["new_state"] == "Hello"
 
-    sessions = {s["id"]: s for s in client.get("/api/projects/hello/sessions?include_imported=true").json()}
+    sessions = {s["id"]: s for s in client.get(f"/api/projects/{hello_project}/sessions?include_imported=true").json()}
     assert sessions[session_id]["type"] == "imported"
 
 
@@ -167,7 +167,7 @@ def test_import_json_handles_a_mixed_batch_of_files(client, hello_project):
     session) uploaded together in a single request — the bad session is
     skipped without aborting either the rest of the array or the batch."""
     response = client.post(
-        "/api/projects/hello/sessions/import",
+        f"/api/projects/{hello_project}/sessions/import",
         files=[
             ("files", ("t.txt", "user: hi\nassistant: yo\n", "text/plain")),
             ("files", ("more.json", json.dumps([
@@ -184,7 +184,7 @@ def test_import_json_handles_a_mixed_batch_of_files(client, hello_project):
     assert len(body["results"]) == 3
 
     Session().user = "User 1"
-    sessions = client.get("/api/projects/hello/sessions?include_imported=true").json()
+    sessions = client.get(f"/api/projects/{hello_project}/sessions?include_imported=true").json()
     titles = {s["title"] for s in sessions}
     assert "t.txt" in titles
     assert "Good one" in titles
@@ -201,9 +201,9 @@ def test_export_omits_tokens_when_unknown_but_includes_it_when_known(client, hel
         ],
     }
 
-    _import_json(client, [payload])
+    _import_json(client, hello_project, [payload])
     Session().user = "User 1"
-    [exported] = client.get("/api/projects/hello/sessions/export").json()
+    [exported] = client.get(f"/api/projects/{hello_project}/sessions/export").json()
 
     assert exported["messages"][0]["tokens"] == 42
     assert "tokens" not in exported["messages"][1]
@@ -232,11 +232,11 @@ def test_import_json_round_trips_closed_at_close_reason_and_origin(client, hello
         ],
     }
 
-    result = _import_json(client, [payload])
+    result = _import_json(client, hello_project, [payload])
     assert result["results"][0]["ok"] is True
 
     Session().user = "User 1"
-    [exported] = client.get("/api/projects/hello/sessions/export").json()
+    [exported] = client.get(f"/api/projects/{hello_project}/sessions/export").json()
 
     assert exported["closed_at"] == "2026-01-01T10:05:00+00:00"
     assert exported["close_reason"] == "manual-user"
@@ -254,10 +254,10 @@ def test_import_json_defaults_closed_at_close_reason_and_origin_to_none_when_abs
         ],
     }
 
-    _import_json(client, [payload])
+    _import_json(client, hello_project, [payload])
 
     Session().user = "User 1"
-    [exported] = client.get("/api/projects/hello/sessions/export").json()
+    [exported] = client.get(f"/api/projects/{hello_project}/sessions/export").json()
 
     assert exported["closed_at"] is None
     assert exported["close_reason"] is None
@@ -266,7 +266,7 @@ def test_import_json_defaults_closed_at_close_reason_and_origin_to_none_when_abs
 
 @pytest.mark.contract
 def test_import_json_rejects_a_malformed_message(client, hello_project):
-    result = _import_json(client, [{"name": "bad", "messages": [{"role": "user"}]}])  # missing required 'text'
+    result = _import_json(client, hello_project, [{"name": "bad", "messages": [{"role": "user"}]}])  # missing required 'text'
     assert result["results"] == [{"file": "bad", "ok": False, "error": result["results"][0]["error"]}]
     assert "text" in result["results"][0]["error"]
     assert result["last_session_id"] is None

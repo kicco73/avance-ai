@@ -30,7 +30,7 @@ def test_live_actuator_set_defer_runs_the_callable_once_due():
     actuator = LiveActuatorSet(notification_service=None, scheduled_job_queue=scheduled_queue)
     ran = threading.Event()
 
-    result = actuator.defer(datetime.now(timezone.utc) - timedelta(seconds=1), ran.set)
+    result = actuator.defer(ran.set, datetime.now(timezone.utc) - timedelta(seconds=1))
 
     assert result is None
     assert _wait_until(ran.is_set)
@@ -40,7 +40,7 @@ def test_fake_actuator_set_defer_never_schedules_anything():
     actuator = FakeActuatorSet()
     ran = threading.Event()
 
-    result = actuator.defer(datetime.now(timezone.utc), ran.set)
+    result = actuator.defer(ran.set, datetime.now(timezone.utc))
 
     assert not ran.is_set()
     assert result is not None and "defer" in result

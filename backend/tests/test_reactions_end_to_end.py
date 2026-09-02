@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import parse_chat_turn_sse
+from conftest import parse_chat_turn_sse, parse_sse_result
 
 pytestmark = pytest.mark.contract
 
@@ -45,9 +45,10 @@ def reactions_project(client):
         headers={"Content-Type": "application/x-yaml"},
     )
     assert response.status_code == 200, response.text
-    assert client.put("/api/projects/reactions-demo/activate").status_code == 200
-    assert client.post("/api/projects/reactions-demo/publish", json={}).status_code == 200
-    return "reactions-demo"
+    project_name = parse_sse_result(response)["project_name"]
+    assert client.put(f"/api/projects/{project_name}/activate").status_code == 200
+    assert client.post(f"/api/projects/{project_name}/publish", json={}).status_code == 200
+    return project_name
 
 
 def test_get_state_carries_the_reactions_vocabulary(client, reactions_project):
@@ -139,9 +140,10 @@ def no_reactions_project(client):
         headers={"Content-Type": "application/x-yaml"},
     )
     assert response.status_code == 200, response.text
-    assert client.put("/api/projects/no-reactions-demo/activate").status_code == 200
-    assert client.post("/api/projects/no-reactions-demo/publish", json={}).status_code == 200
-    return "no-reactions-demo"
+    project_name = parse_sse_result(response)["project_name"]
+    assert client.put(f"/api/projects/{project_name}/activate").status_code == 200
+    assert client.post(f"/api/projects/{project_name}/publish", json={}).status_code == 200
+    return project_name
 
 
 def test_a_states_reactions_enabled_has_no_effect_without_a_declared_reactions_section(

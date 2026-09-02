@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import io
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -10,20 +12,41 @@ from session import Session
 pytestmark = pytest.mark.regression
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples" / "projects"
+MINIMAL_YML = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
+
+
+def _build_zip(files: dict[str, bytes]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        for name, content in files.items():
+            zf.writestr(name, content)
+    return buffer.getvalue()
 
 
 def _upload(client, name, sample):
+    """Returns the project's actual name — put_project derives it from
+    the upload's own project.id/project.ui-label when declared, so it
+    need not match `name`, the fallback used only when neither is."""
     content = (SAMPLES_DIR / sample).read_bytes()
     response = client.put(f"/api/projects/{name}", content=content, headers={"Content-Type": "application/zip"})
     assert response.status_code == 200, response.text
+    return parse_sse_result(response)["project_name"]
 
 
 def test_put_project_returns_a_success_payload(client):
     """The response body must reflect the created project, not be null."""
+    response = client.put(
+        "/api/projects/proj", content=MINIMAL_YML.encode(), headers={"Content-Type": "application/x-yaml"},
+    )
+    assert response.status_code == 200, response.text
+    assert parse_sse_result(response) == {"success": True, "project_name": "proj"}
+
+
+def test_put_project_uses_the_declared_ui_label_over_the_url_name(client):
     content = (SAMPLES_DIR / "Hello world.zip").read_bytes()
     response = client.put("/api/projects/proj", content=content, headers={"Content-Type": "application/zip"})
     assert response.status_code == 200, response.text
-    assert parse_sse_result(response) == {"success": True, "project_name": "proj"}
+    assert parse_sse_result(response) == {"success": True, "project_name": "Hello, world!"}
 
 
 def test_fresh_install_has_no_active_project(client):
@@ -52,12 +75,12 @@ def test_state_reports_the_configured_total_token_budget_per_session(client):
 
 def test_deleting_the_active_project_falls_back_to_a_remaining_one(client):
     """Whatever's left after deleting the active project becomes active."""
-    _upload(client, "hello", "Hello world.zip")
+    hello = _upload(client, "hello", "Hello world.zip")
     _upload(client, "cat", "Aprendr català.zip")
     client.post("/api/projects/cat/publish", json={})
-    client.put("/api/projects/hello/activate")
+    client.put(f"/api/projects/{hello}/activate")
 
-    response = client.delete("/api/projects/hello")
+    response = client.delete(f"/api/projects/{hello}")
     assert response.status_code == 200
 
     projects = client.get("/api/projects").json()
@@ -69,10 +92,10 @@ def test_deleting_the_active_project_falls_back_to_a_remaining_one(client):
 
 
 def test_deleting_the_last_project_does_not_crash(client):
-    _upload(client, "hello", "Hello world.zip")
-    client.put("/api/projects/hello/activate")
+    hello = _upload(client, "hello", "Hello world.zip")
+    client.put(f"/api/projects/{hello}/activate")
 
-    response = client.delete("/api/projects/hello")
+    response = client.delete(f"/api/projects/{hello}")
     assert response.status_code == 200
 
     # GET /api/state must degrade gracefully with no active project left.
@@ -87,15 +110,15 @@ def test_deleting_the_last_project_does_not_crash(client):
 def test_default_project_can_be_deleted(client):
     """"default" is just a name, like any other — not specially protected
     from deletion."""
-    _upload(client, "default", "Hello world.zip")
+    response = client.put(
+        "/api/projects/default", content=MINIMAL_YML.encode(), headers={"Content-Type": "application/x-yaml"},
+    )
+    assert response.status_code == 200, response.text
 
     response = client.delete("/api/projects/default")
 
     assert response.status_code == 200
     assert client.get("/api/projects").json()["projects"] == []
-
-
-MINIMAL_YML = "init-action:\n  target: a\nstates:\n  a:\n    contextual-prompt: hi\n"
 
 
 def test_uploading_a_bare_yaml_file_creates_a_single_file_project(client):
@@ -109,6 +132,32 @@ def test_uploading_a_bare_yaml_file_creates_a_single_file_project(client):
     assert response.status_code == 200, response.text
     body = client.get("/api/projects/bare/files/index.yml").json()
     assert body["content"] == MINIMAL_YML
+
+
+def test_an_image_aspect_asset_keeps_its_content_type_across_an_export_reimport_round_trip(client):
+    """GET /api/projects/{name} (download) is documented to round-trip
+    back through PUT with no transformation — an image asset's own
+    content_type must survive that too, not just its bytes (regression:
+    _persist_new_project used to resolve every re-imported file's
+    content_type through the text-only extension map, silently
+    mislabeling every image asset, SVG included, on re-upload)."""
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg"><circle r="1"/></svg>'
+    zip_bytes = _build_zip({"index.yml": MINIMAL_YML.encode(), "aspect/icon.svg": svg})
+
+    first = client.put("/api/projects/proj", content=zip_bytes, headers={"Content-Type": "application/zip"})
+    assert first.status_code == 200, first.text
+    name = parse_sse_result(first)["project_name"]
+    before = client.get(f"/api/projects/{name}/files/aspect/icon.svg").json()
+    assert before["content_type"] == "image/svg+xml"
+
+    downloaded = client.get(f"/api/projects/{name}")
+    assert downloaded.status_code == 200, downloaded.text
+
+    reimport = client.put("/api/projects/proj2", content=downloaded.content, headers={"Content-Type": "application/zip"})
+    assert reimport.status_code == 200, reimport.text
+    reimported_name = parse_sse_result(reimport)["project_name"]
+    after = client.get(f"/api/projects/{reimported_name}/files/aspect/icon.svg").json()
+    assert after["content_type"] == "image/svg+xml"
 
 
 def test_uploading_a_project_activates_it_automatically(client):
@@ -168,14 +217,14 @@ class TestGetProjectsAsUser:
         assert client.get("/api/projects").json()["projects"] == []
 
     def test_sees_only_a_project_they_have_access_to(self, app_db, client):
-        _upload(client, "hello", "Hello world.zip")
+        hello = _upload(client, "hello", "Hello world.zip")
         _upload(client, "cat", "Aprendr català.zip")
-        app_db.record_terms_acceptance(Session().user, "hello", archive_id=None)
+        app_db.record_terms_acceptance(Session().user, hello, archive_id=None)
         Session().role = "user"
 
         projects = client.get("/api/projects").json()["projects"]
 
-        assert [p["name"] for p in projects] == ["hello"]
+        assert [p["name"] for p in projects] == [hello]
 
 
 def test_new_project_de_duplicates_the_name_on_repeat_calls(client):

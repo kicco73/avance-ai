@@ -21,8 +21,8 @@ from tracking.session_import import SessionImportManager
 from .inspector import ProjectInspector
 from .archive.automaton_loader import AutomatonLoader
 from .archive.layout import (
-    ArchiveLayout, IMAGE_EXTENSIONS, LEGAL_TERMS_FILE_NAME, SESSIONS_EXPORT_FILENAME, TESTS_EXPORT_FILENAME,
-    TEXT_CONTENT_TYPE_BY_EXTENSION,
+    ArchiveLayout, IMAGE_CONTENT_TYPE_BY_EXTENSION, IMAGE_EXTENSIONS, LEGAL_TERMS_FILE_NAME,
+    SESSIONS_EXPORT_FILENAME, TESTS_EXPORT_FILENAME, TEXT_CONTENT_TYPE_BY_EXTENSION,
 )
 from .archive.zip_importer import ZipImporter
 from .project_import_bundle_job import ProjectImportBundleJob
@@ -418,24 +418,47 @@ class ProjectManager:
     async def put_project(
         self, project_name: str, content: bytes, content_type: str | None, commit: CommitCallback
     ) -> tuple[dict, ProjectImportBundleJob]:
-        """Creates or replaces `project_name` from a raw body — a zip
-        archive, or a single bare YAML file treated as index.yml's own
-        content with no attachments. Extract -> validate -> persist ->
-        commit happen here, synchronously (the last one needs the chat
-        lock, which only ever runs safely on the caller's own event loop).
-        The bundled sessions.json/tests.json, if any, are returned as
-        an unprepared ProjectImportBundleJob instead of imported inline —
-        one entry at a time, so a large re-import reports real progress
-        instead of blocking. The caller decides what to do with it: submit
-        it to the real job queue (SettingsController.put_project), or just
+        """Creates a project from a raw body — a zip archive, or a single
+        bare YAML file treated as index.yml's own content with no
+        attachments. `project_name` is only the fallback candidate: the
+        upload's own project.id wins if declared, else its
+        project.ui-label, else this fallback — whichever one is actually
+        used, a clash with an existing project is never rejected, just
+        suffixed " 2", " 3", ... until free (see _unique_project_name).
+        Extract -> validate -> persist -> commit happen here,
+        synchronously (the last one needs the chat lock, which only ever
+        runs safely on the caller's own event loop). The bundled
+        sessions.json/tests.json, if any, are returned as an unprepared
+        ProjectImportBundleJob instead of imported inline — one entry at
+        a time, so a large re-import reports real progress instead of
+        blocking. The caller decides what to do with it: submit it to
+        the real job queue (SettingsController.put_project), or just
         drop it where nothing was ever bundled to import (create_new_project's
         built-in template)."""
 
         if not self._automaton_loader.is_safe_project_name(project_name):
             raise ValueError(f"Invalid project name: '{project_name}'.")
-        if project_name in self._db.list_projects():
-            raise ValueError(f"A project named '{project_name}' already exists.")
 
+        new_automaton, to_persist, sessions_to_import, tests_to_import = self._extract_and_build(
+            self._unique_project_name(project_name), content, content_type
+        )
+
+        project_name = new_automaton.project_id or new_automaton.project_ui_label or project_name
+        if not self._automaton_loader.is_safe_project_name(project_name):
+            raise ValueError(f"Invalid project name: '{project_name}'.")
+        project_name = self._unique_project_name(project_name)
+
+        return await self._persist_new_project(
+            project_name, new_automaton, to_persist, sessions_to_import, tests_to_import, commit
+        )
+
+    def _extract_and_build(
+        self, project_name_for_build: str, content: bytes, content_type: str | None,
+    ) -> tuple[Automaton, dict[str, str | bytes] | None, list[dict], list[dict]]:
+        """Raw upload body -> (Automaton, files to persist, bundled
+        sessions.json/tests.json entries) — `project_name_for_build` is
+        only used to resolve cross-project automaton.* references and to
+        diff against any existing archives, never persisted as-is."""
         try:
             if ZipImporter.looks_like_zip(content_type, content):
                 with tempfile.TemporaryDirectory() as tmp:
@@ -467,27 +490,41 @@ class ProjectManager:
             raw_tests = files.pop(TESTS_EXPORT_FILENAME, None)
             assert not isinstance(raw_tests, bytes)
             tests_to_import = self._parse_tests_export(raw_tests)
-            new_automaton, to_persist = self.prepare_update(project_name, files)
+            new_automaton, to_persist = self.prepare_update(project_name_for_build, files)
         except (zipfile.BadZipFile, ValueError) as exc:
             raise ValueError(str(exc)) from exc
         except Exception as exc:
             logger.exception(exc)
             raise ValueError(f"Invalid project definition: {exc}") from exc
+        return new_automaton, to_persist, sessions_to_import, tests_to_import
 
+    async def _persist_new_project(
+        self, project_name: str, new_automaton: Automaton, to_persist: dict[str, str | bytes] | None,
+        sessions_to_import: list[dict], tests_to_import: list[dict], commit: CommitCallback,
+    ) -> tuple[dict, ProjectImportBundleJob]:
         # ensure_project first: active_project_id is a real FK onto
         # Project.name, and this project's own row doesn't exist yet for
         # a brand new project.
         self._db.ensure_project(project_name)
         self._db.set_active_project_name(project_name, Session().user)
         if to_persist is not None:
-            # This upload path is text-only; content_type is inferred from
-            # each entry's own extension, same as put_project_file.
+            # content_type is inferred from each entry's own extension, same
+            # as put_project_file — image extensions (a zip's aspect/ assets
+            # arrive as bytes, see _extract_and_build) must resolve through
+            # IMAGE_CONTENT_TYPE_BY_EXTENSION, not the text-only map: falling
+            # through to TEXT_CONTENT_TYPE_BY_EXTENSION's own "text/plain"
+            # default for e.g. aspect/icon.svg broke every image asset on a
+            # zip export -> reimport round trip.
             to_persist_bytes = {
                 name: value.encode("utf-8") if isinstance(value, str) else value
                 for name, value in to_persist.items()
             }
             content_types = {
-                name: TEXT_CONTENT_TYPE_BY_EXTENSION.get(Path(name).suffix.lower(), "text/plain")
+                name: (
+                    IMAGE_CONTENT_TYPE_BY_EXTENSION[Path(name).suffix.lower()]
+                    if Path(name).suffix.lower() in IMAGE_EXTENSIONS
+                    else TEXT_CONTENT_TYPE_BY_EXTENSION.get(Path(name).suffix.lower(), "text/plain")
+                )
                 for name in to_persist
             }
             self._db.save_project_files(project_name, to_persist_bytes, content_types)
@@ -536,13 +573,21 @@ class ProjectManager:
         return f"{base} {suffix}"
 
     async def create_new_project(self, commit: CommitCallback) -> tuple[dict, ProjectImportBundleJob]:
-        """Creates a project from NEW_PROJECT_TEMPLATE, going through
-        put_project so validation/staging/commit stay identical to a real
-        upload — same (result, job) contract; the caller submits `job` to
-        the real job queue, same as any other upload."""
+        """Creates a project from NEW_PROJECT_TEMPLATE — same validation/
+        staging/commit path as a real upload (same (result, job)
+        contract; the caller submits `job` to the real job queue, same as
+        any other upload), but never subject to put_project's own
+        project.id/ui-label naming: this is the one caller that always
+        gets NEW_PROJECT_NAME (deduplicated), regardless of what the
+        template itself declares."""
         content = NEW_PROJECT_TEMPLATE.read_bytes()
         project_name = self._unique_project_name(NEW_PROJECT_NAME)
-        return await self.put_project(project_name, content, "application/zip", commit)
+        new_automaton, to_persist, sessions_to_import, tests_to_import = self._extract_and_build(
+            project_name, content, "application/zip"
+        )
+        return await self._persist_new_project(
+            project_name, new_automaton, to_persist, sessions_to_import, tests_to_import, commit
+        )
 
     def export_project_zip(self, project_name: str) -> bytes:
         """`project_name`'s files, round-trippable back through

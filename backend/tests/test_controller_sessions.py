@@ -56,14 +56,14 @@ def test_sessions_list_reflects_has_annotations_per_session(client, hello_projec
     """has_annotations reflects ChatSession.labeled directly, per session."""
     session = client.get("/api/chat/session").json()
 
-    before = {s["id"]: s for s in client.get("/api/projects/hello/sessions").json()}
+    before = {s["id"]: s for s in client.get(f"/api/projects/{hello_project}/sessions").json()}
     assert before[session["id"]]["has_annotations"] is False
 
     response = client.put(f"/api/chat/sessions/{session['id']}/labeled", json={"labeled": True})
     assert response.status_code == 200
     assert response.json()["has_annotations"] is True
 
-    after = {s["id"]: s for s in client.get("/api/projects/hello/sessions").json()}
+    after = {s["id"]: s for s in client.get(f"/api/projects/{hello_project}/sessions").json()}
     assert after[session["id"]]["has_annotations"] is True
     # The single-session bootstrap endpoint reflects it too.
     assert client.get(f"/api/chat/session?session_id={session['id']}").json()["has_annotations"] is True
@@ -75,7 +75,7 @@ def test_mark_session_labeled_works_for_an_imported_session(client, hello_projec
     must not crash is_open's active-session check. An imported session is
     also never "active"."""
     imported = client.post(
-        "/api/projects/hello/sessions/import", files=[("files", ("transcript.txt", "user: hi\nassistant: hello\n", "text/plain"))]
+        f"/api/projects/{hello_project}/sessions/import", files=[("files", ("transcript.txt", "user: hi\nassistant: hello\n", "text/plain"))]
     )
     session_id = parse_sse_result(imported)["last_session_id"]
 
@@ -98,7 +98,7 @@ def test_put_session_title_renames_and_reflects_in_the_list(client, hello_projec
     assert response.status_code == 200
     assert response.json()["title"] == "My session"
 
-    listed = {s["id"]: s for s in client.get("/api/projects/hello/sessions").json()}
+    listed = {s["id"]: s for s in client.get(f"/api/projects/{hello_project}/sessions").json()}
     assert listed[session["id"]]["title"] == "My session"
 
 
@@ -130,7 +130,7 @@ def test_put_session_title_and_comment_work_for_an_imported_session(client, hell
     """An imported session's datetime_end=None must not break the shared
     active-resolution path used by title/comment updates."""
     imported = client.post(
-        "/api/projects/hello/sessions/import", files=[("files", ("transcript.txt", "user: hi\nassistant: hello\n", "text/plain"))]
+        f"/api/projects/{hello_project}/sessions/import", files=[("files", ("transcript.txt", "user: hi\nassistant: hello\n", "text/plain"))]
     )
     session_id = parse_sse_result(imported)["last_session_id"]
 
@@ -158,7 +158,7 @@ def test_manual_new_session_supersedes_the_bootstrap_one(client, hello_project):
     assert newer["id"] != older["id"]
     assert newer["active"] is True
 
-    sessions = {s["id"]: s for s in client.get("/api/projects/hello/sessions").json()}
+    sessions = {s["id"]: s for s in client.get(f"/api/projects/{hello_project}/sessions").json()}
     # "New session" explicitly closes whatever was open before creating
     # the new one — the older session is closed, not just superseded.
     assert sessions[older["id"]]["open"] is False
@@ -309,7 +309,7 @@ def test_chat_turn_rejects_a_closed_session_without_auto_rotating(client, hello_
     assert response.status_code == 200  # the turn endpoint always streams 200; failures arrive as an SSE `error` event
     parse_chat_turn_sse_error(response)
     # No silent rotation: nothing new was created on the closed session's behalf.
-    sessions = client.get("/api/projects/hello/sessions").json()
+    sessions = client.get(f"/api/projects/{hello_project}/sessions").json()
     assert [s["id"] for s in sessions] == [session["id"]]
 
 
@@ -320,7 +320,7 @@ def test_delete_session_removes_it(client, hello_project):
     response = client.delete(f"/api/chat/sessions/{session['id']}")
     assert response.status_code == 200
 
-    assert client.get("/api/projects/hello/sessions").json() == []
+    assert client.get(f"/api/projects/{hello_project}/sessions").json() == []
 
 
 @pytest.mark.contract
@@ -358,17 +358,19 @@ def test_manual_new_session_starts_at_the_automatons_current_state_not_the_initi
 @pytest.mark.regression
 def test_switching_projects_does_not_delete_the_previous_projects_sessions(client, app_db: Db):
     samples_dir = Path(__file__).resolve().parent.parent / "samples" / "projects"
-    for name, sample in (("hello", "Hello world.zip"), ("cat", "Aprendr català.zip")):
+    names = {}
+    for key, sample in (("hello", "Hello world.zip"), ("cat", "Aprendr català.zip")):
         content = (samples_dir / sample).read_bytes()
-        resp = client.put(f"/api/projects/{name}", content=content, headers={"Content-Type": "application/zip"})
+        resp = client.put(f"/api/projects/{key}", content=content, headers={"Content-Type": "application/zip"})
         assert resp.status_code == 200, resp.text
-        resp = client.post(f"/api/projects/{name}/publish", json={})
+        names[key] = parse_sse_result(resp)["project_name"]
+        resp = client.post(f"/api/projects/{names[key]}/publish", json={})
         assert resp.status_code == 200, resp.text
 
-    client.put("/api/projects/hello/activate")
+    client.put(f"/api/projects/{names['hello']}/activate")
     session = client.get("/api/chat/session").json()
 
-    client.put("/api/projects/cat/activate")
+    client.put(f"/api/projects/{names['cat']}/activate")
 
     # Switching the active project must never touch another project's sessions.
     assert app_db.get_chat_session(session["id"]) is not None
@@ -380,22 +382,24 @@ def test_sessions_list_is_scoped_by_the_url_never_the_active_project(client):
     project's own sessions regardless of which project is currently
     active."""
     samples_dir = Path(__file__).resolve().parent.parent / "samples" / "projects"
-    for name, sample in (("hello", "Hello world.zip"), ("cat", "Aprendr català.zip")):
+    names = {}
+    for key, sample in (("hello", "Hello world.zip"), ("cat", "Aprendr català.zip")):
         content = (samples_dir / sample).read_bytes()
-        resp = client.put(f"/api/projects/{name}", content=content, headers={"Content-Type": "application/zip"})
+        resp = client.put(f"/api/projects/{key}", content=content, headers={"Content-Type": "application/zip"})
         assert resp.status_code == 200, resp.text
-        resp = client.post(f"/api/projects/{name}/publish", json={})
+        names[key] = parse_sse_result(resp)["project_name"]
+        resp = client.post(f"/api/projects/{names[key]}/publish", json={})
         assert resp.status_code == 200, resp.text
 
-    client.put("/api/projects/hello/activate")
+    client.put(f"/api/projects/{names['hello']}/activate")
     hello_session = client.get("/api/chat/session").json()
 
-    client.put("/api/projects/cat/activate")
+    client.put(f"/api/projects/{names['cat']}/activate")
 
     # "cat" is now active, but the URL decides, not the active project.
-    explicit_hello = client.get("/api/projects/hello/sessions").json()
+    explicit_hello = client.get(f"/api/projects/{names['hello']}/sessions").json()
     assert [s["id"] for s in explicit_hello] == [hello_session["id"]]
-    assert all(s["project_name"] == "hello" for s in explicit_hello)
+    assert all(s["project_name"] == names["hello"] for s in explicit_hello)
 
     explicit_cat = client.get("/api/projects/cat/sessions").json()
     assert all(s["project_name"] == "cat" for s in explicit_cat)

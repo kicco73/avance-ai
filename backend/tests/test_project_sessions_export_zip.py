@@ -50,7 +50,7 @@ def test_download_includes_both_live_and_imported_sessions_relabeled_as_imported
         native_session = client.get("/api/chat/session").json()
     assert native_session["type"] == "live"
     resp = client.post(
-        "/api/projects/hello/sessions/import", files=[("files", ("t.txt", "user: hi\nassistant: yo\n", "text/plain"))]
+        f"/api/projects/{hello_project}/sessions/import", files=[("files", ("t.txt", "user: hi\nassistant: yo\n", "text/plain"))]
     )
     assert resp.status_code == 200, resp.text
 
@@ -65,7 +65,7 @@ def test_download_includes_both_live_and_imported_sessions_relabeled_as_imported
 
 
 def test_sessions_json_never_appears_among_the_projects_own_files(client, hello_project):
-    client.post("/api/projects/hello/sessions/import", files=[("files", ("t.txt", "user: hi\nassistant: yo\n", "text/plain"))])
+    client.post(f"/api/projects/{hello_project}/sessions/import", files=[("files", ("t.txt", "user: hi\nassistant: yo\n", "text/plain"))])
 
     file_list = client.get(f"/api/projects/{hello_project}/files").json()["files"]
 

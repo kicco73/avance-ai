@@ -213,12 +213,17 @@ describe('isProxyNamespace', () => {
     expect(isProxyNamespace('session.metric')).toBe(true)
     expect(isProxyNamespace('source')).toBe(true)
     expect(isProxyNamespace('metric')).toBe(true)
+    expect(isProxyNamespace('datetime')).toBe(true)
   })
 
   it('is false for automaton and every automaton.<project> sub-namespace — real attribute access, never called', () => {
     expect(isProxyNamespace('automaton')).toBe(false)
     expect(isProxyNamespace('automaton.other_project')).toBe(false)
     expect(isProxyNamespace('automaton.other_project.env')).toBe(false)
+  })
+
+  it('is false for datetime.timezone — its only member (utc) is a plain attribute, not callable', () => {
+    expect(isProxyNamespace('datetime.timezone')).toBe(false)
   })
 })
 
@@ -245,7 +250,7 @@ describe('namespaceOf (the coloring regex\'s own namespace extraction)', () => {
   })
 
   it('every namespace it can extract has a fixed color', () => {
-    for (const namespace of ['signal', 'env', 'system', 'session', 'session.metric', 'user', 'source', 'metric', 'automaton']) {
+    for (const namespace of ['signal', 'env', 'system', 'session', 'session.metric', 'user', 'source', 'metric', 'automaton', 'datetime', 'datetime.timezone']) {
       expect(NAMESPACE_COLORS[namespace]).toMatch(/^#[0-9a-f]{6}$/)
     }
   })
@@ -253,5 +258,14 @@ describe('namespaceOf (the coloring regex\'s own namespace extraction)', () => {
   it('extracts automaton.<project> as its own namespace, leaving .state/.env.<key> uncolored past it', () => {
     expect(namespaceOf('automaton.other_project.state')).toBe('automaton')
     expect(namespaceOf('automaton.other_project.env.budget')).toBe('automaton')
+  })
+
+  it('extracts the nested datetime.timezone namespace, not just datetime', () => {
+    expect(namespaceOf('datetime.timezone.utc')).toBe('datetime.timezone')
+  })
+
+  it('extracts plain datetime when not followed by .timezone', () => {
+    expect(namespaceOf('datetime.datetime')).toBe('datetime')
+    expect(namespaceOf('datetime.timedelta')).toBe('datetime')
   })
 })

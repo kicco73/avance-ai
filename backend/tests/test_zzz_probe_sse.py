@@ -21,13 +21,13 @@ def test_probe_session_play_button_progress(client, hello_project, live_server):
     target_key = f"batch:session:{session_id}"
     messages = []
     with httpx.Client(base_url=live_server, timeout=10.0) as real_client:
-        with real_client.stream("GET", "/api/projects/hello/test-events") as resp:
+        with real_client.stream("GET", f"/api/projects/{hello_project}/test-events") as resp:
             # Entering the stream already waited for response headers, so
             # the broadcaster connection this endpoint registers on entry
             # is live before the job below can push anything — no
             # arbitrary sleep needed to avoid a race with it.
             resp_iter = resp.iter_lines()
-            post_resp = client.post("/api/projects/hello/tests", json={"session_id": session_id, "strategy": "batch"})
+            post_resp = client.post(f"/api/projects/{hello_project}/tests", json={"session_id": session_id, "strategy": "batch"})
             assert post_resp.status_code == 200, post_resp.text
 
             for line in resp_iter:

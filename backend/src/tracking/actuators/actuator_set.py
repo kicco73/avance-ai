@@ -35,7 +35,7 @@ class ActuatorSet(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def defer(self, when: datetime, act: Callable[[], None]) -> str | None:
+    def defer(self, act: Callable[[], None], when: datetime) -> str | None:
         raise NotImplementedError
 
 
@@ -53,7 +53,7 @@ class LiveActuatorSet(ActuatorSet):
         self._notification_service.enqueue_mail(to, _SEND_MAIL_SUBJECT, body_md)
         return None
 
-    def defer(self, when: datetime, act: Callable[[], None]) -> str | None:
+    def defer(self, act: Callable[[], None], when: datetime) -> str | None:
         self._scheduled_job_queue.submit(DeferredActuatorJob(act), timestamp=when)
         return None
 
@@ -69,7 +69,7 @@ class FakeActuatorSet(ActuatorSet):
         logger.info(message)
         return self.notify("Actuator (test)", message)
 
-    def defer(self, when: datetime, act: Callable[[], None]) -> str | None:
+    def defer(self, act: Callable[[], None], when: datetime) -> str | None:
         message = f"defer(when={when.isoformat()!r}) — Run actuators is off, nothing was scheduled."
         logger.info(message)
         return self.notify("Actuator (test)", message)

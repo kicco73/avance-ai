@@ -32,7 +32,7 @@ def test_get_metrics_without_message_id_is_the_live_current_history(client, hell
     for text in ("hi", "again"):
         client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": text})
 
-    live = {m["name"]: m["value"] for m in client.get("/api/projects/hello/metrics").json()}
+    live = {m["name"]: m["value"] for m in client.get(f"/api/projects/{hello_project}/metrics").json()}
 
     assert live["engagement"] > 0.0
 
@@ -47,8 +47,8 @@ def test_get_metrics_with_message_id_restricts_to_that_points_history(client, he
     # first message's timestamp must not reflect it.
     client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "second"})
 
-    at_first = {m["name"]: m["value"] for m in client.get(f"/api/projects/hello/metrics?message_id={first_message_id}").json()}
-    live = {m["name"]: m["value"] for m in client.get("/api/projects/hello/metrics").json()}
+    at_first = {m["name"]: m["value"] for m in client.get(f"/api/projects/{hello_project}/metrics?message_id={first_message_id}").json()}
+    live = {m["name"]: m["value"] for m in client.get(f"/api/projects/{hello_project}/metrics").json()}
 
     assert at_first["engagement"] <= live["engagement"]
 
@@ -59,7 +59,7 @@ def test_get_metrics_response_shape_is_unchanged_by_message_id(client, hello_pro
     turn = parse_chat_turn_sse(client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"}))
     message_id = turn["assistant_message_id"]
 
-    response = client.get(f"/api/projects/hello/metrics?message_id={message_id}")
+    response = client.get(f"/api/projects/{hello_project}/metrics?message_id={message_id}")
 
     assert response.status_code == 200
     body = response.json()
@@ -73,7 +73,7 @@ def test_get_metrics_response_shape_is_unchanged_by_message_id(client, hello_pro
 @pytest.mark.contract
 def test_get_metrics_with_an_unknown_message_id_is_404(client, hello_project):
     client.get("/api/chat/session")
-    response = client.get("/api/projects/hello/metrics?message_id=999999")
+    response = client.get(f"/api/projects/{hello_project}/metrics?message_id=999999")
     assert response.status_code == 404
 
 
@@ -129,7 +129,7 @@ def test_put_expected_signals_is_404_for_an_unknown_message(client, hello_projec
 
 @pytest.mark.contract
 def test_get_test_metrics_response_shape(client, hello_project, app_db):
-    response = client.get("/api/projects/hello/tests/metrics")
+    response = client.get(f"/api/projects/{hello_project}/tests/metrics")
 
     assert response.status_code == 200
     body = response.json()
@@ -156,12 +156,12 @@ def test_get_test_metrics_reflects_annotations(client, hello_project, app_db):
     message_id = turn["assistant_message_id"]
     signal_row_id = app_db.save_signal_snapshot({"foo": 80}, session["id"], message_id=message_id)
 
-    before = {m["name"]: m for m in client.get("/api/projects/hello/tests/metrics").json()}
+    before = {m["name"]: m for m in client.get(f"/api/projects/{hello_project}/tests/metrics").json()}
     assert before["state_accuracy"]["sample_count"] == 0
 
     app_db.set_signal_expected_state(signal_row_id, "Hello")  # hello_project's own init_action.target
 
-    after = {m["name"]: m for m in client.get("/api/projects/hello/tests/metrics").json()}
+    after = {m["name"]: m for m in client.get(f"/api/projects/{hello_project}/tests/metrics").json()}
     assert after["state_accuracy"]["sample_count"] == 1
     assert after["state_accuracy"]["value"] == 100.0
 
@@ -169,13 +169,13 @@ def test_get_test_metrics_reflects_annotations(client, hello_project, app_db):
 @pytest.mark.contract
 def test_get_test_metrics_can_be_scoped_to_one_session(client, hello_project):
     session = client.get("/api/chat/session").json()
-    response = client.get(f"/api/projects/hello/tests/metrics?session_id={session['id']}")
+    response = client.get(f"/api/projects/{hello_project}/tests/metrics?session_id={session['id']}")
     assert response.status_code == 200
 
 
 @pytest.mark.contract
 def test_get_test_metrics_is_404_for_someone_elses_or_unknown_session(client, hello_project):
-    response = client.get("/api/projects/hello/tests/metrics?session_id=999999")
+    response = client.get(f"/api/projects/{hello_project}/tests/metrics?session_id=999999")
     assert response.status_code == 404
 
 

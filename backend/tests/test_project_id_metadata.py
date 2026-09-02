@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import pytest
 
+from conftest import parse_sse_result
 from db.db import Db
 
 pytestmark = pytest.mark.contract
@@ -29,28 +30,31 @@ def test_project_id_ui_label_ui_description_are_persisted_on_save(client, app_db
     yml = "project:\n  id: proj_one\n  ui-label: Project One\n  ui-description: The first one.\n" + MINIMAL
     resp = _put(client, "one", yml)
     assert resp.status_code == 200, resp.text
+    project_name = parse_sse_result(resp)["project_name"]
 
-    assert app_db.get_project_id("one") == "proj_one"
-    assert app_db.get_project_name_by_project_id("proj_one") == "one"
+    assert app_db.get_project_id(project_name) == "proj_one"
+    assert app_db.get_project_name_by_project_id("proj_one") == project_name
 
 
 def test_rejects_a_project_id_already_claimed_by_another_project(client):
     resp = _put(client, "one", "project:\n  id: dup\n" + MINIMAL)
     assert resp.status_code == 200, resp.text
+    first_name = parse_sse_result(resp)["project_name"]
 
     resp = _put(client, "two", "project:\n  id: dup\n" + MINIMAL)
 
     assert resp.status_code == 400
     assert "dup" in resp.json()["error"]["message"]
-    assert "already used by project 'one'" in resp.json()["error"]["message"]
+    assert f"already used by project '{first_name}'" in resp.json()["error"]["message"]
 
 
 def test_re_saving_the_same_project_with_its_own_existing_id_is_not_a_conflict(client):
     yml = "project:\n  id: stable\n" + MINIMAL
     resp = _put(client, "one", yml)
     assert resp.status_code == 200, resp.text
+    project_name = parse_sse_result(resp)["project_name"]
 
-    resp = _resave(client, "one", yml)  # same project, same id — no conflict with itself
+    resp = _resave(client, project_name, yml)  # same project, same id — no conflict with itself
 
     assert resp.status_code == 200, resp.text
 
@@ -58,8 +62,9 @@ def test_re_saving_the_same_project_with_its_own_existing_id_is_not_a_conflict(c
 def test_changing_a_project_id_frees_up_the_old_one(client):
     resp = _put(client, "one", "project:\n  id: old_id\n" + MINIMAL)
     assert resp.status_code == 200, resp.text
+    project_name = parse_sse_result(resp)["project_name"]
 
-    resp = _resave(client, "one", "project:\n  id: new_id\n" + MINIMAL)
+    resp = _resave(client, project_name, "project:\n  id: new_id\n" + MINIMAL)
     assert resp.status_code == 200, resp.text
 
     # The old id is free again — a different project may now claim it.

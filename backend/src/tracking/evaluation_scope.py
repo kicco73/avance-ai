@@ -6,7 +6,10 @@ and /api/triggers/preview's live what-if preview off already-known
 signal values."""
 from __future__ import annotations
 
+import datetime
 from typing import Any, TYPE_CHECKING
+
+from simpleeval import ModuleWrapper
 
 from automaton.automaton import Automaton
 from db import Db
@@ -72,6 +75,9 @@ class EvaluationScopeBuilder(object):
             "user": self._user.as_dict(),
             "source": SourceNamespace(self._db, automaton),
             "metric": self._metrics.for_turn(),
+            # FIXME: simpleeval rejects a raw module ("modules are not allowed") — ModuleWrapper is its
+            # sanctioned opt-in; don't replace this with the bare `datetime` module.
+            "datetime": ModuleWrapper(datetime, allowed_attrs={"datetime", "timedelta", "timezone"}),
         }
         if self._automaton_namespace is not None:
             scope["automaton"] = self._automaton_namespace

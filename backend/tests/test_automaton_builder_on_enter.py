@@ -223,7 +223,7 @@ states:
       - name: go
         target: b
         on-enter: |
-          actuator.defer(system.today, lambda: actuator.send_mail(user.email, 'Reminder'))
+          actuator.defer(lambda: actuator.send_mail(user.email, 'Reminder'), system.today)
   b:
     contextual-prompt: there
 """
@@ -243,7 +243,7 @@ states:
       - name: go
         target: b
         on-enter: |
-          actuator.defer(system.today, lambda: actuator.celebrate(42))
+          actuator.defer(lambda: actuator.celebrate(42), system.today)
   b:
     contextual-prompt: there
 """

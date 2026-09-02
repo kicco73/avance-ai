@@ -16,8 +16,8 @@ from .manager import ProjectManager
 from .archive.automaton_loader import AutomatonLoader
 from .archive.css_validator import CssValidator
 from .archive.layout import (
-    ASPECT_DIR, ArchiveLayout, IMAGE_CONTENT_TYPE_BY_EXTENSION, LEGAL_TERMS_FILE_NAME, LEGAL_TERMS_SKELETON,
-    MAX_IMAGE_UPLOAD_BYTES, TEXT_CONTENT_TYPE_BY_EXTENSION, TEXT_EDITABLE_EXTENSIONS,
+    ASPECT_DIR, BEHAVIOUR_DIR, ArchiveLayout, IMAGE_CONTENT_TYPE_BY_EXTENSION, LEGAL_TERMS_FILE_NAME,
+    LEGAL_TERMS_SKELETON, MAX_IMAGE_UPLOAD_BYTES, TEXT_CONTENT_TYPE_BY_EXTENSION, TEXT_EDITABLE_EXTENSIONS,
 )
 from .types import CommitCallback
 
@@ -45,10 +45,11 @@ the backend at upload time, so an invalid file is rejected outright.
 
 %%SPEC%%
 
-You will be given this project's current `index.yml` and a description of \
-a problem to solve or change to make. Reply with the complete new \
-`index.yml` content that addresses it — the whole file, not a diff or an \
-excerpt, keeping everything unrelated to the request unchanged.
+You will be given this project's current `index.yml`, the basenames of \
+attachment files already uploaded under `behaviour/` (if any), and a \
+description of a problem to solve or change to make. Reply with the \
+complete new `index.yml` content that addresses it — the whole file, not \
+a diff or an excerpt, keeping everything unrelated to the request unchanged.
 
 Getting this exactly right matters more than anything else: a file that \
 fails to parse or fails validation is worse than no change at all.
@@ -65,6 +66,11 @@ other markup tag anywhere in the file, including inside prompt/description \
 strings.
 - Only use fields, keys, and value shapes the specification above actually \
 defines — never invent one.
+- An `attachments:` entry (global, per-signal, per-state) or `source.attachment(...)` \
+call must name a file already listed below as uploaded — never invent one. \
+If the change calls for an attachment that isn't listed, leave that part \
+out (or note what's needed in a comment) rather than pointing at a file \
+that doesn't exist.
 - Before you answer, re-check the whole file in your head against the \
 specification's own §9 validation checklist, and fix anything that would \
 fail it.
@@ -191,15 +197,22 @@ class ProjectEditor:
         """Backs the "Edit project" index.yml editor's AI button
         (IndexYmlEditorPanel.vue): sends the AiService a prompt built from
         the format spec (PROJECT_SPECS.md), this project's current
-        index.yml, and `instruction` describing the change to make, and
-        returns the new index.yml content it replies with. A pure preview,
-        same as undo/redo above — nothing is persisted here, the frontend
-        drops the result into its own (unsaved) editor buffer."""
+        index.yml, the basenames of its own already-uploaded `behaviour/`
+        attachments (so the model never invents an `attachments:`/
+        `source.attachment(...)` reference to a file that doesn't exist),
+        and `instruction` describing the change to make, and returns the
+        new index.yml content it replies with. A pure preview, same as
+        undo/redo above — nothing is persisted here, the frontend drops
+        the result into its own (unsaved) editor buffer."""
         content = self._db.get_archive(project_name, "index.yml")
         if content is None:
             raise FileNotFoundError(f"Project '{project_name}' has no index.yml.")
+        existing_names = self._db.list_archives(project_name)
+        attachment_names = sorted(Path(name).name for name in existing_names if name.startswith(f"{BEHAVIOUR_DIR}/"))
+        attachments_line = ", ".join(attachment_names) if attachment_names else "(none uploaded yet)"
         user_turn = (
             f"Current index.yml:\n```yaml\n{content.decode('utf-8')}\n```\n\n"
+            f"Attachments already uploaded under behaviour/: {attachments_line}\n\n"
             f"Requested change:\n{instruction}"
         )
         return await self._run_ai_edit(INDEX_YML_AI_EDIT_SYSTEM_PROMPT, "PROJECT_SPECS.md", user_turn)
