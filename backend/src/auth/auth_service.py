@@ -14,6 +14,7 @@ import jwt
 
 from auth.auth_provider import AuthenticatedUser, AuthProvider
 from auth.providers.google_auth_provider import GoogleAuthProvider
+from auth.roles import role_satisfies
 from config import AuthProviderConfig
 from db import Db
 
@@ -29,6 +30,12 @@ SESSION_COOKIE_NAME = "avance_session"
 _PROVIDER_CLASSES: dict[str, type[AuthProvider]] = {
     "google": GoogleAuthProvider,
 }
+
+
+MERGE_REQUIRES_ADMIN = (
+    "This WhatsApp number is already linked to another account. Linking it here means "
+    "unifying the two accounts, which requires admin privileges."
+)
 
 
 class AuthService:
@@ -206,7 +213,9 @@ class AuthService:
     def get_profile(self, email: str) -> dict | None:
         return self._db.get_user_by_email(email)
 
-    def set_whatsapp_phone_number(self, email: str, phone_number: str | None, confirm_merge: bool = False) -> dict | None:
+    def set_whatsapp_phone_number(
+        self, email: str, phone_number: str | None, confirm_merge: bool = False, role: str = "user",
+    ) -> dict | None:
         normalized = None
         if phone_number is not None and phone_number.strip():
             normalized = phone_number.strip().lstrip("+")
@@ -215,15 +224,19 @@ class AuthService:
         if normalized is not None:
             existing = self._db.get_user_by_whatsapp_phone_number(normalized)
             if existing is not None and existing["id"] != email:
-                if existing["provider"] != "whatsapp":
-                    raise ValueError("This WhatsApp number is already linked to another account.")
+                merge_allowed = role_satisfies(role, "admin")
+                if confirm_merge and not merge_allowed:
+                    raise PermissionError(MERGE_REQUIRES_ADMIN)
                 if not confirm_merge:
                     return {
                         "merge_required": True,
+                        "merge_allowed": merge_allowed,
+                        "existing_account_id": existing["id"],
+                        "existing_account_provider": existing["provider"],
                         "existing_account_created_at": existing["created_at"],
                         "existing_account_session_count": self._db.count_sessions_for_user(existing["id"]),
                     }
-                self._db.merge_whatsapp_account(email, existing["id"], normalized)
+                self._db.merge_user_accounts(email, existing["id"], normalized)
                 return self._db.get_user_by_email(email)
         self._db.set_whatsapp_phone_number(email, normalized)
         return self._db.get_user_by_email(email)

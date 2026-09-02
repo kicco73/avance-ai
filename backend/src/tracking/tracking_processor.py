@@ -202,9 +202,9 @@ class TrackingProcessor(object):
 		Protocol = TurnProtocolUsingSchema if supports_schema else TurnProcotolUsingTextExtraction
 		talk_enabled = self.talk_enabled and self.user.automaton.talk_enabled
 		logger.info(
-			"build_turn_protocol talk_enabled: project=%r session=%s system_talk_enabled=%s "
+			"build_turn_protocol talk_enabled: project=%r revision=%s session=%s system_talk_enabled=%s "
 			"automaton_talk_enabled=%s -> %s",
-			self.user.project_name, self.user.session_id, self.talk_enabled,
+			self.user.project_name, self.user.automaton.revision, self.user.session_id, self.talk_enabled,
 			self.user.automaton.talk_enabled, talk_enabled,
 		)
 		return Protocol(
