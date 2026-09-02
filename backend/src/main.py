@@ -14,6 +14,7 @@ from auth.auth_middleware import AuthMiddleware
 from auth.auth_service import AuthService
 from chat.chat_service import ChatService
 from chat.session_manager import ChatSessionManager
+from chat.ws_adapter import WsAdapter
 from config import AppConfig
 from controller import AvanceController
 from db import Db
@@ -34,7 +35,7 @@ from talk.talk_service import TalkService
 from whatsapp.whatsapp_service import WhatsAppService
 from listen.listen_service import ListenService
 
-__version__ = "1.24.0"
+__version__ = "1.25.0"
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -146,6 +147,13 @@ def create_app() -> FastAPI:
             tracking_service, metric_service, job_queue, actuator_factory,
         )
 
+        # Single shared /ws/chat connection per user (see chat/ws_adapter.py) —
+        # built after chat_service/auth_service, which it depends on, and
+        # handed to whatever else needs to push onto an already-open
+        # connection (WakeupService, actuator_factory's own deferred calls).
+        ws_adapter = WsAdapter(chat_service, db, auth_service)
+        actuator_factory.set_ws_adapter(ws_adapter)
+
         test_service = TestService(
             db, ai_test_service, tracking_service, test_job_queue, project_service, test_event_broadcaster,
         )
@@ -157,7 +165,9 @@ def create_app() -> FastAPI:
 
         # Cross-project wake-up (see tracking/wakeup_service.py) —
         # subscribes once for the process lifetime.
-        WakeupService(db, project_service, job_queue, actuator_factory, tracking_service=tracking_service).register()
+        WakeupService(
+            db, project_service, job_queue, actuator_factory, ws_adapter=ws_adapter, tracking_service=tracking_service,
+        ).register()
 
         # Opt-in (whatsapp-service.enabled in .config.yml): one more
         # client of ChatService.process_turn, beside the SPA — see
@@ -173,7 +183,7 @@ def create_app() -> FastAPI:
         controller = AvanceController(
             chat_service, project_service, talk_service, listen_service, db, tracking_service, test_service,
             auth_service, test_event_broadcaster, job_queue, __version__, config.public_services_snapshot(),
-            whatsapp_service=whatsapp_service,
+            whatsapp_service=whatsapp_service, ws_adapter=ws_adapter,
         )
         app.include_router(controller.router)
 

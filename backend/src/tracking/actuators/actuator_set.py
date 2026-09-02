@@ -4,12 +4,17 @@ import json
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from jobs import ScheduledJobQueue
 from logging_factory import LoggerFactory
 from notification.notification_service import NotificationService
+from session import Session
 
 from .deferred_job import DeferredActuatorJob
+
+if TYPE_CHECKING:
+    from chat.ws_adapter import WsAdapter
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -41,9 +46,13 @@ class ActuatorSet(ABC):
 
 class LiveActuatorSet(ActuatorSet):
 
-    def __init__(self, notification_service: NotificationService, scheduled_job_queue: ScheduledJobQueue) -> None:
+    def __init__(
+        self, notification_service: NotificationService, scheduled_job_queue: ScheduledJobQueue,
+        ws_adapter: "WsAdapter | None",
+    ) -> None:
         self._notification_service = notification_service
         self._scheduled_job_queue = scheduled_job_queue
+        self._ws_adapter = ws_adapter
 
     def send_mail(self, to: str, body_md: str) -> str | None:
         # Raises (NotificationError) if this deployment's own .config.yml
@@ -54,7 +63,8 @@ class LiveActuatorSet(ActuatorSet):
         return None
 
     def defer(self, act: Callable[[], None], when: datetime) -> str | None:
-        self._scheduled_job_queue.submit(DeferredActuatorJob(act), timestamp=when)
+        job = DeferredActuatorJob(act, Session().user, self._ws_adapter)
+        self._scheduled_job_queue.submit(job, timestamp=when)
         return None
 
 
