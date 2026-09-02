@@ -12,6 +12,7 @@ from .tests import TestMixin
 from .history import HistoryMixin
 from .invites import InviteMixin
 from .messages import MessageMixin
+from .migration import SchemaMigrator
 from .observability import ObservabilityMixin
 from .projects import ProjectMixin
 from .session_summaries import SessionSummaryMixin
@@ -22,7 +23,6 @@ from .user_projects import UserProjectMixin
 from .tracking import TrackingMixin
 
 from playhouse.db_url import connect, parse as parse_db_url
-from playhouse.migrate import SqliteMigrator, migrate
 
 from .models import (
     Archive, ChatSession, EditHistory, Invite, Message,
@@ -64,6 +64,7 @@ class Db(
         if migration_strategy not in self.MIGRATION_STRATEGIES:
             raise ValueError(f"Unknown migration strategy '{migration_strategy}' — expected one of {self.MIGRATION_STRATEGIES}.")
         self._database_url = database_url
+        self._migrator = SchemaMigrator(database, self._MODELS)
         database.initialize(connect(database_url, pragmas={'foreign_keys': 1}))
         database.connect(reuse_if_open=True)
         self._repair_indexes_if_inconsistent()
@@ -97,10 +98,10 @@ class Db(
         path = self.backup_file_path()
         if not os.path.exists(path):
             return
-        actual = self._actual_schema(path)
+        actual = self._migrator.actual_schema(path)
         if not actual:
             return
-        expected = self._expected_schema()
+        expected = self._migrator.expected_schema()
         if actual == expected:
             return
         if strategy == 'stop':
@@ -109,8 +110,8 @@ class Db(
         self._backup_to_path(backup_path)
         if strategy == 'upgrade':
             logger.warning("Database schema at '%s' doesn't match what this code expects — backed it up to '%s', now migrating it in place (database.migration-strategy is 'upgrade').", path, backup_path)
-            self._migrate_schema(actual, expected)
-            if self._actual_schema(path) != expected:
+            self._migrator.migrate(actual, expected, path)
+            if self._migrator.actual_schema(path) != expected:
                 raise ValueError(f"Database schema at '{path}' still doesn't match after in-place migration — refusing to touch the data any further (the pre-migration backup is at '{backup_path}').")
             return
         logger.warning("Database schema at '%s' doesn't match what this code expects — backed it up to '%s', now dropping and recreating every table from scratch (database.migration-strategy is 'drop').", path, backup_path)
@@ -118,29 +119,6 @@ class Db(
         try:
             for table in actual:
                 database.execute_sql(f'DROP TABLE IF EXISTS "{table}"')
-        finally:
-            self._enable_foreign_keys()
-
-    def _migrate_schema(self, actual: dict[str, set[str]], expected: dict[str, set[str]]) -> None:
-        migrator = SqliteMigrator(database)
-        models_by_table = {model._meta.table_name: model for model in self._MODELS}
-        new_models = [model for table, model in models_by_table.items() if table not in actual]
-        database.execute_sql('PRAGMA foreign_keys = OFF')
-        try:
-            for table in sorted(actual.keys() - expected.keys()):
-                database.execute_sql(f'DROP TABLE IF EXISTS "{table}"')
-            operations = []
-            for table, columns in expected.items():
-                if table not in actual:
-                    continue
-                model = models_by_table[table]
-                for column in sorted(columns - actual[table]):
-                    database.execute_sql(f'DROP INDEX IF EXISTS "{table}_{column}"')
-                    operations.append(migrator.add_column(table, column, model._meta.columns[column]))
-                for column in sorted(actual[table] - columns):
-                    operations.append(migrator.drop_column(table, column))
-            migrate(*operations)
-            database.create_tables(new_models, safe=True)
         finally:
             self._enable_foreign_keys()
 
@@ -174,22 +152,9 @@ class Db(
         finally:
             os.remove(tmp_path)
 
-    @classmethod
-    def _expected_schema(cls) -> dict[str, set[str]]:
-        return {model._meta.table_name: {field.column_name for field in model._meta.sorted_fields} for model in cls._MODELS}
-
-    @staticmethod
-    def _actual_schema(sqlite_path: str) -> dict[str, set[str]]:
-        conn = sqlite3.connect(sqlite_path)
-        try:
-            tables = [row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")]
-            return {table: {row[1] for row in conn.execute(f"PRAGMA table_info('{table}')")} for table in tables}
-        finally:
-            conn.close()
-
     def _check_schema(self, sqlite_path: str) -> None:
-        expected = self._expected_schema()
-        actual = self._actual_schema(sqlite_path)
+        expected = self._migrator.expected_schema()
+        actual = self._migrator.actual_schema(sqlite_path)
         missing_tables = expected.keys() - actual.keys()
         extra_tables = actual.keys() - expected.keys()
         if missing_tables or extra_tables:
