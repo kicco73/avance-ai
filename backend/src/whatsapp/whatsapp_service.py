@@ -303,12 +303,14 @@ class WhatsAppService(object):
         return self._new_assistant_replies(session_id, last_seen_id=0), state["manual_actions"], session_id
 
     async def _run_turn(self, text: str) -> tuple[list[Reply], list[dict] | None, int | None]:
-        """Mirrors ChatWindow.vue's own bootstrap: resolve the current
-        live session, let open_if_needed produce any opening message,
-        then the turn itself. Rather than reassembling the reply from
-        process_turn's streaming-oriented result, every assistant message
-        persisted since we started is what gets sent — that also covers a
-        transition's follow-up messages (action_prompt / opening turn)."""
+        """Unlike ChatWindow.vue's own bootstrap, it's the user's text
+        that starts or continues the conversation here — no AI-initiated
+        opening message runs ahead of it (see ChatService.
+        prepare_user_initiated_turn). Rather than reassembling the reply
+        from process_turn's streaming-oriented result, every assistant
+        message persisted since we started is what gets sent — that also
+        covers a transition's follow-up messages (action_prompt / a
+        chat-blocked state's own wrap-up message)."""
         session_payload = self._chat_service.get_or_create_current_session(None)
         if session_payload.get("paused"):
             return [Reply(REPLY_PAUSED)], None, None
@@ -320,7 +322,7 @@ class WhatsAppService(object):
         notice: str | None = None
         manual_actions: list[dict] | None = None
         try:
-            await self._chat_service.get_messages(session_id)
+            await self._chat_service.prepare_user_initiated_turn(session_id)
             reply = await self._chat_service.process_turn(session_id, text)
             manual_actions = reply["state"]["manual_actions"]
         except ServiceError as exc:
