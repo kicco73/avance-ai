@@ -21,11 +21,15 @@ _MAX_CODE_ATTEMPTS = 10
 
 
 class InviteManager:
-    def __init__(self, db: Db, valid_days: int, max_shares: int, whatsapp_number: str | None = None) -> None:
+    def __init__(
+        self, db: Db, valid_days: int, max_shares: int, whatsapp_number: str | None = None,
+        whatsapp_invite_prefix: str = "Invitation code: ",
+    ) -> None:
         self._db = db
         self._valid_days = valid_days
         self._max_shares = max_shares
         self._whatsapp_number = whatsapp_number
+        self._whatsapp_invite_prefix = whatsapp_invite_prefix
 
     def _generate_unique_code(self) -> str:
         for _ in range(_MAX_CODE_ATTEMPTS):
@@ -101,4 +105,4 @@ class InviteManager:
     def _whatsapp_url(self, code: str) -> str | None:
         if not self._whatsapp_number:
             return None
-        return f"https://wa.me/{self._whatsapp_number}?text={quote(code)}"
+        return f"https://wa.me/{self._whatsapp_number}?text={quote(self._whatsapp_invite_prefix + code)}"

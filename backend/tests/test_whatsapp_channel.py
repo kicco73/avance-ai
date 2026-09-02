@@ -203,7 +203,8 @@ class _FakeListen:
 def _config(**overrides) -> WhatsAppServiceConfig:
     values = dict(
         verify_token="my-verify-token", app_secret=APP_SECRET, access_token="tok", phone_number_id="123",
-        phone_number="15552052260", graph_version="v23.0", mark_read=True, voice_replies="when-spoken-to",
+        phone_number="15552052260", invite_prefix="Invitation code: ", graph_version="v23.0", mark_read=True,
+        voice_replies="when-spoken-to",
     )
     values.update(overrides)
     return WhatsAppServiceConfig(**values)
@@ -354,6 +355,13 @@ def test_unlinked_number_with_a_valid_code_registers_and_welcomes(env):
     assert db.users["34699999999"]["role"] == "user"
     assert chat.calls == [("session", "34699999999")]
     assert api.sent == [("34699999999", REPLY_REGISTERED)]
+
+
+def test_unlinked_number_with_the_prefixed_wame_text_still_registers(env):
+    client, service, _, db, _ = env
+    service._auth_service.valid_codes["GOODCODE"] = "demo-project"
+    _post(client, _payload(sender="34699999999", text="Invitation code: GOODCODE"))
+    assert db.users["34699999999"]["role"] == "user"
 
 
 def test_registration_delivers_the_projects_opening_message_too(env):

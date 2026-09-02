@@ -263,16 +263,19 @@ class WhatsAppService(object):
         invite-acceptance flow does, reused verbatim as the reply here.
         Anything else (non-text, or text that isn't a real invite code at
         all) falls back to the generic "not linked" notice."""
-        if message.type != "text" or not (message.text or "").strip():
+        text = (message.text or "").strip()
+        if message.type != "text" or not text:
             logger.info(f"WhatsApp: message from unlinked number {message.sender} ignored.")
             return [Reply(REPLY_NOT_LINKED)], None, None
+        code = text.split()[-1]
         try:
-            self._auth_service.register_via_whatsapp(message.sender, message.text.strip())
+            self._auth_service.register_via_whatsapp(message.sender, code)
         except PermissionError as exc:
             logger.info(f"WhatsApp: registration attempt from {message.sender} refused: {exc}")
             return [Reply(str(exc))], None, None
         logger.info(f"WhatsApp: {message.sender} registered via invite code.")
         user = self._db.get_user_by_whatsapp_phone_number(message.sender)
+        assert user is not None
         with Session().impersonate(user["id"]):
             Session().role = user["role"]
             Session().channel = "whatsapp-chat"
@@ -404,7 +407,7 @@ class WhatsAppService(object):
         """True once a voice note for `reply` is on its way; False (with
         the reason logged) whenever it can't be — the caller falls back to
         text, never to silence."""
-        if not reply.audio_text:
+        if not reply.audio_text or self._talk_service is None:
             return False
         from whatsapp.audio import WHATSAPP_VOICE_MIME, wav_to_ogg_opus
 

@@ -63,7 +63,7 @@ class TestCreateInvite:
 
         invite = service.create_invite(project, created_by=None)
 
-        assert invite["whatsapp_url"] == f"https://wa.me/15552052260?text={invite['code']}"
+        assert invite["whatsapp_url"] == f"https://wa.me/15552052260?text=Invitation%20code%3A%20{invite['code']}"
 
     def test_records_who_created_it(self, db, project_service, project):
         db.get_or_create_user("google", "sub-admin", "admin@example.com", "Admin", None)

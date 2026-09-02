@@ -104,6 +104,7 @@ def create_app() -> FastAPI:
             db, ai_live_service,
             invite_valid_days=config.invite_valid_days, invite_max_shares=config.invite_max_shares,
             whatsapp_number=config.whatsapp_service_config.phone_number if config.whatsapp_service_config else None,
+            whatsapp_invite_prefix=config.whatsapp_service_config.invite_prefix if config.whatsapp_service_config else "Invitation code: ",
         )
 
         # Built once here (not a global singleton — see auth/auth_service.py's

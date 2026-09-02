@@ -38,7 +38,7 @@ const TABS = [
 ]
 
 const WHATSAPP_MASKED_FIELDS = ['verify-token', 'app-secret', 'access-token']
-const WHATSAPP_PLAIN_FIELDS = ['phone-number-id', 'phone-number', 'graph-version']
+const WHATSAPP_PLAIN_FIELDS = ['phone-number-id', 'phone-number', 'invite-prefix', 'graph-version', 'voice-replies']
 const revealedWhatsAppFields = ref(Object.fromEntries(WHATSAPP_MASKED_FIELDS.map((key) => [key, false])))
 
 const activeTab = ref(TABS[0].id)

@@ -55,6 +55,7 @@ class WhatsAppServiceConfig:
     access_token: str
     phone_number_id: str
     phone_number: str | None
+    invite_prefix: str
     graph_version: str
     mark_read: bool
     # When the bot answers with a voice note instead of text (needs
@@ -322,6 +323,10 @@ class AppConfig:
             if not phone_number.isdigit():
                 raise ConfigError(f"{path}: '{section}.phone-number' must be digits only (E.164, no '+').")
 
+        invite_prefix = sub.get("invite-prefix", "Invitation code: ")
+        if not isinstance(invite_prefix, str):
+            raise ConfigError(f"{path}: '{section}.invite-prefix' must be a string if present.")
+
         graph_version = sub.get("graph-version", "v23.0")
         if not isinstance(graph_version, str) or not graph_version.strip():
             raise ConfigError(f"{path}: '{section}.graph-version' must be a non-empty string if present.")
@@ -333,7 +338,7 @@ class AppConfig:
         )
         return WhatsAppServiceConfig(
             verify_token=verify_token, app_secret=app_secret, access_token=access_token,
-            phone_number_id=phone_number_id, phone_number=phone_number,
+            phone_number_id=phone_number_id, phone_number=phone_number, invite_prefix=invite_prefix,
             graph_version=graph_version.strip(), mark_read=mark_read, voice_replies=voice_replies,
         )
 
@@ -435,6 +440,7 @@ class AppConfig:
         raw, path = self._load_yml()
         if not isinstance(raw, dict):
             raise ConfigError(f"{path} must contain a YAML mapping at the top level.")
+        assert path is not None
 
         self.database_url = self._require_str(raw, "database", "url", path)
         self.database_migration_strategy = self._get_optional_choice(
@@ -557,8 +563,10 @@ class AppConfig:
                 "access-token": wa.access_token if wa else None,
                 "phone-number-id": wa.phone_number_id if wa else None,
                 "phone-number": wa.phone_number if wa else None,
+                "invite-prefix": wa.invite_prefix if wa else None,
                 "graph-version": wa.graph_version if wa else None,
                 "mark-read": wa.mark_read if wa else None,
+                "voice-replies": wa.voice_replies if wa else None,
             },
             "database": {
                 "url": _redact_database_url(self.database_url),
