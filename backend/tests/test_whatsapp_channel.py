@@ -7,6 +7,7 @@ persisted, non-chat state notice, Markdown flattening).
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -81,8 +82,9 @@ class _FakeCloudApi:
         self.interactive.append(("list", to, body, button_text, rows))
         self.timeline.append("list")
 
-    async def mark_read(self, message_id):
+    async def mark_read_and_show_typing(self, message_id):
         self.read.append(message_id)
+        self.timeline.append("typing")
 
     async def close(self):
         pass
@@ -430,6 +432,52 @@ def test_turn_runs_as_the_linked_account_and_replies_with_persisted_assistant_me
     assert api.read == ["wamid.1"]
     # Markdown flattened to WhatsApp's own subset on the way out.
     assert api.sent == [(LINKED_NUMBER, "*Hola* — has dicho: hola")]
+
+
+def test_typing_indicator_goes_out_before_the_reply_is_ready(env):
+    client, _, _, _, api = env
+    _post(client, _payload(text="hola"))
+    assert api.timeline == ["typing", "text"]
+
+
+def test_no_typing_indicator_when_mark_read_is_off():
+    """The Cloud API only accepts the indicator inside the read receipt,
+    so switching mark-read off in .config.yml switches it off too."""
+    client, _, _, _, api = _build(_config(mark_read=False))
+    _post(client, _payload(text="hola"))
+    assert api.read == []
+    assert api.timeline == ["text"]
+
+
+def test_cloud_api_client_sends_the_read_receipt_with_the_typing_indicator():
+    from whatsapp.cloud_api_client import WhatsAppCloudApiClient
+
+    posted: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        posted.append(json.loads(request.content))
+        return httpx.Response(200, json={"success": True})
+
+    api_client = WhatsAppCloudApiClient("tok", "123", "v23.0")
+    api_client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="https://graph.facebook.com/v23.0")
+    asyncio.run(api_client.mark_read_and_show_typing("wamid.1"))
+    assert posted == [{
+        "messaging_product": "whatsapp",
+        "status": "read",
+        "message_id": "wamid.1",
+        "typing_indicator": {"type": "text"},
+    }]
+
+
+def test_cloud_api_client_typing_indicator_failure_is_swallowed():
+    from whatsapp.cloud_api_client import WhatsAppCloudApiClient
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"error": "boom"})
+
+    api_client = WhatsAppCloudApiClient("tok", "123", "v23.0")
+    api_client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="https://graph.facebook.com/v23.0")
+    asyncio.run(api_client.mark_read_and_show_typing("wamid.1"))
 
 
 def test_no_ai_initiated_opening_message_ahead_of_the_users_own_turn(env):
@@ -808,7 +856,7 @@ def test_spoken_reply_with_manual_actions_gets_buttons_on_a_follow_up(voice_env)
     chat.reply_audio_text = "Hola."
     chat.state = {**chat.state, "manual_actions": [_action("go", "Go"), _action("stop", "Stop")]}
     _post(client, _payload(mtype="audio"))
-    assert api.timeline == ["audio", "buttons"]
+    assert api.timeline == ["typing", "audio", "buttons"]
     kind, to, body, buttons = api.interactive[0]
     assert body == REPLY_OPTIONS_PROMPT and [b[0] for b in buttons] == ["go", "stop"]
     assert api.sent == []
@@ -820,7 +868,7 @@ def test_spoken_reply_fallback_keeps_buttons_on_the_text(voice_env):
     chat.state = {**chat.state, "manual_actions": [_action("go", "Go")]}
     api.fail_upload = True
     _post(client, _payload(mtype="audio"))
-    assert api.timeline == ["buttons"]
+    assert api.timeline == ["typing", "buttons"]
     assert api.interactive[0][2] == "*Hola* — has dicho: hola por voz"
 
 

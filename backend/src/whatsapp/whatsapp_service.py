@@ -201,7 +201,7 @@ class WhatsAppService(object):
         """Runs after the webhook already answered 200 — must never raise."""
         try:
             if self._config.mark_read:
-                await self._client.mark_read(message.id)
+                await self._client.mark_read_and_show_typing(message.id)
             lock = self._sender_locks.setdefault(message.sender, asyncio.Lock())
             async with lock:
                 try:
