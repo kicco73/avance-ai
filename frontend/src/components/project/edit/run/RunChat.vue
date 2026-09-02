@@ -7,7 +7,7 @@ import ChatView from '../../../chat/ChatView.vue'
 import ChatTimeline from '../../../chat/ChatTimeline.vue'
 import RestartFromHereButton from '../../../chat/RestartFromHereButton.vue'
 import SessionsPanel from '../../../chat/SessionsPanel.vue'
-import { getMessages, deleteSession } from '../../../../api.js'
+import { clearEnv, getMessages, deleteSession } from '../../../../api.js'
 import { spokenTextEnabled, totalTokenBudgetPerSession } from '../../../../chatStoreFactory.js'
 import { applyAspect } from '../../../../chatSkin.js'
 import { testStore } from '../../../../testChatStore.js'
@@ -103,6 +103,7 @@ async function onClearSession() {
   const sessionId = currentSessionId.value
   try {
     if (sessionId != null) await deleteSession(sessionId)
+    await clearEnv()
   } catch {
     // already surfaced via apiFetch
   }

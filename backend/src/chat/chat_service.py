@@ -540,9 +540,8 @@ class ChatService(object):
 		return self.get_env()
 
 	async def clear_env(self) -> dict:
-		"""Wipes every stored env key at once (see chat.env.Env.clear) —
-		the Inspector Env tab's own "clear all" button for the AI
-		section. Always live. Returns the same shape as get_env."""
+		"""Wipes every stored and action-set env key at once (see
+		chat.env.Env.clear). Always live. Returns the same shape as get_env."""
 		await self.get_current_session_if_any_or_create_new(None)
 		self.env.clear()
 		return self.get_env()

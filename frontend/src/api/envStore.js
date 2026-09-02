@@ -37,10 +37,8 @@ export function deleteEnvValue(key) {
   })
 }
 
-// Wipes every stored ("AI" section) env key at once. Returns the same
-// {stored, action_set} shape as getEnv. action_set has no clear-all of
-// its own — those values are never user-clearable (see tracking/env.py's
-// Env.stored() docstring).
+// Wipes every stored and action-set env key at once. Returns the same
+// {stored, action_set} shape as getEnv.
 export function clearEnv() {
   return apiFetch(`${API_URL}/chat/env`, {
     method: 'DELETE'

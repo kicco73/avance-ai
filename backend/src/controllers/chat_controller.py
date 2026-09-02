@@ -83,9 +83,8 @@ class ChatController(BaseController):
 
     @delete("/api/chat/env")
     async def clear_env(self):
-        """Wipes every stored env key at once (see ChatService.clear_env)
-        — the Inspector Env tab's own "clear all" button for the AI
-        section. Always live."""
+        """Wipes every stored and action-set env key at once (see
+        ChatService.clear_env). Always live."""
         return await self.chat_service.clear_env()
 
     @put("/api/chat/env/{key}")
