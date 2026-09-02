@@ -236,6 +236,80 @@ FK_PARENT_FIRST_DDL = [
 ]
 
 
+def test_upgrade_relaxes_a_not_null_constraint_and_preserves_data(tmp_path):
+    db_path = tmp_path / "test.db"
+    Db(f"sqlite:///{db_path}")
+    _run_sql(db_path, [
+        "INSERT INTO Project (name, revision, is_paused, manually_paused, draft_edit_count) VALUES ('lluna', 1, 0, 0, 0)",
+        "INSERT INTO User (id, email, role, created_at) VALUES ('enrico@example.com', 'enrico@example.com', 'user', '2026-01-01 00:00:00')",
+        "INSERT INTO ChatSession (username, user_id, project_name, type, project_revision, labeled, labeling_revision, channel) "
+        "VALUES ('enrico@example.com', 'enrico@example.com', 'lluna', 'live', 1, 0, 0, 'native-chat')",
+        "PRAGMA legacy_alter_table = ON",
+        'ALTER TABLE "User" RENAME TO "User__old__"',
+        "PRAGMA legacy_alter_table = OFF",
+        "CREATE TABLE User ("
+        "id VARCHAR(255) NOT NULL PRIMARY KEY, "
+        "provider VARCHAR(255), provider_user_id VARCHAR(255), "
+        "email VARCHAR(255) NOT NULL, "
+        "name VARCHAR(255), picture_url VARCHAR(255), "
+        "created_at DATETIME NOT NULL, last_login DATETIME, "
+        "active_project_id VARCHAR(255) REFERENCES Project(name), "
+        "role VARCHAR(255) NOT NULL)",
+        "INSERT INTO User (id, provider, provider_user_id, email, name, picture_url, created_at, last_login, active_project_id, role) "
+        "SELECT id, provider, provider_user_id, email, name, picture_url, created_at, last_login, active_project_id, role FROM User__old__",
+        "DROP TABLE User__old__",
+    ])
+
+    Db(f"sqlite:///{db_path}", migration_strategy="upgrade")
+
+    notnull = {row[1]: bool(row[3]) for row in _query(db_path, "PRAGMA table_info(User)")}
+    assert notnull["email"] is False
+    assert "whatsapp_phone_number" in notnull
+    assert _query(db_path, "SELECT id, email, role FROM User") == [("enrico@example.com", "enrico@example.com", "user")]
+    assert _query(db_path, "SELECT username, project_name, channel FROM ChatSession") == [("enrico@example.com", "lluna", "native-chat")]
+    assert _query(db_path, "PRAGMA foreign_key_check") == []
+
+
+def test_upgrade_rebuilds_a_table_needing_both_a_constraint_change_and_a_new_not_null_column(tmp_path):
+    db_path = tmp_path / "test.db"
+    Db(f"sqlite:///{db_path}")
+    _run_sql(db_path, [
+        "INSERT INTO Project (name, revision, is_paused, manually_paused, draft_edit_count) VALUES ('lluna', 1, 0, 0, 0)",
+        "INSERT INTO User (id, email, role, created_at) VALUES ('enrico@example.com', 'enrico@example.com', 'user', '2026-01-01 00:00:00')",
+        "PRAGMA legacy_alter_table = ON",
+        'ALTER TABLE "ChatSession" RENAME TO "ChatSession__old__"',
+        "PRAGMA legacy_alter_table = OFF",
+        "CREATE TABLE ChatSession ("
+        "id INTEGER NOT NULL PRIMARY KEY, "
+        "username VARCHAR(255) NOT NULL, "
+        "user_id VARCHAR(255) REFERENCES User(id), "
+        "project_name VARCHAR(255) NOT NULL REFERENCES Project(name), "
+        "type VARCHAR(255) NOT NULL, "
+        "title VARCHAR(255), "
+        "project_revision INTEGER NOT NULL, "
+        "datetime_start DATETIME, datetime_end DATETIME, "
+        "start_state VARCHAR(255), end_state VARCHAR(255), "
+        "labeled INTEGER NOT NULL, "
+        "comment TEXT, "
+        "labeling_revision INTEGER)",
+        "INSERT INTO ChatSession (id, username, user_id, project_name, type, project_revision, labeled, labeling_revision) "
+        "VALUES (1, 'enrico@example.com', 'enrico@example.com', 'lluna', 'live', 1, 0, 0)",
+        "DROP TABLE ChatSession__old__",
+        "INSERT INTO Message (role, content, session_id) VALUES ('user', 'hi', 1)",
+    ])
+
+    Db(f"sqlite:///{db_path}", migration_strategy="upgrade")
+
+    notnull = {row[1]: bool(row[3]) for row in _query(db_path, "PRAGMA table_info(ChatSession)")}
+    assert notnull["labeling_revision"] is True
+    assert notnull["channel"] is True
+    assert _query(db_path, "SELECT id, username, project_name, labeling_revision, channel FROM ChatSession") == [
+        (1, "enrico@example.com", "lluna", 0, "native-chat"),
+    ]
+    assert _query(db_path, "SELECT session_id, content FROM Message") == [(1, "hi")]
+    assert _query(db_path, "PRAGMA foreign_key_check") == []
+
+
 def test_drop_removes_a_parent_table_referenced_by_a_still_existing_child(tmp_path):
     db_path = tmp_path / "test.db"
     _make_sqlite_file(db_path, FK_PARENT_FIRST_DDL)

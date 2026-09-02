@@ -102,6 +102,7 @@ REPLY_INVALID_ACTION = "That option is no longer available. Please choose one of
 REPLY_BUSY = "Please wait a moment and try again."
 REPLY_DONE = "Done."
 REPLY_OPTIONS_PROMPT = "What would you like to do?"
+REPLY_TECHNICAL_PROBLEM = "We apologize for the inconvenience — a technical problem occurred. Please try again in a moment."
 
 _MAX_REPLY_BUTTONS = 3
 _MAX_LIST_ROWS = 10
@@ -199,7 +200,12 @@ class WhatsAppService(object):
                 await self._client.mark_read(message.id)
             lock = self._sender_locks.setdefault(message.sender, asyncio.Lock())
             async with lock:
-                replies, manual_actions, session_id, spoken = await self._replies_for(message)
+                try:
+                    replies, manual_actions, session_id, spoken = await self._replies_for(message)
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception(f"WhatsApp: unexpected error resolving a reply to {message.id} from {message.sender}: {exc}")
+                    await self._client.send_text(message.sender, REPLY_TECHNICAL_PROBLEM)
+                    return
                 await self._send_replies(
                     message.sender, replies, manual_actions, session_id, voice=self._wants_voice(spoken),
                 )

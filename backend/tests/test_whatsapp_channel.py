@@ -30,8 +30,9 @@ from whatsapp.audio import WHATSAPP_VOICE_MIME, split_wav, wav_to_ogg_opus
 from whatsapp.cloud_api_client import split_text
 from whatsapp.whatsapp_service import (
     REPLY_AUDIO_NOT_UNDERSTOOD, REPLY_BUSY, REPLY_DONE, REPLY_INVALID_ACTION, REPLY_NO_CHAT_STATE, REPLY_NOT_LINKED,
-    REPLY_NOT_REGISTERED, REPLY_OPTIONS_PROMPT, REPLY_PAUSED, REPLY_REGISTERED, REPLY_TERMS_PENDING,
-    REPLY_UNSUPPORTED, REPLY_UNSUPPORTED_AUDIO, IncomingMessage, WhatsAppService, to_whatsapp_markdown,
+    REPLY_NOT_REGISTERED, REPLY_OPTIONS_PROMPT, REPLY_PAUSED, REPLY_REGISTERED, REPLY_TECHNICAL_PROBLEM,
+    REPLY_TERMS_PENDING, REPLY_UNSUPPORTED, REPLY_UNSUPPORTED_AUDIO, IncomingMessage, WhatsAppService,
+    to_whatsapp_markdown,
 )
 
 pytestmark = pytest.mark.contract
@@ -110,8 +111,11 @@ class _FakeAuthService:
     def __init__(self, db: _FakeDb) -> None:
         self._db = db
         self.valid_codes: dict[str, str] = {}
+        self.unexpected_error: Exception | None = None
 
     def register_via_whatsapp(self, phone_number, invite_code):
+        if self.unexpected_error is not None:
+            raise self.unexpected_error
         project_name = self.valid_codes.get(invite_code)
         if project_name is None:
             raise PermissionError("This invite link is invalid.")
@@ -370,6 +374,16 @@ def test_registration_delivers_the_projects_opening_message_too(env):
     chat.opening_message = "Bienvenida."
     _post(client, _payload(sender="34699999999", text="GOODCODE"))
     assert [body for _, body in api.sent] == [REPLY_REGISTERED, "Bienvenida."]
+
+
+def test_unexpected_error_during_redeem_gets_an_apology_not_silence(env):
+    client, service, chat, db, api = env
+    service._auth_service.unexpected_error = RuntimeError("boom")
+    r = _post(client, _payload(sender="34699999999", text="GOODCODE"))
+    assert r.status_code == HTTPStatus.OK
+    assert chat.calls == []
+    assert api.sent == [("34699999999", REPLY_TECHNICAL_PROBLEM)]
+    assert "34699999999" not in db.users
 
 
 def test_linked_but_unregistered_account_is_refused(env):
