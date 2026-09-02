@@ -10,6 +10,7 @@ from typing import Mapping
 from automaton.automaton import Automaton
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from automaton.automaton_builder import AutomatonBuilder
+from chat.session_manager import ChatSessionManager
 from db import Db
 from events import AvailabilityChanged, publish, subscribe
 from logging_factory import LoggerFactory
@@ -39,12 +40,14 @@ class ProjectManager:
     def __init__(
         self, db: Db, automaton_loader: AutomatonLoader, inspector: ProjectInspector,
         session_export_manager: SessionExportManager, session_import_manager: SessionImportManager,
+        session_manager: ChatSessionManager,
     ) -> None:
         self._db = db
         self._automaton_loader = automaton_loader
         self._inspector = inspector
         self._session_export_manager = session_export_manager
         self._session_import_manager = session_import_manager
+        self._session_manager = session_manager
 
     @staticmethod
     def _automaton_project_refs(automaton: Automaton) -> set[str]:
@@ -348,7 +351,7 @@ class ProjectManager:
         published_revision = self._db.get_project_published_revision(project_name)
         has_active_sessions = (
             published_revision is not None
-            and self._db.has_open_sessions_for_revision(project_name, published_revision)
+            and self._session_manager.has_open_sessions_for_revision(project_name, published_revision)
         )
         if current_state_key is None or current_state_key in draft.states:
             return {"needs_remap": False, "has_active_sessions": has_active_sessions}

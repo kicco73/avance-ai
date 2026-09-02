@@ -115,7 +115,7 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			self.out.tracking_id, self.out.on_enter = self._tracking_engine.apply_transition(
 				self.user.automaton, self.user.state, self.out.action, self.metadata.signals, self.user.session_id,
 				message_id=self.user.message_id if has_real_user_message else None,
-				username=Session().user, project_name=self.user.project_name,
+				origin='trigger', username=Session().user, project_name=self.user.project_name,
 			)
 			self.out.tracking_linked_to_message = has_real_user_message
 

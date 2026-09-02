@@ -5,9 +5,38 @@ from pathlib import Path
 
 import pytest
 
+from chat.channels import NATIVE_CHAT, WHATSAPP_CHAT
 from conftest import parse_chat_turn_sse_error
 from conftest import parse_sse_result
 from db import Db
+from session import Session
+
+CHANNEL_CODES_PROJECT_YAML = """
+init-action:
+  target: a
+states:
+  a:
+    ui-label: A
+    contextual-prompt: hi
+    actions:
+      - name: advance
+        ui-label: Advance
+        ui-button: Advance
+        target: b
+  b:
+    ui-label: B
+    contextual-prompt: bye
+    chat: false
+"""
+
+
+def _setup_channel_codes_project(app_db, project_name="channel-codes-proj"):
+    app_db.ensure_project(project_name)
+    app_db.save_project_files(
+        project_name, {"index.yml": CHANNEL_CODES_PROJECT_YAML.encode("utf-8")}, {"index.yml": "text/yaml"},
+    )
+    app_db.publish_project(project_name)
+    app_db.set_active_project_name(project_name, "user")
 
 
 @pytest.mark.contract
@@ -130,23 +159,121 @@ def test_manual_new_session_supersedes_the_bootstrap_one(client, hello_project):
     assert newer["active"] is True
 
     sessions = {s["id"]: s for s in client.get("/api/projects/hello/sessions").json()}
-    # Both sessions are still "open" (neither has expired), but only the
-    # most recently started one may ever be "active".
-    assert sessions[older["id"]]["open"] is True
+    # "New session" explicitly closes whatever was open before creating
+    # the new one — the older session is closed, not just superseded.
+    assert sessions[older["id"]]["open"] is False
     assert sessions[older["id"]]["active"] is False
+    assert sessions[older["id"]]["close_reason"] == "force-new-session"
     assert sessions[newer["id"]]["open"] is True
     assert sessions[newer["id"]]["active"] is True
 
 
 @pytest.mark.regression
-def test_chat_turn_rejects_an_open_but_inactive_session(client, hello_project):
+def test_chat_turn_rejects_a_session_closed_by_a_manual_new_session(client, hello_project):
     older = client.get("/api/chat/session").json()
-    client.post("/api/chat/sessions")  # supersedes `older`
+    client.post("/api/chat/sessions")  # closes `older` (force-new-session) and supersedes it
 
     response = client.post(f"/api/chat/sessions/{older['id']}/messages", json={"message": "hi"})
 
     assert response.status_code == 200  # the turn endpoint always streams 200; failures arrive as an SSE `error` event
-    assert "not active" in parse_chat_turn_sse_error(response)["message"].lower()
+    error = parse_chat_turn_sse_error(response)
+    assert "closed" in error["message"].lower()
+    assert error["code"] == "session_closed"
+
+
+def _someone_elses_session(app_db, project_name="channel-codes-proj"):
+    """A real row, but not `user`'s own — require_active_session's
+    session_not_found (409), distinct from _project_name_for_session's
+    own earlier "Session not found." (404) for a session_id that isn't a
+    real row at all."""
+    return app_db.create_chat_session(
+        "someone-else", project_name, app_db.get_project_published_revision(project_name),
+        datetime_start=datetime.utcnow(), datetime_end=datetime.utcnow(),
+        start_state="a", end_state="a", type="live", channel=NATIVE_CHAT,
+    )
+
+
+@pytest.mark.contract
+def test_chat_turn_exposes_session_not_found_code(client, app_db):
+    _setup_channel_codes_project(app_db)
+    session_id = _someone_elses_session(app_db)
+
+    response = client.post(f"/api/chat/sessions/{session_id}/messages", json={"message": "hi"})
+
+    assert response.status_code == 200
+    assert parse_chat_turn_sse_error(response)["code"] == "session_not_found"
+
+
+@pytest.mark.contract
+def test_manual_action_exposes_session_not_found_code(client, app_db):
+    _setup_channel_codes_project(app_db)
+    session_id = _someone_elses_session(app_db)
+
+    response = client.post(f"/api/chat/sessions/{session_id}/action", json={"action_name": "advance"})
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "session_not_found"
+
+
+@pytest.mark.contract
+def test_manual_action_exposes_state_not_chat_code(client, app_db):
+    _setup_channel_codes_project(app_db)
+    session = client.get("/api/chat/session").json()
+    client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "advance"})  # now in state "b" (chat: false)
+
+    response = client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})
+
+    assert response.status_code == 200
+    assert parse_chat_turn_sse_error(response)["code"] == "state_not_chat"
+
+
+@pytest.mark.contract
+def test_chat_turn_exposes_session_channel_mismatch_code(client, app_db):
+    _setup_channel_codes_project(app_db)
+    session = client.get("/api/chat/session").json()
+
+    Session().channel = WHATSAPP_CHAT
+    try:
+        response = client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})
+    finally:
+        Session().channel = NATIVE_CHAT
+
+    assert response.status_code == 200
+    assert parse_chat_turn_sse_error(response)["code"] == "session_channel_mismatch"
+
+
+@pytest.mark.contract
+def test_chat_turn_exposes_session_superseded_code(client, app_db):
+    _setup_channel_codes_project(app_db)
+    older = client.get("/api/chat/session").json()
+    # A second live session appearing outside ChatService's own
+    # close-before-create flow (e.g. an import) — `older` is still open,
+    # just no longer the active one.
+    app_db.create_chat_session(
+        "user", "channel-codes-proj", app_db.get_project_published_revision("channel-codes-proj"),
+        datetime_start=datetime.utcnow(), datetime_end=datetime.utcnow(),
+        start_state="a", end_state="a", type="live", channel=NATIVE_CHAT,
+    )
+
+    response = client.post(f"/api/chat/sessions/{older['id']}/messages", json={"message": "hi"})
+
+    assert response.status_code == 200
+    assert parse_chat_turn_sse_error(response)["code"] == "session_superseded"
+
+
+async def test_manual_action_exposes_turn_in_progress_code(client, app_db):
+    _setup_channel_codes_project(app_db)
+    session = client.get("/api/chat/session").json()
+    chat_service = client.app.state.chat_service
+    lock = chat_service._session_locks.get(str(session["id"]))
+    await lock.acquire()
+    try:
+        response = client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "advance"})
+    finally:
+        lock.release()
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "turn_in_progress"
 
 
 @pytest.mark.regression
@@ -159,14 +286,16 @@ def test_chat_turn_succeeds_against_the_active_session(client, hello_project):
 
 
 @pytest.mark.regression
-def test_manual_action_rejects_an_open_but_inactive_session(client, hello_project):
+def test_manual_action_rejects_a_session_closed_by_a_manual_new_session(client, hello_project):
     older = client.get("/api/chat/session").json()
-    client.post("/api/chat/sessions")  # supersedes `older`
+    client.post("/api/chat/sessions")  # closes `older` (force-new-session) and supersedes it
 
     response = client.post(f"/api/chat/sessions/{older['id']}/action", json={"action_name": "chat"})
 
     assert response.status_code == 409
-    assert "not active" in response.json()["error"]["message"].lower()
+    body = response.json()
+    assert "closed" in body["error"]["message"].lower()
+    assert body["error"]["code"] == "session_closed"
 
 
 @pytest.mark.regression

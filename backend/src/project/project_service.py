@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from automaton.automaton import (
     Action, ActionPayload, Automaton, EnvKeyPayload, ProjectPayload, SignalPayload, State, StatePayload,
 )
+from chat.session_manager import ChatSessionManager
 from db import Db
 from tracking.session_export import SessionExportManager
 from tracking.session_import import SessionImportManager
@@ -34,16 +35,20 @@ class ProjectService(object):
         self, db: Db, ai_service: "AiService | None" = None,
         invite_valid_days: int = 7, invite_max_shares: int = 3, whatsapp_number: str | None = None,
         whatsapp_invite_prefix: str = "Invitation code: ",
+        session_manager: ChatSessionManager | None = None,
     ) -> None:
         self._db = db
+        if session_manager is None:
+            session_manager = ChatSessionManager(db)
         session_export_manager = SessionExportManager(db)
         session_import_manager = SessionImportManager(db)
         self._automaton_loader = AutomatonLoader(db)
         self._inspector = ProjectInspector(db, self._automaton_loader, ai_service)
         self._manager = ProjectManager(
-            db, self._automaton_loader, self._inspector, session_export_manager, session_import_manager
+            db, self._automaton_loader, self._inspector, session_export_manager, session_import_manager,
+            session_manager,
         )
-        self._editor = ProjectEditor(db, self._automaton_loader, self._inspector, self._manager)
+        self._editor = ProjectEditor(db, self._automaton_loader, self._inspector, self._manager, ai_service)
         self._invites = InviteManager(db, invite_valid_days, invite_max_shares, whatsapp_number, whatsapp_invite_prefix)
 
     # -- ProjectInspector -------------------------------------------------
@@ -205,6 +210,12 @@ class ProjectService(object):
 
     def get_project_file(self, project_name: str, file_name: str) -> dict:
         return self._editor.get_project_file(project_name, file_name)
+
+    async def generate_index_yml_ai_edit(self, project_name: str, instruction: str) -> str:
+        return await self._editor.generate_index_yml_ai_edit(project_name, instruction)
+
+    async def generate_index_css_ai_edit(self, project_name: str, instruction: str) -> str:
+        return await self._editor.generate_index_css_ai_edit(project_name, instruction)
 
     def get_project_file_content(
         self, project_name: str, file_name: str, session_id: int | None

@@ -210,6 +210,61 @@ def test_export_omits_tokens_when_unknown_but_includes_it_when_known(client, hel
 
 
 @pytest.mark.contract
+def test_import_json_round_trips_closed_at_close_reason_and_origin(client, hello_project):
+    payload = {
+        "name": "Closed session",
+        "username": "User 1",
+        "timestamp": "2026-01-01T10:00:00+00:00",
+        "datetime_end": "2026-01-01T10:05:00+00:00",
+        "start_state": "Hello",
+        "end_state": "Hello",
+        "labeled": False,
+        "comment": None,
+        "closed_at": "2026-01-01T10:05:00+00:00",
+        "close_reason": "manual-user",
+        "messages": [
+            {"role": "user", "text": "hi", "timestamp": "2026-01-01T10:00:00+00:00"},
+            {
+                "role": "assistant", "text": "hello", "timestamp": "2026-01-01T10:00:05+00:00",
+                "old_state": "Hello", "action": "reply", "new_state": "Hello",
+                "values": {"mood": 0.5}, "origin": "trigger",
+            },
+        ],
+    }
+
+    result = _import_json(client, [payload])
+    assert result["results"][0]["ok"] is True
+
+    Session().user = "User 1"
+    [exported] = client.get("/api/projects/hello/sessions/export").json()
+
+    assert exported["closed_at"] == "2026-01-01T10:05:00+00:00"
+    assert exported["close_reason"] == "manual-user"
+    assert exported["messages"][1]["origin"] == "trigger"
+
+
+@pytest.mark.contract
+def test_import_json_defaults_closed_at_close_reason_and_origin_to_none_when_absent(client, hello_project):
+    payload = {
+        "name": "Never closed",
+        "username": "User 1",
+        "messages": [
+            {"role": "user", "text": "hi"},
+            {"role": "assistant", "text": "hello", "old_state": "Hello", "action": "reply", "new_state": "Hello"},
+        ],
+    }
+
+    _import_json(client, [payload])
+
+    Session().user = "User 1"
+    [exported] = client.get("/api/projects/hello/sessions/export").json()
+
+    assert exported["closed_at"] is None
+    assert exported["close_reason"] is None
+    assert exported["messages"][1]["origin"] is None
+
+
+@pytest.mark.contract
 def test_import_json_rejects_a_malformed_message(client, hello_project):
     result = _import_json(client, [{"name": "bad", "messages": [{"role": "user"}]}])  # missing required 'text'
     assert result["results"] == [{"file": "bad", "ok": False, "error": result["results"][0]["error"]}]

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from automaton.automaton import ActionPayload, Automaton, EnvKeyPayload, ProjectPayload, SignalPayload, StatePayload
 from automaton.automaton_builder import AutomatonBuilder, EXTENSION_TO_MEDIA_TYPE
@@ -19,17 +21,116 @@ from .archive.layout import (
 )
 from .types import CommitCallback
 
+if TYPE_CHECKING:
+    from ai.ai_service import AiService
+
 logger = LoggerFactory.get_logger(__name__)
+
+# backend/src/docs/ — same directory ChatController.get_doc serves
+# PROJECT_SPECS.md from (as "project-specs"); read directly here rather
+# than going through that endpoint since this runs server-side.
+DOCS_DIR = Path(__file__).resolve().parent.parent / "docs"
+
+# Both AI-edit prompts below share this placeholder for the format spec's
+# own text, substituted with .replace() rather than str.format() — the
+# spec/CSS bodies are full of literal `{`/`}` characters that would
+# otherwise have to be escaped throughout.
+_SPEC_PLACEHOLDER = "%%SPEC%%"
+
+INDEX_YML_AI_EDIT_SYSTEM_PROMPT = """\
+You are editing the `index.yml` file of an Avance project — a YAML file \
+that defines a state-machine driving an AI chat conversation. Follow the \
+format specification below exactly; every rule it states is enforced by \
+the backend at upload time, so an invalid file is rejected outright.
+
+%%SPEC%%
+
+You will be given this project's current `index.yml` and a description of \
+a problem to solve or change to make. Reply with the complete new \
+`index.yml` content that addresses it — the whole file, not a diff or an \
+excerpt, keeping everything unrelated to the request unchanged.
+
+Getting this exactly right matters more than anything else: a file that \
+fails to parse or fails validation is worse than no change at all.
+- The result must be strictly valid YAML, parseable start to finish. Every \
+quoted string you open must be closed — never leave a `"` or `'` dangling.
+- For any string value that spans multiple lines, contains a quote \
+character, or is otherwise awkward to quote, use a YAML block scalar \
+(`|` for literal, `>` for folded) instead of a quoted flow scalar — it \
+needs no escaping and cannot produce an unbalanced-quote error.
+- Every piece of text in this file — `contextual-prompt`, `fixed-message`, \
+`ui-label`, `ui-description`, any of it — is plain prose or, where the \
+specification says so, Markdown. Never HTML: no `<div>`, `<span>`, or any \
+other markup tag anywhere in the file, including inside prompt/description \
+strings.
+- Only use fields, keys, and value shapes the specification above actually \
+defines — never invent one.
+- Before you answer, re-check the whole file in your head against the \
+specification's own §9 validation checklist, and fix anything that would \
+fail it.
+
+Reply with nothing but the YAML itself, inside a single ```yaml code fence \
+— no explanation before or after it.\
+"""
+
+INDEX_CSS_AI_EDIT_SYSTEM_PROMPT = """\
+You are editing the `index.css` file of an Avance project — the stylesheet \
+that skins its chat widget. Follow the format specification below exactly; \
+every rule it states is enforced by the backend at save time, so an \
+invalid file is rejected outright.
+
+%%SPEC%%
+
+You will be given this project's current `index.css`, the basenames of \
+image assets already uploaded under `aspect/` (if any), and a description \
+of a problem to solve or change to make. Reply with the complete new \
+`index.css` content that addresses it — the whole file, not a diff or an \
+excerpt, keeping everything unrelated to the request unchanged.
+
+Getting this exactly right matters more than anything else: a file that \
+fails to parse or fails validation is worse than no change at all.
+- Write plain CSS3 only — no SCSS/LESS syntax, no nesting other than what \
+@media/@supports blocks themselves give you.
+- The result must be syntactically valid CSS, parseable start to finish: \
+every brace block you open must be closed, and every quoted string (inside \
+content:"...", url("..."), etc.) must be closed on the line it opens on — \
+never leave a brace or a quote dangling.
+- Never write HTML, Markdown, or any other non-CSS content anywhere in the \
+file. A CSS comment (/* ... */) is fine; anything else outside CSS syntax \
+is not.
+- Reference an image only as url("basename.ext"), and only a basename \
+already listed below as uploaded — never invent one. If the change calls \
+for an image that isn't listed, leave that part out (or note what's \
+needed in a CSS comment) rather than pointing at a file that doesn't exist.
+- Only rely on the selectors the specification's own §4 lists as a stable \
+hook where the request depends on them actually being visible — nothing \
+else in the chat UI is guaranteed to render your rule.
+- Before you answer, re-check the whole file in your head against the \
+specification's own §8 checklist, and fix anything that would fail it.
+
+Reply with nothing but the CSS itself, inside a single ```css code fence \
+— no explanation before or after it.\
+"""
+
+# Pulls the body out of a fenced code block (```css, ```yaml, or bare
+# ```) — models reliably wrap their output in one despite the system
+# prompt asking for "nothing but the CSS/YAML", so this is the normal
+# path, not a fallback.
+_CODE_FENCE_RE = re.compile(r"```[a-zA-Z0-9_+-]*\s*\n(.*?)```", re.DOTALL)
 
 
 class ProjectEditor:
     def __init__(
         self, db: Db, automaton_loader: AutomatonLoader, inspector: ProjectInspector, manager: ProjectManager,
+        ai_service: "AiService | None" = None,
     ) -> None:
         self._db = db
         self._automaton_loader = automaton_loader
         self._inspector = inspector
         self._manager = manager
+        # Optional: only needed for generate_index_yml_ai_edit — every
+        # other method here works without it.
+        self._ai_service = ai_service
 
     def _resolve_file_name(self, project_name: str, file_name: str, revision: int | None = None) -> str:
         names = self._db.list_archives(project_name, revision=revision)
@@ -71,6 +172,58 @@ class ProjectEditor:
         """{content, can_undo, can_redo} for `file_name`'s current
         content, scoped to the current user."""
         return self._file_undo_redo_info(project_name, file_name)
+
+    async def _run_ai_edit(self, system_prompt_template: str, spec_file_name: str, user_turn: str) -> str:
+        """Shared by generate_index_yml_ai_edit/generate_index_css_ai_edit
+        below: fills `system_prompt_template`'s %%SPEC%% placeholder with
+        `spec_file_name`'s own text, sends `user_turn` as the one user
+        message, and pulls the new file's content out of the reply's own
+        fenced code block."""
+        if self._ai_service is None:
+            raise ValueError("No AiService is configured for this deployment.")
+        spec = (DOCS_DIR / spec_file_name).read_text(encoding="utf-8")
+        system_prompt = system_prompt_template.replace(_SPEC_PLACEHOLDER, spec)
+        reply = await self._ai_service.generate(system_prompt, [{"role": "user", "content": user_turn}])
+        match = _CODE_FENCE_RE.search(reply)
+        return (match.group(1) if match else reply).strip() + "\n"
+
+    async def generate_index_yml_ai_edit(self, project_name: str, instruction: str) -> str:
+        """Backs the "Edit project" index.yml editor's AI button
+        (IndexYmlEditorPanel.vue): sends the AiService a prompt built from
+        the format spec (PROJECT_SPECS.md), this project's current
+        index.yml, and `instruction` describing the change to make, and
+        returns the new index.yml content it replies with. A pure preview,
+        same as undo/redo above — nothing is persisted here, the frontend
+        drops the result into its own (unsaved) editor buffer."""
+        content = self._db.get_archive(project_name, "index.yml")
+        if content is None:
+            raise FileNotFoundError(f"Project '{project_name}' has no index.yml.")
+        user_turn = (
+            f"Current index.yml:\n```yaml\n{content.decode('utf-8')}\n```\n\n"
+            f"Requested change:\n{instruction}"
+        )
+        return await self._run_ai_edit(INDEX_YML_AI_EDIT_SYSTEM_PROMPT, "PROJECT_SPECS.md", user_turn)
+
+    async def generate_index_css_ai_edit(self, project_name: str, instruction: str) -> str:
+        """Backs the "Edit project" index.css (Aspect) editor's AI button
+        (IndexCssEditorPanel.vue) — same shape as generate_index_yml_ai_edit
+        above, built from the skin format spec (SKIN_SPECS.md), this
+        project's current index.css, the basenames of its own already-
+        uploaded `aspect/` assets (so the model never invents a `url(...)`
+        reference to a file that doesn't exist), and `instruction`. A pure
+        preview, nothing persisted here — see generate_index_yml_ai_edit."""
+        content = self._db.get_archive(project_name, "index.css")
+        if content is None:
+            raise FileNotFoundError(f"Project '{project_name}' has no index.css.")
+        existing_names = self._db.list_archives(project_name)
+        asset_names = sorted(Path(name).name for name in existing_names if name.startswith(f"{ASPECT_DIR}/"))
+        assets_line = ", ".join(asset_names) if asset_names else "(none uploaded yet)"
+        user_turn = (
+            f"Current index.css:\n```css\n{content.decode('utf-8')}\n```\n\n"
+            f"Assets already uploaded under aspect/: {assets_line}\n\n"
+            f"Requested change:\n{instruction}"
+        )
+        return await self._run_ai_edit(INDEX_CSS_AI_EDIT_SYSTEM_PROMPT, "SKIN_SPECS.md", user_turn)
 
     def get_project_file_content(
         self, project_name: str, file_name: str, session_id: int | None

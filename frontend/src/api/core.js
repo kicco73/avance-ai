@@ -48,11 +48,13 @@ export async function apiFetch(url, options, { parse = 'json', onProgress, onCom
   if (!res.ok) {
     let message = `Error ${res.status}`
     let detail = ''
+    let code = null
     try {
       const body = await res.json()
       if (body?.error?.message) {
         message = body.error.message
         detail = body.error.detail ?? ''
+        code = body.error.code ?? null
       }
     } catch {
 
@@ -67,6 +69,7 @@ export async function apiFetch(url, options, { parse = 'json', onProgress, onCom
     const err = new Error(message)
     err.status = res.status
     err.detail = detail
+    err.code = code
     throw err
   }
 

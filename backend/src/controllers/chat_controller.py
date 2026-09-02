@@ -38,6 +38,7 @@ DOC_FILES = {
     "benchmark": "BENCHMARK.md",
     "markdown-guide": "MARKDOWN_GUIDE.md",
     "session-specs": "SESSION_SPECS.md",
+    "skin-specs": "SKIN_SPECS.md",
 }
 DOCS_DIR = Path(__file__).resolve().parent.parent / "docs"
 
@@ -81,28 +82,28 @@ class ChatController(BaseController):
         return self.chat_service.get_env(message_id)
 
     @delete("/api/chat/env")
-    def clear_env(self):
+    async def clear_env(self):
         """Wipes every stored env key at once (see ChatService.clear_env)
         — the Inspector Env tab's own "clear all" button for the AI
         section. Always live."""
-        return self.chat_service.clear_env()
+        return await self.chat_service.clear_env()
 
     @put("/api/chat/env/{key}")
-    def put_env_value(self, key: str, req: SetEnvValueRequest):
+    async def put_env_value(self, key: str, req: SetEnvValueRequest):
         """Edits one stored env key (see ChatService.set_env_value) —
         the Inspector Env tab's own "click a value to edit it". Always
         live: there's no "editing history"."""
         try:
-            return self.chat_service.set_env_value(key, req.value)
+            return await self.chat_service.set_env_value(key, req.value)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
     @delete("/api/chat/env/{key}")
-    def delete_env_value(self, key: str):
+    async def delete_env_value(self, key: str):
         """Removes one stored env key outright (see ChatService.
         delete_env_key) — the Inspector Env tab's own delete button."""
         try:
-            return self.chat_service.delete_env_key(key)
+            return await self.chat_service.delete_env_key(key)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
@@ -205,17 +206,17 @@ class ChatController(BaseController):
         return self.chat_service.get_ai_models_info()
 
     @get("/api/chat/session")
-    def get_current_session(self, session_id: int | None = None):
+    async def get_current_session(self, session_id: int | None = None):
         """Bootstrap endpoint: resolves (or creates) the active project's
         current writable session. Always a real, published-revision
         session — see the test-sessions/current endpoint for the draft equivalent."""
-        return self.chat_service.get_or_create_current_session(session_id)
+        return await self.chat_service.get_current_session_if_any_or_create_new(session_id)
 
     @post("/api/chat/sessions")
-    def post_create_session(self):
+    async def post_create_session(self):
         """Explicit "start a new session" action — always creates one,
         superseding whichever session was previously current."""
-        return self.chat_service.create_session()
+        return await self.chat_service.create_session()
 
     @get("/api/projects/{project_name}/legal-terms-status")
     def get_legal_terms_status(self, project_name: str):

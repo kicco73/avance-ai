@@ -127,6 +127,24 @@ export function redoProjectFile(projectName, fileName, content) {
   )
 }
 
+// A pure editor preview, same shape as undo/redo above — nothing is
+// persisted. Response: {content} — the new file text for the caller to
+// drop into its own (unsaved) editor buffer.
+function aiEditProjectFile(projectName, fileName, instruction) {
+  return apiFetch(
+    `${API_URL}/projects/${encodeURIComponent(projectName)}/files/${fileName}/ai-edit`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ instruction }) }
+  )
+}
+
+export function aiEditIndexYml(projectName, instruction) {
+  return aiEditProjectFile(projectName, 'index.yml', instruction)
+}
+
+export function aiEditIndexCss(projectName, instruction) {
+  return aiEditProjectFile(projectName, 'index.css', instruction)
+}
+
 export function deleteProjectFile(projectName, fileName) {
   return projectFetch(projectName, `${API_URL}/projects/${encodeURIComponent(projectName)}/files/${encodeURIComponent(fileName)}`, {
     method: 'DELETE'

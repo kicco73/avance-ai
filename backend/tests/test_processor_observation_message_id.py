@@ -18,12 +18,14 @@ class _FakeAutomaton:
 class _FakeTrackingEngine:
     def __init__(self):
         self.apply_transition_message_ids = []
+        self.apply_transition_origins = []
 
     def evaluate_triggered_action(self, automaton, state, signal_values):
         return None
 
-    def apply_transition(self, automaton, state, action, signal_values, session_id, message_id=None):
+    def apply_transition(self, automaton, state, action, signal_values, session_id, message_id=None, origin=None):
         self.apply_transition_message_ids.append(message_id)
+        self.apply_transition_origins.append(origin)
 
 
 class _FakeEnv:
@@ -99,3 +101,15 @@ async def test_observation_message_id_is_the_next_assistant_message_when_autotra
         await processor.process_message(1, message_id)
 
     assert engine.apply_transition_message_ids == [2]
+
+
+async def test_replay_records_origin_trigger():
+    engine = _FakeTrackingEngine()
+    processor = _processor(False, engine)
+
+    user_message_ids, warning = processor.prepare(1)
+    assert warning is None
+    for message_id in user_message_ids:
+        await processor.process_message(1, message_id)
+
+    assert engine.apply_transition_origins == ['trigger']

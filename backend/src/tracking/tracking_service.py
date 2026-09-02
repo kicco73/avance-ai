@@ -165,7 +165,8 @@ class TrackingService(object):
 		if session is None or session["type"] == "imported":
 			return None
 		self._db.save_transition(
-			"", "", session["start_state"], session_id, transition_log_level="INFO", message_id=message_id
+			"", "", session["start_state"], session_id, transition_log_level="INFO", message_id=message_id,
+			origin='init-action',
 		)
 		return self._db.get_signal_row_by_message(message_id)
 

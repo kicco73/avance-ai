@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
+from session import Session
+
 if TYPE_CHECKING:
     from automaton.automaton import Automaton
     from chat.session_manager import ChatSessionManager
@@ -64,7 +66,10 @@ class LiveSessionStrategy(SessionTypeStrategy):
         return session_manager.get_active_session(username, project_name, type=self.type_name)
 
     def is_valid_write_target(self, session: dict, active_session: dict | None) -> bool:
-        return active_session is not None and active_session["id"] == session["id"]
+        return (
+            active_session is not None and active_session["id"] == session["id"]
+            and session["channel"] == Session().channel
+        )
 
     def starting_state(self, project_service: "ProjectService", project_name: str, username: str) -> str:
         _, state = project_service.get_automaton_and_state(project_name, type=self.type_name, username=username)

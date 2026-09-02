@@ -11,9 +11,10 @@ Voice: an inbound voice note is downloaded from Meta, transcribed with
 ListenService (faster-whisper reads OGG/Opus as is) and processed as if
 the user had typed it — the transcript is what gets persisted as the
 user's message, so the web shows it too. Replies answer in kind (config
-`voice-replies`): a voice note back when the user spoke, text when they
-typed. The voice note is TalkService's WAV for the reply's own [audio]
-text, re-encoded to OGG/Opus (see whatsapp/audio.py) and uploaded;
+`voice-replies`): a spoken reply back when the user spoke, text when they
+typed. The spoken reply is TalkService's WAV for the reply's own [audio]
+text, re-encoded to MP3 (see whatsapp/audio.py — MP3 rather than
+OGG/Opus so WhatsApp shows it as an audio message, not a voice note) and uploaded;
 whenever that isn't possible (no talk-service, no audio text for that
 reply, an encoding/upload failure) the text goes out instead, so the
 user is never left without an answer. Buttons (manual actions) ride on
@@ -42,12 +43,12 @@ import hmac
 import re
 import time
 from dataclasses import dataclass
-from http import HTTPStatus
 from typing import TYPE_CHECKING
 
 import httpx
 
 from auth.auth_service import AuthService
+from chat.channels import WHATSAPP_CHAT
 from chat.chat_service import ChatService
 from config import WhatsAppServiceConfig
 from db import Db
@@ -100,6 +101,7 @@ REPLY_NO_CHAT_STATE = "The conversation doesn't accept messages at this point. C
 REPLY_REGISTERED = "You're all set! Registration complete — you can start chatting now."
 REPLY_INVALID_ACTION = "That option is no longer available. Please choose one of these instead."
 REPLY_BUSY = "Please wait a moment and try again."
+REPLY_SESSION_TAKEN_OVER = "This conversation continued somewhere else. Send another message to keep chatting here."
 REPLY_DONE = "Done."
 REPLY_OPTIONS_PROMPT = "What would you like to do?"
 REPLY_TECHNICAL_PROBLEM = "We apologize for the inconvenience — a technical problem occurred. Please try again in a moment."
@@ -231,7 +233,7 @@ class WhatsAppService(object):
 
         with Session().impersonate(user["id"]):
             Session().role = user["role"]
-            Session().channel = "whatsapp-chat"
+            Session().channel = WHATSAPP_CHAT
             if message.type == "interactive" and message.action_id:
                 logger.info(f"WhatsApp: action '{message.action_id}' received ({message.id}) from {message.sender}.")
                 if message.action_id == _ACCEPT_TERMS_ACTION:
@@ -294,7 +296,7 @@ class WhatsAppService(object):
         assert user is not None
         with Session().impersonate(user["id"]):
             Session().role = user["role"]
-            Session().channel = "whatsapp-chat"
+            Session().channel = WHATSAPP_CHAT
             welcome_texts, manual_actions, session_id = await self._welcome_replies()
             return [Reply(REPLY_REGISTERED), *welcome_texts], manual_actions, session_id
 
@@ -304,7 +306,7 @@ class WhatsAppService(object):
         user message to run, just whatever opening message the project
         itself produces (if any), same as a fresh web registration seeing
         it immediately on landing rather than only after its first reply."""
-        session_payload = self._chat_service.get_or_create_current_session(None)
+        session_payload = await self._chat_service.acquire_exclusive_session()
         if session_payload.get("paused"):
             return [], None, None
         if session_payload.get("legal_terms_pending"):
@@ -322,10 +324,10 @@ class WhatsAppService(object):
         return [Reply(to_whatsapp_markdown(status["content"] or ""))], manual_actions, None
 
     async def _accept_terms_action(self) -> tuple[list[Reply], list[dict] | None, int | None]:
-        session_payload = self._chat_service.get_or_create_current_session(None)
+        session_payload = await self._chat_service.acquire_exclusive_session()
         if session_payload.get("legal_terms_pending"):
             self._chat_service.accept_legal_terms(session_payload["project_name"])
-            session_payload = self._chat_service.get_or_create_current_session(None)
+            session_payload = await self._chat_service.acquire_exclusive_session()
         if session_payload.get("paused"):
             return [Reply(REPLY_PAUSED)], None, None
         if session_payload.get("legal_terms_pending"):
@@ -345,6 +347,40 @@ class WhatsAppService(object):
         state = self._chat_service.get_state_for_session(session_id)
         return self._new_assistant_replies(session_id, last_seen_id), state["manual_actions"]
 
+    async def _bootstrap_exclusive_session(self) -> tuple[int | None, tuple[list[Reply], list[dict] | None, int | None] | None]:
+        """(session_id, None) once resolved, or (None, early_result) for
+        the caller to return as-is (paused/terms-pending) without ever
+        reaching a session_id at all."""
+        session_payload = await self._chat_service.acquire_exclusive_session()
+        if session_payload.get("paused"):
+            return None, ([Reply(REPLY_PAUSED)], None, None)
+        if session_payload.get("legal_terms_pending"):
+            return None, self._terms_reply(session_payload["project_name"])
+        return session_payload["id"], None
+
+    async def _attempt_turn(
+        self, session_id: int, text: str, on_metadata,
+    ) -> tuple[str | None, list[dict] | None, str | None]:
+        """(notice, manual_actions, retry_code) for one turn attempt —
+        retry_code (session_closed/session_not_found) tells the caller to
+        acquire a fresh session and attempt once more."""
+        try:
+            await self._chat_service.prepare_user_initiated_turn(session_id)
+            reply = await self._chat_service.process_turn(session_id, text, on_metadata=on_metadata)
+            return None, reply["state"]["manual_actions"], None
+        except ServiceError as exc:
+            if exc.code == "state_not_chat":
+                state = self._chat_service.get_state_for_session(session_id)
+                return REPLY_NO_CHAT_STATE, state["manual_actions"], None
+            if exc.code in ("session_channel_mismatch", "session_superseded"):
+                return REPLY_SESSION_TAKEN_OVER, None, None
+            if exc.code == "turn_in_progress":
+                return REPLY_BUSY, None, None
+            if exc.code in ("session_closed", "session_not_found"):
+                return None, None, exc.code
+            logger.exception(f"WhatsApp: turn failed on session {session_id}: {exc.message}")
+            return "There was a problem processing your message. Please try again.", None, None
+
     async def _run_turn(self, text: str, spoken: bool = False) -> tuple[list[Reply], list[dict] | None, int | None]:
         """Unlike ChatWindow.vue's own bootstrap, it's the user's text
         that starts or continues the conversation here — no AI-initiated
@@ -354,59 +390,68 @@ class WhatsAppService(object):
         message persisted since we started is what gets sent — that also
         covers a transition's follow-up messages (action_prompt / a
         chat-blocked state's own wrap-up message)."""
-        session_payload = self._chat_service.get_or_create_current_session(None)
-        if session_payload.get("paused"):
-            return [Reply(REPLY_PAUSED)], None, None
-        if session_payload.get("legal_terms_pending"):
-            return self._terms_reply(session_payload["project_name"])
-        session_id = session_payload["id"]
+        session_id, early = await self._bootstrap_exclusive_session()
+        if early is not None:
+            return early
+
+        voice_notes = self._voice_notes if self._wants_voice(spoken) else None
+        on_metadata = voice_notes.on_metadata if voice_notes is not None else None
 
         last_seen_id = max((m["id"] for m in self._db.get_messages(session_id, last_n=1)), default=0)
-        notice: str | None = None
-        manual_actions: list[dict] | None = None
-        voice_notes = self._voice_notes if self._wants_voice(spoken) else None
-        try:
-            await self._chat_service.prepare_user_initiated_turn(session_id)
-            reply = await self._chat_service.process_turn(
-                session_id, text, on_metadata=voice_notes.on_metadata if voice_notes is not None else None,
-            )
-            manual_actions = reply["state"]["manual_actions"]
-        except ServiceError as exc:
-            if exc.status_code == HTTPStatus.CONFLICT:
-                # A non-chat state, or a superseded session: no turn to run,
-                # but the state's own manual actions still ride along so
-                # "use an action instead" below actually has buttons to point at.
-                notice = REPLY_NO_CHAT_STATE
-                state = self._chat_service.get_state_for_session(session_id)
-                manual_actions = state["manual_actions"]
-            else:
-                logger.exception(f"WhatsApp: turn failed on session {session_id}: {exc.message}")
-                notice = "There was a problem processing your message. Please try again."
+        notice, manual_actions, retry_code = await self._attempt_turn(session_id, text, on_metadata)
+        if retry_code is not None:
+            session_id, early = await self._bootstrap_exclusive_session()
+            if early is not None:
+                return early
+            last_seen_id = max((m["id"] for m in self._db.get_messages(session_id, last_n=1)), default=0)
+            notice, manual_actions, retry_code = await self._attempt_turn(session_id, text, on_metadata)
+            if retry_code is not None:
+                notice = REPLY_TECHNICAL_PROBLEM
 
         return self._new_assistant_replies(session_id, last_seen_id, notice), manual_actions, session_id
 
-    async def _run_action(self, action_id: str) -> tuple[list[Reply], list[dict] | None, int | None]:
-        session_payload = self._chat_service.get_or_create_current_session(None)
-        if session_payload.get("paused"):
-            return [Reply(REPLY_PAUSED)], None, None
-        if session_payload.get("legal_terms_pending"):
-            return self._terms_reply(session_payload["project_name"])
-        session_id = session_payload["id"]
-
-        last_seen_id = max((m["id"] for m in self._db.get_messages(session_id, last_n=1)), default=0)
+    async def _attempt_action(
+        self, action_id: str, session_id: int,
+    ) -> tuple[str | None, list[dict] | None, str | None, dict | None]:
+        """(notice, manual_actions, retry_code, result) for one manual
+        action attempt — `result` is apply_manual_action's own return
+        value, set only on success."""
         try:
             result = await self._chat_service.apply_manual_action(action_id, session_id)
         except ValueError as exc:
             logger.info(f"WhatsApp: action '{action_id}' rejected for session {session_id}: {exc}")
             state = self._chat_service.get_state_for_session(session_id)
-            return [Reply(REPLY_INVALID_ACTION)], state["manual_actions"], session_id
+            return REPLY_INVALID_ACTION, state["manual_actions"], None, None
         except ServiceError as exc:
-            if exc.status_code == HTTPStatus.CONFLICT:
-                logger.info(f"WhatsApp: action '{action_id}' deferred for session {session_id}: {exc.message}")
-                return [Reply(REPLY_BUSY)], None, session_id
+            if exc.code in ("session_channel_mismatch", "session_superseded"):
+                return REPLY_SESSION_TAKEN_OVER, None, None, None
+            if exc.code == "turn_in_progress":
+                return REPLY_BUSY, None, None, None
+            if exc.code in ("session_closed", "session_not_found"):
+                return None, None, exc.code, None
             logger.exception(f"WhatsApp: action '{action_id}' failed for session {session_id}: {exc.message}")
-            notice = "There was a problem processing your message. Please try again."
-            return self._new_assistant_replies(session_id, last_seen_id, notice), None, session_id
+            return "There was a problem processing your message. Please try again.", None, None, None
+        return None, None, None, result
+
+    async def _run_action(self, action_id: str) -> tuple[list[Reply], list[dict] | None, int | None]:
+        session_id, early = await self._bootstrap_exclusive_session()
+        if early is not None:
+            return early
+
+        last_seen_id = max((m["id"] for m in self._db.get_messages(session_id, last_n=1)), default=0)
+        notice, manual_actions, retry_code, result = await self._attempt_action(action_id, session_id)
+        if retry_code is not None:
+            session_id, early = await self._bootstrap_exclusive_session()
+            if early is not None:
+                return early
+            last_seen_id = max((m["id"] for m in self._db.get_messages(session_id, last_n=1)), default=0)
+            notice, manual_actions, retry_code, result = await self._attempt_action(action_id, session_id)
+            if retry_code is not None:
+                notice = REPLY_TECHNICAL_PROBLEM
+
+        if result is None:
+            replies = self._new_assistant_replies(session_id, last_seen_id, notice)
+            return replies, manual_actions, session_id
 
         logger.info(f"WhatsApp: action '{action_id}' applied for session {session_id}.")
         state = result["state"]
@@ -470,16 +515,16 @@ class WhatsAppService(object):
         )
         if not reply.audio_text or self._voice_notes is None:
             return False
-        from whatsapp.audio import WHATSAPP_VOICE_MIME
+        from whatsapp.audio import WHATSAPP_AUDIO_MIME
 
         try:
-            ogg = await self._voice_notes.ogg_for(reply.audio_text)
-            if not ogg:
+            mp3 = await self._voice_notes.mp3_for(reply.audio_text)
+            if not mp3:
                 logger.warning("WhatsApp: talk-service produced no audio, falling back to text.")
                 return False
-            media_id = await self._client.upload_media(ogg, WHATSAPP_VOICE_MIME)
+            media_id = await self._client.upload_media(mp3, WHATSAPP_AUDIO_MIME)
             await self._client.send_audio(to, media_id)
-            logger.info(f"WhatsApp: voice note sent to {to} ({len(ogg)} bytes, media {media_id}).")
+            logger.info(f"WhatsApp: audio message sent to {to} ({len(mp3)} bytes, media {media_id}).")
             return True
         except Exception as exc:  # noqa: BLE001
             # Deliberately broad: PyAV's own encoding failures (a partial/
@@ -526,8 +571,8 @@ def _notice(text: str) -> tuple[list[Reply], None, None, bool]:
 
 
 class VoiceNoteSynthesizer(object):
-    """Turns a reply's [audio] text into the OGG/Opus bytes of a voice
-    note, and starts doing so the moment the model emits that text —
+    """Turns a reply's [audio] text into the MP3 bytes of an audio
+    message, and starts doing so the moment the model emits that text —
     ahead of the reply's own text, signals and env — so by the time the
     turn is over and the note is actually wanted, it's already encoded
     (or well on its way). The synthesis and the encoding are one pass:
@@ -548,7 +593,7 @@ class VoiceNoteSynthesizer(object):
         task.add_done_callback(_log_unretrieved_failure)
         self._pending[value] = task
 
-    async def ogg_for(self, text: str) -> bytes:
+    async def mp3_for(self, text: str) -> bytes:
         started = self._pending.pop(text, None)
         if started is not None:
             return await started
@@ -560,9 +605,9 @@ class VoiceNoteSynthesizer(object):
         self._pending.clear()
 
     async def _synthesize(self, text: str) -> bytes:
-        from whatsapp.audio import OggOpusEncoder
+        from whatsapp.audio import Mp3Encoder
 
-        encoder = OggOpusEncoder()
+        encoder = Mp3Encoder()
         async for wav_piece in self._talk_service.generate(text):
             await asyncio.to_thread(encoder.push, wav_piece)
         return await asyncio.to_thread(encoder.finish)

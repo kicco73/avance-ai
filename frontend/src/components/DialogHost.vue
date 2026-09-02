@@ -1,8 +1,8 @@
 <script setup>
 // Single native <dialog> that renders whatever dialogStore.js's
-// activeDialog currently is — confirm/prompt/choose/info/about/custom,
-// mutually exclusive by construction (dialogStore.js only ever hands
-// this one request at a time). showModal()/close() are driven by the
+// activeDialog currently is — confirm/prompt/textarea/choose/info/about/
+// custom, mutually exclusive by construction (dialogStore.js only ever
+// hands this one request at a time). showModal()/close() are driven by the
 // watch below; everything about focus trapping, ESC handling, and
 // focus-return on close is the browser's own <dialog> behavior, not
 // reimplemented here.
@@ -21,9 +21,13 @@ const cardVisible = ref(false)
 
 const promptValue = ref('')
 
+// prompt and textarea share the same single-string value/validate
+// contract below — only how the field itself renders differs.
+const TEXT_INPUT_KINDS = ['prompt', 'textarea']
+
 const promptError = computed(() => {
   const dialog = activeDialog.value
-  if (!dialog || dialog.kind !== 'prompt' || !dialog.validate) return ''
+  if (!dialog || !TEXT_INPUT_KINDS.includes(dialog.kind) || !dialog.validate) return ''
   return dialog.validate(promptValue.value) || ''
 })
 
@@ -34,10 +38,10 @@ let pendingResult
 
 watch(activeDialog, async (dialog) => {
   if (!dialog) return
-  promptValue.value = dialog.kind === 'prompt' ? (dialog.initialValue ?? '') : ''
+  promptValue.value = TEXT_INPUT_KINDS.includes(dialog.kind) ? (dialog.initialValue ?? '') : ''
   await nextTick()
   dialogEl.value?.showModal()
-  if (dialog.kind === 'prompt') inputEl.value?.focus()
+  if (TEXT_INPUT_KINDS.includes(dialog.kind)) inputEl.value?.focus()
   // Mounts in its "from" state first (opacity: 0 / scaled down, see
   // .dialog-card below) — flipping the class on the next frame is what
   // actually makes the enter transition play instead of starting already
@@ -139,11 +143,22 @@ function chooseOption(id) {
         <p v-if="promptError" class="dialog-field-error">{{ promptError }}</p>
       </template>
 
+      <template v-if="activeDialog.kind === 'textarea'">
+        <textarea
+          ref="inputEl"
+          v-model="promptValue"
+          class="dialog-textarea"
+          :class="{ 'dialog-input-invalid': promptError }"
+          :placeholder="activeDialog.placeholder"
+        ></textarea>
+        <p v-if="promptError" class="dialog-field-error">{{ promptError }}</p>
+      </template>
+
       <!-- about/custom have no buttons of their own — the × above is the
            only way to close them. Same for info, unless its own caller
            opted into a single labeled button via okLabel (e.g. "Bye!"). -->
       <div
-        v-if="['confirm', 'prompt', 'choose'].includes(activeDialog.kind) || (activeDialog.kind === 'info' && activeDialog.okLabel)"
+        v-if="[...TEXT_INPUT_KINDS, 'confirm', 'choose'].includes(activeDialog.kind) || (activeDialog.kind === 'info' && activeDialog.okLabel)"
         class="dialog-actions"
       >
         <template v-if="activeDialog.kind === 'confirm'">
@@ -155,7 +170,7 @@ function chooseOption(id) {
           >{{ activeDialog.okLabel }}</button>
         </template>
 
-        <template v-else-if="activeDialog.kind === 'prompt'">
+        <template v-else-if="TEXT_INPUT_KINDS.includes(activeDialog.kind)">
           <button class="dialog-btn dialog-btn-cancel" @click="closeWith(null)">Cancel</button>
           <button class="dialog-btn dialog-btn-primary" :disabled="!!promptError" @click="submitPrompt">OK</button>
         </template>
@@ -299,6 +314,25 @@ function chooseOption(id) {
 
 .dialog-input-invalid {
   border-color: #c62828;
+}
+
+.dialog-textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 7rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  font: inherit;
+  font-size: 0.88rem;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+.dialog-textarea:focus {
+  outline: none;
+  border-color: #4a6fa5;
 }
 
 .dialog-field-error {

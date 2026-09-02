@@ -11,6 +11,8 @@ import { computed, ref } from 'vue'
 import InspectorGraph from '../../../inspector/InspectorGraph.vue'
 import CodeEditor from '../../../CodeEditor.vue'
 import DocInfoButton from '../../../DocInfoButton.vue'
+import { textareaDialog } from '../../../../dialogStore.js'
+import { aiEditIndexYml } from '../../../../api.js'
 
 const props = defineProps({
   projectName: { type: String, required: true },
@@ -31,6 +33,7 @@ const emit = defineEmits(['jump-to-definition', 'select', 'saved'])
 const segment = ref('graph')
 const graphRef = ref(null)
 const codeEditorRef = ref(null)
+const aiEditing = ref(false)
 
 function loadGraph() { return graphRef.value?.loadGraph() }
 function resize() { graphRef.value?.resize() }
@@ -71,6 +74,32 @@ function discard() { return codeEditorRef.value?.discard() }
 function undo() { return codeEditorRef.value?.undo() }
 function redo() { return codeEditorRef.value?.redo() }
 
+// The toolbar's AI button: prompts for a free-form problem/change
+// description, sends it (with the project's current index.yml and the
+// format spec) to the backend's AiService, and drops the rewritten
+// content straight into the code buffer — left dirty, ready for Save,
+// same as any manual edit. CodeEditor stays mounted regardless of which
+// segment is showing (see this component's own docstring), so setContent
+// works even when the graph segment is the one currently visible.
+async function aiEdit() {
+  const instruction = await textareaDialog({
+    title: 'AI-assisted edit',
+    body: 'Describe the problem to solve or the change to make in index.yml.',
+    placeholder: 'e.g. Add a state where the user can request a refund…'
+  })
+  if (!instruction) return
+  aiEditing.value = true
+  try {
+    const result = await aiEditIndexYml(props.projectName, instruction)
+    codeEditorRef.value?.setContent(result.content)
+    segment.value = 'code'
+  } catch {
+    // already surfaced via apiFetch's shared error store
+  } finally {
+    aiEditing.value = false
+  }
+}
+
 defineExpose({
   loadGraph, resize, fit, refresh, reloadCode, reload, jumpToLine, stateElementFor, actionsForState,
   content, isDirty, saving, save, discard, undo, redo
@@ -80,17 +109,30 @@ defineExpose({
 <template>
   <div class="index-yml-editor">
     <div class="index-yml-editor-toolbar">
-      <div class="index-yml-editor-segments">
+      <div class="index-yml-editor-toolbar-left">
+        <div class="index-yml-editor-segments">
+          <button
+            class="index-yml-editor-segment-btn"
+            :class="{ 'index-yml-editor-segment-btn-active': segment === 'graph' }"
+            @click="segment = 'graph'"
+          >Graph</button>
+          <button
+            class="index-yml-editor-segment-btn"
+            :class="{ 'index-yml-editor-segment-btn-active': segment === 'code' }"
+            @click="segment = 'code'"
+          >Code</button>
+        </div>
         <button
-          class="index-yml-editor-segment-btn"
-          :class="{ 'index-yml-editor-segment-btn-active': segment === 'graph' }"
-          @click="segment = 'graph'"
-        >Graph</button>
-        <button
-          class="index-yml-editor-segment-btn"
-          :class="{ 'index-yml-editor-segment-btn-active': segment === 'code' }"
-          @click="segment = 'code'"
-        >Code</button>
+          class="ai-edit-btn"
+          :class="{ 'ai-edit-btn-loading': aiEditing }"
+          :title="aiEditing ? 'Generating…' : 'AI-assisted edit'"
+          :disabled="aiEditing || codeEditorRef?.loading || codeEditorRef?.saving"
+          @click="aiEdit"
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+            <path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zM11.5 9.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z" />
+          </svg>
+        </button>
       </div>
       <div class="index-yml-editor-toolbar-actions">
         <button
@@ -149,10 +191,19 @@ defineExpose({
 <style scoped>
 .index-yml-editor { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .index-yml-editor-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.5rem 0.75rem; border-bottom: 1px solid #ddd; flex-shrink: 0; }
+.index-yml-editor-toolbar-left { display: flex; align-items: center; gap: 0.5rem; }
 .index-yml-editor-segments { display: flex; gap: 0.2rem; padding: 0.2rem; border-radius: 8px; background: #eef1f5; }
 .index-yml-editor-segment-btn { padding: 0.3rem 0.8rem; border: none; border-radius: 6px; background: none; cursor: pointer; font-size: 0.82rem; color: #555; }
 .index-yml-editor-segment-btn-active { background: white; color: #2c4d7a; font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
 .index-yml-editor-toolbar-actions { display: flex; align-items: center; gap: 0.5rem; }
+.ai-edit-btn { display: flex; align-items: center; justify-content: center; width: 1.8rem; height: 1.8rem; padding: 0; border-radius: 6px; border: 1px solid #ccc; background: white; color: #8b5cf6; cursor: pointer; }
+.ai-edit-btn:hover:not(:disabled) { background: #f5f0fe; border-color: #8b5cf6; }
+.ai-edit-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.ai-edit-btn-loading svg { animation: ai-edit-btn-spin 1.1s linear infinite; }
+@keyframes ai-edit-btn-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
 .undo-redo-btn { padding: 0.35rem 0.6rem; border-radius: 6px; border: 1px solid #ccc; background: white; cursor: pointer; font-size: 0.9rem; }
 .undo-redo-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .fit-graph-btn { display: flex; align-items: center; justify-content: center; width: 1.8rem; height: 1.8rem; padding: 0; border-radius: 6px; border: 1px solid #ccc; background: white; color: #555; cursor: pointer; }

@@ -22,7 +22,7 @@ from tracking.session_facts import SessionFacts
 from tracking.system_facts import SystemFacts
 from tracking.user_facts import UserFacts
 from chat.errors import ChatServiceError
-from chat.session_manager import ChatSessionManager
+from chat.session_manager import ChatSessionManager, SessionNotWritable
 from chat.session_summary_manager import SessionSummaryManager
 from chat.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
 from auth.roles import role_satisfies
@@ -60,6 +60,7 @@ class ChatService(object):
 		# Shares the general job_queue (see main.py's own wiring) —
 		# never its own private queue.
 		self._session_summary_manager = SessionSummaryManager(db, ai_service, job_queue, session_manager)
+		session_manager.set_session_summary_manager(self._session_summary_manager)
 		self.env = PersistedEnv(db, project_service)
 		self._system_facts = SystemFacts()
 		self._session_facts = SessionFacts(db, project_service)
@@ -68,6 +69,7 @@ class ChatService(object):
 
 		self._project_locks = KeyedLockRegistry(ProjectRwLock)
 		self._session_locks = KeyedLockRegistry(asyncio.Lock)
+		self._session_lifecycle_locks = KeyedLockRegistry(asyncio.Lock)
 		self._global_lock = asyncio.Lock()
 
 	def _tracking_engine_for_session(self, session_id: int) -> tuple[TrackingEngine, "ActuatorSet"]:
@@ -157,6 +159,9 @@ class ChatService(object):
 			"datetime_end": _utc_iso(session["datetime_end"]),
 			"start_state": session["start_state"],
 			"end_state": session["end_state"],
+			"channel": session["channel"],
+			"closed_at": _utc_iso(session["closed_at"]),
+			"close_reason": session["close_reason"],
 			# An imported session is always expired — never "open".
 			"open": self._session_manager.is_open(session),
 			# Distinct from "open": the single open session with the most
@@ -179,8 +184,8 @@ class ChatService(object):
 			return self._session_manager.require_active_session(
 				self._username, project_name, session_id, current_state
 			)
-		except ValueError as exc:
-			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
+		except SessionNotWritable as exc:
+			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT, code=exc.code) from exc
 
 	def get_legal_terms_status(self, project_name: str) -> dict:
 		return self._project_service.get_legal_terms_status(self._username, project_name)
@@ -188,34 +193,40 @@ class ChatService(object):
 	def accept_legal_terms(self, project_name: str) -> None:
 		self._project_service.accept_legal_terms(self._username, project_name)
 
-	def _resolve_or_create_session_of_type(
-		self, strategy: SessionTypeStrategy, project_name: str, session_id: int | None
-	) -> dict:
-		try:
-			is_new_live_session = False
-			if strategy.type_name == 'live':
-				is_new_live_session = self._session_manager.get_active_session(self._username, project_name) is None
-				if is_new_live_session:
-					# Only a session about to be created is pinned to
-					# get_published_revision — an already-open one keeps
-					# running against whatever revision it was created
-					# against, so it's never blocked by terms published since.
-					if self._project_service.legal_terms_pending(self._username, project_name):
-						return {"legal_terms_pending": True, "project_name": project_name}
-					self._session_summary_manager.check_for_closed_sessions(self._username, project_name)
-			_, state = self._project_service.get_automaton_and_state(
-				project_name, type=strategy.type_name, username=self._username
-			)
-			session = self._session_manager.resolve_or_create_session(
-				strategy, self._project_service, self._username, project_name, session_id, state.key
-			)
-		except ValueError as exc:
-			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
+	def _legal_terms_pending_response(self, project_name: str) -> dict | None:
+		# Only a session about to be created is pinned to
+		# get_published_revision — an already-open one keeps running
+		# against whatever revision it was created against, so it's
+		# never blocked by terms published since.
+		if self._project_service.legal_terms_pending(self._username, project_name):
+			return {"legal_terms_pending": True, "project_name": project_name}
+		return None
+
+	def _session_response(self, session: dict, *, active: bool) -> dict:
 		automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
 		state_payload = self._with_manual_actions(session["id"], automaton.get_state_payload(state))
-		return {**self._session_payload(session, active=True), "state": state_payload}
+		return {**self._session_payload(session, active=active), "state": state_payload}
 
-	def get_or_create_current_session(self, session_id: int | None) -> dict:
+	async def _get_current_session_if_any_or_create_new_of_type(
+		self, strategy: SessionTypeStrategy, project_name: str, session_id: int | None
+	) -> dict:
+		async with self._session_lifecycle_scope(self._username, project_name):
+			try:
+				if strategy.type_name == 'live' and self._session_manager.get_active_session(self._username, project_name) is None:
+					pending = self._legal_terms_pending_response(project_name)
+					if pending is not None:
+						return pending
+				_, state = self._project_service.get_automaton_and_state(
+					project_name, type=strategy.type_name, username=self._username
+				)
+				session = self._session_manager.get_current_session_if_any_or_create_new(
+					strategy, self._project_service, self._username, project_name, session_id, state.key
+				)
+			except ValueError as exc:
+				raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
+		return self._session_response(session, active=session["channel"] == Session().channel)
+
+	async def get_current_session_if_any_or_create_new(self, session_id: int | None) -> dict:
 		"""Bootstrap for a client with no (or a possibly-stale) session_id:
 		resolves or creates the one session currently writable for the
 		active project. A paused project skips bootstrapping entirely."""
@@ -223,24 +234,54 @@ class ChatService(object):
 		is_paused, paused_reason = self._project_service.get_project_availability(project_name)
 		if is_paused:
 			return {"paused": True, "paused_reason": paused_reason}
-		return self._resolve_or_create_session_of_type(get_session_type_strategy('live'), project_name, session_id)
+		return await self._get_current_session_if_any_or_create_new_of_type(get_session_type_strategy('live'), project_name, session_id)
 
-	def get_or_create_current_draft_session(self, session_id: int | None, project_name: str) -> dict:
-		"""Like get_or_create_current_session, but for `project_name`'s own
-		*draft* — the embedded "Test" chat is the one place a session is
-		allowed to exist against an unpublished revision. `project_name`
-		comes from the URL, never the active-project pointer."""
-		return self._resolve_or_create_session_of_type(get_session_type_strategy('test'), project_name, session_id)
+	async def get_current_draft_session_if_any_or_create_new(self, session_id: int | None, project_name: str) -> dict:
+		"""Like get_current_session_if_any_or_create_new, but for
+		`project_name`'s own *draft* — the embedded "Test" chat is the one
+		place a session is allowed to exist against an unpublished
+		revision. `project_name` comes from the URL, never the
+		active-project pointer."""
+		return await self._get_current_session_if_any_or_create_new_of_type(get_session_type_strategy('test'), project_name, session_id)
 
-	def _create_session_of_type(self, strategy: SessionTypeStrategy, project_name: str) -> dict:
-		try:
-			if strategy.type_name == 'live' and self._project_service.legal_terms_pending(self._username, project_name):
-				return {"legal_terms_pending": True, "project_name": project_name}
-			session = self._session_manager.create_session(
-				strategy, self._project_service, self._username, project_name
-			)
-		except ValueError as exc:
-			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
+	async def acquire_exclusive_session(self) -> dict:
+		"""Like get_current_session_if_any_or_create_new(None), but with
+		real intent to write through the current channel right now: an
+		open session on another channel is closed and superseded instead
+		of returned as-is."""
+		project_name = self._active_project_name
+		is_paused, paused_reason = self._project_service.get_project_availability(project_name)
+		if is_paused:
+			return {"paused": True, "paused_reason": paused_reason}
+		async with self._session_lifecycle_scope(self._username, project_name):
+			if self._session_manager.get_active_session(self._username, project_name) is None:
+				pending = self._legal_terms_pending_response(project_name)
+				if pending is not None:
+					return pending
+			_, state = self._project_service.get_automaton_and_state(project_name, type='live', username=self._username)
+			try:
+				session = self._session_manager.acquire_exclusive_session(
+					get_session_type_strategy('live'), self._project_service, self._username, project_name, state.key
+				)
+			except ValueError as exc:
+				raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
+		return self._session_response(session, active=True)
+
+	async def _create_session_of_type(self, strategy: SessionTypeStrategy, project_name: str) -> dict:
+		async with self._session_lifecycle_scope(self._username, project_name):
+			try:
+				if strategy.type_name == 'live':
+					if self._project_service.legal_terms_pending(self._username, project_name):
+						return {"legal_terms_pending": True, "project_name": project_name}
+					active = self._session_manager.get_active_session(self._username, project_name)
+					if active is not None:
+						reason = "force-new-session" if active["channel"] == Session().channel else "channel-switch"
+						self._session_manager.close_session(active, reason)
+				session = self._session_manager.create_session(
+					strategy, self._project_service, self._username, project_name
+				)
+			except ValueError as exc:
+				raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 		automaton = self._project_service.get_automaton_for_session(session["id"])
 		payload = self._session_payload(session, active=True)
 		on_enter = strategy.on_enter_for_new_session(automaton)
@@ -248,15 +289,15 @@ class ChatService(object):
 			payload["on-enter"] = self._render_on_enter(automaton, automaton.init_action, session["id"])
 		return payload
 
-	def create_session(self) -> dict:
-		return self._create_session_of_type(get_session_type_strategy('live'), self._active_project_name)
+	async def create_session(self) -> dict:
+		return await self._create_session_of_type(get_session_type_strategy('live'), self._active_project_name)
 
-	def create_draft_session(self, project_name: str) -> dict:
+	async def create_draft_session(self, project_name: str) -> dict:
 		"""Like create_session, but against `project_name`'s own current
 		*draft* revision, always starting fresh from the automaton's own
 		initial state — the embedded "Test" chat is the only caller.
 		`project_name` comes from the URL, never the active-project pointer."""
-		return self._create_session_of_type(get_session_type_strategy('test'), project_name)
+		return await self._create_session_of_type(get_session_type_strategy('test'), project_name)
 
 	def reset_test_sessions(self, project_name: str) -> dict:
 		self._project_service.reset_test_sessions(project_name)
@@ -483,26 +524,26 @@ class ChatService(object):
 			"action_set": self.env.action_set(until),
 		}
 
-	def set_env_value(self, key: str, value: str) -> dict:
+	async def set_env_value(self, key: str, value: str) -> dict:
 		"""Edits one stored env key — always live, no "editing history".
 		A direct human edit can happen before any turn ever ran, so this
 		bootstraps a session first since db.Db.set_env is a no-op without one."""
-		self.get_or_create_current_session(None)
+		await self.get_current_session_if_any_or_create_new(None)
 		self.env.set_value(key, value)
 		return self.get_env()
 
-	def delete_env_key(self, key: str) -> dict:
+	async def delete_env_key(self, key: str) -> dict:
 		"""Removes one stored env key outright (see chat.env.Env.
 		delete_key) — always live. Returns the same shape as get_env."""
-		self.get_or_create_current_session(None)
+		await self.get_current_session_if_any_or_create_new(None)
 		self.env.delete_key(key)
 		return self.get_env()
 
-	def clear_env(self) -> dict:
+	async def clear_env(self) -> dict:
 		"""Wipes every stored env key at once (see chat.env.Env.clear) —
 		the Inspector Env tab's own "clear all" button for the AI
 		section. Always live. Returns the same shape as get_env."""
-		self.get_or_create_current_session(None)
+		await self.get_current_session_if_any_or_create_new(None)
 		self.env.clear()
 		return self.get_env()
 
@@ -608,6 +649,11 @@ class ChatService(object):
 			async with self._session_locks.get(str(session_id)):
 				yield
 
+	@asynccontextmanager
+	async def _session_lifecycle_scope(self, username: str, project_name: str):
+		async with self._session_lifecycle_locks.get(f"{username}/{project_name}"):
+			yield
+
 	def _project_name_for_session(self, session_id: int) -> str:
 		session = self._db.get_chat_session(session_id)
 		if session is None:
@@ -672,7 +718,8 @@ class ChatService(object):
 			# fires before any message of this bootstrap exists, so
 			# there's no real "causing" message to attach it to.
 			self._db.save_transition(
-				"", action.name, state.key, session_id, transition_log_level=state.transition_log_level
+				"", action.name, state.key, session_id, transition_log_level=state.transition_log_level,
+				origin='init-action',
 			)
 			if action.action_prompt:
 				init_message = await self._generate_action_prompt_message(action, session_id)
@@ -749,7 +796,9 @@ class ChatService(object):
 	async def apply_manual_action(self, action_name: str, session_id: int) -> dict:
 		project_name = self._project_name_for_session(session_id)
 		if self._session_locks.get(str(session_id)).locked():
-			raise ChatServiceError("A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT)
+			raise ChatServiceError(
+				"A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT, code="turn_in_progress",
+			)
 		async with self._session_scope(project_name, session_id):
 			_, source_state = self._project_service.get_automaton_and_state_for_session(session_id)
 			# Resolved before applying the action: save_transition (inside

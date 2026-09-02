@@ -20,8 +20,11 @@ class ApiErrorHandlers:
     raise, each normalized to the same {error: {message, detail}} body."""
 
     @staticmethod
-    def _body(message: str, detail: str | None = None) -> dict:
-        return {"error": {"message": message, "detail": detail}}
+    def _body(message: str, detail: str | None = None, code: str | None = None) -> dict:
+        body = {"error": {"message": message, "detail": detail}}
+        if code is not None:
+            body["error"]["code"] = code
+        return body
 
     @classmethod
     async def http_exception(cls, request: Request, exc: HTTPException) -> JSONResponse:
@@ -55,7 +58,7 @@ class ApiErrorHandlers:
         any future subclass — in one handler, since Starlette resolves handlers
         by walking the exception's MRO rather than requiring an exact type match."""
         logger.exception("Service error on %s %s", request.method, request.url.path)
-        return JSONResponse(status_code=exc.status_code, content=cls._body(exc.message, exc.detail))
+        return JSONResponse(status_code=exc.status_code, content=cls._body(exc.message, exc.detail, exc.code))
 
     @classmethod
     def register(cls, app: FastAPI) -> None:

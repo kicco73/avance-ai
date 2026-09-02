@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from auth.auth_service import AuthService
+from chat.channels import NATIVE_CHAT
 from chat.chat_service import ChatService
 from chat.session_manager import ChatSessionManager
 from config import NotificationServiceConfig
@@ -79,6 +80,11 @@ def _reset_dispatcher():
 def _default_session_user():
     Session().user = "user"
     Session().role = "supervisor"
+    # Session().channel has no per-request middleware in these fixtures
+    # (see app()'s own docstring) and Session().impersonate never resets
+    # it, so a test that sets it (WhatsApp-channel tests) would otherwise
+    # leak WHATSAPP_CHAT into whichever test runs next in this worker.
+    Session().channel = NATIVE_CHAT
 
 
 @pytest.fixture
@@ -224,6 +230,7 @@ def app(app_db: Db, fake_ai_service: FakeAiService) -> FastAPI:
     )
     fastapi_app.include_router(controller.router)
     fastapi_app.state.test_service = test_service
+    fastapi_app.state.chat_service = chat_service
     return fastapi_app
 
 

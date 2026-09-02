@@ -1,11 +1,13 @@
-"""WAV -> OGG/Opus for WhatsApp voice notes (see docs/WHATSAPP.md).
+"""WAV -> MP3 for WhatsApp audio messages (see docs/WHATSAPP.md).
 
 TalkService.generate yields WAV: PcmWavCodec.streaming_header (RIFF/data
 sizes set to the 0xFFFFFFFF streaming sentinel) followed by raw 16-bit
-mono PCM, or a complete cached WAV. WhatsApp only renders an audio as a
-*voice note* (waveform, auto-play) when it's OGG/Opus; anything else is
-shown as a file attachment. The encoder comes from PyAV, already in the
-image as faster-whisper's own dependency — no ffmpeg binary needed.
+mono PCM, or a complete cached WAV. WhatsApp renders OGG/Opus as a *voice
+note* (waveform, mic icon, auto-play) and any other audio type — MP3,
+AAC, AMR — as a plain *audio message* (generic player). The bot's replies
+go out as MP3 so they show up as audio messages. The encoder comes from
+PyAV, already in the image as faster-whisper's own dependency — no ffmpeg
+binary needed.
 """
 from __future__ import annotations
 
@@ -15,9 +17,9 @@ from fractions import Fraction
 
 from talk.talk_format import PcmWavCodec
 
-OPUS_SAMPLE_RATE = 48000
-OPUS_BIT_RATE = 32000
-WHATSAPP_VOICE_MIME = "audio/ogg; codecs=opus"
+MP3_SAMPLE_RATE = 48000
+MP3_BIT_RATE = 64000
+WHATSAPP_AUDIO_MIME = "audio/mpeg"
 _WAV_HEADER_MIN = 12
 
 
@@ -54,8 +56,8 @@ def split_wav(wav: bytes) -> tuple[bytes, int]:
     return wav[offset:], sample_rate
 
 
-class OggOpusEncoder(object):
-    """Incremental WAV -> OGG/Opus (mono, 48 kHz, ~32 kbps): push the
+class Mp3Encoder(object):
+    """Incremental WAV -> MP3 (mono, 48 kHz, 64 kbps): push the
     TalkService stream piece by piece as it arrives, then finish() for the
     complete file. Not thread-safe: one pusher at a time."""
 
@@ -104,10 +106,11 @@ class OggOpusEncoder(object):
         import av  # local: only the voice path needs it, and only when configured
 
         self._sample_rate = sample_rate
-        self._sink = av.open(self._sink_buffer, "w", format="ogg")
-        self._stream = self._sink.add_stream("libopus", rate=OPUS_SAMPLE_RATE, layout="mono")
-        self._stream.bit_rate = OPUS_BIT_RATE
-        self._resampler = av.AudioResampler(format="s16", layout="mono", rate=OPUS_SAMPLE_RATE)
+        self._sink = av.open(self._sink_buffer, "w", format="mp3")
+        self._stream = self._sink.add_stream("libmp3lame", rate=MP3_SAMPLE_RATE, layout="mono")
+        self._stream.bit_rate = MP3_BIT_RATE
+        # libmp3lame takes planar samples only: s16p, not s16.
+        self._resampler = av.AudioResampler(format="s16p", layout="mono", rate=MP3_SAMPLE_RATE)
 
     def _encode(self, pcm: bytes) -> None:
         import av
@@ -125,9 +128,9 @@ class OggOpusEncoder(object):
             self._sink.mux(self._stream.encode(resampled))
 
 
-def wav_to_ogg_opus(wav: bytes) -> bytes:
-    """Complete OGG/Opus file for a whole TalkService WAV in one go."""
-    encoder = OggOpusEncoder()
+def wav_to_mp3(wav: bytes) -> bytes:
+    """Complete MP3 file for a whole TalkService WAV in one go."""
+    encoder = Mp3Encoder()
     encoder.push(wav)
     if encoder.samples == 0:
         raise ValueError("WAV has no audio samples.")

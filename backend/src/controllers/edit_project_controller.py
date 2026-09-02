@@ -13,7 +13,7 @@ from fastapi import HTTPException, Request, Response
 from automaton.automaton_yaml_editor import InitActionTargetError
 from chat.chat_service import ChatService
 from project.project_service import ProjectService
-from schemas import PublishProjectRequest, ReorderActionRequest, SetProjectFieldRequest
+from schemas import AiEditRequest, PublishProjectRequest, ReorderActionRequest, SetProjectFieldRequest
 from session import Session
 
 from .base_controller import BaseController, delete, get, post, put
@@ -51,17 +51,17 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         self.project_service = project_service
 
     @post("/api/projects/{project_name}/test-sessions", role="admin")
-    def post_create_test_session(self, project_name: str):
+    async def post_create_test_session(self, project_name: str):
         """The embedded "Test" chat's explicit "start a new session"
         action — the one place a session may exist against an unpublished
         revision."""
-        return self.chat_service.create_draft_session(project_name)
+        return await self.chat_service.create_draft_session(project_name)
 
     @get("/api/projects/{project_name}/test-sessions/current", role="admin")
-    def get_current_test_session(self, project_name: str, session_id: int | None = None):
+    async def get_current_test_session(self, project_name: str, session_id: int | None = None):
         """The embedded "Test" chat's bootstrap endpoint — the
         draft-session equivalent of GET /api/chat/session."""
-        return self.chat_service.get_or_create_current_draft_session(session_id, project_name)
+        return await self.chat_service.get_current_draft_session_if_any_or_create_new(session_id, project_name)
 
     @get("/api/projects/{project_name}/test-sessions", role="admin")
     def get_test_sessions(self, project_name: str):
@@ -247,6 +247,37 @@ class EditProjectController(BaseController, ProjectCommitMixin):
             raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+
+    @post("/api/projects/{project_name}/files/index.yml/ai-edit", role="admin")
+    async def post_index_yml_ai_edit(self, project_name: str, req: AiEditRequest):
+        """The index.yml editor's AI button: asks the configured AiService
+        to rewrite index.yml per `req.instruction`, given the format spec
+        and this project's current content — see ProjectEditor.
+        generate_index_yml_ai_edit. A pure preview, like undo/redo above:
+        nothing is persisted, the frontend drops the result into its own
+        (unsaved) editor buffer."""
+        try:
+            content = await self.project_service.generate_index_yml_ai_edit(project_name, req.instruction)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return {"content": content}
+
+    @post("/api/projects/{project_name}/files/index.css/ai-edit", role="admin")
+    async def post_index_css_ai_edit(self, project_name: str, req: AiEditRequest):
+        """The index.css (Aspect) editor's AI button — mirror of
+        post_index_yml_ai_edit above, see ProjectEditor.
+        generate_index_css_ai_edit. Same pure-preview contract: nothing is
+        persisted, the frontend drops the result into its own (unsaved)
+        editor buffer."""
+        try:
+            content = await self.project_service.generate_index_css_ai_edit(project_name, req.instruction)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
+        return {"content": content}
 
     @delete("/api/projects/{project_name}/history", role="admin")
     def clear_project_history(self, project_name: str):

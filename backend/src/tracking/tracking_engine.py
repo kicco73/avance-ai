@@ -31,6 +31,7 @@ class TrackingSink(Protocol):
         transition_log_level: str,
         signal_values: dict | None = None,
         message_id: int | None = None,
+        origin: str | None = None,
     ) -> int:
         ...
 
@@ -53,12 +54,14 @@ class DbTrackingSink:
         transition_log_level: str,
         signal_values: dict | None = None,
         message_id: int | None = None,
+        origin: str | None = None,
     ) -> int:
         return self._db.save_transition(
             old_state, action, new_state, session_id,
             transition_log_level=transition_log_level,
             signal_values=signal_values,
             message_id=message_id,
+            origin=origin,
         )
 
 
@@ -85,6 +88,7 @@ class TestObservationSink:
         transition_log_level: str,
         signal_values: dict | None = None,
         message_id: int | None = None,
+        origin: str | None = None,
     ) -> int:
         # transition_log_level: received only to satisfy TrackingSink's
         # shared shape — there's no production log to write for a replay.
@@ -131,6 +135,7 @@ class TrackingEngine:
         session_id: int,
         message_id: int | None = None,
         *,
+        origin: str,
         username: str | None = None,
         project_name: str | None = None,
     ) -> tuple[int, str | None]:
@@ -159,6 +164,7 @@ class TrackingEngine:
             transition_log_level=automaton.get_state(action.target).transition_log_level,
             signal_values=signal_values,
             message_id=message_id,
+            origin=origin,
         )
         self.notify_transition(username, project_name, state.key, action.target)
         return tracking_id, on_enter

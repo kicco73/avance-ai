@@ -354,3 +354,89 @@ def test_delete_signal_row_removes_it(db):
     db.delete_signal_row(row_id)
 
     assert db.get_signals(session_id) == []
+
+
+@pytest.mark.contract
+def test_save_transition_rejects_an_unknown_origin(db):
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+
+    with pytest.raises(ValueError):
+        db.save_transition(
+            "", "init", "start", session_id, transition_log_level="INFO", origin="not-a-real-origin",
+        )
+
+
+@pytest.mark.contract
+def test_import_tracking_row_rejects_an_unknown_origin(db):
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+
+    with pytest.raises(ValueError):
+        db.import_tracking_row(
+            session_id, old_state="", action="init", new_state="start", values=None,
+            expected_state=None, expected_values=None, comment=None, message_id=None,
+            timestamp=None, origin="not-a-real-origin",
+        )
+
+
+@pytest.mark.contract
+def test_save_transition_persists_a_valid_origin(db):
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+
+    db.save_transition("start", "advance", "next", session_id, transition_log_level="INFO", origin="trigger")
+
+    assert db.get_signals(session_id)[0]["origin"] == "trigger"
+
+
+_ORIGIN_PROJECT_YAML = """
+init-action:
+  target: a
+states:
+  a:
+    ui-label: A
+    contextual-prompt: hi
+    actions:
+      - name: advance
+        ui-label: Advance
+        ui-button: Advance
+        target: b
+  b:
+    ui-label: B
+    contextual-prompt: bye
+"""
+
+
+def _publish_origin_project(db, project_name="origin-proj"):
+    db.ensure_project(project_name)
+    db.save_project_files(
+        project_name, {"index.yml": _ORIGIN_PROJECT_YAML.encode("utf-8")}, {"index.yml": "text/yaml"},
+    )
+    db.publish_project(project_name)
+    db.set_active_project_name(project_name, "user")
+
+
+@pytest.mark.contract
+def test_session_bootstrap_records_origin_init_action(client, app_db):
+    _publish_origin_project(app_db)
+    session = client.get("/api/chat/session").json()
+
+    # Opening a session's own first message is what triggers ChatService's
+    # bootstrap (_ensure_project_bootstrap), not the session lookup itself.
+    client.get(f"/api/chat/sessions/{session['id']}/messages")
+
+    signals = app_db.get_signals(session["id"])
+    init_rows = [row for row in signals if row["old_state"] == ""]
+    assert len(init_rows) == 1
+    assert init_rows[0]["origin"] == "init-action"
+
+
+@pytest.mark.contract
+def test_manual_action_records_origin_manual(client, app_db):
+    _publish_origin_project(app_db)
+    session = client.get("/api/chat/session").json()
+
+    response = client.post(f"/api/chat/sessions/{session['id']}/action", json={"action_name": "advance"})
+    assert response.status_code == 200, response.text
+
+    manual_rows = [row for row in app_db.get_signals(session["id"]) if row["action"] == "advance"]
+    assert len(manual_rows) == 1
+    assert manual_rows[0]["origin"] == "manual"

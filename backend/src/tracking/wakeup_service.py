@@ -128,7 +128,7 @@ class WakeupService:
             if action is not None and action.target == state.key:
                 _, on_enter = tracking_engine.apply_transition(
                     automaton, state, action, {}, session["id"],
-                    username=username, project_name=observer_project_name,
+                    origin='system', username=username, project_name=observer_project_name,
                 )
                 # A "notification" frame, never "done" — chatClient.js drops a
                 # "done" with no pendingTurn in flight, which a push never is.

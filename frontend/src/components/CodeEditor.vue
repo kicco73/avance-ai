@@ -175,6 +175,14 @@ function discard() {
   setEditorDoc(originalContent.value)
 }
 
+// Replaces the buffer with externally-produced text (e.g. the index.yml
+// editor's AI button) — left dirty against originalContent, same as a
+// normal keystroke edit, so Save picks it up.
+function setContent(newContent) {
+  content.value = newContent
+  setEditorDoc(newContent)
+}
+
 // Previews the previous/next content from history without persisting —
 // no 'saved' emitted. `originalContent` stays put, so the resulting
 // diff from it is what re-enables Save.
@@ -219,7 +227,7 @@ async function reload() {
   await load()
 }
 
-defineExpose({ content, isDirty, canUndo, canRedo, mediaType, contentType, loading, saving, save, discard, undo, redo, jumpToLine, reload })
+defineExpose({ content, isDirty, canUndo, canRedo, mediaType, contentType, loading, saving, save, discard, setContent, undo, redo, jumpToLine, reload })
 
 // Read-only while a save is in flight — typing over content that's
 // about to be overwritten by the save response would be silently lost.

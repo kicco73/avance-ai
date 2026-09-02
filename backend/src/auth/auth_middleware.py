@@ -27,6 +27,7 @@ from starlette.routing import Match
 
 from auth.auth_service import SESSION_COOKIE_NAME
 from auth.roles import role_satisfies
+from chat.channels import NATIVE_CHAT
 from session import Session
 
 # FastAPI's own default doc routes (main.py never disables them) — they
@@ -68,6 +69,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         Session().user = identity.email
         Session().role = identity.role
+        Session().channel = NATIVE_CHAT
         return await call_next(request)
 
     @staticmethod

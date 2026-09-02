@@ -151,6 +151,7 @@ class ProjectInspector:
             new_state.key,
             session_id,
             transition_log_level=new_state.transition_log_level,
+            origin='manual',
         )
         # This path writes save_transition directly rather than going through
         # TrackingEngine.apply_transition, so it must publish explicitly.

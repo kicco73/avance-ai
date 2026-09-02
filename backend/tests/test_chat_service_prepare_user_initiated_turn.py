@@ -89,7 +89,7 @@ def _chat_service(db, automaton: Automaton) -> ChatService:
 
 async def test_skips_the_opening_message_for_a_chat_enabled_state(db):
     chat_service = _chat_service(db, _automaton(final=False))
-    session = chat_service.get_or_create_current_session(None)
+    session = await chat_service.get_current_session_if_any_or_create_new(None)
 
     await chat_service.prepare_user_initiated_turn(session["id"])
 
@@ -98,7 +98,7 @@ async def test_skips_the_opening_message_for_a_chat_enabled_state(db):
 
 async def test_still_generates_the_wrap_up_message_for_a_chat_blocked_state(db):
     chat_service = _chat_service(db, _automaton(final=True))
-    session = chat_service.get_or_create_current_session(None)
+    session = await chat_service.get_current_session_if_any_or_create_new(None)
 
     await chat_service.prepare_user_initiated_turn(session["id"])
 
@@ -107,7 +107,7 @@ async def test_still_generates_the_wrap_up_message_for_a_chat_blocked_state(db):
 
 async def test_still_applies_declared_env_defaults(db):
     chat_service = _chat_service(db, _automaton(final=False, env={"a": "2"}))
-    session = chat_service.get_or_create_current_session(None)
+    session = await chat_service.get_current_session_if_any_or_create_new(None)
 
     await chat_service.prepare_user_initiated_turn(session["id"])
 

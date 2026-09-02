@@ -104,7 +104,7 @@ def _env_for(db) -> PersistedEnv:
 
 async def test_a_manually_fired_actions_env_is_persisted(db):
     chat_service = _chat_service(db, _automaton({"reset_counter": "True"}))
-    session = chat_service.get_or_create_current_session(None)
+    session = await chat_service.get_current_session_if_any_or_create_new(None)
 
     await chat_service.apply_manual_action("advance", session["id"])
 
@@ -115,7 +115,7 @@ async def test_a_manually_fired_actions_env_is_persisted(db):
 
 async def test_an_action_with_no_env_field_never_touches_env(db):
     chat_service = _chat_service(db, _automaton(None))
-    session = chat_service.get_or_create_current_session(None)
+    session = await chat_service.get_current_session_if_any_or_create_new(None)
 
     await chat_service.apply_manual_action("advance", session["id"])
 
@@ -126,7 +126,7 @@ async def test_an_action_with_no_env_field_never_touches_env(db):
 
 async def test_manual_actions_env_can_self_reference_a_previously_stored_value(db):
     chat_service = _chat_service(db, _automaton({"number_of_steps": "env.number_of_steps + 1"}, target="a"))
-    session = chat_service.get_or_create_current_session(None)
+    session = await chat_service.get_current_session_if_any_or_create_new(None)
     env = _env_for(db)
     env.update_action_set({"number_of_steps": 3})
 
@@ -140,7 +140,7 @@ async def test_env_update_happens_before_the_transitions_own_prompt_is_built(db)
     see the updated env value, not last turn's."""
     chat_service = _chat_service(db, _automaton({"reset_counter": "True"}))
     ai_service = chat_service._ai_service
-    session = chat_service.get_or_create_current_session(None)
+    session = await chat_service.get_current_session_if_any_or_create_new(None)
 
     await chat_service.apply_manual_action("advance", session["id"])
 

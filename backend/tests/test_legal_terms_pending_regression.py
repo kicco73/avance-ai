@@ -99,11 +99,11 @@ async def test_an_already_open_session_is_never_blocked_by_terms_published_since
     anything after a user already has a live session open must never
     retroactively ask that user to accept terms mid-conversation — only a
     session about to be *created* is pinned to whatever's newly published
-    (see ChatService._resolve_or_create_session_of_type)."""
+    (see ChatService._get_current_session_if_any_or_create_new_of_type)."""
     project_service.accept_legal_terms(USERNAME, PROJECT_NAME)
     chat_service = _chat_service_for(db, project_service)
 
-    first = chat_service.get_or_create_current_session(None)
+    first = await chat_service.get_current_session_if_any_or_create_new(None)
     assert first.get("legal_terms_pending") is not True
     session_id = first["id"]
 
@@ -113,7 +113,7 @@ async def test_an_already_open_session_is_never_blocked_by_terms_published_since
     # already-open one below just isn't.
     assert project_service.legal_terms_pending(USERNAME, PROJECT_NAME) is True
 
-    second = chat_service.get_or_create_current_session(None)
+    second = await chat_service.get_current_session_if_any_or_create_new(None)
     assert second.get("legal_terms_pending") is not True
     assert second["id"] == session_id
 
@@ -121,6 +121,6 @@ async def test_an_already_open_session_is_never_blocked_by_terms_published_since
 async def test_a_brand_new_session_is_still_blocked_by_currently_pending_terms(db, project_service):
     chat_service = _chat_service_for(db, project_service)
 
-    payload = chat_service.get_or_create_current_session(None)
+    payload = await chat_service.get_current_session_if_any_or_create_new(None)
 
     assert payload.get("legal_terms_pending") is True

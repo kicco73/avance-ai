@@ -40,7 +40,7 @@ const MOCK_MESSAGES = [
 
 const MOCK_ACTIONS = [
   { name: 'preview-action-1', ui_button: 'Track my order', has_trigger: false },
-  { name: 'preview-action-2', ui_button: 'Talk to a human', has_trigger: false }
+  { name: 'preview-action-2', ui_button: 'Talk to a human', has_trigger: false, disabled: true }
 ]
 
 const draft = ref('')
@@ -90,7 +90,7 @@ onBeforeUnmount(() => {
       <MessageBubble v-for="msg in MOCK_MESSAGES" :key="msg.messageId" :message="msg" show-timestamp />
     </div>
     <div class="chat-footer">
-      <ActionButtons :actions="MOCK_ACTIONS" disabled :auto-tracking-enabled="false" />
+      <ActionButtons :actions="MOCK_ACTIONS" :auto-tracking-enabled="false" />
       <ChatInput v-model="draft" disabled :recording="false" :mic-available="false" :talk-available="false" :audio-enabled="false" :spoken-text-enabled="false" />
     </div>
   </div>

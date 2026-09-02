@@ -1,18 +1,17 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from http import HTTPStatus
 
 from peewee import fn
 
+from chat.channels import CHANNELS, NATIVE_CHAT
+from logging_factory import LoggerFactory
 from tracking.errors import TrackingServiceError
 
-from .models import ChatSession, Message, Project, Tracking, User
+from .models import SESSION_CLOSE_REASONS, ChatSession, Message, Project, Tracking, User
 
-# Same default as chat.session_manager.DEFAULT_OPEN_WINDOW_MINUTES, kept
-# here too (same reasoning as that module's own docstring) so this layer
-# doesn't have to import the chat layer just for one constant.
-_DEFAULT_OPEN_WINDOW_MINUTES = 60.0
+logger = LoggerFactory.get_logger(__name__)
 
 
 class SessionMixin:
@@ -30,11 +29,14 @@ class SessionMixin:
         self, username: str, project_name: str, revision: int, *,
         datetime_start: datetime | None = None, datetime_end: datetime | None = None,
         start_state: str | None = None, end_state: str | None = None,
-        type: str = 'live', title: str | None = None, channel: str = 'native-chat',
+        type: str = 'live', title: str | None = None, channel: str = NATIVE_CHAT,
+        closed_at: datetime | None = None, close_reason: str | None = None,
     ) -> int:
         """`revision` arrives already resolved by the caller (see
         chat.session_type_strategy.SessionTypeStrategy.revision_for) —
         published for a 'live' session, draft for a 'test' one."""
+        if channel not in CHANNELS:
+            raise ValueError(f"Unknown channel '{channel}' — expected one of {CHANNELS}.")
         if Project.get_or_none(Project.name == project_name) is None:
             raise ValueError(f"Project '{project_name}' does not exist.")
         if title is None:
@@ -49,6 +51,7 @@ class SessionMixin:
             project_revision=revision,
             datetime_start=datetime_start, datetime_end=datetime_end,
             start_state=start_state, end_state=end_state, channel=channel,
+            closed_at=closed_at, close_reason=close_reason,
         )
         return session.id
 
@@ -62,7 +65,7 @@ class SessionMixin:
 
     @staticmethod
     def _chat_session_to_dict(session: ChatSession) -> dict:
-        return {'id': session.id, 'username': session.username, 'project_name': session.project_name_id, 'type': session.type, 'title': session.title, 'datetime_start': session.datetime_start, 'datetime_end': session.datetime_end, 'start_state': session.start_state, 'end_state': session.end_state, 'project_revision': session.project_revision, 'labeled': session.labeled, 'comment': session.comment, 'channel': session.channel}
+        return {'id': session.id, 'username': session.username, 'project_name': session.project_name_id, 'type': session.type, 'title': session.title, 'datetime_start': session.datetime_start, 'datetime_end': session.datetime_end, 'start_state': session.start_state, 'end_state': session.end_state, 'project_revision': session.project_revision, 'labeled': session.labeled, 'comment': session.comment, 'channel': session.channel, 'closed_at': session.closed_at, 'close_reason': session.close_reason}
 
     def get_chat_session(self, session_id: int) -> dict | None:
         session = ChatSession.get_or_none(ChatSession.id == session_id)
@@ -126,18 +129,13 @@ class SessionMixin:
         sessions = query.order_by(ChatSession.datetime_start.desc())
         return [self._chat_session_to_dict(s) for s in sessions]
 
-    def has_open_sessions_for_revision(self, project_name: str, revision: int) -> bool:
-        """Whether any *live* session is still open (a cross-user
-        check, not this one user's active session) at exactly
-        `revision` — gates whether publishing should warn the caller first."""
-        cutoff = datetime.utcnow() - timedelta(minutes=_DEFAULT_OPEN_WINDOW_MINUTES)
-        return ChatSession.select().where(
+    def list_live_sessions_for_revision(self, project_name: str, revision: int) -> list[dict]:
+        sessions = ChatSession.select().where(
             (ChatSession.project_name == project_name)
             & (ChatSession.project_revision == revision)
             & (ChatSession.type == 'live')
-            & (ChatSession.datetime_end.is_null(False))
-            & (ChatSession.datetime_end >= cutoff)
-        ).exists()
+        )
+        return [self._chat_session_to_dict(s) for s in sessions]
 
     def set_session_title(self, session_id: int, title: str | None) -> None:
         """A domain expert's rename for a session — the same field an
@@ -165,7 +163,19 @@ class SessionMixin:
         ChatSession.update(labeling_revision=ChatSession.labeling_revision + 1).where(ChatSession.id == session_id).execute()
 
     def touch_chat_session(self, session_id: int, datetime_end: datetime, end_state: str | None) -> None:
-        ChatSession.update(datetime_end=datetime_end, end_state=end_state).where(ChatSession.id == session_id).execute()
+        updated = ChatSession.update(datetime_end=datetime_end, end_state=end_state).where(
+            (ChatSession.id == session_id) & ChatSession.closed_at.is_null()
+        ).execute()
+        if updated == 0:
+            logger.warning("touch_chat_session(): no open session to touch for session_id=%s.", session_id)
+
+    def close_chat_session(self, session_id: int, closed_at: datetime, reason: str) -> bool:
+        if reason not in SESSION_CLOSE_REASONS:
+            raise ValueError(f"Unknown close_reason '{reason}' — expected one of {SESSION_CLOSE_REASONS}.")
+        updated = ChatSession.update(closed_at=closed_at, close_reason=reason).where(
+            (ChatSession.id == session_id) & ChatSession.closed_at.is_null()
+        ).execute()
+        return updated > 0
 
     def delete_chat_session(self, session_id: int) -> None:
         Tracking.delete().where(Tracking.session == session_id).execute()

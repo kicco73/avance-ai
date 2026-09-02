@@ -96,7 +96,7 @@ async def test_a_later_keys_default_sees_an_earlier_keys_freshly_applied_value(d
     b's expression is evaluated (the bug: a single batched eval
     evaluated every key against the same stale, pre-open snapshot)."""
     chat_service = _chat_service(db, _automaton({"a": "2", "b": "env.a + 1"}))
-    session = chat_service.get_or_create_current_session(None)
+    session = await chat_service.get_current_session_if_any_or_create_new(None)
 
     await chat_service.open_if_needed(session["id"])
 
@@ -107,7 +107,7 @@ async def test_a_chain_of_three_resolves_in_declaration_order(db):
     chat_service = _chat_service(
         db, _automaton({"first": "1", "second": "env.first + 1", "third": "env.second + 1"})
     )
-    session = chat_service.get_or_create_current_session(None)
+    session = await chat_service.get_current_session_if_any_or_create_new(None)
 
     await chat_service.open_if_needed(session["id"])
 
@@ -116,7 +116,7 @@ async def test_a_chain_of_three_resolves_in_declaration_order(db):
 
 async def test_a_key_that_already_has_a_value_is_never_recomputed(db):
     chat_service = _chat_service(db, _automaton({"a": "2"}))
-    session = chat_service.get_or_create_current_session(None)
+    session = await chat_service.get_current_session_if_any_or_create_new(None)
     _env_for(db).update_action_set({"a": 99})
 
     await chat_service.open_if_needed(session["id"])

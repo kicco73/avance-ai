@@ -100,7 +100,7 @@ async def test_action_prompt_leaves_no_user_role_message_in_the_db(db):
     prompt, never a real user turn — none of the resulting assistant
     messages may ever be saved with role="user"."""
     chat_service, _ = _chat_service(db, _automaton())
-    session = chat_service.get_or_create_current_session(None)
+    session = await chat_service.get_current_session_if_any_or_create_new(None)
 
     await chat_service.apply_manual_action("advance", session["id"])
 
@@ -111,7 +111,7 @@ async def test_action_prompt_leaves_no_user_role_message_in_the_db(db):
 
 async def test_action_prompt_fires_even_when_the_destination_state_disallows_chat(db):
     chat_service, _ = _chat_service(db, _automaton(chat_on_destination=False))
-    session = chat_service.get_or_create_current_session(None)
+    session = await chat_service.get_current_session_if_any_or_create_new(None)
 
     result = await chat_service.apply_manual_action("advance", session["id"])
 
@@ -126,7 +126,7 @@ async def test_apply_manual_action_reply_entries_are_flat_message_dicts(db):
     # audio_text} dicts, matching what chatStore.js's handleAction expects.
     # State "b" is final and chat-enabled, exercising the two-entries case.
     chat_service, _ = _chat_service(db, _automaton(chat_on_destination=True))
-    session = chat_service.get_or_create_current_session(None)
+    session = await chat_service.get_current_session_if_any_or_create_new(None)
 
     result = await chat_service.apply_manual_action("advance", session["id"])
 
@@ -139,7 +139,7 @@ async def test_apply_manual_action_reply_entries_are_flat_message_dicts(db):
 
 async def test_action_prompt_text_reaches_the_model_prompt_not_the_saved_message(db):
     chat_service, ai_service = _chat_service(db, _automaton())
-    session = chat_service.get_or_create_current_session(None)
+    session = await chat_service.get_current_session_if_any_or_create_new(None)
 
     await chat_service.apply_manual_action("advance", session["id"])
 

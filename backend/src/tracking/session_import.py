@@ -94,6 +94,8 @@ class SessionImportManager:
             start_state=session_data.get('start_state'),
             end_state=session_data.get('end_state'),
             type=restored_type, title=session_data.get('name'),
+            closed_at=_parse_iso(session_data.get('closed_at')),
+            close_reason=session_data.get('close_reason'),
         )
         try:
             if session_data.get('labeled'):
@@ -165,7 +167,7 @@ class SessionImportManager:
     # Every one of these is optional on a message entry — a plain
     # `message.get(key)` for each, rather than requiring the caller's
     # JSON to carry every key on every message.
-    _TRACKING_FIELDS = ('old_state', 'action', 'new_state', 'values', 'expected_state', 'expected_values', 'comment')
+    _TRACKING_FIELDS = ('old_state', 'action', 'new_state', 'values', 'expected_state', 'expected_values', 'comment', 'origin')
 
     def _import_message(self, session_id: int, message: dict) -> None:
         text = message['text']
@@ -185,4 +187,5 @@ class SessionImportManager:
             values=message.get('values'), expected_state=message.get('expected_state'),
             expected_values=message.get('expected_values'), comment=message.get('comment'),
             message_id=message_id, timestamp=_parse_iso(message.get('timestamp')),
+            origin=message.get('origin'),
         )

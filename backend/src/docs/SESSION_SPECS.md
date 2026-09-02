@@ -20,7 +20,7 @@ object. Every session of the project is included, whether it was a real
 ## Session object
 
 | Field          | Type             | Meaning                                                                                                                                                                                   |
-| -------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|----------------|------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `name`         | `string \| null` | Session title, shown as its label in the Sessions panel.                                                                                                                                  |
 | `username`     | `string \| null` | The session's owner. Preserved on reimport when present; a `.txt`-style import with no `username` generates a fresh test user instead.                                                    |
 | `type`         | `string \| null` | The session's original kind — `"live"` or `"imported"`. Preserved on reimport; missing or any other value falls back to `"imported"` (e.g. an export produced before this field existed). |
@@ -30,6 +30,8 @@ object. Every session of the project is included, whether it was a real
 | `end_state`    | `string \| null` | Automaton state the session ended in (or currently sits in).                                                                                                                              |
 | `labeled`      | `boolean`        | Whether a reviewer has marked this session "done" (the Mark done button).                                                                                                                 |
 | `comment`      | `string \| null` | Reviewer's free-text note about the whole session.                                                                                                                                        |
+| `closed_at`    | `string \| null` | When the session was explicitly closed, ISO 8601 UTC — `null` for a session still open, or one that only ever expired by its open window.                                                 |
+| `close_reason` | `string \| null` | Why the session was explicitly closed — one of `"channel-switch"`, `"force-new-session"`, `"manual-user"`, `"manual-assistant"`. Always `null` when `closed_at` is `null`.                |
 | `messages`     | `array`          | The session's messages, in chronological order. See below.                                                                                                                                |
 
 ## Message object
@@ -54,18 +56,19 @@ provider never reported usage for).
 | `tokens` | `integer` | Token cost of this message. |
 
 A message that triggered (or recorded) an automaton transition additionally
-carries these seven fields. They are **omitted entirely** on a message with
+carries these eight fields. They are **omitted entirely** on a message with
 no linked transition — don't assume they're present with `null` values:
 
-| Field             | Type                                | Meaning                                                          |
-| ----------------- | ------------------------------------ | ------------------------------------------------------------------ |
-| `old_state`       | `string \| null`                     | Automaton state before this transition.                            |
-| `action`          | `string \| null`                     | Name of the action/trigger that fired.                             |
-| `new_state`       | `string \| null`                     | Automaton state after this transition.                             |
-| `values`          | `object<string, number \| null> \| null` | Signal values recorded at this point — signal name to numeric value. |
-| `expected_state`  | `string \| null`                     | Reviewer-annotated "should have been" state, used for benchmarking. |
-| `expected_values` | `object<string, number \| null> \| null` | Reviewer-annotated expected signal values.                       |
-| `comment`         | `string \| null`                     | Reviewer's note on this specific message/transition.                |
+| Field             | Type                                     | Meaning                                                                                                                                     |
+|-------------------|------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| `old_state`       | `string \| null`                         | Automaton state before this transition.                                                                                                     |
+| `action`          | `string \| null`                         | Name of the action/trigger that fired.                                                                                                      |
+| `new_state`       | `string \| null`                         | Automaton state after this transition.                                                                                                      |
+| `values`          | `object<string, number \| null> \| null` | Signal values recorded at this point — signal name to numeric value.                                                                        |
+| `expected_state`  | `string \| null`                         | Reviewer-annotated "should have been" state, used for benchmarking.                                                                         |
+| `expected_values` | `object<string, number \| null> \| null` | Reviewer-annotated expected signal values.                                                                                                  |
+| `comment`         | `string \| null`                         | Reviewer's note on this specific message/transition.                                                                                        |
+| `origin`          | `string \| null`                         | Why this transition was written — one of `"trigger"`, `"manual"`, `"system"`, `"init-action"`, or `null` for a row with no recorded origin. |
 
 ## Example
 
@@ -81,6 +84,8 @@ no linked transition — don't assume they're present with `null` values:
     "end_state": "checkout_confirmed",
     "labeled": true,
     "comment": "Clean run, no issues.",
+    "closed_at": "2026-08-20T12:40:03+00:00",
+    "close_reason": "manual-user",
     "messages": [
       {
         "role": "user",
@@ -101,7 +106,8 @@ no linked transition — don't assume they're present with `null` values:
         "values": { "cart_items": 1 },
         "expected_state": "asking_size",
         "expected_values": { "cart_items": 1 },
-        "comment": null
+        "comment": null,
+        "origin": "trigger"
       }
     ]
   }

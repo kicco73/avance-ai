@@ -22,7 +22,7 @@ const emit = defineEmits(['action'])
       v-for="action in actions"
       :key="action.name"
       class="action-btn"
-      :disabled="disabled"
+      :disabled="disabled || action.disabled"
       @click="emit('action', action.name)"
     >
       {{ action.ui_button }}

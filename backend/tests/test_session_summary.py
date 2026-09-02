@@ -38,6 +38,27 @@ def test_closing_a_session_queues_its_summary(client, app_db, hello_project):
     assert summary["content"] is not None
 
 
+def test_an_explicitly_closed_session_within_the_window_is_still_queued(client, app_db, hello_project):
+    session = client.get("/api/chat/session").json()
+    client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})
+
+    # Still well within the open window — only the explicit close (never
+    # datetime_end/the window) should make this session count as closed.
+    assert app_db.close_chat_session(session["id"], datetime.utcnow(), "manual-user") is True
+
+    new_session = client.get("/api/chat/session").json()
+    assert new_session["id"] != session["id"]
+
+    deadline = time.monotonic() + 5.0
+    summary = {"content": None}
+    while time.monotonic() < deadline and summary["content"] is None:
+        summary = client.get(f"/api/chat/sessions/{session['id']}/summary").json()
+        if summary["content"] is None:
+            time.sleep(0.05)
+
+    assert summary["content"] is not None
+
+
 def test_a_still_open_session_is_never_queued(client, hello_project):
     session = client.get("/api/chat/session").json()
     client.post(f"/api/chat/sessions/{session['id']}/messages", json={"message": "hi"})

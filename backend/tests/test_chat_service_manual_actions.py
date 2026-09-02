@@ -79,28 +79,28 @@ def _chat_service(db) -> ChatService:
     )
 
 
-def test_live_session_always_excludes_triggered_actions(db):
+async def test_live_session_always_excludes_triggered_actions(db):
     chat_service = _chat_service(db)
 
-    session = chat_service.get_or_create_current_session(None)
+    session = await chat_service.get_current_session_if_any_or_create_new(None)
 
     names = {a["name"] for a in session["state"]["manual_actions"]}
     assert names == {"manual"}
 
 
-def test_test_session_excludes_triggered_actions_while_auto_tracking_is_on(db):
+async def test_test_session_excludes_triggered_actions_while_auto_tracking_is_on(db):
     chat_service = _chat_service(db)
 
-    session = chat_service.get_or_create_current_draft_session(None, PROJECT_NAME)
+    session = await chat_service.get_current_draft_session_if_any_or_create_new(None, PROJECT_NAME)
 
     assert chat_service.is_auto_tracking_enabled(session["id"]) is True
     names = {a["name"] for a in session["state"]["manual_actions"]}
     assert names == {"manual"}
 
 
-def test_test_session_includes_triggered_actions_once_auto_tracking_is_off(db):
+async def test_test_session_includes_triggered_actions_once_auto_tracking_is_off(db):
     chat_service = _chat_service(db)
-    session = chat_service.get_or_create_current_draft_session(None, PROJECT_NAME)
+    session = await chat_service.get_current_draft_session_if_any_or_create_new(None, PROJECT_NAME)
     session_id = session["id"]
 
     chat_service.set_auto_tracking_enabled(session_id, False)
@@ -110,10 +110,10 @@ def test_test_session_includes_triggered_actions_once_auto_tracking_is_off(db):
     assert names == {"manual", "auto"}
 
 
-def test_actions_field_itself_is_never_filtered(db):
+async def test_actions_field_itself_is_never_filtered(db):
     chat_service = _chat_service(db)
 
-    session = chat_service.get_or_create_current_session(None)
+    session = await chat_service.get_current_session_if_any_or_create_new(None)
 
     names = {a["name"] for a in session["state"]["actions"]}
     assert names == {"manual", "auto"}

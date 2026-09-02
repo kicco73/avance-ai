@@ -34,7 +34,7 @@ from talk.talk_service import TalkService
 from whatsapp.whatsapp_service import WhatsAppService
 from listen.listen_service import ListenService
 
-__version__ = "1.23.5b"
+__version__ = "1.23.7"
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -96,15 +96,19 @@ def create_app() -> FastAPI:
         # needs it for its own per-request UserProject ownership check.
         app.state.db = db
 
-        # Built before AuthService below — AuthService.complete_registration
+        # Built before ProjectService, which injects it into ProjectManager.
+        # Also built before AuthService below — AuthService.complete_registration
         # delegates every invite rule (exists/not expired/under its
         # max-shares budget) to ProjectService (see project/invites.py's
         # InviteManager), so it needs this constructed first.
+        session_manager = ChatSessionManager(db, open_window_minutes=config.max_session_duration_in_minutes)
+
         project_service = ProjectService(
             db, ai_live_service,
             invite_valid_days=config.invite_valid_days, invite_max_shares=config.invite_max_shares,
             whatsapp_number=config.whatsapp_service_config.phone_number if config.whatsapp_service_config else None,
             whatsapp_invite_prefix=config.whatsapp_service_config.invite_prefix if config.whatsapp_service_config else "Invitation code: ",
+            session_manager=session_manager,
         )
 
         # Built once here (not a global singleton — see auth/auth_service.py's
@@ -121,8 +125,6 @@ def create_app() -> FastAPI:
             min_job_interval_ms=config.test_service_min_test_interval_ms,
         )
 
-        session_manager = ChatSessionManager(db, open_window_minutes=config.max_session_duration_in_minutes)
-        
         # A leaf service (see metrics/metric_service.py's own module
         # docstring) — never depends on ChatService/TrackingService, so
         # it's built first and handed to whoever needs it, never the

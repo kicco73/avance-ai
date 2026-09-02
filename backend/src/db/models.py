@@ -4,6 +4,8 @@ from datetime import datetime
 
 from peewee import AutoField, BlobField, BooleanField, CharField, CompositeKey, DateTimeField, ForeignKeyField, IntegerField, Model, Proxy, TextField
 
+from chat.channels import NATIVE_CHAT
+
 database = Proxy()
 
 
@@ -75,6 +77,9 @@ class User(BaseModel):
         table_name = 'User'
         indexes = ((('provider', 'provider_user_id'), True),)
 
+SESSION_CLOSE_REASONS = ('channel-switch', 'force-new-session', 'manual-user', 'manual-assistant')
+
+
 class ChatSession(BaseModel):
     id = AutoField()
     username = CharField()
@@ -112,7 +117,9 @@ class ChatSession(BaseModel):
     # never touched again (see chat/session_manager.py's create_session).
     # 'native-chat' (the web SPA) is the default so migration-strategy:
     # upgrade backfills every pre-existing row with it automatically.
-    channel = CharField(default='native-chat', index=True)
+    channel = CharField(default=NATIVE_CHAT, index=True)
+    closed_at = DateTimeField(null=True)
+    close_reason = CharField(null=True)
 
     class Meta:
         table_name = 'ChatSession'
@@ -134,6 +141,9 @@ class Message(BaseModel):
     class Meta:
         table_name = 'Message'
 
+TRACKING_ORIGINS = ('trigger', 'manual', 'system', 'init-action')
+
+
 class Tracking(BaseModel):
     id = AutoField()
     session = ForeignKeyField(ChatSession, null=False, backref='tracking', on_delete='CASCADE')
@@ -151,6 +161,7 @@ class Tracking(BaseModel):
     action = CharField(null=True)
     new_state = CharField(null=True, index=True)
     message = ForeignKeyField(Message, null=True, backref='tracking_row', on_delete='SET NULL')
+    origin = CharField(null=True)
 
     class Meta:
         table_name = 'Tracking'

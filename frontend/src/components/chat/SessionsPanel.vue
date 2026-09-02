@@ -70,6 +70,12 @@ function notSelectable(session) {
   return props.restrictSelectionToNative && session.type !== 'live'
 }
 
+const CHANNEL_LABELS = { 'whatsapp-chat': 'WhatsApp' }
+
+function channelLabel(session) {
+  return session.type === 'live' ? CHANNEL_LABELS[session.channel] : null
+}
+
 function selectSession(session) {
   if (notSelectable(session)) return
   emit('select', session)
@@ -126,6 +132,7 @@ const {
           <span class="session-badge" :class="{ 'session-badge-inactive': !session.active }">
             {{ session.title || session.end_state }}
           </span>
+          <span v-if="channelLabel(session)" class="session-channel-label">{{ channelLabel(session) }}</span>
           <span
             v-if="session.has_annotations"
             class="session-annotation-icon"
@@ -383,6 +390,12 @@ const {
 .session-badge-inactive {
   background: #999;
   opacity: 0.5;
+}
+
+.session-channel-label {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  color: #666;
 }
 
 .session-timestamp {

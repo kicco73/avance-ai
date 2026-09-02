@@ -134,7 +134,7 @@ def chat_service_for(db):
 
 
 async def _bootstrap_session(chat_service: ChatService) -> int:
-    session = chat_service.get_or_create_current_session(None)
+    session = await chat_service.get_current_session_if_any_or_create_new(None)
     return session["id"]
 
 

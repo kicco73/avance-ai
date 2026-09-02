@@ -11,6 +11,8 @@ import { clearApiError, setApiError } from './errorStore.js'
 import { confirmDialog } from './dialogStore.js'
 import { registerSkinSource } from './chatSkin.js'
 
+const SESSION_INACTIVE_CODES = ['session_closed', 'session_channel_mismatch', 'session_superseded']
+
 // App-wide user preferences — genuinely not "which chat" state, so a
 // single shared instance regardless of how many chat stores exist (see
 // createChatStore below).
@@ -360,6 +362,13 @@ export function createChatStore({
     if (target) target.failed = failed
   }
 
+  function handleSessionInactiveError(err) {
+    const shouldDeactivate = err.code ? SESSION_INACTIVE_CODES.includes(err.code) : err.status === 409
+    if (!shouldDeactivate) return
+    selectedSessionActive.value = false
+    if (sessionsPanelOpen.value) loadSessions()
+  }
+
   async function submitMessage(message) {
     clearApiError()
     setMessageFailed(message.id, false)
@@ -461,9 +470,7 @@ export function createChatStore({
       if (idx !== -1) messages.value.splice(idx, 1)
 
       setMessageFailed(message.id, true)
-      // 409 = the backend rejected this session_id as closed — reflect that
-      // immediately so the input disables without a reload.
-      if (err.status === 409) selectedSessionActive.value = false
+      handleSessionInactiveError(err)
     } finally {
       chatLoading.value = false
       chatStatus.value = ''
@@ -558,7 +565,7 @@ export function createChatStore({
       bumpTurn()
     } catch (err) {
       // already surfaced via apiFetch
-      if (err.status === 409) selectedSessionActive.value = false
+      handleSessionInactiveError(err)
     } finally {
       actionLoading.value = false
     }

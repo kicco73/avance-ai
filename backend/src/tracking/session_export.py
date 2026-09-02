@@ -50,6 +50,8 @@ class SessionExportManager:
             'end_state': session['end_state'],
             'labeled': session['labeled'],
             'comment': session['comment'],
+            'closed_at': _utc_iso(session['closed_at']),
+            'close_reason': session['close_reason'],
             'messages': [
                 self._export_message(message, tracking_by_message.get(message['id']))
                 for message in self._db.get_messages(session_id)
@@ -76,5 +78,6 @@ class SessionExportManager:
             'old_state': tracking['old_state'],
             'action': tracking['action'],
             'new_state': tracking['new_state'],
+            'origin': tracking['origin'],
         })
         return entry

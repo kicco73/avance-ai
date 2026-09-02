@@ -9,6 +9,7 @@ from logging_factory import LoggerFactory
 from session import Session
 
 if TYPE_CHECKING:
+    from chat.session_summary_manager import SessionSummaryManager
     from project.project_service import ProjectService
 
 logger = LoggerFactory.get_logger(__name__)
@@ -19,16 +20,32 @@ logger = LoggerFactory.get_logger(__name__)
 DEFAULT_OPEN_WINDOW_MINUTES = 60.0
 
 
+class SessionNotWritable(ValueError):
+    def __init__(self, message: str, code: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
 class ChatSessionManager(object):
     def __init__(self, db: Db, open_window_minutes: float = DEFAULT_OPEN_WINDOW_MINUTES) -> None:
         self._db = db
         self._open_window = timedelta(minutes=open_window_minutes)
+        self._session_summary_manager: "SessionSummaryManager | None" = None
 
     @property
     def open_window(self) -> timedelta:
         return self._open_window
 
+    def set_session_summary_manager(self, session_summary_manager: "SessionSummaryManager") -> None:
+        self._session_summary_manager = session_summary_manager
+
     def is_open(self, session: dict, now: datetime | None = None) -> bool:
+        """`datetime_end` is just a session's last-activity timestamp;
+        every decision about whether a session is open goes through this
+        method. A new temporal reader of `datetime_end` must be added to
+        the allowlist in tests/test_datetime_end_readers_contract.py."""
+        if session["closed_at"] is not None:
+            return False
         # A session with no datetime_end yet (an in-progress transcript
         # import) is never "open" either — never a crash from comparing
         # against None.
@@ -37,6 +54,10 @@ class ChatSessionManager(object):
         now = now if now is not None else datetime.utcnow()
         strategy = get_session_type_strategy(session["type"])
         return not strategy.is_expired(session, now, self._open_window)
+
+    def has_open_sessions_for_revision(self, project_name: str, revision: int) -> bool:
+        sessions = self._db.list_live_sessions_for_revision(project_name, revision)
+        return any(self.is_open(session) for session in sessions)
 
     def get_active_session(self, username: str, project_name: str, type: str = 'live') -> dict | None:
         """The single session `username`+`project_name` may currently
@@ -50,6 +71,8 @@ class ChatSessionManager(object):
     def create_session(
         self, strategy: SessionTypeStrategy, project_service: ProjectService, username: str, project_name: str,
     ) -> dict:
+        if strategy.type_name == 'live' and self._session_summary_manager is not None:
+            self._session_summary_manager.check_for_closed_sessions(username, project_name)
         state_key = strategy.starting_state(project_service, project_name, username)
         now = datetime.utcnow()
         revision = strategy.revision_for(project_service, project_name)
@@ -63,7 +86,7 @@ class ChatSessionManager(object):
         assert session is not None
         return session
 
-    def resolve_or_create_session(
+    def get_current_session_if_any_or_create_new(
         self, strategy: SessionTypeStrategy, project_service: ProjectService, username: str, project_name: str,
         session_id: int | None, current_state: str | None = None,
     ) -> dict:
@@ -71,28 +94,61 @@ class ChatSessionManager(object):
         if resolved is not None:
             if session_id is not None and session_id != resolved["id"]:
                 logger.info(
-                    "resolve_or_create_session(): caller's session_id=%s is stale for %s/%s, "
+                    "get_current_session_if_any_or_create_new(): caller's session_id=%s is stale for %s/%s, "
                     "current session is %s", session_id, username, project_name, resolved["id"]
                 )
+            if resolved["channel"] != Session().channel:
+                return resolved
             return self._touch(resolved["id"], datetime.utcnow(), current_state)
+        return self.create_session(strategy, project_service, username, project_name)
+
+    def acquire_exclusive_session(
+        self, strategy: SessionTypeStrategy, project_service: ProjectService, username: str, project_name: str,
+        current_state: str | None = None,
+    ) -> dict:
+        resolved = strategy.resolve_session(self, username, project_name)
+        if resolved is None:
+            return self.create_session(strategy, project_service, username, project_name)
+        if resolved["channel"] == Session().channel:
+            return self._touch(resolved["id"], datetime.utcnow(), current_state)
+        self.close_session(resolved, "channel-switch")
         return self.create_session(strategy, project_service, username, project_name)
 
     def require_active_session(
         self, username: str, project_name: str, session_id: int | None, current_state: str
     ) -> dict:
         if session_id is None:
-            raise ValueError("No session specified.")
+            raise SessionNotWritable("No session specified.", code="session_not_found")
         session = self._db.get_chat_session(session_id)
         if session is None or session["username"] != username or session["project_name"] != project_name:
-            raise ValueError("Session not found.")
+            raise SessionNotWritable("Session not found.", code="session_not_found")
+        if session["closed_at"] is not None:
+            raise SessionNotWritable("Session is closed.", code="session_closed")
         strategy = get_session_type_strategy(session["type"])
         active = self.get_active_session(username, project_name, type=session["type"])
         if not strategy.is_valid_write_target(session, active):
-            raise ValueError("Session is not active.")
+            if active is None or active["id"] != session["id"]:
+                raise SessionNotWritable("Session is not active.", code="session_superseded")
+            raise SessionNotWritable("Session is not active.", code="session_channel_mismatch")
         return self._touch(session["id"], datetime.utcnow(), current_state)
 
     def touch_session(self, session_id: int, current_state: str | None) -> dict | None:
         return self._touch(session_id, datetime.utcnow(), current_state)
+
+    def close_session(self, session: dict, reason: str, now: datetime | None = None) -> dict:
+        if session["closed_at"] is not None:
+            return session
+        now = now if now is not None else datetime.utcnow()
+        self._db.close_chat_session(session["id"], now, reason)
+        logger.info(
+            "close_session(): session_id=%s username=%s project_name=%s session_channel=%s "
+            "current_channel=%s reason=%s",
+            session["id"], session["username"], session["project_name"], session["channel"],
+            Session().channel, reason,
+        )
+        result = self._db.get_chat_session(session["id"])
+        assert result is not None
+        return result
 
     def _touch(self, session_id: int, now: datetime, current_state: str | None) -> dict:
         self._db.touch_chat_session(session_id, now, current_state)

@@ -66,7 +66,7 @@ def _create(manager, project_service, username, project_name, current_state):
 
 def _resolve_or_create(manager, project_service, username, project_name, session_id, current_state):
     project_service.state_key = current_state
-    return manager.resolve_or_create_session(
+    return manager.get_current_session_if_any_or_create_new(
         LIVE, project_service, username, project_name, session_id, current_state
     )
 
@@ -82,22 +82,68 @@ def test_open_window_is_configurable(db):
     assert manager.open_window == timedelta(minutes=5)
 
 
+@pytest.mark.contract
+def test_has_open_sessions_for_revision_true_for_a_live_session_within_the_window(db):
+    db.ensure_project("proj")
+    db.publish_project("proj")
+    manager = ChatSessionManager(db, open_window_minutes=5)
+    now = datetime.utcnow()
+    db.create_chat_session(
+        "user", "proj", 0, datetime_start=now, datetime_end=now,
+        start_state="start", end_state="start", type="live",
+    )
+
+    assert manager.has_open_sessions_for_revision("proj", 0) is True
+
+
+@pytest.mark.contract
+def test_has_open_sessions_for_revision_false_once_past_the_configured_window(db):
+    db.ensure_project("proj")
+    db.publish_project("proj")
+    manager = ChatSessionManager(db, open_window_minutes=5)
+    stale = datetime.utcnow() - timedelta(minutes=10)
+    db.create_chat_session(
+        "user", "proj", 0, datetime_start=stale, datetime_end=stale,
+        start_state="start", end_state="start", type="live",
+    )
+
+    assert manager.has_open_sessions_for_revision("proj", 0) is False
+
+
+@pytest.mark.contract
+def test_has_open_sessions_for_revision_ignores_test_and_imported_sessions(db):
+    db.ensure_project("proj")
+    db.publish_project("proj")
+    manager = ChatSessionManager(db, open_window_minutes=5)
+    now = datetime.utcnow()
+    db.create_chat_session(
+        "user", "proj", 0, datetime_start=now, datetime_end=now,
+        start_state="start", end_state="start", type="test",
+    )
+    db.create_chat_session(
+        "user", "proj", 0, datetime_start=now, datetime_end=now,
+        start_state="start", end_state="start", type="imported",
+    )
+
+    assert manager.has_open_sessions_for_revision("proj", 0) is False
+
+
 @pytest.mark.regression
 def test_is_open_is_false_never_a_crash_for_a_session_with_no_datetime_end(manager):
-    session = {"datetime_end": None}
+    session = {"datetime_end": None, "closed_at": None}
     assert manager.is_open(session) is False
 
 
 @pytest.mark.regression
 def test_is_open_never_expires_for_a_test_session(manager):
     long_ago = datetime.utcnow() - timedelta(days=365)
-    session = {"type": "test", "datetime_end": long_ago}
+    session = {"type": "test", "datetime_end": long_ago, "closed_at": None}
     assert manager.is_open(session) is True
 
 
 @pytest.mark.regression
 def test_is_open_is_always_false_for_an_imported_session_with_a_real_datetime_end(manager):
-    session = {"type": "imported", "datetime_end": datetime.utcnow()}
+    session = {"type": "imported", "datetime_end": datetime.utcnow(), "closed_at": None}
     assert manager.is_open(session) is False
 
 
@@ -255,9 +301,10 @@ def test_require_active_session_rejects_a_different_projects_session(manager, pr
 
 @pytest.mark.contract
 def test_require_active_session_rejects_a_closed_session_no_auto_rotation(manager, project_service, db, monkeypatch):
-    """The behavior this reinforces: unlike resolve_or_create_session, a
-    closed session is never silently swapped for a new one here — the
-    caller must bootstrap or start a new session explicitly instead."""
+    """The behavior this reinforces: unlike
+    get_current_session_if_any_or_create_new, a closed session is never
+    silently swapped for a new one here — the caller must bootstrap or
+    start a new session explicitly instead."""
     session = _create(manager, project_service, "user", "proj", "start")
     stale_now = session["datetime_end"] + manager.open_window + timedelta(seconds=1)
 
@@ -304,3 +351,77 @@ def test_require_active_session_rejects_an_open_but_superseded_session(manager, 
     # The active (newer) one is unaffected and still works normally.
     result = manager.require_active_session("user", "proj", newer["id"], "next")
     assert result["id"] == newer["id"]
+
+
+@pytest.mark.contract
+def test_a_closed_session_is_not_open_even_within_the_window(manager, project_service):
+    session = _create(manager, project_service, "user", "proj", "start")
+
+    closed = manager.close_session(session, "manual-user")
+
+    assert manager.is_open(closed) is False
+
+
+@pytest.mark.contract
+def test_a_closed_session_is_not_the_active_session(manager, project_service):
+    session = _create(manager, project_service, "user", "proj", "start")
+    manager.close_session(session, "manual-user")
+
+    assert manager.get_active_session("user", "proj") is None
+
+
+@pytest.mark.contract
+def test_require_active_session_rejects_a_closed_session(manager, project_service):
+    session = _create(manager, project_service, "user", "proj", "start")
+    manager.close_session(session, "manual-user")
+
+    with pytest.raises(ValueError, match="Session is closed."):
+        manager.require_active_session("user", "proj", session["id"], "next")
+
+
+@pytest.mark.contract
+def test_close_session_is_idempotent(manager, project_service):
+    session = _create(manager, project_service, "user", "proj", "start")
+    first = manager.close_session(session, "manual-user")
+
+    second = manager.close_session(first, "force-new-session")
+
+    assert second == first
+    assert second["close_reason"] == "manual-user"
+
+
+@pytest.mark.contract
+def test_close_session_does_not_touch_datetime_end_or_end_state(manager, project_service):
+    session = _create(manager, project_service, "user", "proj", "start")
+
+    closed = manager.close_session(session, "manual-user")
+
+    assert closed["datetime_end"] == session["datetime_end"]
+    assert closed["end_state"] == session["end_state"]
+    assert closed["closed_at"] is not None
+    assert closed["close_reason"] == "manual-user"
+
+
+@pytest.mark.regression
+def test_touch_chat_session_is_a_noop_on_a_closed_session(manager, project_service, db):
+    session = _create(manager, project_service, "user", "proj", "start")
+    manager.close_session(session, "manual-user")
+
+    manager.touch_session(session["id"], "next")
+
+    reloaded = db.get_chat_session(session["id"])
+    assert reloaded["end_state"] == session["end_state"]
+    assert reloaded["datetime_end"] == session["datetime_end"]
+
+
+@pytest.mark.regression
+def test_a_closed_test_session_is_not_open(manager, db):
+    session_id = db.create_chat_session(
+        "user", "proj", 1, datetime_start=datetime.utcnow(), datetime_end=datetime.utcnow(),
+        start_state="start", end_state="start", type="test",
+    )
+    session = db.get_chat_session(session_id)
+
+    closed = manager.close_session(session, "manual-user")
+
+    assert manager.is_open(closed) is False

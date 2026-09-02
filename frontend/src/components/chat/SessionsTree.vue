@@ -76,6 +76,12 @@ function displayNameFor(username) {
   return user?.name || user?.email || username
 }
 
+const CHANNEL_LABELS = { 'whatsapp-chat': 'WhatsApp' }
+
+function channelLabel(session) {
+  return session.type === 'live' ? CHANNEL_LABELS[session.channel] : null
+}
+
 const branchOrder = ref([])
 watch(
   filteredSessions,
@@ -381,6 +387,7 @@ const {
                     <span class="session-badge" :class="{ 'session-badge-inactive': !session.active }">
                       {{ session.title || session.end_state }}
                     </span>
+                    <span v-if="channelLabel(session)" class="session-channel-label">{{ channelLabel(session) }}</span>
                     <span
                       v-if="session.has_annotations"
                       class="session-annotation-icon"
@@ -814,6 +821,12 @@ const {
 .session-badge-inactive {
   background: #999;
   opacity: 0.5;
+}
+
+.session-channel-label {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  color: #666;
 }
 
 .session-timestamp {

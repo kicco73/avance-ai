@@ -96,3 +96,31 @@ async def test_regeneration_call_does_not_request_signals(db):
     assert len(ai_service.calls) == 2, "expected an optimistic call plus one regeneration"
     assert "signals" in ai_service.calls[0], "the first (detecting) call must still request signals"
     assert "signals" not in ai_service.calls[1], "the regeneration call must not re-request signals"
+
+
+async def test_a_turn_that_fires_a_trigger_records_origin_trigger(db):
+    db.ensure_project(PROJECT_NAME)
+    db.publish_project(PROJECT_NAME)
+    session_id = db.create_chat_session(
+        username=USERNAME, project_name=PROJECT_NAME,
+        revision=db.get_project_published_revision(PROJECT_NAME),
+        datetime_start=datetime.utcnow(), datetime_end=datetime.utcnow(),
+        start_state="a", end_state="a",
+    )
+    automaton = _automaton()
+    ai_service = RecordingSchemaAiService()
+    project_service = FixedProjectContext(project_name=PROJECT_NAME)
+    metrics = MetricService(db, project_service)
+    env = PersistedEnv(db, project_service)
+    scope_builder = EvaluationScopeBuilder(
+        env, metrics, SystemFacts(), SessionFacts(db, project_service), UserFacts(db), db
+    )
+
+    processor = TrackingProcessorAfterUserMessage(
+        ai_service, scope_builder, env, db, _user_variables(automaton, session_id)
+    )
+    await processor.process("hello")
+
+    signals = db.get_signals(session_id)
+    assert signals[-1]["new_state"] == "b"
+    assert signals[-1]["origin"] == "trigger"

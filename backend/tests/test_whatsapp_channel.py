@@ -28,12 +28,13 @@ from service_error import ServiceError
 from session import Session
 from listen.listen_service import ListenServiceError
 from talk.talk_format import PcmWavCodec
-from whatsapp.audio import WHATSAPP_VOICE_MIME, split_wav, wav_to_ogg_opus
+from whatsapp.audio import WHATSAPP_AUDIO_MIME, split_wav, wav_to_mp3
 from whatsapp.cloud_api_client import split_text
 from whatsapp.whatsapp_service import (
     REPLY_ACCEPT_TERMS_LABEL, REPLY_AUDIO_NOT_UNDERSTOOD, REPLY_BUSY, REPLY_DONE, REPLY_INVALID_ACTION,
     REPLY_NO_CHAT_STATE, REPLY_NOT_LINKED, REPLY_NOT_REGISTERED, REPLY_OPTIONS_PROMPT, REPLY_PAUSED, REPLY_REGISTERED,
-    REPLY_TECHNICAL_PROBLEM, REPLY_TERMS_ACCEPTED, REPLY_UNSUPPORTED, REPLY_UNSUPPORTED_AUDIO, IncomingMessage,
+    REPLY_SESSION_TAKEN_OVER, REPLY_TECHNICAL_PROBLEM, REPLY_TERMS_ACCEPTED, REPLY_UNSUPPORTED, REPLY_UNSUPPORTED_AUDIO,
+    IncomingMessage,
     WhatsAppService, to_whatsapp_markdown,
 )
 
@@ -64,7 +65,7 @@ class _FakeCloudApi:
         self.audio_sent.append((to, media_id))
         self.timeline.append("audio")
 
-    async def upload_media(self, data, mime_type, filename="audio.ogg"):
+    async def upload_media(self, data, mime_type, filename="audio.mp3"):
         if self.fail_upload:
             raise httpx.HTTPError("upload failed")
         self.uploaded.append((data, mime_type))
@@ -134,12 +135,17 @@ class _FakeChatService:
     def __init__(self, db: _FakeDb) -> None:
         self.db = db
         self.session_payload: dict = {"id": 7}
-        # What get_or_create_current_session returns once accept_legal_terms
+        # What acquire_exclusive_session returns once accept_legal_terms
         # has been called — the resolved shape a real ChatService would
         # reach once the pending gate no longer applies.
         self.resolved_session_payload: dict = {"id": 7}
         self.turn_error: ServiceError | None = None
         self.action_error: Exception | None = None
+        # When True, the first raise of turn_error/action_error clears it,
+        # so a retried call (session_closed/session_not_found) succeeds —
+        # simulates the fresh session a real retry would actually get.
+        self.turn_error_clears_after_raise = False
+        self.action_error_clears_after_raise = False
         self.opening_message: str | None = None
         self.wrap_up_message: str | None = None
         self.calls: list[tuple] = []
@@ -152,7 +158,7 @@ class _FakeChatService:
         self.announces_audio = True
         self.announced_audio_text: str | None = None
 
-    def get_or_create_current_session(self, session_id):
+    async def acquire_exclusive_session(self):
         self.calls.append(("session", Session().user))
         return self.session_payload
 
@@ -180,7 +186,10 @@ class _FakeChatService:
     async def process_turn(self, session_id, text, on_metadata=None):
         self.calls.append(("turn", Session().user))
         if self.turn_error is not None:
-            raise self.turn_error
+            error = self.turn_error
+            if self.turn_error_clears_after_raise:
+                self.turn_error = None
+            raise error
         self.in_turn = True
         try:
             # The real turn emits the reply's [audio] text well before the
@@ -198,7 +207,10 @@ class _FakeChatService:
     async def apply_manual_action(self, action_name, session_id):
         self.calls.append(("action", Session().user, action_name))
         if self.action_error is not None:
-            raise self.action_error
+            error = self.action_error
+            if self.action_error_clears_after_raise:
+                self.action_error = None
+            raise error
         if self.action_reply_message:
             self.db.add(session_id, "assistant", self.action_reply_message)
         return {"session_id": session_id, "state": self.state}
@@ -511,7 +523,7 @@ def test_no_ai_initiated_opening_message_ahead_of_the_users_own_turn(env):
 def test_a_chat_blocked_states_own_wrap_up_message_still_goes_out(env):
     client, _, chat, _, api = env
     chat.wrap_up_message = "Conversación finalizada."
-    chat.turn_error = ServiceError("This state doesn't accept messages; use an action instead.", status_code=HTTPStatus.CONFLICT)
+    chat.turn_error = ServiceError("This state doesn't accept messages; use an action instead.", status_code=HTTPStatus.CONFLICT, code="state_not_chat")
     _post(client, _payload(text="hola"))
     assert [body for _, body in api.sent] == ["Conversación finalizada.", REPLY_NO_CHAT_STATE]
 
@@ -525,7 +537,7 @@ def test_earlier_history_is_not_resent(env):
 
 def test_non_chat_state_conflict_becomes_a_notice(env):
     client, _, chat, _, api = env
-    chat.turn_error = ServiceError("This state doesn't accept messages; use an action instead.", status_code=HTTPStatus.CONFLICT)
+    chat.turn_error = ServiceError("This state doesn't accept messages; use an action instead.", status_code=HTTPStatus.CONFLICT, code="state_not_chat")
     _post(client, _payload())
     assert api.sent == [(LINKED_NUMBER, REPLY_NO_CHAT_STATE)]
 
@@ -534,11 +546,72 @@ def test_non_chat_state_conflict_still_sends_the_states_own_buttons(env):
     """The notice says "use an action instead" — it had better come with
     actions to use, not leave the user stuck with no buttons at all."""
     client, _, chat, _, api = env
-    chat.turn_error = ServiceError("This state doesn't accept messages; use an action instead.", status_code=HTTPStatus.CONFLICT)
+    chat.turn_error = ServiceError("This state doesn't accept messages; use an action instead.", status_code=HTTPStatus.CONFLICT, code="state_not_chat")
     chat.state["manual_actions"] = [_action("go", "Go")]
     _post(client, _payload())
     assert api.sent == []
     assert api.interactive == [("button", LINKED_NUMBER, REPLY_NO_CHAT_STATE, [("go", "Go")])]
+
+
+# --- error codes -> replies (phase 4 point 6) ------------------------------- #
+
+@pytest.mark.parametrize("code", ["session_channel_mismatch", "session_superseded"])
+def test_turn_taken_over_codes_become_the_taken_over_notice(env, code):
+    client, _, chat, _, api = env
+    chat.turn_error = ServiceError("Session is not active.", status_code=HTTPStatus.CONFLICT, code=code)
+    _post(client, _payload(text="hola"))
+    assert api.sent == [(LINKED_NUMBER, REPLY_SESSION_TAKEN_OVER)]
+
+
+@pytest.mark.parametrize("code", ["session_channel_mismatch", "session_superseded"])
+def test_action_taken_over_codes_become_the_taken_over_notice(env, code):
+    client, _, chat, _, api = env
+    chat.action_error = ServiceError("Session is not active.", status_code=HTTPStatus.CONFLICT, code=code)
+    _post(client, _interactive_payload())
+    assert api.sent == [(LINKED_NUMBER, REPLY_SESSION_TAKEN_OVER)]
+
+
+def test_turn_in_progress_code_becomes_the_busy_notice(env):
+    client, _, chat, _, api = env
+    chat.turn_error = ServiceError("A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT, code="turn_in_progress")
+    _post(client, _payload(text="hola"))
+    assert api.sent == [(LINKED_NUMBER, REPLY_BUSY)]
+
+
+@pytest.mark.parametrize("code", ["session_closed", "session_not_found"])
+def test_turn_retries_once_on_a_gone_session_and_succeeds(env, code):
+    client, _, chat, _, api = env
+    chat.turn_error = ServiceError("Session is closed.", status_code=HTTPStatus.CONFLICT, code=code)
+    chat.turn_error_clears_after_raise = True
+    _post(client, _payload(text="hola"))
+    assert [call for call in chat.calls if call[0] == "session"] == [("session", LINKED_EMAIL), ("session", LINKED_EMAIL)]
+    assert api.sent == [(LINKED_NUMBER, "*Hola* — has dicho: hola")]
+
+
+@pytest.mark.parametrize("code", ["session_closed", "session_not_found"])
+def test_turn_reports_a_technical_problem_when_the_retry_also_fails(env, code):
+    client, _, chat, _, api = env
+    chat.turn_error = ServiceError("Session is closed.", status_code=HTTPStatus.CONFLICT, code=code)
+    _post(client, _payload(text="hola"))
+    assert api.sent == [(LINKED_NUMBER, REPLY_TECHNICAL_PROBLEM)]
+
+
+@pytest.mark.parametrize("code", ["session_closed", "session_not_found"])
+def test_action_retries_once_on_a_gone_session_and_succeeds(env, code):
+    client, _, chat, _, api = env
+    chat.action_error = ServiceError("Session is closed.", status_code=HTTPStatus.CONFLICT, code=code)
+    chat.action_error_clears_after_raise = True
+    _post(client, _interactive_payload())
+    assert [call for call in chat.calls if call[0] == "session"] == [("session", LINKED_EMAIL), ("session", LINKED_EMAIL)]
+    assert api.sent == [(LINKED_NUMBER, chat.state["ui_label"])]
+
+
+@pytest.mark.parametrize("code", ["session_closed", "session_not_found"])
+def test_action_reports_a_technical_problem_when_the_retry_also_fails(env, code):
+    client, _, chat, _, api = env
+    chat.action_error = ServiceError("Session is closed.", status_code=HTTPStatus.CONFLICT, code=code)
+    _post(client, _interactive_payload())
+    assert api.sent == [(LINKED_NUMBER, REPLY_TECHNICAL_PROBLEM)]
 
 
 # --- manual actions as buttons/list ---------------------------------------- #
@@ -646,7 +719,7 @@ def test_invalid_action_gets_a_notice_and_the_current_states_buttons(env):
 
 def test_action_conflict_gets_only_the_busy_notice(env):
     client, _, chat, _, api = env
-    chat.action_error = ServiceError("A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT)
+    chat.action_error = ServiceError("A chat reply is already being generated.", status_code=HTTPStatus.CONFLICT, code="turn_in_progress")
     chat.state["manual_actions"] = [_action("stay", "Stay")]
     _post(client, _interactive_payload())
     assert api.sent == [(LINKED_NUMBER, REPLY_BUSY)]
@@ -780,8 +853,8 @@ def test_voice_note_in_gets_voice_note_out(voice_env):
     chat.reply_audio_text = "Hola, te he oído."
     _post(client, _payload(mtype="audio"))
     assert talk.spoken == ["Hola, te he oído."]
-    (ogg, mime), = api.uploaded
-    assert mime == WHATSAPP_VOICE_MIME and ogg[:4] == b"OggS"
+    (mp3, mime), = api.uploaded
+    assert mime == WHATSAPP_AUDIO_MIME and mp3[:3] == b"ID3"
     assert api.audio_sent == [(LINKED_NUMBER, "media-1")]
     # Answer in kind: the voice note replaces the text, it doesn't duplicate it.
     assert api.sent == []
@@ -885,7 +958,7 @@ def test_encoding_error_of_any_kind_falls_back_to_text(voice_env, monkeypatch):
     def _boom(self, wav):
         raise RuntimeError("pyav exploded")
 
-    monkeypatch.setattr("whatsapp.audio.OggOpusEncoder.push", _boom)
+    monkeypatch.setattr("whatsapp.audio.Mp3Encoder.push", _boom)
     _post(client, _payload(mtype="audio"))
     assert api.audio_sent == [] and api.uploaded == []
     assert api.sent == [(LINKED_NUMBER, "*Hola* — has dicho: hola por voz")]
@@ -945,49 +1018,54 @@ def test_split_wav_handles_streaming_header_and_complete_file():
     assert split_wav(streamed) == (pcm, 24000)
 
 
-def test_wav_to_ogg_opus_produces_mono_48k_opus():
-    ogg = wav_to_ogg_opus(_wav(seconds=1.0))
-    assert ogg[:4] == b"OggS"
-    assert b"OpusHead" in ogg[:200]
-    # OpusHead: magic(8) version(1) channels(1) ... — channels byte right after version.
-    head = ogg.index(b"OpusHead")
-    assert ogg[head + 9] == 1
-    assert len(ogg) < len(_wav(seconds=1.0)) // 3
+def test_wav_to_mp3_produces_mono_48k_mp3():
+    import av
+
+    mp3 = wav_to_mp3(_wav(seconds=1.0))
+    assert mp3[:3] == b"ID3"  # PyAV's mp3 muxer always writes an ID3v2 header
+    container = av.open(io.BytesIO(mp3))
+    try:
+        stream = container.streams.audio[0]
+        assert stream.codec_context.name.startswith("mp3")
+        assert stream.rate == 48000 and stream.layout.name == "mono"
+    finally:
+        container.close()
+    assert len(mp3) < len(_wav(seconds=1.0)) // 3
 
 
 def test_incremental_encoder_matches_whole_file_encoding():
     """Pushing the stream in arbitrary pieces — the header split too —
     must decode to the same audio as encoding the complete WAV at once."""
     import av
-    from whatsapp.audio import OggOpusEncoder
+    from whatsapp.audio import Mp3Encoder
 
-    def decoded_samples(ogg: bytes) -> int:
-        container = av.open(io.BytesIO(ogg))
+    def decoded_samples(mp3: bytes) -> int:
+        container = av.open(io.BytesIO(mp3))
         try:
             return sum(frame.samples for frame in container.decode(audio=0))
         finally:
             container.close()
 
     wav = _wav(seconds=1.0, rate=24000)
-    encoder = OggOpusEncoder()
+    encoder = Mp3Encoder()
     for i in range(0, len(wav), 7):
         encoder.push(wav[i:i + 7])
     streamed = encoder.finish()
-    assert streamed[:4] == b"OggS"
-    assert decoded_samples(streamed) == decoded_samples(wav_to_ogg_opus(wav))
+    assert streamed[:3] == b"ID3"
+    assert decoded_samples(streamed) == decoded_samples(wav_to_mp3(wav))
 
 
 def test_incremental_encoder_with_no_audio_finishes_empty():
-    from whatsapp.audio import OggOpusEncoder
+    from whatsapp.audio import Mp3Encoder
 
-    encoder = OggOpusEncoder()
+    encoder = Mp3Encoder()
     encoder.push(PcmWavCodec.streaming_header(22050))
     assert encoder.finish() == b""
 
 
-def test_wav_to_ogg_opus_rejects_empty_audio():
+def test_wav_to_mp3_rejects_empty_audio():
     with pytest.raises(ValueError):
-        wav_to_ogg_opus(PcmWavCodec.streaming_header(22050))
+        wav_to_mp3(PcmWavCodec.streaming_header(22050))
 
 
 # --- helpers -------------------------------------------------------------- #

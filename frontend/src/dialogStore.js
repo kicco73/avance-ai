@@ -42,6 +42,14 @@ export function promptDialog({ title, body, placeholder = '', initialValue = '',
   return enqueue({ kind: 'prompt', title, body, placeholder, initialValue, validate })
 }
 
+// Same contract as promptDialog (resolves the entered text, or null on
+// Cancel/×/ESC/backdrop) but for free-form multi-line text — DialogHost.vue
+// renders a <textarea> instead of a single-line <input>, so Enter inserts
+// a newline rather than submitting.
+export function textareaDialog({ title, body, placeholder = '', initialValue = '', validate }) {
+  return enqueue({ kind: 'textarea', title, body, placeholder, initialValue, validate })
+}
+
 // options: [{ id, label, danger? }] — one button per option, resolving
 // its id, plus a Cancel resolving null.
 export function chooseDialog({ title, body, options }) {

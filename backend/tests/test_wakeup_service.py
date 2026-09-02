@@ -118,6 +118,7 @@ def test_reevaluate_and_apply_fires_the_self_loop_when_the_observed_state_now_ma
     assert len(after) == before + 1
     assert after[-1]["old_state"] == "x"
     assert after[-1]["new_state"] == "x"  # self-loop — the state itself never changes
+    assert after[-1]["origin"] == "system"
 
 
 class _FakeTrackingService:

@@ -52,7 +52,7 @@ class WhatsAppCloudApiClient(object):
 
     async def send_audio(self, to: str, media_id: str) -> dict:
         """An already-uploaded audio (see upload_media). OGG/Opus renders
-        as a voice note; other types as a plain audio attachment."""
+        as a voice note; other types (MP3 here) as a plain audio message."""
         return await self._post({
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
@@ -61,7 +61,7 @@ class WhatsAppCloudApiClient(object):
             "audio": {"id": media_id},
         })
 
-    async def upload_media(self, data: bytes, mime_type: str, filename: str = "audio.ogg") -> str:
+    async def upload_media(self, data: bytes, mime_type: str, filename: str = "audio.mp3") -> str:
         """Uploads `data` to the business number's media store and returns
         Meta's media id, valid for 30 days — the handle send_audio takes."""
         response = await self._client.post(

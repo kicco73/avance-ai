@@ -100,6 +100,7 @@ class SessionImportMessageJson(BaseModel):
     expected_state: str | None = None
     expected_values: dict[str, int | float | None] | None = None
     comment: str | None = None
+    origin: str | None = None
 
 
 class SessionImportJsonRequest(BaseModel):
@@ -114,6 +115,8 @@ class SessionImportJsonRequest(BaseModel):
     end_state: str | None = None
     labeled: bool = False
     comment: str | None = None
+    closed_at: str | None = None
+    close_reason: str | None = None
     messages: list[SessionImportMessageJson] = []
 
 
@@ -162,6 +165,13 @@ class SetProjectFieldRequest(BaseModel):
         if isinstance(value, dict):
             return {key: entry.strip() for key, entry in value.items()}
         return value
+
+
+class AiEditRequest(BaseModel):
+    # Free-form problem/change description typed into the index.yml/
+    # index.css editor's AI dialog — see ProjectEditor.
+    # generate_index_yml_ai_edit/generate_index_css_ai_edit.
+    instruction: str
 
 
 class ReorderActionRequest(BaseModel):

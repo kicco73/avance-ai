@@ -102,6 +102,7 @@ class TestProcessor(object):
         self._tracking_engine.apply_transition(
             self._automaton, state, action, signal_values, session_id,
             message_id=observation_message_id,
+            origin='trigger',
         )
 
         if action is not None:

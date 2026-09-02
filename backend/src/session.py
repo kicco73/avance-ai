@@ -18,7 +18,7 @@ from contextvars import ContextVar
 
 _user: ContextVar[str] = ContextVar("session_user")
 _role: ContextVar[str] = ContextVar("session_role")
-_channel: ContextVar[str] = ContextVar("session_channel", default="native-chat")
+_channel: ContextVar[str] = ContextVar("session_channel")
 
 
 class Session(object):
@@ -59,7 +59,10 @@ class Session(object):
 
     @property
     def channel(self) -> str:
-        return _channel.get()
+        try:
+            return _channel.get()
+        except LookupError as exc:
+            raise RuntimeError("Session().channel accessed outside a request context.") from exc
 
     @channel.setter
     def channel(self, value: str) -> None:

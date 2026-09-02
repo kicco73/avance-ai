@@ -24,7 +24,7 @@ class FakeSink:
     def save_signal_snapshot(self, values, session_id, message_id=None):
         return 0
 
-    def save_transition(self, old_state, action, new_state, session_id, transition_log_level, signal_values=None, message_id=None):
+    def save_transition(self, old_state, action, new_state, session_id, transition_log_level, signal_values=None, message_id=None, origin=None):
         self.transitions.append((old_state, action, new_state))
         return len(self.transitions)
 
@@ -77,7 +77,7 @@ def test_apply_transition_publishes_state_changed_for_a_real_transition():
     engine, sink, _ = _engine()
     received = _collect(StateChanged)
 
-    engine.apply_transition(automaton, state, action, {}, session_id=1, username=USERNAME, project_name=PROJECT_NAME)
+    engine.apply_transition(automaton, state, action, {}, session_id=1, origin='trigger', username=USERNAME, project_name=PROJECT_NAME)
 
     assert received == [StateChanged(username=USERNAME, project_name=PROJECT_NAME, from_state="a", to_state="b")]
 
@@ -87,7 +87,7 @@ def test_apply_transition_does_not_publish_for_a_self_loop():
     engine, sink, _ = _engine()
     received = _collect(StateChanged)
 
-    engine.apply_transition(automaton, state, action, {}, session_id=1, username=USERNAME, project_name=PROJECT_NAME)
+    engine.apply_transition(automaton, state, action, {}, session_id=1, origin='trigger', username=USERNAME, project_name=PROJECT_NAME)
 
     assert sink.transitions == [("a", "go", "a")]  # still saved — see apply_transition's own docstring
     assert received == []
@@ -98,10 +98,18 @@ def test_apply_transition_publishes_nothing_when_no_identity_is_given():
     engine, sink, _ = _engine()
     received = _collect(StateChanged)
 
-    engine.apply_transition(automaton, state, action, {}, session_id=1)  # no username/project_name
+    engine.apply_transition(automaton, state, action, {}, session_id=1, origin='trigger')  # no username/project_name
 
     assert sink.transitions == [("a", "go", "b")]
     assert received == []
+
+
+def test_apply_transition_requires_an_origin():
+    automaton, state, action = _automaton(action_target="b")
+    engine, _sink, _env = _engine()
+
+    with pytest.raises(TypeError):
+        engine.apply_transition(automaton, state, action, {}, session_id=1)
 
 
 def test_apply_action_env_publishes_env_changed_per_written_key():

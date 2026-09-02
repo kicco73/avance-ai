@@ -17,7 +17,7 @@ Meta ──POST /api/whatsapp/webhook──▶ WhatsAppController   (role=None, 
                                          │  number → user_id (User.whatsapp_phone_number)
                                          │  Session().impersonate(user_id)
                                          ▼
-                        ChatService.get_or_create_current_session
+                        ChatService.acquire_exclusive_session
                         ChatService.get_messages   (open_if_needed → opening message)
                         ChatService.process_turn
                                          │  new assistant rows since we started
@@ -29,7 +29,7 @@ Meta ──POST /api/whatsapp/webhook──▶ WhatsAppController   (role=None, 
 
 - `whatsapp/whatsapp_service.py` — identity gate, turn/action orchestration, manual-actions-as-buttons/list, Markdown → WhatsApp flattening, dedup of Meta's redeliveries, per-sender ordering.
 - `whatsapp/cloud_api_client.py` — `send_text` (auto-split over 4096 chars), `send_buttons`/`send_list` (interactive replies), `send_audio`, `upload_media`/`download_media`, and `mark_read`.
-- `whatsapp/audio.py` — WAV (as `TalkService` emits it, streaming header included) → OGG/Opus, the only format WhatsApp renders as a voice note. Encoder from PyAV, already installed as faster-whisper's dependency; no ffmpeg binary.
+- `whatsapp/audio.py` — WAV (as `TalkService` emits it, streaming header included) → MP3. WhatsApp renders OGG/Opus as a voice note (waveform, mic icon) and any other audio type as a plain audio message with the generic player; the bot's replies go out as MP3 so they show as audio messages. Encoder from PyAV, already installed as faster-whisper's dependency; no ffmpeg binary.
 - `chat/chat_service.py` — `manual_actions` on every state payload reaching a client with a known session (`_with_manual_actions`); `automaton/automaton.py`'s `manual_actions_for` is the actual filter, shared with `tracking/wakeup_service.py`'s own cross-project notification push.
 - `controllers/whatsapp_controller.py` — the two webhook routes, under `/api/` so `nginx.conf` needs no change.
 - `config.py` — `WhatsAppServiceConfig` / `whatsapp-service` section (optional, default off; see `.config.example.yml`).
@@ -97,7 +97,10 @@ email at all.
   free-form window as any other reply (see below) — buttons/lists are
   never sent outside it either.
 - Non-chat/final state (`process_turn` → 409): a short notice pointing to
-  the web.
+  the web. A session no longer this channel's own (a race right after
+  `acquire_exclusive_session`, since a live session belongs to one channel
+  at a time — see "Channel exclusivity" below): a "continued somewhere
+  else" notice instead.
 - Paused project: a notice, no turn.
 - Legal terms pending (a project's own `legal/terms.md`, distinct from the
   one-time platform Terms at registration): the terms content itself,
@@ -113,10 +116,26 @@ email at all.
   a generic "we apologize for the inconvenience" notice, never silence —
   `WhatsAppService.handle` wraps reply resolution and falls back to it.
 - **Voice notes in**: downloaded from Meta (two hops: media node → short-lived URL, both with the Bearer), transcribed by `ListenService` (faster-whisper decodes OGG/Opus as is) and processed exactly like typed text — the transcript is what gets persisted as the user's message, so the web shows it too. No `listen-service` configured → "I can't listen to voice notes yet". Empty/failed transcript or download → "I couldn't make out that voice note". An unlinked number's voice note is never downloaded.
-- **Voice notes out**: `voice-replies` in the config decides. Default `when-spoken-to`: a voice note back when the user sent one, text when they typed. `always`: every reply with an audio text goes out spoken; `never`: text only. The voice note is `TalkService.generate` for the reply's own `[audio]` text (`Message.audio_text`), re-encoded to OGG/Opus and uploaded; it *replaces* the text, it doesn't duplicate it. Whenever a voice note can't be produced — no `talk-service`, the project/state has talk disabled (no audio text), encoding or upload failure, silent generation — the text is sent instead. Channel notices (paused, terms, errors) are never spoken. Buttons need a text body: after a spoken reply they come on a short "What would you like to do?" follow-up.
+- **Voice notes out**: `voice-replies` in the config decides. Default `when-spoken-to`: a voice note back when the user sent one, text when they typed. `always`: every reply with an audio text goes out spoken; `never`: text only. The voice note is `TalkService.generate` for the reply's own `[audio]` text (`Message.audio_text`), re-encoded to MP3 (so WhatsApp shows it as an audio message, not a voice note) and uploaded; it *replaces* the text, it doesn't duplicate it. Whenever a voice note can't be produced — no `talk-service`, the project/state has talk disabled (no audio text), encoding or upload failure, silent generation — the text is sent instead. Channel notices (paused, terms, errors) are never spoken. Buttons need a text body: after a spoken reply they come on a short "What would you like to do?" follow-up.
 - Images/documents/stickers: "text only" notice.
 - Markdown: `**bold**`→`*bold*`, headings→bold lines, links spelled out,
   `*` bullets→`-`. Everything else WhatsApp already renders or ignores.
+
+## Channel exclusivity
+
+A live session belongs to exactly one channel (`ChatSession.channel`,
+`native-chat` or `whatsapp-chat`), fixed at creation. Continuing from the
+other channel doesn't reuse it: `ChatService.acquire_exclusive_session`
+(WhatsApp's own bootstrap, in place of the web's
+`get_current_session_if_any_or_create_new`) closes it (`close_reason`
+`"channel-switch"`) and opens a fresh one on the current channel instead —
+same as the web's own "New session" button does when it finds one open
+(`"force-new-session"` if that's already on the web's own channel,
+`"channel-switch"` otherwise). A client that merely bootstraps without
+intent to write (`get_current_session_if_any_or_create_new`, the web's own
+`GET /api/chat/session`) never closes anything: a session from the other
+channel comes back as-is, exposed with `active: false` — read-only until
+that client explicitly starts a new one.
 
 ## Constraints worth knowing
 

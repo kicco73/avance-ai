@@ -126,7 +126,8 @@ class TrackingProcessor(object):
 
 		if not state.chat and text not in (None, "", "..."):
 			raise TrackingServiceError(
-				"This state doesn't accept messages; use an action instead.", status_code=HTTPStatus.CONFLICT
+				"This state doesn't accept messages; use an action instead.", status_code=HTTPStatus.CONFLICT,
+				code="state_not_chat",
 			)
 
 		self.extra_prompt = extra_prompt

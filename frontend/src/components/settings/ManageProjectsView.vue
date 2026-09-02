@@ -3,7 +3,7 @@
 // status (see backend ProjectService._project_status) and revision info.
 // The status dot toggles running <-> manually_paused only; 'paused' needs an external fix.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { getProjectMetadata, getProjectsRuntimeStatus, projectFileContentUrl, putProjectPause, putProjectResume } from '../../api.js'
+import { getProjectFiles, getProjectMetadata, getProjectsRuntimeStatus, projectFileContentUrl, putProjectPause, putProjectResume } from '../../api.js'
 import { confirmDialog, customDialog } from '../../dialogStore.js'
 import { setCanvasColor, restoreCanvasColor } from '../../canvasColor.js'
 import SettingsMenu from './SettingsMenu.vue'
@@ -58,9 +58,23 @@ const togglingProject = ref(null)
 // name -> { id, ui_label, ui_description }, filled in after the runtime-status
 // list loads — the project detail card's own content (title/id/description).
 const metadataByName = ref({})
-// name -> true once that project's icon.png request has failed (missing file),
-// same fallback idiom as ProfileMenu.vue's avatar image.
+// name -> its resolved 'aspect/icon.<ext>' archive name (whatever image
+// extension it was uploaded with — see findIconFile), filled in alongside
+// metadataByName. Absent (not just falsy) for a project with no icon file.
+const iconFileByName = ref({})
+// name -> true once that project's icon request has failed (e.g. deleted
+// after iconFileByName was resolved), same fallback idiom as ProfileMenu.vue's
+// avatar image.
 const iconFailedByName = ref({})
+
+// Matches whatever extension a project's icon was actually uploaded
+// with — the backend accepts any of these under aspect/ (see
+// backend/src/project/archive/layout.py's IMAGE_CONTENT_TYPE_BY_EXTENSION),
+// so the icon file itself is never assumed to be .png.
+const ICON_FILE_RE = /^aspect\/icon\.(png|jpe?g|gif|webp|svg)$/i
+function findIconFile(files) {
+  return files.find((name) => ICON_FILE_RE.test(name)) ?? null
+}
 
 const bodyEl = ref(null)
 const bodyWidth = ref(0)
@@ -144,12 +158,22 @@ async function loadMetadata(names) {
   })
 }
 
+async function loadIcons(names) {
+  const results = await Promise.allSettled(names.map((name) => getProjectFiles(name)))
+  results.forEach((result, i) => {
+    if (result.status !== 'fulfilled') return
+    const iconFile = findIconFile(result.value.files)
+    if (iconFile) iconFileByName.value[names[i]] = iconFile
+  })
+}
+
 async function load() {
   loading.value = true
   try {
     const res = await getProjectsRuntimeStatus()
     rows.value = res.projects
     loadMetadata(rows.value.map((row) => row.name))
+    loadIcons(rows.value.map((row) => row.name))
   } catch {
     // already surfaced via apiFetch
   } finally {
@@ -169,18 +193,32 @@ const uploadRowTitle = computed(() => (props.uploadProgress == null ? 'Uploading
 
 const uploadIconFailed = ref(false)
 const uploadIconLoaded = ref(false)
+// The uploaded project's own resolved 'aspect/icon.<ext>' name (see
+// findIconFile) — looked up once uploadIconReady fires, since the
+// extension isn't known in advance.
+const uploadIconFile = ref(null)
 watch(() => props.uploading, (value) => {
   if (value) {
     uploadIconFailed.value = false
     uploadIconLoaded.value = false
+    uploadIconFile.value = null
   }
 })
-watch(() => props.uploadIconReady, (ready) => {
+watch(() => props.uploadIconReady, async (ready) => {
   if (!ready || !props.uploadProjectName) return
+  let iconFile = null
+  try {
+    const { files } = await getProjectFiles(props.uploadProjectName)
+    iconFile = findIconFile(files)
+  } catch {
+    return // already surfaced via apiFetch
+  }
+  if (!iconFile) return // no icon in this upload — the fallback logo stays put
+  uploadIconFile.value = iconFile
   const preload = new Image()
   preload.onload = () => { uploadIconLoaded.value = true }
   preload.onerror = () => { uploadIconFailed.value = true }
-  preload.src = projectFileContentUrl(props.uploadProjectName, 'aspect/icon.png')
+  preload.src = projectFileContentUrl(props.uploadProjectName, iconFile)
 })
 
 function replaceRow(updated) {
@@ -357,8 +395,8 @@ defineExpose({ refresh: load })
             <td class="manage-projects-name">
               <button type="button" class="project-card" title="Open chat" @click="selectChat(row.name)">
                 <img
-                  v-if="!iconFailedByName[row.name]"
-                  :src="projectFileContentUrl(row.name, 'aspect/icon.png')"
+                  v-if="iconFileByName[row.name] && !iconFailedByName[row.name]"
+                  :src="projectFileContentUrl(row.name, iconFileByName[row.name])"
                   class="project-card-icon"
                   alt=""
                   @error="iconFailedByName[row.name] = true"
@@ -478,7 +516,7 @@ defineExpose({ refresh: load })
                   <Transition name="manage-projects-upload-icon">
                     <img
                       v-if="uploadIconLoaded && !uploadIconFailed"
-                      :src="projectFileContentUrl(uploadProjectName, 'aspect/icon.png')"
+                      :src="projectFileContentUrl(uploadProjectName, uploadIconFile)"
                       class="project-card-icon manage-projects-upload-icon-glow"
                       alt=""
                     />

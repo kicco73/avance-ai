@@ -40,10 +40,10 @@ class SseChatTurn(object):
             )
             await self._events.put(("done", result))
         except ServiceError as exc:
-            await self._events.put((
-                "error",
-                {"message": exc.message, "detail": getattr(exc, "detail", str(exc))},
-            ))
+            data = {"message": exc.message, "detail": getattr(exc, "detail", str(exc))}
+            if exc.code is not None:
+                data["code"] = exc.code
+            await self._events.put(("error", data))
         except Exception as exc:
             logger.exception(f"Unexpected error while processing a chat turn: {str(exc)}")
             await self._events.put((
