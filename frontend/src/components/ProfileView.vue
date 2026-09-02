@@ -50,9 +50,27 @@ async function editWhatsAppNumber() {
     validate: validateWhatsAppNumber
   })
   if (result === null) return
+  const number = result.trim() || null
   savingWhatsApp.value = true
   try {
-    profile.value = await putWhatsAppPhoneNumber(result.trim() || null)
+    const outcome = await putWhatsAppPhoneNumber(number)
+    if (outcome.merge_required) {
+      savingWhatsApp.value = false
+      const sessions = outcome.existing_account_session_count
+      const ok = await confirmDialog({
+        title: 'Number already in use',
+        body: `This number is already linked to a WhatsApp-only account created on `
+          + `${formatDate(outcome.existing_account_created_at)}, with ${sessions} `
+          + `session${sessions === 1 ? '' : 's'}. Merge its history into your account `
+          + `and remove the other one?`,
+        okLabel: 'Merge'
+      })
+      if (!ok) return
+      savingWhatsApp.value = true
+      profile.value = await putWhatsAppPhoneNumber(number, true)
+      return
+    }
+    profile.value = outcome
   } catch {
     // already surfaced via apiFetch
   } finally {

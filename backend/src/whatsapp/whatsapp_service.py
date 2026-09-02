@@ -367,9 +367,12 @@ class WhatsAppService(object):
             manual_actions = reply["state"]["manual_actions"]
         except ServiceError as exc:
             if exc.status_code == HTTPStatus.CONFLICT:
-                # A non-chat/final state, or a superseded session: nothing
-                # to generate, tell the user where the conversation stands.
+                # A non-chat state, or a superseded session: no turn to run,
+                # but the state's own manual actions still ride along so
+                # "use an action instead" below actually has buttons to point at.
                 notice = REPLY_NO_CHAT_STATE
+                state = self._chat_service.get_state_for_session(session_id)
+                manual_actions = state["manual_actions"]
             else:
                 logger.exception(f"WhatsApp: turn failed on session {session_id}: {exc.message}")
                 notice = "There was a problem processing your message. Please try again."
@@ -455,6 +458,10 @@ class WhatsAppService(object):
         """True once a voice note for `reply` is on its way; False (with
         the reason logged) whenever it can't be — the caller falls back to
         text, never to silence."""
+        logger.info(
+            f"WhatsApp: _try_voice_note for {to}: audio_text={reply.audio_text!r} "
+            f"talk_service_configured={self._talk_service is not None}"
+        )
         if not reply.audio_text or self._talk_service is None:
             return False
         from whatsapp.audio import WHATSAPP_VOICE_MIME, wav_to_ogg_opus
@@ -469,7 +476,13 @@ class WhatsAppService(object):
             await self._client.send_audio(to, media_id)
             logger.info(f"WhatsApp: voice note sent to {to} ({len(ogg)} bytes, media {media_id}).")
             return True
-        except (httpx.HTTPError, ValueError, ImportError) as exc:
+        except Exception as exc:  # noqa: BLE001
+            # Deliberately broad: PyAV's own encoding failures (a partial/
+            # truncated WAV from a TalkService generation that ended early)
+            # raise its own exception types, not ValueError/httpx.HTTPError —
+            # letting one of those escape here would propagate past
+            # _send_replies' caller and leave the user with no reply at all
+            # instead of the text fallback this docstring promises.
             logger.warning(f"WhatsApp: voice note not sent ({exc}), falling back to text.")
             return False
 

@@ -97,7 +97,7 @@ class AuthController(BaseController):
     @put("/api/auth/me/whatsapp-phone-number")
     def put_whatsapp_phone_number(self, req: SetWhatsAppPhoneNumberRequest):
         try:
-            return self.auth_service.set_whatsapp_phone_number(Session().user, req.phone_number)
+            return self.auth_service.set_whatsapp_phone_number(Session().user, req.phone_number, req.confirm_merge)
         except ValueError as exc:
             raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 

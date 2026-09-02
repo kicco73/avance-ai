@@ -62,11 +62,11 @@ export function getMe() {
   return apiFetch(`${API_URL}/auth/me`)
 }
 
-export function putWhatsAppPhoneNumber(phoneNumber) {
+export function putWhatsAppPhoneNumber(phoneNumber, confirmMerge = false) {
   return apiFetch(`${API_URL}/auth/me/whatsapp-phone-number`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ phone_number: phoneNumber })
+    body: JSON.stringify({ phone_number: phoneNumber, confirm_merge: confirmMerge })
   })
 }
 
