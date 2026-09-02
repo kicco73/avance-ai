@@ -29,10 +29,10 @@ from talk.talk_format import PcmWavCodec
 from whatsapp.audio import WHATSAPP_VOICE_MIME, split_wav, wav_to_ogg_opus
 from whatsapp.cloud_api_client import split_text
 from whatsapp.whatsapp_service import (
-    REPLY_AUDIO_NOT_UNDERSTOOD, REPLY_BUSY, REPLY_DONE, REPLY_INVALID_ACTION, REPLY_NO_CHAT_STATE, REPLY_NOT_LINKED,
-    REPLY_NOT_REGISTERED, REPLY_OPTIONS_PROMPT, REPLY_PAUSED, REPLY_REGISTERED, REPLY_TECHNICAL_PROBLEM,
-    REPLY_TERMS_PENDING, REPLY_UNSUPPORTED, REPLY_UNSUPPORTED_AUDIO, IncomingMessage, WhatsAppService,
-    to_whatsapp_markdown,
+    REPLY_ACCEPT_TERMS_LABEL, REPLY_AUDIO_NOT_UNDERSTOOD, REPLY_BUSY, REPLY_DONE, REPLY_INVALID_ACTION,
+    REPLY_NO_CHAT_STATE, REPLY_NOT_LINKED, REPLY_NOT_REGISTERED, REPLY_OPTIONS_PROMPT, REPLY_PAUSED, REPLY_REGISTERED,
+    REPLY_TECHNICAL_PROBLEM, REPLY_TERMS_ACCEPTED, REPLY_UNSUPPORTED, REPLY_UNSUPPORTED_AUDIO, IncomingMessage,
+    WhatsAppService, to_whatsapp_markdown,
 )
 
 pytestmark = pytest.mark.contract
@@ -131,6 +131,10 @@ class _FakeChatService:
     def __init__(self, db: _FakeDb) -> None:
         self.db = db
         self.session_payload: dict = {"id": 7}
+        # What get_or_create_current_session returns once accept_legal_terms
+        # has been called — the resolved shape a real ChatService would
+        # reach once the pending gate no longer applies.
+        self.resolved_session_payload: dict = {"id": 7}
         self.turn_error: ServiceError | None = None
         self.action_error: Exception | None = None
         self.opening_message: str | None = None
@@ -139,10 +143,21 @@ class _FakeChatService:
         self.state: dict = {"key": "x", "ui_label": "X", "actions": [], "manual_actions": []}
         self.action_reply_message: str | None = None
         self.reply_audio_text: str | None = None
+        self.terms_content: str = "Please accept to continue."
+        self.accepted_terms_for: list[str] = []
 
     def get_or_create_current_session(self, session_id):
         self.calls.append(("session", Session().user))
         return self.session_payload
+
+    def get_legal_terms_status(self, project_name):
+        self.calls.append(("terms_status", project_name))
+        return {"pending": True, "content": self.terms_content}
+
+    def accept_legal_terms(self, project_name):
+        self.calls.append(("accept_terms", project_name))
+        self.accepted_terms_for.append(project_name)
+        self.session_payload = self.resolved_session_payload
 
     async def get_messages(self, session_id):
         if self.opening_message and not self.db.get_messages(session_id):
@@ -561,16 +576,66 @@ def test_action_conflict_gets_only_the_busy_notice(env):
     assert api.interactive == []
 
 
-@pytest.mark.parametrize("payload, reply", [
-    ({"paused": True, "paused_reason": "quota"}, REPLY_PAUSED),
-    ({"legal_terms_pending": True, "project_name": "p"}, REPLY_TERMS_PENDING),
-])
-def test_session_bootstrap_gates_are_relayed(env, payload, reply):
+def test_paused_project_gate_is_relayed(env):
     client, _, chat, _, api = env
-    chat.session_payload = payload
+    chat.session_payload = {"paused": True, "paused_reason": "quota"}
     _post(client, _payload())
-    assert api.sent == [(LINKED_NUMBER, reply)]
+    assert api.sent == [(LINKED_NUMBER, REPLY_PAUSED)]
     assert [c for c in chat.calls if c[0] == "turn"] == []
+
+
+# --- legal terms ------------------------------------------------------------ #
+
+def test_pending_terms_send_the_content_with_an_accept_button(env):
+    client, _, chat, _, api = env
+    chat.session_payload = {"legal_terms_pending": True, "project_name": "demo-project"}
+    chat.terms_content = "## Terms\n\nBe nice."
+    _post(client, _payload(text="hola"))
+    assert [c for c in chat.calls if c[0] == "turn"] == []
+    assert api.sent == []
+    kind, to, body, buttons = api.interactive[0]
+    assert kind == "button" and to == LINKED_NUMBER
+    assert body == "*Terms*\n\nBe nice."
+    assert buttons == [("__whatsapp_accept_terms__", REPLY_ACCEPT_TERMS_LABEL)]
+
+
+def test_registration_with_pending_terms_sends_terms_instead_of_the_welcome(env):
+    client, service, chat, db, api = env
+    service._auth_service.valid_codes["GOODCODE"] = "demo-project"
+    chat.session_payload = {"legal_terms_pending": True, "project_name": "demo-project"}
+    _post(client, _payload(sender="34699999999", text="GOODCODE"))
+    assert db.users["34699999999"]["role"] == "user"
+    assert [body for _, body in api.sent] == [REPLY_REGISTERED]
+    kind, to, body, buttons = api.interactive[0]
+    assert to == "34699999999" and body == "Please accept to continue."
+    assert buttons == [("__whatsapp_accept_terms__", REPLY_ACCEPT_TERMS_LABEL)]
+
+
+def test_accepting_terms_calls_accept_legal_terms_and_bootstraps(env):
+    client, _, chat, _, api = env
+    chat.session_payload = {"legal_terms_pending": True, "project_name": "demo-project"}
+    chat.resolved_session_payload = {"id": 7}
+    chat.opening_message = "Bienvenida."
+    _post(client, _interactive_payload(reply={"id": "__whatsapp_accept_terms__", "title": "Accept"}))
+    assert chat.accepted_terms_for == ["demo-project"]
+    assert api.sent == [(LINKED_NUMBER, "Bienvenida.")]
+
+
+def test_accepting_terms_with_no_new_content_gets_a_plain_confirmation(env):
+    client, _, chat, _, api = env
+    chat.session_payload = {"legal_terms_pending": True, "project_name": "demo-project"}
+    chat.resolved_session_payload = {"id": 7}
+    _post(client, _interactive_payload(reply={"id": "__whatsapp_accept_terms__", "title": "Accept"}))
+    assert api.sent == [(LINKED_NUMBER, REPLY_TERMS_ACCEPTED)]
+
+
+def test_accepting_terms_does_not_resend_a_sessions_prior_history(env):
+    client, _, chat, db, api = env
+    db.add(7, "assistant", "mensaje de ayer")
+    chat.session_payload = {"legal_terms_pending": True, "project_name": "demo-project"}
+    chat.resolved_session_payload = {"id": 7}
+    _post(client, _interactive_payload(reply={"id": "__whatsapp_accept_terms__", "title": "Accept"}))
+    assert api.sent == [(LINKED_NUMBER, REPLY_TERMS_ACCEPTED)]
 
 
 async def test_impersonation_does_not_leak_past_the_turn(env):

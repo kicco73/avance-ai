@@ -91,7 +91,7 @@ REPLY_NOT_LINKED = (
     "Open your profile on the web and add this WhatsApp number."
 )
 REPLY_NOT_REGISTERED = "Your account isn't registered yet: sign in on the web and accept the terms."
-REPLY_TERMS_PENDING = "You need to accept the project's terms on the web before chatting."
+REPLY_TERMS_ACCEPTED = "Thanks — terms accepted. You can continue chatting."
 REPLY_PAUSED = "This project is currently paused. Please try again later."
 REPLY_UNSUPPORTED = "For now I can only read text messages."
 REPLY_UNSUPPORTED_AUDIO = "I can't listen to voice notes yet — please type your message."
@@ -103,6 +103,7 @@ REPLY_BUSY = "Please wait a moment and try again."
 REPLY_DONE = "Done."
 REPLY_OPTIONS_PROMPT = "What would you like to do?"
 REPLY_TECHNICAL_PROBLEM = "We apologize for the inconvenience — a technical problem occurred. Please try again in a moment."
+REPLY_ACCEPT_TERMS_LABEL = "Accept"
 
 _MAX_REPLY_BUTTONS = 3
 _MAX_LIST_ROWS = 10
@@ -111,6 +112,9 @@ _LIST_ROW_TITLE_LIMIT = 24
 _LIST_ROW_DESCRIPTION_LIMIT = 72
 _INTERACTIVE_BODY_LIMIT = 1024
 _LIST_BUTTON_TEXT = "Options"
+# Reserved action id for the terms-acceptance button — distinct from any
+# real automaton action name, dispatched before _run_action ever sees it.
+_ACCEPT_TERMS_ACTION = "__whatsapp_accept_terms__"
 
 
 def _truncate(text: str, limit: int) -> str:
@@ -227,28 +231,31 @@ class WhatsAppService(object):
             Session().channel = "whatsapp-chat"
             if message.type == "interactive" and message.action_id:
                 logger.info(f"WhatsApp: action '{message.action_id}' received ({message.id}) from {message.sender}.")
+                if message.action_id == _ACCEPT_TERMS_ACTION:
+                    return (*await self._accept_terms_action(), False)
                 return (*await self._run_action(message.action_id), False)
             if message.type == "audio" and message.audio_id:
                 if self._listen_service is None:
                     logger.info(f"WhatsApp [{message.id}]: voice note from {message.sender} but no listen-service.")
                     return _notice(REPLY_UNSUPPORTED_AUDIO)
-                text = await self._transcribe(message)
+                text = await self._transcribe(message, message.audio_id, self._listen_service)
                 if text is None:
                     return _notice(REPLY_AUDIO_NOT_UNDERSTOOD)
                 return (*await self._run_turn(text), True)
-            if message.type != "text" or not (message.text or "").strip():
+            text = (message.text or "").strip()
+            if message.type != "text" or not text:
                 return _notice(REPLY_UNSUPPORTED)
-            return (*await self._run_turn(message.text.strip()), False)
+            return (*await self._run_turn(text), False)
 
-    async def _transcribe(self, message: IncomingMessage) -> str | None:
+    async def _transcribe(self, message: IncomingMessage, audio_id: str, listen_service: "ListenService") -> str | None:
         """Transcript of the voice note, or None when it couldn't be
         fetched/understood — the caller turns that into a notice, never
         a turn with an empty user message."""
         from listen.listen_service import ListenServiceError
 
         try:
-            audio, mime_type = await self._client.download_media(message.audio_id)
-            transcript = (await self._listen_service.transcribe(audio)).strip()
+            audio, mime_type = await self._client.download_media(audio_id)
+            transcript = (await listen_service.transcribe(audio)).strip()
         except httpx.HTTPError as exc:
             logger.warning(f"WhatsApp [{message.id}]: media download failed: {exc}")
             return None
@@ -295,12 +302,45 @@ class WhatsAppService(object):
         itself produces (if any), same as a fresh web registration seeing
         it immediately on landing rather than only after its first reply."""
         session_payload = self._chat_service.get_or_create_current_session(None)
-        if session_payload.get("paused") or session_payload.get("legal_terms_pending"):
+        if session_payload.get("paused"):
             return [], None, None
+        if session_payload.get("legal_terms_pending"):
+            return self._terms_reply(session_payload["project_name"])
         session_id = session_payload["id"]
+        replies, manual_actions = await self._bootstrap_replies(session_id)
+        return replies, manual_actions, session_id
+
+    def _terms_reply(self, project_name: str) -> tuple[list[Reply], list[dict] | None, int | None]:
+        """The project's own legal/terms.md plus an Accept button — the
+        WhatsApp equivalent of TermsView.vue, in place of the plain "go
+        accept it on the web" notice this used to send."""
+        status = self._chat_service.get_legal_terms_status(project_name)
+        manual_actions = [{"name": _ACCEPT_TERMS_ACTION, "ui_button": REPLY_ACCEPT_TERMS_LABEL, "ui_description": None}]
+        return [Reply(to_whatsapp_markdown(status["content"] or ""))], manual_actions, None
+
+    async def _accept_terms_action(self) -> tuple[list[Reply], list[dict] | None, int | None]:
+        session_payload = self._chat_service.get_or_create_current_session(None)
+        if session_payload.get("legal_terms_pending"):
+            self._chat_service.accept_legal_terms(session_payload["project_name"])
+            session_payload = self._chat_service.get_or_create_current_session(None)
+        if session_payload.get("paused"):
+            return [Reply(REPLY_PAUSED)], None, None
+        if session_payload.get("legal_terms_pending"):
+            return self._terms_reply(session_payload["project_name"])
+        session_id = session_payload["id"]
+        replies, manual_actions = await self._bootstrap_replies(session_id)
+        return replies or [Reply(REPLY_TERMS_ACCEPTED)], manual_actions, session_id
+
+    async def _bootstrap_replies(self, session_id: int) -> tuple[list[Reply], list[dict] | None]:
+        """New assistant content, if any, once a session is confirmed
+        resolvable — a fresh session's own opening message, or nothing for
+        one whose history was already delivered earlier (e.g. right after
+        accepting terms mid-conversation, where the baseline is whatever
+        the session already had before this call)."""
+        last_seen_id = max((m["id"] for m in self._db.get_messages(session_id, last_n=1)), default=0)
         await self._chat_service.get_messages(session_id)
         state = self._chat_service.get_state_for_session(session_id)
-        return self._new_assistant_replies(session_id, last_seen_id=0), state["manual_actions"], session_id
+        return self._new_assistant_replies(session_id, last_seen_id), state["manual_actions"]
 
     async def _run_turn(self, text: str) -> tuple[list[Reply], list[dict] | None, int | None]:
         """Unlike ChatWindow.vue's own bootstrap, it's the user's text
@@ -315,7 +355,7 @@ class WhatsAppService(object):
         if session_payload.get("paused"):
             return [Reply(REPLY_PAUSED)], None, None
         if session_payload.get("legal_terms_pending"):
-            return [Reply(REPLY_TERMS_PENDING)], None, None
+            return self._terms_reply(session_payload["project_name"])
         session_id = session_payload["id"]
 
         last_seen_id = max((m["id"] for m in self._db.get_messages(session_id, last_n=1)), default=0)
@@ -341,7 +381,7 @@ class WhatsAppService(object):
         if session_payload.get("paused"):
             return [Reply(REPLY_PAUSED)], None, None
         if session_payload.get("legal_terms_pending"):
-            return [Reply(REPLY_TERMS_PENDING)], None, None
+            return self._terms_reply(session_payload["project_name"])
         session_id = session_payload["id"]
 
         last_seen_id = max((m["id"] for m in self._db.get_messages(session_id, last_n=1)), default=0)
