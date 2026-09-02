@@ -180,14 +180,13 @@ whatsapp-service:
   access-token: <your-access-token>
   # The Phone Number ID of the WhatsApp Business number — NOT the number.
   phone-number-id: <your-phone-number-id>
+  # Optional — the WhatsApp Business number itself (E.164 digits, no '+').
+  # Only needed to build the wa.me link/QR "Share project" offers as a
+  # WhatsApp alternative to the web invite link; the channel itself
+  # (webhook, replies) works fine without it. Omitted, that QR tab is
+  # simply not offered.
+  phone-number: <your-whatsapp-number>
   # Optional, defaults to v23.0 — check the Meta console for the current one.
   graph-version: v23.0
   # Optional, defaults to true: send the blue "read" tick on receipt.
   mark-read: true
-  # Which account each WhatsApp number chats as. Keys are the sender's
-  # number as Meta sends it (E.164 digits, no '+'); values the User row's
-  # email — an account that already registered from the web, accepted
-  # Terms, and has access to (at least) its active project. A number not
-  # listed here gets a "not linked" reply and nothing else.
-  users:
-    "34600000001": someone@example.com

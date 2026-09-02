@@ -38,18 +38,22 @@ class Project(BaseModel):
 
 class User(BaseModel):
     id = CharField(primary_key=True)
-    # "google", etc. — which AuthProvider verified this account. Nullable
-    # along with provider_user_id/name: UserMixin's get_active_project_name/
-    # set_active_project_name/clear_active_project_name still take a bare
-    # `user: str` (resolved against `email`, see db/users.py) rather than a
-    # real FK — set_active_project_name's own create-fallback, for a user
-    # with no User row yet, has no provider identity to fill these with.
+    # "google"/"whatsapp" — which AuthProvider (or channel) verified this
+    # account. Nullable along with provider_user_id/name: UserMixin's
+    # get_active_project_name/set_active_project_name/clear_active_project_name
+    # still take a bare `user: str` (resolved against `id`, see db/users.py)
+    # rather than a real FK — set_active_project_name's own create-fallback,
+    # for a user with no User row yet, has no provider identity to fill
+    # these with.
     provider = CharField(null=True)
     # The provider's own opaque id for this account (Google: the "sub"
     # claim) — stable identity, unlike email, which a provider account
-    # could in principle change.
+    # could in principle change. Unused for provider="whatsapp".
     provider_user_id = CharField(null=True)
-    email = CharField()
+    # Nullable: a WhatsApp-native registration (see AuthService.
+    # register_via_whatsapp) has no email at all — id is the phone number
+    # for those rows instead.
+    email = CharField(null=True)
     name = CharField(null=True)
     picture_url = CharField(null=True)
     created_at = DateTimeField(default=datetime.utcnow)
@@ -65,6 +69,7 @@ class User(BaseModel):
         backref='users_with_active', on_delete='SET NULL',
     )
     role = CharField(default='user')
+    whatsapp_phone_number = CharField(null=True, unique=True)
 
     class Meta:
         table_name = 'User'
@@ -103,6 +108,11 @@ class ChatSession(BaseModel):
     # distinct from Tracking.comment, which is per-message.
     comment = TextField(null=True)
     labeling_revision = IntegerField(null=False, default=0)
+    # Which channel this session was opened through — fixed at creation,
+    # never touched again (see chat/session_manager.py's create_session).
+    # 'native-chat' (the web SPA) is the default so migration-strategy:
+    # upgrade backfills every pre-existing row with it automatically.
+    channel = CharField(default='native-chat', index=True)
 
     class Meta:
         table_name = 'ChatSession'

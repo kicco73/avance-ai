@@ -35,6 +35,7 @@ class IdentifierRegistry:
         "send_mail": "Sends an email — e.g. actuator.send_mail(user.email, 'Some **markdown** body').",
         "celebrate": "Plays a confetti animation in the frontend — e.g. actuator.celebrate().",
         "notify": "Shows a toast in the frontend — e.g. actuator.notify('Nice!', 'You reached **state B**.'). `body_md` is markdown.",
+        "defer": "Runs another actuator call later, at a given time — e.g. actuator.defer(when, lambda: actuator.send_mail(user.email, 'Reminder')).",
     }
 
     # Every User field (db/models.py) except id — see

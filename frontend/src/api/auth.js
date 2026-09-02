@@ -62,6 +62,14 @@ export function getMe() {
   return apiFetch(`${API_URL}/auth/me`)
 }
 
+export function putWhatsAppPhoneNumber(phoneNumber) {
+  return apiFetch(`${API_URL}/auth/me/whatsapp-phone-number`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone_number: phoneNumber })
+  })
+}
+
 // App.vue's own TermsView-vs-InviteRequiredView gate for a pending
 // (not-yet-registered) session — whether this identity is one of the
 // two pre-wired admin addresses exempt from the invite-only

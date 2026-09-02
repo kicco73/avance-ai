@@ -316,6 +316,10 @@ export function createChatStore({
     try {
       const res = await postAutoTracking(currentSessionId.value, !autoTrackingEnabled.value)
       autoTrackingEnabled.value = res.enabled
+      // manual_actions is baked into state at fetch time (see ChatService.
+      // _with_manual_actions) — the toggle just flipped which actions
+      // that filter includes, so the already-loaded state is now stale.
+      state.value = await getSessionState(currentSessionId.value)
     } catch {
       // already surfaced via apiFetch
     } finally {

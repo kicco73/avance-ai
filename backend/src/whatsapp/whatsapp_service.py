@@ -9,10 +9,13 @@ through the Cloud API.
 
 Identity: the login wall is cookie/JWT based and never sees Meta's
 webhook, so the account is resolved from the sender's number through
-the `whatsapp-service.users` mapping in .config.yml and impersonated
+that User row's own whatsapp_phone_number field (set either from that
+user's own Profile page on the web, or by registering straight from
+WhatsApp — see AuthService.register_via_whatsapp) and impersonated
 (Session().impersonate) for the duration of the turn — the same
 ContextVar-backed Session() every service reads the current user from.
-An unlisted or unregistered number only ever gets a canned reply.
+An unlinked number whose message doesn't resolve to a valid invite code
+either, or an unregistered one, only ever gets a canned reply.
 
 Ordering: Meta may deliver two messages from the same person back to
 back; a per-sender asyncio.Lock keeps their turns sequential (on top of
@@ -29,6 +32,7 @@ import time
 from dataclasses import dataclass
 from http import HTTPStatus
 
+from auth.auth_service import AuthService
 from chat.chat_service import ChatService
 from config import WhatsAppServiceConfig
 from db import Db
@@ -46,20 +50,38 @@ class IncomingMessage:
     sender: str  # E.164 digits, no '+', as Meta sends it
     type: str
     text: str | None
+    action_id: str | None = None
 
 
 # Canned replies for everything that never reaches the automaton. The
 # companion itself speaks whatever the project's prompts say; these are
 # channel-level notices, so they stay short and language-neutral-ish.
 REPLY_NOT_LINKED = (
-    "Este número no está vinculado a ninguna cuenta. "
-    "Pide al administrador que lo añada a la configuración del servicio."
+    "This number isn't linked to any account. "
+    "Open your profile on the web and add this WhatsApp number."
 )
-REPLY_NOT_REGISTERED = "Tu cuenta aún no está registrada: entra desde la web y acepta los términos."
-REPLY_TERMS_PENDING = "Antes de chatear tienes que aceptar los términos del proyecto desde la web."
-REPLY_PAUSED = "Este proyecto está pausado en este momento. Inténtalo más tarde."
-REPLY_UNSUPPORTED = "Por ahora solo puedo leer mensajes de texto."
-REPLY_NO_CHAT_STATE = "En este punto la conversación no acepta mensajes. Continúa desde la web."
+REPLY_NOT_REGISTERED = "Your account isn't registered yet: sign in on the web and accept the terms."
+REPLY_TERMS_PENDING = "You need to accept the project's terms on the web before chatting."
+REPLY_PAUSED = "This project is currently paused. Please try again later."
+REPLY_UNSUPPORTED = "For now I can only read text messages."
+REPLY_NO_CHAT_STATE = "The conversation doesn't accept messages at this point. Continue from the web."
+REPLY_REGISTERED = "You're all set! Registration complete — you can start chatting now."
+REPLY_INVALID_ACTION = "That option is no longer available. Please choose one of these instead."
+REPLY_BUSY = "Please wait a moment and try again."
+REPLY_DONE = "Done."
+REPLY_OPTIONS_PROMPT = "What would you like to do?"
+
+_MAX_REPLY_BUTTONS = 3
+_MAX_LIST_ROWS = 10
+_BUTTON_TITLE_LIMIT = 20
+_LIST_ROW_TITLE_LIMIT = 24
+_LIST_ROW_DESCRIPTION_LIMIT = 72
+_INTERACTIVE_BODY_LIMIT = 1024
+_LIST_BUTTON_TEXT = "Options"
+
+
+def _truncate(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[:limit - 1].rstrip() + "…"
 
 
 class WhatsAppService(object):
@@ -68,11 +90,13 @@ class WhatsAppService(object):
         config: WhatsAppServiceConfig,
         chat_service: ChatService,
         db: Db,
+        auth_service: AuthService,
         client: WhatsAppCloudApiClient | None = None,
     ) -> None:
         self._config = config
         self._chat_service = chat_service
         self._db = db
+        self._auth_service = auth_service
         self._client = client or WhatsAppCloudApiClient(
             config.access_token, config.phone_number_id, config.graph_version
         )
@@ -110,8 +134,16 @@ class WhatsAppService(object):
                     message_id, sender = msg.get("id"), msg.get("from")
                     if not message_id or not sender:
                         continue
-                    text = (msg.get("text") or {}).get("body") if msg.get("type") == "text" else None
-                    out.append(IncomingMessage(id=message_id, sender=sender, type=msg.get("type") or "", text=text))
+                    msg_type = msg.get("type") or ""
+                    text = (msg.get("text") or {}).get("body") if msg_type == "text" else None
+                    action_id = None
+                    if msg_type == "interactive":
+                        interactive = msg.get("interactive") or {}
+                        reply = interactive.get("button_reply") or interactive.get("list_reply")
+                        action_id = reply.get("id") if reply else None
+                    out.append(IncomingMessage(
+                        id=message_id, sender=sender, type=msg_type, text=text, action_id=action_id,
+                    ))
         return out
 
     def accept(self, message: IncomingMessage) -> bool:
@@ -129,28 +161,67 @@ class WhatsAppService(object):
                 await self._client.mark_read(message.id)
             lock = self._sender_locks.setdefault(message.sender, asyncio.Lock())
             async with lock:
-                for reply in await self._replies_for(message):
-                    if reply:
-                        await self._client.send_text(message.sender, reply)
+                texts, manual_actions, session_id = await self._replies_for(message)
+                await self._send_replies(message.sender, texts, manual_actions, session_id)
         except Exception as exc:  # noqa: BLE001
             logger.exception(f"WhatsApp: unhandled error on message {message.id} from {message.sender}: {exc}")
 
-    async def _replies_for(self, message: IncomingMessage) -> list[str]:
-        email = self._config.users.get(message.sender)
-        if email is None:
-            logger.info(f"WhatsApp: message from unlinked number {message.sender} ignored.")
-            return [REPLY_NOT_LINKED]
-        user = self._db.get_user_by_id(email)
-        if user is None or user.get("role") in (None, "pending"):
-            return [REPLY_NOT_REGISTERED]
-        if message.type != "text" or not (message.text or "").strip():
-            return [REPLY_UNSUPPORTED]
+    async def _replies_for(self, message: IncomingMessage) -> tuple[list[str], list[dict] | None, int | None]:
+        user = self._db.get_user_by_whatsapp_phone_number(message.sender)
+        if user is None:
+            return await self._handle_unlinked(message)
+        if user.get("role") in (None, "pending"):
+            return [REPLY_NOT_REGISTERED], None, None
 
-        with Session().impersonate(email):
+        with Session().impersonate(user["id"]):
             Session().role = user["role"]
+            Session().channel = "whatsapp-chat"
+            if message.type == "interactive" and message.action_id:
+                logger.info(f"WhatsApp: action '{message.action_id}' received ({message.id}) from {message.sender}.")
+                return await self._run_action(message.action_id)
+            if message.type != "text" or not (message.text or "").strip():
+                return [REPLY_UNSUPPORTED], None, None
             return await self._run_turn(message.text.strip())
 
-    async def _run_turn(self, text: str) -> list[str]:
+    async def _handle_unlinked(self, message: IncomingMessage) -> tuple[list[str], list[dict] | None, int | None]:
+        """A number with no User row at all: the only way forward is a
+        "share project" invite code (see ShareProjectDialog.vue's own
+        WhatsApp QR) sent as plain text — AuthService.register_via_whatsapp
+        raises PermissionError with the exact same reasons the web's own
+        invite-acceptance flow does, reused verbatim as the reply here.
+        Anything else (non-text, or text that isn't a real invite code at
+        all) falls back to the generic "not linked" notice."""
+        if message.type != "text" or not (message.text or "").strip():
+            logger.info(f"WhatsApp: message from unlinked number {message.sender} ignored.")
+            return [REPLY_NOT_LINKED], None, None
+        try:
+            self._auth_service.register_via_whatsapp(message.sender, message.text.strip())
+        except PermissionError as exc:
+            logger.info(f"WhatsApp: registration attempt from {message.sender} refused: {exc}")
+            return [str(exc)], None, None
+        logger.info(f"WhatsApp: {message.sender} registered via invite code.")
+        user = self._db.get_user_by_whatsapp_phone_number(message.sender)
+        with Session().impersonate(user["id"]):
+            Session().role = user["role"]
+            Session().channel = "whatsapp-chat"
+            welcome_texts, manual_actions, session_id = await self._welcome_replies()
+            return [REPLY_REGISTERED, *welcome_texts], manual_actions, session_id
+
+    async def _welcome_replies(self) -> tuple[list[str], list[dict] | None, int | None]:
+        """Right after a brand-new WhatsApp registration: same session
+        bootstrap a real turn starts with, minus process_turn — there's no
+        user message to run, just whatever opening message the project
+        itself produces (if any), same as a fresh web registration seeing
+        it immediately on landing rather than only after its first reply."""
+        session_payload = self._chat_service.get_or_create_current_session(None)
+        if session_payload.get("paused") or session_payload.get("legal_terms_pending"):
+            return [], None, None
+        session_id = session_payload["id"]
+        await self._chat_service.get_messages(session_id)
+        state = self._chat_service.get_state_for_session(session_id)
+        return self._new_assistant_replies(session_id, last_seen_id=0), state["manual_actions"], session_id
+
+    async def _run_turn(self, text: str) -> tuple[list[str], list[dict] | None, int | None]:
         """Mirrors ChatWindow.vue's own bootstrap: resolve the current
         live session, let open_if_needed produce any opening message,
         then the turn itself. Rather than reassembling the reply from
@@ -159,16 +230,18 @@ class WhatsAppService(object):
         transition's follow-up messages (action_prompt / opening turn)."""
         session_payload = self._chat_service.get_or_create_current_session(None)
         if session_payload.get("paused"):
-            return [REPLY_PAUSED]
+            return [REPLY_PAUSED], None, None
         if session_payload.get("legal_terms_pending"):
-            return [REPLY_TERMS_PENDING]
+            return [REPLY_TERMS_PENDING], None, None
         session_id = session_payload["id"]
 
         last_seen_id = max((m["id"] for m in self._db.get_messages(session_id, last_n=1)), default=0)
         notice: str | None = None
+        manual_actions: list[dict] | None = None
         try:
             await self._chat_service.get_messages(session_id)
-            await self._chat_service.process_turn(session_id, text)
+            reply = await self._chat_service.process_turn(session_id, text)
+            manual_actions = reply["state"]["manual_actions"]
         except ServiceError as exc:
             if exc.status_code == HTTPStatus.CONFLICT:
                 # A non-chat/final state, or a superseded session: nothing
@@ -176,8 +249,41 @@ class WhatsAppService(object):
                 notice = REPLY_NO_CHAT_STATE
             else:
                 logger.exception(f"WhatsApp: turn failed on session {session_id}: {exc.message}")
-                notice = "Ha habido un problema procesando tu mensaje. Inténtalo de nuevo."
+                notice = "There was a problem processing your message. Please try again."
 
+        return self._new_assistant_replies(session_id, last_seen_id, notice), manual_actions, session_id
+
+    async def _run_action(self, action_id: str) -> tuple[list[str], list[dict] | None, int | None]:
+        session_payload = self._chat_service.get_or_create_current_session(None)
+        if session_payload.get("paused"):
+            return [REPLY_PAUSED], None, None
+        if session_payload.get("legal_terms_pending"):
+            return [REPLY_TERMS_PENDING], None, None
+        session_id = session_payload["id"]
+
+        last_seen_id = max((m["id"] for m in self._db.get_messages(session_id, last_n=1)), default=0)
+        try:
+            result = await self._chat_service.apply_manual_action(action_id, session_id)
+        except ValueError as exc:
+            logger.info(f"WhatsApp: action '{action_id}' rejected for session {session_id}: {exc}")
+            state = self._chat_service.get_state_for_session(session_id)
+            return [REPLY_INVALID_ACTION], state["manual_actions"], session_id
+        except ServiceError as exc:
+            if exc.status_code == HTTPStatus.CONFLICT:
+                logger.info(f"WhatsApp: action '{action_id}' deferred for session {session_id}: {exc.message}")
+                return [REPLY_BUSY], None, session_id
+            logger.exception(f"WhatsApp: action '{action_id}' failed for session {session_id}: {exc.message}")
+            notice = "There was a problem processing your message. Please try again."
+            return self._new_assistant_replies(session_id, last_seen_id, notice), None, session_id
+
+        logger.info(f"WhatsApp: action '{action_id}' applied for session {session_id}.")
+        state = result["state"]
+        replies = self._new_assistant_replies(session_id, last_seen_id)
+        if not replies:
+            replies = [state["ui_label"] or REPLY_DONE]
+        return replies, state["manual_actions"], session_id
+
+    def _new_assistant_replies(self, session_id: int, last_seen_id: int, notice: str | None = None) -> list[str]:
         replies = [
             to_whatsapp_markdown(m["content"])
             for m in self._db.get_messages(session_id)
@@ -186,6 +292,51 @@ class WhatsAppService(object):
         if notice:
             replies.append(notice)
         return replies
+
+    # ----------------------------------------------------------------- #
+    # Outbound delivery — plain text, or the last message as buttons/list
+    # ----------------------------------------------------------------- #
+    async def _send_replies(
+        self, to: str, texts: list[str], manual_actions: list[dict] | None, session_id: int | None,
+    ) -> None:
+        texts = [t for t in texts if t]
+        if not manual_actions:
+            for text in texts:
+                await self._client.send_text(to, text)
+            return
+        *leading, last = texts or [REPLY_DONE]
+        for text in leading:
+            await self._client.send_text(to, text)
+        await self._send_with_buttons(to, last, manual_actions, session_id)
+
+    async def _send_with_buttons(
+        self, to: str, body: str, manual_actions: list[dict], session_id: int | None,
+    ) -> None:
+        if len(body) > _INTERACTIVE_BODY_LIMIT:
+            await self._client.send_text(to, body)
+            body = REPLY_OPTIONS_PROMPT
+
+        actions = manual_actions
+        if len(actions) > _MAX_LIST_ROWS:
+            logger.warning(f"WhatsApp: state has {len(actions)} manual actions, sending only the first {_MAX_LIST_ROWS}.")
+            actions = actions[:_MAX_LIST_ROWS]
+
+        action_names = [a["name"] for a in actions]
+        if len(actions) <= _MAX_REPLY_BUTTONS:
+            logger.info(f"WhatsApp: sending buttons for session {session_id}: {action_names}.")
+            buttons = [(a["name"], _truncate(a["ui_button"], _BUTTON_TITLE_LIMIT)) for a in actions]
+            await self._client.send_buttons(to, body, buttons)
+        else:
+            logger.info(f"WhatsApp: sending list for session {session_id}: {action_names}.")
+            rows = [
+                (
+                    a["name"],
+                    _truncate(a["ui_button"], _LIST_ROW_TITLE_LIMIT),
+                    _truncate(a["ui_description"], _LIST_ROW_DESCRIPTION_LIMIT) if a["ui_description"] else None,
+                )
+                for a in actions
+            ]
+            await self._client.send_list(to, body, _LIST_BUTTON_TEXT, rows)
 
 
 # --------------------------------------------------------------------- #

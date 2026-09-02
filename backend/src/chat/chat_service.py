@@ -7,7 +7,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from http import HTTPStatus
 
-from automaton.automaton import Action, Automaton, SignalPayload, State
+from automaton.automaton import Action, Automaton, SignalPayload, State, manual_actions_for
 from db import Db, _utc_iso
 from ai.ai_service import AiService
 from keyed_lock_registry import KeyedLockRegistry
@@ -208,7 +208,8 @@ class ChatService(object):
 		except ValueError as exc:
 			raise ChatServiceError(str(exc), status_code=HTTPStatus.CONFLICT) from exc
 		automaton, state = self._project_service.get_automaton_and_state_for_session(session["id"])
-		return {**self._session_payload(session, active=True), "state": automaton.get_state_payload(state)}
+		state_payload = self._with_manual_actions(session["id"], automaton.get_state_payload(state))
+		return {**self._session_payload(session, active=True), "state": state_payload}
 
 	def get_or_create_current_session(self, session_id: int | None) -> dict:
 		"""Bootstrap for a client with no (or a possibly-stale) session_id:
@@ -348,7 +349,7 @@ class ChatService(object):
 	def get_state_for_session(self, session_id: int) -> dict:
 		self._require_own_session(session_id)
 		automaton, state = self._project_service.get_automaton_and_state_for_session(session_id)
-		return automaton.get_state_payload(state)
+		return self._with_manual_actions(session_id, automaton.get_state_payload(state))
 
 	async def get_messages(self, session_id: int, last_n: int | None = None) -> list[dict]:
 		# Checked before open_if_needed (which can write an opening
@@ -561,6 +562,10 @@ class ChatService(object):
 		self._require_own_session(session_id)
 		self._tracking_service.set_auto_tracking_enabled(session_id, enabled)
 
+	def _with_manual_actions(self, session_id: int, state_payload: dict) -> dict:
+		auto_tracking_enabled = self.is_auto_tracking_enabled(session_id)
+		return {**state_payload, "manual_actions": manual_actions_for(state_payload["actions"], auto_tracking_enabled)}
+
 	def is_actuators_enabled(self, session_id: int) -> bool:
 		self._require_own_session(session_id)
 		return self._actuator_factory.is_enabled_for_test_session(session_id)
@@ -739,7 +744,7 @@ class ChatService(object):
 			)
 			self._session_manager.touch_session(session["id"], state.key)
 			return {
-				"state": state_payload,
+				"state": self._with_manual_actions(session["id"], state_payload),
 				"reply": reply,
 				"on-enter": on_enter,
 				"ai_model": self.get_ai_models_info(),
@@ -776,5 +781,6 @@ class ChatService(object):
 		# full StatePayload dict, not a string; passing it whole would
 		# silently store its Python repr as end_state.
 		self._session_manager.touch_session(reply['session_id'], reply['state']['key'])
+		reply['state'] = self._with_manual_actions(session_id, reply['state'])
 		return reply
 

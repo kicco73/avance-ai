@@ -1,7 +1,8 @@
 <script setup>
-import { computed } from 'vue'
-
-const props = defineProps({
+defineProps({
+  // state.manual_actions — already filtered server-side (ChatService's
+  // own _with_manual_actions): untriggerable actions, plus every action
+  // while a test session's auto-tracking is off.
   actions: {
     type: Array,
     default: () => []
@@ -9,26 +10,16 @@ const props = defineProps({
   disabled: {
     type: Boolean,
     default: false
-  },
-  autoTrackingEnabled: {
-    type: Boolean,
-    default: false
   }
 })
 
 const emit = defineEmits(['action'])
-
-// Actions with a trigger are handled by auto-tracking when it's on, so
-// only triggerless (manual-only) actions get a button in that case.
-const visibleActions = computed(() =>
-  props.actions.filter((action) => !action.has_trigger || !props.autoTrackingEnabled)
-)
 </script>
 
 <template>
-  <div class="action-buttons" v-if="visibleActions.length">
+  <div class="action-buttons" v-if="actions.length">
     <button
-      v-for="action in visibleActions"
+      v-for="action in actions"
       :key="action.name"
       class="action-btn"
       :disabled="disabled"

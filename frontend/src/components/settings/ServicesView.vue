@@ -33,8 +33,13 @@ const TABS = [
   { id: 'testing', label: 'Testing' },
   { id: 'talk', label: 'Talk' },
   { id: 'listen', label: 'Listen' },
+  { id: 'whatsapp', label: 'WhatsApp' },
   { id: 'database', label: 'Data' }
 ]
+
+const WHATSAPP_MASKED_FIELDS = ['verify-token', 'app-secret', 'access-token']
+const WHATSAPP_PLAIN_FIELDS = ['phone-number-id', 'phone-number', 'graph-version']
+const revealedWhatsAppFields = ref(Object.fromEntries(WHATSAPP_MASKED_FIELDS.map((key) => [key, false])))
 
 const activeTab = ref(TABS[0].id)
 const services = ref(null)
@@ -217,6 +222,40 @@ async function selectWipeAllLiveSessions() {
           <ServicesProviderCard v-for="(provider, i) in services.listen.providers" :key="i" :provider="provider" />
         </div>
 
+        <div v-show="activeTab === 'whatsapp'" class="services-panel">
+          <label class="services-checkbox-field">
+            <input type="checkbox" :checked="services.whatsapp.enabled" disabled />
+            Service enabled
+          </label>
+          <template v-if="services.whatsapp.enabled">
+            <div v-for="key in WHATSAPP_MASKED_FIELDS" :key="key" class="services-field">
+              <label class="services-field-label">{{ fieldLabel(key) }}</label>
+              <div class="services-field-masked-row">
+                <input
+                  class="services-field-input"
+                  :type="revealedWhatsAppFields[key] ? 'text' : 'password'"
+                  :value="services.whatsapp[key]"
+                  disabled
+                />
+                <button
+                  type="button"
+                  class="services-reveal-btn"
+                  :title="revealedWhatsAppFields[key] ? 'Hide' : 'Show'"
+                  @click="revealedWhatsAppFields[key] = !revealedWhatsAppFields[key]"
+                >{{ revealedWhatsAppFields[key] ? 'Hide' : 'Show' }}</button>
+              </div>
+            </div>
+            <div v-for="key in WHATSAPP_PLAIN_FIELDS" :key="key" class="services-field">
+              <label class="services-field-label">{{ fieldLabel(key) }}</label>
+              <input class="services-field-input" type="text" :value="services.whatsapp[key]" disabled />
+            </div>
+            <label class="services-checkbox-field">
+              <input type="checkbox" :checked="services.whatsapp['mark-read']" disabled />
+              Mark messages as read
+            </label>
+          </template>
+        </div>
+
         <div v-show="activeTab === 'database'" class="services-panel">
           <div v-for="[key, value] in Object.entries(services.database)" :key="key" class="services-field">
             <label class="services-field-label">{{ fieldLabel(key) }}</label>
@@ -352,6 +391,34 @@ async function selectWipeAllLiveSessions() {
   opacity: 1;
   cursor: default;
   -webkit-text-fill-color: #333;
+}
+
+.services-field-masked-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.services-field-masked-row .services-field-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.services-reveal-btn {
+  flex-shrink: 0;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  background: white;
+  color: #4a6fa5;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.services-reveal-btn:hover {
+  background: #4a6fa5;
+  color: white;
+  border-color: #4a6fa5;
 }
 
 .services-checkbox-field {

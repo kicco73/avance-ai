@@ -446,3 +446,58 @@ class TestInviteMaxShares:
         content = MINIMAL_CONFIG + "\nproject-service:\n  invite-max-shares: 0\n"
         with pytest.raises(ConfigError):
             _load(monkeypatch, tmp_path, content)
+
+
+_WHATSAPP_SERVICE_MINIMAL = """
+whatsapp-service:
+  enabled: true
+  verify-token: my-verify-token
+  app-secret: my-app-secret
+  access-token: my-access-token
+  phone-number-id: "123456"
+"""
+
+_WHATSAPP_SERVICE_WITH_PHONE_NUMBER = _WHATSAPP_SERVICE_MINIMAL + "  phone-number: \"+34600000001\"\n"
+
+
+class TestWhatsAppServiceConfig:
+    def test_absent_section_leaves_the_channel_disabled(self, monkeypatch, tmp_path):
+        config = _load(monkeypatch, tmp_path, MINIMAL_CONFIG)
+        assert config.whatsapp_service_config is None
+
+    def test_enabled_false_leaves_the_channel_disabled(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG + "\nwhatsapp-service:\n  enabled: false\n"
+        config = _load(monkeypatch, tmp_path, content)
+        assert config.whatsapp_service_config is None
+
+    def test_enabled_with_no_phone_number_still_parses(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG + "\n" + _WHATSAPP_SERVICE_MINIMAL
+        config = _load(monkeypatch, tmp_path, content)
+        assert config.whatsapp_service_config is not None
+        assert config.whatsapp_service_config.phone_number is None
+
+    def test_phone_number_is_normalized_to_digits_only(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG + "\n" + _WHATSAPP_SERVICE_WITH_PHONE_NUMBER
+        config = _load(monkeypatch, tmp_path, content)
+        assert config.whatsapp_service_config.phone_number == "34600000001"
+
+    def test_rejects_a_non_digit_phone_number(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG + "\n" + _WHATSAPP_SERVICE_MINIMAL + "  phone-number: not-a-number\n"
+        with pytest.raises(ConfigError, match="phone-number"):
+            _load(monkeypatch, tmp_path, content)
+
+    def test_enabled_without_verify_token_is_rejected(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG + """
+whatsapp-service:
+  enabled: true
+  app-secret: my-app-secret
+  access-token: my-access-token
+  phone-number-id: "123456"
+"""
+        with pytest.raises(ConfigError, match="verify-token"):
+            _load(monkeypatch, tmp_path, content)
+
+    def test_graph_version_defaults_to_v23(self, monkeypatch, tmp_path):
+        content = MINIMAL_CONFIG + "\n" + _WHATSAPP_SERVICE_MINIMAL
+        config = _load(monkeypatch, tmp_path, content)
+        assert config.whatsapp_service_config.graph_version == "v23.0"

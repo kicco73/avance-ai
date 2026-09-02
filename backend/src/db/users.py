@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from peewee import SQL
+from peewee import SQL, IntegrityError
 
 from .models import Project, User
 from .utils import _utc_iso
@@ -11,7 +11,7 @@ from .utils import _utc_iso
 _ADMIN_EMAILS = {"enrico.carniani@gmail.com", "itinococalero@gmail.com"}
 
 
-def _initial_role(email: str) -> str:
+def _initial_role(email: str | None) -> str:
     return "admin" if email in _ADMIN_EMAILS else "user"
 
 
@@ -49,9 +49,12 @@ class UserMixin:
             for user in User.select().order_by(User.created_at.asc())
         ]
 
-    def get_or_create_user(self, provider: str, provider_user_id: str, email: str, name: str, picture_url: str | None) -> User:
+    def get_or_create_user(
+        self, provider: str | None, provider_user_id: str | None, email: str | None,
+        name: str | None, picture_url: str | None, user_id: str | None = None,
+    ) -> User:
         user, _ = User.get_or_create(
-            id=email,
+            id=user_id or email,
             defaults={
                 "provider": provider, "provider_user_id": provider_user_id, "email": email, "name": name,
                 "picture_url": picture_url, "role": _initial_role(email),
@@ -77,10 +80,25 @@ class UserMixin:
             "last_login": user.last_login,
         }
 
+    def get_user_by_whatsapp_phone_number(self, whatsapp_phone_number: str) -> dict | None:
+        user = User.get_or_none(User.whatsapp_phone_number == whatsapp_phone_number)
+        if user is None:
+            return None
+        return {
+            "id": user.id,
+            "provider": user.provider,
+            "provider_user_id": user.provider_user_id,
+            "email": user.email,
+            "name": user.name,
+            "picture_url": user.picture_url,
+            "role": user.role,
+            "last_login": user.last_login,
+        }
+
     def get_user_by_email(self, email: str) -> dict | None:
         """AuthService.get_profile's own lookup — GET /api/auth/me's
         source, both for the topbar avatar and ProfileView.vue."""
-        user = User.get_or_none(User.email == email)
+        user = User.get_or_none(User.id == email)
         if user is None:
             return None
         return {
@@ -89,9 +107,16 @@ class UserMixin:
             "picture_url": user.picture_url,
             "provider": user.provider,
             "role": user.role,
+            "whatsapp_phone_number": user.whatsapp_phone_number,
             "created_at": _utc_iso(user.created_at),
             "last_login": _utc_iso(user.last_login),
         }
+
+    def set_whatsapp_phone_number(self, email: str, whatsapp_phone_number: str | None) -> None:
+        try:
+            User.update(whatsapp_phone_number=whatsapp_phone_number).where(User.id == email).execute()
+        except IntegrityError as exc:
+            raise ValueError("This WhatsApp number is already linked to another account.") from exc
 
     def get_user_facts(self, email: str) -> dict[str, Any]:
         """tracking.user_facts.UserFacts's own source — every User field
@@ -143,7 +168,7 @@ class UserMixin:
         User.update(name=name, picture_url=picture_url, last_login=datetime.utcnow()).where(User.id == user_id).execute()
 
     def get_active_project_name(self, user: str) -> str | None:
-        row = User.get_or_none(User.email == user)
+        row = User.get_or_none(User.id == user)
         if row is None:
             return None
         if row.active_project_id is None:
@@ -155,12 +180,12 @@ class UserMixin:
         return row.active_project_id
 
     def set_active_project_name(self, project_name: str, user: str) -> None:
-        row = User.get_or_none(User.email == user)
+        row = User.get_or_none(User.id == user)
         if row is not None:
             row.active_project_id = project_name
             row.save()
         else:
-            User.create(id=user, email=user, active_project_id=project_name)
+            User.create(id=user, active_project_id=project_name)
 
     def clear_active_project_name(self, user: str) -> None:
-        User.update(active_project_id=None).where(User.email == user).execute()
+        User.update(active_project_id=None).where(User.id == user).execute()

@@ -53,6 +53,18 @@ class TestCreateInvite:
 
         assert first["code"] != second["code"]
 
+    def test_whatsapp_url_is_none_when_whatsapp_service_is_not_configured(self, project_service, project):
+        invite = project_service.create_invite(project, created_by=None)
+
+        assert invite["whatsapp_url"] is None
+
+    def test_whatsapp_url_carries_the_number_and_code_when_configured(self, db, project):
+        service = ProjectService(db, whatsapp_number="15552052260")
+
+        invite = service.create_invite(project, created_by=None)
+
+        assert invite["whatsapp_url"] == f"https://wa.me/15552052260?text={invite['code']}"
+
     def test_records_who_created_it(self, db, project_service, project):
         db.get_or_create_user("google", "sub-admin", "admin@example.com", "Admin", None)
 

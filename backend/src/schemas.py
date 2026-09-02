@@ -130,6 +130,10 @@ class SetUserRoleRequest(BaseModel):
     role: Literal["user", "supervisor", "admin"]
 
 
+class SetWhatsAppPhoneNumberRequest(BaseModel):
+    phone_number: str | None = None
+
+
 class SetEnvValueRequest(BaseModel):
     # See ChatService.set_env_value/chat.env.Env.set_value — the
     # Inspector Env tab's own "click a value to edit it".

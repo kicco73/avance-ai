@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import json
 from abc import ABC, abstractmethod
+from collections.abc import Callable
+from datetime import datetime
 
+from jobs import ScheduledJobQueue
 from logging_factory import LoggerFactory
 from notification.notification_service import NotificationService
+
+from .deferred_job import DeferredActuatorJob
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -29,11 +34,16 @@ class ActuatorSet(ABC):
     def send_mail(self, to: str, body_md: str) -> str | None:
         raise NotImplementedError
 
+    @abstractmethod
+    def defer(self, when: datetime, act: Callable[[], None]) -> str | None:
+        raise NotImplementedError
+
 
 class LiveActuatorSet(ActuatorSet):
 
-    def __init__(self, notification_service: NotificationService) -> None:
+    def __init__(self, notification_service: NotificationService, scheduled_job_queue: ScheduledJobQueue) -> None:
         self._notification_service = notification_service
+        self._scheduled_job_queue = scheduled_job_queue
 
     def send_mail(self, to: str, body_md: str) -> str | None:
         # Raises (NotificationError) if this deployment's own .config.yml
@@ -41,6 +51,10 @@ class LiveActuatorSet(ActuatorSet):
         # NotificationService's own docstring on why that's deferred to
         # here rather than failing at app boot.
         self._notification_service.enqueue_mail(to, _SEND_MAIL_SUBJECT, body_md)
+        return None
+
+    def defer(self, when: datetime, act: Callable[[], None]) -> str | None:
+        self._scheduled_job_queue.submit(DeferredActuatorJob(act), timestamp=when)
         return None
 
 
@@ -52,5 +66,10 @@ class FakeActuatorSet(ActuatorSet):
 
     def send_mail(self, to: str, body_md: str) -> str | None:
         message = f"send_mail(to={to!r}) — Run actuators is off, no email was sent."
+        logger.info(message)
+        return self.notify("Actuator (test)", message)
+
+    def defer(self, when: datetime, act: Callable[[], None]) -> str | None:
+        message = f"defer(when={when.isoformat()!r}) — Run actuators is off, nothing was scheduled."
         logger.info(message)
         return self.notify("Actuator (test)", message)

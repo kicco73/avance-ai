@@ -54,11 +54,8 @@ class WhatsAppServiceConfig:
     app_secret: str
     access_token: str
     phone_number_id: str
+    phone_number: str | None
     graph_version: str
-    # WhatsApp number (E.164 digits, no '+') -> the User row's own email.
-    # A number not listed here gets a "not linked" reply and is never
-    # let anywhere near a chat session.
-    users: dict[str, str]
     mark_read: bool
 
 
@@ -303,26 +300,31 @@ class AppConfig:
         app_secret = cls._require_str(raw, section, "app-secret", path)
         access_token = cls._require_str(raw, section, "access-token", path)
         phone_number_id = cls._require_str(raw, section, "phone-number-id", path)
+
+        if isinstance(phone_number_id, int) and not isinstance(phone_number_id, bool):
+            phone_number_id = str(phone_number_id)
+        if not isinstance(phone_number_id, str) or not phone_number_id.strip():
+            raise ConfigError(f"{path}: '{section}.phone-number-id' is missing or empty.")
+        phone_number_id = phone_number_id.strip()
+
+        phone_number = sub.get("phone-number")
+        if phone_number is not None:
+            if not isinstance(phone_number, str):
+                raise ConfigError(f"{path}: '{section}.phone-number' must be a string if present.")
+            phone_number = phone_number.strip().lstrip("+")
+            if not phone_number.isdigit():
+                raise ConfigError(f"{path}: '{section}.phone-number' must be digits only (E.164, no '+').")
+
         graph_version = sub.get("graph-version", "v23.0")
         if not isinstance(graph_version, str) or not graph_version.strip():
             raise ConfigError(f"{path}: '{section}.graph-version' must be a non-empty string if present.")
-        users_raw = sub.get("users", {})
-        if not isinstance(users_raw, dict):
-            raise ConfigError(f"{path}: '{section}.users' must be a mapping of phone number -> email.")
-        users: dict[str, str] = {}
-        for phone, email in users_raw.items():
-            phone_str = str(phone).strip().lstrip("+")
-            if not phone_str.isdigit():
-                raise ConfigError(f"{path}: '{section}.users' key {phone!r} is not a phone number (digits only, no '+').")
-            if not isinstance(email, str) or not email.strip():
-                raise ConfigError(f"{path}: '{section}.users[{phone!r}]' must be a non-empty email string.")
-            users[phone_str] = email.strip()
         mark_read = sub.get("mark-read", True)
         if not isinstance(mark_read, bool):
             raise ConfigError(f"{path}: '{section}.mark-read' must be a boolean if present.")
         return WhatsAppServiceConfig(
             verify_token=verify_token, app_secret=app_secret, access_token=access_token,
-            phone_number_id=phone_number_id, graph_version=graph_version.strip(), users=users, mark_read=mark_read,
+            phone_number_id=phone_number_id, phone_number=phone_number,
+            graph_version=graph_version.strip(), mark_read=mark_read,
         )
 
     @classmethod
@@ -505,7 +507,10 @@ class AppConfig:
         key, the database url's own credentials, and jwt-secret are
         stripped out here (the one place secrets are parsed in the first
         place) rather than downstream — nothing else ever gets a chance
-        to leak them."""
+        to leak them, except whatsapp's own three secrets below, sent
+        as-is (admin-only route) for Manage services' masked/revealable
+        fields."""
+        wa = self.whatsapp_service_config
         return {
             "chat": {
                 "max-session-duration-in-minutes": self.max_session_duration_in_minutes,
@@ -534,6 +539,16 @@ class AppConfig:
                     {**self._public_provider_fields(p), "language": p.language}
                     for p in (self.listen_services or [])
                 ],
+            },
+            "whatsapp": {
+                "enabled": wa is not None,
+                "verify-token": wa.verify_token if wa else None,
+                "app-secret": wa.app_secret if wa else None,
+                "access-token": wa.access_token if wa else None,
+                "phone-number-id": wa.phone_number_id if wa else None,
+                "phone-number": wa.phone_number if wa else None,
+                "graph-version": wa.graph_version if wa else None,
+                "mark-read": wa.mark_read if wa else None,
             },
             "database": {
                 "url": _redact_database_url(self.database_url),

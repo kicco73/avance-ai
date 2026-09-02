@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { getMe, postEraseData } from '../api.js'
-import { confirmDialog, infoDialog } from '../dialogStore.js'
+import { getMe, postEraseData, putWhatsAppPhoneNumber } from '../api.js'
+import { confirmDialog, infoDialog, promptDialog } from '../dialogStore.js'
 import { disconnect as disconnectChat } from '../chatClient.js'
 import { requireLogin } from '../authStore.js'
 import AppHeader from './AppHeader.vue'
@@ -30,6 +30,34 @@ const showAvatarImg = computed(() => !!profile.value?.picture_url && !imageFaile
 
 function formatDate(iso) {
   return iso ? new Date(iso).toLocaleString() : '—'
+}
+
+const savingWhatsApp = ref(false)
+
+function validateWhatsAppNumber(value) {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  if (!/^\+?\d+$/.test(trimmed)) return 'Digits only (E.164, no spaces or symbols).'
+  return ''
+}
+
+async function editWhatsAppNumber() {
+  const result = await promptDialog({
+    title: 'WhatsApp number',
+    body: 'The number that chats as your account on WhatsApp. Leave empty to unlink.',
+    placeholder: '34600000001',
+    initialValue: profile.value?.whatsapp_phone_number ?? '',
+    validate: validateWhatsAppNumber
+  })
+  if (result === null) return
+  savingWhatsApp.value = true
+  try {
+    profile.value = await putWhatsAppPhoneNumber(result.trim() || null)
+  } catch {
+    // already surfaced via apiFetch
+  } finally {
+    savingWhatsApp.value = false
+  }
 }
 
 async function load() {
@@ -104,6 +132,13 @@ async function eraseAllData() {
           <div class="profile-card-field">
             <span class="profile-card-field-label">Last login</span>
             <span class="profile-card-field-value">{{ formatDate(profile.last_login) }}</span>
+          </div>
+          <div class="profile-card-field">
+            <span class="profile-card-field-label">WhatsApp</span>
+            <div class="profile-card-field-row">
+              <span class="profile-card-field-value">{{ profile.whatsapp_phone_number ? `+${profile.whatsapp_phone_number}` : 'Not linked' }}</span>
+              <button type="button" class="profile-card-edit-btn" :disabled="savingWhatsApp" @click="editWhatsAppNumber">Edit</button>
+            </div>
           </div>
         </div>
 
@@ -239,6 +274,34 @@ async function eraseAllData() {
 .profile-card-field-value {
   font-size: 0.95rem;
   color: #333;
+}
+
+.profile-card-field-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.profile-card-edit-btn {
+  padding: 0.15rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  background: white;
+  color: #4a6fa5;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.profile-card-edit-btn:hover:not(:disabled) {
+  background: #4a6fa5;
+  color: white;
+  border-color: #4a6fa5;
+}
+
+.profile-card-edit-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .erase-data-btn {

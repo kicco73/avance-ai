@@ -209,6 +209,66 @@ states:
         AutomatonBuilder().build({"index.yml": content})
 
 
+def test_build_accepts_actuator_defer_with_a_lambda_argument():
+    # A bare, unquoted "lambda: ..." on one YAML line misparses (YAML
+    # reads that colon as its own mapping separator) — the block scalar
+    # form (or an explicitly quoted line) is required in a real index.yml.
+    content = """
+init-action:
+  target: a
+states:
+  a:
+    contextual-prompt: hi
+    actions:
+      - name: go
+        target: b
+        on-enter: |
+          actuator.defer(system.today, lambda: actuator.send_mail(user.email, 'Reminder'))
+  b:
+    contextual-prompt: there
+"""
+    automaton = AutomatonBuilder().build({"index.yml": content})
+    action = automaton.states["a"].actions[0]
+    assert "actuator.defer" in action.on_enter
+
+
+def test_build_still_validates_a_bad_arity_call_nested_inside_the_lambda():
+    content = """
+init-action:
+  target: a
+states:
+  a:
+    contextual-prompt: hi
+    actions:
+      - name: go
+        target: b
+        on-enter: |
+          actuator.defer(system.today, lambda: actuator.celebrate(42))
+  b:
+    contextual-prompt: there
+"""
+    with pytest.raises(ValueError, match="actuator.celebrate\\(\\.\\.\\.\\) takes 0 argument\\(s\\), got 1"):
+        AutomatonBuilder().build({"index.yml": content})
+
+
+def test_build_rejects_the_wrong_defer_argument_count():
+    content = """
+init-action:
+  target: a
+states:
+  a:
+    contextual-prompt: hi
+    actions:
+      - name: go
+        target: b
+        on-enter: actuator.defer(system.today)
+  b:
+    contextual-prompt: there
+"""
+    with pytest.raises(ValueError, match="actuator.defer\\(\\.\\.\\.\\) takes 2 argument\\(s\\), got 1"):
+        AutomatonBuilder().build({"index.yml": content})
+
+
 def test_build_reports_the_offending_line_number_in_a_multi_line_script():
     content = """
 init-action:

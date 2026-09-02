@@ -63,7 +63,6 @@ const {
   chatLoading,
   chatStatus,
   actionLoading,
-  autoTrackingEnabled,
   draft,
   currentSessionId,
   selectedSessionActive,
@@ -505,9 +504,8 @@ watch(
     <div class="chat-footer">
       <ActionButtons
         v-if="selectedSessionActive"
-        :actions="state?.actions ?? []"
+        :actions="state?.manual_actions ?? []"
         :disabled="actionLoading"
-        :auto-tracking-enabled="autoTrackingEnabled"
         @action="onAction"
       />
 

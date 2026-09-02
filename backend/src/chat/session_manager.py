@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from chat.session_type_strategy import SessionTypeStrategy, get_session_type_strategy
 from db import Db
 from logging_factory import LoggerFactory
+from session import Session
 
 if TYPE_CHECKING:
     from project.project_service import ProjectService
@@ -56,7 +57,7 @@ class ChatSessionManager(object):
             username, project_name, revision,
             datetime_start=now, datetime_end=now,
             start_state=state_key, end_state=state_key,
-            type=strategy.type_name,
+            type=strategy.type_name, channel=Session().channel,
         )
         session = self._db.get_chat_session(session_id)
         assert session is not None

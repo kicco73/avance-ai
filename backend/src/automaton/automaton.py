@@ -1,6 +1,7 @@
 """YAML parsing for the DFA definition and in-memory data structures."""
 from __future__ import annotations
 
+import ast
 from dataclasses import dataclass, field
 
 import simpleeval
@@ -137,6 +138,21 @@ class StatePayload(TypedDict):
     # own, per-state gated side of this.
     reactions: list[ReactionOptionPayload]
     actions: list[ActionPayload]
+
+def manual_actions_for(actions: list[ActionPayload], auto_tracking_enabled: bool) -> list[ActionPayload]:
+    return [a for a in actions if not a["has_trigger"] or not auto_tracking_enabled]
+
+
+class _OnEnterEval(simpleeval.SimpleEval):
+    def __init__(self, names: dict) -> None:
+        super().__init__(names=names)
+        self.nodes[ast.Lambda] = self._eval_lambda
+
+    def _eval_lambda(self, node: ast.Lambda):
+        if node.args.args or node.args.vararg or node.args.kwonlyargs or node.args.kwarg or node.args.posonlyargs:
+            raise simpleeval.FeatureNotAvailable("Sorry, only zero-argument lambdas are supported.")
+        body = node.body
+        return lambda: self._eval(body)
 
 class SignalPayload(TypedDict):
     name: str
@@ -387,7 +403,7 @@ class Automaton(object):
             if not line:
                 continue
             try:
-                result = simpleeval.simple_eval(line, names=scope)
+                result = _OnEnterEval(names=scope).eval(line)
             except Exception as exc:
                 logger.warning(
                     "on-enter expression evaluation failed for action '%s' ('%s'): %s",

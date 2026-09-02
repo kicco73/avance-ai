@@ -14,8 +14,8 @@ Meta ──POST /api/whatsapp/webhook──▶ WhatsAppController   (role=None, 
                                          │                  answers 200 immediately)
                                          ▼ background task
                                     WhatsAppService.handle
-                                         │  number → email (whatsapp-service.users)
-                                         │  Session().impersonate(email)
+                                         │  number → user_id (User.whatsapp_phone_number)
+                                         │  Session().impersonate(user_id)
                                          ▼
                         ChatService.get_or_create_current_session
                         ChatService.get_messages   (open_if_needed → opening message)
@@ -27,26 +27,50 @@ Meta ──POST /api/whatsapp/webhook──▶ WhatsAppController   (role=None, 
 
 ## Files
 
-- `whatsapp/whatsapp_service.py` — identity gate, turn orchestration, Markdown → WhatsApp flattening, dedup of Meta's redeliveries, per-sender ordering.
-- `whatsapp/cloud_api_client.py` — `send_text` (auto-split over 4096 chars) and `mark_read`.
+- `whatsapp/whatsapp_service.py` — identity gate, turn/action orchestration, manual-actions-as-buttons/list, Markdown → WhatsApp flattening, dedup of Meta's redeliveries, per-sender ordering.
+- `whatsapp/cloud_api_client.py` — `send_text` (auto-split over 4096 chars), `send_buttons`/`send_list` (interactive replies), and `mark_read`.
+- `chat/chat_service.py` — `manual_actions` on every state payload reaching a client with a known session (`_with_manual_actions`); `automaton/automaton.py`'s `manual_actions_for` is the actual filter, shared with `tracking/wakeup_service.py`'s own cross-project notification push.
 - `controllers/whatsapp_controller.py` — the two webhook routes, under `/api/` so `nginx.conf` needs no change.
 - `config.py` — `WhatsAppServiceConfig` / `whatsapp-service` section (optional, default off; see `.config.example.yml`).
+- `db/models.py` / `db/users.py` — `User.whatsapp_phone_number`, the phone → account link itself.
+- `controllers/auth_controller.py` — `PUT /api/auth/me/whatsapp-phone-number`, ProfileView.vue's own save action.
+- `auth/auth_service.py` — `register_via_whatsapp`, the WhatsApp-native signup path (shares `_register_with_invite` with the web's own `complete_registration`).
+- `project/invites.py` — `whatsapp_url` on a created invite's payload, `ShareProjectDialog.vue`'s WhatsApp QR.
 - `tests/test_whatsapp_channel.py` — contract tests with fake ChatService/Db/Cloud API.
 
 ## Identity
 
 The login wall is cookie/JWT based and Meta's webhook never carries one,
-so `whatsapp-service.users` maps each sender's number (E.164 digits, no
-`+`) to a `User` row's email. The account must already exist — registered
-from the web, Terms accepted, access to its active project — WhatsApp
-never creates users or bypasses invites. Unlisted or unregistered numbers
-get a fixed reply and nothing else. The turn runs under
-`Session().impersonate(email)` with the row's own role, so every ownership
-check downstream behaves as if that user were logged in.
+so each sender's number (E.164 digits, no `+`) is looked up against
+`User.whatsapp_phone_number` — a nullable, unique column an account gets
+linked to one of two ways:
 
-Natural next step, deliberately not done here: a `User.whatsapp_number`
-column plus a "link my number" action in ProfileView.vue, replacing the
-config mapping. `migration-strategy: upgrade` would add the column.
+- An already-registered web user adds it themselves from ProfileView.vue's
+  own "WhatsApp" field (`PUT /api/auth/me/whatsapp-phone-number`).
+- A brand-new identity registers straight from WhatsApp: `ShareProjectDialog.vue`'s
+  WhatsApp tab renders a `wa.me` QR (`project/invites.py`'s own `whatsapp_url`,
+  built from `whatsapp-service.phone-number` + the invite code) that opens
+  a chat to our business number with the invite code pre-filled as the
+  message. A number with no `User` row at all that sends a text message is
+  treated as attempting exactly that: `AuthService.register_via_whatsapp`
+  validates it through the very same `InviteManager.validate_for_registration`
+  the web's own `complete_registration` uses, so a bad/expired/maxed-out
+  code gets back the identical wording either channel would show. On
+  success the row is created with `id`/`whatsapp_phone_number` both set to
+  the phone number, `provider="whatsapp"`, no email/name/picture — every
+  Google-only field stays null — and the invited project becomes its
+  active project directly (there's no separate "activate" step on
+  WhatsApp the way the web's own post-registration boot has). A number
+  that isn't attempting registration and isn't linked to anything gets a
+  fixed "not linked" reply instead.
+
+Either way, once linked, an unregistered number (row exists, but not
+through a completed invite/Terms flow) gets a fixed reply and nothing
+else. The turn runs under `Session().impersonate(user_id)` with the row's
+own role, so every ownership check downstream behaves as if that user
+were logged in — `user_id` is the row's `id` (email for a Google account,
+the phone number itself for a WhatsApp-native one), not necessarily an
+email at all.
 
 ## What the user sees
 
@@ -54,9 +78,25 @@ config mapping. `migration-strategy: upgrade` would add the column.
   each as its own WhatsApp message; a transition's follow-up messages
   (`action_prompt`, opening turn of the new state) come through too, since
   the channel sends whatever assistant rows the turn persisted.
+- The current state's manual actions (`ChatService`'s own `manual_actions`
+  — untriggerable actions, plus every action while a test session's
+  auto-tracking is off) ride along on the *last* message of any reply
+  that ends on a state with some: 1–3 actions become WhatsApp reply
+  buttons, 4–10 become a list (more than 10: only the first 10, with a
+  warning logged), title truncated to 20/24 chars for a button/list row
+  (`ui_description` to 72). Tapping one applies it the same way a
+  button click in ActionButtons.vue does (`ChatService.apply_manual_action`)
+  — a stale button (tapped after the state already moved on) gets a short
+  notice plus the *current* state's own buttons instead of an error; "a
+  reply is already being generated" gets a "please wait" notice with no
+  buttons attached; a transition producing no message of its own still
+  sends an interactive message (the new state's `ui_label`, or "Done.")
+  so the conversation is never left without controls. A state with no
+  manual actions behaves exactly as before — plain text only. Same 24h
+  free-form window as any other reply (see below) — buttons/lists are
+  never sent outside it either.
 - Non-chat/final state (`process_turn` → 409): a short notice pointing to
-  the web. Manual actions aren't exposed on WhatsApp yet — mapping them to
-  keywords or interactive buttons is a follow-up.
+  the web.
 - Paused project / Terms pending: a notice, no turn.
 - Audio/images: "text only" notice. (`ListenService` could transcribe
   voice notes later — the webhook delivers a media id to download.)

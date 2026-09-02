@@ -53,6 +53,47 @@ class WhatsAppCloudApiClient(object):
         except httpx.HTTPError as exc:
             logger.warning(f"mark_read failed for {message_id}: {exc}")
 
+    async def send_buttons(self, to: str, body: str, buttons: list[tuple[str, str]]) -> dict:
+        return await self._post({
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to,
+            "type": "interactive",
+            "interactive": {
+                "type": "button",
+                "body": {"text": body},
+                "action": {
+                    "buttons": [
+                        {"type": "reply", "reply": {"id": button_id, "title": title}}
+                        for button_id, title in buttons
+                    ],
+                },
+            },
+        })
+
+    async def send_list(self, to: str, body: str, button_text: str, rows: list[tuple[str, str, str | None]]) -> dict:
+        return await self._post({
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to,
+            "type": "interactive",
+            "interactive": {
+                "type": "list",
+                "body": {"text": body},
+                "action": {
+                    "button": button_text,
+                    "sections": [{"rows": [_list_row(*row) for row in rows]}],
+                },
+            },
+        })
+
+
+def _list_row(row_id: str, title: str, description: str | None) -> dict:
+    row = {"id": row_id, "title": title}
+    if description:
+        row["description"] = description
+    return row
+
 
 def split_text(text: str, limit: int) -> list[str]:
     if len(text) <= limit:

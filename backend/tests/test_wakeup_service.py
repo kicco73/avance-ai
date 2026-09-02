@@ -120,6 +120,14 @@ def test_reevaluate_and_apply_fires_the_self_loop_when_the_observed_state_now_ma
     assert after[-1]["new_state"] == "x"  # self-loop — the state itself never changes
 
 
+class _FakeTrackingService:
+    def __init__(self, disabled_session_ids):
+        self._disabled = disabled_session_ids
+
+    def is_auto_tracking_enabled(self, session_id):
+        return session_id not in self._disabled
+
+
 class _FakeWebSocket:
     """Just enough to stand in for a real connection in WsAdapter's
     username -> WebSocket _connections registry — push only calls
@@ -159,6 +167,33 @@ class TestWsAdapterPush:
         assert websocket.sent[0]["project_name"] == "watcher"
         assert websocket.sent[0]["state"]["key"] == "x"  # self-loop — the state itself never changes
         assert "on-enter" in websocket.sent[0]
+        # The fired action has a trigger and no tracking_service was wired
+        # in (defaults to "always auto-tracked") — filtered out of
+        # manual_actions same as a live session's own state payload would.
+        assert websocket.sent[0]["state"]["manual_actions"] == []
+
+    def test_manual_actions_includes_the_triggered_action_when_auto_tracking_is_disabled(self, db, project_service):
+        _publish_project(db, project_service, "observed", OBSERVED_YML)
+        _publish_project(db, project_service, "watcher", WATCHER_YML)
+        db.create_chat_session(username=USERNAME, project_name="watcher", revision=db.get_project_published_revision("watcher"))
+        db.create_chat_session(username=USERNAME, project_name="observed", revision=db.get_project_published_revision("observed"))
+        observed_session = db.get_latest_chat_session(USERNAME, "observed")
+        db.save_transition("a", "go", "b", observed_session["id"], transition_log_level="INFO")
+        watcher_session = db.get_latest_chat_session(USERNAME, "watcher")
+
+        ws_adapter = WsAdapter(chat_service=None, db=db, auth_service=None)
+        websocket = _FakeWebSocket()
+        ws_adapter._connections[USERNAME] = websocket
+
+        ephemeral_jobs = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
+        tracking_service = _FakeTrackingService({watcher_session["id"]})
+        service = WakeupService(
+            db, project_service, ephemeral_jobs, _actuator_factory(db),
+            ws_adapter=ws_adapter, tracking_service=tracking_service,
+        )
+        asyncio.run(service._reevaluate_and_apply(USERNAME, "watcher"))
+
+        assert [a["name"] for a in websocket.sent[0]["state"]["manual_actions"]] == ["notice"]
 
     def test_no_connection_registered_is_a_silent_no_op_not_an_error(self, db, project_service):
         _publish_project(db, project_service, "observed", OBSERVED_YML)
