@@ -37,6 +37,12 @@ class SchemaMigrator:
         finally:
             conn.close()
 
+    def schema_differs(self, actual: dict[str, set[str]], expected: dict[str, set[str]], path: str) -> bool:
+        # Column names matching isn't enough: a prior migration may have
+        # already added a table's missing columns without ever revisiting
+        # an existing column's own constraint (e.g. NOT NULL -> nullable).
+        return actual != expected or bool(self._tables_needing_constraint_rebuild(actual, expected, path))
+
     def migrate(self, actual: dict[str, set[str]], expected: dict[str, set[str]], path: str) -> None:
         migrator = SqliteMigrator(self._database)
         models_by_table = {model._meta.table_name: model for model in self._models}
@@ -95,6 +101,11 @@ class SchemaMigrator:
             self._database.execute_sql(f'ALTER TABLE "{table}" RENAME TO "{tmp_name}"')
         finally:
             self._database.execute_sql('PRAGMA legacy_alter_table = OFF')
+        # The rename carries the old table's own named indexes along under
+        # their original names (SQLite index names are database-global) —
+        # left in place, they'd collide with the fresh table's own indexes
+        # of the same name below.
+        self._drop_named_indexes(tmp_name)
         self._database.create_tables([model], safe=False)
         insert_columns = shared_columns + [f.column_name for f in new_required_fields]
         select_terms = [f'"{c}"' for c in shared_columns] + ['?'] * len(new_required_fields)
@@ -106,3 +117,11 @@ class SchemaMigrator:
             params,
         )
         self._database.execute_sql(f'DROP TABLE "{tmp_name}"')
+
+    def _drop_named_indexes(self, table: str) -> None:
+        cursor = self._database.execute_sql(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL",
+            (table,),
+        )
+        for (name,) in cursor.fetchall():
+            self._database.execute_sql(f'DROP INDEX "{name}"')

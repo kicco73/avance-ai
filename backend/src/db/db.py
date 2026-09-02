@@ -102,7 +102,7 @@ class Db(
         if not actual:
             return
         expected = self._migrator.expected_schema()
-        if actual == expected:
+        if not self._migrator.schema_differs(actual, expected, path):
             return
         if strategy == 'stop':
             raise ValueError(f"Database schema at '{path}' doesn't match what this code expects and database.migration-strategy is 'stop' — set it to 'upgrade' or 'drop', or fix the database by hand.")
@@ -111,7 +111,7 @@ class Db(
         if strategy == 'upgrade':
             logger.warning("Database schema at '%s' doesn't match what this code expects — backed it up to '%s', now migrating it in place (database.migration-strategy is 'upgrade').", path, backup_path)
             self._migrator.migrate(actual, expected, path)
-            if self._migrator.actual_schema(path) != expected:
+            if self._migrator.schema_differs(self._migrator.actual_schema(path), expected, path):
                 raise ValueError(f"Database schema at '{path}' still doesn't match after in-place migration — refusing to touch the data any further (the pre-migration backup is at '{backup_path}').")
             return
         logger.warning("Database schema at '%s' doesn't match what this code expects — backed it up to '%s', now dropping and recreating every table from scratch (database.migration-strategy is 'drop').", path, backup_path)
