@@ -89,6 +89,20 @@ class WhatsAppCloudApiClient(object):
         except httpx.HTTPError as exc:
             logger.warning(f"mark_read failed for {message_id}: {exc}")
 
+    async def mark_read_and_show_typing(self, message_id: str) -> None:
+        """Same read receipt, plus the "typing..." indicator the Cloud API
+        only accepts inside that very request: it stays on for at most 25
+        seconds and is dismissed by our reply. Best effort, like mark_read."""
+        try:
+            await self._post({
+                "messaging_product": "whatsapp",
+                "status": "read",
+                "message_id": message_id,
+                "typing_indicator": {"type": "text"},
+            })
+        except httpx.HTTPError as exc:
+            logger.warning(f"mark_read_and_show_typing failed for {message_id}: {exc}")
+
     async def send_buttons(self, to: str, body: str, buttons: list[tuple[str, str]]) -> dict:
         return await self._post({
             "messaging_product": "whatsapp",
