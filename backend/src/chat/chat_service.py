@@ -192,12 +192,16 @@ class ChatService(object):
 		self, strategy: SessionTypeStrategy, project_name: str, session_id: int | None
 	) -> dict:
 		try:
-			if strategy.type_name == 'live' and self._project_service.legal_terms_pending(self._username, project_name):
-				return {"legal_terms_pending": True, "project_name": project_name}
 			is_new_live_session = False
 			if strategy.type_name == 'live':
 				is_new_live_session = self._session_manager.get_active_session(self._username, project_name) is None
 				if is_new_live_session:
+					# Only a session about to be created is pinned to
+					# get_published_revision — an already-open one keeps
+					# running against whatever revision it was created
+					# against, so it's never blocked by terms published since.
+					if self._project_service.legal_terms_pending(self._username, project_name):
+						return {"legal_terms_pending": True, "project_name": project_name}
 					self._session_summary_manager.check_for_closed_sessions(self._username, project_name)
 			_, state = self._project_service.get_automaton_and_state(
 				project_name, type=strategy.type_name, username=self._username

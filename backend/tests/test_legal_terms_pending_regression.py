@@ -9,7 +9,13 @@ from __future__ import annotations
 
 import pytest
 
+from chat.chat_service import ChatService
+from chat.session_manager import ChatSessionManager
+from conftest import FakeAiService, NullBroadcaster, make_test_actuator_factory
+from jobs import JobQueue
+from metrics.metric_service import MetricService
 from project.project_service import ProjectService
+from tracking.tracking_service import TrackingService
 
 pytestmark = pytest.mark.regression
 
@@ -40,6 +46,25 @@ def project_service(db) -> ProjectService:
     return ProjectService(db)
 
 
+def _chat_service_for(db, project_service: ProjectService) -> ChatService:
+    ai_service = FakeAiService()
+    metric_service = MetricService(db, project_service)
+    job_queue = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
+    actuator_factory = make_test_actuator_factory(db, job_queue)
+    tracking_service = TrackingService(db, project_service, metric_service, actuator_factory)
+    return ChatService(
+        ai_service=ai_service,
+        ai_test_service=ai_service,
+        project_service=project_service,
+        db=db,
+        session_manager=ChatSessionManager(db),
+        tracking_service=tracking_service,
+        metric_service=metric_service,
+        job_queue=job_queue,
+        actuator_factory=actuator_factory,
+    )
+
+
 def test_accept_legal_terms_resolves_pending_even_with_a_diverged_draft(db, project_service):
     # An unrelated draft edit forks every Archive row (including
     # legal/terms.md) to revision 1, identical content but a new row id —
@@ -67,3 +92,35 @@ def test_accept_legal_terms_still_asks_again_if_the_published_terms_later_change
     db.publish_project(PROJECT_NAME)  # published_revision advances to the new terms
 
     assert project_service.legal_terms_pending(USERNAME, PROJECT_NAME) is True
+
+
+async def test_an_already_open_session_is_never_blocked_by_terms_published_since(db, project_service):
+    """The WhatsApp/web production bug this guards against: republishing
+    anything after a user already has a live session open must never
+    retroactively ask that user to accept terms mid-conversation — only a
+    session about to be *created* is pinned to whatever's newly published
+    (see ChatService._resolve_or_create_session_of_type)."""
+    project_service.accept_legal_terms(USERNAME, PROJECT_NAME)
+    chat_service = _chat_service_for(db, project_service)
+
+    first = chat_service.get_or_create_current_session(None)
+    assert first.get("legal_terms_pending") is not True
+    session_id = first["id"]
+
+    db.save_project_files(PROJECT_NAME, {"index.yml": INDEX_YML.encode("utf-8")}, {"index.yml": "text/yaml"})
+    db.publish_project(PROJECT_NAME)
+    # Sanity: a brand new session would indeed be gated by this — the
+    # already-open one below just isn't.
+    assert project_service.legal_terms_pending(USERNAME, PROJECT_NAME) is True
+
+    second = chat_service.get_or_create_current_session(None)
+    assert second.get("legal_terms_pending") is not True
+    assert second["id"] == session_id
+
+
+async def test_a_brand_new_session_is_still_blocked_by_currently_pending_terms(db, project_service):
+    chat_service = _chat_service_for(db, project_service)
+
+    payload = chat_service.get_or_create_current_session(None)
+
+    assert payload.get("legal_terms_pending") is True
