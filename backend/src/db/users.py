@@ -99,34 +99,36 @@ class UserMixin:
     def count_sessions_for_user(self, user_id: str) -> int:
         return ChatSession.select().where(ChatSession.user == user_id).count()
 
-    def merge_whatsapp_account(self, target_id: str, orphan_id: str, whatsapp_phone_number: str) -> None:
-        """Absorbs `orphan_id` — a WhatsApp-native account (id=phone
-        number, no other real identity) — into `target_id`: every row
-        that points at it via a plain User FK gets reassigned, then the
-        now-empty orphan row is dropped and the number lands on target.
+    def merge_user_accounts(self, target_id: str, absorbed_id: str, whatsapp_phone_number: str) -> None:
+        """Absorbs `absorbed_id` into `target_id`: every row that points
+        at it — via a User FK, or via the plain `username` column a live
+        session/test records its owner under — gets reassigned, then the
+        now-empty absorbed row is dropped and the number lands on target.
         Used when AuthService.set_whatsapp_phone_number finds the number
-        someone wants to link already claimed by exactly this kind of
-        orphan, with the user's explicit confirmation."""
+        an admin wants to link already claimed by another account, with
+        that admin's explicit confirmation."""
         with database.atomic():
-            ChatSession.update(user=target_id).where(ChatSession.user == orphan_id).execute()
-            Test.update(user=target_id).where(Test.user == orphan_id).execute()
-            SystemWarning.update(user_id=target_id).where(SystemWarning.user_id == orphan_id).execute()
-            EditHistory.update(user_id=target_id).where(EditHistory.user_id == orphan_id).execute()
-            Invite.update(created_by=target_id).where(Invite.created_by == orphan_id).execute()
+            ChatSession.update(user=target_id).where(ChatSession.user == absorbed_id).execute()
+            ChatSession.update(username=target_id).where(ChatSession.username == absorbed_id).execute()
+            Test.update(user=target_id).where(Test.user == absorbed_id).execute()
+            Test.update(username=target_id).where(Test.username == absorbed_id).execute()
+            SystemWarning.update(user_id=target_id).where(SystemWarning.user_id == absorbed_id).execute()
+            EditHistory.update(user_id=target_id).where(EditHistory.user_id == absorbed_id).execute()
+            Invite.update(created_by=target_id).where(Invite.created_by == absorbed_id).execute()
             # UserProject's PK is (user, project_name) — reassigning would
             # collide wherever target already has its own row for that
             # project, so those are dropped instead of overwriting it.
             target_projects = {
                 row.project_name_id for row in UserProject.select(UserProject.project_name).where(UserProject.user == target_id)
             }
-            for row in list(UserProject.select().where(UserProject.user == orphan_id)):
+            for row in list(UserProject.select().where(UserProject.user == absorbed_id)):
                 if row.project_name_id in target_projects:
                     row.delete_instance()
                 else:
                     UserProject.update(user=target_id).where(
-                        (UserProject.user == orphan_id) & (UserProject.project_name == row.project_name_id)
+                        (UserProject.user == absorbed_id) & (UserProject.project_name == row.project_name_id)
                     ).execute()
-            User.delete().where(User.id == orphan_id).execute()
+            User.delete().where(User.id == absorbed_id).execute()
             User.update(whatsapp_phone_number=whatsapp_phone_number).where(User.id == target_id).execute()
 
     def get_user_by_email(self, email: str) -> dict | None:

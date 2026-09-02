@@ -267,47 +267,94 @@ class TestSetWhatsAppPhoneNumber:
         with pytest.raises(ValueError, match="digits only"):
             auth_service.set_whatsapp_phone_number("alice@example.com", "abc123")
 
-    def test_collision_with_a_real_account_is_refused_outright(self, db, auth_service):
+    def test_collision_as_a_regular_user_reports_that_unification_needs_an_admin(self, db, auth_service):
         db.get_or_create_user("google", "sub-1", "alice@example.com", "Alice", None)
         db.get_or_create_user("google", "sub-2", "bob@example.com", "Bob", None)
         auth_service.set_whatsapp_phone_number("bob@example.com", "34600000001")
 
-        with pytest.raises(ValueError, match="already linked to another account"):
-            auth_service.set_whatsapp_phone_number("alice@example.com", "34600000001")
+        result = auth_service.set_whatsapp_phone_number("alice@example.com", "34600000001")
 
-    def test_collision_with_a_whatsapp_native_account_asks_for_confirmation_first(self, db, auth_service, invite_code):
+        assert result["merge_required"] is True
+        assert result["merge_allowed"] is False
+        assert result["existing_account_id"] == "bob@example.com"
+        assert result["existing_account_provider"] == "google"
+        assert db.get_user_by_email("alice@example.com")["whatsapp_phone_number"] is None
+        assert db.get_user_by_email("bob@example.com")["whatsapp_phone_number"] == "34600000001"
+
+    def test_a_whatsapp_native_account_is_no_exception_for_a_regular_user(self, db, auth_service, invite_code):
         db.get_or_create_user("google", "sub-1", "alice@example.com", "Alice", None)
         auth_service.register_via_whatsapp("34600000001", invite_code)
 
         result = auth_service.set_whatsapp_phone_number("alice@example.com", "34600000001")
 
         assert result["merge_required"] is True
+        assert result["merge_allowed"] is False
+        assert result["existing_account_provider"] == "whatsapp"
+        assert db.get_user_by_id("34600000001") is not None
+
+    def test_a_regular_user_cannot_force_the_merge(self, db, auth_service, invite_code):
+        db.get_or_create_user("google", "sub-1", "alice@example.com", "Alice", None)
+        auth_service.register_via_whatsapp("34600000001", invite_code)
+
+        with pytest.raises(PermissionError, match="requires admin privileges"):
+            auth_service.set_whatsapp_phone_number("alice@example.com", "34600000001", confirm_merge=True)
+
+        assert db.get_user_by_email("alice@example.com")["whatsapp_phone_number"] is None
+        assert db.get_user_by_id("34600000001") is not None
+
+    def test_collision_as_an_admin_asks_for_confirmation_first(self, db, auth_service, invite_code):
+        db.get_or_create_user("google", "sub-1", "alice@example.com", "Alice", None)
+        auth_service.register_via_whatsapp("34600000001", invite_code)
+
+        result = auth_service.set_whatsapp_phone_number("alice@example.com", "34600000001", role="admin")
+
+        assert result["merge_required"] is True
+        assert result["merge_allowed"] is True
+        assert result["existing_account_id"] == "34600000001"
         assert result["existing_account_session_count"] == 0
         assert result["existing_account_created_at"] is not None
         # Nothing changed yet — neither account, no merge without confirm_merge.
         assert db.get_user_by_email("alice@example.com")["whatsapp_phone_number"] is None
         assert db.get_user_by_id("34600000001") is not None
 
-    def test_confirmed_merge_moves_the_number_and_deletes_the_orphan(self, db, auth_service, invite_code):
+    def test_confirmed_merge_moves_the_number_and_deletes_the_absorbed_account(self, db, auth_service, invite_code):
         db.get_or_create_user("google", "sub-1", "alice@example.com", "Alice", None)
         auth_service.register_via_whatsapp("34600000001", invite_code)
 
-        result = auth_service.set_whatsapp_phone_number("alice@example.com", "34600000001", confirm_merge=True)
+        result = auth_service.set_whatsapp_phone_number(
+            "alice@example.com", "34600000001", confirm_merge=True, role="admin",
+        )
 
         assert result["whatsapp_phone_number"] == "34600000001"
         assert db.get_user_by_id("34600000001") is None
 
-    def test_confirmed_merge_reassigns_the_orphans_session_and_project_access(self, db, auth_service, invite_code):
+    def test_an_admin_can_absorb_a_real_account_too(self, db, auth_service):
+        db.get_or_create_user("google", "sub-1", "alice@example.com", "Alice", None)
+        db.get_or_create_user("google", "sub-2", "bob@example.com", "Bob", None)
+        auth_service.set_whatsapp_phone_number("bob@example.com", "34600000001")
+
+        result = auth_service.set_whatsapp_phone_number(
+            "alice@example.com", "34600000001", confirm_merge=True, role="admin",
+        )
+
+        assert result["whatsapp_phone_number"] == "34600000001"
+        assert db.get_user_by_id("bob@example.com") is None
+
+    def test_confirmed_merge_reassigns_the_absorbed_accounts_sessions_and_project_access(
+        self, db, auth_service, invite_code,
+    ):
         db.get_or_create_user("google", "sub-1", "alice@example.com", "Alice", None)
         auth_service.register_via_whatsapp("34600000001", invite_code)
         session_id = db.create_chat_session("34600000001", "invite-project", 0)
 
-        auth_service.set_whatsapp_phone_number("alice@example.com", "34600000001", confirm_merge=True)
+        auth_service.set_whatsapp_phone_number("alice@example.com", "34600000001", confirm_merge=True, role="admin")
 
-        assert db.get_chat_session(session_id)["username"] == "34600000001"
+        assert db.get_chat_session(session_id)["username"] == "alice@example.com"
+        assert db.count_sessions_for_user("alice@example.com") == 1
+        assert db.get_latest_chat_session("alice@example.com", "invite-project")["id"] == session_id
         assert db.user_has_project_access("alice@example.com", "invite-project")
 
-    def test_confirmed_merge_drops_the_orphans_project_row_if_target_already_has_one(
+    def test_confirmed_merge_drops_the_absorbed_accounts_project_row_if_target_already_has_one(
         self, db, auth_service, project_service, invite_code,
     ):
         db.get_or_create_user("google", "sub-1", "alice@example.com", "Alice", None)
@@ -315,7 +362,7 @@ class TestSetWhatsAppPhoneNumber:
         project_service.redeem_invite(invite, "alice@example.com")
         auth_service.register_via_whatsapp("34600000001", invite_code)
 
-        auth_service.set_whatsapp_phone_number("alice@example.com", "34600000001", confirm_merge=True)
+        auth_service.set_whatsapp_phone_number("alice@example.com", "34600000001", confirm_merge=True, role="admin")
 
         assert db.user_has_project_access("alice@example.com", "invite-project")
 

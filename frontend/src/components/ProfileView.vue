@@ -41,6 +41,36 @@ function validateWhatsAppNumber(value) {
   return ''
 }
 
+function describeExistingAccount(outcome) {
+  const sessions = outcome.existing_account_session_count
+  const history = `${sessions} session${sessions === 1 ? '' : 's'}`
+  const created = formatDate(outcome.existing_account_created_at)
+  if (outcome.existing_account_provider === 'whatsapp') {
+    return `a WhatsApp-only account created on ${created}, with ${history}`
+  }
+  const provider = outcome.existing_account_provider ?? 'unknown provider'
+  return `the account ${outcome.existing_account_id} (${provider}), created on ${created}, with ${history}`
+}
+
+async function confirmAccountUnification(outcome) {
+  const linkedTo = `This number is already linked to ${describeExistingAccount(outcome)}.`
+  if (!outcome.merge_allowed) {
+    await infoDialog({
+      title: 'Account unification required',
+      body: `${linkedTo}\n\nLinking it to your account means unifying the two accounts, `
+        + `which requires admin privileges. Ask an administrator.`
+    })
+    return false
+  }
+  return confirmDialog({
+    title: 'Unify accounts?',
+    body: `${linkedTo}\n\nUnifying moves all of its sessions and data to your account `
+      + `and removes the other account. This cannot be undone.`,
+    okLabel: 'Unify accounts',
+    danger: true
+  })
+}
+
 async function editWhatsAppNumber() {
   const result = await promptDialog({
     title: 'WhatsApp number',
@@ -56,16 +86,7 @@ async function editWhatsAppNumber() {
     const outcome = await putWhatsAppPhoneNumber(number)
     if (outcome.merge_required) {
       savingWhatsApp.value = false
-      const sessions = outcome.existing_account_session_count
-      const ok = await confirmDialog({
-        title: 'Number already in use',
-        body: `This number is already linked to a WhatsApp-only account created on `
-          + `${formatDate(outcome.existing_account_created_at)}, with ${sessions} `
-          + `session${sessions === 1 ? '' : 's'}. Merge its history into your account `
-          + `and remove the other one?`,
-        okLabel: 'Merge'
-      })
-      if (!ok) return
+      if (!(await confirmAccountUnification(outcome))) return
       savingWhatsApp.value = true
       profile.value = await putWhatsAppPhoneNumber(number, true)
       return
