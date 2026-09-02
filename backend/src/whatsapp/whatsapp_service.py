@@ -143,8 +143,11 @@ class WhatsAppService(object):
         )
         self._seen = _SeenMessages()
         self._sender_locks: dict[str, asyncio.Lock] = {}
+        self._voice_notes = VoiceNoteSynthesizer(talk_service) if talk_service is not None else None
 
     async def close(self) -> None:
+        if self._voice_notes is not None:
+            self._voice_notes.cancel()
         await self._client.close()
 
     # ----------------------------------------------------------------- #
@@ -241,7 +244,7 @@ class WhatsAppService(object):
                 text = await self._transcribe(message, message.audio_id, self._listen_service)
                 if text is None:
                     return _notice(REPLY_AUDIO_NOT_UNDERSTOOD)
-                return (*await self._run_turn(text), True)
+                return (*await self._run_turn(text, spoken=True), True)
             text = (message.text or "").strip()
             if message.type != "text" or not text:
                 return _notice(REPLY_UNSUPPORTED)
@@ -342,7 +345,7 @@ class WhatsAppService(object):
         state = self._chat_service.get_state_for_session(session_id)
         return self._new_assistant_replies(session_id, last_seen_id), state["manual_actions"]
 
-    async def _run_turn(self, text: str) -> tuple[list[Reply], list[dict] | None, int | None]:
+    async def _run_turn(self, text: str, spoken: bool = False) -> tuple[list[Reply], list[dict] | None, int | None]:
         """Unlike ChatWindow.vue's own bootstrap, it's the user's text
         that starts or continues the conversation here — no AI-initiated
         opening message runs ahead of it (see ChatService.
@@ -361,9 +364,12 @@ class WhatsAppService(object):
         last_seen_id = max((m["id"] for m in self._db.get_messages(session_id, last_n=1)), default=0)
         notice: str | None = None
         manual_actions: list[dict] | None = None
+        voice_notes = self._voice_notes if self._wants_voice(spoken) else None
         try:
             await self._chat_service.prepare_user_initiated_turn(session_id)
-            reply = await self._chat_service.process_turn(session_id, text)
+            reply = await self._chat_service.process_turn(
+                session_id, text, on_metadata=voice_notes.on_metadata if voice_notes is not None else None,
+            )
             manual_actions = reply["state"]["manual_actions"]
         except ServiceError as exc:
             if exc.status_code == HTTPStatus.CONFLICT:
@@ -460,18 +466,17 @@ class WhatsAppService(object):
         text, never to silence."""
         logger.info(
             f"WhatsApp: _try_voice_note for {to}: audio_text={reply.audio_text!r} "
-            f"talk_service_configured={self._talk_service is not None}"
+            f"talk_service_configured={self._voice_notes is not None}"
         )
-        if not reply.audio_text or self._talk_service is None:
+        if not reply.audio_text or self._voice_notes is None:
             return False
-        from whatsapp.audio import WHATSAPP_VOICE_MIME, wav_to_ogg_opus
+        from whatsapp.audio import WHATSAPP_VOICE_MIME
 
         try:
-            wav = b"".join([chunk async for chunk in self._talk_service.generate(reply.audio_text)])
-            if not wav:
+            ogg = await self._voice_notes.ogg_for(reply.audio_text)
+            if not ogg:
                 logger.warning("WhatsApp: talk-service produced no audio, falling back to text.")
                 return False
-            ogg = await asyncio.to_thread(wav_to_ogg_opus, wav)
             media_id = await self._client.upload_media(ogg, WHATSAPP_VOICE_MIME)
             await self._client.send_audio(to, media_id)
             logger.info(f"WhatsApp: voice note sent to {to} ({len(ogg)} bytes, media {media_id}).")
@@ -518,6 +523,57 @@ class WhatsAppService(object):
 
 def _notice(text: str) -> tuple[list[Reply], None, None, bool]:
     return [Reply(text)], None, None, False
+
+
+class VoiceNoteSynthesizer(object):
+    """Turns a reply's [audio] text into the OGG/Opus bytes of a voice
+    note, and starts doing so the moment the model emits that text —
+    ahead of the reply's own text, signals and env — so by the time the
+    turn is over and the note is actually wanted, it's already encoded
+    (or well on its way). The synthesis and the encoding are one pass:
+    every WAV piece TalkService yields goes straight into the encoder."""
+
+    _MAX_PENDING = 16
+
+    def __init__(self, talk_service: "TalkService") -> None:
+        self._talk_service = talk_service
+        self._pending: dict[str, asyncio.Task[bytes]] = {}
+
+    async def on_metadata(self, key: str, value) -> None:
+        if key != "audio" or not value or value in self._pending:
+            return
+        while len(self._pending) >= self._MAX_PENDING:
+            self._pending.pop(next(iter(self._pending))).cancel()
+        task = asyncio.create_task(self._synthesize(value))
+        task.add_done_callback(_log_unretrieved_failure)
+        self._pending[value] = task
+
+    async def ogg_for(self, text: str) -> bytes:
+        started = self._pending.pop(text, None)
+        if started is not None:
+            return await started
+        return await self._synthesize(text)
+
+    def cancel(self) -> None:
+        for task in self._pending.values():
+            task.cancel()
+        self._pending.clear()
+
+    async def _synthesize(self, text: str) -> bytes:
+        from whatsapp.audio import OggOpusEncoder
+
+        encoder = OggOpusEncoder()
+        async for wav_piece in self._talk_service.generate(text):
+            await asyncio.to_thread(encoder.push, wav_piece)
+        return await asyncio.to_thread(encoder.finish)
+
+
+def _log_unretrieved_failure(task: "asyncio.Task[bytes]") -> None:
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.warning(f"WhatsApp: voice note synthesis started ahead of the reply failed: {exc}")
 
 
 # --------------------------------------------------------------------- #

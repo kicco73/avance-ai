@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import io
 import json
 import math
 import struct
@@ -147,6 +148,9 @@ class _FakeChatService:
         self.reply_audio_text: str | None = None
         self.terms_content: str = "Please accept to continue."
         self.accepted_terms_for: list[str] = []
+        self.in_turn = False
+        self.announces_audio = True
+        self.announced_audio_text: str | None = None
 
     def get_or_create_current_session(self, session_id):
         self.calls.append(("session", Session().user))
@@ -173,12 +177,22 @@ class _FakeChatService:
     def get_state_for_session(self, session_id):
         return self.state
 
-    async def process_turn(self, session_id, text):
+    async def process_turn(self, session_id, text, on_metadata=None):
         self.calls.append(("turn", Session().user))
         if self.turn_error is not None:
             raise self.turn_error
-        self.db.add(session_id, "user", text)
-        self.db.add(session_id, "assistant", f"**Hola** — has dicho: {text}", audio_text=self.reply_audio_text)
+        self.in_turn = True
+        try:
+            # The real turn emits the reply's [audio] text well before the
+            # rest of the reply is written — mirrored here, with a yield to
+            # the loop so whatever that callback started gets to run mid-turn.
+            if on_metadata is not None and self.announces_audio and self.reply_audio_text:
+                await on_metadata("audio", self.announced_audio_text or self.reply_audio_text)
+                await asyncio.sleep(0)
+            self.db.add(session_id, "user", text)
+            self.db.add(session_id, "assistant", f"**Hola** — has dicho: {text}", audio_text=self.reply_audio_text)
+        finally:
+            self.in_turn = False
         return {"session_id": session_id, "state": self.state}
 
     async def apply_manual_action(self, action_name, session_id):
@@ -202,9 +216,12 @@ class _FakeTalk:
     def __init__(self) -> None:
         self.spoken: list[str] = []
         self.silent = False
+        self.chat: _FakeChatService | None = None
+        self.requested_during_turn: list[bool] = []
 
     async def generate(self, text):
         self.spoken.append(text)
+        self.requested_during_turn.append(self.chat.in_turn if self.chat is not None else False)
         if self.silent:
             return
         pcm, rate = split_wav(_wav())
@@ -314,6 +331,7 @@ def voice_env():
     """Both voice services on, default policy (answer in kind)."""
     talk, listen = _FakeTalk(), _FakeListen()
     client, service, chat, db, api = _build(talk=talk, listen=listen)
+    talk.chat = chat
     return client, service, chat, db, api, talk, listen
 
 
@@ -794,6 +812,52 @@ def test_voice_policy_never_stays_text():
     assert api.sent == [(LINKED_NUMBER, "*Hola* — has dicho: hola por voz")]
 
 
+def test_synthesis_starts_while_the_turn_is_still_running(voice_env):
+    """The reply's [audio] text is the first thing the model emits; the
+    voice note's synthesis starts right then, not once the whole turn
+    (text, signals, env, persistence) is over — the send itself then
+    finds that generation in flight or cached."""
+    client, _, chat, _, api, talk, _ = voice_env
+    chat.reply_audio_text = "Hola."
+    _post(client, _payload(mtype="audio"))
+    assert talk.spoken == ["Hola."]
+    assert talk.requested_during_turn == [True]
+    assert api.audio_sent == [(LINKED_NUMBER, "media-1")]
+
+
+def test_a_turn_that_never_announced_its_audio_text_still_gets_a_voice_note(voice_env):
+    """The prefetch is an optimisation, not a dependency: with no audio
+    metadata during the turn (a fixed-message state, an older strategy),
+    the note is synthesized on the spot from the persisted audio text."""
+    client, _, chat, _, api, talk, _ = voice_env
+    chat.reply_audio_text = "Hola."
+    chat.announces_audio = False
+    _post(client, _payload(mtype="audio"))
+    assert talk.spoken == ["Hola."]
+    assert talk.requested_during_turn == [False]
+    assert api.audio_sent == [(LINKED_NUMBER, "media-1")]
+
+
+def test_a_regenerated_reply_with_a_different_audio_text_is_synthesized_afresh(voice_env):
+    """A state transition regenerates the reply, so the audio text the
+    model first announced isn't the one persisted — the note follows the
+    persisted one, and the early synthesis is simply left unused."""
+    client, _, chat, _, api, talk, _ = voice_env
+    chat.reply_audio_text = "Hola."
+    chat.announced_audio_text = "Hola, primer intento."
+    _post(client, _payload(mtype="audio"))
+    assert talk.spoken == ["Hola, primer intento.", "Hola."]
+    assert api.audio_sent == [(LINKED_NUMBER, "media-1")]
+
+
+def test_no_synthesis_ahead_of_a_typed_message_under_the_default_policy(voice_env):
+    client, _, chat, _, api, talk, _ = voice_env
+    chat.reply_audio_text = "Hola."
+    _post(client, _payload(text="hola"))
+    assert talk.spoken == []
+    assert api.sent == [(LINKED_NUMBER, "*Hola* — has dicho: hola")]
+
+
 def test_reply_without_audio_text_falls_back_to_text(voice_env):
     client, _, chat, _, api, talk, _ = voice_env
     chat.reply_audio_text = None
@@ -811,17 +875,17 @@ def test_voice_note_without_talk_service_falls_back_to_text():
 
 
 def test_encoding_error_of_any_kind_falls_back_to_text(voice_env, monkeypatch):
-    """wav_to_ogg_opus goes through PyAV, whose own exception types don't
+    """The encoder goes through PyAV, whose own exception types don't
     derive from ValueError/httpx.HTTPError/ImportError — this used to
     escape _try_voice_note uncaught and leave the user with no reply at
     all instead of the text fallback."""
     client, _, chat, _, api, talk, _ = voice_env
     chat.reply_audio_text = "Hola."
 
-    def _boom(wav):
+    def _boom(self, wav):
         raise RuntimeError("pyav exploded")
 
-    monkeypatch.setattr("whatsapp.audio.wav_to_ogg_opus", _boom)
+    monkeypatch.setattr("whatsapp.audio.OggOpusEncoder.push", _boom)
     _post(client, _payload(mtype="audio"))
     assert api.audio_sent == [] and api.uploaded == []
     assert api.sent == [(LINKED_NUMBER, "*Hola* — has dicho: hola por voz")]
@@ -889,6 +953,36 @@ def test_wav_to_ogg_opus_produces_mono_48k_opus():
     head = ogg.index(b"OpusHead")
     assert ogg[head + 9] == 1
     assert len(ogg) < len(_wav(seconds=1.0)) // 3
+
+
+def test_incremental_encoder_matches_whole_file_encoding():
+    """Pushing the stream in arbitrary pieces — the header split too —
+    must decode to the same audio as encoding the complete WAV at once."""
+    import av
+    from whatsapp.audio import OggOpusEncoder
+
+    def decoded_samples(ogg: bytes) -> int:
+        container = av.open(io.BytesIO(ogg))
+        try:
+            return sum(frame.samples for frame in container.decode(audio=0))
+        finally:
+            container.close()
+
+    wav = _wav(seconds=1.0, rate=24000)
+    encoder = OggOpusEncoder()
+    for i in range(0, len(wav), 7):
+        encoder.push(wav[i:i + 7])
+    streamed = encoder.finish()
+    assert streamed[:4] == b"OggS"
+    assert decoded_samples(streamed) == decoded_samples(wav_to_ogg_opus(wav))
+
+
+def test_incremental_encoder_with_no_audio_finishes_empty():
+    from whatsapp.audio import OggOpusEncoder
+
+    encoder = OggOpusEncoder()
+    encoder.push(PcmWavCodec.streaming_header(22050))
+    assert encoder.finish() == b""
 
 
 def test_wav_to_ogg_opus_rejects_empty_audio():
