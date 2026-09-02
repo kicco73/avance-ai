@@ -800,7 +800,7 @@ def test_voice_policy_always_speaks_text_replies_too():
     client, _, chat, _, api = _build(config=_config(voice_replies="always"), talk=talk)
     chat.reply_audio_text = "Hola."
     _post(client, _payload(text="hola"))
-    assert talk.spoken == ["Hola.", "Hola."] and len(api.audio_sent) == 1 and api.sent == []
+    assert talk.spoken == ["Hola."] and len(api.audio_sent) == 1 and api.sent == []
 
 
 def test_voice_policy_never_stays_text():
@@ -896,7 +896,7 @@ def test_upload_failure_falls_back_to_text(voice_env):
     chat.reply_audio_text = "Hola."
     api.fail_upload = True
     _post(client, _payload(mtype="audio"))
-    assert talk.spoken == ["Hola.", "Hola."] and api.audio_sent == []
+    assert talk.spoken == ["Hola."] and api.audio_sent == []
     assert api.sent == [(LINKED_NUMBER, "*Hola* — has dicho: hola por voz")]
 
 
