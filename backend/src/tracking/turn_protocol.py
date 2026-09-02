@@ -62,7 +62,8 @@ class TurnProtocol(ABC):
 
 	@abstractmethod
 	def generate_reply_with_schema(
-		self, base_prompt: str, tag_specs: list[tuple[str, str]], chat_history: list[dict], on_metadata: MetadataCallback,
+		self, base_prompt: str, env: Env, tag_specs: list[tuple[str, str]], chat_history: list[dict],
+		on_metadata: MetadataCallback,
 	) -> AsyncIterator[str]:
 		raise NotImplementedError
 

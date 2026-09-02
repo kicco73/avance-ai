@@ -4,6 +4,7 @@ from typing import AsyncIterator
 
 from ai.llm_provider import MetadataCallback
 from logging_factory import LoggerFactory
+from tracking.env import Env
 from tracking.tag_prompt_builder import TagPromptBuilder
 from tracking.text_filter import ConcatTagFilter
 from tracking.turn_protocol import TurnProtocol
@@ -120,12 +121,17 @@ class TurnProcotolUsingTextExtraction(TurnProtocol):
         return self._stream_and_filter(prompt, chat_history, list(self.include_tags), on_metadata)
 
     def generate_reply_with_schema(
-        self, base_prompt: str, tag_specs: list[tuple[str, str]], chat_history: list[dict], on_metadata: MetadataCallback,
+        self, base_prompt: str, env: Env, tag_specs: list[tuple[str, str]], chat_history: list[dict],
+        on_metadata: MetadataCallback,
     ) -> AsyncIterator[str]:
         preambles = TagPromptBuilder().build(tag_specs, self.prompt_preambles)
         tag_names = [tag for tag, _ in tag_specs]
+        data_by_tag = {'env': env.serialise_as_text()}
 
-        content = [preambles[tag] for tag in tag_names] + [base_prompt]
+        content = []
+        for tag in tag_names:
+            content += [preambles[tag], data_by_tag.get(tag, "")]
+        content.append(base_prompt)
         prompt = "\n\n".join(content)
 
         return self._stream_and_filter(prompt, chat_history, tag_names, on_metadata)

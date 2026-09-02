@@ -88,18 +88,27 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			self.out.reply = buffered_text_before_signals_resolved
 			self.metadata.on_metadata('chunk', buffered_text_before_signals_resolved)
 
-		if self.user.state != self.out.state:
+		transitioned = self.user.state != self.out.state
+
+		if transitioned:
 			# Wrong guess — the async method moved the automaton.
 			# We need to regenerate the answer
 
 			self.out.reply = ""
+
+			# FIXME: must run before the regenerated prompt below, and not
+			# again via apply_transition further down — see record_transition.
+			self.out.on_enter = self._tracking_engine.apply_action_env(
+				self.user.automaton, self.out.action, self.metadata.signals, self.user.state.key,
+				username=Session().user, project_name=self.user.project_name,
+			)
 
 			# Signals are already known from the first call — asking again
 			# would be wasted and must not trigger a second trigger
 			# evaluation, so this regeneration only ever requests audio/text/env.
 			base_prompt, chat_history = self._build_base_prompt_and_history(self.out.state)
 			async for chunk in self.build_turn_protocol().generate_reply_with_schema(
-				base_prompt,
+				base_prompt, self.env,
 				tag_specs=[('audio', 'audio'), ('text', 'text'), ('env', 'env')],
 				chat_history=chat_history,
 				on_metadata=self.on_receiving_metadata_when_repeating_the_call,
@@ -112,11 +121,18 @@ class TrackingProcessorAfterUserMessage(TrackingProcessor):
 			# links to it directly — except an opening turn, whose
 			# message_id only points at a placeholder that gets deleted, which would silently orphan an early link.
 			has_real_user_message = not self.user.has_ai_started_conversation
-			self.out.tracking_id, self.out.on_enter = self._tracking_engine.apply_transition(
-				self.user.automaton, self.user.state, self.out.action, self.metadata.signals, self.user.session_id,
-				message_id=self.user.message_id if has_real_user_message else None,
-				origin='trigger', username=Session().user, project_name=self.user.project_name,
-			)
+			if transitioned:
+				self.out.tracking_id = self._tracking_engine.record_transition(
+					self.user.automaton, self.user.state, self.out.action, self.metadata.signals, self.user.session_id,
+					message_id=self.user.message_id if has_real_user_message else None,
+					origin='trigger', username=Session().user, project_name=self.user.project_name,
+				)
+			else:
+				self.out.tracking_id, self.out.on_enter = self._tracking_engine.apply_transition(
+					self.user.automaton, self.user.state, self.out.action, self.metadata.signals, self.user.session_id,
+					message_id=self.user.message_id if has_real_user_message else None,
+					origin='trigger', username=Session().user, project_name=self.user.project_name,
+				)
 			self.out.tracking_linked_to_message = has_real_user_message
 
 		return self.out

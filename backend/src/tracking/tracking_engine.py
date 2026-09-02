@@ -156,6 +156,28 @@ class TrackingEngine:
         # history_cutoff's own timestamp.
 
         on_enter = self.apply_action_env(automaton, action, signal_values, state.key, username=username, project_name=project_name)
+        tracking_id = self.record_transition(
+            automaton, state, action, signal_values, session_id, message_id,
+            origin=origin, username=username, project_name=project_name,
+        )
+        return tracking_id, on_enter
+
+    def record_transition(
+        self,
+        automaton: Automaton,
+        state: State,
+        action: Action,
+        signal_values: dict,
+        session_id: int,
+        message_id: int | None = None,
+        *,
+        origin: str,
+        username: str | None = None,
+        project_name: str | None = None,
+    ) -> int:
+        # FIXME: caller must have already applied action's own env: (via
+        # apply_action_env) itself — calling apply_transition too for the
+        # same action would run apply_action_env (and any on-enter) twice.
         tracking_id = self._sink.save_transition(
             state.key,
             action.name,
@@ -167,7 +189,7 @@ class TrackingEngine:
             origin=origin,
         )
         self.notify_transition(username, project_name, state.key, action.target)
-        return tracking_id, on_enter
+        return tracking_id
 
     @staticmethod
     def notify_transition(

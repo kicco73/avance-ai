@@ -80,7 +80,7 @@ class TurnByTurnSignalSource:
             elif kind == 'env':
                 stored_env.update(MetadataHandler.parse_raw_env(value))
 
-        async for _ in protocol.generate_reply_with_schema(base_prompt, tag_specs, chat_history, on_metadata):
+        async for _ in protocol.generate_reply_with_schema(base_prompt, Env(), tag_specs, chat_history, on_metadata):
             pass
         self.calls_made += 1
 
@@ -211,7 +211,7 @@ class BatchSignalSource(object):
             elif tag == 'env':
                 env_by_turn = MetadataHandler.parse_batch_env(value, len(turn_ids))
 
-        async for _ in protocol.generate_reply_with_schema(base_prompt, tag_specs, chat_history, on_metadata):
+        async for _ in protocol.generate_reply_with_schema(base_prompt, Env(), tag_specs, chat_history, on_metadata):
             pass
         self.calls_made += 1
 
