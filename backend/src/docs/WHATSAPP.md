@@ -98,7 +98,16 @@ email at all.
   never sent outside it either.
 - Non-chat/final state (`process_turn` → 409): a short notice pointing to
   the web.
-- Paused project / Terms pending: a notice, no turn.
+- Paused project: a notice, no turn.
+- Legal terms pending (a project's own `legal/terms.md`, distinct from the
+  one-time platform Terms at registration): the terms content itself,
+  same Markdown flattening as any other reply, with a single Accept
+  button — the WhatsApp equivalent of TermsView.vue. Tapping it calls
+  `ChatService.accept_legal_terms` and then bootstraps the session like a
+  fresh registration would (a brand-new session's own opening message,
+  if any; nothing extra for one whose prior history was already
+  delivered — never a resend of it), falling back to a plain "terms
+  accepted" confirmation when there's nothing new to send.
 - Any other unexpected error (a bug, a DB error, an invite-redeem failure
   that isn't one of `AuthService`'s own `PermissionError` reasons, etc.):
   a generic "we apologize for the inconvenience" notice, never silence —

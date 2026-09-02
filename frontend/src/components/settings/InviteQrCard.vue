@@ -25,7 +25,7 @@ async function copyLink() {
     </div>
     <p v-if="hint" class="invite-qr-hint">{{ hint }}</p>
     <div class="invite-qr-link-row">
-      <input type="text" class="invite-qr-link-input" :value="linkUrl" readonly @click="$event.target.select()" />
+      <a :href="linkUrl" target="_blank" rel="noopener noreferrer" class="invite-qr-link-input">{{ linkUrl }}</a>
       <button type="button" class="invite-qr-copy-btn" @click="copyLink">{{ copied ? 'Copied' : 'Copy' }}</button>
     </div>
   </div>
@@ -67,14 +67,24 @@ async function copyLink() {
 }
 
 .invite-qr-link-input {
+  display: block;
   flex: 1;
   min-width: 0;
   padding: 0.4rem 0.55rem;
   border-radius: 6px;
   border: 1px solid #ccc;
   font-size: 0.78rem;
-  color: #444;
+  color: #4a6fa5;
   background: #fafafa;
+  text-align: left;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.invite-qr-link-input:hover {
+  text-decoration: underline;
 }
 
 .invite-qr-copy-btn {
