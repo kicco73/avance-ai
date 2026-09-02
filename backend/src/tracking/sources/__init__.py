@@ -12,6 +12,7 @@ from automaton.automaton import Automaton
 from db import Db
 
 from . import attachment as attachment_source
+from . import search as search_source
 
 
 class SourceNamespace(object):
@@ -21,3 +22,6 @@ class SourceNamespace(object):
 
     def attachment(self, name: str) -> str:
         return attachment_source.read(self._db, self._automaton, name)
+
+    def search(self, what: str, where: str) -> str:
+        return search_source.read(self._db, self._automaton, what, where)

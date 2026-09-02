@@ -42,6 +42,7 @@ import {
 import { setApiWarning } from '../../../errorStore.js'
 import { confirmDialog, chooseDialog, customDialog } from '../../../dialogStore.js'
 import { refreshIdentifierRegistry } from '../../../identifierRegistry.js'
+import { refreshProjectFiles } from '../../../projectFiles.js'
 import { buildTimeline, highlightedStateKeyFor, nearestMessageIdAtOrBefore, resultingStateKeyFor, signalValuesFor } from '../../../testTimeline.js'
 // `sessions` here is the *project's* whole session catalog (loaded by
 // ProjectTestPanel.vue, the "Test" tab, via the live store) —
@@ -385,6 +386,7 @@ async function refreshValidStateKeys() {
   // shared trigger-autocomplete registry here (see identifierRegistry.js)
   // covers every way a signal/action can come into existence.
   refreshIdentifierRegistry(props.projectName)
+  refreshProjectFiles(props.projectName)
 }
 
 // The state a given message's turn left the conversation in — a

@@ -8,8 +8,27 @@ import { snippetCompletion } from '@codemirror/autocomplete'
 // only carries a free-text description, never a structured signature.
 const CALL_PARAMS = {
   'source.attachment': ['name'],
+  'source.search': ['what', 'where'],
   'actuator.send_mail': ['to', 'body_md'],
   'actuator.notify': ['title', 'body_md']
+}
+
+const STRING_LITERAL_SOURCE = /'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"/.source
+
+const FILE_PATH_ARG_PATTERN = new RegExp(
+  `source\\.(?:attachment\\(|search\\(\\s*(?:${STRING_LITERAL_SOURCE})\\s*,)\\s*(['"])([^'"]*)$`
+)
+
+export function completeFilePathArgument(context, files) {
+  const text = context.state.sliceDoc(0, context.pos)
+  const match = FILE_PATH_ARG_PATTERN.exec(text)
+  if (!match) return null
+  const partial = match[2]
+  const from = context.pos - partial.length
+  return {
+    from,
+    options: files.map((file) => ({ label: file, type: 'text', apply: file }))
+  }
 }
 
 // Fixed per-namespace colors — frontend-only, the identifier registry

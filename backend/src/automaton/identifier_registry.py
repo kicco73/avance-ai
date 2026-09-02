@@ -29,6 +29,7 @@ class IdentifierRegistry:
     # source" plugins an action's own `env:` field can pull data through.
     SOURCE: dict[str, str] = {
         "attachment": "One of the project's own attachment files, by name, read as plain text — e.g. source.attachment('notes.txt').",
+        "search": "Grep over a CSV attachment: the header row plus every row containing `what` (case-insensitive) — e.g. source.search('Paris', 'geo/cities.csv').",
     }
 
     ACTUATOR: dict[str, str] = {

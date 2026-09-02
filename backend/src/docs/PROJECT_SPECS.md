@@ -306,23 +306,39 @@ else may appear unnamespaced anymore. `actuator.<name>(...)` is a
 
 **Data sources** (`source.<name>(...)`) are code-defined "plugins" —
 each one is its own Python module (`backend/src/tracking/sources/`),
-not something a project declares in YAML. The only one that exists
-today is `source.attachment(name)`: reads one of this project's own
-uploaded files by name (exact path, or a unique basename), **directly
-from storage** — not the `attachments:` mechanism (§5/§6) at all, and
-not eagerly loaded the way an action's own declared attachments are.
-This is deliberate: a project can bundle large reference files no
-state/action/signal ever declares as an `attachments:` entry, without
-paying to load and convert every one of them on every build — only the
-one file actually named, only when a running trigger/env: expression
-asks for it. Returns the file's **text** content; a binary file raises,
-since there's no binary-to-text extraction. Reads at the exact revision
-the current conversation's own automaton was loaded from — never
-"whatever's published right now" — so mid-conversation this always sees
-the same file content the rest of that conversation's automaton does,
-even if the project gets edited/republished while it's still running.
-Typically combined with `env:` (§6.4) to load a file's content into a
-prompt-visible variable once, e.g. `policy: source.attachment('policy.md')`.
+not something a project declares in YAML. Two exist today:
+
+- `source.attachment(name)`: reads one of this project's own
+  uploaded files by name (exact path, or a unique basename), **directly
+  from storage** — not the `attachments:` mechanism (§5/§6) at all, and
+  not eagerly loaded the way an action's own declared attachments are.
+  This is deliberate: a project can bundle large reference files no
+  state/action/signal ever declares as an `attachments:` entry, without
+  paying to load and convert every one of them on every build — only the
+  one file actually named, only when a running trigger/env: expression
+  asks for it. Returns the file's **text** content; a binary file raises,
+  since there's no binary-to-text extraction. Reads at the exact revision
+  the current conversation's own automaton was loaded from — never
+  "whatever's published right now" — so mid-conversation this always sees
+  the same file content the rest of that conversation's automaton does,
+  even if the project gets edited/republished while it's still running.
+  Typically combined with `env:` (§6.4) to load a file's content into a
+  prompt-visible variable once, e.g. `policy: source.attachment('policy.md')`.
+
+- `source.search(what, where)`: a `grep`-like lookup over one of the
+  project's own attachments, read the exact same way `source.attachment`
+  reads `where` (same exact-path-or-unique-basename resolution, same
+  binary/missing/ambiguous errors, same pinned-revision behavior).
+  Assumes the file is a **normalized CSV** — one header row followed by
+  one row per record — and returns just the header line (including its
+  own trailing newline) plus every subsequent line containing `what` as
+  a **case-insensitive** substring, anywhere in the line. Lines that
+  don't match are dropped entirely, so a large reference table can be
+  narrowed down to only its relevant rows before it ever reaches a
+  prompt. E.g. `source.search('Paris', 'geo/cities.csv')` returns
+  `geo/cities.csv`'s header plus every row mentioning "Paris" in any
+  column.
+
 New data sources are a code change (a new module in that package plus
 one dispatch method), not something a project author can add on their
 own — this table just lists what's currently available.

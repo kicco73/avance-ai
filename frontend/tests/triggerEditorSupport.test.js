@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { EditorState } from '@codemirror/state'
 import { CompletionContext } from '@codemirror/autocomplete'
-import { completeIdentifiers, completionInfo, isProxyNamespace, namespaceOf, NAMESPACE_COLORS } from '../src/triggerEditorSupport.js'
+import {
+  completeIdentifiers, completeFilePathArgument, completionInfo, isProxyNamespace, namespaceOf, NAMESPACE_COLORS
+} from '../src/triggerEditorSupport.js'
 
 const REGISTRY = {
   signal: { mood: 'How positive the user sounds.' },
@@ -167,6 +169,47 @@ describe('completeIdentifiers', () => {
     expect(option.label).toBe('budget')
     expect(option.type).toBe('variable')
     expect(option.apply).toBe('budget')
+  })
+})
+
+describe('completeFilePathArgument', () => {
+  const FILES = ['index.yml', 'behaviour/attachment.txt', 'notes.txt']
+
+  it('offers every project file right inside source.attachment(\'', () => {
+    const result = completeFilePathArgument(contextAt("source.attachment('"), FILES)
+    expect(result.options.map((o) => o.label)).toEqual(FILES)
+    expect(result.from).toBe("source.attachment('".length)
+  })
+
+  it('positions from right after the already-typed partial path', () => {
+    const text = "source.attachment('behav"
+    const result = completeFilePathArgument(contextAt(text), FILES)
+    expect(result.from).toBe(text.length - 'behav'.length)
+  })
+
+  it('offers files for search\'s second (where) argument, past a complete what string', () => {
+    const result = completeFilePathArgument(contextAt("source.search('Paris', '"), FILES)
+    expect(result.options.map((o) => o.label)).toEqual(FILES)
+  })
+
+  it('returns null while still typing the first (what) argument', () => {
+    expect(completeFilePathArgument(contextAt("source.search('Par"), FILES)).toBeNull()
+  })
+
+  it('returns null outside any source.attachment/search string argument', () => {
+    expect(completeFilePathArgument(contextAt('signal.mood >= 40'), FILES)).toBeNull()
+  })
+
+  it('resolves the latest call on the line, not an earlier already-closed one', () => {
+    const text = "source.attachment('index.yml') and source.search('Paris', '"
+    const result = completeFilePathArgument(contextAt(text), FILES)
+    expect(result.options.map((o) => o.label)).toEqual(FILES)
+    expect(result.from).toBe(text.length)
+  })
+
+  it('applies the bare file path with no surrounding quotes (the quote is already there)', () => {
+    const result = completeFilePathArgument(contextAt("source.attachment('"), FILES)
+    expect(result.options[0].apply).toBe('index.yml')
   })
 })
 

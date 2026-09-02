@@ -24,7 +24,11 @@ import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete'
 import { lintKeymap } from '@codemirror/lint'
 import { identifierRegistry, refreshIdentifierRegistry } from '../../identifierRegistry.js'
-import { NAMESPACE_COLORS, REFERENCE_PATTERN_SOURCE, completeIdentifiers as completeIdentifiersFor } from '../../triggerEditorSupport.js'
+import { projectFiles } from '../../projectFiles.js'
+import {
+  NAMESPACE_COLORS, REFERENCE_PATTERN_SOURCE,
+  completeIdentifiers as completeIdentifiersFor, completeFilePathArgument
+} from '../../triggerEditorSupport.js'
 
 const model = defineModel({ type: String, default: '' })
 const props = defineProps({ excludeNamespaces: { type: Array, default: () => [] } })
@@ -42,6 +46,10 @@ function completeIdentifiers(context) {
   if (!props.excludeNamespaces.length) return completeIdentifiersFor(context, registry)
   const filtered = Object.fromEntries(Object.entries(registry).filter(([ns]) => !props.excludeNamespaces.includes(ns)))
   return completeIdentifiersFor(context, filtered)
+}
+
+function completeFilePath(context) {
+  return completeFilePathArgument(context, projectFiles.value)
 }
 
 // Matches a namespace reference (e.g. "signal.mood") — group 1 is the
@@ -104,7 +112,7 @@ function createEditor() {
     extensions: [
       editorSetup,
       EditorView.lineWrapping,
-      autocompletion({ override: [completeIdentifiers] }),
+      autocompletion({ override: [completeIdentifiers, completeFilePath] }),
       namespaceHighlighter,
       // Without this, the completion tooltip's container defaults to the
       // editor's own DOM (see @codemirror/view's TooltipViewManager),
