@@ -270,6 +270,89 @@ def test_upgrade_relaxes_a_not_null_constraint_and_preserves_data(tmp_path):
     assert _query(db_path, "PRAGMA foreign_key_check") == []
 
 
+def test_upgrade_relaxes_a_constraint_even_when_every_column_already_matches(tmp_path):
+    # Simulates a database an earlier version of this migration code already
+    # brought up to date column-wise (e.g. whatsapp_phone_number added) but
+    # never revisited email's own NOT NULL — column names alone say nothing
+    # has changed, so the schema-differs check must look at constraints too.
+    db_path = tmp_path / "test.db"
+    Db(f"sqlite:///{db_path}")
+    _run_sql(db_path, [
+        "INSERT INTO Project (name, revision, is_paused, manually_paused, draft_edit_count) VALUES ('lluna', 1, 0, 0, 0)",
+        "INSERT INTO User (id, email, role, created_at) VALUES ('enrico@example.com', 'enrico@example.com', 'user', '2026-01-01 00:00:00')",
+        "PRAGMA legacy_alter_table = ON",
+        'ALTER TABLE "User" RENAME TO "User__old__"',
+        "PRAGMA legacy_alter_table = OFF",
+        "CREATE TABLE User ("
+        "id VARCHAR(255) NOT NULL PRIMARY KEY, "
+        "provider VARCHAR(255), provider_user_id VARCHAR(255), "
+        "email VARCHAR(255) NOT NULL, "
+        "name VARCHAR(255), picture_url VARCHAR(255), "
+        "created_at DATETIME NOT NULL, last_login DATETIME, "
+        "active_project_id VARCHAR(255) REFERENCES Project(name), "
+        "role VARCHAR(255) NOT NULL, "
+        "whatsapp_phone_number VARCHAR(255))",
+        "INSERT INTO User (id, provider, provider_user_id, email, name, picture_url, created_at, last_login, active_project_id, role, whatsapp_phone_number) "
+        "SELECT id, provider, provider_user_id, email, name, picture_url, created_at, last_login, active_project_id, role, whatsapp_phone_number FROM User__old__",
+        "DROP TABLE User__old__",
+    ])
+    columns = {row[1] for row in _query(db_path, "PRAGMA table_info(User)")}
+    assert "whatsapp_phone_number" in columns  # column-name sets already match
+
+    with pytest.raises(ValueError, match="migration-strategy"):
+        Db(f"sqlite:///{db_path}")  # 'stop' must still refuse — constraint-only drift is real drift
+
+    Db(f"sqlite:///{db_path}", migration_strategy="upgrade")
+
+    notnull = {row[1]: bool(row[3]) for row in _query(db_path, "PRAGMA table_info(User)")}
+    assert notnull["email"] is False
+    assert _query(db_path, "SELECT id, email, role FROM User") == [("enrico@example.com", "enrico@example.com", "user")]
+    assert _query(db_path, "PRAGMA foreign_key_check") == []
+
+
+def test_upgrade_rebuild_does_not_collide_with_the_tables_own_pre_existing_indexes(tmp_path):
+    # Reproduces a real deployment history: an earlier migration already
+    # added whatsapp_phone_number via plain add_column (which leaves every
+    # other index on the table untouched), so User keeps its real named
+    # indexes right up to the point a later migration needs to rebuild it
+    # for email's constraint. Renaming the table carries those indexes
+    # along under their original names; recreating the table must not
+    # collide with them.
+    db_path = tmp_path / "test.db"
+    Db(f"sqlite:///{db_path}")
+    _run_sql(db_path, [
+        "INSERT INTO Project (name, revision, is_paused, manually_paused, draft_edit_count) VALUES ('lluna', 1, 0, 0, 0)",
+        "INSERT INTO User (id, email, role, created_at) VALUES ('enrico@example.com', 'enrico@example.com', 'user', '2026-01-01 00:00:00')",
+        "PRAGMA legacy_alter_table = ON",
+        'ALTER TABLE "User" RENAME TO "User__old__"',
+        "PRAGMA legacy_alter_table = OFF",
+        "CREATE TABLE User ("
+        "id VARCHAR(255) NOT NULL PRIMARY KEY, "
+        "provider VARCHAR(255), provider_user_id VARCHAR(255), "
+        "email VARCHAR(255) NOT NULL, "
+        "name VARCHAR(255), picture_url VARCHAR(255), "
+        "created_at DATETIME NOT NULL, last_login DATETIME, "
+        "active_project_id VARCHAR(255) REFERENCES Project(name), "
+        "role VARCHAR(255) NOT NULL, "
+        "whatsapp_phone_number VARCHAR(255))",
+        "INSERT INTO User (id, provider, provider_user_id, email, name, picture_url, created_at, last_login, active_project_id, role, whatsapp_phone_number) "
+        "SELECT id, provider, provider_user_id, email, name, picture_url, created_at, last_login, active_project_id, role, whatsapp_phone_number FROM User__old__",
+        "DROP TABLE User__old__",
+        'CREATE UNIQUE INDEX "user_whatsapp_phone_number" ON "User" ("whatsapp_phone_number")',
+        'CREATE INDEX "user_active_project_id" ON "User" ("active_project_id")',
+        'CREATE UNIQUE INDEX "user_provider_provider_user_id" ON "User" ("provider", "provider_user_id")',
+    ])
+
+    Db(f"sqlite:///{db_path}", migration_strategy="upgrade")
+
+    notnull = {row[1]: bool(row[3]) for row in _query(db_path, "PRAGMA table_info(User)")}
+    assert notnull["email"] is False
+    assert _query(db_path, "SELECT id, email, role FROM User") == [("enrico@example.com", "enrico@example.com", "user")]
+    tables = {row[0] for row in _query(db_path, "SELECT name FROM sqlite_master WHERE type='table'")}
+    assert "User__migrating" not in tables
+    assert _query(db_path, "PRAGMA foreign_key_check") == []
+
+
 def test_upgrade_rebuilds_a_table_needing_both_a_constraint_change_and_a_new_not_null_column(tmp_path):
     db_path = tmp_path / "test.db"
     Db(f"sqlite:///{db_path}")

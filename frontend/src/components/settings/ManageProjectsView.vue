@@ -43,6 +43,13 @@ const emit = defineEmits([
   'profile', 'logout'
 ])
 
+const envTag = (() => {
+  const host = window.location.hostname
+  if (host === 'localhost') return { label: 'DEV', className: 'manage-projects-env-tag-dev' }
+  if (host.startsWith('staging')) return { label: 'STAGING', className: 'manage-projects-env-tag-staging' }
+  return { label: 'PROD', className: 'manage-projects-env-tag-prod' }
+})()
+
 const rows = ref([])
 const loading = ref(true)
 // Name of the project with a pause/resume request in flight; disables
@@ -318,6 +325,7 @@ defineExpose({ refresh: load })
               </div>
             </Transition>
           </div>
+          <span class="manage-projects-env-tag" :class="envTag.className">{{ envTag.label }}</span>
         </div>
       </template>
       <template #center>
@@ -572,6 +580,29 @@ defineExpose({ refresh: load })
 
 .manage-projects-add-menu {
   position: relative;
+}
+
+.manage-projects-env-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: white;
+}
+
+.manage-projects-env-tag-dev {
+  background: #2e7d32;
+}
+
+.manage-projects-env-tag-staging {
+  background: #e65100;
+}
+
+.manage-projects-env-tag-prod {
+  background: #c62828;
 }
 
 .manage-projects-add-panel {
