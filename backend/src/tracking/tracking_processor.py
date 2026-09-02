@@ -139,6 +139,9 @@ class TrackingProcessor(object):
 
 		self.out = await self._get_ai_reply()
 
+		logger.info(
+			"process() got metadata.audio=%r for session %s", self.metadata.audio, self.user.session_id,
+		)
 		assistant_id = self.db.save_message(
 			"assistant", self.out.reply, self.user.session_id,
 			audio_text=self.metadata.audio, tokens=self.metadata.output_tokens,
@@ -197,10 +200,17 @@ class TrackingProcessor(object):
 		supports_schema = self.ai_service.is_provider_with_schema()
 		has_to_evaluate_signals_before_ai_reply = not self.user.automaton.autotracking_on_ai_message
 		Protocol = TurnProtocolUsingSchema if supports_schema else TurnProcotolUsingTextExtraction
+		talk_enabled = self.talk_enabled and self.user.automaton.talk_enabled
+		logger.info(
+			"build_turn_protocol talk_enabled: project=%r session=%s system_talk_enabled=%s "
+			"automaton_talk_enabled=%s -> %s",
+			self.user.project_name, self.user.session_id, self.talk_enabled,
+			self.user.automaton.talk_enabled, talk_enabled,
+		)
 		return Protocol(
 			self.ai_service, has_to_evaluate_signals_before_ai_reply,
 			reactions_enabled=self.user.automaton.reactions_enabled_for(self.user.state),
-			talk_enabled=self.talk_enabled and self.user.automaton.talk_enabled,
+			talk_enabled=talk_enabled,
 		)
 
 	def __build_turn_prompt_parts(self, automaton: Automaton, state: State) -> tuple[str, str | None, str | None, list]:

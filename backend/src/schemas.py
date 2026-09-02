@@ -132,6 +132,9 @@ class SetUserRoleRequest(BaseModel):
 
 class SetWhatsAppPhoneNumberRequest(BaseModel):
     phone_number: str | None = None
+    # True once the user has confirmed absorbing an existing WhatsApp-
+    # native account's history — see AuthService.set_whatsapp_phone_number.
+    confirm_merge: bool = False
 
 
 class SetEnvValueRequest(BaseModel):

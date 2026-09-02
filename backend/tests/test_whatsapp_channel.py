@@ -464,6 +464,17 @@ def test_non_chat_state_conflict_becomes_a_notice(env):
     assert api.sent == [(LINKED_NUMBER, REPLY_NO_CHAT_STATE)]
 
 
+def test_non_chat_state_conflict_still_sends_the_states_own_buttons(env):
+    """The notice says "use an action instead" — it had better come with
+    actions to use, not leave the user stuck with no buttons at all."""
+    client, _, chat, _, api = env
+    chat.turn_error = ServiceError("This state doesn't accept messages; use an action instead.", status_code=HTTPStatus.CONFLICT)
+    chat.state["manual_actions"] = [_action("go", "Go")]
+    _post(client, _payload())
+    assert api.sent == []
+    assert api.interactive == [("button", LINKED_NUMBER, REPLY_NO_CHAT_STATE, [("go", "Go")])]
+
+
 # --- manual actions as buttons/list ---------------------------------------- #
 
 def test_turn_landing_on_a_state_with_two_manual_actions_sends_buttons(env):
@@ -748,6 +759,23 @@ def test_voice_note_without_talk_service_falls_back_to_text():
     chat.reply_audio_text = "Hola."
     _post(client, _payload(mtype="audio"))
     assert api.audio_sent == []
+    assert api.sent == [(LINKED_NUMBER, "*Hola* — has dicho: hola por voz")]
+
+
+def test_encoding_error_of_any_kind_falls_back_to_text(voice_env, monkeypatch):
+    """wav_to_ogg_opus goes through PyAV, whose own exception types don't
+    derive from ValueError/httpx.HTTPError/ImportError — this used to
+    escape _try_voice_note uncaught and leave the user with no reply at
+    all instead of the text fallback."""
+    client, _, chat, _, api, talk, _ = voice_env
+    chat.reply_audio_text = "Hola."
+
+    def _boom(wav):
+        raise RuntimeError("pyav exploded")
+
+    monkeypatch.setattr("whatsapp.audio.wav_to_ogg_opus", _boom)
+    _post(client, _payload(mtype="audio"))
+    assert api.audio_sent == [] and api.uploaded == []
     assert api.sent == [(LINKED_NUMBER, "*Hola* — has dicho: hola por voz")]
 
 
