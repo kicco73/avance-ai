@@ -2,6 +2,7 @@ from automaton.automaton import Action, EnvKey, MemoryArchive, Automaton, Reacti
 from automaton.identifier_registry import IdentifierRegistry
 from automaton.trigger_expression_analyzer import TriggerExpressionAnalyzer
 from typing import Any
+from logging_factory import LoggerFactory
 from metrics.metrics_framework import metric_names
 from tracking.actuators import ActuatorSet
 
@@ -9,6 +10,8 @@ from ruamel.yaml import YAML
 import base64
 import inspect
 from pathlib import Path
+
+logger = LoggerFactory.get_logger(__name__)
 
 _yaml = YAML(typ='rt')
 
@@ -439,7 +442,13 @@ class AutomatonBuilder(object):
         """Reads only `project.id` and the top-level `env:` key names,
         never a full build — lets ProjectService validate automaton.*
         references without building every other project. Malformed id/env reports nothing."""
-        raw = _yaml.load(index_yml_text)
+        try:
+            raw = _yaml.load(index_yml_text)
+        except Exception as exc:
+            logger.warning("Failed to parse index.yml for known_projects_env_keys: %s", exc)
+            return None, frozenset()
+        if not isinstance(raw, dict):
+            return None, frozenset()
         raw_project = raw.get("project")
         project_id = raw_project.get("id") if isinstance(raw_project, dict) else None
         if not isinstance(project_id, str) or not project_id.isidentifier():
