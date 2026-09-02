@@ -27,7 +27,7 @@ def _wait_until(predicate, timeout=2.0, interval=0.01) -> bool:
 def test_live_actuator_set_defer_runs_the_callable_once_due():
     job_queue = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
     scheduled_queue = ScheduledJobQueue(job_queue)
-    actuator = LiveActuatorSet(notification_service=None, scheduled_job_queue=scheduled_queue)
+    actuator = LiveActuatorSet(notification_service=None, scheduled_job_queue=scheduled_queue, ws_adapter=None)
     ran = threading.Event()
 
     result = actuator.defer(ran.set, datetime.now(timezone.utc) - timedelta(seconds=1))
