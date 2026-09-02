@@ -224,6 +224,35 @@ class TestCompleteRegistration:
         assert db.count_invite_redemptions(invite.id) == 1
 
 
+class TestRegisterViaWhatsapp:
+    def test_a_valid_invite_code_creates_a_whatsapp_user(self, db, auth_service, invite_code):
+        project_name = auth_service.register_via_whatsapp("34600000001", invite_code)
+
+        assert project_name == "invite-project"
+        user = db.get_user_by_id("34600000001")
+        assert user is not None
+        assert user["email"] is None
+        assert user["provider"] == "whatsapp"
+        assert db.get_user_by_whatsapp_phone_number("34600000001")["id"] == "34600000001"
+
+    def test_sets_the_invited_project_as_active(self, db, auth_service, invite_code):
+        auth_service.register_via_whatsapp("34600000001", invite_code)
+
+        assert db.get_active_project_name("34600000001") == "invite-project"
+
+    def test_an_unknown_code_is_refused_with_the_same_message_as_the_web(self, db, auth_service):
+        with pytest.raises(PermissionError):
+            auth_service.register_via_whatsapp("34600000001", "no-such-code")
+
+        assert db.get_user_by_id("34600000001") is None
+
+    def test_records_the_redemption_on_user_project(self, db, auth_service, invite_code):
+        auth_service.register_via_whatsapp("34600000001", invite_code)
+
+        invite = db.get_invite_by_code(invite_code)
+        assert db.count_invite_redemptions(invite.id) == 1
+
+
 class TestPreWiredAdminRegistration:
     """One of the two hardcoded bootstrap admin addresses (Db._ADMIN_EMAILS)
     used to get its User row created straight out of resolve_login(), on

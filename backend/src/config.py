@@ -54,12 +54,14 @@ class WhatsAppServiceConfig:
     app_secret: str
     access_token: str
     phone_number_id: str
+    phone_number: str | None
+    invite_prefix: str
     graph_version: str
-    # WhatsApp number (E.164 digits, no '+') -> the User row's own email.
-    # A number not listed here gets a "not linked" reply and is never
-    # let anywhere near a chat session.
-    users: dict[str, str]
     mark_read: bool
+    # When the bot answers with a voice note instead of text (needs
+    # talk-service): "never", "when-spoken-to" (only in reply to a voice
+    # note — the default), "always" (every reply that has an [audio] text).
+    voice_replies: str
 
 
 @dataclass(frozen=True)
@@ -290,6 +292,8 @@ class AppConfig:
             ))
         return providers
 
+    _WHATSAPP_VOICE_REPLIES = ("never", "when-spoken-to", "always")
+
     @classmethod
     def _parse_whatsapp_service_config(cls, raw: dict, path: Path) -> WhatsAppServiceConfig | None:
         """Same optional, default-off shape as talk-service.enabled: no
@@ -302,27 +306,40 @@ class AppConfig:
         verify_token = cls._require_str(raw, section, "verify-token", path)
         app_secret = cls._require_str(raw, section, "app-secret", path)
         access_token = cls._require_str(raw, section, "access-token", path)
-        phone_number_id = cls._require_str(raw, section, "phone-number-id", path)
+        # YAML reads an unquoted 1223547060851510 as an int: accept both
+        # (going through _require_str first would reject the int).
+        phone_number_id = sub.get("phone-number-id")
+        if isinstance(phone_number_id, int) and not isinstance(phone_number_id, bool):
+            phone_number_id = str(phone_number_id)
+        if not isinstance(phone_number_id, str) or not phone_number_id.strip():
+            raise ConfigError(f"{path}: '{section}.phone-number-id' is missing or empty.")
+        phone_number_id = phone_number_id.strip()
+
+        phone_number = sub.get("phone-number")
+        if phone_number is not None:
+            if not isinstance(phone_number, str):
+                raise ConfigError(f"{path}: '{section}.phone-number' must be a string if present.")
+            phone_number = phone_number.strip().lstrip("+")
+            if not phone_number.isdigit():
+                raise ConfigError(f"{path}: '{section}.phone-number' must be digits only (E.164, no '+').")
+
+        invite_prefix = sub.get("invite-prefix", "Invitation code: ")
+        if not isinstance(invite_prefix, str):
+            raise ConfigError(f"{path}: '{section}.invite-prefix' must be a string if present.")
+
         graph_version = sub.get("graph-version", "v23.0")
         if not isinstance(graph_version, str) or not graph_version.strip():
             raise ConfigError(f"{path}: '{section}.graph-version' must be a non-empty string if present.")
-        users_raw = sub.get("users", {})
-        if not isinstance(users_raw, dict):
-            raise ConfigError(f"{path}: '{section}.users' must be a mapping of phone number -> email.")
-        users: dict[str, str] = {}
-        for phone, email in users_raw.items():
-            phone_str = str(phone).strip().lstrip("+")
-            if not phone_str.isdigit():
-                raise ConfigError(f"{path}: '{section}.users' key {phone!r} is not a phone number (digits only, no '+').")
-            if not isinstance(email, str) or not email.strip():
-                raise ConfigError(f"{path}: '{section}.users[{phone!r}]' must be a non-empty email string.")
-            users[phone_str] = email.strip()
         mark_read = sub.get("mark-read", True)
         if not isinstance(mark_read, bool):
             raise ConfigError(f"{path}: '{section}.mark-read' must be a boolean if present.")
+        voice_replies = cls._get_optional_choice(
+            raw, section, "voice-replies", path, default="when-spoken-to", choices=cls._WHATSAPP_VOICE_REPLIES,
+        )
         return WhatsAppServiceConfig(
             verify_token=verify_token, app_secret=app_secret, access_token=access_token,
-            phone_number_id=phone_number_id, graph_version=graph_version.strip(), users=users, mark_read=mark_read,
+            phone_number_id=phone_number_id, phone_number=phone_number, invite_prefix=invite_prefix,
+            graph_version=graph_version.strip(), mark_read=mark_read, voice_replies=voice_replies,
         )
 
     @classmethod
@@ -423,6 +440,7 @@ class AppConfig:
         raw, path = self._load_yml()
         if not isinstance(raw, dict):
             raise ConfigError(f"{path} must contain a YAML mapping at the top level.")
+        assert path is not None
 
         self.database_url = self._require_str(raw, "database", "url", path)
         self.database_migration_strategy = self._get_optional_choice(
@@ -505,7 +523,10 @@ class AppConfig:
         key, the database url's own credentials, and jwt-secret are
         stripped out here (the one place secrets are parsed in the first
         place) rather than downstream — nothing else ever gets a chance
-        to leak them."""
+        to leak them, except whatsapp's own three secrets below, sent
+        as-is (admin-only route) for Manage services' masked/revealable
+        fields."""
+        wa = self.whatsapp_service_config
         return {
             "chat": {
                 "max-session-duration-in-minutes": self.max_session_duration_in_minutes,
@@ -534,6 +555,18 @@ class AppConfig:
                     {**self._public_provider_fields(p), "language": p.language}
                     for p in (self.listen_services or [])
                 ],
+            },
+            "whatsapp": {
+                "enabled": wa is not None,
+                "verify-token": wa.verify_token if wa else None,
+                "app-secret": wa.app_secret if wa else None,
+                "access-token": wa.access_token if wa else None,
+                "phone-number-id": wa.phone_number_id if wa else None,
+                "phone-number": wa.phone_number if wa else None,
+                "invite-prefix": wa.invite_prefix if wa else None,
+                "graph-version": wa.graph_version if wa else None,
+                "mark-read": wa.mark_read if wa else None,
+                "voice-replies": wa.voice_replies if wa else None,
             },
             "database": {
                 "url": _redact_database_url(self.database_url),

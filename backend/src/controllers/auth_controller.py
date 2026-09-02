@@ -10,10 +10,10 @@ from pathlib import Path
 from fastapi import HTTPException, Request, Response
 
 from auth.auth_service import SESSION_COOKIE_NAME, AuthService
-from schemas import AcceptTermsRequest, LoginRequest
+from schemas import AcceptTermsRequest, LoginRequest, SetWhatsAppPhoneNumberRequest
 from session import Session
 
-from .base_controller import BaseController, get, post
+from .base_controller import BaseController, get, post, put
 
 # Public, static — no auth needed to read it (a rejected/pending identity
 # still needs to see it before deciding).
@@ -93,6 +93,13 @@ class AuthController(BaseController):
         ProfileView.vue, the only two consumers of the current user's
         own profile data."""
         return self.auth_service.get_profile(Session().user)
+
+    @put("/api/auth/me/whatsapp-phone-number")
+    def put_whatsapp_phone_number(self, req: SetWhatsAppPhoneNumberRequest):
+        try:
+            return self.auth_service.set_whatsapp_phone_number(Session().user, req.phone_number)
+        except ValueError as exc:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(exc)) from exc
 
     @post("/api/auth/erase-data")
     def post_erase_data(self, response: Response):

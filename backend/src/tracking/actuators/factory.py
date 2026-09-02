@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from db import Db
+from jobs import AbstractJobQueue, ScheduledJobQueue
 from notification.notification_service import NotificationService
 
 from .actuator_set import ActuatorSet, FakeActuatorSet, LiveActuatorSet
@@ -8,13 +9,14 @@ from .actuator_set import ActuatorSet, FakeActuatorSet, LiveActuatorSet
 
 class ActuatorSetFactory:
 
-    def __init__(self, notification_service: NotificationService, db: Db) -> None:
+    def __init__(self, notification_service: NotificationService, db: Db, job_queue: AbstractJobQueue) -> None:
         self._notification_service = notification_service
         self._db = db
         self._enabled_test_sessions: set[int] = set()
+        self._scheduled_job_queue = ScheduledJobQueue(job_queue)
 
     def live(self) -> LiveActuatorSet:
-        return LiveActuatorSet(self._notification_service)
+        return LiveActuatorSet(self._notification_service, self._scheduled_job_queue)
 
     def for_session(self, session_id: int) -> ActuatorSet:
         session = self._db.get_chat_session(session_id)

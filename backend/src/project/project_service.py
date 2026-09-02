@@ -32,7 +32,8 @@ __all__ = ["ProjectService", "CommitCallback"]
 class ProjectService(object):
     def __init__(
         self, db: Db, ai_service: "AiService | None" = None,
-        invite_valid_days: int = 7, invite_max_shares: int = 3,
+        invite_valid_days: int = 7, invite_max_shares: int = 3, whatsapp_number: str | None = None,
+        whatsapp_invite_prefix: str = "Invitation code: ",
     ) -> None:
         self._db = db
         session_export_manager = SessionExportManager(db)
@@ -43,7 +44,7 @@ class ProjectService(object):
             db, self._automaton_loader, self._inspector, session_export_manager, session_import_manager
         )
         self._editor = ProjectEditor(db, self._automaton_loader, self._inspector, self._manager)
-        self._invites = InviteManager(db, invite_valid_days, invite_max_shares)
+        self._invites = InviteManager(db, invite_valid_days, invite_max_shares, whatsapp_number, whatsapp_invite_prefix)
 
     # -- ProjectInspector -------------------------------------------------
 

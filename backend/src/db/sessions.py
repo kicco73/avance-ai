@@ -30,7 +30,7 @@ class SessionMixin:
         self, username: str, project_name: str, revision: int, *,
         datetime_start: datetime | None = None, datetime_end: datetime | None = None,
         start_state: str | None = None, end_state: str | None = None,
-        type: str = 'live', title: str | None = None,
+        type: str = 'live', title: str | None = None, channel: str = 'native-chat',
     ) -> int:
         """`revision` arrives already resolved by the caller (see
         chat.session_type_strategy.SessionTypeStrategy.revision_for) —
@@ -48,7 +48,7 @@ class SessionMixin:
             username=username, user=user, project_name=project_name, type=type, title=title,
             project_revision=revision,
             datetime_start=datetime_start, datetime_end=datetime_end,
-            start_state=start_state, end_state=end_state,
+            start_state=start_state, end_state=end_state, channel=channel,
         )
         return session.id
 
@@ -62,7 +62,7 @@ class SessionMixin:
 
     @staticmethod
     def _chat_session_to_dict(session: ChatSession) -> dict:
-        return {'id': session.id, 'username': session.username, 'project_name': session.project_name_id, 'type': session.type, 'title': session.title, 'datetime_start': session.datetime_start, 'datetime_end': session.datetime_end, 'start_state': session.start_state, 'end_state': session.end_state, 'project_revision': session.project_revision, 'labeled': session.labeled, 'comment': session.comment}
+        return {'id': session.id, 'username': session.username, 'project_name': session.project_name_id, 'type': session.type, 'title': session.title, 'datetime_start': session.datetime_start, 'datetime_end': session.datetime_end, 'start_state': session.start_state, 'end_state': session.end_state, 'project_revision': session.project_revision, 'labeled': session.labeled, 'comment': session.comment, 'channel': session.channel}
 
     def get_chat_session(self, session_id: int) -> dict | None:
         session = ChatSession.get_or_none(ChatSession.id == session_id)

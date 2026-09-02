@@ -37,6 +37,26 @@ def test_get_chat_session_returns_none_for_unknown_id(db):
     assert db.get_chat_session(999999) is None
 
 
+@pytest.mark.contract
+def test_chat_session_channel_defaults_to_native_chat(db):
+    session_id = _make_session(db, start=datetime(2026, 1, 1, 10, 0, 0))
+
+    assert db.get_chat_session(session_id)["channel"] == "native-chat"
+
+
+@pytest.mark.contract
+def test_chat_session_channel_can_be_set_explicitly(db):
+    db.ensure_project("proj")
+    db.publish_project("proj")
+    session_id = db.create_chat_session(
+        "user", "proj", db.get_project_published_revision("proj"),
+        datetime_start=datetime(2026, 1, 1), datetime_end=datetime(2026, 1, 1),
+        start_state="start", end_state="start", channel="whatsapp-chat",
+    )
+
+    assert db.get_chat_session(session_id)["channel"] == "whatsapp-chat"
+
+
 @pytest.mark.regression
 def test_create_chat_session_rejects_a_nonexistent_project(db):
     with pytest.raises(ValueError, match="does not exist"):

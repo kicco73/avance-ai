@@ -18,6 +18,7 @@ from contextvars import ContextVar
 
 _user: ContextVar[str] = ContextVar("session_user")
 _role: ContextVar[str] = ContextVar("session_role")
+_channel: ContextVar[str] = ContextVar("session_channel", default="native-chat")
 
 
 class Session(object):
@@ -55,6 +56,14 @@ class Session(object):
     @role.setter
     def role(self, value: str) -> None:
         _role.set(value)
+
+    @property
+    def channel(self) -> str:
+        return _channel.get()
+
+    @channel.setter
+    def channel(self, value: str) -> None:
+        _channel.set(value)
 
     @contextmanager
     def impersonate(self, username: str):

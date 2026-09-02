@@ -6,6 +6,7 @@ import pytest
 
 from chat.session_manager import ChatSessionManager
 from chat.session_type_strategy import get_session_type_strategy
+from session import Session
 
 LIVE = get_session_type_strategy('live')
 
@@ -109,6 +110,24 @@ def test_creates_a_new_session_when_none_exists(manager, project_service):
     assert session["start_state"] == "start"
     assert session["end_state"] == "start"
     assert manager.is_open(session)
+
+
+@pytest.mark.contract
+def test_new_session_defaults_to_the_native_chat_channel(manager, project_service):
+    session = _resolve_or_create(manager, project_service, "user", "proj", None, "start")
+
+    assert session["channel"] == "native-chat"
+
+
+@pytest.mark.contract
+def test_new_session_stamps_whatever_channel_is_current(manager, project_service):
+    Session().channel = "whatsapp-chat"
+    try:
+        session = _resolve_or_create(manager, project_service, "user", "proj", None, "start")
+    finally:
+        Session().channel = "native-chat"
+
+    assert session["channel"] == "whatsapp-chat"
 
 
 @pytest.mark.contract

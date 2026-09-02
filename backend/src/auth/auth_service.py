@@ -132,41 +132,66 @@ class AuthService:
             picture_url=payload.get("picture_url"), role=None,
         )
 
+    def _register_with_invite(
+        self, user_id: str, provider: str | None, provider_user_id: str | None,
+        email: str | None, name: str | None, picture_url: str | None,
+        invite_code: str | None, invite_exempt: bool,
+    ):
+        """Shared by complete_registration (web) and register_via_whatsapp:
+        self-registration is invite-only — `invite_code` must clear
+        ProjectService.validate_invite_for_registration (exists, not
+        expired, under its max-shares budget), or this is a stranger who
+        was never invited, registration refused, no User row created (see
+        that method for the specific PermissionError each failure raises).
+        Invite validation happens before the User row is ever created, and
+        its redemption is only recorded (see ProjectService.redeem_invite)
+        once that row actually exists. `invite_exempt=True` (the two
+        pre-wired admin addresses, web-only) skips straight to row
+        creation instead — no invite exists to redeem there since no one
+        exists yet to send them one."""
+        invite = None
+        if not invite_exempt:
+            invite = self._project_service.validate_invite_for_registration(invite_code)
+        user = self._db.get_or_create_user(provider, provider_user_id, email, name, picture_url, user_id=user_id)
+        self._db.update_last_login(user.id, name, picture_url)
+        if invite is not None:
+            self._project_service.redeem_invite(invite, user.id)
+        return user, invite
+
     def complete_registration(self, token: str, invite_code: str | None = None) -> None:
         """TermsView.vue's Accept action: creates the User row login()
         deliberately deferred, keyed off the same already-issued token —
         no new cookie needed, verify_token resolves it as a normal
-        registered user from here on.
-
-        Self-registration is invite-only: `invite_code` is the "share
-        project" invite code a QR/link carries (frontend/src/shareLink.js)
-        and must clear ProjectService.validate_invite_for_registration
-        (exists, not expired, under its max-shares budget) — see that
-        method for the specific PermissionError each failure raises — or
-        this is a stranger who was never invited, registration refused,
-        no User row created. Invite validation happens before the User
-        row is ever created, and its redemption is only recorded (see
-        ProjectService.redeem_invite) once that row actually exists.
-
-        The one exception is the two pre-wired admin addresses
-        (Db.is_pre_wired_admin): no invite exists to redeem there since
-        no one exists yet to send them one, so this skips straight to
-        row creation for them — but this method is still the only path
-        that reaches it, still gated behind TermsView.vue's Accept, so
-        Terms acceptance itself is never skipped, only the invite check."""
+        registered user from here on. See _register_with_invite for the
+        invite-redemption rules this delegates to."""
         payload = self._decode(token)
         email = payload.get("email") if payload else None
         if email is None:
             raise ValueError("Invalid or expired session.")
-        invite = None
-        if not self._db.is_pre_wired_admin(email):
-            invite = self._project_service.validate_invite_for_registration(invite_code)
-        user = self._db.get_or_create_user(
-            payload.get("provider"), payload.get("provider_user_id"), email, payload.get("name"), payload.get("picture_url")
+        self._register_with_invite(
+            email, payload.get("provider"), payload.get("provider_user_id"), email,
+            payload.get("name"), payload.get("picture_url"),
+            invite_code, invite_exempt=self._db.is_pre_wired_admin(email),
         )
-        self._db.update_last_login(user.id, payload.get("name"), payload.get("picture_url"))
-        if invite is not None:
-            self._project_service.redeem_invite(invite, user.id)
+
+    def register_via_whatsapp(self, phone_number: str, invite_code: str) -> str:
+        """WhatsAppService's own registration path (see
+        whatsapp_service.py): the invite code IS the inbound message text
+        from a number with no linked account at all. Same invite rules as
+        the web path (_register_with_invite), no pre-wired-admin exemption
+        here — every WhatsApp signup needs a real invite. `id` is the
+        phone number itself (provider="whatsapp"); every Google-only field
+        (email/name/picture_url/provider_user_id) stays unset. Returns the
+        project the invite granted access to, set as this brand-new
+        account's active project directly — unlike the web, there's no
+        later "activate" step for a WhatsApp identity to go through (see
+        useAppBoot.js's activateInvitedProject)."""
+        _user, invite = self._register_with_invite(
+            phone_number, "whatsapp", None, None, None, None, invite_code, invite_exempt=False,
+        )
+        self._db.set_whatsapp_phone_number(phone_number, phone_number)
+        self._db.set_active_project_name(invite.project_name_id, phone_number)
+        return invite.project_name_id
 
     def is_invite_exempt(self, email: str) -> bool:
         """App.vue's own TermsView-vs-InviteRequiredView gate for a
@@ -179,6 +204,15 @@ class AuthService:
         return self._db.is_pre_wired_admin(email)
 
     def get_profile(self, email: str) -> dict | None:
+        return self._db.get_user_by_email(email)
+
+    def set_whatsapp_phone_number(self, email: str, phone_number: str | None) -> dict | None:
+        normalized = None
+        if phone_number is not None and phone_number.strip():
+            normalized = phone_number.strip().lstrip("+")
+            if not normalized.isdigit():
+                raise ValueError("WhatsApp phone number must be digits only (E.164, no '+'), e.g. 34600000001.")
+        self._db.set_whatsapp_phone_number(email, normalized)
         return self._db.get_user_by_email(email)
 
     def erase_account(self, email: str) -> None:

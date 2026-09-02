@@ -4,6 +4,7 @@ ever talked to gets a chance to re-evaluate its triggers. One handler
 serves both event types — neither carries anything the other doesn't."""
 from __future__ import annotations
 
+from automaton.automaton import manual_actions_for
 from chat.ws_adapter import WsAdapter
 from db.db import Db
 from events import EnvChanged, StateChanged, subscribe
@@ -20,6 +21,7 @@ from tracking.fixed_project_context import FixedProjectContext
 from tracking.session_facts import SessionFacts
 from tracking.system_facts import SystemFacts
 from tracking.tracking_engine import DbTrackingSink, TrackingEngine
+from tracking.tracking_service import TrackingService
 from tracking.user_facts import UserFacts
 
 logger = LoggerFactory.get_logger(__name__)
@@ -51,7 +53,7 @@ class WakeupJob(CancelableJob):
 class WakeupService:
     def __init__(
         self, db: Db, project_service: ProjectService, job_queue: JobQueue, actuator_factory: ActuatorSetFactory,
-        ws_adapter: WsAdapter | None = None,
+        ws_adapter: WsAdapter | None = None, tracking_service: TrackingService | None = None,
     ) -> None:
         self._db = db
         self._project_service = project_service
@@ -61,6 +63,7 @@ class WakeupService:
         # simply skipped in that case; a re-evaluated self-loop is still
         # applied and persisted either way, only live delivery depends on this.
         self._ws_adapter = ws_adapter
+        self._tracking_service = tracking_service
 
     def register(self) -> None:
         subscribe(StateChanged, self._on_event)
@@ -131,10 +134,15 @@ class WakeupService:
                 # "done" with no pendingTurn in flight, which a push never is.
                 # Best-effort live nudge only; the transition above is already persisted regardless.
                 if self._ws_adapter is not None:
+                    state_payload = automaton.get_state_payload(state)
+                    auto_tracking_enabled = (
+                        self._tracking_service.is_auto_tracking_enabled(session["id"])
+                        if self._tracking_service is not None else True
+                    )
                     await self._ws_adapter.push(username, {
                         "type": "notification",
                         "project_name": observer_project_name,
-                        "state": automaton.get_state_payload(state),
+                        "state": {**state_payload, "manual_actions": manual_actions_for(state_payload["actions"], auto_tracking_enabled)},
                         "on-enter": on_enter,
                     })
 

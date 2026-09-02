@@ -71,7 +71,7 @@ def test_restore_backup_rejects_a_missing_column(file_db, tmp_path):
         "ui_label TEXT, ui_description TEXT, draft_edit_count INTEGER)",
         "CREATE TABLE ChatSession (id INTEGER PRIMARY KEY, username TEXT, user_id TEXT, project_name TEXT, "
         "type TEXT, title TEXT, project_revision INTEGER, datetime_start TEXT, datetime_end TEXT, "
-        "start_state TEXT, end_state TEXT, labeled INTEGER, comment TEXT, labeling_revision INTEGER)",
+        "start_state TEXT, end_state TEXT, labeled INTEGER, comment TEXT, labeling_revision INTEGER, channel TEXT)",
         "CREATE TABLE Message (id INTEGER PRIMARY KEY, role TEXT, content TEXT, timestamp TEXT, audio_text TEXT)",
         "CREATE TABLE User (id TEXT PRIMARY KEY, provider TEXT, provider_user_id TEXT, email TEXT, "
         "name TEXT, picture_url TEXT, created_at TEXT, last_login TEXT, active_project_id TEXT, role TEXT)",

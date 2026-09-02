@@ -34,7 +34,7 @@ from talk.talk_service import TalkService
 from whatsapp.whatsapp_service import WhatsAppService
 from listen.listen_service import ListenService
 
-__version__ = "1.22.0"
+__version__ = "1.23.0"
 
 logger = LoggerFactory.get_logger(__name__)
 
@@ -90,7 +90,7 @@ def create_app() -> FastAPI:
         app.state.notification_service = notification_service
 
         db = Db(config.database_url, migration_strategy=config.database_migration_strategy)
-        actuator_factory = ActuatorSetFactory(notification_service, db)
+        actuator_factory = ActuatorSetFactory(notification_service, db, job_queue)
         # Bridged onto app.state for the same reason auth_service is below:
         # AuthMiddleware was already registered before this existed, and
         # needs it for its own per-request UserProject ownership check.
@@ -103,6 +103,8 @@ def create_app() -> FastAPI:
         project_service = ProjectService(
             db, ai_live_service,
             invite_valid_days=config.invite_valid_days, invite_max_shares=config.invite_max_shares,
+            whatsapp_number=config.whatsapp_service_config.phone_number if config.whatsapp_service_config else None,
+            whatsapp_invite_prefix=config.whatsapp_service_config.invite_prefix if config.whatsapp_service_config else "Invitation code: ",
         )
 
         # Built once here (not a global singleton — see auth/auth_service.py's
@@ -153,13 +155,16 @@ def create_app() -> FastAPI:
 
         # Cross-project wake-up (see tracking/wakeup_service.py) —
         # subscribes once for the process lifetime.
-        WakeupService(db, project_service, job_queue, actuator_factory).register()
+        WakeupService(db, project_service, job_queue, actuator_factory, tracking_service=tracking_service).register()
 
         # Opt-in (whatsapp-service.enabled in .config.yml): one more
         # client of ChatService.process_turn, beside the SPA — see
         # whatsapp/whatsapp_service.py's own module docstring.
         whatsapp_service = (
-            WhatsAppService(config.whatsapp_service_config, chat_service, db)
+            WhatsAppService(
+                config.whatsapp_service_config, chat_service, db, auth_service,
+                talk_service=talk_service, listen_service=listen_service,
+            )
             if config.whatsapp_service_config is not None else None
         )
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 import secrets
 import string
 from datetime import datetime, timedelta
+from urllib.parse import quote
 
 from db import Db, _utc_iso
 
@@ -20,10 +21,15 @@ _MAX_CODE_ATTEMPTS = 10
 
 
 class InviteManager:
-    def __init__(self, db: Db, valid_days: int, max_shares: int) -> None:
+    def __init__(
+        self, db: Db, valid_days: int, max_shares: int, whatsapp_number: str | None = None,
+        whatsapp_invite_prefix: str = "Invitation code: ",
+    ) -> None:
         self._db = db
         self._valid_days = valid_days
         self._max_shares = max_shares
+        self._whatsapp_number = whatsapp_number
+        self._whatsapp_invite_prefix = whatsapp_invite_prefix
 
     def _generate_unique_code(self) -> str:
         for _ in range(_MAX_CODE_ATTEMPTS):
@@ -88,10 +94,15 @@ class InviteManager:
         validate_for_registration's own max-shares check) mean anything."""
         self._db.record_invite_redemption(user_id, invite.project_name_id, invite.id, datetime.utcnow())
 
-    @staticmethod
-    def _payload(invite) -> dict:
+    def _payload(self, invite) -> dict:
         return {
             "code": invite.code,
             "expires_at": _utc_iso(invite.expires_at),
             "max_shares": invite.max_shares,
+            "whatsapp_url": self._whatsapp_url(invite.code),
         }
+
+    def _whatsapp_url(self, code: str) -> str | None:
+        if not self._whatsapp_number:
+            return None
+        return f"https://wa.me/{self._whatsapp_number}?text={quote(self._whatsapp_invite_prefix + code)}"

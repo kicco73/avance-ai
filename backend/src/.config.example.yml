@@ -180,14 +180,26 @@ whatsapp-service:
   access-token: <your-access-token>
   # The Phone Number ID of the WhatsApp Business number — NOT the number.
   phone-number-id: <your-phone-number-id>
+  # Optional — the WhatsApp Business number itself (E.164 digits, no '+').
+  # Only needed to build the wa.me link/QR "Share project" offers as a
+  # WhatsApp alternative to the web invite link; the channel itself
+  # (webhook, replies) works fine without it. Omitted, that QR tab is
+  # simply not offered.
+  phone-number: <your-whatsapp-number>
+  # Optional, defaults to "Invitation code: " — prepended to the invite
+  # code in the wa.me QR's pre-filled message text (see phone-number
+  # above); WhatsAppService strips it back off on receipt (it actually
+  # just takes the last whitespace-separated token, so any wording works).
+  invite-prefix: "Invitation code: "
   # Optional, defaults to v23.0 — check the Meta console for the current one.
   graph-version: v23.0
   # Optional, defaults to true: send the blue "read" tick on receipt.
   mark-read: true
-  # Which account each WhatsApp number chats as. Keys are the sender's
-  # number as Meta sends it (E.164 digits, no '+'); values the User row's
-  # email — an account that already registered from the web, accepted
-  # Terms, and has access to (at least) its active project. A number not
-  # listed here gets a "not linked" reply and nothing else.
-  users:
-    "34600000001": someone@example.com
+  # Optional, defaults to when-spoken-to. Voice notes from the user are
+  # transcribed with listen-service (when enabled) and processed as text.
+  # This decides when the bot answers with a voice note instead of text
+  # (needs talk-service, and a reply that carries an [audio] text):
+  #   never           — text only
+  #   when-spoken-to  — voice note back only when the user sent one
+  #   always          — every reply with an audio text
+  voice-replies: when-spoken-to

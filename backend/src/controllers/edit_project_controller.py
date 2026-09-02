@@ -149,7 +149,8 @@ class EditProjectController(BaseController, ProjectCommitMixin):
         """ShareProjectDialog.vue's own trigger — a fresh Invite row (own
         random code, expiry, max-shares budget — see
         ProjectService.create_invite) every time the dialog opens, never
-        reused. {code, expires_at, max_shares}."""
+        reused. {code, expires_at, max_shares, whatsapp_url}; whatsapp_url
+        is null unless whatsapp-service is configured."""
         try:
             return self.project_service.create_invite(project_name, Session().user)
         except FileNotFoundError as exc:

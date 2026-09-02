@@ -161,13 +161,14 @@ def make_test_actuator_factory(db: Db, job_queue: JobQueue | None = None) -> Act
     never actuator.send_mail, so the dummy SMTP config below is never
     actually dialed. Shared by every fixture/helper across the test suite
     that needs to construct a TrackingService/ChatService/WakeupService."""
+    job_queue = job_queue if job_queue is not None else JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
     notification_service = NotificationService(
         NotificationServiceConfig(
             url="smtp://localhost", username="test@example.com", password="", from_name=None, timeout_seconds=5,
         ),
-        job_queue if job_queue is not None else JobQueue(max_concurrent=1, broadcaster=NullBroadcaster()),
+        job_queue,
     )
-    return ActuatorSetFactory(notification_service, db)
+    return ActuatorSetFactory(notification_service, db, job_queue)
 
 
 @pytest.fixture
