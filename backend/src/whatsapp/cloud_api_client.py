@@ -1,6 +1,6 @@
 """Thin async client for the Meta WhatsApp Cloud API (the outbound half of
 the channel — see docs/WHATSAPP.md). Only what the channel needs: send
-a text, mark a message read. Never touches Avance's own services."""
+a text, buttons or an audio, mark a message read, move media in and out. Never touches Avance's own services."""
 from __future__ import annotations
 
 import httpx
@@ -27,6 +27,10 @@ class WhatsAppCloudApiClient(object):
 
     async def _post(self, payload: dict) -> dict:
         response = await self._client.post(f"/{self._phone_number_id}/messages", json=payload)
+        return self._checked(response)
+
+    @staticmethod
+    def _checked(response: httpx.Response) -> dict:
         if response.status_code >= 400:
             logger.error(f"WhatsApp Cloud API {response.status_code}: {response.text}")
             response.raise_for_status()
@@ -45,6 +49,38 @@ class WhatsAppCloudApiClient(object):
                 "text": {"preview_url": False, "body": chunk},
             }))
         return results
+
+    async def send_audio(self, to: str, media_id: str) -> dict:
+        """An already-uploaded audio (see upload_media). OGG/Opus renders
+        as a voice note; other types as a plain audio attachment."""
+        return await self._post({
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to,
+            "type": "audio",
+            "audio": {"id": media_id},
+        })
+
+    async def upload_media(self, data: bytes, mime_type: str, filename: str = "audio.ogg") -> str:
+        """Uploads `data` to the business number's media store and returns
+        Meta's media id, valid for 30 days — the handle send_audio takes."""
+        response = await self._client.post(
+            f"/{self._phone_number_id}/media",
+            data={"messaging_product": "whatsapp", "type": mime_type},
+            files={"file": (filename, data, mime_type)},
+        )
+        return self._checked(response)["id"]
+
+    async def download_media(self, media_id: str) -> tuple[bytes, str]:
+        """(bytes, mime_type) for an inbound media id. Two hops: the media
+        node gives a short-lived (5 min) download URL, which itself must be
+        fetched with the same Bearer token or Meta answers 404."""
+        meta = self._checked(await self._client.get(f"/{media_id}"))
+        response = await self._client.get(meta["url"])
+        if response.status_code >= 400:
+            logger.error(f"WhatsApp media download {response.status_code} for {media_id}")
+            response.raise_for_status()
+        return response.content, meta.get("mime_type", "")
 
     async def mark_read(self, message_id: str) -> None:
         """Best effort: the blue tick is cosmetic, a failure is logged and swallowed."""

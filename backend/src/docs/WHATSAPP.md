@@ -28,7 +28,8 @@ Meta ──POST /api/whatsapp/webhook──▶ WhatsAppController   (role=None, 
 ## Files
 
 - `whatsapp/whatsapp_service.py` — identity gate, turn/action orchestration, manual-actions-as-buttons/list, Markdown → WhatsApp flattening, dedup of Meta's redeliveries, per-sender ordering.
-- `whatsapp/cloud_api_client.py` — `send_text` (auto-split over 4096 chars), `send_buttons`/`send_list` (interactive replies), and `mark_read`.
+- `whatsapp/cloud_api_client.py` — `send_text` (auto-split over 4096 chars), `send_buttons`/`send_list` (interactive replies), `send_audio`, `upload_media`/`download_media`, and `mark_read`.
+- `whatsapp/audio.py` — WAV (as `TalkService` emits it, streaming header included) → OGG/Opus, the only format WhatsApp renders as a voice note. Encoder from PyAV, already installed as faster-whisper's dependency; no ffmpeg binary.
 - `chat/chat_service.py` — `manual_actions` on every state payload reaching a client with a known session (`_with_manual_actions`); `automaton/automaton.py`'s `manual_actions_for` is the actual filter, shared with `tracking/wakeup_service.py`'s own cross-project notification push.
 - `controllers/whatsapp_controller.py` — the two webhook routes, under `/api/` so `nginx.conf` needs no change.
 - `config.py` — `WhatsAppServiceConfig` / `whatsapp-service` section (optional, default off; see `.config.example.yml`).
@@ -98,8 +99,9 @@ email at all.
 - Non-chat/final state (`process_turn` → 409): a short notice pointing to
   the web.
 - Paused project / Terms pending: a notice, no turn.
-- Audio/images: "text only" notice. (`ListenService` could transcribe
-  voice notes later — the webhook delivers a media id to download.)
+- **Voice notes in**: downloaded from Meta (two hops: media node → short-lived URL, both with the Bearer), transcribed by `ListenService` (faster-whisper decodes OGG/Opus as is) and processed exactly like typed text — the transcript is what gets persisted as the user's message, so the web shows it too. No `listen-service` configured → "I can't listen to voice notes yet". Empty/failed transcript or download → "I couldn't make out that voice note". An unlinked number's voice note is never downloaded.
+- **Voice notes out**: `voice-replies` in the config decides. Default `when-spoken-to`: a voice note back when the user sent one, text when they typed. `always`: every reply with an audio text goes out spoken; `never`: text only. The voice note is `TalkService.generate` for the reply's own `[audio]` text (`Message.audio_text`), re-encoded to OGG/Opus and uploaded; it *replaces* the text, it doesn't duplicate it. Whenever a voice note can't be produced — no `talk-service`, the project/state has talk disabled (no audio text), encoding or upload failure, silent generation — the text is sent instead. Channel notices (paused, terms, errors) are never spoken. Buttons need a text body: after a spoken reply they come on a short "What would you like to do?" follow-up.
+- Images/documents/stickers: "text only" notice.
 - Markdown: `**bold**`→`*bold*`, headings→bold lines, links spelled out,
   `*` bullets→`-`. Everything else WhatsApp already renders or ignores.
 
@@ -114,6 +116,7 @@ email at all.
 - The token shown in Meta's "API Setup" expires in 24h — use a permanent
   System User token in `.config.yml`.
 - `graph-version` defaults to `v23.0`; bump it when Meta deprecates it.
+- Voice costs: transcription runs on the server CPU (Whisper `small` takes a few seconds for a 30 s note — fine, the webhook already answered 200 and the turn is in the background, but the user waits that much longer). Media ids from `upload_media` are valid 30 days and not reused; `TalkService`'s own cache already dedups the generation by text, only the upload repeats.
 
 ## Meta setup (once)
 

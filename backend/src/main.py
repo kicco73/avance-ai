@@ -160,7 +160,10 @@ def create_app() -> FastAPI:
         # client of ChatService.process_turn, beside the SPA — see
         # whatsapp/whatsapp_service.py's own module docstring.
         whatsapp_service = (
-            WhatsAppService(config.whatsapp_service_config, chat_service, db, auth_service)
+            WhatsAppService(
+                config.whatsapp_service_config, chat_service, db, auth_service,
+                talk_service=talk_service, listen_service=listen_service,
+            )
             if config.whatsapp_service_config is not None else None
         )
 

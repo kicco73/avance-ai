@@ -10,8 +10,11 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import math
+import struct
 from http import HTTPStatus
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -21,11 +24,14 @@ from config import WhatsAppServiceConfig
 from controllers.whatsapp_controller import WhatsAppController
 from service_error import ServiceError
 from session import Session
+from listen.listen_service import ListenServiceError
+from talk.talk_format import PcmWavCodec
+from whatsapp.audio import WHATSAPP_VOICE_MIME, split_wav, wav_to_ogg_opus
 from whatsapp.cloud_api_client import split_text
 from whatsapp.whatsapp_service import (
-    REPLY_BUSY, REPLY_DONE, REPLY_INVALID_ACTION, REPLY_NO_CHAT_STATE, REPLY_NOT_LINKED, REPLY_NOT_REGISTERED,
-    REPLY_PAUSED, REPLY_REGISTERED, REPLY_TERMS_PENDING, REPLY_UNSUPPORTED, IncomingMessage, WhatsAppService,
-    to_whatsapp_markdown,
+    REPLY_AUDIO_NOT_UNDERSTOOD, REPLY_BUSY, REPLY_DONE, REPLY_INVALID_ACTION, REPLY_NO_CHAT_STATE, REPLY_NOT_LINKED,
+    REPLY_NOT_REGISTERED, REPLY_OPTIONS_PROMPT, REPLY_PAUSED, REPLY_REGISTERED, REPLY_TERMS_PENDING,
+    REPLY_UNSUPPORTED, REPLY_UNSUPPORTED_AUDIO, IncomingMessage, WhatsAppService, to_whatsapp_markdown,
 )
 
 pytestmark = pytest.mark.contract
@@ -40,15 +46,39 @@ class _FakeCloudApi:
         self.sent: list[tuple[str, str]] = []
         self.interactive: list[tuple] = []
         self.read: list[str] = []
+        self.uploaded: list[tuple[bytes, str]] = []
+        self.audio_sent: list[tuple[str, str]] = []
+        self.media: dict[str, tuple[bytes, str]] = {"media-in-1": (b"OggS-fake-opus", "audio/ogg; codecs=opus")}
+        self.fail_upload = False
+        # Every outbound call in order, to assert voice-vs-text-vs-buttons sequencing.
+        self.timeline: list[str] = []
 
     async def send_text(self, to, body):
         self.sent.append((to, body))
+        self.timeline.append("text")
+
+    async def send_audio(self, to, media_id):
+        self.audio_sent.append((to, media_id))
+        self.timeline.append("audio")
+
+    async def upload_media(self, data, mime_type, filename="audio.ogg"):
+        if self.fail_upload:
+            raise httpx.HTTPError("upload failed")
+        self.uploaded.append((data, mime_type))
+        return f"media-{len(self.uploaded)}"
+
+    async def download_media(self, media_id):
+        if media_id not in self.media:
+            raise httpx.HTTPError("no such media")
+        return self.media[media_id]
 
     async def send_buttons(self, to, body, buttons):
         self.interactive.append(("button", to, body, buttons))
+        self.timeline.append("buttons")
 
     async def send_list(self, to, body, button_text, rows):
         self.interactive.append(("list", to, body, button_text, rows))
+        self.timeline.append("list")
 
     async def mark_read(self, message_id):
         self.read.append(message_id)
@@ -69,8 +99,11 @@ class _FakeDb:
         rows = [m for m in self.messages if m["session_id"] == session_id]
         return rows[-last_n:] if last_n else rows
 
-    def add(self, session_id, role, content):
-        self.messages.append({"id": len(self.messages) + 1, "session_id": session_id, "role": role, "content": content})
+    def add(self, session_id, role, content, audio_text=None):
+        self.messages.append({
+            "id": len(self.messages) + 1, "session_id": session_id, "role": role, "content": content,
+            "audio_text": audio_text,
+        })
 
 
 class _FakeAuthService:
@@ -100,6 +133,7 @@ class _FakeChatService:
         self.calls: list[tuple] = []
         self.state: dict = {"key": "x", "ui_label": "X", "actions": [], "manual_actions": []}
         self.action_reply_message: str | None = None
+        self.reply_audio_text: str | None = None
 
     def get_or_create_current_session(self, session_id):
         self.calls.append(("session", Session().user))
@@ -118,7 +152,7 @@ class _FakeChatService:
         if self.turn_error is not None:
             raise self.turn_error
         self.db.add(session_id, "user", text)
-        self.db.add(session_id, "assistant", f"**Hola** — has dicho: {text}")
+        self.db.add(session_id, "assistant", f"**Hola** — has dicho: {text}", audio_text=self.reply_audio_text)
         return {"session_id": session_id, "state": self.state}
 
     async def apply_manual_action(self, action_name, session_id):
@@ -130,10 +164,46 @@ class _FakeChatService:
         return {"session_id": session_id, "state": self.state}
 
 
+def _wav(seconds: float = 0.5, rate: int = 22050) -> bytes:
+    pcm = b"".join(struct.pack("<h", int(8000 * math.sin(2 * math.pi * 440 * i / rate))) for i in range(int(rate * seconds)))
+    return PcmWavCodec.to_wav(pcm, rate)
+
+
+class _FakeTalk:
+    """TalkService stand-in: streams the WAV the way the real one does
+    (streaming header first, then PCM chunks)."""
+
+    def __init__(self) -> None:
+        self.spoken: list[str] = []
+        self.silent = False
+
+    async def generate(self, text):
+        self.spoken.append(text)
+        if self.silent:
+            return
+        pcm, rate = split_wav(_wav())
+        yield PcmWavCodec.streaming_header(rate)
+        for i in range(0, len(pcm), 4096):
+            yield pcm[i:i + 4096]
+
+
+class _FakeListen:
+    def __init__(self, transcript: str = "hola por voz") -> None:
+        self.transcript = transcript
+        self.heard: list[bytes] = []
+        self.fail = False
+
+    async def transcribe(self, audio):
+        self.heard.append(audio)
+        if self.fail:
+            raise ListenServiceError("whisper down")
+        return self.transcript
+
+
 def _config(**overrides) -> WhatsAppServiceConfig:
     values = dict(
         verify_token="my-verify-token", app_secret=APP_SECRET, access_token="tok", phone_number_id="123",
-        phone_number="15552052260", graph_version="v23.0", mark_read=True,
+        phone_number="15552052260", graph_version="v23.0", mark_read=True, voice_replies="when-spoken-to",
     )
     values.update(overrides)
     return WhatsAppServiceConfig(**values)
@@ -143,6 +213,9 @@ def _payload(msg_id="wamid.1", sender=LINKED_NUMBER, text="hola", mtype="text") 
     message = {"from": sender, "id": msg_id, "timestamp": "1749416383", "type": mtype}
     if mtype == "text":
         message["text"] = {"body": text}
+    elif mtype == "audio":
+        # Real shape of an inbound voice note: no bytes, just a media id to download.
+        message["audio"] = {"id": "media-in-1", "mime_type": "audio/ogg; codecs=opus", "voice": True}
     return {"object": "whatsapp_business_account", "entry": [{"id": "WABA", "changes": [{"field": "messages", "value": {
         "messaging_product": "whatsapp",
         "metadata": {"display_phone_number": "34900000000", "phone_number_id": "123"},
@@ -187,13 +260,12 @@ def _sign(body: bytes) -> str:
     return "sha256=" + hmac.new(APP_SECRET.encode(), body, hashlib.sha256).hexdigest()
 
 
-@pytest.fixture
-def env():
+def _build(config=None, talk=None, listen=None):
     db = _FakeDb()
     chat = _FakeChatService(db)
     api = _FakeCloudApi()
     auth = _FakeAuthService(db)
-    service = WhatsAppService(_config(), chat, db, auth, client=api)
+    service = WhatsAppService(config or _config(), chat, db, auth, client=api, talk_service=talk, listen_service=listen)
     app = FastAPI()
     # The real app's login wall sits in front of these routes too — they
     # must be reachable with no cookie at all (role=None).
@@ -203,6 +275,19 @@ def env():
     WhatsAppController(service).register_routes(router)
     app.include_router(router)
     return TestClient(app), service, chat, db, api
+
+
+@pytest.fixture
+def env():
+    return _build()
+
+
+@pytest.fixture
+def voice_env():
+    """Both voice services on, default policy (answer in kind)."""
+    talk, listen = _FakeTalk(), _FakeListen()
+    client, service, chat, db, api = _build(talk=talk, listen=listen)
+    return client, service, chat, db, api, talk, listen
 
 
 def _post(client, payload, signature=None):
@@ -289,7 +374,7 @@ def test_linked_but_unregistered_account_is_refused(env):
 
 def test_non_text_message_gets_courtesy_reply(env):
     client, _, chat, _, api = env
-    _post(client, _payload(mtype="audio"))
+    _post(client, _payload(mtype="image"))
     assert chat.calls == []
     assert api.sent == [(LINKED_NUMBER, REPLY_UNSUPPORTED)]
 
@@ -457,6 +542,179 @@ async def test_impersonation_does_not_leak_past_the_turn(env):
     await service.handle(IncomingMessage(id="wamid.9", sender=LINKED_NUMBER, type="text", text="hola"))
     assert chat.calls == [("session", LINKED_EMAIL), ("turn", LINKED_EMAIL)]
     assert Session().user == "user"
+
+
+# --- voice in ------------------------------------------------------------- #
+
+def test_voice_note_is_transcribed_and_processed_as_text(voice_env):
+    client, _, chat, db, api, talk, listen = voice_env
+    _post(client, _payload(mtype="audio"))
+    assert listen.heard == [b"OggS-fake-opus"]
+    assert chat.calls == [("session", LINKED_EMAIL), ("turn", LINKED_EMAIL)]
+    # The transcript is what got persisted as the user's own message.
+    assert [m["content"] for m in db.messages if m["role"] == "user"] == ["hola por voz"]
+
+
+def test_voice_note_without_listen_service_gets_notice(env):
+    client, _, chat, _, api = env
+    _post(client, _payload(mtype="audio"))
+    assert chat.calls == []
+    assert api.sent == [(LINKED_NUMBER, REPLY_UNSUPPORTED_AUDIO)]
+
+
+def test_unintelligible_voice_note_gets_notice(voice_env):
+    client, _, chat, _, api, _, listen = voice_env
+    listen.transcript = "   "
+    _post(client, _payload(mtype="audio"))
+    assert chat.calls == []
+    assert api.sent == [(LINKED_NUMBER, REPLY_AUDIO_NOT_UNDERSTOOD)]
+
+
+def test_transcription_failure_gets_notice_not_exception(voice_env):
+    client, _, chat, _, api, _, listen = voice_env
+    listen.fail = True
+    _post(client, _payload(mtype="audio"))
+    assert chat.calls == []
+    assert api.sent == [(LINKED_NUMBER, REPLY_AUDIO_NOT_UNDERSTOOD)]
+
+
+def test_media_download_failure_gets_notice(voice_env):
+    client, _, chat, _, api, _, _ = voice_env
+    api.media.clear()
+    _post(client, _payload(mtype="audio"))
+    assert chat.calls == []
+    assert api.sent == [(LINKED_NUMBER, REPLY_AUDIO_NOT_UNDERSTOOD)]
+
+
+def test_voice_note_from_unlinked_number_is_not_transcribed(voice_env):
+    client, _, chat, _, api, _, listen = voice_env
+    _post(client, _payload(sender="34699999999", mtype="audio"))
+    assert listen.heard == [] and chat.calls == []
+    assert api.sent == [("34699999999", REPLY_NOT_LINKED)]
+
+
+# --- voice out ------------------------------------------------------------ #
+
+def test_voice_note_in_gets_voice_note_out(voice_env):
+    client, _, chat, _, api, talk, _ = voice_env
+    chat.reply_audio_text = "Hola, te he oído."
+    _post(client, _payload(mtype="audio"))
+    assert talk.spoken == ["Hola, te he oído."]
+    (ogg, mime), = api.uploaded
+    assert mime == WHATSAPP_VOICE_MIME and ogg[:4] == b"OggS"
+    assert api.audio_sent == [(LINKED_NUMBER, "media-1")]
+    # Answer in kind: the voice note replaces the text, it doesn't duplicate it.
+    assert api.sent == []
+
+
+def test_text_in_gets_text_out_even_with_voice_available(voice_env):
+    client, _, chat, _, api, talk, _ = voice_env
+    chat.reply_audio_text = "Hola."
+    _post(client, _payload(text="hola"))
+    assert talk.spoken == [] and api.audio_sent == []
+    assert api.sent == [(LINKED_NUMBER, "*Hola* — has dicho: hola")]
+
+
+def test_voice_policy_always_speaks_text_replies_too():
+    talk = _FakeTalk()
+    client, _, chat, _, api = _build(config=_config(voice_replies="always"), talk=talk)
+    chat.reply_audio_text = "Hola."
+    _post(client, _payload(text="hola"))
+    assert talk.spoken == ["Hola."] and len(api.audio_sent) == 1 and api.sent == []
+
+
+def test_voice_policy_never_stays_text():
+    talk, listen = _FakeTalk(), _FakeListen()
+    client, _, chat, _, api = _build(config=_config(voice_replies="never"), talk=talk, listen=listen)
+    chat.reply_audio_text = "Hola."
+    _post(client, _payload(mtype="audio"))
+    assert talk.spoken == [] and api.audio_sent == []
+    assert api.sent == [(LINKED_NUMBER, "*Hola* — has dicho: hola por voz")]
+
+
+def test_reply_without_audio_text_falls_back_to_text(voice_env):
+    client, _, chat, _, api, talk, _ = voice_env
+    chat.reply_audio_text = None
+    _post(client, _payload(mtype="audio"))
+    assert talk.spoken == [] and api.audio_sent == []
+    assert api.sent == [(LINKED_NUMBER, "*Hola* — has dicho: hola por voz")]
+
+
+def test_voice_note_without_talk_service_falls_back_to_text():
+    client, _, chat, _, api = _build(listen=_FakeListen())
+    chat.reply_audio_text = "Hola."
+    _post(client, _payload(mtype="audio"))
+    assert api.audio_sent == []
+    assert api.sent == [(LINKED_NUMBER, "*Hola* — has dicho: hola por voz")]
+
+
+def test_upload_failure_falls_back_to_text(voice_env):
+    client, _, chat, _, api, talk, _ = voice_env
+    chat.reply_audio_text = "Hola."
+    api.fail_upload = True
+    _post(client, _payload(mtype="audio"))
+    assert talk.spoken == ["Hola."] and api.audio_sent == []
+    assert api.sent == [(LINKED_NUMBER, "*Hola* — has dicho: hola por voz")]
+
+
+def test_silent_talk_service_falls_back_to_text(voice_env):
+    client, _, chat, _, api, talk, _ = voice_env
+    chat.reply_audio_text = "Hola."
+    talk.silent = True
+    _post(client, _payload(mtype="audio"))
+    assert api.uploaded == [] and api.sent == [(LINKED_NUMBER, "*Hola* — has dicho: hola por voz")]
+
+
+def test_notices_are_never_spoken(voice_env):
+    client, _, chat, _, api, talk, _ = voice_env
+    chat.session_payload = {"paused": True, "paused_reason": "quota"}
+    _post(client, _payload(mtype="audio"))
+    assert talk.spoken == [] and api.sent == [(LINKED_NUMBER, REPLY_PAUSED)]
+
+
+def test_spoken_reply_with_manual_actions_gets_buttons_on_a_follow_up(voice_env):
+    client, _, chat, _, api, talk, _ = voice_env
+    chat.reply_audio_text = "Hola."
+    chat.state = {**chat.state, "manual_actions": [_action("go", "Go"), _action("stop", "Stop")]}
+    _post(client, _payload(mtype="audio"))
+    assert api.timeline == ["audio", "buttons"]
+    kind, to, body, buttons = api.interactive[0]
+    assert body == REPLY_OPTIONS_PROMPT and [b[0] for b in buttons] == ["go", "stop"]
+    assert api.sent == []
+
+
+def test_spoken_reply_fallback_keeps_buttons_on_the_text(voice_env):
+    client, _, chat, _, api, talk, _ = voice_env
+    chat.reply_audio_text = "Hola."
+    chat.state = {**chat.state, "manual_actions": [_action("go", "Go")]}
+    api.fail_upload = True
+    _post(client, _payload(mtype="audio"))
+    assert api.timeline == ["buttons"]
+    assert api.interactive[0][2] == "*Hola* — has dicho: hola por voz"
+
+
+# --- audio encoding ------------------------------------------------------- #
+
+def test_split_wav_handles_streaming_header_and_complete_file():
+    pcm, rate = split_wav(_wav(rate=24000))
+    assert rate == 24000 and len(pcm) == 12000 * 2  # 0.5 s of 16-bit mono
+    streamed = PcmWavCodec.streaming_header(24000) + pcm
+    assert split_wav(streamed) == (pcm, 24000)
+
+
+def test_wav_to_ogg_opus_produces_mono_48k_opus():
+    ogg = wav_to_ogg_opus(_wav(seconds=1.0))
+    assert ogg[:4] == b"OggS"
+    assert b"OpusHead" in ogg[:200]
+    # OpusHead: magic(8) version(1) channels(1) ... — channels byte right after version.
+    head = ogg.index(b"OpusHead")
+    assert ogg[head + 9] == 1
+    assert len(ogg) < len(_wav(seconds=1.0)) // 3
+
+
+def test_wav_to_ogg_opus_rejects_empty_audio():
+    with pytest.raises(ValueError):
+        wav_to_ogg_opus(PcmWavCodec.streaming_header(22050))
 
 
 # --- helpers -------------------------------------------------------------- #

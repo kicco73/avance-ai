@@ -57,6 +57,10 @@ class WhatsAppServiceConfig:
     phone_number: str | None
     graph_version: str
     mark_read: bool
+    # When the bot answers with a voice note instead of text (needs
+    # talk-service): "never", "when-spoken-to" (only in reply to a voice
+    # note — the default), "always" (every reply that has an [audio] text).
+    voice_replies: str
 
 
 @dataclass(frozen=True)
@@ -287,6 +291,8 @@ class AppConfig:
             ))
         return providers
 
+    _WHATSAPP_VOICE_REPLIES = ("never", "when-spoken-to", "always")
+
     @classmethod
     def _parse_whatsapp_service_config(cls, raw: dict, path: Path) -> WhatsAppServiceConfig | None:
         """Same optional, default-off shape as talk-service.enabled: no
@@ -299,8 +305,9 @@ class AppConfig:
         verify_token = cls._require_str(raw, section, "verify-token", path)
         app_secret = cls._require_str(raw, section, "app-secret", path)
         access_token = cls._require_str(raw, section, "access-token", path)
-        phone_number_id = cls._require_str(raw, section, "phone-number-id", path)
-
+        # YAML reads an unquoted 1223547060851510 as an int: accept both
+        # (going through _require_str first would reject the int).
+        phone_number_id = sub.get("phone-number-id")
         if isinstance(phone_number_id, int) and not isinstance(phone_number_id, bool):
             phone_number_id = str(phone_number_id)
         if not isinstance(phone_number_id, str) or not phone_number_id.strip():
@@ -321,10 +328,13 @@ class AppConfig:
         mark_read = sub.get("mark-read", True)
         if not isinstance(mark_read, bool):
             raise ConfigError(f"{path}: '{section}.mark-read' must be a boolean if present.")
+        voice_replies = cls._get_optional_choice(
+            raw, section, "voice-replies", path, default="when-spoken-to", choices=cls._WHATSAPP_VOICE_REPLIES,
+        )
         return WhatsAppServiceConfig(
             verify_token=verify_token, app_secret=app_secret, access_token=access_token,
             phone_number_id=phone_number_id, phone_number=phone_number,
-            graph_version=graph_version.strip(), mark_read=mark_read,
+            graph_version=graph_version.strip(), mark_read=mark_read, voice_replies=voice_replies,
         )
 
     @classmethod

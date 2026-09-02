@@ -190,3 +190,11 @@ whatsapp-service:
   graph-version: v23.0
   # Optional, defaults to true: send the blue "read" tick on receipt.
   mark-read: true
+  # Optional, defaults to when-spoken-to. Voice notes from the user are
+  # transcribed with listen-service (when enabled) and processed as text.
+  # This decides when the bot answers with a voice note instead of text
+  # (needs talk-service, and a reply that carries an [audio] text):
+  #   never           — text only
+  #   when-spoken-to  — voice note back only when the user sent one
+  #   always          — every reply with an audio text
+  voice-replies: when-spoken-to
