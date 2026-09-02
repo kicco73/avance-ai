@@ -63,8 +63,8 @@ function reload() { return codeEditorRef.value?.reload() }
 // The toolbar's AI button: prompts for a free-form problem/change
 // description, sends it (with the project's current index.css, its own
 // uploaded aspect/ asset names, and the skin format spec) to the
-// backend's AiService, and drops the rewritten content straight into the
-// code buffer — left dirty, ready for Save, same as any manual edit.
+// backend's AiService, drops the rewritten content into the code buffer
+// and saves it.
 async function aiEdit() {
   const instruction = await textareaDialog({
     title: 'AI-assisted edit',
@@ -76,6 +76,7 @@ async function aiEdit() {
   try {
     const result = await aiEditIndexCss(props.projectName, instruction)
     codeEditorRef.value?.setContent(result.content)
+    await codeEditorRef.value?.save()
   } catch {
     // already surfaced via apiFetch's shared error store
   } finally {

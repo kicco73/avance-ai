@@ -9,7 +9,7 @@ import simpleeval
 
 from automaton.automaton import _OnEnterEval
 from conftest import NullBroadcaster
-from jobs import JobQueue, ScheduledJobQueue
+from jobs import JobQueue, Scheduler
 from tracking.actuators.actuator_set import FakeActuatorSet, LiveActuatorSet
 
 pytestmark = pytest.mark.contract
@@ -26,8 +26,8 @@ def _wait_until(predicate, timeout=2.0, interval=0.01) -> bool:
 
 def test_live_actuator_set_defer_runs_the_callable_once_due():
     job_queue = JobQueue(max_concurrent=1, broadcaster=NullBroadcaster())
-    scheduled_queue = ScheduledJobQueue(job_queue)
-    actuator = LiveActuatorSet(notification_service=None, scheduled_job_queue=scheduled_queue, ws_adapter=None)
+    scheduler = Scheduler(job_queue)
+    actuator = LiveActuatorSet(notification_service=None, scheduled_job_queue=scheduler, ws_adapter=None)
     ran = threading.Event()
 
     result = actuator.defer(ran.set, datetime.now(timezone.utc) - timedelta(seconds=1))

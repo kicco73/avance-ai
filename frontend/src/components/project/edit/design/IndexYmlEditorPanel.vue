@@ -76,11 +76,11 @@ function redo() { return codeEditorRef.value?.redo() }
 
 // The toolbar's AI button: prompts for a free-form problem/change
 // description, sends it (with the project's current index.yml and the
-// format spec) to the backend's AiService, and drops the rewritten
-// content straight into the code buffer — left dirty, ready for Save,
-// same as any manual edit. CodeEditor stays mounted regardless of which
-// segment is showing (see this component's own docstring), so setContent
-// works even when the graph segment is the one currently visible.
+// format spec) to the backend's AiService, drops the rewritten content
+// into the code buffer and saves it — Graph/Code stays whatever the user
+// had selected (see jumpToLine's docstring above). CodeEditor stays
+// mounted regardless of which segment is showing, so setContent/save
+// work even when the graph segment is the one currently visible.
 async function aiEdit() {
   const instruction = await textareaDialog({
     title: 'AI-assisted edit',
@@ -92,7 +92,7 @@ async function aiEdit() {
   try {
     const result = await aiEditIndexYml(props.projectName, instruction)
     codeEditorRef.value?.setContent(result.content)
-    segment.value = 'code'
+    await codeEditorRef.value?.save()
   } catch {
     // already surfaced via apiFetch's shared error store
   } finally {

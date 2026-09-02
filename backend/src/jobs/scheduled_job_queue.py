@@ -13,7 +13,7 @@ from .job_queue import AbstractJobQueue
 logger = LoggerFactory.get_logger(__name__)
 
 
-class ScheduledJobQueue(AbstractJobQueue):
+class Scheduler(object):
 
     def __init__(self, queue: AbstractJobQueue) -> None:
         self.__queue = queue
@@ -39,9 +39,6 @@ class ScheduledJobQueue(AbstractJobQueue):
                     self.__pending.pop(i)
                     return
         self.__queue.cancel(job)
-
-    async def wait_for(self, job: DependentJob) -> None:
-        await self.__queue.wait_for(job)
 
     def __run(self) -> None:
         while True:
