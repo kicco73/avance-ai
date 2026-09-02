@@ -134,6 +134,7 @@ class _FakeChatService:
         self.turn_error: ServiceError | None = None
         self.action_error: Exception | None = None
         self.opening_message: str | None = None
+        self.wrap_up_message: str | None = None
         self.calls: list[tuple] = []
         self.state: dict = {"key": "x", "ui_label": "X", "actions": [], "manual_actions": []}
         self.action_reply_message: str | None = None
@@ -147,6 +148,10 @@ class _FakeChatService:
         if self.opening_message and not self.db.get_messages(session_id):
             self.db.add(session_id, "assistant", self.opening_message)
         return self.db.get_messages(session_id)
+
+    async def prepare_user_initiated_turn(self, session_id):
+        if self.wrap_up_message and not self.db.get_messages(session_id):
+            self.db.add(session_id, "assistant", self.wrap_up_message)
 
     def get_state_for_session(self, session_id):
         return self.state
@@ -412,11 +417,22 @@ def test_turn_runs_as_the_linked_account_and_replies_with_persisted_assistant_me
     assert api.sent == [(LINKED_NUMBER, "*Hola* — has dicho: hola")]
 
 
-def test_opening_message_is_sent_before_the_reply(env):
+def test_no_ai_initiated_opening_message_ahead_of_the_users_own_turn(env):
+    """Unlike the invite welcome (test_registration_delivers_the_projects_
+    opening_message_too), a normal WhatsApp turn is the user's own —
+    prepare_user_initiated_turn never announces the state on its own."""
     client, _, chat, _, api = env
     chat.opening_message = "Bienvenida."
     _post(client, _payload(text="hola"))
-    assert [body for _, body in api.sent] == ["Bienvenida.", "*Hola* — has dicho: hola"]
+    assert [body for _, body in api.sent] == ["*Hola* — has dicho: hola"]
+
+
+def test_a_chat_blocked_states_own_wrap_up_message_still_goes_out(env):
+    client, _, chat, _, api = env
+    chat.wrap_up_message = "Conversación finalizada."
+    chat.turn_error = ServiceError("This state doesn't accept messages; use an action instead.", status_code=HTTPStatus.CONFLICT)
+    _post(client, _payload(text="hola"))
+    assert [body for _, body in api.sent] == ["Conversación finalizada.", REPLY_NO_CHAT_STATE]
 
 
 def test_earlier_history_is_not_resent(env):

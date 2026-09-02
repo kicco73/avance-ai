@@ -636,7 +636,9 @@ class ChatService(object):
 				username=self._username, project_name=project_name,
 			)
 
-	async def open_if_needed(self, session_id: int) -> dict | None:
+	async def _ensure_project_bootstrap(
+		self, session_id: int
+	) -> tuple[Automaton, State, dict | None] | tuple[None, None, None]:
 		# An imported session is a fixed transcript, never live — its NULL
 		# message timestamps would make has_messages_since wrongly report
 		# "no messages" and crash trying to generate an opening one.
@@ -644,7 +646,7 @@ class ChatService(object):
 		if session is None:
 			raise ChatServiceError("Session not found.", status_code=HTTPStatus.NOT_FOUND)
 		if session["type"] == "imported":
-			return None
+			return None, None, None
 
 		project_name = session["project_name"]
 		automaton, state = self._project_service.get_automaton_and_state_for_session(session_id)
@@ -671,9 +673,27 @@ class ChatService(object):
 			if action.action_prompt:
 				init_message = await self._generate_action_prompt_message(action, session_id)
 
-		await self._generate_opening_message_if_needed(session_id, automaton, state)
+		return automaton, state, init_message
 
+	async def open_if_needed(self, session_id: int) -> dict | None:
+		automaton, state, init_message = await self._ensure_project_bootstrap(session_id)
+		if automaton is None:
+			return None
+		await self._generate_opening_message_if_needed(session_id, automaton, state)
 		return init_message
+
+	async def prepare_user_initiated_turn(self, session_id: int) -> None:
+		"""WhatsApp's own turns (invite welcome excluded): the user's text
+		is what starts or continues the conversation, so no AI-initiated
+		opening message runs ahead of it — only the project bootstrap
+		above, plus (when the current state can't take a real turn at
+		all) the wrap-up message that's otherwise the only thing this
+		session would ever say."""
+		automaton, state, _ = await self._ensure_project_bootstrap(session_id)
+		if automaton is None:
+			return
+		if state.final or not state.chat:
+			await self._generate_opening_message_if_needed(session_id, automaton, state)
 
 	def _should_generate_opening_message(self, session_id: int, state: State) -> bool:
 		content_since = self._db.history_cutoff_for_session(session_id, state.history_cutoff)
